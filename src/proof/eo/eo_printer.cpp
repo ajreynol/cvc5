@@ -907,9 +907,8 @@ void EoPrinter::print(EoPrintChannelOut& aout,
       {
         // [1] print the declarations
         printer::smt2::Smt2Printer eprinter(printer::smt2::Variant::eo_variant);
-        // Print declarations deterministically. This is important for CPC
-        // proofs with overloaded datatype constructors.
-        smt::PrintBenchmark pb(nodeManager(), &eprinter, true, &d_tproc);
+        // Print declarations in deterministic discovery order.
+        smt::PrintBenchmark pb(nodeManager(), &eprinter, false, &d_tproc);
         std::stringstream outDecl;
         std::stringstream outDef;
         options::ioutils::applyPrintArithLitToken(outDef, true);

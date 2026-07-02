@@ -10,11 +10,14 @@
  * Print benchmark utility.
  */
 
+#include <algorithm>
+
 #include "smt/print_benchmark.h"
 
 #include "expr/attribute.h"
+#include "expr/cardinality_constraint.h"
 #include "expr/dtype.h"
-#include "expr/node_algorithm.h"
+#include "expr/dtype_cons.h"
 #include "expr/node_converter.h"
 #include "expr/skolem_manager.h"
 #include "printer/printer.h"
@@ -23,6 +26,21 @@ using namespace cvc5::internal::kind;
 
 namespace cvc5::internal {
 namespace smt {
+
+namespace {
+
+template <typename T>
+void appendIfNew(const T& n,
+                 std::vector<T>& ordered,
+                 std::unordered_set<T>& seen)
+{
+  if (seen.insert(n).second)
+  {
+    ordered.push_back(n);
+  }
+}
+
+}  // namespace
 
 /**
  * Attribute true for symbols that should be excluded from the output of this
@@ -34,22 +52,76 @@ struct BenchmarkNoPrintAttributeId
 using BenchmarkNoPrintAttribute =
     expr::Attribute<BenchmarkNoPrintAttributeId, bool>;
 
+void PrintBenchmark::getTypes(TNode n,
+                              std::vector<TypeNode>& types,
+                              std::unordered_set<TypeNode>& processed,
+                              std::unordered_set<TNode>& visited)
+{
+  std::vector<TNode> visit;
+  visit.push_back(n);
+  do
+  {
+    TNode cur = visit.back();
+    visit.pop_back();
+    if (!visited.insert(cur).second)
+    {
+      continue;
+    }
+    appendIfNew(cur.getType(), types, processed);
+    // Special case where the type is not part of the AST.
+    if (cur.getKind() == Kind::CARDINALITY_CONSTRAINT)
+    {
+      appendIfNew(cur.getOperator().getConst<CardinalityConstraint>().getType(),
+                  types,
+                  processed);
+    }
+    visit.insert(visit.end(), cur.begin(), cur.end());
+  } while (!visit.empty());
+}
+
+void PrintBenchmark::getSymbols(TNode n,
+                                std::vector<Node>& syms,
+                                std::unordered_set<Node>& processed,
+                                std::unordered_set<TNode>& visited)
+{
+  std::vector<TNode> visit;
+  visit.push_back(n);
+  do
+  {
+    TNode cur = visit.back();
+    visit.pop_back();
+    if (!visited.insert(cur).second)
+    {
+      continue;
+    }
+    if (cur.isVar() && cur.getKind() != Kind::BOUND_VARIABLE)
+    {
+      appendIfNew(static_cast<Node>(cur), syms, processed);
+    }
+    if (cur.hasOperator())
+    {
+      visit.push_back(cur.getOperator());
+    }
+    visit.insert(visit.end(), cur.begin(), cur.end());
+  } while (!visit.empty());
+}
+
 void PrintBenchmark::printDeclarationsFrom(std::ostream& outDecl,
                                            std::ostream& outDef,
                                            const std::vector<Node>& defs,
                                            const std::vector<Node>& terms)
 {
-  std::unordered_set<TypeNode> unorderedTypes;
+  std::vector<TypeNode> types;
+  std::unordered_set<TypeNode> processedTypes;
   std::unordered_set<TNode> typeVisited;
   for (const Node& a : defs)
   {
-    expr::getTypes(a, unorderedTypes, typeVisited);
+    getTypes(a, types, processedTypes, typeVisited);
   }
   for (const Node& a : terms)
   {
-    expr::getTypes(a, unorderedTypes, typeVisited);
+    getTypes(a, types, processedTypes, typeVisited);
   }
-  std::vector<TypeNode> types{unorderedTypes.begin(), unorderedTypes.end()};
   if (d_sorted)
   {
     // We want to print declarations in a deterministic order, independent of
@@ -102,7 +174,7 @@ void PrintBenchmark::printDeclarationsFrom(std::ostream& outDecl,
     }
   }
 
-  // global visited cache for expr::getSymbols calls
+  // global visited cache for symbol collection
   std::unordered_set<TNode> visited;
 
   // print the definitions
@@ -134,15 +206,16 @@ void PrintBenchmark::printDeclarationsFrom(std::ostream& outDecl,
   {
     std::vector<Node> recDefs;
     std::vector<Node> ordinaryDefs;
-    std::unordered_set<Node> unorderedSyms;
+    std::vector<Node> syms;
+    std::unordered_set<Node> processedSyms;
     getConnectedDefinitions(s,
                             recDefs,
                             ordinaryDefs,
-                            unorderedSyms,
+                            syms,
+                            processedSyms,
                             defMap,
                             alreadyPrintedDef,
                             visited);
-    std::vector<Node> syms{unorderedSyms.begin(), unorderedSyms.end()};
     if (d_sorted)
     {
       // We want to print declarations in a deterministic order, independent of
@@ -200,12 +273,12 @@ void PrintBenchmark::printDeclarationsFrom(std::ostream& outDecl,
   }
 
   // print the remaining declared symbols
-  std::unordered_set<Node> unorderedSyms;
+  std::vector<Node> syms;
+  std::unordered_set<Node> processedSyms;
   for (const Node& a : terms)
   {
-    expr::getSymbols(a, unorderedSyms, visited);
+    getSymbols(a, syms, processedSyms, visited);
   }
-  std::vector<Node> syms{unorderedSyms.begin(), unorderedSyms.end()};
   if (d_sorted)
   {
     // We want to print declarations in a deterministic order, independent of
@@ -310,11 +383,15 @@ void PrintBenchmark::getConnectedSubfieldTypes(
     connectedTypes.push_back(tn);
     if (tn.isDatatype())
     {
-      std::unordered_set<TypeNode> subfieldTypes =
-          tn.getDType().getSubfieldTypes();
-      for (const TypeNode& ctn : subfieldTypes)
+      const DType& dt = tn.getDType();
+      for (size_t i = 0, ncons = dt.getNumConstructors(); i < ncons; i++)
       {
-        getConnectedSubfieldTypes(ctn, connectedTypes, processed);
+        const DTypeConstructor& cons = dt[i];
+        for (size_t j = 0, nargs = cons.getNumArgs(); j < nargs; j++)
+        {
+          getConnectedSubfieldTypes(
+              cons.getArgType(j), connectedTypes, processed);
+        }
       }
     }
   }
@@ -328,7 +405,8 @@ void PrintBenchmark::getConnectedDefinitions(
     Node n,
     std::vector<Node>& recDefs,
     std::vector<Node>& ordinaryDefs,
-    std::unordered_set<Node>& syms,
+    std::vector<Node>& syms,
+    std::unordered_set<Node>& processedSyms,
     const std::unordered_map<Node, std::pair<bool, Node>>& defMap,
     std::unordered_set<Node>& processedDefs,
     std::unordered_set<TNode>& visited)
@@ -339,7 +417,7 @@ void PrintBenchmark::getConnectedDefinitions(
   if (it == defMap.end())
   {
     // an ordinary declared symbol
-    syms.insert(n);
+    appendIfNew(n, syms, processedSyms);
     return;
   }
   if (processedDefs.find(n) != processedDefs.end())
@@ -348,12 +426,20 @@ void PrintBenchmark::getConnectedDefinitions(
   }
   processedDefs.insert(n);
   // get the symbols in the body
-  std::unordered_set<Node> symsBody;
-  expr::getSymbols(it->second.second, symsBody, visited);
+  std::vector<Node> symsBody;
+  std::unordered_set<Node> processedSymsBody;
+  getSymbols(it->second.second, symsBody, processedSymsBody, visited);
   for (const Node& s : symsBody)
   {
     getConnectedDefinitions(
-        s, recDefs, ordinaryDefs, syms, defMap, processedDefs, visited);
+        s,
+        recDefs,
+        ordinaryDefs,
+        syms,
+        processedSyms,
+        defMap,
+        processedDefs,
+        visited);
   }
   // add the symbol after we add the definitions
   if (!it->second.first)

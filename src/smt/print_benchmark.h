@@ -16,6 +16,8 @@
 #define CVC5__SMT__PRINT_BENCHMARK_H
 
 #include <iosfwd>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "expr/node.h"
@@ -40,7 +42,8 @@ class PrintBenchmark
    * Constructor.
    * @param nm     The associated node manager.
    * @param p      The associated printer.
-   * @param sorted True if declarations should be sorted wrt node id.
+   * @param sorted True if declarations should be sorted wrt node id. If false,
+   * declarations are printed in deterministic discovery order.
    * @param c      The associated node converter.
    */
   PrintBenchmark(NodeManager* nm,
@@ -108,6 +111,34 @@ class PrintBenchmark
                          const std::vector<Node>& funs,
                          std::unordered_set<Node>& processed);
   /**
+   * Get types in deterministic discovery order. This traverses the same type
+   * sources as expr::getTypes, but records the order in which types are first
+   * discovered.
+   *
+   * @param n The node to traverse
+   * @param types The ordered types
+   * @param processed The types that have already been added to types
+   * @param visited The nodes that have already been visited
+   */
+  void getTypes(TNode n,
+                std::vector<TypeNode>& types,
+                std::unordered_set<TypeNode>& processed,
+                std::unordered_set<TNode>& visited);
+  /**
+   * Get symbols in deterministic discovery order. This traverses the same
+   * symbols as expr::getSymbols, but records the order in which symbols are
+   * first discovered.
+   *
+   * @param n The node to traverse
+   * @param syms The ordered symbols
+   * @param processed The symbols that have already been added to syms
+   * @param visited The nodes that have already been visited
+   */
+  void getSymbols(TNode n,
+                  std::vector<Node>& syms,
+                  std::unordered_set<Node>& processed,
+                  std::unordered_set<TNode>& visited);
+  /**
    * Get the connected types. This traverses subfield types of datatypes and
    * adds to connectedTypes everything that is necessary for printing tn.
    *
@@ -124,7 +155,8 @@ class PrintBenchmark
    *
    * @param recDefs The recursive function definitions that v depends on
    * @param ordinaryDefs The non-recursive definitions that v depends on
-   * @param syms The declared symbols that v depends on
+   * @param syms The declared symbols that v depends on, in discovery order
+   * @param processedSyms The symbols that have already been added to syms
    * @param defMap Map from symbols to their definitions
    * @param processedDefs The (recursive or non-recursive) definitions we have
    * processed already. We update this with symbols we add to recDefs and
@@ -137,7 +169,8 @@ class PrintBenchmark
       Node v,
       std::vector<Node>& recDefs,
       std::vector<Node>& ordinaryDefs,
-      std::unordered_set<Node>& syms,
+      std::vector<Node>& syms,
+      std::unordered_set<Node>& processedSyms,
       const std::unordered_map<Node, std::pair<bool, Node>>& defMap,
       std::unordered_set<Node>& processedDefs,
       std::unordered_set<TNode>& visited);
