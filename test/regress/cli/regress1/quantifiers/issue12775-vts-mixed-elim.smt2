@@ -1,10 +1,12 @@
-; COMMAND-LINE: --miniscope-quant=agg --rlimit=100000
+; COMMAND-LINE: --miniscope-quant=agg --no-cegqi-midpoint --rlimit=100000
 ; EXPECT: unknown
 ;
 ; This benchmark is satisfiable (it is equivalent to (> (* V K) 0.0)).
 ; Previously, we incorrectly answered unsat with the given options due to
 ; applying an inconsistent mix of virtual term elimination and free virtual
-; term substitution when rewriting an instantiation.
+; term substitution when rewriting an instantiation. Note virtual term
+; substitution is now disabled by default (--cegqi-midpoint is true by
+; default), so --no-cegqi-midpoint is required to exercise this code path.
 (set-logic NRA)
 (declare-fun V () Real)
 (declare-fun K () Real)
