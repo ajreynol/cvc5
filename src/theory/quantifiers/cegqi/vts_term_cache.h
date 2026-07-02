@@ -105,8 +105,15 @@ class VtsTermCache : protected EnvObj
    * Rewrite virtual terms in node n. This returns the rewritten form of n
    * after virtual term substitution.
    *
-   * This method ensures that the returned node is equivalent to n and does
-   * not contain free occurrences of the virtual terms.
+   * This method ensures that the returned node is entailed by n (together
+   * with the axioms for free virtual terms) and does not contain occurrences
+   * of the (non-free) virtual terms.
+   *
+   * If any virtual term in n occurs in a literal from which it cannot be
+   * isolated, then all virtual terms in n are uniformly replaced by their
+   * free variants. Note it would be unsound to eliminate only some
+   * occurrences of a virtual term in n while replacing the remaining ones by
+   * its free variant, as the two interpretations may be jointly inconsistent.
    */
   Node rewriteVtsSymbols(Node n);
   /**
@@ -140,6 +147,14 @@ class VtsTermCache : protected EnvObj
   std::map<TypeNode, Node> d_vts_inf_free;
   /** substitute vts terms with their corresponding vts free terms */
   Node substituteVtsFreeTerms(Node n);
+  /**
+   * Helper for rewriteVtsSymbols. Eliminates virtual terms in n by the
+   * standard rules of virtual term substitution. If a virtual term occurs in
+   * a literal from which it cannot be isolated, this method sets success to
+   * false, in which case the (partially rewritten) return value should be
+   * discarded.
+   */
+  Node rewriteVtsSymbolsInternal(Node n, bool& success);
 }; /* class TermUtil */
 
 }  // namespace quantifiers

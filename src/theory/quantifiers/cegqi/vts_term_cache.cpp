@@ -121,6 +121,25 @@ Node VtsTermCache::substituteVtsFreeTerms(Node n)
 
 Node VtsTermCache::rewriteVtsSymbols(Node n)
 {
+  bool success = true;
+  Node ret = rewriteVtsSymbolsInternal(n, success);
+  if (!success)
+  {
+    // A virtual term in n occurred in a literal from which it could not be
+    // isolated. In this case, we interpret *all* virtual terms in n as their
+    // free variants. It would be unsound to use the result of a partial
+    // elimination, since the two interpretations may be jointly inconsistent.
+    // For example, for (or (>= delta t) P[delta]), it would be unsound to
+    // rewrite to (or (>= 0 t) P[delta_free]), since the first literal assumes
+    // delta is smaller than any positive constant, including delta_free
+    // (which is unsound e.g. when t is delta_free).
+    ret = substituteVtsFreeTerms(n);
+  }
+  return ret;
+}
+
+Node VtsTermCache::rewriteVtsSymbolsInternal(Node n, bool& success)
+{
   NodeManager* nm = nodeManager();
   if (((n.getKind() == Kind::EQUAL && n[0].getType().isRealOrInt())
        || n.getKind() == Kind::GEQ))
@@ -188,41 +207,54 @@ Node VtsTermCache::rewriteVtsSymbols(Node n)
           Trace("quant-vts-debug") << "VTS isolated :  -> " << iso_n
                                    << ", res = " << res << std::endl;
           Node slv = iso_n[res == 1 ? 1 : 0];
-          // ensure the vts terms have been eliminated
-          if (containsVtsTerm(slv))
+          if (!rew_vts_inf.isNull())
           {
-            Trace("quant-vts-warn")
-                << "Bad vts literal : " << n << ", contains " << vts_sym
-                << " but bad solved form " << slv << "." << std::endl;
-            // safe case: just convert to free symbols
-            nlit = substituteVtsFreeTerms(n);
-            Trace("quant-vts-debug") << "...return " << nlit << std::endl;
-            return nlit;
+            // If we are rewriting infinity, the solved form may contain
+            // (the dominated virtual term) delta, since the result below
+            // does not depend on the solved form. However, it should not
+            // contain infinity itself.
+            if (containsVtsInfinity(slv))
+            {
+              Trace("quant-vts-warn")
+                  << "Bad vts literal : " << n << ", contains " << vts_sym
+                  << " but bad solved form " << slv << "." << std::endl;
+              // failed to eliminate, which will cause the entire formula to
+              // be converted to free symbols
+              success = false;
+              return n;
+            }
+            nlit = nm->mkConst(n.getKind() == Kind::GEQ && res == 1);
           }
           else
           {
-            if (!rew_vts_inf.isNull())
+            // ensure the vts terms have been eliminated, e.g. the solved
+            // form may contain delta if delta occurred in a non-linear
+            // monomial in n
+            if (containsVtsTerm(slv))
             {
-              nlit = nm->mkConst(n.getKind() == Kind::GEQ && res == 1);
+              Trace("quant-vts-warn")
+                  << "Bad vts literal : " << n << ", contains " << vts_sym
+                  << " but bad solved form " << slv << "." << std::endl;
+              // failed to eliminate, which will cause the entire formula to
+              // be converted to free symbols
+              success = false;
+              return n;
+            }
+            Assert(iso_n[res == 1 ? 0 : 1] == d_vts_delta);
+            if (n.getKind() == Kind::EQUAL)
+            {
+              nlit = nm->mkConst(false);
             }
             else
             {
-              Assert(iso_n[res == 1 ? 0 : 1] == d_vts_delta);
-              if (n.getKind() == Kind::EQUAL)
+              Node zero = nm->mkConstRealOrInt(slv.getType(), Rational(0));
+              if (res == 1)
               {
-                nlit = nm->mkConst(false);
+                nlit = nm->mkNode(Kind::GEQ, zero, slv);
               }
               else
               {
-                Node zero = nm->mkConstRealOrInt(slv.getType(), Rational(0));
-                if (res == 1)
-                {
-                  nlit = nm->mkNode(Kind::GEQ, zero, slv);
-                }
-                else
-                {
-                  nlit = nm->mkNode(Kind::GT, slv, zero);
-                }
+                nlit = nm->mkNode(Kind::GT, slv, zero);
               }
             }
           }
@@ -234,10 +266,10 @@ Node VtsTermCache::rewriteVtsSymbols(Node n)
           Trace("quant-vts-warn")
               << "Bad vts literal : " << n << ", contains " << vts_sym
               << " but could not isolate." << std::endl;
-          // safe case: just convert to free symbols
-          nlit = substituteVtsFreeTerms(n);
-          Trace("quant-vts-debug") << "...return " << nlit << std::endl;
-          return nlit;
+          // failed to eliminate, which will cause the entire formula to
+          // be converted to free symbols
+          success = false;
+          return n;
         }
       }
     }
@@ -252,7 +284,11 @@ Node VtsTermCache::rewriteVtsSymbols(Node n)
   std::vector<Node> children;
   for (const Node& nc : n)
   {
-    Node nn = rewriteVtsSymbols(nc);
+    Node nn = rewriteVtsSymbolsInternal(nc, success);
+    if (!success)
+    {
+      return n;
+    }
     children.push_back(nn);
     childChanged = childChanged || nn != nc;
   }
