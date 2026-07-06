@@ -1289,7 +1289,7 @@
 ;   The flat form of r, with content in forward (non-reversed) order. The (order)
 ;   reversal is applied separately, by $re_rev_rec in $re_to_flat_form.
 (program $re_flatten
-  ((aslist Bool) (a RegLan) (b RegLan :list) (s String)
+  ((aslist Bool) (a RegLan) (a2 RegLan :list) (b RegLan :list) (s String)
    (body RegLan) (c1 RegLan) (c2 RegLan :list) (c RegLan))
   :signature (Bool RegLan) RegLan
   (
@@ -1301,6 +1301,8 @@
   ; $re_rev_rec, so the single characters need no per-string reversal.
   (($re_flatten true (re.++ (str.to_re s) b))
     ($re_split_str_to_re ($str_flatten ($str_nary_intro s)) ($re_flatten true b)))
+  (($re_flatten true (re.++ (re.++ a a2) b))
+    (eo::list_concat re.++ ($re_flatten true (re.++ a a2)) ($re_flatten true b)))
   (($re_flatten true (re.++ a b))      (_ re.++ ($re_flatten false a) ($re_flatten true b)))
   (($re_flatten true (str.to_re s))    ($re_split_str_to_re ($str_flatten ($str_nary_intro s)) @re.empty)) ; bare str.to_re
   (($re_flatten true c)                (_ re.++ ($re_flatten false c) @re.empty)) ; bare component -> singleton list
