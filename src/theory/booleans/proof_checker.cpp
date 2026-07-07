@@ -12,6 +12,10 @@
 
 #include "theory/booleans/proof_checker.h"
 
+#include <algorithm>
+#include <unordered_map>
+#include <unordered_set>
+
 #include "expr/skolem_manager.h"
 #include "theory/rewriter.h"
 
@@ -301,89 +305,87 @@ Node BoolProofRuleChecker::checkInternal(ProofRule id,
     NodeManager* nm = nodeManager();
     Node trueNode = nm->mkConst(true);
     Node falseNode = nm->mkConst(false);
-    std::vector<Node> lhsClause, rhsClause;
-    Node lhsElim, rhsElim;
     std::vector<Node> pols, lits;
     Assert(args.size() == 3);
     pols.insert(pols.end(), args[1].begin(), args[1].end());
     lits.insert(lits.end(), args[2].begin(), args[2].end());
-    if (pols.size() != lits.size())
+    if (pols.size() != lits.size() || pols.size() != children.size() - 1)
     {
       return Node::null();
     }
-    if (children[0].getKind() != Kind::OR
-        || (pols[0] == trueNode && children[0] == lits[0])
-        || (pols[0] == falseNode && children[0] == lits[0].notNode()))
-    {
-      lhsClause.push_back(children[0]);
-    }
-    else
-    {
-      lhsClause.insert(lhsClause.end(), children[0].begin(), children[0].end());
-    }
-    // Traverse the links, which amounts to for each pair of args removing a
-    // literal from the lhs and a literal from the lhs.
+
+    std::vector<Node> lhsElims, rhsElims;
+    lhsElims.reserve(pols.size());
+    rhsElims.reserve(pols.size());
+    std::unordered_map<Node, size_t> pendingLhsElims;
     for (size_t i = 0, argsSize = pols.size(); i < argsSize; i++)
     {
-      // Polarity determines how the pivot occurs in lhs and rhs
+      // Polarity determines how the pivot occurs in lhs and rhs.
       if (pols[i] == trueNode)
       {
-        lhsElim = lits[i];
-        rhsElim = lits[i].notNode();
+        lhsElims.push_back(lits[i]);
+        rhsElims.push_back(lits[i].notNode());
       }
       else
       {
         Assert(pols[i] == falseNode);
-        lhsElim = lits[i].notNode();
-        rhsElim = lits[i];
+        lhsElims.push_back(lits[i].notNode());
+        rhsElims.push_back(lits[i]);
       }
-      // The index of the child corresponding to the current rhs clause
-      size_t childIndex = i + 1;
-      // Get rhs clause. It's a singleton if not an OR node or if equal to
-      // rhsElim
-      if (children[childIndex].getKind() != Kind::OR
-          || children[childIndex] == rhsElim)
-      {
-        rhsClause.push_back(children[childIndex]);
-      }
-      else
-      {
-        rhsClause = {children[childIndex].begin(), children[childIndex].end()};
-      }
-      Trace("bool-pfcheck") << i << "-th res link:\n";
-      Trace("bool-pfcheck") << "\t - lhsClause: " << lhsClause << "\n";
-      Trace("bool-pfcheck") << "\t\t - lhsElim: " << lhsElim << "\n";
-      Trace("bool-pfcheck") << "\t - rhsClause: " << rhsClause << "\n";
-      Trace("bool-pfcheck") << "\t\t - rhsElim: " << rhsElim << "\n";
-      // Compute the resulting clause, which will be the next lhsClause, as
-      // follows:
-      //   - remove all lhsElim from lhsClause
-      //   - remove all rhsElim from rhsClause and add the lits to lhsClause
-      //
-      // Note that to remove the elements from lhsClaus we use the
-      // "erase-remove" idiom in C++: the std::remove call shuffles the elements
-      // different from lhsElim to the beginning of the container, returning an
-      // iterator to the beginning of the "rest" of the container (with
-      // occurrences of lhsElim). Then the call to erase removes the range from
-      // there to the end. Once C++ 20 is allowed in the cvc5 code base, this
-      // could be done with a single call to std::erase.
-      lhsClause.erase(std::remove(lhsClause.begin(), lhsClause.end(), lhsElim),
-                      lhsClause.end());
-      for (const Node& l : rhsClause)
-      {
-        // only add if literal does not occur in elimination set
-        if (rhsElim != l)
-        {
-          lhsClause.push_back(l);
-        }
-      }
-      rhsClause.clear();
+      pendingLhsElims[lhsElims.back()]++;
     }
 
-    Trace("bool-pfcheck") << "clause: " << lhsClause << "\n";
-    // check that set representation is the same as of the given conclusion
-    std::unordered_set<Node> clauseComputed{lhsClause.begin(), lhsClause.end()};
+    std::unordered_set<Node> clauseComputed;
+    auto hasPendingLhsElim = [&pendingLhsElims](const Node& lit) {
+      std::unordered_map<Node, size_t>::const_iterator it =
+          pendingLhsElims.find(lit);
+      return it != pendingLhsElims.end() && it->second > 0;
+    };
+    auto addClause = [&clauseComputed, &hasPendingLhsElim](
+                         TNode clause, TNode rhsElim, bool isSingleton) {
+      if (isSingleton)
+      {
+        if (clause != rhsElim && !hasPendingLhsElim(clause))
+        {
+          clauseComputed.insert(clause);
+        }
+        return;
+      }
+      for (const Node& lit : clause)
+      {
+        if (lit != rhsElim && !hasPendingLhsElim(lit))
+        {
+          clauseComputed.insert(lit);
+        }
+      }
+    };
+
+    // A literal from a premise survives iff it is not removed by its own
+    // resolution step (for rhs premises) or by a later lhs elimination.
+    addClause(children[0],
+              Node::null(),
+              children[0].getKind() != Kind::OR
+                  || children[0] == lhsElims[0]);
+
+    for (size_t i = 0, argsSize = pols.size(); i < argsSize; i++)
+    {
+      std::unordered_map<Node, size_t>::iterator it =
+          pendingLhsElims.find(lhsElims[i]);
+      Assert(it != pendingLhsElims.end() && it->second > 0);
+      it->second--;
+
+      size_t childIndex = i + 1;
+      bool rhsIsSingleton = children[childIndex].getKind() != Kind::OR
+                            || children[childIndex] == rhsElims[i];
+      Trace("bool-pfcheck") << i << "-th res link:\n";
+      Trace("bool-pfcheck") << "\t\t - lhsElim: " << lhsElims[i] << "\n";
+      Trace("bool-pfcheck") << "\t - rhs: " << children[childIndex] << "\n";
+      Trace("bool-pfcheck") << "\t\t - rhsElim: " << rhsElims[i] << "\n";
+      addClause(children[childIndex], rhsElims[i], rhsIsSingleton);
+    }
+
     Trace("bool-pfcheck") << "clauseSet: " << clauseComputed << "\n" << pop;
+    // check that set representation is the same as of the given conclusion
     if (clauseComputed.empty())
     {
       // conclusion differ
