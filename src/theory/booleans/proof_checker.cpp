@@ -336,52 +336,57 @@ Node BoolProofRuleChecker::checkInternal(ProofRule id,
     }
 
     std::unordered_set<Node> clauseComputed;
-    auto hasPendingLhsElim = [&pendingLhsElims](const Node& lit) {
-      std::unordered_map<Node, size_t>::const_iterator it =
-          pendingLhsElims.find(lit);
-      return it != pendingLhsElims.end() && it->second > 0;
-    };
-    auto addClause = [&clauseComputed, &hasPendingLhsElim](
-                         TNode clause, TNode rhsElim, bool isSingleton) {
-      if (isSingleton)
-      {
-        if (clause != rhsElim && !hasPendingLhsElim(clause))
-        {
-          clauseComputed.insert(clause);
-        }
-        return;
-      }
-      for (const Node& lit : clause)
-      {
-        if (lit != rhsElim && !hasPendingLhsElim(lit))
-        {
-          clauseComputed.insert(lit);
-        }
-      }
-    };
-
     // A literal from a premise survives iff it is not removed by its own
     // resolution step (for rhs premises) or by a later lhs elimination.
-    addClause(children[0],
-              Node::null(),
-              children[0].getKind() != Kind::OR
-                  || children[0] == lhsElims[0]);
-
-    for (size_t i = 0, argsSize = pols.size(); i < argsSize; i++)
+    for (size_t childIndex = 0, childrenSize = children.size();
+         childIndex < childrenSize;
+         childIndex++)
     {
-      std::unordered_map<Node, size_t>::iterator it =
-          pendingLhsElims.find(lhsElims[i]);
-      Assert(it != pendingLhsElims.end() && it->second > 0);
-      it->second--;
-
-      size_t childIndex = i + 1;
-      bool rhsIsSingleton = children[childIndex].getKind() != Kind::OR
-                            || children[childIndex] == rhsElims[i];
-      Trace("bool-pfcheck") << i << "-th res link:\n";
-      Trace("bool-pfcheck") << "\t\t - lhsElim: " << lhsElims[i] << "\n";
-      Trace("bool-pfcheck") << "\t - rhs: " << children[childIndex] << "\n";
-      Trace("bool-pfcheck") << "\t\t - rhsElim: " << rhsElims[i] << "\n";
-      addClause(children[childIndex], rhsElims[i], rhsIsSingleton);
+      TNode child = children[childIndex];
+      Node rhsElim = Node::null();
+      bool isSingleton = false;
+      if (childIndex == 0)
+      {
+        isSingleton = child.getKind() != Kind::OR || child == lhsElims[0];
+      }
+      else
+      {
+        size_t i = childIndex - 1;
+        std::unordered_map<Node, size_t>::iterator it =
+            pendingLhsElims.find(lhsElims[i]);
+        Assert(it != pendingLhsElims.end() && it->second > 0);
+        it->second--;
+        rhsElim = rhsElims[i];
+        isSingleton = child.getKind() != Kind::OR || child == rhsElim;
+        Trace("bool-pfcheck") << i << "-th res link:\n";
+        Trace("bool-pfcheck") << "\t\t - lhsElim: " << lhsElims[i] << "\n";
+        Trace("bool-pfcheck") << "\t - rhs: " << child << "\n";
+        Trace("bool-pfcheck") << "\t\t - rhsElim: " << rhsElim << "\n";
+      }
+      if (isSingleton)
+      {
+        std::unordered_map<Node, size_t>::const_iterator pendingIt =
+            pendingLhsElims.find(child);
+        if (child != rhsElim
+            && (pendingIt == pendingLhsElims.end() || pendingIt->second == 0))
+        {
+          clauseComputed.insert(child);
+        }
+      }
+      else
+      {
+        for (const Node& lit : child)
+        {
+          std::unordered_map<Node, size_t>::const_iterator pendingIt =
+              pendingLhsElims.find(lit);
+          if (lit != rhsElim
+              && (pendingIt == pendingLhsElims.end()
+                  || pendingIt->second == 0))
+          {
+            clauseComputed.insert(lit);
+          }
+        }
+      }
     }
 
     Trace("bool-pfcheck") << "clauseSet: " << clauseComputed << "\n" << pop;
