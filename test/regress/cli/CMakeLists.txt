@@ -1273,6 +1273,7 @@ set(regress_0_tests
   regress0/nl/pow2-pow.smt2
   regress0/nl/mod_elim_pow2.smt2
   regress0/nl/pow2-pow-isabelle.smt2
+  regress0/nl/issue12779-sqrt-abs-bound.smt2
   regress0/nl/proj-issue-348.smt2
   regress0/nl/proj-issue-425.smt2
   regress0/nl/proj-issue-444-memout-eqelim.smt2

@@ -116,6 +116,99 @@ bool flattenAndCollectSum(TNode t,
   return true;
 }
 
+namespace {
+
+Kind reverseRelation(Kind k)
+{
+  switch (k)
+  {
+    case Kind::LT: return Kind::GT;
+    case Kind::LEQ: return Kind::GEQ;
+    case Kind::EQUAL: return Kind::EQUAL;
+    case Kind::GEQ: return Kind::LEQ;
+    case Kind::GT: return Kind::LT;
+    default: Unreachable() << k; return k;
+  }
+}
+
+bool isNonNegativeSqrtArg(TNode n)
+{
+  if (n.getKind() == Kind::ABS)
+  {
+    return true;
+  }
+  if (n.isConst())
+  {
+    return n.getConst<Rational>().sgn() >= 0;
+  }
+  if (rewriter::isRAN(n))
+  {
+    return rewriter::getRAN(n).sgn() >= 0;
+  }
+  return false;
+}
+
+Node rewriteSqrtBound(NodeManager* nm,
+                      Kind k,
+                      TNode sqrtTerm,
+                      const Rational& bound)
+{
+  Assert(sqrtTerm.getKind() == Kind::SQRT);
+  if (!isNonNegativeSqrtArg(sqrtTerm[0]))
+  {
+    return Node::null();
+  }
+
+  bool resConst = false;
+  bool constValue = false;
+  switch (k)
+  {
+    case Kind::LT:
+      resConst = bound.sgn() <= 0;
+      constValue = false;
+      break;
+    case Kind::LEQ:
+      resConst = bound.sgn() < 0;
+      constValue = false;
+      break;
+    case Kind::EQUAL:
+      resConst = bound.sgn() < 0;
+      constValue = false;
+      break;
+    case Kind::GEQ:
+      resConst = bound.sgn() <= 0;
+      constValue = true;
+      break;
+    case Kind::GT:
+      resConst = bound.sgn() < 0;
+      constValue = true;
+      break;
+    default: return Node::null();
+  }
+  if (resConst)
+  {
+    return rewriter::mkConst(nm, constValue);
+  }
+  Node boundSq = nm->mkConstReal(bound * bound);
+  return rewriter::buildRelation(k, sqrtTerm[0], boundSq);
+}
+
+Node rewriteSqrtRelation(NodeManager* nm, Kind k, TNode left, TNode right)
+{
+  if (left.getKind() == Kind::SQRT && right.isConst())
+  {
+    return rewriteSqrtBound(nm, k, left, right.getConst<Rational>());
+  }
+  if (right.getKind() == Kind::SQRT && left.isConst())
+  {
+    return rewriteSqrtBound(
+        nm, reverseRelation(k), right, left.getConst<Rational>());
+  }
+  return Node::null();
+}
+
+}  // namespace
+
 ArithRewriter::ArithRewriter(NodeManager* nm,
                              OperatorElim& oe,
                              bool expertEnabled)
@@ -388,6 +481,12 @@ RewriteResponse ArithRewriter::postRewriteAtom(TNode atom)
   Kind kind = atom.getKind();
   Node left = rewriter::removeToReal(atom[0]);
   Node right = rewriter::removeToReal(atom[1]);
+
+  Node sqrtRel = rewriteSqrtRelation(d_nm, kind, left, right);
+  if (!sqrtRel.isNull())
+  {
+    return RewriteResponse(REWRITE_AGAIN_FULL, sqrtRel);
+  }
 
   if (auto response = rewriter::tryEvaluateRelationReflexive(kind, left, right);
       response)
@@ -1317,6 +1416,27 @@ RewriteResponse ArithRewriter::postRewriteTranscendental(TNode t)
   NodeManager* nm = nodeManager();
   switch (t.getKind())
   {
+    case Kind::SQRT:
+    {
+      if (t[0].isConst())
+      {
+        const Rational& r = t[0].getConst<Rational>();
+        if (r.sgn() == 0)
+        {
+          return RewriteResponse(REWRITE_DONE, nm->mkConstReal(Rational(0)));
+        }
+#ifdef CVC5_POLY_IMP
+        else if (r.sgn() > 0)
+        {
+          std::vector<Rational> coeffs{-r, Rational(0), Rational(1)};
+          RealAlgebraicNumber ran(coeffs, Rational(0), r + Rational(1));
+          return RewriteResponse(REWRITE_DONE,
+                                 nm->mkRealAlgebraicNumber(ran));
+        }
+#endif
+      }
+    }
+    break;
     case Kind::EXPONENTIAL:
     {
       if (t[0].isConst())
