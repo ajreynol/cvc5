@@ -257,14 +257,14 @@ Node LogosNodeConverter::typeAsNode(TypeNode tn)
     }
     std::vector<TypeNode> scope;
     scope.push_back(tn);
-    Node dd = getDatatypeScope(tn.getDType(), scope);
+    getDatatypeScope(tn.getDType(), scope);
     std::reverse(scope.begin(), scope.end());
     Node ddret = mkInternalSymbol("DatatypeDecl.nil", d_sortType);
     for (const TypeNode& tns : scope)
     {
       Assert (tns.isDatatype());
       Node dtName = mkNativeStringLit(d_nm->mkConst(String(tns.getDType().getName())));
-      Node dret = typeAsNodeDatatype(tn.getDType());
+      Node dret = typeAsNodeDatatype(tns.getDType());
       ddret = mkInternalApp("DatatypeDecl.cons", {dtName, dret, ddret}, d_sortType);
     }
     for (const TypeNode& tns : scope)
@@ -321,8 +321,8 @@ Node LogosNodeConverter::typeAsNode(TypeNode tn)
   return ret;
 }
 
-Node LogosNodeConverter::getDatatypeScope(const DType& dt,
-                                            std::vector<TypeNode>& scope)
+void LogosNodeConverter::getDatatypeScope(const DType& dt,
+                                          std::vector<TypeNode>& scope)
 {
   for (size_t j = 0, ncons = dt.getNumConstructors(); j < ncons; j++)
   {

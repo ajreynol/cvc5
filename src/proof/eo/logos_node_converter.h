@@ -94,7 +94,7 @@ static std::string replace_all(std::string str,
   /** The number of uninterpreted sorts we have allocated */
   size_t d_sortIdCount;
   /** type as node datatype */
-  Node getDatatypeScope(const DType& dt, std::vector<TypeNode>& scope);
+  void getDatatypeScope(const DType& dt, std::vector<TypeNode>& scope);
   Node typeAsNodeDatatype(const DType& dt);
   /** make list */
   Node mkLogosList(const std::vector<Node>& args, const TypeNode& tn);
