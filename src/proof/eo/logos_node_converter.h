@@ -89,10 +89,13 @@ static std::string replace_all(std::string str,
   size_t d_constIdCount;
   /** Cache for typeAsNode */
   std::map<TypeNode, Node> d_ltypeAsNode;
+  /** Cache for datatype */
+  std::map<TypeNode, Node> d_dtToDecl;
   /** The number of uninterpreted sorts we have allocated */
   size_t d_sortIdCount;
   /** type as node datatype */
-  Node typeAsNodeDatatype(const DType& dt, std::unordered_set<TypeNode>& scope);
+  Node getDatatypeScope(const DType& dt, std::vector<TypeNode>& scope);
+  Node typeAsNodeDatatype(const DType& dt);
   /** make list */
   Node mkLogosList(const std::vector<Node>& args, const TypeNode& tn);
   Node mkLogosTypedList(const std::vector<Node>& args, const TypeNode& tn);

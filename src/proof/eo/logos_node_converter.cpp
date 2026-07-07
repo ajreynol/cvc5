@@ -250,9 +250,29 @@ Node LogosNodeConverter::typeAsNode(TypeNode tn)
   }
   else if (tn.isDatatype())
   {
-    std::unordered_set<TypeNode> scope;
-    scope.insert(tn);
-    return typeAsNodeDatatype(tn.getDType(), scope);
+    std::map<TypeNode, Node>::iterator itd = d_dtToDecl.find(tn);
+    if (itd!=d_dtToDecl.end())
+    {
+      return itd->second;
+    }
+    std::vector<TypeNode> scope;
+    scope.push_back(tn);
+    Node dd = getDatatypeScope(tn.getDType(), scope);
+    std::reverse(scope.begin(), scope.end());
+    Node ddret = mkInternalSymbol("DatatypeDecl.nil", d_sortType);
+    for (const TypeNode& tns : scope)
+    {
+      Assert (tns.isDatatype());
+      Node dtName = mkNativeStringLit(d_nm->mkConst(String(tns.getDType().getName())));
+      Node dret = typeAsNodeDatatype(tn.getDType());
+      ddret = mkInternalApp("DatatypeDecl.cons", {dtName, dret, ddret}, d_sortType);
+    }
+    for (const TypeNode& tns : scope)
+    {
+      Node dtName = mkNativeStringLit(d_nm->mkConst(String(tns.getDType().getName())));
+      d_dtToDecl[tns] = mkInternalApp("Term.DatatypeType", {dtName, ddret}, d_sortType);
+    }
+    return d_dtToDecl[tn];
   }
   else if (tn.getNumChildren() > 0)
   {
@@ -301,8 +321,28 @@ Node LogosNodeConverter::typeAsNode(TypeNode tn)
   return ret;
 }
 
-Node LogosNodeConverter::typeAsNodeDatatype(const DType& dt,
-                                            std::unordered_set<TypeNode>& scope)
+Node LogosNodeConverter::getDatatypeScope(const DType& dt,
+                                            std::vector<TypeNode>& scope)
+{
+  for (size_t j = 0, ncons = dt.getNumConstructors(); j < ncons; j++)
+  {
+    // traverse the argument types
+    for (size_t k = 0, nargs = dt[j].getNumArgs(); k < nargs; k++)
+    {
+      TypeNode argt = dt[j].getArgType(k);
+      if (argt.isDatatype() && d_dtToDecl.find(argt)==d_dtToDecl.end())
+      {
+        if (std::find(scope.begin(), scope.end(), argt)==scope.end())
+        {
+          scope.push_back(argt);
+          getDatatypeScope(argt.getDType(), scope);
+        }
+      }
+    }
+  }
+}
+
+Node LogosNodeConverter::typeAsNodeDatatype(const DType& dt)
 {
   Node ret = mkInternalSymbol("Datatype.null", d_sortType);
   Node consUnit = mkInternalSymbol("DatatypeCons.unit", d_sortType);
@@ -315,18 +355,10 @@ Node LogosNodeConverter::typeAsNodeDatatype(const DType& dt,
     {
       Node an;
       TypeNode argt = dt[jj].getArgType((nargs - 1) - k);
-      if (argt.isDatatype())
+      if (argt.isDatatype() && d_dtToDecl.find(argt)==d_dtToDecl.end())
       {
-        if (scope.insert(argt).second)
-        {
-          an = typeAsNodeDatatype(argt.getDType(), scope);
-          scope.erase(argt);
-        }
-        else
-        {
-          Node dtName = mkNativeStringLit(d_nm->mkConst(String(argt.getDType().getName())));
-          an = mkInternalApp("Term.DatatypeTypeRef", {dtName}, d_sortType);
-        }
+        Node dtName = mkNativeStringLit(d_nm->mkConst(String(argt.getDType().getName())));
+        an = mkInternalApp("Term.DatatypeTypeRef", {dtName}, d_sortType);
       }
       else
       {
@@ -336,8 +368,6 @@ Node LogosNodeConverter::typeAsNodeDatatype(const DType& dt,
     }
     ret = mkInternalApp("Datatype.sum", {cons, ret}, d_sortType);
   }
-  Node dtName = mkNativeStringLit(d_nm->mkConst(String(dt.getName())));
-  ret = mkInternalApp("Term.DatatypeType", {dtName, ret}, d_sortType);
   return ret;
 }
 
