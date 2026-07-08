@@ -899,9 +899,11 @@
 ;   The result of "flattening" all children of t. For example, given
 ;   (str.++ "AB" x "CD"), this returns the term
 ;   (str.++ "A" (str.++ "B" (str.++ x (str.++ "C" (str.++ "D" ""))))).
-(program $str_flatten ((U Type) (t (Seq U)) (tail (Seq U) :list))
+(program $str_flatten ((U Type) (t (Seq U)) (tail (Seq U) :list) (tail2 (Seq U) :list))
   :signature ((Seq U)) (Seq U)
   (
+    (($str_flatten (str.++ (str.++ t tail) tail2))
+      (eo::list_concat str.++ ($str_flatten (str.++ t tail)) ($str_flatten tail2)))
     (($str_flatten (str.++ t tail))
         ; otherwise, check whether t is a word constant.
         ; we check for any word constant length here, since e.g. t may be empty
