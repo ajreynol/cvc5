@@ -17,3 +17,6 @@
 ;   This function is not a function in SMT-LIB. It is a (deprecated) synonym of
 ;   the SMT-LIB standard operator ubv_to_int.
 (define bv2nat () ubv_to_int)
+
+; symbolic BV constant
+(define @bv ((value Int) (w Int)) (int_to_bv w value))
