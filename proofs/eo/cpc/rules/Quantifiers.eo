@@ -2,6 +2,12 @@
 (include "../programs/Datatypes.eo")
 (include "../theories/Quantifiers.eo")
 
+; program: $is_instantiation
+; args:
+; - xs @List: The bound variable list.
+; - ts @List: The term list.
+; return: >
+;   True iff the type of ts matches the type of xs.
 (program $is_instantiation
   ((T Type) (xs @List :list) (ts @List :list) (t T) (s String))
   :signature (@List @List) Bool
@@ -68,6 +74,38 @@
 
 ;;;;; ProofRule::ALPHA_EQUIV
 
+; define: $is_unique_var_list
+; args:
+; - xs @List: The first bound variable list.
+; return: true if xs is variable list that is pairwise unique.
+(define $is_unique_var_list ((xs @List))
+  (eo::and ($is_var_list xs) (eo::eq (eo::list_setof @list xs) xs)))
+
+; program: $is_renaming_rec
+; args:
+; - xs @List: The first bound variable list.
+; - ys @List: The second bound variable list.
+; return: >
+;   True iff the type of xs matches the type of ys.
+(program $is_renaming_rec
+  ((T Type) (xs @List :list) (ys @List :list) (s1 String) (s2 String))
+  :signature (@List @List) Bool
+  (
+  (($is_renaming_rec @list.nil @list.nil) true)
+  (($is_renaming_rec (@list (eo::var s1 T) xs) (@list (eo::var s2 T) ys))
+    ($is_renaming_rec xs ys))
+  )
+)
+; define: $is_renaming
+; args:
+; - xs @List: The first bound variable list.
+; - ys @List: The second bound variable list.
+; return: >
+;   True if ys is a valid renaming of xs, i.e. same type and both lists
+;   are pairwise unique.
+(define $is_renaming ((xs @List) (ys @List))
+  (eo::and ($is_unique_var_list xs) ($is_unique_var_list ys) ($is_renaming_rec xs ys)))
+
 ; rule: alpha_equiv
 ; implements: ProofRule::ALPHA_EQUIV.
 ; args:
@@ -84,8 +122,7 @@
 ;   t. The substitution is valid renaming due to the requirement check.
 (declare-rule alpha_equiv ((T Type) (t T) (vs @List) (ts @List))
   :args (t vs ts)
-  :requires ((($is_var_list vs) true)
-             (($is_var_list ts) true)
+  :requires ((($is_renaming vs ts) true)
              (($contains_atomic_term_list_free t vs) false)
              (($contains_atomic_term_list_free t ts) false))
   :conclusion (= t ($rename_simul t vs ts))
@@ -326,11 +363,12 @@
   :signature (T C @List Bool Bool) Bool
   (
     (($is_quant_dt_split_conj x c (@list y ys) F (forall (@list y zs) G))
-      (eo::requires ($contains_atomic_term_free zs y) false  ; ensure no shadowing
+      (eo::requires (eo::list_find @list zs y) -1  ; ensure no shadowing
         ($is_quant_dt_split_conj x c ys F (forall zs G))))
     (($is_quant_dt_split_conj x c @list.nil F (forall (@list y zs) G))
-      (eo::requires ($contains_atomic_term_free zs y) false  ; ensure no shadowing
-        ($is_quant_dt_split_conj x (c y) @list.nil F (forall zs G))))
+      (eo::requires (eo::list_find @list zs y) -1  ; ensure no shadowing
+      (eo::requires ($contains_atomic_term_free F y) false
+        ($is_quant_dt_split_conj x (c y) @list.nil F (forall zs G)))))
     (($is_quant_dt_split_conj x c @list.nil F (forall @list.nil G))       ($is_quant_dt_split_conj x c @list.nil F G))
     (($is_quant_dt_split_conj x cx @list.nil F G)                         (eo::eq ($substitute x cx F) G))
   )
