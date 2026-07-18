@@ -143,12 +143,19 @@ def gen_exec_rule(rule):
         decls_code.append(gen_mk_skolem(bvar.name, bvar.sort))
     lhs_code = gen_mk_node(None, rule.lhs)
     rhs_code = gen_mk_node(None, rule.rhs)
+    # conditions: empty for unconditional rules, otherwise a single condition
+    # that must rewrite to true when instantiated
+    if isinstance(rule.cond, CBool) and rule.cond.val:
+        conds_code = '{}'
+    else:
+        conds_code = '{' + gen_mk_node(None, rule.cond) + '}'
     body = '\n'.join(decls_code)
     return f'{{' \
            f'{body}\n' \
            f'Node lhs = {lhs_code};' \
            f'Node rhs = {rhs_code};' \
-           f'db.addRule(ProofRewriteRule::{rule.get_enum()}, lhs, rhs);' \
+           f'db.addRule(ProofRewriteRule::{rule.get_enum()}, {conds_code}, ' \
+           f'lhs, rhs);' \
            f'}}'
 
 
@@ -177,15 +184,16 @@ def validate_exec_rule(rule):
     if rule.is_fixed_point:
         die(f'Exec rule {rule.name} may not be a fixed-point (define-rule*) '
             f'rule')
-    if not (isinstance(rule.cond, CBool) and rule.cond.val):
-        die(f'Exec rule {rule.name} may not have a condition')
     lhs = rule.lhs
     if not isinstance(lhs, App):
         die(f'Exec rule {rule.name}: the left-hand side {lhs} must be a '
             f'function application')
 
+    # A conditional exec rule verifies its condition by rewriting it to true, so
+    # the condition may only use variables that are bound by matching the
+    # left-hand side.
     lhs_list_vars = list_vars_of(lhs)
-    rhs_list_vars = list_vars_of(rule.rhs)
+    rhs_list_vars = list_vars_of(rule.rhs) | list_vars_of(rule.cond)
     if not lhs_list_vars and not rhs_list_vars:
         # No :list variables: any application left-hand side is allowed.
         return

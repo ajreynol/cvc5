@@ -306,6 +306,16 @@ Node SubtypeElimConverterCallback::convert(Node res,
     default: break;
   }
 
+  // THEORY_REWRITE steps (e.g. produced by the executable RARE rewrites) are
+  // not checkable on their own here; they are reconstructed later by the DSL
+  // proof machinery, which cannot re-apply the rule to the subtype-converted
+  // term. Record a trusted step for the converted conclusion instead.
+  if (id == ProofRule::THEORY_REWRITE)
+  {
+    cdp->addTrustedStep(resc, TrustId::SUBTYPE_ELIMINATION, childrenc, {});
+    return resc;
+  }
+
   Node newRes;
   // check if succeeds with no changes
   if (tryWith(id, childrenc, cargs, resc, newRes, cdp))

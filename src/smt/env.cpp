@@ -85,6 +85,9 @@ void Env::finishInit(smt::PfManager* pm)
     d_proofNodeManager = pm->getProofNodeManager();
     d_rewriter->finishInit(*this);
   }
+  // Initialize the executable rewrite database once here (independent of
+  // proofs), so that it is not constructed on the rewrite hot path.
+  d_rewriter->finishInitExec();
   d_topLevelSubs.reset(
       new theory::TrustSubstitutionMap(*this, d_userContext.get()));
 

@@ -92,6 +92,13 @@ class Rewriter
   void finishInit(Env& env);
 
   /**
+   * Initialize the executable (interpreted) rewrite database, which holds the
+   * RARE rules marked with :exec. This is called once during setup (see
+   * Env::finishInit) so that it is not constructed on the rewrite hot path.
+   */
+  void finishInitExec();
+
+  /**
    * Registers a theory rewriter with this rewriter. The rewriter does not own
    * the theory rewriters.
    *
@@ -173,10 +180,11 @@ class Rewriter
    * Attempt a single small-step executable (interpreted) RARE rewrite on n,
    * i.e. apply one rule marked with the :exec attribute. This is used as a last
    * resort when the theory rewriter leaves n unchanged. Returns the rewritten
-   * node, or the null node if no :exec rule applies. The exec database is
-   * constructed lazily on first use.
+   * node, or the null node if no :exec rule applies. If tcpg is non-null, the
+   * rewrite is recorded in it (as a THEORY_REWRITE step, plus a
+   * TRUST_THEORY_REWRITE step per condition) for proof production.
    */
-  Node rewriteViaExec(TNode n);
+  Node rewriteViaExec(TNode n, TConvProofGenerator* tcpg);
 
   /** Pointer to the node manager */
   NodeManager* d_nm;
@@ -193,7 +201,7 @@ class Rewriter
   std::unique_ptr<TConvProofGenerator> d_tpg;
   /**
    * The executable (interpreted) rewrite database, holding the RARE rules
-   * marked with :exec. Constructed lazily on first use.
+   * marked with :exec. Constructed once during setup by finishInitExec.
    */
   std::unique_ptr<rewriter::RewriteDbExec> d_execDb;
   /**

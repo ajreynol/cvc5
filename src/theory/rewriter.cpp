@@ -117,30 +117,33 @@ Node Rewriter::rewrite(TNode node)
     // eagerly for the sake of efficiency here.
     return node;
   }
-  // Construct the executable rewrite database here, before we begin creating
-  // nodes for the rewrite below. Doing so at a fixed point (rather than lazily,
-  // deep inside rewriteTo) ensures the node ids created for the :exec rules do
-  // not perturb the node ids created during rewriting, which some solvers are
-  // heuristically sensitive to.
+  return rewriteTo(theoryOf(node), node);
+}
+
+void Rewriter::finishInitExec()
+{
+  // Construct the executable rewrite database once, during setup, so that it is
+  // not constructed on the rewrite hot path. Constructing it at a fixed point
+  // also ensures the node ids created for the :exec rules do not perturb the
+  // node ids created during solving, which some solvers are heuristically
+  // sensitive to.
   if (d_execDb == nullptr)
   {
     d_execDb.reset(new rewriter::RewriteDbExec(d_nm));
   }
-  return rewriteTo(theoryOf(node), node);
 }
 
-Node Rewriter::rewriteViaExec(TNode n)
+Node Rewriter::rewriteViaExec(TNode n, TConvProofGenerator* tcpg)
 {
-  Assert(d_execDb != nullptr);
-  if (d_execDb->empty())
+  if (d_execDb == nullptr || d_execDb->empty())
   {
     return Node::null();
   }
-  // Apply a single (small-step) executable RARE rewrite to n. Returns the null
-  // node if no :exec rule applies. The rule id is recorded in id, which is
-  // available for linking proof generation in the future.
+  // Apply a single (small-step) executable RARE rewrite to n, recording proof
+  // steps in tcpg if it is non-null. Returns the null node if no :exec rule
+  // applies.
   ProofRewriteRule id = ProofRewriteRule::NONE;
-  return d_execDb->rewrite(n, id);
+  return d_execDb->rewrite(n, this, tcpg, id);
 }
 
 Node Rewriter::extendedRewrite(TNode node, bool aggr)
@@ -436,11 +439,10 @@ Node Rewriter::rewriteTo(theory::TheoryId theoryId,
 #endif
           // The theory rewriter is done with newNode. As a last resort, try a
           // single (small-step) executable RARE rewrite; if one applies, treat
-          // its result like a full rewrite and re-rewrite it. We only do this
-          // when not producing proofs, since the exec step is not yet reflected
-          // in the term conversion proof.
-          Node execNode = (tcpg == nullptr && newNode.getNumChildren() > 0)
-                              ? rewriteViaExec(newNode)
+          // its result like a full rewrite and re-rewrite it. When producing
+          // proofs, the exec step (and its conditions) are recorded in tcpg.
+          Node execNode = newNode.getNumChildren() > 0
+                              ? rewriteViaExec(newNode, tcpg)
                               : Node::null();
           if (!execNode.isNull())
           {

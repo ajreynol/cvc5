@@ -1904,6 +1904,7 @@ set(regress_0_tests
   regress0/rels/rels-sharing-simp.cvc.smt2
   regress0/reset-i.smt2
   regress0/rewriter/rare-exec-sine-double.smt2
+  regress0/rewriter/rare-exec-sine-quad.smt2
   regress0/sep/dispose-1.smt2
   regress0/sep/dup-nemp.smt2
   regress0/sep/issue10213-empty-model.smt2

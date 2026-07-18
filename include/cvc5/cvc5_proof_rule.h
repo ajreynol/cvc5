@@ -5073,6 +5073,8 @@ enum ENUM(ProofRewriteRule)
   EVALUE(ARITH_PI_NOT_INT),
   /** Auto-generated from RARE rule arith-sine-double */
   EVALUE(ARITH_SINE_DOUBLE),
+  /** Auto-generated from RARE rule arith-sine-quad */
+  EVALUE(ARITH_SINE_QUAD),
   /** Auto-generated from RARE rule sets-card-singleton */
   EVALUE(SETS_CARD_SINGLETON),
   /** Auto-generated from RARE rule sets-card-union */
