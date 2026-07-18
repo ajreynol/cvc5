@@ -170,13 +170,13 @@ class Rewriter
   bool hasRewrittenWithProofs(TNode n) const;
 
   /**
-   * Apply, as a last effort, the executable (interpreted) RARE rewrite rules
-   * (those marked with the :exec attribute) to n. This performs a single
-   * traversal that rewrites otherwise unrewritten subterms based on the exec
-   * trie, and re-normalizes the result if anything changed. The exec database
-   * is constructed lazily on first use.
+   * Attempt a single small-step executable (interpreted) RARE rewrite on n,
+   * i.e. apply one rule marked with the :exec attribute. This is used as a last
+   * resort when the theory rewriter leaves n unchanged. Returns the rewritten
+   * node, or the null node if no :exec rule applies. The exec database is
+   * constructed lazily on first use.
    */
-  Node rewriteViaExec(Node n);
+  Node rewriteViaExec(TNode n);
 
   /** Pointer to the node manager */
   NodeManager* d_nm;

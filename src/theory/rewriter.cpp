@@ -117,30 +117,30 @@ Node Rewriter::rewrite(TNode node)
     // eagerly for the sake of efficiency here.
     return node;
   }
-  Node ret = rewriteTo(theoryOf(node), node);
-  // As a last effort, apply the executable (interpreted) RARE rewrites.
-  return rewriteViaExec(ret);
-}
-
-Node Rewriter::rewriteViaExec(Node n)
-{
-  // construct the executable rewrite database lazily on first use
+  // Construct the executable rewrite database here, before we begin creating
+  // nodes for the rewrite below. Doing so at a fixed point (rather than lazily,
+  // deep inside rewriteTo) ensures the node ids created for the :exec rules do
+  // not perturb the node ids created during rewriting, which some solvers are
+  // heuristically sensitive to.
   if (d_execDb == nullptr)
   {
     d_execDb.reset(new rewriter::RewriteDbExec(d_nm));
   }
+  return rewriteTo(theoryOf(node), node);
+}
+
+Node Rewriter::rewriteViaExec(TNode n)
+{
+  Assert(d_execDb != nullptr);
   if (d_execDb->empty())
   {
-    return n;
+    return Node::null();
   }
-  // one traversal to apply exec rules to otherwise unrewritten subterms
-  Node ret = d_execDb->rewrite(n);
-  if (ret != n)
-  {
-    // re-normalize the changed result with the standard rewriter
-    ret = rewriteTo(theoryOf(ret), ret);
-  }
-  return ret;
+  // Apply a single (small-step) executable RARE rewrite to n. Returns the null
+  // node if no :exec rule applies. The rule id is recorded in id, which is
+  // available for linking proof generation in the future.
+  ProofRewriteRule id = ProofRewriteRule::NONE;
+  return d_execDb->rewrite(n, id);
 }
 
 Node Rewriter::extendedRewrite(TNode node, bool aggr)
@@ -434,6 +434,29 @@ Node Rewriter::rewriteTo(theory::TheoryId theoryId,
           Assert(r2.d_node == newNode)
               << "Non-idempotent rewriting: " << r2.d_node << " != " << newNode;
 #endif
+          // The theory rewriter is done with newNode. As a last resort, try a
+          // single (small-step) executable RARE rewrite; if one applies, treat
+          // its result like a full rewrite and re-rewrite it. We only do this
+          // when not producing proofs, since the exec step is not yet reflected
+          // in the term conversion proof.
+          Node execNode = (tcpg == nullptr && newNode.getNumChildren() > 0)
+                              ? rewriteViaExec(newNode)
+                              : Node::null();
+          if (!execNode.isNull())
+          {
+            Assert(execNode != newNode);
+#ifdef CVC5_ASSERTIONS
+            Assert(d_rewriteStack->find(execNode) == d_rewriteStack->end())
+                << "Non-terminating rewriting detected for: " << execNode;
+            d_rewriteStack->insert(execNode);
+#endif
+            rewriteStackTop.d_fullRewriteNode = execNode;
+            rewriteStackTop.setState(
+                RewriteStackElement::WAIT_FOR_FULL_REWRITE);
+            rewriteStack.push_back(
+                RewriteStackElement(execNode, theoryOf(execNode)));
+            break;
+          }
           rewriteStackTop.d_node = newNode;
           rewriteStackTop.d_theoryId = newTheoryId;
           rewriteStackTop.setState(RewriteStackElement::FINALIZE);

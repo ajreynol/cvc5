@@ -167,11 +167,12 @@ def list_vars_of(expr):
 def validate_exec_rule(rule):
     """
     Check that an :exec rule is supported by the executable rewrite trie. Rules
-    without :list variables may have any application left-hand side. Rules that
-    do use :list variables are restricted to the pattern (f t1 s t2), where f is
-    an n-ary operator, t1 and t2 are (distinct) :list variables, and s is a
-    single non-list "needle" child; the only :list variables allowed anywhere in
-    such a rule are t1 and t2.
+    without :list variables may have any application left-hand side. Any :list
+    variables that are used must occur only inside a "needle group" of the form
+    (f t1 s t2), where f is an n-ary operator, t1 and t2 are (distinct) :list
+    variables, and s is a single non-list needle child. Such groups may appear
+    anywhere in the left-hand side, e.g. (g (f t1 s t2) r), so that at most one
+    child of each n-ary application needs to be found during matching.
     """
     if rule.is_fixed_point:
         die(f'Exec rule {rule.name} may not be a fixed-point (define-rule*) '
@@ -183,32 +184,50 @@ def validate_exec_rule(rule):
         die(f'Exec rule {rule.name}: the left-hand side {lhs} must be a '
             f'function application')
 
-    list_vars = list_vars_of(lhs) | list_vars_of(rule.rhs)
-    if not list_vars:
+    lhs_list_vars = list_vars_of(lhs)
+    rhs_list_vars = list_vars_of(rule.rhs)
+    if not lhs_list_vars and not rhs_list_vars:
         # No :list variables: any application left-hand side is allowed.
         return
 
-    # Has :list variables: the left-hand side must be (f t1 s t2).
-    if len(lhs.children) != 3:
-        die(f'Exec rule {rule.name} uses :list variables, so its left-hand '
-            f'side must have the form (f t1 s t2); got {lhs}')
-    t1, needle, t2 = lhs.children
-    if not (isinstance(t1, Var) and t1.sort and t1.sort.is_list):
-        die(f'Exec rule {rule.name}: the first child {t1} must be a :list '
-            f'variable')
-    if not (isinstance(t2, Var) and t2.sort and t2.sort.is_list):
-        die(f'Exec rule {rule.name}: the third child {t2} must be a :list '
-            f'variable')
-    if t1 == t2:
-        die(f'Exec rule {rule.name}: the two :list variables must be distinct')
-    if list_vars_of(needle):
-        die(f'Exec rule {rule.name}: the middle child (needle) {needle} may '
-            f'not contain :list variables')
-    stray = list_vars - {t1, t2}
+    # Every :list variable must occur only inside a (f t1 s t2) group. Traverse
+    # the left-hand side and validate each application that has a :list variable
+    # as a direct child.
+    group_vars = set()
+    to_visit = [lhs]
+    while to_visit:
+        cur = to_visit.pop()
+        if not isinstance(cur, App):
+            continue
+        direct_list = [c for c in cur.children
+                       if isinstance(c, Var) and c.sort and c.sort.is_list]
+        if not direct_list:
+            to_visit.extend(cur.children)
+            continue
+        # cur must be a needle group (f t1 s t2)
+        if len(cur.children) != 3:
+            die(f'Exec rule {rule.name}: :list variables must occur in a '
+                f'(f t1 s t2) group, but found {cur}')
+        t1, needle, t2 = cur.children
+        if not (isinstance(t1, Var) and t1.sort and t1.sort.is_list) or \
+           not (isinstance(t2, Var) and t2.sort and t2.sort.is_list):
+            die(f'Exec rule {rule.name}: in group {cur}, the first and third '
+                f'children must be :list variables')
+        if t1 == t2:
+            die(f'Exec rule {rule.name}: the :list variables in {cur} must be '
+                f'distinct')
+        if list_vars_of(needle):
+            die(f'Exec rule {rule.name}: the needle {needle} in {cur} may not '
+                f'contain :list variables')
+        group_vars |= {t1, t2}
+        # the needle is list-variable free, but may itself contain applications
+        to_visit.append(needle)
+
+    stray = (lhs_list_vars | rhs_list_vars) - group_vars
     if stray:
         names = ', '.join(sorted(v.name for v in stray))
-        die(f'Exec rule {rule.name}: only the :list variables of the pattern '
-            f'may be used, but also found {names}')
+        die(f'Exec rule {rule.name}: :list variable(s) {names} do not occur in '
+            f'a (f t1 s t2) group')
 
 
 class Rewrites:

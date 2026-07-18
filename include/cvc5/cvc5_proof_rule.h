@@ -4945,8 +4945,6 @@ enum ENUM(ProofRewriteRule)
   EVALUE(RE_CONCAT_MERGE),
   /** Auto-generated from RARE rule re-union-all */
   EVALUE(RE_UNION_ALL),
-  /** Auto-generated from RARE rule re-concat-star-dup */
-  EVALUE(RE_CONCAT_STAR_DUP),
   /** Auto-generated from RARE rule re-union-const-elim */
   EVALUE(RE_UNION_CONST_ELIM),
   /** Auto-generated from RARE rule re-inter-all */
