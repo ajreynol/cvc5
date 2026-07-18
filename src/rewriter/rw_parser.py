@@ -183,42 +183,64 @@ class Parser:
         return pp.Optional(pp.Suppress('(') + pp.Suppress(pp.Keyword('def')) +
                            pp.ZeroOrMore(d) + pp.Suppress(')'))
 
-    def rule_action(self, name, cond, lhs, rhs, is_fixed_point, rhs_context):
+    def rule_action(self, name, cond, lhs, rhs, is_fixed_point, rhs_context,
+                    is_exec=False):
         bvars = self.symbols.symbols.values()
         self.symbols.pop()
-        return Rule(name, bvars, cond, lhs, rhs, is_fixed_point, rhs_context)
+        return Rule(name, bvars, cond, lhs, rhs, is_fixed_point, rhs_context,
+                    is_exec)
+
+    def strip_exec(self, t):
+        """
+        Detect and remove a trailing :exec attribute from the parsed tokens t.
+        Returns the pair (remaining tokens, is_exec). Note :exec is parsed as a
+        (Python) string keyword, whereas all expression tokens are Nodes, so it
+        is unambiguous to detect it as a trailing string token.
+        """
+        toks = list(t)
+        is_exec = bool(toks) and isinstance(toks[-1], str) and toks[-1] == ':exec'
+        if is_exec:
+            toks.pop()
+        return toks, is_exec
 
     def parse_rules(self, s):
+        exec_attr = pp.Optional(pp.Keyword(':exec'))
         def rule_action(s, l, t):
+            t, is_exec = self.strip_exec(t)
             keys, args, match, target = t
             assert len(t) == 4
-            return self.rule_action(args, CBool(True), match, target, False, None)
+            return self.rule_action(args, CBool(True), match, target, False,
+                                    None, is_exec)
         rule = (
             pp.Suppress('(') +
             pp.Keyword('define-rule') +
             self.symbol() + self.var_list() + self.def_list() +
-            self.expr() + self.expr() +
+            self.expr() + self.expr() + exec_attr +
             pp.Suppress(')')).setParseAction(rule_action)
         def fixed_rule_action(s, l, t):
             # t = [key, args, match, target, (cond)]
+            t, is_exec = self.strip_exec(t)
             assert len(t) == 4 or len(t) == 5
             keys, args, match, target = t[:4]
             cond = Placeholder() if len(t) == 4 else t[4]
-            return self.rule_action(args, CBool(True), match, target, True, cond)
+            return self.rule_action(args, CBool(True), match, target, True,
+                                    cond, is_exec)
         fixed_rule = (
             pp.Suppress('(') +
             pp.Keyword('define-rule*') +
             self.symbol() + self.var_list() + self.def_list() +
-            self.expr() + self.expr() + pp.Optional(self.expr()) +
+            self.expr() + self.expr() + pp.Optional(self.expr()) + exec_attr +
             pp.Suppress(')')).setParseAction(fixed_rule_action)
         def cond_rule_action(s, l, t):
+            t, is_exec = self.strip_exec(t)
             keys, args, cond, match, target = t
-            return self.rule_action(args, cond, match, target, False, None)
+            return self.rule_action(args, cond, match, target, False, None,
+                                    is_exec)
         cond_rule = (
             pp.Suppress('(') +
             pp.Keyword('define-cond-rule') +
             self.symbol() + self.var_list() + self.def_list() +
-            self.expr() + self.expr() + self.expr() +
+            self.expr() + self.expr() + self.expr() + exec_attr +
             pp.Suppress(')')).setParseAction(cond_rule_action)
         rules = pp.OneOrMore(rule | fixed_rule | cond_rule) + pp.StringEnd()
         rules.ignore(';' + pp.restOfLine)

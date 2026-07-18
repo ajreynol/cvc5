@@ -18,6 +18,8 @@ libcvc5_add_sources(
   basic_rewrite_rcons.h
   rewrite_db.cpp
   rewrite_db.h
+  rewrite_db_exec.cpp
+  rewrite_db_exec.h
   rewrite_db_proof_cons.cpp
   rewrite_db_proof_cons.h
   rewrite_db_term_process.cpp

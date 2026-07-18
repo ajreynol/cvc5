@@ -4945,6 +4945,8 @@ enum ENUM(ProofRewriteRule)
   EVALUE(RE_CONCAT_MERGE),
   /** Auto-generated from RARE rule re-union-all */
   EVALUE(RE_UNION_ALL),
+  /** Auto-generated from RARE rule re-concat-star-dup */
+  EVALUE(RE_CONCAT_STAR_DUP),
   /** Auto-generated from RARE rule re-union-const-elim */
   EVALUE(RE_UNION_CONST_ELIM),
   /** Auto-generated from RARE rule re-inter-all */
@@ -5071,6 +5073,8 @@ enum ENUM(ProofRewriteRule)
   EVALUE(ARITH_COTANGENT_ELIM),
   /** Auto-generated from RARE rule arith-pi-not-int */
   EVALUE(ARITH_PI_NOT_INT),
+  /** Auto-generated from RARE rule arith-sine-double */
+  EVALUE(ARITH_SINE_DOUBLE),
   /** Auto-generated from RARE rule sets-card-singleton */
   EVALUE(SETS_CARD_SINGLETON),
   /** Auto-generated from RARE rule sets-card-union */

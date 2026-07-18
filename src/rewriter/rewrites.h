@@ -23,6 +23,7 @@ namespace cvc5::internal {
 namespace rewriter {
 
 class RewriteDb;
+class RewriteDbExec;
 
 /**
  * The body of this method is auto-generated. This populates the provided
@@ -30,6 +31,13 @@ class RewriteDb;
  * rewrite rule files.
  */
 void addRules(NodeManager* nm, RewriteDb& db);
+
+/**
+ * The body of this method is auto-generated. This populates the provided
+ * executable rewrite trie with the subset of DSL rewrite rules that are marked
+ * with the :exec attribute.
+ */
+void addRewriteExecRules(NodeManager* nm, RewriteDbExec& db);
 
 /** Make node from proof rewrite rule */
 Node mkRewriteRuleNode(NodeManager* nm, ProofRewriteRule rule);

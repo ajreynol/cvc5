@@ -16,6 +16,7 @@
 
 #include "options/theory_options.h"
 #include "proof/conv_proof_generator.h"
+#include "rewriter/rewrite_db_exec.h"
 #include "theory/builtin/proof_checker.h"
 #include "theory/evaluator.h"
 #include "theory/quantifiers/extended_rewrite.h"
@@ -106,6 +107,8 @@ struct RewriteStackElement
   NodeBuilder d_builder;
 };
 
+Rewriter::~Rewriter() {}
+
 Node Rewriter::rewrite(TNode node)
 {
   if (node.getNumChildren() == 0)
@@ -114,7 +117,30 @@ Node Rewriter::rewrite(TNode node)
     // eagerly for the sake of efficiency here.
     return node;
   }
-  return rewriteTo(theoryOf(node), node);
+  Node ret = rewriteTo(theoryOf(node), node);
+  // As a last effort, apply the executable (interpreted) RARE rewrites.
+  return rewriteViaExec(ret);
+}
+
+Node Rewriter::rewriteViaExec(Node n)
+{
+  // construct the executable rewrite database lazily on first use
+  if (d_execDb == nullptr)
+  {
+    d_execDb.reset(new rewriter::RewriteDbExec(d_nm));
+  }
+  if (d_execDb->empty())
+  {
+    return n;
+  }
+  // one traversal to apply exec rules to otherwise unrewritten subterms
+  Node ret = d_execDb->rewrite(n);
+  if (ret != n)
+  {
+    // re-normalize the changed result with the standard rewriter
+    ret = rewriteTo(theoryOf(ret), ret);
+  }
+  return ret;
 }
 
 Node Rewriter::extendedRewrite(TNode node, bool aggr)

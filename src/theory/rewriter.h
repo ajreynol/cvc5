@@ -26,6 +26,10 @@ class TConvProofGenerator;
 class ProofNodeManager;
 class TrustNode;
 
+namespace rewriter {
+class RewriteDbExec;
+}
+
 namespace theory {
 
 class Evaluator;
@@ -38,6 +42,7 @@ class Rewriter
   friend class cvc5::internal::Env;  // to set the resource manager
  public:
   Rewriter(NodeManager* nm);
+  ~Rewriter();
 
   /**
    * Rewrites the node using theoryOf() to determine which rewriter to
@@ -164,6 +169,15 @@ class Rewriter
    */
   bool hasRewrittenWithProofs(TNode n) const;
 
+  /**
+   * Apply, as a last effort, the executable (interpreted) RARE rewrite rules
+   * (those marked with the :exec attribute) to n. This performs a single
+   * traversal that rewrites otherwise unrewritten subterms based on the exec
+   * trie, and re-normalizes the result if anything changed. The exec database
+   * is constructed lazily on first use.
+   */
+  Node rewriteViaExec(Node n);
+
   /** Pointer to the node manager */
   NodeManager* d_nm;
 
@@ -177,6 +191,11 @@ class Rewriter
 
   /** The proof generator */
   std::unique_ptr<TConvProofGenerator> d_tpg;
+  /**
+   * The executable (interpreted) rewrite database, holding the RARE rules
+   * marked with :exec. Constructed lazily on first use.
+   */
+  std::unique_ptr<rewriter::RewriteDbExec> d_execDb;
   /**
    * Nodes rewritten with proofs. Since d_tpg contains a reference to all
    * nodes that have been rewritten with proofs, we can keep only a TNode

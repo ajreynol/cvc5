@@ -12,7 +12,7 @@
 
 class Rule:
     def __init__(self, name, bvars, cond, lhs, rhs,
-                 is_fixed_point, rhs_context):
+                 is_fixed_point, rhs_context, is_exec=False):
         self.name = name
         self.bvars = bvars
         self.cond = cond
@@ -20,6 +20,10 @@ class Rule:
         self.rhs = rhs
         self.is_fixed_point = is_fixed_point
         self.rhs_context = rhs_context
+        # Whether this rule is marked with the :exec attribute, in which case it
+        # is additionally compiled into the executable (interpreted) rewrite
+        # trie (see rewriter/rewrite_db_exec.h).
+        self.is_exec = is_exec
 
     def get_enum(self):
         """

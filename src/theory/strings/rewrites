@@ -603,7 +603,13 @@
   (re.++ xs (str.to_re (str.++ s t)) ys)
   _)
 
-(define-rule re-union-all ((xs RegLan :list) (ys RegLan :list)) (re.union xs (re.* re.allchar) ys) (re.* re.allchar))
+(define-rule re-union-all ((xs RegLan :list) (ys RegLan :list)) (re.union xs (re.* re.allchar) ys) (re.* re.allchar) :exec)
+
+; Marked :exec to demonstrate the executable rewrite trie on a (f t1 s t2)
+; needle pattern with a needle variable. This uses the star idempotence law
+; (r*)=(r*)(r*), which the hand-written rewriter does not apply in this
+; direction, so it fires in the last-effort exec pass.
+(define-rule re-concat-star-dup ((xs RegLan :list) (r RegLan) (ys RegLan :list)) (re.++ xs (re.* r) ys) (re.++ xs (re.* r) (re.* r) ys) :exec)
 
 ; used for macro expansion
 (define-cond-rule re-union-const-elim ((r RegLan) (s String))

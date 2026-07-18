@@ -132,6 +132,85 @@ def gen_rewrite_db_rule(defns, rule, flag_expert):
            f'}}'
 
 
+def gen_exec_rule(rule):
+    """
+    Generate a self-contained C++ block that registers an :exec rule into a
+    RewriteDbExec (the executable rewrite trie). Each block declares its own
+    bound variables and builds the left- and right-hand sides inline.
+    """
+    decls_code = []
+    for bvar in rule.bvars:
+        decls_code.append(gen_mk_skolem(bvar.name, bvar.sort))
+    lhs_code = gen_mk_node(None, rule.lhs)
+    rhs_code = gen_mk_node(None, rule.rhs)
+    body = '\n'.join(decls_code)
+    return f'{{' \
+           f'{body}\n' \
+           f'Node lhs = {lhs_code};' \
+           f'Node rhs = {rhs_code};' \
+           f'db.addRule(ProofRewriteRule::{rule.get_enum()}, lhs, rhs);' \
+           f'}}'
+
+
+def list_vars_of(expr):
+    """Return the set of :list variables occurring in expr."""
+    res = set()
+    to_visit = [expr]
+    while to_visit:
+        curr = to_visit.pop()
+        if isinstance(curr, Var) and curr.sort and curr.sort.is_list:
+            res.add(curr)
+        to_visit.extend(curr.children)
+    return res
+
+
+def validate_exec_rule(rule):
+    """
+    Check that an :exec rule is supported by the executable rewrite trie. Rules
+    without :list variables may have any application left-hand side. Rules that
+    do use :list variables are restricted to the pattern (f t1 s t2), where f is
+    an n-ary operator, t1 and t2 are (distinct) :list variables, and s is a
+    single non-list "needle" child; the only :list variables allowed anywhere in
+    such a rule are t1 and t2.
+    """
+    if rule.is_fixed_point:
+        die(f'Exec rule {rule.name} may not be a fixed-point (define-rule*) '
+            f'rule')
+    if not (isinstance(rule.cond, CBool) and rule.cond.val):
+        die(f'Exec rule {rule.name} may not have a condition')
+    lhs = rule.lhs
+    if not isinstance(lhs, App):
+        die(f'Exec rule {rule.name}: the left-hand side {lhs} must be a '
+            f'function application')
+
+    list_vars = list_vars_of(lhs) | list_vars_of(rule.rhs)
+    if not list_vars:
+        # No :list variables: any application left-hand side is allowed.
+        return
+
+    # Has :list variables: the left-hand side must be (f t1 s t2).
+    if len(lhs.children) != 3:
+        die(f'Exec rule {rule.name} uses :list variables, so its left-hand '
+            f'side must have the form (f t1 s t2); got {lhs}')
+    t1, needle, t2 = lhs.children
+    if not (isinstance(t1, Var) and t1.sort and t1.sort.is_list):
+        die(f'Exec rule {rule.name}: the first child {t1} must be a :list '
+            f'variable')
+    if not (isinstance(t2, Var) and t2.sort and t2.sort.is_list):
+        die(f'Exec rule {rule.name}: the third child {t2} must be a :list '
+            f'variable')
+    if t1 == t2:
+        die(f'Exec rule {rule.name}: the two :list variables must be distinct')
+    if list_vars_of(needle):
+        die(f'Exec rule {rule.name}: the middle child (needle) {needle} may '
+            f'not contain :list variables')
+    stray = list_vars - {t1, t2}
+    if stray:
+        names = ', '.join(sorted(v.name for v in stray))
+        die(f'Exec rule {rule.name}: only the :list variables of the pattern '
+            f'may be used, but also found {names}')
+
+
 class Rewrites:
     def __init__(self, filename, decls, rules):
         self.filename = filename
@@ -250,6 +329,7 @@ class RewriteDb:
     filename: str
     ids: list
     printer_code: list
+    exec_blocks: list
 
     @property
     def function_name(self):
@@ -280,6 +360,8 @@ def gen_individual_rewrite_db(rewrites_file: Path, template, flag_expert):
     for rule in rules:
         decls.extend(rule.bvars)
         validate_rule(rule)
+        if rule.is_exec:
+            validate_exec_rule(rule)
         preprocess_rule(rule, decls)
 
     rewrites = Rewrites(rewrites_file, decls, rules)
@@ -314,6 +396,7 @@ def gen_individual_rewrite_db(rewrites_file: Path, template, flag_expert):
     ids = []
     printer_code = []
     rules_code = []
+    exec_blocks = []
 
     block = []
     for rule in rewrites.rules:
@@ -324,6 +407,9 @@ def gen_individual_rewrite_db(rewrites_file: Path, template, flag_expert):
         printer_code.append(
             f'case ProofRewriteRule::{enum}: return "{rule.name}";')
 
+        if rule.is_exec:
+            exec_blocks.append(gen_exec_rule(rule))
+
     rules_code.append(
         block_tpl.format(filename=output_file,
                          block_code='\n'.join(block)))
@@ -333,6 +419,7 @@ def gen_individual_rewrite_db(rewrites_file: Path, template, flag_expert):
         filename=output_file,
         ids=ids,
         printer_code=printer_code,
+        exec_blocks=exec_blocks,
     )
     with open(output_file, 'w') as f:
         f.write(
@@ -365,11 +452,13 @@ def gen_rewrite_db(args):
 
     decl_individual_rewrites = []
     call_individual_rewrites = []
+    exec_blocks = []
     rewrites_files = [(False, f) for f in args.rewrites_files] + [(True, f) for f in args.rewrites_files_expert]
     for flag_expert, rewrites_file in rewrites_files:
         db = gen_individual_rewrite_db(Path(rewrites_file), individual_rewrites_cpp, flag_expert)
         ids += db.ids
         printer_code += db.printer_code
+        exec_blocks += db.exec_blocks
         decl_individual_rewrites.append(f"void {db.function_name}(NodeManager* nm, RewriteDb&);")
         call_individual_rewrites.append(f"{db.function_name}(nm, db);")
 
@@ -399,7 +488,8 @@ def gen_rewrite_db(args):
         f.write(
             format_cpp(
                 rewrites_cpp.format(decl_individual_rewrites='\n'.join(decl_individual_rewrites),
-                                    call_individual_rewrites='\n'.join(call_individual_rewrites))))
+                                    call_individual_rewrites='\n'.join(call_individual_rewrites),
+                                    exec_rules='\n'.join(exec_blocks))))
 
 
 def main():
