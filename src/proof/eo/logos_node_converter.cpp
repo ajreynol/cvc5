@@ -12,7 +12,9 @@
 
 #include "proof/eo/logos_node_converter.h"
 
+#include <algorithm>
 #include <cstdlib>
+#include <unordered_set>
 
 #include "expr/aci_norm.h"
 #include "expr/dtype.h"
@@ -258,10 +260,13 @@ Node LogosNodeConverter::typeAsNode(TypeNode tn)
     std::vector<TypeNode> scope;
     scope.push_back(tn);
     getDatatypeScope(tn.getDType(), scope);
-    std::reverse(scope.begin(), scope.end());
+    orderDatatypeScope(scope);
     Node ddret = mkInternalSymbol("DatatypeDecl.nil", d_sortType);
-    for (const TypeNode& tns : scope)
+    // Build the list from back to front so that scope is the order in which
+    // the declarations occur in ddret.
+    for (auto its = scope.rbegin(); its != scope.rend(); ++its)
     {
+      TypeNode tns = *its;
       Assert (tns.isDatatype());
       Node dtName = mkNativeStringLit(d_nm->mkConst(String(tns.getDType().getName())));
       Node dret = typeAsNodeDatatype(tns.getDType());
@@ -340,6 +345,59 @@ void LogosNodeConverter::getDatatypeScope(const DType& dt,
       }
     }
   }
+}
+
+void LogosNodeConverter::orderDatatypeScope(std::vector<TypeNode>& scope)
+{
+  // Construct the order from back to front. At each step, a datatype is
+  // eligible if it has a constructor whose datatype fields have already been
+  // placed in the suffix.
+  std::unordered_set<TypeNode> unprocessed(scope.begin(), scope.end());
+  std::vector<TypeNode> reverseOrder;
+  while (!unprocessed.empty())
+  {
+    bool found = false;
+    for (const TypeNode& tn : scope)
+    {
+      if (unprocessed.find(tn) == unprocessed.end())
+      {
+        continue;
+      }
+      const DType& dt = tn.getDType();
+      for (size_t i = 0, ncons = dt.getNumConstructors(); i < ncons; ++i)
+      {
+        const DTypeConstructor& cons = dt[i];
+        bool canConstruct = true;
+        for (size_t j = 0, nargs = cons.getNumArgs(); j < nargs; ++j)
+        {
+          TypeNode argType = cons.getArgType(j);
+          if (argType.isDatatype()
+              && unprocessed.find(argType) != unprocessed.end())
+          {
+            canConstruct = false;
+            break;
+          }
+        }
+        if (canConstruct)
+        {
+          reverseOrder.push_back(tn);
+          unprocessed.erase(tn);
+          found = true;
+          break;
+        }
+      }
+      if (found)
+      {
+        break;
+      }
+    }
+    // This search cannot get stuck. Otherwise, every constructor of every
+    // remaining datatype would have a field whose type is also remaining.
+    // Following such a field at each constructor would give an infinite
+    // descending chain of datatype values, contradicting well-foundedness.
+    AlwaysAssert(found) << "Could not order well-founded datatype declarations";
+  }
+  scope.assign(reverseOrder.rbegin(), reverseOrder.rend());
 }
 
 Node LogosNodeConverter::typeAsNodeDatatype(const DType& dt)
