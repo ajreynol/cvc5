@@ -633,7 +633,8 @@ Node StringsPreprocess::reduce(Node t,
     Node rpaw = sc->mkSkolemCached(t, SkolemCache::SK_PURIFY, "rpaw");
 
     Node numOcc = sc->mkSkolemFun(nm, SkolemId::STRINGS_NUM_OCCUR, x, y);
-    Node us = sc->mkSkolemFun(nm, SkolemId::STRINGS_REPLACE_ALL_RESULT, t);
+    Node us =
+        sc->mkSkolemFun(nm, SkolemId::STRINGS_REPLACE_ALL_RESULT, x, y, z);
     Node uf = sc->mkSkolemFun(nm, SkolemId::STRINGS_OCCUR_INDEX, x, y);
 
     Node ufno = nm->mkNode(Kind::APPLY_UF, uf, numOcc);
@@ -765,7 +766,8 @@ Node StringsPreprocess::reduce(Node t,
     Node k = sc->mkSkolemCached(t, SkolemCache::SK_PURIFY, "k");
 
     Node numOcc = sc->mkSkolemFun(nm, SkolemId::STRINGS_NUM_OCCUR_RE, x, y);
-    Node us = sc->mkSkolemFun(nm, SkolemId::STRINGS_REPLACE_ALL_RESULT, t);
+    Node us =
+        sc->mkSkolemFun(nm, SkolemId::STRINGS_REPLACE_RE_ALL_RESULT, x, y, z);
     Node uf = sc->mkSkolemFun(nm, SkolemId::STRINGS_OCCUR_INDEX_RE, x, y);
 
     Node emp = Word::mkEmptyWord(t.getType());
