@@ -743,19 +743,27 @@ Node StringsPreprocess::reduce(Node t,
     // k = k1 ++ z ++ k3
     Node res = k.eqNode(nm->mkNode(Kind::STRING_CONCAT, k1, z, k3));
 
-    // IF: indexof_re(x, y, 0) = -1
-    // THEN: k = x
+    // IF: in_re("", y)
+    // THEN: k = z ++ x
     // ELSE:
-    //   x = k1 ++ k2 ++ k3 ^
-    //   len(k1) = indexof_re(x, y, 0) ^
-    //   (forall l. 0 <= l < len(k2) => ~in_re(substr(k2, 0, l), r)) ^
-    //   in_re(k2, y) ^
-    //   k = k1 ++ z ++ k3
+    //   IF: indexof_re(x, y, 0) = -1
+    //   THEN: k = x
+    //   ELSE:
+    //     x = k1 ++ k2 ++ k3 ^
+    //     len(k1) = indexof_re(x, y, 0) ^
+    //     (forall l. 0 <= l < len(k2) => ~in_re(substr(k2, 0, l), r)) ^
+    //     in_re(k2, y) ^
+    //     k = k1 ++ z ++ k3
     asserts.push_back(nm->mkNode(
         Kind::ITE,
-        {idx.eqNode(negOne),
-         k.eqNode(x),
-         nm->mkNode(Kind::AND, {split, k1Len, shortestMatch, match, res})}));
+        {matchesEmpty,
+         res1,
+         nm->mkNode(
+             Kind::ITE,
+             {idx.eqNode(negOne),
+              k.eqNode(x),
+              nm->mkNode(Kind::AND,
+                         {split, k1Len, shortestMatch, match, res})})}));
     retNode = k;
   }
   else if (t.getKind() == Kind::STRING_REPLACE_RE_ALL)
