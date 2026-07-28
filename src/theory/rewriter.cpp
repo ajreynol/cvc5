@@ -43,6 +43,22 @@ static TheoryId theoryOf(TNode node)
   return kindToTheoryId(node.getKind());
 }
 
+/** Keeps the executable rewrite mode scoped across nested rewrite calls. */
+class ScopedExecMode
+{
+ public:
+  ScopedExecMode(bool& allowExec, bool value)
+      : d_allowExec(allowExec), d_oldValue(allowExec)
+  {
+    d_allowExec = value;
+  }
+  ~ScopedExecMode() { d_allowExec = d_oldValue; }
+
+ private:
+  bool& d_allowExec;
+  bool d_oldValue;
+};
+
 /**
  * TheoryEngine::rewrite() keeps a stack of things that are being pre-
  * and post-rewritten.  Each element of the stack is a
@@ -117,7 +133,16 @@ Node Rewriter::rewrite(TNode node)
     // eagerly for the sake of efficiency here.
     return node;
   }
-  return rewriteTo(theoryOf(node), node);
+  return rewriteTo(theoryOf(node), node, nullptr, d_allowExec);
+}
+
+Node Rewriter::rewriteWithoutExec(TNode node)
+{
+  // Theory rewriters may make nested calls to rewrite(). Keep those calls in
+  // the base stratum as well, in addition to disabling the explicit exec
+  // lookup in this invocation of rewriteTo().
+  ScopedExecMode mode(d_allowExec, false);
+  return rewrite(node);
 }
 
 void Rewriter::finishInitExec()
@@ -163,7 +188,7 @@ TrustNode Rewriter::rewriteWithProof(TNode node, bool isExtEq)
     Assert(tr != nullptr);
     return tr->rewriteEqualityExtWithProof(node);
   }
-  Node ret = rewriteTo(theoryOf(node), node, d_tpg.get());
+  Node ret = rewriteTo(theoryOf(node), node, d_tpg.get(), d_allowExec);
   return TrustNode::mkTrustRewrite(node, ret, d_tpg.get());
 }
 
@@ -239,7 +264,8 @@ ProofRewriteRule Rewriter::findRule(const Node& a,
 
 Node Rewriter::rewriteTo(theory::TheoryId theoryId,
                          Node node,
-                         TConvProofGenerator* tcpg)
+                         TConvProofGenerator* tcpg,
+                         bool useExec)
 {
 #ifdef CVC5_ASSERTIONS
   bool isEquality = node.getKind() == Kind::EQUAL
@@ -252,11 +278,12 @@ Node Rewriter::rewriteTo(theory::TheoryId theoryId,
   }
 #endif
 
-  Trace("rewriter") << "Rewriter::rewriteTo(" << theoryId << "," << node << ")"
+  Trace("rewriter") << "Rewriter::rewriteTo(" << theoryId << "," << node
+                    << ", " << (useExec ? "full" : "base") << ")"
                     << std::endl;
 
   // Check if it's been cached already
-  Node cached = getPostRewriteCache(theoryId, node);
+  Node cached = getPostRewriteCache(theoryId, node, useExec);
   if (!cached.isNull() && (tcpg == nullptr || hasRewrittenWithProofs(node)))
   {
     return cached;
@@ -346,8 +373,10 @@ Node Rewriter::rewriteTo(theory::TheoryId theoryId,
         rewriteStackTop.d_theoryId = theoryOf(cached);
       }
       rewriteStackTop.d_original = rewriteStackTop.d_node;
-      rewriteStackTop.d_postRewriteCache = getPostRewriteCache(
-          rewriteStackTop.getTheoryId(), rewriteStackTop.d_node);
+      rewriteStackTop.d_postRewriteCache =
+          getPostRewriteCache(rewriteStackTop.getTheoryId(),
+                              rewriteStackTop.d_node,
+                              useExec);
       if (!rewriteStackTop.d_postRewriteCache.isNull()
           && (tcpg == nullptr
               || hasRewrittenWithProofs(rewriteStackTop.d_node)))
@@ -441,7 +470,7 @@ Node Rewriter::rewriteTo(theory::TheoryId theoryId,
           // single (small-step) executable RARE rewrite; if one applies, treat
           // its result like a full rewrite and re-rewrite it. When producing
           // proofs, the exec step (and its conditions) are recorded in tcpg.
-          Node execNode = newNode.getNumChildren() > 0
+          Node execNode = useExec && newNode.getNumChildren() > 0
                               ? rewriteViaExec(newNode, tcpg)
                               : Node::null();
           if (!execNode.isNull())
@@ -519,7 +548,8 @@ Node Rewriter::rewriteTo(theory::TheoryId theoryId,
       }
       setPostRewriteCache(rewriteStackTop.getOriginalTheoryId(),
                           rewriteStackTop.d_original,
-                          rewriteStackTop.d_node);
+                          rewriteStackTop.d_node,
+                          useExec);
 
       // If this is the last node, just return.
       if (rewriteStack.size() == 1)

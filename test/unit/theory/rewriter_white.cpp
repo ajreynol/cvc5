@@ -10,6 +10,9 @@
  * White box testing of the core rewriter.
  */
 
+#include <utility>
+
+#include "rewriter/rewrite_db_exec.h"
 #include "test_smt.h"
 #include "util/rational.h"
 
@@ -56,6 +59,61 @@ TEST_F(TestTheoryWhiteRewriter, deepFullRewrite)
     }
   }
   ASSERT_TRUE(foundTail);
+}
+
+TEST_F(TestTheoryWhiteRewriter, execRewriteStratification)
+{
+  Rewriter* rr = d_slvEngine->getEnv().getRewriter();
+  Node vtrue = d_nodeManager->mkConst(true);
+  Node two = d_nodeManager->mkConstInt(Rational(2));
+  TypeNode realType = d_nodeManager->realType();
+
+  auto mkSineDouble = [&](Node x) {
+    Node sinx = d_nodeManager->mkNode(Kind::SINE, x);
+    Node cosx = d_nodeManager->mkNode(Kind::COSINE, x);
+    Node lhs = d_nodeManager->mkNode(
+        Kind::SINE, d_nodeManager->mkNode(Kind::MULT, two, x));
+    Node rhs = d_nodeManager->mkNode(Kind::MULT, two, sinx, cosx);
+    return std::make_pair(lhs, rhs);
+  };
+
+  // The full and base caches must remain distinct regardless of which is
+  // populated first.
+  Node x = d_skolemManager->mkDummySkolem("x", realType);
+  std::pair<Node, Node> sx = mkSineDouble(x);
+  Node xfull = rr->rewrite(sx.first);
+  Node xbase = rr->rewriteWithoutExec(sx.first);
+  ASSERT_NE(xfull, xbase);
+  ASSERT_EQ(rr->rewrite(sx.first), xfull);
+  ASSERT_EQ(rr->rewriteWithoutExec(sx.first), xbase);
+
+  Node y = d_skolemManager->mkDummySkolem("y", realType);
+  std::pair<Node, Node> sy = mkSineDouble(y);
+  Node ybase = rr->rewriteWithoutExec(sy.first);
+  Node yfull = rr->rewrite(sy.first);
+  ASSERT_NE(ybase, yfull);
+  ASSERT_EQ(rr->rewriteWithoutExec(sy.first), ybase);
+  ASSERT_EQ(rr->rewrite(sy.first), yfull);
+
+  // Add a rule whose condition can be established only by the executable
+  // sine-double rule. Even if the full cache for the condition is warm, the
+  // condition lookup must use the base cache and reject this rule.
+  rewriter::RewriteDbExec db(d_nodeManager.get());
+  Node pv = NodeManager::mkBoundVar("pv", realType);
+  std::pair<Node, Node> spv = mkSineDouble(pv);
+  Node condition = spv.first.eqNode(spv.second);
+  Node lhs = d_nodeManager->mkNode(Kind::COSINE, pv);
+  db.addRule(ProofRewriteRule::ARITH_SINE_DOUBLE, {condition}, lhs, pv);
+
+  Node z = d_skolemManager->mkDummySkolem("z", realType);
+  std::pair<Node, Node> sz = mkSineDouble(z);
+  Node conditionInst = sz.first.eqNode(sz.second);
+  ASSERT_EQ(rr->rewrite(conditionInst), vtrue);
+
+  ProofRewriteRule id = ProofRewriteRule::NONE;
+  Node candidate = d_nodeManager->mkNode(Kind::COSINE, z);
+  ASSERT_TRUE(db.rewrite(candidate, rr, nullptr, id).isNull());
+  ASSERT_NE(rr->rewriteWithoutExec(conditionInst), vtrue);
 }
 
 }  // namespace test

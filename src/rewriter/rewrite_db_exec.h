@@ -23,11 +23,12 @@
  * n-ary trie linear in the number of children.
  *
  * :exec rules may be conditional. When applying a conditional rule, the
- * conditions (instantiated by the match) are verified to hold by rewriting them
- * to true. When proof generation is enabled, this class populates the term
- * conversion proof generator with a THEORY_REWRITE step for the rewrite itself
- * and a TRUST_THEORY_REWRITE step for each (instantiated) condition, all of
- * which are reconstructed by the DSL proof machinery downstream.
+ * conditions (instantiated by the match) are verified to hold by rewriting
+ * them to true in the base rewrite stratum, without consulting this database.
+ * When proof generation is enabled, this class populates the term conversion
+ * proof generator with a THEORY_REWRITE step for the rewrite itself and a
+ * TRUST_THEORY_REWRITE step for each (instantiated) condition, all of which are
+ * reconstructed by the DSL proof machinery downstream.
  */
 
 #include "cvc5_private.h"
@@ -90,9 +91,9 @@ class RewriteDbExec
   /**
    * Try to rewrite n with a single :exec rule (a small step). If some rule's
    * left-hand side matches n and all of its (instantiated) conditions hold
-   * (verified by rewriting them via rr), returns the instantiated right-hand
-   * side and sets id to the identifier of the rule that was used. Otherwise
-   * returns the null node.
+   * (verified by rewriting them via rr without executable RARE rules), returns
+   * the instantiated right-hand side and sets id to the identifier of the rule
+   * that was used. Otherwise returns the null node.
    *
    * If tcpg is non-null, the rewrite is recorded in it as a THEORY_REWRITE step
    * (for the rewrite itself) together with a TRUST_THEORY_REWRITE step for each

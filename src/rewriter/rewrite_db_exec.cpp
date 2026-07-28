@@ -37,19 +37,21 @@ class RewriteExecNotify : public expr::NotifyMatch
       : d_db(db), d_rr(rr), d_true(vtrue)
   {
   }
-  bool notify(Node n,
+  bool notify(CVC5_UNUSED Node n,
               Node lhs,
               std::vector<Node>& vars,
               std::vector<Node>& subs) override
   {
     // lhs is the (stored) left-hand side that matches n under { vars -> subs }
     const RewriteDbExec::ExecRule& er = d_db.getRuleForLhs(lhs);
-    // instantiate and check the conditions, verifying they rewrite to true
+    // Instantiate and check the conditions in the base rewrite stratum. In
+    // particular, an executable rule cannot establish another executable
+    // rule's condition.
     std::vector<Node> condsInst;
     for (const Node& c : er.d_conds)
     {
       Node ci = expr::narySubstitute(c, vars, subs);
-      if (ci.isNull() || d_rr->rewrite(ci) != d_true)
+      if (ci.isNull() || d_rr->rewriteWithoutExec(ci) != d_true)
       {
         // condition does not hold; keep searching for another rule
         return true;
@@ -144,7 +146,7 @@ Node RewriteDbExec::rewrite(const Node& n,
       theory::TheoryId tid = theory::Theory::theoryOf(c);
       Node tidn =
           theory::builtin::BuiltinProofRuleChecker::mkTheoryIdNode(d_nm, tid);
-      Node mid = mkMethodId(d_nm, MethodId::RW_REWRITE);
+      Node mid = mkMethodId(d_nm, MethodId::RW_REWRITE_NO_EXEC);
       tcpg->addRewriteStep(
           c, d_true, ProofRule::TRUST_THEORY_REWRITE, {}, {ceq, tidn, mid});
     }

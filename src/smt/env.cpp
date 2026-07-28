@@ -226,6 +226,10 @@ Node Env::rewriteViaMethod(TNode n, MethodId idr)
   {
     return d_rewriter->rewrite(n);
   }
+  if (idr == MethodId::RW_REWRITE_NO_EXEC)
+  {
+    return d_rewriter->rewriteWithoutExec(n);
+  }
   if (idr == MethodId::RW_EXT_REWRITE)
   {
     return d_rewriter->extendedRewrite(n, false);

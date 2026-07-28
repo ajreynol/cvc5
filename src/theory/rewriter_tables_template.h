@@ -40,7 +40,9 @@ ${pre_rewrite_get_cache}
   }
 }
 
-Node Rewriter::getPostRewriteCache(theory::TheoryId theoryId, TNode node)
+Node Rewriter::getPostRewriteCache(theory::TheoryId theoryId,
+                                   TNode node,
+                                   bool useExec)
 {
   switch (theoryId)
   {
@@ -66,7 +68,8 @@ ${pre_rewrite_set_cache}
 
 void Rewriter::setPostRewriteCache(theory::TheoryId theoryId,
                                    TNode node,
-                                   TNode cache)
+                                   TNode cache,
+                                   bool useExec)
 {
   switch (theoryId)
   {
@@ -78,7 +81,10 @@ ${post_rewrite_set_cache}
 }
 
 Rewriter::Rewriter(NodeManager* nm)
-    : d_nm(nm), d_resourceManager(nullptr), d_tpg(nullptr)
+    : d_nm(nm),
+      d_resourceManager(nullptr),
+      d_allowExec(true),
+      d_tpg(nullptr)
 {
 }
 

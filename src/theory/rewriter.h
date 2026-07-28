@@ -46,9 +46,19 @@ class Rewriter
 
   /**
    * Rewrites the node using theoryOf() to determine which rewriter to
-   * use on the node.
+   * use on the node. The returned and cached result is the final rewritten
+   * form, including executable RARE rules.
    */
   Node rewrite(TNode node);
+
+  /**
+   * Rewrites the node without consulting the executable RARE rule database.
+   * This is the lower rewrite stratum used for checking the conditions of
+   * executable rules. Nested calls to rewrite() made by theory rewriters also
+   * remain in this stratum for the duration of this call. Its post-rewrite
+   * cache is separate from the final-form cache used by rewrite().
+   */
+  Node rewriteWithoutExec(TNode node);
 
   /**
    * Rewrites the equality node using theoryOf() to determine which rewriter to
@@ -135,20 +145,26 @@ class Rewriter
   Node getPreRewriteCache(theory::TheoryId theoryId, TNode node);
 
   /** Returns the appropriate cache for a node */
-  Node getPostRewriteCache(theory::TheoryId theoryId, TNode node);
+  Node getPostRewriteCache(theory::TheoryId theoryId,
+                           TNode node,
+                           bool useExec);
 
   /** Sets the appropriate cache for a node */
   void setPreRewriteCache(theory::TheoryId theoryId, TNode node, TNode cache);
 
   /** Sets the appropriate cache for a node */
-  void setPostRewriteCache(theory::TheoryId theoryId, TNode node, TNode cache);
+  void setPostRewriteCache(theory::TheoryId theoryId,
+                           TNode node,
+                           TNode cache,
+                           bool useExec);
 
   /**
    * Rewrites the node using the given theory rewriter.
    */
   Node rewriteTo(theory::TheoryId theoryId,
                  Node node,
-                 TConvProofGenerator* tcpg = nullptr);
+                 TConvProofGenerator* tcpg,
+                 bool useExec);
 
   /** Calls the pre-rewriter for the given theory */
   RewriteResponse preRewrite(theory::TheoryId theoryId,
@@ -191,6 +207,13 @@ class Rewriter
 
   /** The resource manager, for tracking resource usage */
   ResourceManager* d_resourceManager;
+
+  /**
+   * Whether calls to rewrite() may consult the executable RARE database.
+   * This is scoped to false while checking an executable rule condition so
+   * that nested rewrites made by theory rewriters stay in the base stratum.
+   */
+  bool d_allowExec;
 
   /** Theory rewriters used by this rewriter instance */
   TheoryRewriter* d_theoryRewriters[theory::THEORY_LAST];

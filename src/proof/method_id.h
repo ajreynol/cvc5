@@ -36,6 +36,8 @@ enum class MethodId : uint32_t
   //---------------------------- Rewriters
   // Rewriter::rewrite(n)
   RW_REWRITE,
+  // Rewriter::rewriteWithoutExec(n)
+  RW_REWRITE_NO_EXEC,
   // d_ext_rew.extendedRewrite(n);
   RW_EXT_REWRITE,
   // d_ext_rew.extendedRewrite(n, true);
