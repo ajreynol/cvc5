@@ -776,6 +776,7 @@ set(regress_0_tests
   regress0/datatypes/issue5280-no-nrec.smt2
   regress0/datatypes/issue8883-sort-inf.smt2
   regress0/datatypes/issue9042-rel-irrel-cons-model.smt2
+  regress0/datatypes/issue12572-nullable-lift-no-arguments.smt2
   regress0/datatypes/jsat-2.6.smt2
   regress0/datatypes/list-bool.smt2
   regress0/datatypes/list-update.smt2
@@ -2433,6 +2434,10 @@ set(regress_0_tests
   regress0/uf/cnf-iff.smt2
   regress0/uf/cnf-ite.smt2
   regress0/uf/dead_dnd002.smtv1.smt2
+  regress0/uf/distinct-elim-rewrite-bound.smt2
+  regress0/uf/distinct-elim-threshold.smt2
+  regress0/uf/distinct-elim-threshold-unlimited.smt2
+  regress0/uf/distinct-elim-threshold-unsat.smt2
   regress0/uf/distinct-true.smt2
   regress0/uf/eq_diamond1.smtv1.smt2
   regress0/uf/eq_diamond14.reduced.smtv1.smt2
@@ -3458,6 +3463,7 @@ set(regress_1_tests
   regress1/rels/rel_tp_join_2_1.cvc.smt2
   regress1/rels/set-strat.cvc.smt2
   regress1/rels/strat.cvc.smt2
+  regress1/rels/tc-overwrite-bug.smt2
   regress1/rr-verify/bool-crci.sy
   regress1/rr-verify/bv-term-32.sy
   regress1/rr-verify/bv-term.sy
