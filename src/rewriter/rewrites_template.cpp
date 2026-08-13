@@ -14,7 +14,7 @@
 #include "expr/node_manager.h"
 #include "proof/proof_checker.h"
 #include "rewriter/rewrite_db.h"
-#include "rewriter/rewrite_db_exec.h"
+#include "rewriter/rewrite_db_exec_printer.h"
 #include "rewriter/rewrites.h"
 #include "theory/builtin/generic_op.h"
 #include "util/string.h"
@@ -35,10 +35,11 @@ ${decl_individual_rewrites}$
         // clang-format on
     }
 
-// Populates the executable (interpreted) rewrite trie with the subset of RARE
-// rules that are marked with the :exec attribute. Each block below declares the
-// rule's bound variables and builds its restricted (f t1 s t2) left-hand side.
-void addRewriteExecRules(NodeManager* nm, RewriteDbExec& db)
+// Populates the index of the RARE rules that are marked with the :exec
+// attribute. Each block below declares the rule's bound variables and builds
+// its restricted (f t1 s t2) left-hand side. Note this index is only used to
+// generate the implementation of the executable rewrite database.
+void addRewriteExecRules(NodeManager* nm, ExecRuleIndex& db)
 {
   // clang-format off
 ${exec_rules}$

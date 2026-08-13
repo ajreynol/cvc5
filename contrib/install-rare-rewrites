@@ -55,7 +55,7 @@ echo "[install-rare-rewrites] Generate compiled executable rewrite implementatio
 # The compiled counterpart of the executable (:exec) rewrite trie. This is a
 # generated source file; it is checked in so that the build does not depend on
 # a previously built cvc5.
-EXEC_IMPL=$DIR/src/rewriter/rewrite_db_exec_compiled.cpp
+EXEC_IMPL=$DIR/src/rewriter/rewrite_db_exec.cpp
 
 echo "(check-sat)" | $cvc5 -o rare-db-exec --force-logic=ALL | sed '$ d' > $EXEC_IMPL
 

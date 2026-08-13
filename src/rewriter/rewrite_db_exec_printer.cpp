@@ -7,7 +7,7 @@
  * directory for licensing information.
  * ****************************************************************************
  *
- * Printer for the compiled implementation of the executable rewrite rules.
+ * Printer for the implementation of the executable rewrite database.
  */
 
 #include "rewriter/rewrite_db_exec_printer.h"
@@ -159,7 +159,7 @@ class ExecCompiler
     {
       // A :list variable stands for a sequence of children of the application
       // it occurs in, which the generated code would have to search for. This
-      // is not supported yet, see printRewriteDbExecCompiled.
+      // is not supported yet; such rules are reported as skipped below.
       if (expr::isListVar(p))
       {
         d_skipReason = "it uses the :list variable " + p.toString();
@@ -169,8 +169,8 @@ class ExecCompiler
       if (it == varPath.end())
       {
         // First occurrence, the variable is bound to this position. Note a
-        // variable only matches a term of a comparable type, as in
-        // NaryMatchTrie::getMatches.
+        // variable only matches a term whose type is comparable to its own,
+        // which matters for the operators permissive for subtyping.
         std::string tref = mkTypeRef(p.getType());
         if (tref.empty())
         {
@@ -428,7 +428,7 @@ void printHeader(std::ostream& os)
   os << " * rules marked with :exec and regenerate it." << std::endl;
   os << " */" << std::endl;
   os << std::endl;
-  os << "#include \"rewriter/rewrite_db_exec_compiled.h\"" << std::endl;
+  os << "#include \"rewriter/rewrite_db_exec.h\"" << std::endl;
   os << std::endl;
   os << "#include \"expr/node_manager.h\"" << std::endl;
   os << "#include \"util/bitvector.h\"" << std::endl;
@@ -448,21 +448,37 @@ void printFooter(std::ostream& os)
 
 }  // namespace
 
-void printRewriteDbExecCompiled(std::ostream& os, const RewriteDbExec& db)
+void ExecRuleIndex::addRule(ProofRewriteRule id,
+                            const std::vector<Node>& conds,
+                            const Node& lhs,
+                            const Node& rhs)
 {
+  // Note that several rules may have the same left-hand side, which is not
+  // ambiguous when they are conditional: the generated implementation returns
+  // a match for each, and the caller tries them in the order they are added
+  // here, applying the first whose conditions hold.
+  d_rules.push_back(ExecRule{id, lhs, conds, rhs});
+}
+
+void printRewriteDbExec(std::ostream& os, NodeManager* nm)
+{
+  // Index the :exec rules. Note this index is local to this method: it is the
+  // input to the code generation below, and is not used while solving.
+  ExecRuleIndex index;
+  addRewriteExecRules(nm, index);
+
   ExecCompiler ec;
   std::vector<CompiledRule> crules;
   std::vector<std::pair<ProofRewriteRule, std::string>> skipped;
-  // Compile each rule of the database. Note we do this before printing
-  // anything, since compiling a rule registers the constants it refers to,
-  // which are printed in the constructor first.
-  for (const std::pair<const Node, RewriteDbExec::ExecRule>& r :
-       db.getAllRules())
+  // Compile each rule of the index. Note we do this before printing anything,
+  // since compiling a rule registers the constants it refers to, which are
+  // printed in the constructor first.
+  for (const ExecRule& r : index.getRules())
   {
     ec.beginRule();
     CompiledRule cr;
-    cr.d_id = r.second.d_id;
-    cr.d_lhs = r.first;
+    cr.d_id = r.d_id;
+    cr.d_lhs = r.d_lhs;
     ExecCompiler::getVarOrder(cr.d_lhs, cr.d_vars);
     std::map<Node, std::string> varPath;
     bool success = ec.getMatchTests(cr.d_lhs, "n", cr.d_tests, varPath);
@@ -474,7 +490,7 @@ void printRewriteDbExecCompiled(std::ostream& os, const RewriteDbExec& db)
         Assert(varPath.find(v) != varPath.end());
         cr.d_subs.push_back(varPath[v]);
       }
-      for (const Node& c : r.second.d_conds)
+      for (const Node& c : r.d_conds)
       {
         std::string cc = ec.mkTermCode(c, cr.d_vars);
         if (cc.empty())
@@ -487,7 +503,7 @@ void printRewriteDbExecCompiled(std::ostream& os, const RewriteDbExec& db)
     }
     if (success)
     {
-      cr.d_rhs = ec.mkTermCode(r.second.d_rhs, cr.d_vars);
+      cr.d_rhs = ec.mkTermCode(r.d_rhs, cr.d_vars);
       success = !cr.d_rhs.empty();
     }
     if (!success)
@@ -522,7 +538,7 @@ void printRewriteDbExecCompiled(std::ostream& os, const RewriteDbExec& db)
   }
 
   // the constructor, which builds the constants the code below refers to
-  os << "RewriteDbExecCompiled::RewriteDbExecCompiled(NodeManager* nm) "
+  os << "RewriteDbExec::RewriteDbExec(NodeManager* nm) "
         ": d_nm(nm)"
      << std::endl;
   os << "{" << std::endl;
@@ -530,7 +546,7 @@ void printRewriteDbExecCompiled(std::ostream& os, const RewriteDbExec& db)
   os << "}" << std::endl;
   os << std::endl;
 
-  os << "bool RewriteDbExecCompiled::empty() const { return "
+  os << "bool RewriteDbExec::empty() const { return "
      << (crules.empty() ? "true" : "false") << "; }" << std::endl;
   os << std::endl;
 
@@ -542,10 +558,10 @@ void printRewriteDbExecCompiled(std::ostream& os, const RewriteDbExec& db)
     hasConds = hasConds || !cr.d_conds.empty();
   }
   const char* unused = "CVC5_UNUSED ";
-  os << "void RewriteDbExecCompiled::getMatches(" << std::endl;
+  os << "void RewriteDbExec::getMatches(" << std::endl;
   os << "    " << (hasRules ? "" : unused) << "const Node& n," << std::endl;
   os << "    " << (hasRules ? "" : unused)
-     << "std::vector<CompiledExecMatch>& matches) const" << std::endl;
+     << "std::vector<ExecMatch>& matches) const" << std::endl;
   os << "{" << std::endl;
   if (rulesForKind.empty())
   {
@@ -576,7 +592,7 @@ void printRewriteDbExecCompiled(std::ostream& os, const RewriteDbExec& db)
         }
         os << ")" << std::endl;
         os << "      {" << std::endl;
-        os << "        matches.push_back(CompiledExecMatch{" << std::endl;
+        os << "        matches.push_back(ExecMatch{" << std::endl;
         os << "            ProofRewriteRule::" << getRuleEnum(cr.d_id) << ", {";
         for (size_t s = 0, nsubs = cr.d_subs.size(); s < nsubs; s++)
         {
@@ -594,9 +610,9 @@ void printRewriteDbExecCompiled(std::ostream& os, const RewriteDbExec& db)
   os << std::endl;
 
   // the number of conditions of each rule
-  os << "size_t RewriteDbExecCompiled::getNumConditions(" << std::endl;
-  os << "    " << (hasConds ? "" : unused)
-     << "const CompiledExecMatch& m) const" << std::endl;
+  os << "size_t RewriteDbExec::getNumConditions(" << std::endl;
+  os << "    " << (hasConds ? "" : unused) << "const ExecMatch& m) const"
+     << std::endl;
   os << "{" << std::endl;
   os << "  switch (m.d_id)" << std::endl;
   os << "  {" << std::endl;
@@ -615,8 +631,8 @@ void printRewriteDbExecCompiled(std::ostream& os, const RewriteDbExec& db)
   os << std::endl;
 
   // the conditions of each rule, instantiated on demand
-  os << "Node RewriteDbExecCompiled::getCondition(" << std::endl;
-  os << "    " << (hasConds ? "" : unused) << "const CompiledExecMatch& m,"
+  os << "Node RewriteDbExec::getCondition(" << std::endl;
+  os << "    " << (hasConds ? "" : unused) << "const ExecMatch& m,"
      << std::endl;
   os << "    " << (hasConds ? "" : unused) << "size_t i) const" << std::endl;
   os << "{" << std::endl;
@@ -648,9 +664,9 @@ void printRewriteDbExecCompiled(std::ostream& os, const RewriteDbExec& db)
   os << std::endl;
 
   // the right-hand side of each rule, instantiated on demand
-  os << "Node RewriteDbExecCompiled::getResult(" << std::endl;
-  os << "    " << (hasRules ? "" : unused)
-     << "const CompiledExecMatch& m) const" << std::endl;
+  os << "Node RewriteDbExec::getResult(" << std::endl;
+  os << "    " << (hasRules ? "" : unused) << "const ExecMatch& m) const"
+     << std::endl;
   os << "{" << std::endl;
   os << "  switch (m.d_id)" << std::endl;
   os << "  {" << std::endl;

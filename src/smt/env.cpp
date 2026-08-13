@@ -85,13 +85,12 @@ void Env::finishInit(smt::PfManager* pm)
     d_proofNodeManager = pm->getProofNodeManager();
     d_rewriter->finishInit(*this);
   }
-  // Print the compiled implementation of the executable RARE rules if asked
-  // for. Note this is the only place that requires the executable rewrite
-  // database to be constructed eagerly; it is otherwise constructed on demand
-  // (see Rewriter::getExecDb).
+  // Print the implementation of the executable RARE rules if asked for. Note
+  // this is the only place that indexes the :exec rules, which is required to
+  // generate that implementation but not to apply it.
   if (isOutputOn(OutputTag::RARE_DB_EXEC))
   {
-    d_rewriter->printExecCompiled(output(OutputTag::RARE_DB_EXEC));
+    d_rewriter->printExec(output(OutputTag::RARE_DB_EXEC));
   }
   d_topLevelSubs.reset(
       new theory::TrustSubstitutionMap(*this, d_userContext.get()));

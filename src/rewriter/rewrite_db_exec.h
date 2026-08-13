@@ -7,34 +7,18 @@
  * directory for licensing information.
  * ****************************************************************************
  *
- * Executable (interpreted) rewrite trie.
+ * The executable rewrite database.
  *
- * This is a lightweight database of rewrite rules that can be applied directly
- * during rewriting, as opposed to the (proof-oriented) RewriteDb. It is
- * populated by the RARE compiler with the subset of rules that are marked with
- * the :exec attribute, and is applied as a small-step "last resort" when the
- * theory rewriter leaves a term unchanged (see theory/rewriter.cpp).
+ * This implements a single step rewrite by the RARE rules marked with the
+ * :exec attribute, which the rewriter applies as a last resort when the theory
+ * rewriter leaves a term unchanged (see theory/rewriter.cpp).
  *
- * The left-hand sides of :exec rules are indexed in an expr::NaryMatchTrie, so
- * that a single candidate term can be tested against all rules at once. The
- * :exec rules are restricted (at compile time) so that any :list variables
- * occur only inside a (f t1 s t2) group with a single non-list needle s; such
- * groups may be nested, e.g. (g (f t1 s t2) r). This keeps matching against the
- * n-ary trie linear in the number of children.
- *
- * This class is responsible only for matching: it computes the rules whose
- * left-hand side matches a term, together with the substitution witnessing the
- * match. Verifying the conditions of a matched rule is the responsibility of
- * the caller, which rewrites them as additional jobs on the rewriter's stack
- * (see theory/rewriter.cpp). Note that conditions are rewritten in the same way
- * as any other term, in particular the rules of this database are applied to
- * them as well. The rewriter breaks the cycle that arises when checking a
- * condition requires checking that same condition again, see
- * Rewriter::d_execCondActive.
- *
- * Matches are instantiated lazily: getCondition and getResult below apply the
- * stored substitution on demand, so that a rule whose first condition fails
- * never pays for instantiating its remaining conditions or its right-hand side.
+ * The implementation is compiled: it tests the shape of a term with
+ * straight-line C++, rather than by traversing a match trie at runtime. The
+ * bodies of the methods of this class are therefore generated, not written by
+ * hand. They are printed by `-o rare-db-exec` (see rewrite_db_exec_printer.h)
+ * and installed into rewrite_db_exec.cpp by contrib/install-rare-rewrites. Do
+ * not edit that file; edit the RARE rules and regenerate it.
  */
 
 #include "cvc5_private.h"
@@ -44,79 +28,46 @@
 
 #include <cvc5/cvc5_proof_rule.h>
 
-#include <map>
 #include <vector>
 
-#include "expr/nary_match_trie.h"
 #include "expr/node.h"
 
 namespace cvc5::internal {
 namespace rewriter {
 
 /**
- * The executable rewrite database. Holds all :exec rules and provides a single
- * entry point (getMatches) that computes the rules applicable to a term.
+ * An :exec rule whose left-hand side matched a term. The conditions and the
+ * right-hand side are not instantiated here; use the
+ * getNumConditions/getCondition/getResult methods of RewriteDbExec to
+ * instantiate them on demand, so that a match whose first condition fails does
+ * not pay for instantiating the remaining ones.
  */
+struct ExecMatch
+{
+  /** The identifier of the rule that matched. */
+  ProofRewriteRule d_id;
+  /**
+   * The terms that the variables of the rule were bound to, in the order the
+   * variables first occur in a left-to-right traversal of its left-hand side.
+   */
+  std::vector<Node> d_subs;
+};
+
+/** The executable rewrite database. */
 class RewriteDbExec
 {
  public:
-  /** Information stored for a single :exec rule. */
-  struct ExecRule
-  {
-    /** The identifier of the rule. */
-    ProofRewriteRule d_id;
-    /** The conditions of the rule (empty if unconditional). */
-    std::vector<Node> d_conds;
-    /** The right-hand side of the rule. */
-    Node d_rhs;
-  };
-
-  /**
-   * An :exec rule whose left-hand side matched a term, together with the
-   * substitution witnessing the match. The conditions and the right-hand side
-   * are not instantiated here; use getNumConditions/getCondition/getResult
-   * below to instantiate them on demand.
-   */
-  struct ExecMatch
-  {
-    /** The identifier of the rule that matched. */
-    ProofRewriteRule d_id;
-    /**
-     * The rule that matched. Note the rules of this database are all added
-     * during construction and never removed, hence this pointer remains valid.
-     */
-    const ExecRule* d_rule;
-    /** The variables of the rule that were bound by the match. */
-    std::vector<Node> d_vars;
-    /** The terms they were bound to. */
-    std::vector<Node> d_subs;
-  };
-
   RewriteDbExec(NodeManager* nm);
   ~RewriteDbExec() {}
 
-  /**
-   * Add an :exec rule with (possibly empty) conditions conds, left-hand side
-   * lhs and right-hand side rhs. This method is called by the auto-generated
-   * addRewriteExecRules.
-   */
-  void addRule(ProofRewriteRule id,
-               const std::vector<Node>& conds,
-               const Node& lhs,
-               const Node& rhs);
-
   /** Are there no rules in this database? */
-  bool empty() const { return d_ruleForLhs.empty(); }
+  bool empty() const;
 
   /**
    * Compute the :exec rules whose left-hand side matches n and append them to
-   * matches. The matches are appended in the order the match trie yields them;
-   * no priority between rules is defined, and the caller tries them in that
-   * order.
-   *
-   * Note that the conditions of the returned matches are *not* checked here.
-   * It is the responsibility of the caller to verify that the conditions of a
-   * match rewrite to true before using its right-hand side.
+   * matches. Note that the conditions of the returned matches are *not*
+   * checked here; it is the responsibility of the caller to verify that they
+   * rewrite to true before using the right-hand side of a match.
    *
    * @param n The term to match.
    * @param matches The vector to append the matches to.
@@ -126,29 +77,33 @@ class RewriteDbExec
   /** The number of conditions of the rule that m matched. */
   size_t getNumConditions(const ExecMatch& m) const;
   /**
-   * Get the i^th condition of the rule that m matched, instantiated by the
-   * substitution of m. Returns the null node if the instantiated condition
-   * could not be constructed, in which case the match must be abandoned.
+   * Get the i^th condition of the rule that m matched, instantiated for the
+   * term m was computed for. Returns the null node if it could not be
+   * constructed, in which case the match must be abandoned.
    */
   Node getCondition(const ExecMatch& m, size_t i) const;
   /**
-   * Get the right-hand side of the rule that m matched, instantiated by the
-   * substitution of m. Returns the null node if the instantiated right-hand
-   * side could not be constructed, in which case the match must be abandoned.
+   * Get the right-hand side of the rule that m matched, instantiated for the
+   * term m was computed for. Returns the null node if it could not be
+   * constructed, in which case the match must be abandoned.
    */
   Node getResult(const ExecMatch& m) const;
 
-  /** Get the rule information stored for the given left-hand side. */
-  const ExecRule& getRuleForLhs(const Node& lhs) const;
-
-  /** Get all rules of this database, indexed by their left-hand side. */
-  const std::map<Node, ExecRule>& getAllRules() const { return d_ruleForLhs; }
-
  private:
-  /** The match trie over the left-hand sides of the :exec rules. */
-  expr::NaryMatchTrie d_trie;
-  /** Maps each stored left-hand side to its rule id, conditions and rhs. */
-  std::map<Node, ExecRule> d_ruleForLhs;
+  /** Pointer to the node manager. */
+  NodeManager* d_nm;
+  /**
+   * The constants occurring in the rules, constructed once here so that the
+   * generated code below can refer to them without consulting the node
+   * manager on the rewrite hot path.
+   */
+  std::vector<Node> d_consts;
+  /**
+   * The types of the variables of the rules, likewise constructed once here.
+   * A variable only matches a term whose type is comparable to its own, which
+   * matters for the operators that are permissive for subtyping.
+   */
+  std::vector<TypeNode> d_types;
 };
 
 }  // namespace rewriter

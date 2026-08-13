@@ -110,7 +110,7 @@ struct RewriteStackElement
    * The :exec rules whose left-hand side matches d_node, which are pending to
    * be tried (states CHECK_EXEC_MATCHES and WAIT_FOR_CONDITION).
    */
-  std::vector<rewriter::RewriteDbExec::ExecMatch> d_execMatches;
+  std::vector<rewriter::ExecMatch> d_execMatches;
   /** The index in d_execMatches of the match we are currently considering */
   size_t d_execIndex;
   /** The index of the condition of that match we are currently checking */
@@ -149,9 +149,9 @@ rewriter::RewriteDbExec* Rewriter::getExecDb()
   return d_execDb.get();
 }
 
-void Rewriter::printExecCompiled(std::ostream& os)
+void Rewriter::printExec(std::ostream& os)
 {
-  rewriter::printRewriteDbExecCompiled(os, *getExecDb());
+  rewriter::printRewriteDbExec(os, d_nm);
 }
 
 Node Rewriter::extendedRewrite(TNode node, bool aggr)
@@ -485,8 +485,7 @@ Node Rewriter::rewriteTo(theory::TheoryId theoryId,
 
     if (state == RewriteStackElement::CHECK_EXEC_MATCHES)
     {
-      std::vector<rewriter::RewriteDbExec::ExecMatch>& ems =
-          rewriteStackTop.d_execMatches;
+      std::vector<rewriter::ExecMatch>& ems = rewriteStackTop.d_execMatches;
       Assert(!ems.empty());
       if (rewriteStackTop.d_execIndex == ems.size())
       {
@@ -495,8 +494,7 @@ Node Rewriter::rewriteTo(theory::TheoryId theoryId,
         rewriteStackTop.setState(RewriteStackElement::FINALIZE);
         continue;
       }
-      const rewriter::RewriteDbExec::ExecMatch& em =
-          ems[rewriteStackTop.d_execIndex];
+      const rewriter::ExecMatch& em = ems[rewriteStackTop.d_execIndex];
       if (rewriteStackTop.d_execCondIndex < d_execDb->getNumConditions(em))
       {
         // The next condition of the current match has not been verified yet.

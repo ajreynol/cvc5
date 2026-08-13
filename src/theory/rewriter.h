@@ -93,12 +93,11 @@ class Rewriter
 
   /**
    * Print to os the C++ implementation of the single step rewrite given by the
-   * RARE rules marked with :exec, which is what `-o rare-db-exec` outputs.
-   *
-   * Note this constructs the executable rewrite database, which is otherwise
-   * only constructed on demand (see getExecDb).
+   * RARE rules marked with :exec, which is what `-o rare-db-exec` outputs, and
+   * which is the implementation this rewriter uses. Note that generating it
+   * requires indexing the :exec rules, which is done only here.
    */
-  void printExecCompiled(std::ostream& os);
+  void printExec(std::ostream& os);
 
   /**
    * Registers a theory rewriter with this rewriter. The rewriter does not own
@@ -179,14 +178,8 @@ class Rewriter
   bool hasRewrittenWithProofs(TNode n) const;
 
   /**
-   * Get the executable (interpreted) rewrite database, constructing it if this
-   * is the first time it is required.
-   *
-   * TODO (wishue #160): the intention is for the rewriter to use the compiled
-   * implementation of the :exec rules (rewriter/rewrite_db_exec_compiled.h)
-   * instead of traversing the match trie this database maintains. Once it
-   * does, this database is required only for printing that implementation with
-   * `-o rare-db-exec`, i.e. only by printExecCompiled.
+   * Get the executable rewrite database, constructing it if this is the first
+   * time it is required.
    */
   rewriter::RewriteDbExec* getExecDb();
 
@@ -207,8 +200,8 @@ class Rewriter
   /** The proof generator */
   std::unique_ptr<TConvProofGenerator> d_tpg;
   /**
-   * The executable (interpreted) rewrite database, holding the RARE rules
-   * marked with :exec. Constructed on demand by getExecDb.
+   * The executable rewrite database, which applies the RARE rules marked with
+   * :exec. Constructed on demand by getExecDb.
    */
   std::unique_ptr<rewriter::RewriteDbExec> d_execDb;
   /**

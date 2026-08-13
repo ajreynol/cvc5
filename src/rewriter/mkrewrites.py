@@ -135,7 +135,7 @@ def gen_rewrite_db_rule(defns, rule, flag_expert):
 def gen_exec_rule(rule):
     """
     Generate a self-contained C++ block that registers an :exec rule into a
-    RewriteDbExec (the executable rewrite trie). Each block declares its own
+    the index of :exec rules used for code generation. Each block declares its own
     bound variables and builds the left- and right-hand sides inline.
     """
     decls_code = []
