@@ -603,7 +603,7 @@
   (re.++ xs (str.to_re (str.++ s t)) ys)
   _)
 
-(define-rule re-union-all ((xs RegLan :list) (ys RegLan :list)) (re.union xs (re.* re.allchar) ys) (re.* re.allchar) :exec)
+(define-rule re-union-all ((xs RegLan :list) (ys RegLan :list)) (re.union xs (re.* re.allchar) ys) (re.* re.allchar))
 
 ; used for macro expansion
 (define-cond-rule re-union-const-elim ((r RegLan) (s String))
@@ -617,7 +617,9 @@
 
 (define-rule re-star-emp () (re.* (str.to_re "")) (str.to_re ""))
 
-(define-rule re-star-star ((x RegLan)) (re.* (re.* x)) (re.* x))
+; Marked :exec, so that this rule is applied by the executable rewrite
+; database instead of by a hand-written case in SequencesRewriter.
+(define-rule re-star-star ((x RegLan)) (re.* (re.* x)) (re.* x) :exec)
 
 (define-cond-rule re-range-refl ((s String))
   (= (str.len s) 1)

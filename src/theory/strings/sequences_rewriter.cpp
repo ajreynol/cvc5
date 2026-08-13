@@ -927,13 +927,10 @@ Node SequencesRewriter::rewriteStarRegExp(TNode node)
   Assert(node.getKind() == Kind::REGEXP_STAR);
   NodeManager* nm = nodeManager();
   Node retNode = node;
-  if (node[0].getKind() == Kind::REGEXP_STAR)
-  {
-    // ((R)*)* ---> R*
-    return returnRewrite(node, node[0], Rewrite::RE_STAR_NESTED_STAR);
-  }
-  else if (node[0].getKind() == Kind::STRING_TO_REGEXP && node[0][0].isConst()
-           && Word::isEmpty(node[0][0]))
+  // Note that ((R)*)* ---> R* is given by the RARE rule re-star-star, which is
+  // marked :exec and hence applied by the executable rewrite database.
+  if (node[0].getKind() == Kind::STRING_TO_REGEXP && node[0][0].isConst()
+      && Word::isEmpty(node[0][0]))
   {
     // ("")* ---> ""
     return returnRewrite(node, node[0], Rewrite::RE_STAR_EMPTY_STRING);

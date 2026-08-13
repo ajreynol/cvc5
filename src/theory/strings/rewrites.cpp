@@ -101,7 +101,6 @@ const char* toString(Rewrite r)
     case Rewrite::RE_SIMPLE_CONSUME: return "RE_SIMPLE_CONSUME";
     case Rewrite::RE_STAR_EMPTY: return "RE_STAR_EMPTY";
     case Rewrite::RE_STAR_EMPTY_STRING: return "RE_STAR_EMPTY_STRING";
-    case Rewrite::RE_STAR_NESTED_STAR: return "RE_STAR_NESTED_STAR";
     case Rewrite::RE_STAR_UNION: return "RE_STAR_UNION";
     case Rewrite::RE_STAR_UNION_CHAR: return "RE_STAR_UNION_CHAR";
     case Rewrite::REPL_CHAR_NCONTRIB_FIND: return "REPL_CHAR_NCONTRIB_FIND";
