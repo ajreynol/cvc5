@@ -18,6 +18,7 @@
 #include "proof/conv_proof_generator.h"
 #include "proof/trust_id.h"
 #include "rewriter/rewrite_db_exec.h"
+#include "rewriter/rewrite_db_exec_printer.h"
 #include "rewriter/rewrites.h"
 #include "theory/builtin/proof_checker.h"
 #include "theory/evaluator.h"
@@ -139,17 +140,18 @@ Node Rewriter::rewrite(TNode node)
   return rewriteTo(theoryOf(node), node);
 }
 
-void Rewriter::finishInitExec()
+rewriter::RewriteDbExec* Rewriter::getExecDb()
 {
-  // Construct the executable rewrite database once, during setup, so that it is
-  // not constructed on the rewrite hot path. Constructing it at a fixed point
-  // also ensures the node ids created for the :exec rules do not perturb the
-  // node ids created during solving, which some solvers are heuristically
-  // sensitive to.
   if (d_execDb == nullptr)
   {
     d_execDb.reset(new rewriter::RewriteDbExec(d_nm));
   }
+  return d_execDb.get();
+}
+
+void Rewriter::printExecCompiled(std::ostream& os)
+{
+  rewriter::printRewriteDbExecCompiled(os, *getExecDb());
 }
 
 Node Rewriter::extendedRewrite(TNode node, bool aggr)
@@ -449,9 +451,13 @@ Node Rewriter::rewriteTo(theory::TheoryId theoryId,
           // the executable RARE rules that apply to it. The conditions of these
           // rules are checked in the CHECK_EXEC_MATCHES state below, by queuing
           // them as further jobs on this stack.
-          if (d_execDb != nullptr && newNode.getNumChildren() > 0)
+          if (newNode.getNumChildren() > 0)
           {
-            d_execDb->getMatches(newNode, rewriteStackTop.d_execMatches);
+            rewriter::RewriteDbExec* edb = getExecDb();
+            if (!edb->empty())
+            {
+              edb->getMatches(newNode, rewriteStackTop.d_execMatches);
+            }
           }
           if (rewriteStackTop.d_execMatches.empty())
           {
@@ -554,7 +560,7 @@ Node Rewriter::rewriteTo(theory::TheoryId theoryId,
         // the rewrite to be reproducible by Rewriter::rewriteViaRule, which
         // does not apply to RARE rules.
         Node eq = rewriteStackTop.d_node.eqNode(execNode);
-        Node trid = mkTrustId(d_nm, TrustId::REWRITE_EXEC);
+        Node trid = mkTrustId(d_nm, TrustId::THEORY_REWRITE_EXEC);
         tcpg->addRewriteStep(
             rewriteStackTop.d_node,
             execNode,

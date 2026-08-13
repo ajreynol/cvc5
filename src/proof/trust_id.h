@@ -188,7 +188,7 @@ enum class TrustId : uint32_t
    * rewriter, which may differ from the encoding the RARE rule is stated over;
    * the DSL proof reconstruction applies the required encoding transform.
    */
-  REWRITE_EXEC,
+  THEORY_REWRITE_EXEC,
   /** A flattening rewrite in an equality engine proof */
   FLATTENING_REWRITE,
   /** A proof of an applied substitution that could not be no elaborate */

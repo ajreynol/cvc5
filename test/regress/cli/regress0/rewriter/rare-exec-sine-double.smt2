@@ -4,7 +4,7 @@
 ; hand-written rewriter, so (sin (* 2 x)) survives until the exec pass rewrites
 ; it. As the identity holds, its negation is unsatisfiable, and the exec rewrite
 ; lets the rewriter close this without any nonlinear reasoning. We check proofs
-; to exercise the REWRITE_EXEC step produced for the exec rewrite, which is
+; to exercise the THEORY_REWRITE_EXEC step produced for the exec rewrite, which is
 ; elaborated into a DSL_REWRITE step for arith-sine-double.
 ; COMMAND-LINE: --check-proofs
 ; EXPECT: unsat

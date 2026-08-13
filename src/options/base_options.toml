@@ -278,6 +278,10 @@ name   = "Base"
   name = "rare-db-expert"
   help = "upon initialization, print the set of expert RARE rewrite rules as they are defined in the proof signature."
   description = "With ``-o rare-db-expert``, upon initialization, cvc5 prints the entire set of expert RARE rewrite rules as they are defined in the proof signature."
+[[option.mode.RARE_DB_EXEC]]
+  name = "rare-db-exec"
+  help = "upon initialization, print the C++ implementation of the single-step rewrite given by the executable (:exec) RARE rewrite rules."
+  description = "With ``-o rare-db-exec``, upon initialization, cvc5 prints a C++ implementation of the single-step rewrite that applies any of the executable (:exec) RARE rewrite rules, which is the compiled counterpart of the executable rewrite trie."
 [[option.mode.NORMALIZE]]
   name = "normalize"
   help = "prints the benchmark after normalization"

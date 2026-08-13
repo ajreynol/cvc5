@@ -86,7 +86,7 @@ bool ProofPostprocessDsl::shouldUpdate(std::shared_ptr<ProofNode> pn,
     TrustId trid;
     if (id != ProofRule::TRUST || !pn->getChildren().empty()
         || d_traversing.size() >= 3 || !getTrustId(pn->getArguments()[0], trid)
-        || trid != TrustId::REWRITE_EXEC)
+        || trid != TrustId::THEORY_REWRITE_EXEC)
     {
       return false;
     }
@@ -167,7 +167,7 @@ bool ProofPostprocessDsl::update(Node res,
       // disabled on rewrites which we use for their own reconstruction.
       tm = rewriter::TheoryRewriteMode::NEVER;
     }
-    else if (trid == TrustId::REWRITE_EXEC)
+    else if (trid == TrustId::THEORY_REWRITE_EXEC)
     {
       // The rewriter recorded which RARE rule it applied as the third argument
       // of the step.

@@ -4,7 +4,7 @@
 ; note the condition of this rule holds only by applying the :exec rule
 ; arith-sine-double. As the identity sin(4x) = 2*sin(2x)*cos(2x) holds, its
 ; negation is unsatisfiable, closed via the exec rewrite. We check proofs to
-; exercise the REWRITE_EXEC step produced for the rewrite, which is elaborated
+; exercise the THEORY_REWRITE_EXEC step produced for the rewrite, which is elaborated
 ; into a DSL_REWRITE step for arith-sine-quad whose premise is the DSL_REWRITE
 ; step for arith-sine-double that discharges its condition.
 ; COMMAND-LINE: --check-proofs

@@ -141,6 +141,9 @@ class RewriteDbExec
   /** Get the rule information stored for the given left-hand side. */
   const ExecRule& getRuleForLhs(const Node& lhs) const;
 
+  /** Get all rules of this database, indexed by their left-hand side. */
+  const std::map<Node, ExecRule>& getAllRules() const { return d_ruleForLhs; }
+
  private:
   /** The match trie over the left-hand sides of the :exec rules. */
   expr::NaryMatchTrie d_trie;

@@ -191,7 +191,7 @@ Node ProofPostprocessCallback::expandMacros(ProofRule id,
   {
     TrustId tid;
     getTrustId(args[0], tid);
-    if (tid == TrustId::REWRITE_EXEC)
+    if (tid == TrustId::THEORY_REWRITE_EXEC)
     {
       // This step records a rewrite that the rewriter performed by an
       // executable RARE rule. We must not attempt to show it by rewriting

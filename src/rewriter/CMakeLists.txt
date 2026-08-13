@@ -20,6 +20,10 @@ libcvc5_add_sources(
   rewrite_db.h
   rewrite_db_exec.cpp
   rewrite_db_exec.h
+  rewrite_db_exec_compiled.cpp
+  rewrite_db_exec_compiled.h
+  rewrite_db_exec_printer.cpp
+  rewrite_db_exec_printer.h
   rewrite_db_proof_cons.cpp
   rewrite_db_proof_cons.h
   rewrite_db_term_process.cpp
