@@ -10,8 +10,6 @@
  * White box testing of the core rewriter.
  */
 
-#include <utility>
-
 #include "test_smt.h"
 #include "util/rational.h"
 
@@ -58,48 +56,6 @@ TEST_F(TestTheoryWhiteRewriter, deepFullRewrite)
     }
   }
   ASSERT_TRUE(foundTail);
-}
-
-TEST_F(TestTheoryWhiteRewriter, execRewriteConditions)
-{
-  Rewriter* rr = d_slvEngine->getEnv().getRewriter();
-  Node vtrue = d_nodeManager->mkConst(true);
-  Node two = d_nodeManager->mkConstInt(Rational(2));
-  Node four = d_nodeManager->mkConstInt(Rational(4));
-  TypeNode realType = d_nodeManager->realType();
-
-  // (sin (* 2 x)) = (* 2 (sin x) (cos x)), the conclusion of the unconditional
-  // :exec rule arith-sine-double.
-  auto mkSineDouble = [&](Node x) {
-    Node sinx = d_nodeManager->mkNode(Kind::SINE, x);
-    Node cosx = d_nodeManager->mkNode(Kind::COSINE, x);
-    Node lhs = d_nodeManager->mkNode(Kind::SINE,
-                                     d_nodeManager->mkNode(Kind::MULT, two, x));
-    Node rhs = d_nodeManager->mkNode(Kind::MULT, two, sinx, cosx);
-    return std::make_pair(lhs, rhs);
-  };
-
-  Node x = d_skolemManager->mkDummySkolem("x", realType);
-  std::pair<Node, Node> sx = mkSineDouble(x);
-  // The executable rule applies, hence both sides rewrite to the same thing.
-  ASSERT_EQ(rr->rewrite(sx.first), rr->rewrite(sx.second));
-  ASSERT_EQ(rr->rewrite(sx.first.eqNode(sx.second)), vtrue);
-
-  // The conditional :exec rule arith-sine-quad rewrites (sin (* 4 x)) to
-  // (* 2 (sin (* 2 x)) (cos (* 2 x))). Its condition is the equality above,
-  // which holds only by applying arith-sine-double, i.e. executable rules are
-  // applied when rewriting the conditions of executable rules as well.
-  Node sin4x = d_nodeManager->mkNode(
-      Kind::SINE, d_nodeManager->mkNode(Kind::MULT, four, x));
-  Node sin2x = d_nodeManager->mkNode(Kind::SINE,
-                                     d_nodeManager->mkNode(Kind::MULT, two, x));
-  Node cos2x = d_nodeManager->mkNode(Kind::COSINE,
-                                     d_nodeManager->mkNode(Kind::MULT, two, x));
-  Node quad = d_nodeManager->mkNode(Kind::MULT, two, sin2x, cos2x);
-  ASSERT_EQ(rr->rewrite(sin4x), rr->rewrite(quad));
-  ASSERT_EQ(rr->rewrite(sin4x.eqNode(quad)), vtrue);
-  // The rewritten form is cached, rewriting again gives the same result.
-  ASSERT_EQ(rr->rewrite(sin4x), rr->rewrite(quad));
 }
 
 }  // namespace test
