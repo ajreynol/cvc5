@@ -16,8 +16,10 @@
 (define-rule arith-sine-double ((x Real)) (sin (* 2 x)) (* 2 (sin x) (cos x)) :exec)
 
 ; Marked :exec to demonstrate a *conditional* executable rewrite. The condition
-; (here trivially true) is verified by rewriting it to true before the rule is
-; applied; in proof mode it yields a TRUST_THEORY_REWRITE premise.
-(define-cond-rule arith-sine-quad ((x Real)) (= x x)
+; is verified by rewriting it to true before the rule is applied. Note the
+; condition here holds only by virtue of the executable rule above, which
+; demonstrates that conditions are rewritten in the same way as any other term.
+(define-cond-rule arith-sine-quad ((x Real))
+  (= (sin (* 2 x)) (* 2 (sin x) (cos x)))
   (sin (* 4 x)) (* 2 (sin (* 2 x)) (cos (* 2 x))) :exec)
 

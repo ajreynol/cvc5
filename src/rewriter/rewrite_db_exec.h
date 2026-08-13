@@ -22,13 +22,13 @@
  * groups may be nested, e.g. (g (f t1 s t2) r). This keeps matching against the
  * n-ary trie linear in the number of children.
  *
- * :exec rules may be conditional. When applying a conditional rule, the
- * conditions (instantiated by the match) are verified to hold by rewriting
- * them to true in the base rewrite stratum, without consulting this database.
- * When proof generation is enabled, this class populates the term conversion
- * proof generator with a THEORY_REWRITE step for the rewrite itself and a
- * TRUST_THEORY_REWRITE step for each (instantiated) condition, all of which are
- * reconstructed by the DSL proof machinery downstream.
+ * This class is responsible only for matching: it computes the (instantiated)
+ * rules whose left-hand side matches a term. Verifying the conditions of a
+ * matched rule is the responsibility of the caller, which rewrites them as
+ * additional jobs on the rewriter's stack (see theory/rewriter.cpp). Note that
+ * conditions are rewritten in the same way as any other term, in particular
+ * the rules of this database are applied to them as well. Thus, an :exec rule
+ * whose condition requires applying the rule itself does not terminate.
  */
 
 #include "cvc5_private.h"
@@ -45,18 +45,11 @@
 #include "expr/node.h"
 
 namespace cvc5::internal {
-
-class TConvProofGenerator;
-
-namespace theory {
-class Rewriter;
-}
-
 namespace rewriter {
 
 /**
  * The executable rewrite database. Holds all :exec rules and provides a single
- * small-step entry point (rewrite) that attempts to apply one of them.
+ * entry point (getMatches) that computes the rules applicable to a term.
  */
 class RewriteDbExec
 {
@@ -69,6 +62,17 @@ class RewriteDbExec
     /** The conditions of the rule (empty if unconditional). */
     std::vector<Node> d_conds;
     /** The right-hand side of the rule. */
+    Node d_rhs;
+  };
+
+  /** An :exec rule that matched a term, instantiated for that term. */
+  struct ExecMatch
+  {
+    /** The identifier of the rule that matched. */
+    ProofRewriteRule d_id;
+    /** The instantiated conditions of the rule (empty if unconditional). */
+    std::vector<Node> d_conds;
+    /** The instantiated right-hand side of the rule. */
     Node d_rhs;
   };
 
@@ -89,36 +93,23 @@ class RewriteDbExec
   bool empty() const { return d_ruleForLhs.empty(); }
 
   /**
-   * Try to rewrite n with a single :exec rule (a small step). If some rule's
-   * left-hand side matches n and all of its (instantiated) conditions hold
-   * (verified by rewriting them via rr without executable RARE rules), returns
-   * the instantiated right-hand side and sets id to the identifier of the rule
-   * that was used. Otherwise returns the null node.
+   * Compute the :exec rules whose left-hand side matches n, and append them,
+   * instantiated by the substitution witnessing the match, to matches. The
+   * matches are appended in the order in which they should be tried.
    *
-   * If tcpg is non-null, the rewrite is recorded in it as a THEORY_REWRITE step
-   * (for the rewrite itself) together with a TRUST_THEORY_REWRITE step for each
-   * (instantiated) condition, so that proof generation can be linked to the
-   * rule.
+   * Note that the conditions of the returned matches are *not* checked here.
+   * It is the responsibility of the caller to verify that the conditions of a
+   * match rewrite to true before using its right-hand side.
    *
-   * @param n The term to rewrite.
-   * @param rr The rewriter, used to verify conditions.
-   * @param tcpg The term conversion proof generator, or null if not producing
-   * proofs.
-   * @param id Set to the id of the rule that was applied, on success.
+   * @param n The term to match.
+   * @param matches The vector to append the matches to.
    */
-  Node rewrite(const Node& n,
-               theory::Rewriter* rr,
-               TConvProofGenerator* tcpg,
-               ProofRewriteRule& id);
+  void getMatches(const Node& n, std::vector<ExecMatch>& matches) const;
 
   /** Get the rule information stored for the given left-hand side. */
   const ExecRule& getRuleForLhs(const Node& lhs) const;
 
  private:
-  /** Pointer to the node manager. */
-  NodeManager* d_nm;
-  /** The boolean constant true. */
-  Node d_true;
   /** The match trie over the left-hand sides of the :exec rules. */
   expr::NaryMatchTrie d_trie;
   /** Maps each stored left-hand side to its rule id, conditions and rhs. */

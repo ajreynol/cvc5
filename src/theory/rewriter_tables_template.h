@@ -19,6 +19,7 @@
 
 #include "expr/attribute.h"
 #include "expr/attribute_unique_id.h"
+#include "expr/node_manager.h"
 #include "theory/rewriter.h"
 #include "theory/rewriter_attributes.h"
 
@@ -40,9 +41,7 @@ ${pre_rewrite_get_cache}
   }
 }
 
-Node Rewriter::getPostRewriteCache(theory::TheoryId theoryId,
-                                   TNode node,
-                                   bool useExec)
+Node Rewriter::getPostRewriteCache(theory::TheoryId theoryId, TNode node)
 {
   switch (theoryId)
   {
@@ -68,8 +67,7 @@ ${pre_rewrite_set_cache}
 
 void Rewriter::setPostRewriteCache(theory::TheoryId theoryId,
                                    TNode node,
-                                   TNode cache,
-                                   bool useExec)
+                                   TNode cache)
 {
   switch (theoryId)
   {
@@ -83,7 +81,7 @@ ${post_rewrite_set_cache}
 Rewriter::Rewriter(NodeManager* nm)
     : d_nm(nm),
       d_resourceManager(nullptr),
-      d_allowExec(true),
+      d_true(nm->mkConst(true)),
       d_tpg(nullptr)
 {
 }

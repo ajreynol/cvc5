@@ -43,22 +43,6 @@ static TheoryId theoryOf(TNode node)
   return kindToTheoryId(node.getKind());
 }
 
-/** Keeps the executable rewrite mode scoped across nested rewrite calls. */
-class ScopedExecMode
-{
- public:
-  ScopedExecMode(bool& allowExec, bool value)
-      : d_allowExec(allowExec), d_oldValue(allowExec)
-  {
-    d_allowExec = value;
-  }
-  ~ScopedExecMode() { d_allowExec = d_oldValue; }
-
- private:
-  bool& d_allowExec;
-  bool d_oldValue;
-};
-
 /**
  * TheoryEngine::rewrite() keeps a stack of things that are being pre-
  * and post-rewritten.  Each element of the stack is a
@@ -71,6 +55,8 @@ struct RewriteStackElement
     PRE_REWRITE,
     REWRITE_CHILDREN,
     POST_REWRITE,
+    CHECK_EXEC_MATCHES,
+    WAIT_FOR_CONDITION,
     WAIT_FOR_FULL_REWRITE,
     FINALIZE
   };
@@ -82,7 +68,9 @@ struct RewriteStackElement
       : d_node(node),
         d_original(node),
         d_postRewriteCache(Node::null()),
-        d_fullRewriteNode(Node::null()),
+        d_waitNode(Node::null()),
+        d_execIndex(0),
+        d_execCondIndex(0),
         d_theoryId(theoryId),
         d_originalTheoryId(theoryId),
         d_state(PRE_REWRITE),
@@ -109,8 +97,21 @@ struct RewriteStackElement
   Node d_original;
   /** Cached post-rewrite result, if one exists for d_original */
   Node d_postRewriteCache;
-  /** Node whose full rewrite this stack element is waiting on */
-  Node d_fullRewriteNode;
+  /**
+   * The node whose rewrite this stack element is waiting on, which is either
+   * the node we requested a full rewrite of (state WAIT_FOR_FULL_REWRITE) or
+   * the condition of an :exec rule (state WAIT_FOR_CONDITION).
+   */
+  Node d_waitNode;
+  /**
+   * The :exec rules whose left-hand side matches d_node, which are pending to
+   * be tried (states CHECK_EXEC_MATCHES and WAIT_FOR_CONDITION).
+   */
+  std::vector<rewriter::RewriteDbExec::ExecMatch> d_execMatches;
+  /** The index in d_execMatches of the match we are currently considering */
+  size_t d_execIndex;
+  /** The index of the condition of that match we are currently checking */
+  size_t d_execCondIndex;
   /** Id of the theory that's currently rewriting this node */
   unsigned d_theoryId : 8;
   /** Id of the original theory that started the rewrite */
@@ -133,16 +134,7 @@ Node Rewriter::rewrite(TNode node)
     // eagerly for the sake of efficiency here.
     return node;
   }
-  return rewriteTo(theoryOf(node), node, nullptr, d_allowExec);
-}
-
-Node Rewriter::rewriteWithoutExec(TNode node)
-{
-  // Theory rewriters may make nested calls to rewrite(). Keep those calls in
-  // the base stratum as well, in addition to disabling the explicit exec
-  // lookup in this invocation of rewriteTo().
-  ScopedExecMode mode(d_allowExec, false);
-  return rewrite(node);
+  return rewriteTo(theoryOf(node), node);
 }
 
 void Rewriter::finishInitExec()
@@ -156,19 +148,6 @@ void Rewriter::finishInitExec()
   {
     d_execDb.reset(new rewriter::RewriteDbExec(d_nm));
   }
-}
-
-Node Rewriter::rewriteViaExec(TNode n, TConvProofGenerator* tcpg)
-{
-  if (d_execDb == nullptr || d_execDb->empty())
-  {
-    return Node::null();
-  }
-  // Apply a single (small-step) executable RARE rewrite to n, recording proof
-  // steps in tcpg if it is non-null. Returns the null node if no :exec rule
-  // applies.
-  ProofRewriteRule id = ProofRewriteRule::NONE;
-  return d_execDb->rewrite(n, this, tcpg, id);
 }
 
 Node Rewriter::extendedRewrite(TNode node, bool aggr)
@@ -188,7 +167,7 @@ TrustNode Rewriter::rewriteWithProof(TNode node, bool isExtEq)
     Assert(tr != nullptr);
     return tr->rewriteEqualityExtWithProof(node);
   }
-  Node ret = rewriteTo(theoryOf(node), node, d_tpg.get(), d_allowExec);
+  Node ret = rewriteTo(theoryOf(node), node, d_tpg.get());
   return TrustNode::mkTrustRewrite(node, ret, d_tpg.get());
 }
 
@@ -264,8 +243,7 @@ ProofRewriteRule Rewriter::findRule(const Node& a,
 
 Node Rewriter::rewriteTo(theory::TheoryId theoryId,
                          Node node,
-                         TConvProofGenerator* tcpg,
-                         bool useExec)
+                         TConvProofGenerator* tcpg)
 {
 #ifdef CVC5_ASSERTIONS
   bool isEquality = node.getKind() == Kind::EQUAL
@@ -278,12 +256,11 @@ Node Rewriter::rewriteTo(theory::TheoryId theoryId,
   }
 #endif
 
-  Trace("rewriter") << "Rewriter::rewriteTo(" << theoryId << "," << node
-                    << ", " << (useExec ? "full" : "base") << ")"
+  Trace("rewriter") << "Rewriter::rewriteTo(" << theoryId << "," << node << ")"
                     << std::endl;
 
   // Check if it's been cached already
-  Node cached = getPostRewriteCache(theoryId, node, useExec);
+  Node cached = getPostRewriteCache(theoryId, node);
   if (!cached.isNull() && (tcpg == nullptr || hasRewrittenWithProofs(node)))
   {
     return cached;
@@ -373,10 +350,8 @@ Node Rewriter::rewriteTo(theory::TheoryId theoryId,
         rewriteStackTop.d_theoryId = theoryOf(cached);
       }
       rewriteStackTop.d_original = rewriteStackTop.d_node;
-      rewriteStackTop.d_postRewriteCache =
-          getPostRewriteCache(rewriteStackTop.getTheoryId(),
-                              rewriteStackTop.d_node,
-                              useExec);
+      rewriteStackTop.d_postRewriteCache = getPostRewriteCache(
+          rewriteStackTop.getTheoryId(), rewriteStackTop.d_node);
       if (!rewriteStackTop.d_postRewriteCache.isNull()
           && (tcpg == nullptr
               || hasRewrittenWithProofs(rewriteStackTop.d_node)))
@@ -450,7 +425,7 @@ Node Rewriter::rewriteTo(theory::TheoryId theoryId,
               << "Non-terminating rewriting detected for: " << response.d_node;
           d_rewriteStack->insert(response.d_node);
 #endif
-          rewriteStackTop.d_fullRewriteNode = response.d_node;
+          rewriteStackTop.d_waitNode = response.d_node;
           rewriteStackTop.setState(RewriteStackElement::WAIT_FOR_FULL_REWRITE);
           rewriteStack.push_back(
               RewriteStackElement(response.d_node, newTheoryId));
@@ -466,31 +441,26 @@ Node Rewriter::rewriteTo(theory::TheoryId theoryId,
           Assert(r2.d_node == newNode)
               << "Non-idempotent rewriting: " << r2.d_node << " != " << newNode;
 #endif
-          // The theory rewriter is done with newNode. As a last resort, try a
-          // single (small-step) executable RARE rewrite; if one applies, treat
-          // its result like a full rewrite and re-rewrite it. When producing
-          // proofs, the exec step (and its conditions) are recorded in tcpg.
-          Node execNode = useExec && newNode.getNumChildren() > 0
-                              ? rewriteViaExec(newNode, tcpg)
-                              : Node::null();
-          if (!execNode.isNull())
-          {
-            Assert(execNode != newNode);
-#ifdef CVC5_ASSERTIONS
-            Assert(d_rewriteStack->find(execNode) == d_rewriteStack->end())
-                << "Non-terminating rewriting detected for: " << execNode;
-            d_rewriteStack->insert(execNode);
-#endif
-            rewriteStackTop.d_fullRewriteNode = execNode;
-            rewriteStackTop.setState(
-                RewriteStackElement::WAIT_FOR_FULL_REWRITE);
-            rewriteStack.push_back(
-                RewriteStackElement(execNode, theoryOf(execNode)));
-            break;
-          }
           rewriteStackTop.d_node = newNode;
           rewriteStackTop.d_theoryId = newTheoryId;
-          rewriteStackTop.setState(RewriteStackElement::FINALIZE);
+          // The theory rewriter is done with newNode. As a last resort, collect
+          // the executable RARE rules that apply to it. The conditions of these
+          // rules are checked in the CHECK_EXEC_MATCHES state below, by queuing
+          // them as further jobs on this stack.
+          if (d_execDb != nullptr && newNode.getNumChildren() > 0)
+          {
+            d_execDb->getMatches(newNode, rewriteStackTop.d_execMatches);
+          }
+          if (rewriteStackTop.d_execMatches.empty())
+          {
+            rewriteStackTop.setState(RewriteStackElement::FINALIZE);
+          }
+          else
+          {
+            rewriteStackTop.d_execIndex = 0;
+            rewriteStackTop.d_execCondIndex = 0;
+            rewriteStackTop.setState(RewriteStackElement::CHECK_EXEC_MATCHES);
+          }
           break;
         }
         // Check for trivial rewrite loops of size 1 or 2
@@ -502,6 +472,69 @@ Node Rewriter::rewriteTo(theory::TheoryId theoryId,
         rewriteStackTop.d_node = response.d_node;
         rewriteStackTop.d_theoryId = newTheoryId;
       }
+      continue;
+    }
+
+    if (state == RewriteStackElement::CHECK_EXEC_MATCHES)
+    {
+      std::vector<rewriter::RewriteDbExec::ExecMatch>& ems =
+          rewriteStackTop.d_execMatches;
+      Assert(!ems.empty());
+      if (rewriteStackTop.d_execIndex == ems.size())
+      {
+        // None of the matching rules applies, the node is left unchanged.
+        ems.clear();
+        rewriteStackTop.setState(RewriteStackElement::FINALIZE);
+        continue;
+      }
+      const rewriter::RewriteDbExec::ExecMatch& em =
+          ems[rewriteStackTop.d_execIndex];
+      if (rewriteStackTop.d_execCondIndex < em.d_conds.size())
+      {
+        // The next condition of the current match has not been verified yet.
+        // Queue it as a further job on this stack instead of rewriting it
+        // recursively. Note it is rewritten in the same way as any other node,
+        // in particular executable rules are applied to it as well.
+        Node cond = em.d_conds[rewriteStackTop.d_execCondIndex];
+        Trace("rewrite-exec")
+            << "Check condition " << cond << " of " << em.d_id << std::endl;
+#ifdef CVC5_ASSERTIONS
+        // The condition of a rule may not require checking itself, which would
+        // not terminate.
+        Assert(d_rewriteStack->find(cond) == d_rewriteStack->end())
+            << "Non-terminating rewriting detected for condition: " << cond;
+        d_rewriteStack->insert(cond);
+#endif
+        rewriteStackTop.d_waitNode = cond;
+        rewriteStackTop.setState(RewriteStackElement::WAIT_FOR_CONDITION);
+        rewriteStack.push_back(RewriteStackElement(cond, theoryOf(cond)));
+        continue;
+      }
+      // All conditions of the current match hold, hence we apply the rule.
+      Node execNode = em.d_rhs;
+      Assert(execNode != rewriteStackTop.d_node);
+      Trace("rewrite-exec")
+          << "Apply " << em.d_id << ": " << rewriteStackTop.d_node << " ---> "
+          << execNode << std::endl;
+      if (tcpg != nullptr)
+      {
+        // Record the rewrite as a THEORY_REWRITE step, which is reconstructed
+        // by the DSL proof machinery downstream. Note the conditions of the
+        // rule were rewritten to true above, hence tcpg contains their proofs
+        // as well.
+        tcpg->addTheoryRewriteStep(rewriteStackTop.d_node, execNode, em.d_id);
+      }
+      ems.clear();
+      // Treat the result like a full rewrite, i.e. rewrite it again from
+      // scratch, by pushing it onto the explicit stack.
+#ifdef CVC5_ASSERTIONS
+      Assert(d_rewriteStack->find(execNode) == d_rewriteStack->end())
+          << "Non-terminating rewriting detected for: " << execNode;
+      d_rewriteStack->insert(execNode);
+#endif
+      rewriteStackTop.d_waitNode = execNode;
+      rewriteStackTop.setState(RewriteStackElement::WAIT_FOR_FULL_REWRITE);
+      rewriteStack.push_back(RewriteStackElement(execNode, theoryOf(execNode)));
       continue;
     }
 
@@ -548,8 +581,7 @@ Node Rewriter::rewriteTo(theory::TheoryId theoryId,
       }
       setPostRewriteCache(rewriteStackTop.getOriginalTheoryId(),
                           rewriteStackTop.d_original,
-                          rewriteStackTop.d_node,
-                          useExec);
+                          rewriteStackTop.d_node);
 
       // If this is the last node, just return.
       if (rewriteStack.size() == 1)
@@ -563,19 +595,43 @@ Node Rewriter::rewriteTo(theory::TheoryId theoryId,
       }
 
       RewriteStackElement& parent = rewriteStack[rewriteStack.size() - 2];
-      if (parent.getState() == RewriteStackElement::WAIT_FOR_FULL_REWRITE)
+      RewriteStackElement::State pstate = parent.getState();
+      if (pstate == RewriteStackElement::WAIT_FOR_FULL_REWRITE)
       {
 #ifdef CVC5_ASSERTIONS
-        d_rewriteStack->erase(parent.d_fullRewriteNode);
+        d_rewriteStack->erase(parent.d_waitNode);
 #endif
         parent.d_node = rewriteStackTop.d_node;
         parent.d_theoryId = theoryOf(parent.d_node);
-        parent.d_fullRewriteNode = Node::null();
+        parent.d_waitNode = Node::null();
         // Resume the parent's post-rewrite fixpoint on the fully rewritten
         // node. This preserves the recursive behavior where a full rewrite
         // requested from post-rewrite returns to post-rewrite, and only
         // finalizes once post-rewriting is done.
         parent.setState(RewriteStackElement::POST_REWRITE);
+      }
+      else if (pstate == RewriteStackElement::WAIT_FOR_CONDITION)
+      {
+#ifdef CVC5_ASSERTIONS
+        d_rewriteStack->erase(parent.d_waitNode);
+#endif
+        parent.d_waitNode = Node::null();
+        if (rewriteStackTop.d_node == d_true)
+        {
+          // The condition holds, continue with the next condition of the
+          // current match.
+          parent.d_execCondIndex++;
+        }
+        else
+        {
+          // The condition does not hold, abandon the current match and
+          // continue with the next one.
+          Trace("rewrite-exec") << "...condition failed, rewrites to "
+                                << rewriteStackTop.d_node << std::endl;
+          parent.d_execIndex++;
+          parent.d_execCondIndex = 0;
+        }
+        parent.setState(RewriteStackElement::CHECK_EXEC_MATCHES);
       }
       else
       {
@@ -585,7 +641,8 @@ Node Rewriter::rewriteTo(theory::TheoryId theoryId,
       continue;
     }
 
-    Assert(state == RewriteStackElement::WAIT_FOR_FULL_REWRITE);
+    Assert(state == RewriteStackElement::WAIT_FOR_FULL_REWRITE
+           || state == RewriteStackElement::WAIT_FOR_CONDITION);
   }
 
   Unreachable();

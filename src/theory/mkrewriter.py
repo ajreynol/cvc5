@@ -98,8 +98,8 @@ class CodeGenerator:
 
         self.pre_rewrite_get_cache += f"    case {theory_id}: return RewriteAttibute<{theory_id}>::getPreRewriteCache(node);\n"
         self.pre_rewrite_set_cache += f"    case {theory_id}: return RewriteAttibute<{theory_id}>::setPreRewriteCache(node, cache);\n"
-        self.post_rewrite_get_cache += f"    case {theory_id}: return RewriteAttibute<{theory_id}>::getPostRewriteCache(node, useExec);\n"
-        self.post_rewrite_set_cache += f"    case {theory_id}: return RewriteAttibute<{theory_id}>::setPostRewriteCache(node, cache, useExec);\n"
+        self.post_rewrite_get_cache += f"    case {theory_id}: return RewriteAttibute<{theory_id}>::getPostRewriteCache(node);\n"
+        self.post_rewrite_set_cache += f"    case {theory_id}: return RewriteAttibute<{theory_id}>::setPostRewriteCache(node, cache);\n"
 
     def generate_code_for_rewriter_includes(self, rewriter_include):
         self.rewriter_includes += f"#include \"{rewriter_include}\"\n"

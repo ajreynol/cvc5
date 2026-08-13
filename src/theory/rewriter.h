@@ -46,19 +46,9 @@ class Rewriter
 
   /**
    * Rewrites the node using theoryOf() to determine which rewriter to
-   * use on the node. The returned and cached result is the final rewritten
-   * form, including executable RARE rules.
+   * use on the node. This includes applying the executable RARE rules.
    */
   Node rewrite(TNode node);
-
-  /**
-   * Rewrites the node without consulting the executable RARE rule database.
-   * This is the lower rewrite stratum used for checking the conditions of
-   * executable rules. Nested calls to rewrite() made by theory rewriters also
-   * remain in this stratum for the duration of this call. Its post-rewrite
-   * cache is separate from the final-form cache used by rewrite().
-   */
-  Node rewriteWithoutExec(TNode node);
 
   /**
    * Rewrites the equality node using theoryOf() to determine which rewriter to
@@ -145,26 +135,20 @@ class Rewriter
   Node getPreRewriteCache(theory::TheoryId theoryId, TNode node);
 
   /** Returns the appropriate cache for a node */
-  Node getPostRewriteCache(theory::TheoryId theoryId,
-                           TNode node,
-                           bool useExec);
+  Node getPostRewriteCache(theory::TheoryId theoryId, TNode node);
 
   /** Sets the appropriate cache for a node */
   void setPreRewriteCache(theory::TheoryId theoryId, TNode node, TNode cache);
 
   /** Sets the appropriate cache for a node */
-  void setPostRewriteCache(theory::TheoryId theoryId,
-                           TNode node,
-                           TNode cache,
-                           bool useExec);
+  void setPostRewriteCache(theory::TheoryId theoryId, TNode node, TNode cache);
 
   /**
    * Rewrites the node using the given theory rewriter.
    */
   Node rewriteTo(theory::TheoryId theoryId,
                  Node node,
-                 TConvProofGenerator* tcpg,
-                 bool useExec);
+                 TConvProofGenerator* tcpg = nullptr);
 
   /** Calls the pre-rewriter for the given theory */
   RewriteResponse preRewrite(theory::TheoryId theoryId,
@@ -192,28 +176,14 @@ class Rewriter
    */
   bool hasRewrittenWithProofs(TNode n) const;
 
-  /**
-   * Attempt a single small-step executable (interpreted) RARE rewrite on n,
-   * i.e. apply one rule marked with the :exec attribute. This is used as a last
-   * resort when the theory rewriter leaves n unchanged. Returns the rewritten
-   * node, or the null node if no :exec rule applies. If tcpg is non-null, the
-   * rewrite is recorded in it (as a THEORY_REWRITE step, plus a
-   * TRUST_THEORY_REWRITE step per condition) for proof production.
-   */
-  Node rewriteViaExec(TNode n, TConvProofGenerator* tcpg);
-
   /** Pointer to the node manager */
   NodeManager* d_nm;
 
   /** The resource manager, for tracking resource usage */
   ResourceManager* d_resourceManager;
 
-  /**
-   * Whether calls to rewrite() may consult the executable RARE database.
-   * This is scoped to false while checking an executable rule condition so
-   * that nested rewrites made by theory rewriters stay in the base stratum.
-   */
-  bool d_allowExec;
+  /** The boolean constant true, used for checking :exec rule conditions */
+  Node d_true;
 
   /** Theory rewriters used by this rewriter instance */
   TheoryRewriter* d_theoryRewriters[theory::THEORY_LAST];
