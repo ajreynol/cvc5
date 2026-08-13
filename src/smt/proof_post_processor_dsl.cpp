@@ -33,6 +33,14 @@ ProofPostprocessDsl::ProofPostprocessDsl(Env& env, rewriter::RewriteDb* rdb)
                 : rewriter::TheoryRewriteMode::STANDARD;
 }
 
+void ProofPostprocessDsl::reconstructExec(
+    std::vector<std::shared_ptr<ProofNode>>& pfs)
+{
+  d_execOnly = true;
+  reconstruct(pfs);
+  d_execOnly = false;
+}
+
 void ProofPostprocessDsl::reconstruct(
     std::vector<std::shared_ptr<ProofNode>>& pfs)
 {
@@ -69,6 +77,22 @@ bool ProofPostprocessDsl::shouldUpdate(std::shared_ptr<ProofNode> pn,
 {
   ProofRule id = pn->getRule();
   continueUpdate = true;
+  if (d_execOnly)
+  {
+    // Only consider the steps recorded for executable RARE rewrites. Note that
+    // the reconstruction of an executable rewrite may itself contain executable
+    // rewrites, e.g. those used to show the conditions of the rule hold. We
+    // bound how deep we follow these, as for the general case below.
+    TrustId trid;
+    if (id != ProofRule::TRUST || !pn->getChildren().empty()
+        || d_traversing.size() >= 3 || !getTrustId(pn->getArguments()[0], trid)
+        || trid != TrustId::REWRITE_EXEC)
+    {
+      return false;
+    }
+    d_traversing.push_back(pn);
+    return true;
+  }
   // we should update if we
   // - Have rule TRUST or TRUST_THEORY_REWRITE,
   // - We have no premises
@@ -119,6 +143,9 @@ bool ProofPostprocessDsl::update(Node res,
   TheoryId tid = THEORY_LAST;
   MethodId mid = MethodId::RW_REWRITE;
   rewriter::TheoryRewriteMode tm = d_tmode;
+  // The rule the rewriter applied, if this step came from an executable RARE
+  // rewrite. In that case we know which rule proves res and need not search.
+  ProofRewriteRule execId = ProofRewriteRule::NONE;
   Trace("pp-dsl") << "Prove " << res << " from " << tid << " / " << mid
                   << ", in mode " << tm << std::endl;
   Trace("pp-dsl") << "...proof rule " << id << std::endl;
@@ -140,13 +167,40 @@ bool ProofPostprocessDsl::update(Node res,
       // disabled on rewrites which we use for their own reconstruction.
       tm = rewriter::TheoryRewriteMode::NEVER;
     }
+    else if (trid == TrustId::REWRITE_EXEC)
+    {
+      // The rewriter recorded which RARE rule it applied as the third argument
+      // of the step.
+      Assert(args.size() == 3);
+      if (!rewriter::getRewriteRule(args[2], execId))
+      {
+        Assert(false) << "Missing rule id for " << trid;
+      }
+    }
   }
   int64_t recLimit = options().proof.proofRewriteRconsRecLimit;
   int64_t stepLimit = options().proof.proofRewriteRconsStepLimit;
   // Attempt to reconstruct the proof of the equality into cdp using the
-  // rewrite database proof reconstructor.
+  // rewrite database proof reconstructor. If the step came from an executable
+  // RARE rewrite, first apply the rule the rewriter recorded, which avoids
+  // searching for a proof we already know. We fall back on the general method
+  // if that fails.
+  bool proved = false;
+  if (execId != ProofRewriteRule::NONE)
+  {
+    proved = d_rdbPc.proveWithExecRule(cdp, execId, res, recLimit, stepLimit);
+    if (!proved)
+    {
+      Trace("pp-dsl") << "...failed to apply recorded rule " << execId
+                      << ", fall back on search" << std::endl;
+    }
+  }
+  if (!proved)
+  {
+    proved = d_rdbPc.prove(cdp, res[0], res[1], recLimit, stepLimit, tm);
+  }
   // We record the subgoals in d_subgoals.
-  if (d_rdbPc.prove(cdp, res[0], res[1], recLimit, stepLimit, tm))
+  if (proved)
   {
     // we will update this again, in case the elaboration introduced
     // new trust steps

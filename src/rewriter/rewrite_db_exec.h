@@ -22,13 +22,19 @@
  * groups may be nested, e.g. (g (f t1 s t2) r). This keeps matching against the
  * n-ary trie linear in the number of children.
  *
- * This class is responsible only for matching: it computes the (instantiated)
- * rules whose left-hand side matches a term. Verifying the conditions of a
- * matched rule is the responsibility of the caller, which rewrites them as
- * additional jobs on the rewriter's stack (see theory/rewriter.cpp). Note that
- * conditions are rewritten in the same way as any other term, in particular
- * the rules of this database are applied to them as well. Thus, an :exec rule
- * whose condition requires applying the rule itself does not terminate.
+ * This class is responsible only for matching: it computes the rules whose
+ * left-hand side matches a term, together with the substitution witnessing the
+ * match. Verifying the conditions of a matched rule is the responsibility of
+ * the caller, which rewrites them as additional jobs on the rewriter's stack
+ * (see theory/rewriter.cpp). Note that conditions are rewritten in the same way
+ * as any other term, in particular the rules of this database are applied to
+ * them as well. The rewriter breaks the cycle that arises when checking a
+ * condition requires checking that same condition again, see
+ * Rewriter::d_execCondActive.
+ *
+ * Matches are instantiated lazily: getCondition and getResult below apply the
+ * stored substitution on demand, so that a rule whose first condition fails
+ * never pays for instantiating its remaining conditions or its right-hand side.
  */
 
 #include "cvc5_private.h"
@@ -65,15 +71,25 @@ class RewriteDbExec
     Node d_rhs;
   };
 
-  /** An :exec rule that matched a term, instantiated for that term. */
+  /**
+   * An :exec rule whose left-hand side matched a term, together with the
+   * substitution witnessing the match. The conditions and the right-hand side
+   * are not instantiated here; use getNumConditions/getCondition/getResult
+   * below to instantiate them on demand.
+   */
   struct ExecMatch
   {
     /** The identifier of the rule that matched. */
     ProofRewriteRule d_id;
-    /** The instantiated conditions of the rule (empty if unconditional). */
-    std::vector<Node> d_conds;
-    /** The instantiated right-hand side of the rule. */
-    Node d_rhs;
+    /**
+     * The rule that matched. Note the rules of this database are all added
+     * during construction and never removed, hence this pointer remains valid.
+     */
+    const ExecRule* d_rule;
+    /** The variables of the rule that were bound by the match. */
+    std::vector<Node> d_vars;
+    /** The terms they were bound to. */
+    std::vector<Node> d_subs;
   };
 
   RewriteDbExec(NodeManager* nm);
@@ -93,9 +109,10 @@ class RewriteDbExec
   bool empty() const { return d_ruleForLhs.empty(); }
 
   /**
-   * Compute the :exec rules whose left-hand side matches n, and append them,
-   * instantiated by the substitution witnessing the match, to matches. The
-   * matches are appended in the order in which they should be tried.
+   * Compute the :exec rules whose left-hand side matches n and append them to
+   * matches. The matches are appended in the order the match trie yields them;
+   * no priority between rules is defined, and the caller tries them in that
+   * order.
    *
    * Note that the conditions of the returned matches are *not* checked here.
    * It is the responsibility of the caller to verify that the conditions of a
@@ -105,6 +122,21 @@ class RewriteDbExec
    * @param matches The vector to append the matches to.
    */
   void getMatches(const Node& n, std::vector<ExecMatch>& matches) const;
+
+  /** The number of conditions of the rule that m matched. */
+  size_t getNumConditions(const ExecMatch& m) const;
+  /**
+   * Get the i^th condition of the rule that m matched, instantiated by the
+   * substitution of m. Returns the null node if the instantiated condition
+   * could not be constructed, in which case the match must be abandoned.
+   */
+  Node getCondition(const ExecMatch& m, size_t i) const;
+  /**
+   * Get the right-hand side of the rule that m matched, instantiated by the
+   * substitution of m. Returns the null node if the instantiated right-hand
+   * side could not be constructed, in which case the match must be abandoned.
+   */
+  Node getResult(const ExecMatch& m) const;
 
   /** Get the rule information stored for the given left-hand side. */
   const ExecRule& getRuleForLhs(const Node& lhs) const;

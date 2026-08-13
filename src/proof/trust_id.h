@@ -181,6 +181,14 @@ enum class TrustId : uint32_t
   EXT_THEORY_REWRITE,
   /** A rewrite whose proof could not be elaborated */
   REWRITE_NO_ELABORATE,
+  /**
+   * A rewrite by an executable (:exec) RARE rule, applied by the rewriter. The
+   * third argument of the step is the identifier of the RARE rule that was
+   * applied. Note the equality is stated over the terms as they occur in the
+   * rewriter, which may differ from the encoding the RARE rule is stated over;
+   * the DSL proof reconstruction applies the required encoding transform.
+   */
+  REWRITE_EXEC,
   /** A flattening rewrite in an equality engine proof */
   FLATTENING_REWRITE,
   /** A proof of an applied substitution that could not be no elaborate */

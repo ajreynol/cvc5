@@ -16,7 +16,9 @@
 
 #include "options/theory_options.h"
 #include "proof/conv_proof_generator.h"
+#include "proof/trust_id.h"
 #include "rewriter/rewrite_db_exec.h"
+#include "rewriter/rewrites.h"
 #include "theory/builtin/proof_checker.h"
 #include "theory/evaluator.h"
 #include "theory/quantifiers/extended_rewrite.h"
@@ -489,40 +491,77 @@ Node Rewriter::rewriteTo(theory::TheoryId theoryId,
       }
       const rewriter::RewriteDbExec::ExecMatch& em =
           ems[rewriteStackTop.d_execIndex];
-      if (rewriteStackTop.d_execCondIndex < em.d_conds.size())
+      if (rewriteStackTop.d_execCondIndex < d_execDb->getNumConditions(em))
       {
         // The next condition of the current match has not been verified yet.
-        // Queue it as a further job on this stack instead of rewriting it
-        // recursively. Note it is rewritten in the same way as any other node,
-        // in particular executable rules are applied to it as well.
-        Node cond = em.d_conds[rewriteStackTop.d_execCondIndex];
+        // Instantiate it now; note the conditions of a match are instantiated
+        // lazily, so that a match whose first condition fails does not pay for
+        // instantiating the remaining ones.
+        Node cond = d_execDb->getCondition(em, rewriteStackTop.d_execCondIndex);
+        // The condition of a rule may not require checking itself, which would
+        // not terminate. If it does, abandon this match and continue with the
+        // next one. We also abandon the match if the instantiated condition
+        // could not be constructed.
+        if (cond.isNull()
+            || d_execCondActive.find(cond) != d_execCondActive.end())
+        {
+          Trace("rewrite-exec") << "...abandon " << em.d_id << ", condition "
+                                << (cond.isNull() ? "could not be constructed"
+                                                  : "is already being checked")
+                                << std::endl;
+          rewriteStackTop.d_execIndex++;
+          rewriteStackTop.d_execCondIndex = 0;
+          continue;
+        }
+        // Queue the condition as a further job on this stack instead of
+        // rewriting it recursively. Note it is rewritten in the same way as any
+        // other node, in particular executable rules are applied to it as well.
         Trace("rewrite-exec")
             << "Check condition " << cond << " of " << em.d_id << std::endl;
-#ifdef CVC5_ASSERTIONS
-        // The condition of a rule may not require checking itself, which would
-        // not terminate.
-        Assert(d_rewriteStack->find(cond) == d_rewriteStack->end())
-            << "Non-terminating rewriting detected for condition: " << cond;
-        d_rewriteStack->insert(cond);
-#endif
+        d_execCondActive.insert(cond);
         rewriteStackTop.d_waitNode = cond;
         rewriteStackTop.setState(RewriteStackElement::WAIT_FOR_CONDITION);
         rewriteStack.push_back(RewriteStackElement(cond, theoryOf(cond)));
         continue;
       }
-      // All conditions of the current match hold, hence we apply the rule.
-      Node execNode = em.d_rhs;
-      Assert(execNode != rewriteStackTop.d_node);
+      // All conditions of the current match hold, hence we apply the rule. The
+      // right-hand side is instantiated only now, i.e. after the conditions of
+      // the match were shown to hold.
+      Node execNode = d_execDb->getResult(em);
+      if (execNode.isNull() || execNode == rewriteStackTop.d_node)
+      {
+        // The instantiated right-hand side could not be constructed, or the
+        // rule would not change the node. Continue with the next match.
+        Trace("rewrite-exec")
+            << "...abandon " << em.d_id << ", right-hand side "
+            << (execNode.isNull() ? "could not be constructed"
+                                  : "does not change the node")
+            << std::endl;
+        rewriteStackTop.d_execIndex++;
+        rewriteStackTop.d_execCondIndex = 0;
+        continue;
+      }
       Trace("rewrite-exec")
           << "Apply " << em.d_id << ": " << rewriteStackTop.d_node << " ---> "
           << execNode << std::endl;
       if (tcpg != nullptr)
       {
-        // Record the rewrite as a THEORY_REWRITE step, which is reconstructed
-        // by the DSL proof machinery downstream. Note the conditions of the
-        // rule were rewritten to true above, hence tcpg contains their proofs
-        // as well.
-        tcpg->addTheoryRewriteStep(rewriteStackTop.d_node, execNode, em.d_id);
+        // Record the rewrite as a trusted step that carries the identifier of
+        // the rule that was applied. The DSL proof machinery reconstructs it
+        // downstream (see ProofPostprocessDsl), where the encoding transform
+        // required for relating the term to the RARE rule is applied. Note we
+        // cannot record a THEORY_REWRITE step here, since that rule requires
+        // the rewrite to be reproducible by Rewriter::rewriteViaRule, which
+        // does not apply to RARE rules.
+        Node eq = rewriteStackTop.d_node.eqNode(execNode);
+        Node trid = mkTrustId(d_nm, TrustId::REWRITE_EXEC);
+        tcpg->addRewriteStep(
+            rewriteStackTop.d_node,
+            execNode,
+            ProofRule::TRUST,
+            {},
+            {trid, eq, rewriter::mkRewriteRuleNode(d_nm, em.d_id)},
+            false);
       }
       ems.clear();
       // Treat the result like a full rewrite, i.e. rewrite it again from
@@ -612,9 +651,7 @@ Node Rewriter::rewriteTo(theory::TheoryId theoryId,
       }
       else if (pstate == RewriteStackElement::WAIT_FOR_CONDITION)
       {
-#ifdef CVC5_ASSERTIONS
-        d_rewriteStack->erase(parent.d_waitNode);
-#endif
+        d_execCondActive.erase(parent.d_waitNode);
         parent.d_waitNode = Node::null();
         if (rewriteStackTop.d_node == d_true)
         {

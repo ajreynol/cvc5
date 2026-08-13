@@ -42,6 +42,16 @@ class ProofPostprocessDsl : protected EnvObj, public ProofNodeUpdaterCallback
    * in-place based on the rewrite rule reconstruction algorithm.
    */
   void reconstruct(std::vector<std::shared_ptr<ProofNode>>& pfs);
+  /**
+   * Run the DSL reconstruction on the steps in pfs that were recorded by the
+   * rewriter for an executable (:exec) RARE rewrite, ignoring all others.
+   *
+   * These steps must be reconstructed before subtype elimination is run on the
+   * proof: the rewriter applied the RARE rule to the terms as they occur in
+   * the solver, and subtype elimination changes those terms (e.g. an integer
+   * constant to a real one), after which the rule no longer applies to them.
+   */
+  void reconstructExec(std::vector<std::shared_ptr<ProofNode>>& pfs);
 
   /** Should proof pn be updated? */
   bool shouldUpdate(std::shared_ptr<ProofNode> pn,
@@ -66,6 +76,11 @@ class ProofPostprocessDsl : protected EnvObj, public ProofNodeUpdaterCallback
   rewriter::TheoryRewriteMode d_tmode;
   /** The current proofs we are traversing */
   std::vector<std::shared_ptr<ProofNode>> d_traversing;
+  /**
+   * Whether we are only reconstructing the steps recorded for executable RARE
+   * rewrites, i.e. whether we are in a call to reconstructExec.
+   */
+  bool d_execOnly = false;
 };
 
 }  // namespace smt

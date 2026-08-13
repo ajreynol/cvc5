@@ -73,8 +73,43 @@ class RewriteDbProofCons : protected EnvObj
              int64_t recLimit,
              int64_t stepLimit,
              TheoryRewriteMode tmode);
+  /**
+   * Prove eq, which is known to hold by a single application of the RARE rule
+   * id, as recorded by the rewriter when it applied an executable (:exec) rule.
+   *
+   * Unlike prove above, this method does not search the rewrite database: it
+   * applies the given rule directly. Note that eq is stated over the terms as
+   * they occur in the rewriter, whereas id is stated over the encoding used by
+   * the RARE rules, hence we may first have to transform eq via
+   * RewriteDbNodeConverter and account for this with an encoding transform
+   * proof. If the rule cannot be applied to eq (e.g. because the rewriter and
+   * the RARE rule disagree on the encoding in a way the converter does not
+   * resolve), this method returns false and the caller should fall back on the
+   * general prove method above.
+   *
+   * @param cdp The object to add the proof of eq to.
+   * @param id The RARE rule that the rewriter applied.
+   * @param eq The equality to prove.
+   * @param recLimit The recursion limit, used when proving the conditions.
+   * @param stepLimit The step limit, used when proving the conditions.
+   * @return true if we successfully added a proof of eq to cdp.
+   */
+  bool proveWithExecRule(CDProof* cdp,
+                         ProofRewriteRule id,
+                         const Node& eq,
+                         int64_t recLimit,
+                         int64_t stepLimit);
 
  private:
+  /**
+   * Helper for proveWithExecRule, which attempts to prove eqi, stated over the
+   * encoding of the RARE rules, by a single application of rule id.
+   */
+  bool proveEqWithExecRule(CDProof* cdp,
+                           ProofRewriteRule id,
+                           const Node& eqi,
+                           int64_t recLimit,
+                           int64_t stepLimit);
   /**
    * Preprocess closure equality. This is called at the beginning of prove to
    * simplify equalities between closures. In particular we apply two possible
@@ -343,6 +378,12 @@ class RewriteDbProofCons : protected EnvObj
   rewriter::TheoryRewriteMode d_tmode;
   /** current rule we are applying to fixed point */
   ProofRewriteRule d_currFixedPointId;
+  /**
+   * The single rule that notifyMatch should consider, or NONE if it should
+   * consider all rules stored for the matched head. This is set while running
+   * the targeted match of proveEqWithExecRule.
+   */
+  ProofRewriteRule d_currExecId = ProofRewriteRule::NONE;
   /** current substitution from fixed point */
   std::vector<Node> d_currFixedPointSubs;
   /** current conclusion from fixed point */

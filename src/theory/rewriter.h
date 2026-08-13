@@ -198,6 +198,20 @@ class Rewriter
    */
   std::unique_ptr<rewriter::RewriteDbExec> d_execDb;
   /**
+   * The conditions of :exec rules whose rewrite is currently in progress, i.e.
+   * those for which some stack frame is in state WAIT_FOR_CONDITION.
+   *
+   * Since a condition is rewritten in the same way as any other term, it may
+   * itself trigger the :exec rule whose condition it is, which would not
+   * terminate. We break such cycles by abandoning a match whose condition is
+   * already being checked, see rewriteTo. Note this set is maintained
+   * unconditionally, and not only in assertions builds: unlike the rewrite
+   * loops tracked by d_rewriteStack (which indicate a bug in a theory
+   * rewriter), a cyclic condition originates from the RARE rule set and must
+   * not hang a production build.
+   */
+  std::unordered_set<Node> d_execCondActive;
+  /**
    * Nodes rewritten with proofs. Since d_tpg contains a reference to all
    * nodes that have been rewritten with proofs, we can keep only a TNode
    * here.

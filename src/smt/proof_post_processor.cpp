@@ -191,6 +191,15 @@ Node ProofPostprocessCallback::expandMacros(ProofRule id,
   {
     TrustId tid;
     getTrustId(args[0], tid);
+    if (tid == TrustId::REWRITE_EXEC)
+    {
+      // This step records a rewrite that the rewriter performed by an
+      // executable RARE rule. We must not attempt to show it by rewriting
+      // below, since the rewriter proves it by applying that same rule, which
+      // would make the proof of this step contain itself. It is reconstructed
+      // by ProofPostprocessDsl instead, which applies the recorded rule.
+      return Node::null();
+    }
     // maybe we can show it rewrites to true based on rewriting
     // modulo original forms (MACRO_SR_PRED_INTRO).
     TheoryProofStepBuffer psb(d_pc);
@@ -1115,6 +1124,19 @@ void ProofPostprocess::process(std::shared_ptr<ProofNode> pf,
   d_cb.initializeUpdate(pppg);
   // now, process
   d_updater.process(pf);
+
+  // Reconstruct the steps recorded by the rewriter for executable RARE
+  // rewrites. This must happen before subtype elimination below, since the
+  // rewriter applied those rules to the terms as they occur in the solver,
+  // which subtype elimination changes. Note we do this independently of
+  // d_elimTrustedRules: these steps are always reconstructed, as they are the
+  // only proof we have of the rewrites in question.
+  if (d_ppdsl != nullptr)
+  {
+    std::vector<std::shared_ptr<ProofNode>> eproofs;
+    expr::getSubproofRules(pf, {ProofRule::TRUST}, eproofs);
+    d_ppdsl->reconstructExec(eproofs);
+  }
 
   // eliminate subtypes if option is specified
   if (options().proof.proofElimSubtypes)

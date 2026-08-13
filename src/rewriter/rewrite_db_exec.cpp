@@ -21,8 +21,8 @@ namespace rewriter {
 
 /**
  * Notification class used to collect the :exec rules whose left-hand side
- * matches a candidate term. For each such rule, the right-hand side and the
- * conditions are instantiated by the substitution witnessing the match.
+ * matches a candidate term, together with the substitution witnessing the
+ * match. The conditions and right-hand sides are instantiated later, on demand.
  */
 class RewriteExecNotify : public expr::NotifyMatch
 {
@@ -32,32 +32,14 @@ class RewriteExecNotify : public expr::NotifyMatch
       : d_db(db), d_matches(matches)
   {
   }
-  bool notify(Node n,
+  bool notify(CVC5_UNUSED Node n,
               Node lhs,
               std::vector<Node>& vars,
               std::vector<Node>& subs) override
   {
     // lhs is the (stored) left-hand side that matches n under { vars -> subs }
     const RewriteDbExec::ExecRule& er = d_db.getRuleForLhs(lhs);
-    Node rhs = expr::narySubstitute(er.d_rhs, vars, subs);
-    // Skip the rule if the instantiated right-hand side could not be
-    // constructed, or if it would not change n.
-    if (rhs.isNull() || rhs == n)
-    {
-      return true;
-    }
-    std::vector<Node> condsInst;
-    for (const Node& c : er.d_conds)
-    {
-      Node ci = expr::narySubstitute(c, vars, subs);
-      if (ci.isNull())
-      {
-        // could not construct the instantiated condition, skip the rule
-        return true;
-      }
-      condsInst.push_back(ci);
-    }
-    d_matches.push_back(RewriteDbExec::ExecMatch{er.d_id, condsInst, rhs});
+    d_matches.push_back(RewriteDbExec::ExecMatch{er.d_id, &er, vars, subs});
     // continue, so that all matching rules are collected
     return true;
   }
@@ -110,10 +92,25 @@ void RewriteDbExec::getMatches(const Node& n,
     Trace("rewrite-exec") << "RewriteDbExec: " << n << " matches:" << std::endl;
     for (const ExecMatch& m : matches)
     {
-      Trace("rewrite-exec")
-          << "...via " << m.d_id << ", rewrites to " << m.d_rhs << std::endl;
+      Trace("rewrite-exec") << "...via " << m.d_id << std::endl;
     }
   }
+}
+
+size_t RewriteDbExec::getNumConditions(const ExecMatch& m) const
+{
+  return m.d_rule->d_conds.size();
+}
+
+Node RewriteDbExec::getCondition(const ExecMatch& m, size_t i) const
+{
+  Assert(i < m.d_rule->d_conds.size());
+  return expr::narySubstitute(m.d_rule->d_conds[i], m.d_vars, m.d_subs);
+}
+
+Node RewriteDbExec::getResult(const ExecMatch& m) const
+{
+  return expr::narySubstitute(m.d_rule->d_rhs, m.d_vars, m.d_subs);
 }
 
 }  // namespace rewriter

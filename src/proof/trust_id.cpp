@@ -100,6 +100,7 @@ const char* toString(TrustId id)
     case TrustId::DIAMONDS: return "DIAMONDS";
     case TrustId::EXT_THEORY_REWRITE: return "EXT_THEORY_REWRITE";
     case TrustId::REWRITE_NO_ELABORATE: return "REWRITE_NO_ELABORATE";
+    case TrustId::REWRITE_EXEC: return "REWRITE_EXEC";
     case TrustId::FLATTENING_REWRITE: return "FLATTENING_REWRITE";
     case TrustId::SUBS_NO_ELABORATE: return "SUBS_NO_ELABORATE";
     case TrustId::SUBS_MAP: return "SUBS_MAP";
