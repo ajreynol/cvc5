@@ -42,16 +42,6 @@ class ProofPostprocessDsl : protected EnvObj, public ProofNodeUpdaterCallback
    * in-place based on the rewrite rule reconstruction algorithm.
    */
   void reconstruct(std::vector<std::shared_ptr<ProofNode>>& pfs);
-  /**
-   * Run the DSL reconstruction on the steps in pfs that were recorded by the
-   * rewriter for an executable (:exec) RARE rewrite, ignoring all others.
-   *
-   * These steps must be reconstructed before subtype elimination is run on the
-   * proof: the rewriter applied the RARE rule to the terms as they occur in
-   * the solver, and subtype elimination changes those terms (e.g. an integer
-   * constant to a real one), after which the rule no longer applies to them.
-   */
-  void reconstructExec(std::vector<std::shared_ptr<ProofNode>>& pfs);
 
   /** Should proof pn be updated? */
   bool shouldUpdate(std::shared_ptr<ProofNode> pn,
@@ -68,19 +58,36 @@ class ProofPostprocessDsl : protected EnvObj, public ProofNodeUpdaterCallback
   void finalize(std::shared_ptr<ProofNode> pn) override;
 
  private:
+  /**
+   * Add to cdp a proof of eq by a single application of the RARE rule id, which
+   * the rewriter recorded when it applied the executable (:exec) version of
+   * that rule.
+   *
+   * Since we know which rule proves eq, we apply it directly rather than
+   * searching for a proof with d_rdbPc. The conditions of the rule, if any, are
+   * added as trusted steps, which this class reconstructs in turn.
+   *
+   * This fails if the rule does not apply to eq as it stands, e.g. because eq
+   * uses an encoding of terms that differs from the one the RARE rules are
+   * stated over. The caller falls back on d_rdbPc in that case, which accounts
+   * for such differences.
+   *
+   * @param cdp The object to add the proof of eq to.
+   * @param id The RARE rule that the rewriter applied.
+   * @param eq The equality to prove.
+   * @return true if we successfully added a proof of eq to cdp.
+   */
+  bool proveWithRule(CDProof* cdp, ProofRewriteRule id, const Node& eq);
   /** Common constants */
   Node d_true;
+  /** Pointer to the rewrite database */
+  rewriter::RewriteDb* d_rdb;
   /** The rewrite database proof generator */
   rewriter::RewriteDbProofCons d_rdbPc;
   /** The default mode for if/when to try theory rewrites */
   rewriter::TheoryRewriteMode d_tmode;
   /** The current proofs we are traversing */
   std::vector<std::shared_ptr<ProofNode>> d_traversing;
-  /**
-   * Whether we are only reconstructing the steps recorded for executable RARE
-   * rewrites, i.e. whether we are in a call to reconstructExec.
-   */
-  bool d_execOnly = false;
 };
 
 }  // namespace smt

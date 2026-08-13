@@ -12,8 +12,6 @@
 
 #include "rewriter/rewrite_db_proof_cons.h"
 
-#include <algorithm>
-
 #include "expr/aci_norm.h"
 #include "expr/algorithm/flatten.h"
 #include "expr/node_algorithm.h"
@@ -146,71 +144,6 @@ bool RewriteDbProofCons::prove(CDProof* cdp,
     Trace("rpc") << "...success" << std::endl;
   }
   return success;
-}
-
-bool RewriteDbProofCons::proveWithExecRule(CDProof* cdp,
-                                           ProofRewriteRule id,
-                                           const Node& eq,
-                                           int64_t recLimit,
-                                           int64_t stepLimit)
-{
-  Assert(eq.getKind() == Kind::EQUAL);
-  Trace("rpc") << "RewriteDbProofCons::proveWithExecRule " << id << " for "
-               << eq << std::endl;
-  // First try the equality as it stands. This succeeds when the encoding used
-  // by the rewriter and the one used by the RARE rules agree on eq.
-  if (proveEqWithExecRule(cdp, id, eq, recLimit, stepLimit))
-  {
-    Trace("rpc") << "...success (exec rule, unconverted)" << std::endl;
-    return true;
-  }
-  // Otherwise, transform eq into the encoding the RARE rules are stated over
-  // and try again, relating the two with an encoding transform proof.
-  Node eqi = d_rdnc.convert(eq);
-  if (eqi == eq)
-  {
-    Trace("rpc") << "...fail (exec rule, conversion is identity)" << std::endl;
-    return false;
-  }
-  Trace("rpc-debug") << "...now try converted " << eqi << std::endl;
-  if (!proveEqWithExecRule(cdp, id, eqi, recLimit, stepLimit))
-  {
-    Trace("rpc") << "...fail (exec rule, converted)" << std::endl;
-    return false;
-  }
-  d_trrc.ensureProofForEncodeTransform(cdp, eq, eqi);
-  Trace("rpc") << "...success (exec rule, converted)" << std::endl;
-  return true;
-}
-
-bool RewriteDbProofCons::proveEqWithExecRule(CDProof* cdp,
-                                             ProofRewriteRule id,
-                                             const Node& eqi,
-                                             int64_t recLimit,
-                                             int64_t stepLimit)
-{
-  // add one to recursion limit, since it is decremented whenever we
-  // initiate the getMatches routine.
-  d_currRecLimit = recLimit + 1;
-  d_currStepLimit = stepLimit;
-  d_currFailResource = false;
-  // Match against the database, but with d_currExecId set so that notifyMatch
-  // considers only the given rule. Note we cannot match against the rule's own
-  // trie, which is populated for fixed point rules only.
-  Node prevTarget = d_target;
-  d_target = eqi;
-  d_currExecId = id;
-  d_db->getMatches(eqi[0], &d_notify);
-  d_currExecId = ProofRewriteRule::NONE;
-  d_target = prevTarget;
-  std::unordered_map<Node, ProvenInfo>::iterator it = d_pcache.find(eqi);
-  if (it == d_pcache.end() || it->second.d_id == RewriteProofStatus::FAIL)
-  {
-    return false;
-  }
-  ensureProofInternal(cdp, eqi);
-  AlwaysAssert(cdp->hasStep(eqi)) << eqi;
-  return true;
 }
 
 bool RewriteDbProofCons::proveEqStratified(CDProof* cdp,
@@ -601,23 +534,8 @@ bool RewriteDbProofCons::notifyMatch(const Node& s,
   Assert(d_target[0] == s);
   bool recurse = d_currRecLimit > 0;
   // get the rule identifiers for the conclusion
-  const std::vector<ProofRewriteRule>& idsForHead = d_db->getRuleIdsForHead(n);
-  Assert(!idsForHead.empty());
-  // If we are matching on behalf of proveEqWithExecRule, consider only the
-  // rule we were asked about, and only if this is a match of its conclusion.
-  std::vector<ProofRewriteRule> execIds;
-  if (d_currExecId != ProofRewriteRule::NONE)
-  {
-    if (std::find(idsForHead.begin(), idsForHead.end(), d_currExecId)
-        == idsForHead.end())
-    {
-      // this match is for the conclusion of some other rule, keep looking
-      return true;
-    }
-    execIds.push_back(d_currExecId);
-  }
-  const std::vector<ProofRewriteRule>& ids =
-      d_currExecId != ProofRewriteRule::NONE ? execIds : idsForHead;
+  const std::vector<ProofRewriteRule>& ids = d_db->getRuleIdsForHead(n);
+  Assert(!ids.empty());
   // check each rule instance, succeed if one proves
   for (ProofRewriteRule id : ids)
   {

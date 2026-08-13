@@ -12,10 +12,14 @@
 
 #include "smt/proof_post_processor_dsl.h"
 
+#include <algorithm>
+
+#include "expr/nary_term_util.h"
 #include "options/base_options.h"
 #include "options/smt_options.h"
 #include "proof/proof_ensure_closed.h"
 #include "proof/proof_node_algorithm.h"
+#include "proof/trust_id.h"
 #include "smt/env.h"
 
 using namespace cvc5::internal::theory;
@@ -23,8 +27,52 @@ using namespace cvc5::internal::theory;
 namespace cvc5::internal {
 namespace smt {
 
+namespace {
+
+/**
+ * Notification class that captures the substitution witnessing that the
+ * conclusion of a given rewrite rule matches a term, ignoring the matches of
+ * the conclusions of all other rules.
+ */
+class DslRuleMatch : public expr::NotifyMatch
+{
+ public:
+  DslRuleMatch(rewriter::RewriteDb* db, ProofRewriteRule id)
+      : d_found(false), d_db(db), d_id(id)
+  {
+  }
+  bool notify(CVC5_UNUSED Node s,
+              Node n,
+              std::vector<Node>& vars,
+              std::vector<Node>& subs) override
+  {
+    const std::vector<ProofRewriteRule>& ids = d_db->getRuleIdsForHead(n);
+    if (std::find(ids.begin(), ids.end(), d_id) == ids.end())
+    {
+      // this is the conclusion of another rule, keep looking
+      return true;
+    }
+    d_found = true;
+    d_vars = vars;
+    d_subs = subs;
+    // we have what we came for, stop the search
+    return false;
+  }
+  /** Whether the conclusion of the rule matched. */
+  bool d_found;
+  /** The variables of the rule that were bound, and the terms they matched. */
+  std::vector<Node> d_vars;
+  std::vector<Node> d_subs;
+
+ private:
+  rewriter::RewriteDb* d_db;
+  ProofRewriteRule d_id;
+};
+
+}  // namespace
+
 ProofPostprocessDsl::ProofPostprocessDsl(Env& env, rewriter::RewriteDb* rdb)
-    : EnvObj(env), d_rdbPc(env, rdb)
+    : EnvObj(env), d_rdb(rdb), d_rdbPc(env, rdb)
 {
   d_true = nodeManager()->mkConst(true);
   d_tmode = (options().proof.proofGranularityMode
@@ -33,12 +81,71 @@ ProofPostprocessDsl::ProofPostprocessDsl(Env& env, rewriter::RewriteDb* rdb)
                 : rewriter::TheoryRewriteMode::STANDARD;
 }
 
-void ProofPostprocessDsl::reconstructExec(
-    std::vector<std::shared_ptr<ProofNode>>& pfs)
+bool ProofPostprocessDsl::proveWithRule(CDProof* cdp,
+                                        ProofRewriteRule id,
+                                        const Node& eq)
 {
-  d_execOnly = true;
-  reconstruct(pfs);
-  d_execOnly = false;
+  Assert(eq.getKind() == Kind::EQUAL);
+  Trace("pp-dsl") << "...apply " << id << " to " << eq << std::endl;
+  const rewriter::RewriteProofRule& rpr = d_rdb->getRule(id);
+  // find the substitution witnessing that the conclusion of the rule matches
+  DslRuleMatch dm(d_rdb, id);
+  d_rdb->getMatches(eq[0], &dm);
+  if (!dm.d_found)
+  {
+    Trace("pp-dsl") << "...fail, the rule does not match" << std::endl;
+    return false;
+  }
+  // put the substitution in the order of the variable list of the rule, which
+  // is the order the arguments of a DSL_REWRITE step are given in
+  const std::vector<Node>& varList = rpr.getVarList();
+  std::vector<Node> subs;
+  for (const Node& v : varList)
+  {
+    const std::vector<Node>& mvars = dm.d_vars;
+    std::vector<Node>::const_iterator it =
+        std::find(mvars.begin(), mvars.end(), v);
+    if (it == mvars.end())
+    {
+      Trace("pp-dsl") << "...fail, " << v << " was not bound" << std::endl;
+      return false;
+    }
+    subs.push_back(dm.d_subs[std::distance(mvars.begin(), it)]);
+  }
+  // the rule must prove exactly the equality we are asked for
+  if (rpr.getConclusionFor(subs) != eq)
+  {
+    Trace("pp-dsl") << "...fail, the rule concludes "
+                    << rpr.getConclusionFor(subs) << std::endl;
+    return false;
+  }
+  // The instantiated conditions of the rule are the premises of the step. We
+  // add each as a trusted step, which we reconstruct in turn, since the
+  // updater revisits the proof we add here.
+  std::vector<Node> premises;
+  for (const Node& c : rpr.getConditions())
+  {
+    Node ci = expr::narySubstitute(c, varList, subs);
+    if (ci.isNull())
+    {
+      Trace("pp-dsl") << "...fail, could not instantiate " << c << std::endl;
+      return false;
+    }
+    premises.push_back(ci);
+  }
+  for (const Node& p : premises)
+  {
+    if (!cdp->hasStep(p))
+    {
+      cdp->addTrustedStep(p, TrustId::MACRO_THEORY_REWRITE_RCONS, {}, {});
+    }
+  }
+  std::vector<Node> args;
+  args.push_back(rewriter::mkRewriteRuleNode(nodeManager(), id));
+  args.insert(args.end(), subs.begin(), subs.end());
+  cdp->addStep(eq, ProofRule::DSL_REWRITE, premises, args);
+  Trace("pp-dsl") << "...success, with premises " << premises << std::endl;
+  return true;
 }
 
 void ProofPostprocessDsl::reconstruct(
@@ -77,22 +184,6 @@ bool ProofPostprocessDsl::shouldUpdate(std::shared_ptr<ProofNode> pn,
 {
   ProofRule id = pn->getRule();
   continueUpdate = true;
-  if (d_execOnly)
-  {
-    // Only consider the steps recorded for executable RARE rewrites. Note that
-    // the reconstruction of an executable rewrite may itself contain executable
-    // rewrites, e.g. those used to show the conditions of the rule hold. We
-    // bound how deep we follow these, as for the general case below.
-    TrustId trid;
-    if (id != ProofRule::TRUST || !pn->getChildren().empty()
-        || d_traversing.size() >= 3 || !getTrustId(pn->getArguments()[0], trid)
-        || trid != TrustId::THEORY_REWRITE_EXEC)
-    {
-      return false;
-    }
-    d_traversing.push_back(pn);
-    return true;
-  }
   // we should update if we
   // - Have rule TRUST or TRUST_THEORY_REWRITE,
   // - We have no premises
@@ -180,26 +271,17 @@ bool ProofPostprocessDsl::update(Node res,
   }
   int64_t recLimit = options().proof.proofRewriteRconsRecLimit;
   int64_t stepLimit = options().proof.proofRewriteRconsStepLimit;
-  // Attempt to reconstruct the proof of the equality into cdp using the
-  // rewrite database proof reconstructor. If the step came from an executable
-  // RARE rewrite, first apply the rule the rewriter recorded, which avoids
-  // searching for a proof we already know. We fall back on the general method
-  // if that fails.
-  bool proved = false;
-  if (execId != ProofRewriteRule::NONE)
-  {
-    proved = d_rdbPc.proveWithExecRule(cdp, execId, res, recLimit, stepLimit);
-    if (!proved)
-    {
-      Trace("pp-dsl") << "...failed to apply recorded rule " << execId
-                      << ", fall back on search" << std::endl;
-    }
-  }
+  // If the step came from an executable RARE rewrite, we know which rule proves
+  // it, hence we apply that rule directly instead of searching for a proof.
+  // Otherwise, and if applying it fails, attempt to reconstruct the proof of
+  // the equality into cdp using the rewrite database proof reconstructor.
+  // We record the subgoals in d_subgoals.
+  bool proved =
+      execId != ProofRewriteRule::NONE && proveWithRule(cdp, execId, res);
   if (!proved)
   {
     proved = d_rdbPc.prove(cdp, res[0], res[1], recLimit, stepLimit, tm);
   }
-  // We record the subgoals in d_subgoals.
   if (proved)
   {
     // we will update this again, in case the elaboration introduced

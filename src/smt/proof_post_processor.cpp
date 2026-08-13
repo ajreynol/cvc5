@@ -1125,17 +1125,18 @@ void ProofPostprocess::process(std::shared_ptr<ProofNode> pf,
   // now, process
   d_updater.process(pf);
 
-  // Reconstruct the steps recorded by the rewriter for executable RARE
-  // rewrites. This must happen before subtype elimination below, since the
-  // rewriter applied those rules to the terms as they occur in the solver,
-  // which subtype elimination changes. Note we do this independently of
-  // d_elimTrustedRules: these steps are always reconstructed, as they are the
-  // only proof we have of the rewrites in question.
-  if (d_ppdsl != nullptr)
+  // Reconstruct the trusted steps with finer-grained DSL rules. Note this is
+  // done before eliminating subtypes below: the steps recorded by the rewriter
+  // for executable RARE rewrites are stated over the terms as they occur in
+  // the solver, which subtype elimination changes, after which the rule that
+  // the rewriter applied no longer applies to them.
+  if (d_elimTrustedRules && d_ppdsl != nullptr)
   {
-    std::vector<std::shared_ptr<ProofNode>> eproofs;
-    expr::getSubproofRules(pf, {ProofRule::TRUST}, eproofs);
-    d_ppdsl->reconstructExec(eproofs);
+    std::vector<std::shared_ptr<ProofNode>> tproofs;
+    std::unordered_set<ProofRule> trustRules{ProofRule::TRUST,
+                                             ProofRule::TRUST_THEORY_REWRITE};
+    expr::getSubproofRules(pf, trustRules, tproofs);
+    d_ppdsl->reconstruct(tproofs);
   }
 
   // eliminate subtypes if option is specified
@@ -1147,15 +1148,6 @@ void ProofPostprocess::process(std::shared_ptr<ProofNode> pf,
     AlwaysAssert(pfc != nullptr);
     // now update
     d_env.getProofNodeManager()->updateNode(pf.get(), pfc.get());
-  }
-  if (d_elimTrustedRules && d_ppdsl != nullptr)
-  {
-    // go back and find the (possibly new) trusted steps
-    std::vector<std::shared_ptr<ProofNode>> tproofs;
-    std::unordered_set<ProofRule> trustRules{ProofRule::TRUST,
-                                             ProofRule::TRUST_THEORY_REWRITE};
-    expr::getSubproofRules(pf, trustRules, tproofs);
-    d_ppdsl->reconstruct(tproofs);
   }
 }
 
