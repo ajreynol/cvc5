@@ -92,14 +92,6 @@ class Rewriter
   void finishInit(Env& env);
 
   /**
-   * Print to os the C++ implementation of the single step rewrite given by the
-   * RARE rules marked with :exec, which is what `-o rare-db-exec` outputs, and
-   * which is the implementation this rewriter uses. Note that generating it
-   * requires indexing the :exec rules, which is done only here.
-   */
-  void printExec(std::ostream& os);
-
-  /**
    * Registers a theory rewriter with this rewriter. The rewriter does not own
    * the theory rewriters.
    *

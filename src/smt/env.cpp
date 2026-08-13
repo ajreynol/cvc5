@@ -25,6 +25,7 @@
 #include "options/strings_options.h"
 #include "printer/printer.h"
 #include "proof/conv_proof_generator.h"
+#include "rewriter/rewrite_db_exec_printer.h"
 #include "smt/proof_manager.h"
 #include "smt/solver_engine_stats.h"
 #include "theory/evaluator.h"
@@ -90,7 +91,7 @@ void Env::finishInit(smt::PfManager* pm)
   // generate that implementation but not to apply it.
   if (isOutputOn(OutputTag::RARE_DB_EXEC))
   {
-    d_rewriter->printExec(output(OutputTag::RARE_DB_EXEC));
+    rewriter::printRewriteDbExec(output(OutputTag::RARE_DB_EXEC), d_nm);
   }
   d_topLevelSubs.reset(
       new theory::TrustSubstitutionMap(*this, d_userContext.get()));

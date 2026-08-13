@@ -18,7 +18,6 @@
 #include "proof/conv_proof_generator.h"
 #include "proof/trust_id.h"
 #include "rewriter/rewrite_db_exec.h"
-#include "rewriter/rewrite_db_exec_printer.h"
 #include "rewriter/rewrites.h"
 #include "theory/builtin/proof_checker.h"
 #include "theory/evaluator.h"
@@ -147,11 +146,6 @@ rewriter::RewriteDbExec* Rewriter::getExecDb()
     d_execDb.reset(new rewriter::RewriteDbExec(d_nm));
   }
   return d_execDb.get();
-}
-
-void Rewriter::printExec(std::ostream& os)
-{
-  rewriter::printRewriteDbExec(os, d_nm);
 }
 
 Node Rewriter::extendedRewrite(TNode node, bool aggr)
