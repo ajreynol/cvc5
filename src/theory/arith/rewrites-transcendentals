@@ -10,16 +10,3 @@
 
 (define-rule arith-pi-not-int () (is_int real.pi) false)
 
-; Marked :exec to demonstrate the executable rewrite trie (a "direct", i.e.
-; no-:list-variable, pattern). The double-angle identity is not applied by the
-; hand-written rewriter, so it survives to the last-effort exec pass.
-(define-rule arith-sine-double ((x Real)) (sin (* 2 x)) (* 2 (sin x) (cos x)) :exec)
-
-; Marked :exec to demonstrate a *conditional* executable rewrite. The condition
-; is verified by rewriting it to true before the rule is applied. Note the
-; condition here holds only by virtue of the executable rule above, which
-; demonstrates that conditions are rewritten in the same way as any other term.
-(define-cond-rule arith-sine-quad ((x Real))
-  (= (sin (* 2 x)) (* 2 (sin x) (cos x)))
-  (sin (* 4 x)) (* 2 (sin (* 2 x)) (cos (* 2 x))) :exec)
-

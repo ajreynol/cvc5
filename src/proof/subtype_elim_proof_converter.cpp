@@ -306,6 +306,16 @@ Node SubtypeElimConverterCallback::convert(Node res,
     default: break;
   }
 
+  // THEORY_REWRITE steps (e.g. produced by the executable RARE rewrites) are
+  // not checkable on their own here; they are reconstructed later by the DSL
+  // proof machinery, which cannot re-apply the rule to the subtype-converted
+  // term. Record a trusted step for the converted conclusion instead.
+  if (id == ProofRule::THEORY_REWRITE)
+  {
+    cdp->addTrustedStep(resc, TrustId::SUBTYPE_ELIMINATION, childrenc, {});
+    return resc;
+  }
+
   Node newRes;
   // check if succeeds with no changes
   if (tryWith(id, childrenc, cargs, resc, newRes, cdp))
@@ -321,20 +331,6 @@ Node SubtypeElimConverterCallback::convert(Node res,
         << "Failed to convert subtyping " << id << std::endl;
     Trace("pf-subtype-elim") << "Premises: " << childrenc << std::endl;
     Trace("pf-subtype-elim") << "Args: " << cargs << std::endl;
-    if (id == ProofRule::DSL_REWRITE)
-    {
-      // A DSL rewrite is stated over the terms of the RARE rule, which may use
-      // an integer literal where the term it was applied to has a real one
-      // (e.g. (* 2 x) for real x). Subtype elimination rewrites the latter,
-      // after which the rule proves neither the converted conclusion nor
-      // matches the conditions its converted premises are meant to discharge.
-      // Record a trusted step for the converted conclusion instead, keeping
-      // the premises as children so that their proofs are retained.
-      // TODO (wishue #160): convert the terms of the rule instead, so that
-      // rewrites of this shape keep a DSL_REWRITE step.
-      cdp->addTrustedStep(resc, TrustId::SUBTYPE_ELIMINATION, childrenc, {});
-      return resc;
-    }
     return newRes;
   }
   // otherwise, newRes is what is proven from the rule without changes,
