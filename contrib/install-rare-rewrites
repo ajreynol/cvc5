@@ -50,16 +50,33 @@ echo "(check-sat)" | $cvc5 -o rare-db-expert --force-logic=ALL --produce-proofs 
 # use eo::define instead of let
 sed -i 's/(let/(eo::define/g' $EXPERT_REWRITE_SIG
 
-echo "[install-rare-rewrites] Generate compiled executable rewrite implementation..."
+echo "[install-rare-rewrites] Generate executable rewrite implementation..."
 
-# The compiled counterpart of the executable (:exec) rewrite trie. This is a
-# generated source file; it is checked in so that the build does not depend on
-# a previously built cvc5.
+# The implementation of the :exec rules. Only the body below is generated; it
+# is substituted into rewrite_db_exec_template.cpp, which holds the parts that
+# are written by hand. The result is checked in so that the build does not
+# depend on a previously built cvc5.
+EXEC_TEMPLATE=$DIR/src/rewriter/rewrite_db_exec_template.cpp
 EXEC_IMPL=$DIR/src/rewriter/rewrite_db_exec.cpp
+EXEC_BODY=$(mktemp)
 
-echo "(check-sat)" | $cvc5 -o rare-db-exec --force-logic=ALL | sed '$ d' > $EXEC_IMPL
+echo "(check-sat)" | $cvc5 -o rare-db-exec --force-logic=ALL | sed '$ d' > $EXEC_BODY
+
+python3 - "$EXEC_TEMPLATE" "$EXEC_BODY" "$EXEC_IMPL" << 'EOF'
+import sys
+template, body, out = sys.argv[1], sys.argv[2], sys.argv[3]
+with open(template) as f:
+    s = f.read()
+with open(body) as f:
+    b = f.read()
+assert '${exec_impl}$' in s, 'template is missing the ${exec_impl}$ placeholder'
+with open(out, 'w') as f:
+    f.write(s.replace('${exec_impl}$', b.rstrip('\n')))
+EOF
+
+rm -f $EXEC_BODY
 
 if grep -q "^// WARNING" $EXEC_IMPL; then
-  echo "[install-rare-rewrites] WARNING: some :exec rules were not compiled, see"
-  echo "[install-rare-rewrites] the header of $EXEC_IMPL"
+  echo "[install-rare-rewrites] WARNING: some :exec rules are incomplete or were"
+  echo "[install-rare-rewrites] not compiled, see the notes in $EXEC_IMPL"
 fi

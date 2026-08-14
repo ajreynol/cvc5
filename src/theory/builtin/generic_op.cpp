@@ -79,6 +79,41 @@ bool GenericOp::isIndexedOperatorKind(Kind k)
          || k == Kind::APPLY_TESTER;
 }
 
+bool GenericOp::getNumIndicesForOperator(Kind k, size_t& nindices)
+{
+  switch (k)
+  {
+    case Kind::DIVISIBLE:
+    case Kind::REGEXP_REPEAT:
+    case Kind::BITVECTOR_REPEAT:
+    case Kind::BITVECTOR_ZERO_EXTEND:
+    case Kind::BITVECTOR_SIGN_EXTEND:
+    case Kind::BITVECTOR_ROTATE_LEFT:
+    case Kind::BITVECTOR_ROTATE_RIGHT:
+    case Kind::BITVECTOR_BIT:
+    case Kind::INT_TO_BITVECTOR:
+    case Kind::IAND:
+    case Kind::FLOATINGPOINT_TO_SBV:
+    case Kind::FLOATINGPOINT_TO_UBV:
+    case Kind::FLOATINGPOINT_TO_SBV_TOTAL:
+    case Kind::FLOATINGPOINT_TO_UBV_TOTAL:
+    case Kind::APPLY_TESTER:
+    case Kind::APPLY_UPDATER: nindices = 1; return true;
+    case Kind::REGEXP_LOOP:
+    case Kind::BITVECTOR_EXTRACT:
+    case Kind::FLOATINGPOINT_TO_FP_FROM_FP:
+    case Kind::FLOATINGPOINT_TO_FP_FROM_IEEE_BV:
+    case Kind::FLOATINGPOINT_TO_FP_FROM_SBV:
+    case Kind::FLOATINGPOINT_TO_FP_FROM_UBV:
+    case Kind::FLOATINGPOINT_TO_FP_FROM_REAL: nindices = 2; return true;
+    default:
+      // The remaining indexed operators, e.g. table.project, are indexed by a
+      // list whose length is a property of the operator, not of its kind.
+      break;
+  }
+  return false;
+}
+
 std::vector<Node> GenericOp::getIndicesForOperator(Kind k, Node n)
 {
   NodeManager* nm = n.getNodeManager();

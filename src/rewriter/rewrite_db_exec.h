@@ -90,6 +90,29 @@ class RewriteDbExec
   Node getResult(const ExecMatch& m) const;
 
  private:
+  /**
+   * The following are utilities used by the generated code, which are written
+   * by hand rather than generated.
+   */
+  /**
+   * Return the sequence of the children of n in [start, end), as the SEXPR
+   * that a :list variable is bound to. Note this mirrors how the substitution
+   * of a :list variable is represented in expr::narySubstitute.
+   */
+  Node mkListArg(const Node& n, size_t start, size_t end) const;
+  /**
+   * Return the application of k to children, accounting for the children that
+   * a :list variable bound to the empty sequence did not contribute. That is,
+   * if children is empty we return the null terminator of k at type tn, and if
+   * it is a singleton we return that child. Returns the null node if the
+   * application could not be constructed, e.g. if k has no null terminator at
+   * tn.
+   *
+   * This mirrors the corresponding case of expr::narySubstitute, which is how
+   * the right-hand side of a rule with :list variables is instantiated.
+   */
+  Node mkNary(Kind k, const std::vector<Node>& children, const TypeNode& tn) const;
+
   /** Pointer to the node manager. */
   NodeManager* d_nm;
   /**

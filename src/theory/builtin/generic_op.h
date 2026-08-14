@@ -47,6 +47,16 @@ class GenericOp
    */
   static std::vector<Node> getIndicesForOperator(Kind k, Node n);
   /**
+   * Return true if the number of indices of an operator of kind k is
+   * determined by k, in which case nindices is set to that number.
+   *
+   * Returns false for the operators whose indices are a list whose length
+   * depends on the operator itself, e.g. table.project. Note this is intended
+   * for callers that must know the arity of an indexed operator without having
+   * an instance of it, e.g. when compiling the RARE rules that use one.
+   */
+  static bool getNumIndicesForOperator(Kind k, size_t& nindices);
+  /**
    * Return the operator of kind k whose indices are the constants in the
    * given vector.
    */
