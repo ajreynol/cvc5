@@ -101,6 +101,34 @@ Node RewriteDbExec::toConcrete(const Node& n) const
   return visited[n];
 }
 
+void RewriteDbExec::getMatches(const Node& n,
+                               std::vector<ExecMatch>& matches) const
+{
+  CVC5_UNUSED size_t start = matches.size();
+  getMatchesInternal(n, matches);
+#ifdef CVC5_ASSERTIONS
+  // Check the generated code against the rules it was generated from. Note we
+  // do this here and not in the generated code itself, so that the check does
+  // not depend on the code it is checking.
+  for (size_t i = start, nmatches = matches.size(); i < nmatches; i++)
+  {
+    Assert(checkMatch(n, matches[i]))
+        << "Executable rewrite rule " << matches[i].d_id
+        << " reported a match of " << n << " that it does not have";
+  }
+#endif
+}
+
+bool RewriteDbExec::checkMatch(const Node& n, const ExecMatch& m) const
+{
+  std::map<ProofRewriteRule, Node>::const_iterator it = d_ruleLhs.find(m.d_id);
+  if (it == d_ruleLhs.end())
+  {
+    return false;
+  }
+  return instantiate(it->second, m) == n;
+}
+
 size_t RewriteDbExec::getNumConditions(const ExecMatch& m) const
 {
   std::map<ProofRewriteRule, std::vector<Node>>::const_iterator it =

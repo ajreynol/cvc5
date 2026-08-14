@@ -276,8 +276,24 @@ bool ProofPostprocessDsl::update(Node res,
   // Otherwise, and if applying it fails, attempt to reconstruct the proof of
   // the equality into cdp using the rewrite database proof reconstructor.
   // We record the subgoals in d_subgoals.
-  bool proved =
-      execId != ProofRewriteRule::NONE && proveWithRule(cdp, execId, res);
+  bool proved = false;
+  if (execId != ProofRewriteRule::NONE)
+  {
+    proved = proveWithRule(cdp, execId, res);
+    // Failing here means the rewriter reported that execId applied, while
+    // applying it to the same equality here says that it does not, i.e. the
+    // generated implementation of the executable rules does not agree with the
+    // rules it was generated from. We fall back on searching for a proof, but
+    // this is a bug and not a hard reconstruction problem, hence we are loud
+    // about it rather than silently leaving a trusted step.
+    if (!proved)
+    {
+      Assert(false) << "Executable rewrite rule " << execId
+                    << " does not prove " << res;
+      warning() << "WARNING: the executable rewrite rule " << execId
+                << " does not prove " << res << std::endl;
+    }
+  }
   if (!proved)
   {
     proved = d_rdbPc.prove(cdp, res[0], res[1], recLimit, stepLimit, tm);

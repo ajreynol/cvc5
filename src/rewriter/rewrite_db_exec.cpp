@@ -101,6 +101,34 @@ Node RewriteDbExec::toConcrete(const Node& n) const
   return visited[n];
 }
 
+void RewriteDbExec::getMatches(const Node& n,
+                               std::vector<ExecMatch>& matches) const
+{
+  CVC5_UNUSED size_t start = matches.size();
+  getMatchesInternal(n, matches);
+#ifdef CVC5_ASSERTIONS
+  // Check the generated code against the rules it was generated from. Note we
+  // do this here and not in the generated code itself, so that the check does
+  // not depend on the code it is checking.
+  for (size_t i = start, nmatches = matches.size(); i < nmatches; i++)
+  {
+    Assert(checkMatch(n, matches[i]))
+        << "Executable rewrite rule " << matches[i].d_id
+        << " reported a match of " << n << " that it does not have";
+  }
+#endif
+}
+
+bool RewriteDbExec::checkMatch(const Node& n, const ExecMatch& m) const
+{
+  std::map<ProofRewriteRule, Node>::const_iterator it = d_ruleLhs.find(m.d_id);
+  if (it == d_ruleLhs.end())
+  {
+    return false;
+  }
+  return instantiate(it->second, m) == n;
+}
+
 size_t RewriteDbExec::getNumConditions(const ExecMatch& m) const
 {
   std::map<ProofRewriteRule, std::vector<Node>>::const_iterator it =
@@ -148,16 +176,16 @@ RewriteDbExec::RewriteDbExec(NodeManager* nm) : d_nm(nm)
   d_consts.push_back(d_nm->mkConst(true));
   // re.allchar
   d_consts.push_back(d_nm->mkNode(Kind::REGEXP_ALLCHAR));
-  // ""
-  d_consts.push_back(d_nm->mkConst(String("", true)));
   // re.none
   d_consts.push_back(d_nm->mkNode(Kind::REGEXP_NONE));
+  // ""
+  d_consts.push_back(d_nm->mkConst(String("", true)));
   initRules();
 }
 
 bool RewriteDbExec::empty() const { return false; }
 
-void RewriteDbExec::getMatches(
+void RewriteDbExec::getMatchesInternal(
     const Node& n,
     std::vector<ExecMatch>& matches) const
 {
@@ -186,7 +214,7 @@ void RewriteDbExec::getMatches(
     if (n[0].getKind() == Kind::STRING_TO_REGEXP
         && n[0].getNumChildren() == 1)
     {
-      if (n[0][0] == d_consts[3])
+      if (n[0][0] == d_consts[4])
       {
         // re-star-emp: (re.* (str.to_re ""))
         matches.push_back(ExecMatch{
@@ -203,7 +231,7 @@ void RewriteDbExec::getMatches(
             ProofRewriteRule::RE_STAR_STAR, {n[0][0]}});
       }
     }
-    if (n[0] == d_consts[4])
+    if (n[0] == d_consts[3])
     {
       // re-star-none: (re.* re.none)
       matches.push_back(ExecMatch{
@@ -260,6 +288,7 @@ void RewriteDbExec::initRules()
     Node i289 = NodeManager::mkBoundVar("i289", d_types[0]);
     Node x288 = NodeManager::mkBoundVar("x288", d_types[1]);
     ProofRewriteRule id = ProofRewriteRule::BV_EXTRACT_NOT;
+    d_ruleLhs[id] = d_nm->mkNode(d_consts[0], {j290, i289, d_nm->mkNode(Kind::BITVECTOR_NOT, {x288})});
     d_ruleVars[id] = {j290, i289, x288};
     d_ruleRhs[id] = d_nm->mkNode(Kind::BITVECTOR_NOT, {d_nm->mkNode(d_consts[0], {j290, i289, x288})});
   }
@@ -272,6 +301,7 @@ void RewriteDbExec::initRules()
     expr::markListVar(zs1048);
     Node y1047 = NodeManager::mkBoundVar("y1047", d_types[2]);
     ProofRewriteRule id = ProofRewriteRule::STR_CONTAINS_CONCAT_FIND;
+    d_ruleLhs[id] = d_nm->mkNode(Kind::STRING_CONTAINS, {d_nm->mkNode(Kind::STRING_CONCAT, {xs1045, z1046, zs1048}), y1047});
     d_ruleVars[id] = {xs1045, z1046, zs1048, y1047};
     d_ruleConds[id].push_back(d_nm->mkNode(Kind::STRING_CONTAINS, {z1046, y1047}));
     d_ruleRhs[id] = d_consts[1];
@@ -283,25 +313,29 @@ void RewriteDbExec::initRules()
     Node ys1285 = NodeManager::mkBoundVar("ys1285", d_types[3]);
     expr::markListVar(ys1285);
     ProofRewriteRule id = ProofRewriteRule::RE_UNION_ALL;
+    d_ruleLhs[id] = d_nm->mkNode(Kind::REGEXP_UNION, {xs1284, d_nm->mkNode(Kind::REGEXP_STAR, {d_consts[2]}), ys1285});
     d_ruleVars[id] = {xs1284, ys1285};
     d_ruleRhs[id] = d_nm->mkNode(Kind::REGEXP_STAR, {d_consts[2]});
   }
   {
     // re-star-none
     ProofRewriteRule id = ProofRewriteRule::RE_STAR_NONE;
+    d_ruleLhs[id] = d_nm->mkNode(Kind::REGEXP_STAR, {d_consts[3]});
     d_ruleVars[id] = {};
-    d_ruleRhs[id] = d_nm->mkNode(Kind::STRING_TO_REGEXP, {d_consts[3]});
+    d_ruleRhs[id] = d_nm->mkNode(Kind::STRING_TO_REGEXP, {d_consts[4]});
   }
   {
     // re-star-emp
     ProofRewriteRule id = ProofRewriteRule::RE_STAR_EMP;
+    d_ruleLhs[id] = d_nm->mkNode(Kind::REGEXP_STAR, {d_nm->mkNode(Kind::STRING_TO_REGEXP, {d_consts[4]})});
     d_ruleVars[id] = {};
-    d_ruleRhs[id] = d_nm->mkNode(Kind::STRING_TO_REGEXP, {d_consts[3]});
+    d_ruleRhs[id] = d_nm->mkNode(Kind::STRING_TO_REGEXP, {d_consts[4]});
   }
   {
     // re-star-star
     Node x1290 = NodeManager::mkBoundVar("x1290", d_types[3]);
     ProofRewriteRule id = ProofRewriteRule::RE_STAR_STAR;
+    d_ruleLhs[id] = d_nm->mkNode(Kind::REGEXP_STAR, {d_nm->mkNode(Kind::REGEXP_STAR, {x1290})});
     d_ruleVars[id] = {x1290};
     d_ruleRhs[id] = d_nm->mkNode(Kind::REGEXP_STAR, {x1290});
   }

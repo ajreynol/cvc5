@@ -74,6 +74,18 @@ class RewriteDbExec
    * @param matches The vector to append the matches to.
    */
   void getMatches(const Node& n, std::vector<ExecMatch>& matches) const;
+  /**
+   * Check that m is a match of n, that is, that instantiating the left-hand
+   * side of the rule m names by the substitution m gives back n exactly.
+   *
+   * This validates the generated matching code against the rule it was
+   * generated from: the shape tests, the indices read off an indexed operator,
+   * the child range a :list variable was bound to and the binding of the
+   * variables are all correct if and only if this holds. It is what makes the
+   * generated code checkable rather than trusted, hence it is worth running
+   * whenever we can afford to.
+   */
+  bool checkMatch(const Node& n, const ExecMatch& m) const;
 
   /** The number of conditions of the rule that m matched. */
   size_t getNumConditions(const ExecMatch& m) const;
@@ -127,6 +139,12 @@ class RewriteDbExec
    */
   void initRules();
 
+  /**
+   * The generated matching routine, which getMatches above wraps so that the
+   * matches it reports can be checked.
+   */
+  void getMatchesInternal(const Node& n, std::vector<ExecMatch>& matches) const;
+
   /** Pointer to the node manager. */
   NodeManager* d_nm;
   /**
@@ -146,6 +164,8 @@ class RewriteDbExec
    * in the substitution of a match of that rule.
    */
   std::map<ProofRewriteRule, std::vector<Node>> d_ruleVars;
+  /** The left-hand side of each rule, as the RARE rules state it. */
+  std::map<ProofRewriteRule, Node> d_ruleLhs;
   /** The conditions of each rule, as the RARE rules state them. */
   std::map<ProofRewriteRule, std::vector<Node>> d_ruleConds;
   /** The right-hand side of each rule, as the RARE rules state it. */

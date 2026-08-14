@@ -461,6 +461,8 @@ struct CompiledRule
   std::vector<std::string> d_varDecls;
   /** The C++ names of the variables, in the order of d_vars. */
   std::vector<std::string> d_varNames;
+  /** The C++ expression constructing the left-hand side. */
+  std::string d_lhsCode;
   /** The C++ expression constructing each condition, and the right-hand side.
    */
   std::vector<std::string> d_conds;
@@ -953,6 +955,11 @@ void printRewriteDbExec(std::ostream& os, NodeManager* nm)
     }
     if (success)
     {
+      cr.d_lhsCode = ec.mkPatternCode(cr.d_lhs, varNames);
+      success = !cr.d_lhsCode.empty();
+    }
+    if (success)
+    {
       cr.d_rhs = ec.mkPatternCode(r.d_rhs, varNames);
       success = !cr.d_rhs.empty();
     }
@@ -1024,7 +1031,7 @@ void printRewriteDbExec(std::ostream& os, NodeManager* nm)
   // The matching routine, which is a single traversal of the compilation trie
   // and hence tests the left-hand sides of all rules at once, sharing the
   // tests they have in common.
-  os << "void RewriteDbExec::getMatches(" << std::endl;
+  os << "void RewriteDbExec::getMatchesInternal(" << std::endl;
   os << "    " << (hasRules ? "" : unused) << "const Node& n," << std::endl;
   os << "    " << (hasRules ? "" : unused)
      << "std::vector<ExecMatch>& matches) const" << std::endl;
@@ -1057,6 +1064,7 @@ void printRewriteDbExec(std::ostream& os, NodeManager* nm)
     }
     os << "    ProofRewriteRule id = ProofRewriteRule::" << getRuleEnum(cr.d_id)
        << ";" << std::endl;
+    os << "    d_ruleLhs[id] = " << cr.d_lhsCode << ";" << std::endl;
     os << "    d_ruleVars[id] = {";
     for (size_t i = 0, nv = cr.d_varNames.size(); i < nv; i++)
     {
