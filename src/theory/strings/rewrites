@@ -201,10 +201,13 @@
 
 (define-rule str-contains-refl ((x ?Seq)) (str.contains x x) true)
 
+; Marked :exec to cover a *conditional* rule whose left-hand side contains a
+; :list variable sandwich, i.e. its condition is checked by the rewriter after
+; the sandwich matched.
 (define-cond-rule str-contains-concat-find ((xs ?Seq :list) (z ?Seq) (y ?Seq) (zs ?Seq :list))
   (str.contains z y)
   (str.contains (str.++ xs z zs) y)
-  true)
+  true :exec)
 
 (define-cond-rule str-contains-concat-find-contra ((xs ?Seq :list) (z ?Seq) (y ?Seq) (zs ?Seq :list))
   (not (str.contains y z))
@@ -603,7 +606,9 @@
   (re.++ xs (str.to_re (str.++ s t)) ys)
   _)
 
-(define-rule re-union-all ((xs RegLan :list) (ys RegLan :list)) (re.union xs (re.* re.allchar) ys) (re.* re.allchar))
+; Marked :exec to cover a :list variable "sandwich" (f t1 s t2), which is
+; compiled to a search for the needle among the children of the application.
+(define-rule re-union-all ((xs RegLan :list) (ys RegLan :list)) (re.union xs (re.* re.allchar) ys) (re.* re.allchar) :exec)
 
 ; used for macro expansion
 (define-cond-rule re-union-const-elim ((r RegLan) (s String))
@@ -613,12 +618,14 @@
 
 (define-rule* re-inter-all ((xs RegLan :list) (ys RegLan :list)) (re.inter xs (re.* re.allchar) ys) (re.inter xs ys))
 
-(define-rule re-star-none () (re.* re.none) (str.to_re ""))
+; Marked :exec together with re-star-emp and re-star-star below, which share
+; the (re.* _) prefix and are hence tested by a single traversal.
+(define-rule re-star-none () (re.* re.none) (str.to_re "") :exec)
 
-(define-rule re-star-emp () (re.* (str.to_re "")) (str.to_re ""))
+(define-rule re-star-emp () (re.* (str.to_re "")) (str.to_re "") :exec)
 
-; Marked :exec, so that this rule is applied by the executable rewrite
-; database instead of by a hand-written case in SequencesRewriter.
+; Note this rule replaces a hand-written case that used to be in
+; SequencesRewriter, unlike the other :exec rules here.
 (define-rule re-star-star ((x RegLan)) (re.* (re.* x)) (re.* x) :exec)
 
 (define-cond-rule re-range-refl ((s String))

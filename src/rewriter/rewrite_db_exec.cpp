@@ -15,11 +15,10 @@
  * rewrites substitutes into this template.
  */
 
-#include "rewriter/rewrite_db_exec.h"
-
 #include "expr/aci_norm.h"
 #include "expr/nary_term_util.h"
 #include "expr/node_manager.h"
+#include "rewriter/rewrite_db_exec.h"
 #include "theory/builtin/generic_op.h"
 #include "util/bitvector.h"
 #include "util/rational.h"
@@ -35,20 +34,93 @@ Node RewriteDbExec::mkListArg(const Node& n, size_t start, size_t end) const
   return d_nm->mkNode(Kind::SEXPR, children);
 }
 
-Node RewriteDbExec::mkNary(Kind k,
-                           const std::vector<Node>& children,
-                           const TypeNode& tn) const
+Node RewriteDbExec::instantiate(const Node& p, const ExecMatch& m) const
 {
-  if (children.empty())
+  std::map<ProofRewriteRule, std::vector<Node>>::const_iterator it =
+      d_ruleVars.find(m.d_id);
+  Assert(it != d_ruleVars.end());
+  Assert(it->second.size() == m.d_subs.size());
+  // Note this splices the :list variables, and may fail e.g. if a list
+  // variable bound to the empty sequence leaves an application whose kind has
+  // no null terminator.
+  Node r = expr::narySubstitute(p, it->second, m.d_subs);
+  if (r.isNull())
   {
-    // all children came from :list variables bound to the empty sequence
-    return expr::getNullTerminator(d_nm, k, tn);
+    return r;
   }
-  if (children.size() == 1)
+  return toConcrete(r);
+}
+
+Node RewriteDbExec::toConcrete(const Node& n) const
+{
+  std::unordered_map<TNode, Node> visited;
+  std::unordered_map<TNode, Node>::iterator it;
+  std::vector<TNode> visit{n};
+  do
   {
-    return children[0];
-  }
-  return d_nm->mkNode(k, children);
+    TNode cur = visit.back();
+    it = visited.find(cur);
+    if (it == visited.end())
+    {
+      visited[cur] = Node::null();
+      visit.insert(visit.end(), cur.begin(), cur.end());
+      continue;
+    }
+    visit.pop_back();
+    if (!it->second.isNull())
+    {
+      continue;
+    }
+    Node ret = cur;
+    bool childChanged = false;
+    std::vector<Node> children;
+    if (cur.getMetaKind() == kind::metakind::PARAMETERIZED)
+    {
+      children.push_back(cur.getOperator());
+    }
+    for (const Node& cn : cur)
+    {
+      it = visited.find(cn);
+      Assert(it != visited.end() && !it->second.isNull());
+      childChanged = childChanged || cn != it->second;
+      children.push_back(it->second);
+    }
+    if (childChanged)
+    {
+      ret = d_nm->mkNode(cur.getKind(), children);
+    }
+    if (ret.getKind() == Kind::APPLY_INDEXED_SYMBOLIC)
+    {
+      // the indices are concrete by now, hence this is the application the
+      // symbolic term denotes
+      ret = GenericOp::getConcreteApp(ret);
+    }
+    visited[cur] = ret;
+  } while (!visit.empty());
+  Assert(visited.find(n) != visited.end());
+  return visited[n];
+}
+
+size_t RewriteDbExec::getNumConditions(const ExecMatch& m) const
+{
+  std::map<ProofRewriteRule, std::vector<Node>>::const_iterator it =
+      d_ruleConds.find(m.d_id);
+  return it == d_ruleConds.end() ? 0 : it->second.size();
+}
+
+Node RewriteDbExec::getCondition(const ExecMatch& m, size_t i) const
+{
+  std::map<ProofRewriteRule, std::vector<Node>>::const_iterator it =
+      d_ruleConds.find(m.d_id);
+  Assert(it != d_ruleConds.end() && i < it->second.size());
+  return instantiate(it->second[i], m);
+}
+
+Node RewriteDbExec::getResult(const ExecMatch& m) const
+{
+  std::map<ProofRewriteRule, Node>::const_iterator it = d_ruleRhs.find(m.d_id);
+  Assert(it != d_ruleRhs.end());
+  return instantiate(it->second, m);
 }
 
 // The implementation of the :exec rules below is generated, see the note at
@@ -62,8 +134,25 @@ Node RewriteDbExec::mkNary(Kind k,
 
 RewriteDbExec::RewriteDbExec(NodeManager* nm) : d_nm(nm)
 {
+  // Int
+  d_types.push_back(d_nm->integerType());
+  // ?BITVECTOR_TYPE
+  d_types.push_back(d_nm->mkAbstractType(Kind::BITVECTOR_TYPE));
+  // (Seq ?)
+  d_types.push_back(d_nm->mkSequenceType(d_nm->mkAbstractType(Kind::ABSTRACT_TYPE)));
   // RegLan
   d_types.push_back(d_nm->regExpType());
+  // extract
+  d_consts.push_back(d_nm->mkConst(GenericOp(Kind::BITVECTOR_EXTRACT)));
+  // true
+  d_consts.push_back(d_nm->mkConst(true));
+  // re.allchar
+  d_consts.push_back(d_nm->mkNode(Kind::REGEXP_ALLCHAR));
+  // ""
+  d_consts.push_back(d_nm->mkConst(String("", true)));
+  // re.none
+  d_consts.push_back(d_nm->mkNode(Kind::REGEXP_NONE));
+  initRules();
 }
 
 bool RewriteDbExec::empty() const { return false; }
@@ -72,53 +161,150 @@ void RewriteDbExec::getMatches(
     const Node& n,
     std::vector<ExecMatch>& matches) const
 {
+  if (n.getKind() == Kind::STRING_CONTAINS
+      && n.getNumChildren() == 2)
+  {
+    if (n[0].getKind() == Kind::STRING_CONCAT)
+    {
+      for (size_t i0 = 0, nc1 = n[0].getNumChildren(); i0 < nc1; i0++)
+      {
+        if (n[0][i0].getType().isComparableTo(d_types[2]))
+        {
+          if (n[1].getType().isComparableTo(d_types[2]))
+          {
+            // str-contains-concat-find: (seq.contains (seq.++ xs1045 z1046 zs1048) y1047)
+            matches.push_back(ExecMatch{
+                ProofRewriteRule::STR_CONTAINS_CONCAT_FIND, {mkListArg(n[0], 0, i0), n[0][i0], mkListArg(n[0], i0 + 1, n[0].getNumChildren()), n[1]}});
+          }
+        }
+      }
+    }
+  }
   if (n.getKind() == Kind::REGEXP_STAR
       && n.getNumChildren() == 1)
   {
+    if (n[0].getKind() == Kind::STRING_TO_REGEXP
+        && n[0].getNumChildren() == 1)
+    {
+      if (n[0][0] == d_consts[3])
+      {
+        // re-star-emp: (re.* (str.to_re ""))
+        matches.push_back(ExecMatch{
+            ProofRewriteRule::RE_STAR_EMP, {}});
+      }
+    }
     if (n[0].getKind() == Kind::REGEXP_STAR
         && n[0].getNumChildren() == 1)
     {
-      if (n[0][0].getType().isComparableTo(d_types[0]))
+      if (n[0][0].getType().isComparableTo(d_types[3]))
       {
         // re-star-star: (re.* (re.* x1290))
         matches.push_back(ExecMatch{
             ProofRewriteRule::RE_STAR_STAR, {n[0][0]}});
       }
     }
+    if (n[0] == d_consts[4])
+    {
+      // re-star-none: (re.* re.none)
+      matches.push_back(ExecMatch{
+          ProofRewriteRule::RE_STAR_NONE, {}});
+    }
+  }
+  if (n.getKind() == Kind::BITVECTOR_EXTRACT
+      && n.getNumChildren() == 1)
+  {
+    std::vector<Node> idx2 = GenericOp::getIndicesForOperator(Kind::BITVECTOR_EXTRACT, n.getOperator());
+    if (idx2.size() == 2)
+    {
+      if (idx2[0].getType().isComparableTo(d_types[0]))
+      {
+        if (idx2[1].getType().isComparableTo(d_types[0]))
+        {
+          if (n[0].getKind() == Kind::BITVECTOR_NOT
+              && n[0].getNumChildren() == 1)
+          {
+            if (n[0][0].getType().isComparableTo(d_types[1]))
+            {
+              // bv-extract-not: (extract j290 i289 (bvnot x288))
+              matches.push_back(ExecMatch{
+                  ProofRewriteRule::BV_EXTRACT_NOT, {idx2[0], idx2[1], n[0][0]}});
+            }
+          }
+        }
+      }
+    }
+  }
+  if (n.getKind() == Kind::REGEXP_UNION)
+  {
+    for (size_t i3 = 0, nc4 = n.getNumChildren(); i3 < nc4; i3++)
+    {
+      if (n[i3].getKind() == Kind::REGEXP_STAR
+          && n[i3].getNumChildren() == 1)
+      {
+        if (n[i3][0] == d_consts[2])
+        {
+          // re-union-all: (re.union xs1284 (re.* re.allchar) ys1285)
+          matches.push_back(ExecMatch{
+              ProofRewriteRule::RE_UNION_ALL, {mkListArg(n, 0, i3), mkListArg(n, i3 + 1, n.getNumChildren())}});
+        }
+      }
+    }
   }
 }
 
-size_t RewriteDbExec::getNumConditions(
-    CVC5_UNUSED const ExecMatch& m) const
+void RewriteDbExec::initRules()
 {
-  switch (m.d_id)
   {
-    default: break;
+    // bv-extract-not
+    Node j290 = NodeManager::mkBoundVar("j290", d_types[0]);
+    Node i289 = NodeManager::mkBoundVar("i289", d_types[0]);
+    Node x288 = NodeManager::mkBoundVar("x288", d_types[1]);
+    ProofRewriteRule id = ProofRewriteRule::BV_EXTRACT_NOT;
+    d_ruleVars[id] = {j290, i289, x288};
+    d_ruleRhs[id] = d_nm->mkNode(Kind::BITVECTOR_NOT, {d_nm->mkNode(d_consts[0], {j290, i289, x288})});
   }
-  return 0;
-}
-
-Node RewriteDbExec::getCondition(
-    CVC5_UNUSED const ExecMatch& m,
-    CVC5_UNUSED size_t i) const
-{
-  switch (m.d_id)
   {
-    default: break;
+    // str-contains-concat-find
+    Node xs1045 = NodeManager::mkBoundVar("xs1045", d_types[2]);
+    expr::markListVar(xs1045);
+    Node z1046 = NodeManager::mkBoundVar("z1046", d_types[2]);
+    Node zs1048 = NodeManager::mkBoundVar("zs1048", d_types[2]);
+    expr::markListVar(zs1048);
+    Node y1047 = NodeManager::mkBoundVar("y1047", d_types[2]);
+    ProofRewriteRule id = ProofRewriteRule::STR_CONTAINS_CONCAT_FIND;
+    d_ruleVars[id] = {xs1045, z1046, zs1048, y1047};
+    d_ruleConds[id].push_back(d_nm->mkNode(Kind::STRING_CONTAINS, {z1046, y1047}));
+    d_ruleRhs[id] = d_consts[1];
   }
-  return Node::null();
-}
-
-Node RewriteDbExec::getResult(
-    const ExecMatch& m) const
-{
-  switch (m.d_id)
   {
-    case ProofRewriteRule::RE_STAR_STAR:
-      return d_nm->mkNode(Kind::REGEXP_STAR, {m.d_subs[0]});
-    default: break;
+    // re-union-all
+    Node xs1284 = NodeManager::mkBoundVar("xs1284", d_types[3]);
+    expr::markListVar(xs1284);
+    Node ys1285 = NodeManager::mkBoundVar("ys1285", d_types[3]);
+    expr::markListVar(ys1285);
+    ProofRewriteRule id = ProofRewriteRule::RE_UNION_ALL;
+    d_ruleVars[id] = {xs1284, ys1285};
+    d_ruleRhs[id] = d_nm->mkNode(Kind::REGEXP_STAR, {d_consts[2]});
   }
-  return Node::null();
+  {
+    // re-star-none
+    ProofRewriteRule id = ProofRewriteRule::RE_STAR_NONE;
+    d_ruleVars[id] = {};
+    d_ruleRhs[id] = d_nm->mkNode(Kind::STRING_TO_REGEXP, {d_consts[3]});
+  }
+  {
+    // re-star-emp
+    ProofRewriteRule id = ProofRewriteRule::RE_STAR_EMP;
+    d_ruleVars[id] = {};
+    d_ruleRhs[id] = d_nm->mkNode(Kind::STRING_TO_REGEXP, {d_consts[3]});
+  }
+  {
+    // re-star-star
+    Node x1290 = NodeManager::mkBoundVar("x1290", d_types[3]);
+    ProofRewriteRule id = ProofRewriteRule::RE_STAR_STAR;
+    d_ruleVars[id] = {x1290};
+    d_ruleRhs[id] = d_nm->mkNode(Kind::REGEXP_STAR, {x1290});
+  }
 }
 // clang-format on
 

@@ -160,30 +160,37 @@ class ExecCompiler
   }
 
   /**
-   * Return the C++ expression that constructs the instance of pattern p, where
-   * the variables in vars are taken from the substitution of the match. Returns
-   * the empty string if we do not know how to construct p.
+   * Return the C++ expression that constructs the pattern p as the RARE rules
+   * state it, where the variables of p are rendered by the names in varNames.
+   * Returns the empty string if we do not know how to construct p.
+   *
+   * Note we construct the pattern verbatim, i.e. we do not map it back to the
+   * terms the rewriter uses. That is done when the pattern is instantiated,
+   * see RewriteDbExec::instantiate.
    */
-  std::string mkTermCode(const Node& p, const std::vector<Node>& vars)
+  std::string mkPatternCode(const Node& p,
+                            const std::map<Node, std::string>& varNames)
   {
     if (p.getKind() == Kind::BOUND_VARIABLE)
     {
-      std::vector<Node>::const_iterator it =
-          std::find(vars.begin(), vars.end(), p);
-      if (it == vars.end())
+      std::map<Node, std::string>::const_iterator it = varNames.find(p);
+      if (it == varNames.end())
       {
-        // a variable that does not occur in the left-hand side is not bound by
-        // the match, hence the instance cannot be constructed
+        // a variable that the left-hand side does not bind
         d_skipReason = "the variable " + p.toString()
                        + " is not bound by its left-hand side";
         return "";
       }
-      return "m.d_subs[" + std::to_string(std::distance(vars.begin(), it))
-             + "]";
+      return it->second;
     }
     if (p.getNumChildren() == 0)
     {
-      return mkConstRef(p);
+      std::string cref = mkConstRef(p);
+      if (cref.empty())
+      {
+        d_skipReason = "we cannot construct the term " + p.toString();
+      }
+      return cref;
     }
     std::stringstream ss;
     ss << "d_nm->mkNode(";
@@ -205,7 +212,7 @@ class ExecCompiler
     ss << ", {";
     for (size_t i = 0, nchild = p.getNumChildren(); i < nchild; i++)
     {
-      std::string cc = mkTermCode(p[i], vars);
+      std::string cc = mkPatternCode(p[i], varNames);
       if (cc.empty())
       {
         return "";
@@ -227,6 +234,14 @@ class ExecCompiler
       // A nullary term that is not a constant, e.g. re.allchar. Note we build
       // these once as well, since they are shared by all rules that use them.
       ss << "d_nm->mkNode(" << getKindEnum(c.getKind()) << ")";
+      return ss.str();
+    }
+    if (c.getKind() == Kind::APPLY_INDEXED_SYMBOLIC_OP)
+    {
+      // the operator of an application of an indexed operator that the RARE
+      // rules state symbolically
+      ss << "d_nm->mkConst(GenericOp("
+         << getKindEnum(c.getConst<GenericOp>().getKind()) << "))";
       return ss.str();
     }
     switch (c.getKind())
@@ -297,6 +312,24 @@ class ExecCompiler
     else if (tn.isBitVector())
     {
       ss << "d_nm->mkBitVectorType(" << tn.getBitVectorSize() << ")";
+    }
+    else if (tn.isSequence())
+    {
+      std::string et = mkTypeCode(tn.getSequenceElementType());
+      if (et.empty())
+      {
+        return "";
+      }
+      ss << "d_nm->mkSequenceType(" << et << ")";
+    }
+    else if (tn.isSet())
+    {
+      std::string et = mkTypeCode(tn.getSetElementType());
+      if (et.empty())
+      {
+        return "";
+      }
+      ss << "d_nm->mkSetType(" << et << ")";
     }
     else if (tn.isAbstract())
     {
@@ -424,6 +457,10 @@ struct CompiledRule
   Node d_lhs;
   /** The variables of d_lhs, in the order they first occur. */
   std::vector<Node> d_vars;
+  /** The C++ statements declaring the variables of the rule. */
+  std::vector<std::string> d_varDecls;
+  /** The C++ names of the variables, in the order of d_vars. */
+  std::vector<std::string> d_varNames;
   /** The C++ expression constructing each condition, and the right-hand side.
    */
   std::vector<std::string> d_conds;
@@ -875,11 +912,37 @@ void printRewriteDbExec(std::ostream& os, NodeManager* nm)
     cr.d_id = r.d_id;
     cr.d_lhs = r.d_lhs;
     ExecCompiler::getVarOrder(cr.d_lhs, cr.d_vars);
+    // Declare the variables of the rule, which the patterns below are stated
+    // over. Note the substitution of a match gives a term for each of them, in
+    // this order.
     bool success = true;
+    std::map<Node, std::string> varNames;
+    for (const Node& v : cr.d_vars)
+    {
+      std::string tref = ec.mkTypeRef(v.getType());
+      if (tref.empty())
+      {
+        ec.setSkipReason("we cannot construct the type "
+                         + v.getType().toString() + " of " + v.toString());
+        success = false;
+        break;
+      }
+      std::string vn = v.getName();
+      varNames[v] = vn;
+      cr.d_varNames.push_back(vn);
+      std::string decl = "Node " + vn + " = NodeManager::mkBoundVar(\"" + vn
+                         + "\", " + tref + ");";
+      cr.d_varDecls.push_back(decl);
+      if (expr::isListVar(v))
+      {
+        cr.d_varDecls.push_back("expr::markListVar(" + vn + ");");
+      }
+    }
+    if (success)
     {
       for (const Node& c : r.d_conds)
       {
-        std::string cc = ec.mkTermCode(c, cr.d_vars);
+        std::string cc = ec.mkPatternCode(c, varNames);
         if (cc.empty())
         {
           success = false;
@@ -890,7 +953,7 @@ void printRewriteDbExec(std::ostream& os, NodeManager* nm)
     }
     if (success)
     {
-      cr.d_rhs = ec.mkTermCode(r.d_rhs, cr.d_vars);
+      cr.d_rhs = ec.mkPatternCode(r.d_rhs, varNames);
       success = !cr.d_rhs.empty();
     }
     // Note we add the pattern to the trie only now, since it is indexed by
@@ -943,6 +1006,7 @@ void printRewriteDbExec(std::ostream& os, NodeManager* nm)
   os << "RewriteDbExec::RewriteDbExec(NodeManager* nm) : d_nm(nm)" << std::endl;
   os << "{" << std::endl;
   ec.printConstants(os);
+  os << "  initRules();" << std::endl;
   os << "}" << std::endl;
   os << std::endl;
 
@@ -977,76 +1041,35 @@ void printRewriteDbExec(std::ostream& os, NodeManager* nm)
   os << "}" << std::endl;
   os << std::endl;
 
-  // the number of conditions of each rule
-  os << "size_t RewriteDbExec::getNumConditions(" << std::endl;
-  os << "    " << (hasConds ? "" : unused) << "const ExecMatch& m) const"
-     << std::endl;
+  // The conditions and right-hand sides, stated as the RARE rules state them.
+  // They are instantiated for a match by substitution, see
+  // RewriteDbExec::instantiate, which is also what splices the :list
+  // variables.
+  os << "void RewriteDbExec::initRules()" << std::endl;
   os << "{" << std::endl;
-  os << "  switch (m.d_id)" << std::endl;
-  os << "  {" << std::endl;
   for (const CompiledRule& cr : crules)
   {
-    if (!cr.d_conds.empty())
+    os << "  {" << std::endl;
+    os << "    // " << cr.d_id << std::endl;
+    for (const std::string& d : cr.d_varDecls)
     {
-      os << "    case ProofRewriteRule::" << getRuleEnum(cr.d_id) << ": return "
-         << cr.d_conds.size() << ";" << std::endl;
+      os << "    " << d << std::endl;
     }
-  }
-  os << "    default: break;" << std::endl;
-  os << "  }" << std::endl;
-  os << "  return 0;" << std::endl;
-  os << "}" << std::endl;
-  os << std::endl;
-
-  // the conditions of each rule, instantiated on demand
-  os << "Node RewriteDbExec::getCondition(" << std::endl;
-  os << "    " << (hasConds ? "" : unused) << "const ExecMatch& m,"
-     << std::endl;
-  os << "    " << (hasConds ? "" : unused) << "size_t i) const" << std::endl;
-  os << "{" << std::endl;
-  os << "  switch (m.d_id)" << std::endl;
-  os << "  {" << std::endl;
-  for (const CompiledRule& cr : crules)
-  {
-    if (cr.d_conds.empty())
+    os << "    ProofRewriteRule id = ProofRewriteRule::" << getRuleEnum(cr.d_id)
+       << ";" << std::endl;
+    os << "    d_ruleVars[id] = {";
+    for (size_t i = 0, nv = cr.d_varNames.size(); i < nv; i++)
     {
-      continue;
+      os << (i == 0 ? "" : ", ") << cr.d_varNames[i];
     }
-    os << "    case ProofRewriteRule::" << getRuleEnum(cr.d_id) << ":"
-       << std::endl;
-    os << "      switch (i)" << std::endl;
-    os << "      {" << std::endl;
-    for (size_t c = 0, nconds = cr.d_conds.size(); c < nconds; c++)
+    os << "};" << std::endl;
+    for (const std::string& c : cr.d_conds)
     {
-      os << "        case " << c << ": return " << cr.d_conds[c] << ";"
-         << std::endl;
+      os << "    d_ruleConds[id].push_back(" << c << ");" << std::endl;
     }
-    os << "        default: break;" << std::endl;
-    os << "      }" << std::endl;
-    os << "      break;" << std::endl;
+    os << "    d_ruleRhs[id] = " << cr.d_rhs << ";" << std::endl;
+    os << "  }" << std::endl;
   }
-  os << "    default: break;" << std::endl;
-  os << "  }" << std::endl;
-  os << "  return Node::null();" << std::endl;
-  os << "}" << std::endl;
-  os << std::endl;
-
-  // the right-hand side of each rule, instantiated on demand
-  os << "Node RewriteDbExec::getResult(" << std::endl;
-  os << "    " << (hasRules ? "" : unused) << "const ExecMatch& m) const"
-     << std::endl;
-  os << "{" << std::endl;
-  os << "  switch (m.d_id)" << std::endl;
-  os << "  {" << std::endl;
-  for (const CompiledRule& cr : crules)
-  {
-    os << "    case ProofRewriteRule::" << getRuleEnum(cr.d_id) << ":"
-       << std::endl;
-    os << "      return " << cr.d_rhs << ";" << std::endl;
-  }
-  os << "    default: break;" << std::endl;
-  os << "  }" << std::endl;
-  os << "  return Node::null();" << std::endl;
   os << "}" << std::endl;
   os << std::endl;
 

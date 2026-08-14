@@ -72,10 +72,14 @@
   (= x (concat y (extract im1 0 x))))
 
 ; -- Normalization Rules --
+; Marked :exec to cover an indexed operator, which the RARE rules state
+; symbolically. The compiled matcher tests the BITVECTOR_EXTRACT kind and reads
+; the indices off the operator of the term, so that no encoding transform is
+; needed while rewriting.
 (define-rule bv-extract-not
   ((x ?BitVec) (i Int) (j Int))
   (extract j i (bvnot x))
-  (bvnot (extract j i x)))
+  (bvnot (extract j i x)) :exec)
 (define-cond-rule bv-extract-sign-extend-1
   ((x ?BitVec) (low Int) (high Int) (k Int))
   (< high (@bvsize x))

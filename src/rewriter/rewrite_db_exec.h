@@ -28,6 +28,7 @@
 
 #include <cvc5/cvc5_proof_rule.h>
 
+#include <map>
 #include <vector>
 
 #include "expr/node.h"
@@ -101,17 +102,30 @@ class RewriteDbExec
    */
   Node mkListArg(const Node& n, size_t start, size_t end) const;
   /**
-   * Return the application of k to children, accounting for the children that
-   * a :list variable bound to the empty sequence did not contribute. That is,
-   * if children is empty we return the null terminator of k at type tn, and if
-   * it is a singleton we return that child. Returns the null node if the
-   * application could not be constructed, e.g. if k has no null terminator at
-   * tn.
+   * Instantiate the pattern p for the match m, where p is the right-hand side
+   * or a condition of the rule that m matched.
    *
-   * This mirrors the corresponding case of expr::narySubstitute, which is how
-   * the right-hand side of a rule with :list variables is instantiated.
+   * The patterns are stored as the RARE rules state them, that is, over the
+   * encoding that RewriteDbNodeConverter defines. Instantiating one is hence
+   * substituting the terms m bound, which expr::narySubstitute does including
+   * the splicing of the :list variables, followed by mapping the result back
+   * to the terms the rewriter uses, which toConcrete does.
+   *
+   * Returns the null node if the instance could not be constructed.
    */
-  Node mkNary(Kind k, const std::vector<Node>& children, const TypeNode& tn) const;
+  Node instantiate(const Node& p, const ExecMatch& m) const;
+  /**
+   * Return n with every application of an indexed operator that is stated
+   * symbolically, i.e. as an APPLY_INDEXED_SYMBOLIC term, replaced by the
+   * application of the operator it denotes. This is the inverse of the only
+   * part of the encoding that the rewriter never builds itself.
+   */
+  Node toConcrete(const Node& n) const;
+  /**
+   * Build the conditions and right-hand sides of the rules. This is generated,
+   * and called once by the constructor.
+   */
+  void initRules();
 
   /** Pointer to the node manager. */
   NodeManager* d_nm;
@@ -127,6 +141,15 @@ class RewriteDbExec
    * matters for the operators that are permissive for subtyping.
    */
   std::vector<TypeNode> d_types;
+  /**
+   * The variables of each rule, in the order the terms bound to them are given
+   * in the substitution of a match of that rule.
+   */
+  std::map<ProofRewriteRule, std::vector<Node>> d_ruleVars;
+  /** The conditions of each rule, as the RARE rules state them. */
+  std::map<ProofRewriteRule, std::vector<Node>> d_ruleConds;
+  /** The right-hand side of each rule, as the RARE rules state it. */
+  std::map<ProofRewriteRule, Node> d_ruleRhs;
 };
 
 }  // namespace rewriter
