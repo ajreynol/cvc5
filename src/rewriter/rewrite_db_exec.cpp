@@ -72,20 +72,19 @@ void RewriteDbExec::getMatches(
     const Node& n,
     std::vector<ExecMatch>& matches) const
 {
-  switch (n.getKind())
+  if (n.getKind() == Kind::REGEXP_STAR
+      && n.getNumChildren() == 1)
   {
-    case Kind::REGEXP_STAR:
-      // re-star-star: (re.* (re.* x1290))
-      if (n.getNumChildren() == 1
-          && n[0].getKind() == Kind::REGEXP_STAR
-          && n[0].getNumChildren() == 1
-          && n[0][0].getType().isComparableTo(d_types[0]))
+    if (n[0].getKind() == Kind::REGEXP_STAR
+        && n[0].getNumChildren() == 1)
+    {
+      if (n[0][0].getType().isComparableTo(d_types[0]))
       {
+        // re-star-star: (re.* (re.* x1290))
         matches.push_back(ExecMatch{
             ProofRewriteRule::RE_STAR_STAR, {n[0][0]}});
       }
-      break;
-    default: break;
+    }
   }
 }
 
