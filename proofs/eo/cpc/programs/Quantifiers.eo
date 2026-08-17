@@ -104,7 +104,7 @@
 ; note: This method does not evaluate if variable capture is encountered.
 (program $substitute_simul_rec
   ((T Type) (S Type) (x S) (f (-> T S)) (a T) (xs @List :list) (ss @List :list)
-   (q (-> @List T S)) (V Type) (v V) (vs @List :list) (s String) (isr Bool) 
+   (q (-> @List T S)) (V Type) (v V) (vs @List :list) (s String) (isr Bool)
    (F Bool) (r RegLan) (n Int) (bvs @List :list))
   :signature (Bool S @List @List @List) S
   (

@@ -776,6 +776,7 @@ set(regress_0_tests
   regress0/datatypes/issue5280-no-nrec.smt2
   regress0/datatypes/issue8883-sort-inf.smt2
   regress0/datatypes/issue9042-rel-irrel-cons-model.smt2
+  regress0/datatypes/issue12794-inst-dropped-lemma.smt2
   regress0/datatypes/issue12572-nullable-lift-no-arguments.smt2
   regress0/datatypes/jsat-2.6.smt2
   regress0/datatypes/list-bool.smt2
@@ -2574,10 +2575,12 @@ set(regress_0_tests
   regress0/unconstrained/xor.smt2
   regress0/unsafe-type.smt2
   regress0/unsafe-type-2.smt2
+  regress0/use_approx/approx-branch-depth-range.smt2
   regress0/use_approx/bug812_approx.smt2
   regress0/use_approx/error0_approx.smt2
   regress0/use_approx/issue2429_approx.smt2
   regress0/use_approx/issue4714_approx.smt2
+  regress0/use_approx/replay-early-close-depth-range.smt2
   regress0/use_approx/siegel-nl-bases_approx.smt2
   regress0/use_approx/specsharp-WindowsCard.15.RTE.Terminate_System.Int32_approx.smt2
   regress0/wiki.01.cvc.smt2
@@ -2856,6 +2859,7 @@ set(regress_1_tests
   regress1/fp/issue8242-fp-eq-sub-div.smt2
   regress1/fp/issue8242-fp-max-div.smt2
   regress1/fp/issue8242-nested-div.smt2
+  regress1/fp/proj-issue327-nested-conversions.smt2
   regress1/fp/rti_3_5_bug_report.smt2
   regress1/fmf-fun-dbu.smt2
   regress1/fmf/ALG008-1.smt2
