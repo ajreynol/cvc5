@@ -15,15 +15,18 @@
 #include <sstream>
 
 #include "base/modal_exception.h"
+#include "expr/beta_reduce_converter.h"
 #include "expr/node_algorithm.h"
 #include "expr/subtype_elim_node_converter.h"
 #include "options/base_options.h"
 #include "options/expr_options.h"
 #include "options/language.h"
+#include "options/proof_options.h"
 #include "options/smt_options.h"
 #include "proof/lazy_proof.h"
 #include "proof/proof_node_algorithm.h"
 #include "smt/env.h"
+#include "theory/substitutions.h"
 #include "theory/trust_substitutions.h"
 #include "util/result.h"
 
@@ -100,28 +103,47 @@ std::unordered_set<Node> Assertions::getCurrentAssertionListDefitions() const
 
 void Assertions::addFormula(TNode n, bool isFunDef, bool maybeHasFv)
 {
-  // add to assertion list
-  d_assertionList.push_back(n);
-  if (n.isConst() && n.getConst<bool>())
+  // Whether definitions are treated as macros, in which case they are not
+  // stored in the assertion list and their applications are eagerly expanded
+  // in subsequent assertions.
+  bool defFunMacros = options().proof.proofDefineFunMacros;
+  // Whether the current formula is a definition treated as a macro.
+  bool defMacro = defFunMacros && isFunDef;
+  Node nn = n;
+  if (defFunMacros && !isFunDef)
+  {
+    // Ensure that global definitions have been processed, e.g. after a user
+    // pop, so that their applications can be expanded below. This is a no-op
+    // if all global definitions have been processed in this context.
+    refresh();
+    // expand applications of defined functions
+    nn = applyDefinitions(nn);
+  }
+  if (!defMacro)
+  {
+    // add to assertion list
+    d_assertionList.push_back(nn);
+  }
+  if (nn.isConst() && nn.getConst<bool>())
   {
     // true, nothing to do
     return;
   }
-  Trace("smt") << "Assertions::addFormula(" << n << ", isFunDef = " << isFunDef
+  Trace("smt") << "Assertions::addFormula(" << nn << ", isFunDef = " << isFunDef
                << std::endl;
   // In non-incremental, we treat higher-order equality as define-fun
   if (!options().base.incrementalSolving || isFunDef)
   {
     // if a non-recursive define-fun, just add as a top-level substitution
-    if (n.getKind() == Kind::EQUAL && n[0].isVar())
+    if (nn.getKind() == Kind::EQUAL && nn[0].isVar())
     {
       Trace("smt-define-fun")
-          << "Define fun: " << n[0] << " = " << n[1] << std::endl;
+          << "Define fun: " << nn[0] << " = " << nn[1] << std::endl;
       NodeManager* nm = nodeManager();
       TrustSubstitutionMap& tsm = d_env.getTopLevelSubstitutions();
       if (!isFunDef
-          && (tsm.get().hasSubstitution(n[0])
-              || n[1].getKind() != Kind::LAMBDA))
+          && (tsm.get().hasSubstitution(nn[0])
+              || nn[1].getKind() != Kind::LAMBDA))
       {
         return;
       }
@@ -132,62 +154,99 @@ void Assertions::addFormula(TNode n, bool isFunDef, bool maybeHasFv)
       // For efficiency, we only do this if it is a lambda.
       // Note this is important since some benchmarks treat define-fun as a
       // global let. We should not eagerly rewrite in these cases.
-      if (n[1].getKind() == Kind::LAMBDA)
+      if (nn[1].getKind() == Kind::LAMBDA)
       {
         // Rewrite the body of the lambda.
-        defRewBody = tsm.applyTrusted(n[1][1], d_env.getRewriter());
+        defRewBody = tsm.applyTrusted(nn[1][1], d_env.getRewriter());
       }
-      Node defRew = n[1];
+      Node defRew = nn[1];
       // If we rewrote the body
       if (!defRewBody.isNull())
       {
         // The rewritten form is the rewritten body with original variable list.
         defRew = defRewBody.getNode();
-        defRew = nm->mkNode(Kind::LAMBDA, n[1][0], defRew);
+        defRew = nm->mkNode(Kind::LAMBDA, nn[1][0], defRew);
       }
-      if (expr::hasSubterm(defRew, n[0]))
+      if (!expr::hasSubterm(defRew, nn[0]))
       {
+        // If we need to track proofs. If the definition is treated as a
+        // macro, we do not construct a proof, since the definition is not an
+        // assumption in the overall proof. Note the substitution is added to
+        // the top-level substitutions below without a proof generator, which
+        // is justified by a (closed) trust step in the rare case it is
+        // required in a proof, e.g. if it is referenced when connecting
+        // preprocessing proofs for unsat cores.
+        if (d_env.isProofProducing() && !defMacro)
+        {
+          // initialize the proof generator if not already done so
+          if (d_defFunRewPf == nullptr)
+          {
+            d_defFunRewPf = std::make_shared<LazyCDProof>(d_env);
+          }
+          // A define-fun is an assumption in the overall proof, thus
+          // we justify the substitution with ASSUME here.
+          d_defFunRewPf->addStep(nn, ProofRule::ASSUME, {}, {nn});
+          // If changed, prove the rewrite
+          if (defRew != nn[1])
+          {
+            Node eqBody = defRewBody.getProven();
+            d_defFunRewPf->addLazyStep(eqBody, defRewBody.getGenerator());
+            Node eqRew = nn[1].eqNode(defRew);
+            Assert(nn[1].getKind() == Kind::LAMBDA);
+            // congruence over the binder
+            std::vector<Node> cargs;
+            ProofRule cr = expr::getCongRule(nn[1], cargs);
+            d_defFunRewPf->addStep(eqRew, cr, {eqBody}, cargs);
+            // Proof is:
+            //                            ------ from tsm
+            //                            t = t'
+            // ------------------ ASSUME  -------------------------- CONG
+            // n = lambda x. t            lambda x. t = lambda x. t'
+            // ------------------------------------------------------ TRANS
+            // n = lambda x. t'
+            Node eqFinal = nn[0].eqNode(defRew);
+            d_defFunRewPf->addStep(eqFinal, ProofRule::TRANS, {nn, eqRew}, {});
+          }
+        }
+        Trace("smt-define-fun") << "...rewritten to " << defRew << std::endl;
+        if (defMacro)
+        {
+          // If treated as a macro, remember the substitution for expanding
+          // subsequent assertions. Notably, the definition is not stored as
+          // an input assumption, and hence will not appear in proofs.
+          if (d_defSubs == nullptr)
+          {
+            d_defSubs.reset(new theory::SubstitutionMap(userContext()));
+          }
+          d_defSubs->addSubstitution(nn[0], defRew);
+          // add to top-level substitutions without a proof generator, as
+          // described above
+          d_env.getTopLevelSubstitutions().addSubstitution(nn[0], defRew);
+        }
+        else
+        {
+          d_assertionListDefs.push_back(nn);
+          d_env.getTopLevelSubstitutions().addSubstitution(
+              nn[0], defRew, d_defFunRewPf.get());
+        }
         return;
       }
-      // if we need to track proofs
-      if (d_env.isProofProducing())
+      else if (!defMacro)
       {
-        // initialize the proof generator if not already done so
-        if (d_defFunRewPf == nullptr)
-        {
-          d_defFunRewPf = std::make_shared<LazyCDProof>(d_env);
-        }
-        // A define-fun is an assumption in the overall proof, thus
-        // we justify the substitution with ASSUME here.
-        d_defFunRewPf->addStep(n, ProofRule::ASSUME, {}, {n});
-        // If changed, prove the rewrite
-        if (defRew != n[1])
-        {
-          Node eqBody = defRewBody.getProven();
-          d_defFunRewPf->addLazyStep(eqBody, defRewBody.getGenerator());
-          Node eqRew = n[1].eqNode(defRew);
-          Assert(n[1].getKind() == Kind::LAMBDA);
-          // congruence over the binder
-          std::vector<Node> cargs;
-          ProofRule cr = expr::getCongRule(n[1], cargs);
-          d_defFunRewPf->addStep(eqRew, cr, {eqBody}, cargs);
-          // Proof is:
-          //                            ------ from tsm
-          //                            t = t'
-          // ------------------ ASSUME  -------------------------- CONG
-          // n = lambda x. t            lambda x. t = lambda x. t'
-          // ------------------------------------------------------ TRANS
-          // n = lambda x. t'
-          Node eqFinal = n[0].eqNode(defRew);
-          d_defFunRewPf->addStep(eqFinal, ProofRule::TRANS, {n, eqRew}, {});
-        }
+        // A definition whose function occurs in its rewritten form, e.g. a
+        // recursive definition; it was already stored as an ordinary
+        // assertion above.
+        return;
       }
-      Trace("smt-define-fun") << "...rewritten to " << defRew << std::endl;
-      d_assertionListDefs.push_back(n);
-      d_env.getTopLevelSubstitutions().addSubstitution(
-          n[0], defRew, d_defFunRewPf.get());
-      return;
     }
+  }
+  if (defMacro)
+  {
+    // A definition that could not be treated as a macro, e.g. a (mutually)
+    // recursive definition. Expand applications of previously defined
+    // functions and treat it as an ordinary assertion.
+    nn = applyDefinitions(nn);
+    d_assertionList.push_back(nn);
   }
 
   // Ensure that it does not contain free variables
@@ -218,6 +277,24 @@ void Assertions::addFormula(TNode n, bool isFunDef, bool maybeHasFv)
   }
 }
 
+Node Assertions::applyDefinitions(TNode n)
+{
+  if (d_defSubs == nullptr || d_defSubs->empty())
+  {
+    return n;
+  }
+  Node ns = d_defSubs->apply(n);
+  if (ns != n)
+  {
+    // Eliminate beta redexes introduced by expanding applications of defined
+    // functions. Note we do not rewrite here, since the expanded assertion
+    // should remain as close as possible to the input assertion.
+    BetaReduceNodeConverter brc(nodeManager());
+    ns = brc.convert(ns);
+  }
+  return ns;
+}
+
 void Assertions::addDefineFunDefinition(Node n, bool global)
 {
   if (global)
@@ -226,9 +303,24 @@ void Assertions::addDefineFunDefinition(Node n, bool global)
     // make sure that they are always present
     Assert(!language::isLangSygus(options().base.inputLanguage));
     d_globalDefineFunLemmas.emplace_back(n);
+    if (options().proof.proofDefineFunMacros)
+    {
+      // If definitions are treated as macros, we must process the definition
+      // immediately, since it must be expanded in subsequent assertions and
+      // definitions. Note that refresh will process this definition again
+      // if the current user context is popped.
+      refresh();
+    }
   }
   else
   {
+    if (options().proof.proofDefineFunMacros)
+    {
+      // Ensure that global definitions have been processed, e.g. after a
+      // user pop, so that they can be expanded in the body of this
+      // definition.
+      refresh();
+    }
     // We don't permit functions-to-synthesize within recursive function
     // definitions currently. Thus, we should check for free variables if the
     // input language is SyGuS.

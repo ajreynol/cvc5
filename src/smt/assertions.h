@@ -15,6 +15,7 @@
 #ifndef CVC5__SMT__ASSERTIONS_H
 #define CVC5__SMT__ASSERTIONS_H
 
+#include <memory>
 #include <vector>
 
 #include "context/cdlist.h"
@@ -25,6 +26,10 @@
 namespace cvc5::internal {
 
 class LazyCDProof;
+
+namespace theory {
+class SubstitutionMap;
+}
 
 namespace smt {
 
@@ -124,6 +129,18 @@ class Assertions : protected EnvObj
    */
   void addFormula(TNode n, bool isFunDef, bool maybeHasFv);
   /**
+   * Expand applications of defined functions in n based on the definitions
+   * that have been treated as macros so far (stored in d_defSubs). If the
+   * substitution changes n, beta redexes introduced by the expansion are
+   * eliminated from the result.
+   *
+   * This is only used when proofDefineFunMacros is true.
+   *
+   * @param n The node to expand.
+   * @return The expanded form of n.
+   */
+  Node applyDefinitions(TNode n);
+  /**
    * The assertion list (before any conversion) for supporting getAssertions().
    */
   AssertionList d_assertionList;
@@ -142,6 +159,13 @@ class Assertions : protected EnvObj
   std::vector<Node> d_assumptions;
   /** Proof generator storing proofs of rewriting for defined functions */
   std::shared_ptr<LazyCDProof> d_defFunRewPf;
+  /**
+   * The substitution corresponding to define-fun that are treated as macros.
+   * This is only allocated and used when proofDefineFunMacros is true, in
+   * which case definitions are not stored in the assertion list and instead
+   * are eagerly expanded in subsequent assertions via this substitution.
+   */
+  std::unique_ptr<theory::SubstitutionMap> d_defSubs;
 };
 
 }  // namespace smt
