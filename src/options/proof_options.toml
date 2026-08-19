@@ -237,7 +237,7 @@ name   = "Proof"
   long       = "proof-define-fun-macros"
   type       = "bool"
   default    = "false"
-  help       = "Treat define-fun as macros in proofs, where applications of defined functions are eagerly expanded in input assertions and definitions are printed as macro definitions instead of appearing as assumptions in proofs"
+  help       = "Treat define-fun as macros when printing proofs, where the definitions are printed as macro definitions and the applications of defined functions are expanded in the proof, instead of the definitions appearing as assumptions"
 
 [[option]]
   name       = "satProofMinDimacs"

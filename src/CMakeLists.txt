@@ -190,6 +190,8 @@ libcvc5_add_sources(
   proof/lfsc/lfsc_print_channel.h
   proof/lfsc/lfsc_util.cpp
   proof/lfsc/lfsc_util.h
+  proof/macro_def_proof_converter.cpp
+  proof/macro_def_proof_converter.h
   proof/method_id.cpp
   proof/method_id.h
   proof/print_expr.cpp

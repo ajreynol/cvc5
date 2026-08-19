@@ -23,6 +23,7 @@
 #include "proof/eo/eo_printer.h"
 #include "proof/lfsc/lfsc_post_processor.h"
 #include "proof/lfsc/lfsc_printer.h"
+#include "proof/macro_def_proof_converter.h"
 #include "proof/proof_checker.h"
 #include "proof/proof_node_algorithm.h"
 #include "proof/proof_node_manager.h"
@@ -37,26 +38,6 @@
 
 using namespace cvc5::internal::rewriter;
 namespace cvc5::internal {
-
-void ProofInputInfo::initialize(const smt::Assertions& as)
-{
-  const context::CDList<Node>& mdefs = as.getMacroDefinitions();
-  if (mdefs.empty())
-  {
-    // the assertions correspond to the input
-    return;
-  }
-  d_macroDefs.insert(d_macroDefs.end(), mdefs.begin(), mdefs.end());
-  const context::CDList<Node>& al = as.getAssertionList();
-  for (const Node& a : al)
-  {
-    Node ia = as.getInputForm(a);
-    if (ia != a)
-    {
-      d_inputForm[a] = ia;
-    }
-  }
-}
 
 Node ProofInputInfo::getInputForm(const Node& a) const
 {
@@ -341,7 +322,6 @@ void PfManager::printProof(std::ostream& out,
                            std::shared_ptr<ProofNode> fp,
                            options::ProofFormatMode mode,
                            ProofScopeMode scopeMode,
-                           Assertions& as,
                            const std::map<Node, std::string>& assertionNames)
 {
   Trace("smt-proof") << "PfManager::printProof: start " << mode << std::endl;
@@ -364,12 +344,15 @@ void PfManager::printProof(std::ostream& out,
   }
   else if (mode == options::ProofFormatMode::CPC)
   {
+    ProofInputInfo pii;
+    if (options().proof.proofDefineFunMacros)
+    {
+      // Convert the proof to one where the definitions are expanded, where
+      // pii relates its assertions to the ones of the input.
+      convertToMacroDefs(fp, scopeMode, pii);
+    }
     proof::EoNodeConverter atp(nodeManager());
     proof::EoPrinter eop(d_env, atp, d_rewriteDb.get());
-    // Compute how the assertions of the proof relate to the input, so that
-    // the assumptions we print match the input.
-    ProofInputInfo pii;
-    pii.initialize(as);
     eop.print(out, fp, scopeMode, &pii);
   }
   else if (mode == options::ProofFormatMode::ALETHE)
@@ -500,6 +483,77 @@ rewriter::RewriteDb* PfManager::getRewriteDatabase() const
 PreprocessProofGenerator* PfManager::getPreprocessProofGenerator() const
 {
   return d_pppg.get();
+}
+
+bool PfManager::convertToMacroDefs(std::shared_ptr<ProofNode>& fp,
+                                   ProofScopeMode scopeMode,
+                                   ProofInputInfo& pii)
+{
+  if (scopeMode != ProofScopeMode::DEFINITIONS_AND_ASSERTIONS)
+  {
+    // we require the definitions to be separated from the assertions
+    return false;
+  }
+  Assert(fp->getRule() == ProofRule::SCOPE);
+  const std::vector<Node>& defs = fp->getArguments();
+  std::vector<Node> macroDefs;
+  for (const Node& d : defs)
+  {
+    // (mutually) recursive function definitions are not macros
+    if (d.getKind() == Kind::EQUAL && d[0].isVar())
+    {
+      macroDefs.push_back(d);
+    }
+  }
+  if (macroDefs.size() != defs.size())
+  {
+    // We only convert if all definitions can be treated as macros, since the
+    // remaining ones would have to be maintained as assumptions.
+    return false;
+  }
+  if (macroDefs.empty())
+  {
+    return false;
+  }
+  std::shared_ptr<ProofNode> ascope = fp->getChildren()[0];
+  Assert(ascope->getRule() == ProofRule::SCOPE);
+  Trace("pf-macro-def") << "Convert proof for macro definitions " << macroDefs
+                        << std::endl;
+  MacroDefConverterCallback cb(d_env, macroDefs);
+  ProofNodeConverter pnc(d_env, cb);
+  std::shared_ptr<ProofNode> body = pnc.process(ascope->getChildren()[0]);
+  if (body == nullptr)
+  {
+    Trace("pf-macro-def") << "...failed to convert" << std::endl;
+    return false;
+  }
+  // The assertions of the converted proof are the expanded form of the ones
+  // of the input, which we remember for printing.
+  std::vector<Node> assertions;
+  for (const Node& a : ascope->getArguments())
+  {
+    Node ac = cb.convertTerm(a);
+    assertions.push_back(ac);
+    // We remember the form of the assertion in the input only if expanding
+    // the definitions in it is equivalent to macro expansion, in which case
+    // the two can be used interchangeably in an output that treats these
+    // definitions as macros.
+    if (ac != a && cb.isMacroExpansion(a))
+    {
+      pii.d_inputForm[ac] = a;
+    }
+  }
+  pii.d_macroDefs = macroDefs;
+  // Make the scope for the converted assertions. Note this checks that the
+  // converted proof depends only on them, i.e. that the definitions were
+  // successfully eliminated.
+  Pf pf =
+      d_pnm->mkScope(body, assertions, true, options().proof.proofPruneInput);
+  // The definitions are no longer assumptions of the proof, hence the outer
+  // scope is empty. Note they are printed as macro definitions instead.
+  fp = d_pnm->mkNode(ProofRule::SCOPE, {pf}, {});
+  Trace("pf-macro-def") << "...success" << std::endl;
+  return true;
 }
 
 void PfManager::getAssertions(Assertions& as, std::vector<Node>& assertions)
