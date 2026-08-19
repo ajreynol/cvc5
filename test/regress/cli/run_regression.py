@@ -443,9 +443,12 @@ class CpcLogosTester(CpcTesterBase):
             print_info("Skipped: requires a safe build")
             return EXIT_SKIP
         with tempfile.NamedTemporaryFile(suffix=".cpc") as tmpf:
+            # Logos does not have the trust rule, hence we require that cvc5
+            # generates a complete proof in the first place.
             cvc5_args = [
                 "--dump-proofs",
                 "--proof-print-conclusion",
+                "--check-proofs-complete",
             ] + benchmark_info.command_line_args
             proof, exit_code = self.gen_proof(benchmark_info, cvc5_args)
             if exit_code != EXIT_OK:
@@ -464,15 +467,18 @@ class CpcLogosTester(CpcTesterBase):
                 timeout=benchmark_info.timeout,
             )
             output, error = output.decode(), error.decode()
-            # Logos exits with LOGOS_STATUS_INCOMPLETE if it accepted the proof
-            # but the proof mentions something its specification of SMT-LIB
-            # semantics does not model, which we accept as well.
-            if exit_status != LOGOS_STATUS_INCOMPLETE:
-                exit_code = self.check_exit_status(EXIT_OK, exit_status, output,
-                                                   error, cvc5_args)
-                if exit_code != EXIT_OK:
-                    return exit_code
-            if ("correct" not in output) and ("incomplete" not in output):
+            exit_code = self.check_exit_status(EXIT_OK, exit_status, output,
+                                               error, cvc5_args)
+            if exit_code != EXIT_OK:
+                # Logos explains why it rejected a proof on standard error.
+                if exit_code == EXIT_FAILURE:
+                    print()
+                    print_outputs(output, error)
+                return exit_code
+            # Logos prints its verdict as the only line on standard output.
+            # We do not accept the verdict "incomplete" here, since all proofs
+            # are expected to be complete in a safe build.
+            if output.strip() != "correct":
                 print_error("Invalid proof")
                 print()
                 print_outputs(output, error)
@@ -672,9 +678,6 @@ EXIT_OK = 0
 EXIT_FAILURE = 1
 EXIT_SKIP = 77
 EXIT_TIMEOUT = 124
-# exit status of Logos when a proof is accepted but is out of the fragment
-# modelled by its specification of SMT-LIB semantics
-LOGOS_STATUS_INCOMPLETE = 2
 STATUS_TIMEOUT = EXIT_TIMEOUT
 CTEST_TIMEOUT_ENV = "CVC5_REGRESSION_TIMEOUT_AS_CTEST_TIMEOUT"
 CTEST_TIMEOUT_MARKER = "CVC5_REGRESSION_CTEST_TIMEOUT"
