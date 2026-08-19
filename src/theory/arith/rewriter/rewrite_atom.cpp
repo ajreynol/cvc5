@@ -267,19 +267,11 @@ namespace {
  * to the left side of the equality and make its coefficient positive.
  * The sum is taken as rvalue as it is modified in the process.
  *
- * If isReal is true, the sides of the returned equality are cast to real
- * (via TO_REAL). This is used when the equality we are normalizing is an
- * equality between real terms, since the normal form of an equality must have
- * the same type as the equality we are normalizing.
- *
  * If negated is non-null, it is set to true if the difference of the sides of
  * the returned equality is a *negative* multiple of the given sum, and false
  * if it is a positive one.
  */
-Node buildIntegerEquality(NodeManager* nm,
-                          Sum&& sum,
-                          bool isReal,
-                          bool* negated)
+Node buildIntegerEquality(NodeManager* nm, Sum&& sum, bool* negated)
 {
   Trace("arith-rewriter") << "building integer equality from " << sum
                           << std::endl;
@@ -328,12 +320,6 @@ Node buildIntegerEquality(NodeManager* nm,
   Node rhs = collectSum(nm, sum);
   Assert(left.getType().isInteger());
   Assert(rhs.getType().isInteger());
-  if (isReal)
-  {
-    // The equality we are rewriting was between real terms. We must not
-    // change the type of the equality, hence we cast both sides back to real.
-    return buildRelation(Kind::EQUAL, ensureReal(left), ensureReal(rhs));
-  }
   return buildRelation(Kind::EQUAL, left, rhs);
 }
 
@@ -374,9 +360,13 @@ Node buildRealEquality(NodeManager* nm, Sum&& sum, bool* negated)
   Node rhs = collectSum(nm, sum);
   Node lhsr = ensureReal(lhs);
   Node rhsr = ensureReal(rhs);
-  // Note that even if both sides are integer, we keep the equality between
-  // real terms here, since the rewritten form of an equality must have the
-  // same type as the equality we are rewriting.
+  if (lhsr != lhs && rhsr != rhs)
+  {
+    // If both were changed, we can make an integer equality instead.
+    Assert(lhs.getType().isInteger());
+    Assert(rhs.getType().isInteger());
+    return buildRelation(Kind::EQUAL, lhs, rhs);
+  }
   Assert(lhsr.getType().isReal() || lhsr.getType().isFullyAbstract());
   Assert(rhsr.getType().isReal() || rhsr.getType().isFullyAbstract());
   return buildRelation(Kind::EQUAL, lhsr, rhsr);
@@ -464,12 +454,7 @@ Node normalizeEquality(NodeManager* nm, TNode atom, bool* negated)
   addToSum(sum, right, true);
   if (isIntegral(sum))
   {
-    // Note that we may be normalizing an equality between real terms, e.g.
-    // (= (to_real x) 1.0) for integer x. In this case, we ensure the
-    // normalized form is an equality between real terms as well, since the
-    // normalized form of an equality must have the same type.
-    bool isReal = atom[0].getType().isReal();
-    return buildIntegerEquality(nm, std::move(sum), isReal, negated);
+    return buildIntegerEquality(nm, std::move(sum), negated);
   }
   return buildRealEquality(nm, std::move(sum), negated);
 }

@@ -13,6 +13,7 @@
 #ifdef CVC5_USE_POLY
 
 #include "test_smt.h"
+#include "theory/arith/rewriter/rewrite_atom.h"
 #include "util/rational.h"
 #include "util/real_algebraic_number.h"
 
@@ -98,6 +99,17 @@ TEST_F(TestTheoryArithRewriterBlack, Equality)
   // rewritten form.
   Node norm = x.eqNode(one);
   EXPECT_EQ(rr->rewrite(norm), norm);
+
+  // Ordinary rewriting preserves the terms and arithmetic type of an
+  // equality, whereas explicit normalization may remove real casts and return
+  // an equality between integer terms.
+  Node xr = d_nodeManager->mkNode(Kind::TO_REAL, x);
+  Node oneReal = d_nodeManager->mkConstReal(Rational(1));
+  Node realEq = xr.eqNode(oneReal);
+  EXPECT_EQ(rr->rewrite(realEq), realEq);
+  EXPECT_EQ(
+      theory::arith::rewriter::normalizeEquality(d_nodeManager.get(), realEq),
+      norm);
 
   // Equalities that are constant after normalization are still folded.
   EXPECT_EQ(rr->rewrite(x.eqNode(x)), d_nodeManager->mkConst(true));

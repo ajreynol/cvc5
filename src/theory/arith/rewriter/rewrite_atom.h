@@ -71,7 +71,9 @@ Node buildRealInequality(NodeManager* nm, Sum&& sum, Kind k);
  * Return the normal form of the arithmetic equality atom, which is computed by
  * moving all terms to the left hand side and normalizing the resulting sum.
  * For example, this returns (= x 1) for the input (= (+ x 1) 2). The returned
- * node is either an equality or a Boolean constant.
+ * node is either an equality or a Boolean constant. Normalization may change
+ * the arithmetic type of the equality's sides, e.g. (= (to_real x) 1.0) is
+ * normalized to (= x 1).
  *
  * Note that this normalization is *not* applied by the rewriter, since it does
  * not preserve the terms of the equality, which is incompatible with theory
