@@ -444,11 +444,13 @@ class CpcLogosTester(CpcTesterBase):
             return EXIT_SKIP
         with tempfile.NamedTemporaryFile(suffix=".cpc") as tmpf:
             # Logos does not have the trust rule, hence we require that cvc5
-            # generates a complete proof in the first place.
+            # generates a complete proof in the first place. Note that in a
+            # safe build, --check-proofs implies --check-proofs-complete, which
+            # cannot be given here, as it is an expert option.
             cvc5_args = [
                 "--dump-proofs",
                 "--proof-print-conclusion",
-                "--check-proofs-complete",
+                "--check-proofs",
             ] + benchmark_info.command_line_args
             proof, exit_code = self.gen_proof(benchmark_info, cvc5_args)
             if exit_code != EXIT_OK:
