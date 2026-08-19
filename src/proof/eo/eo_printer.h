@@ -183,6 +183,42 @@ class EoPrinter : protected EnvObj
   /** Print let list to output stream out */
   void printLetList(std::ostream& out, LetBinding& lbind);
   /**
+   * Print the declarations and definitions for the given definitions and
+   * assertions of a proof.
+   *
+   * @param out The output stream.
+   * @param definitions The definitions of the proof, which are printed as
+   * ordinary definitions.
+   * @param assertions The assertions of the proof.
+   * @param macroDefs The definitions to print as macro definitions.
+   * @param pii Information relating the assertions to the input, see print.
+   * @return true if the definitions in macroDefs were printed as macro
+   * definitions. This is false if a symbol in macroDefs cannot be defined as
+   * a macro, in which case the assumptions of the proof should not be printed
+   * in their input form.
+   */
+  bool printDeclarations(std::ostream& out,
+                         const std::vector<Node>& definitions,
+                         const std::vector<Node>& assertions,
+                         const std::vector<Node>& macroDefs,
+                         const ProofInputInfo* pii);
+  /**
+   * Return true if we can define the symbols with the given names as macros,
+   * given that we print the given definitions and terms.
+   *
+   * This is false if a name is used by a sort we declare, since Eunoia has a
+   * single namespace for symbols, in contrast to SMT-LIB, where sorts and
+   * functions are in separate ones.
+   *
+   * @param names The names of the symbols we intend to define as macros.
+   * @param definitions The definitions we print.
+   * @param terms The terms we print declarations from.
+   * @return true if the symbols can be defined as macros.
+   */
+  bool canDefineMacros(const std::unordered_set<std::string>& names,
+                       const std::vector<Node>& definitions,
+                       const std::vector<Node>& terms) const;
+  /**
    * Print the definition def, which is an equality (= f t), as a Eunoia
    * define command, which is a macro. If t is a lambda, the definition is
    * printed with the parameters of that lambda, e.g. (= f (lambda (x) t')) is

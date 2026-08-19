@@ -1533,6 +1533,7 @@ set(regress_0_tests
   regress0/proofs/define-fun-macros-global-inc.smt2
   regress0/proofs/define-fun-macros-nested.smt2
   regress0/proofs/define-fun-macros-rec.smt2
+  regress0/proofs/define-fun-macros-sort-clash.smt2
   regress0/proofs/define-fun-macros-ucore.smt2
   regress0/proofs/define-fun-shadow.smt2
   regress0/proofs/dsl-cong-eval-cr.smt2

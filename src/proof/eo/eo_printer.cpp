@@ -19,6 +19,7 @@
 #include <sstream>
 
 #include "expr/aci_norm.h"
+#include "expr/dtype.h"
 #include "expr/node_algorithm.h"
 #include "expr/sequence.h"
 #include "expr/subs.h"
@@ -896,6 +897,19 @@ void EoPrinter::print(EoPrintChannelOut& aout,
   // after the definitions are expanded.
   const std::vector<Node>& macroDefs =
       pii != nullptr ? pii->d_macroDefs : d_emptyVec;
+  // The declarations and definitions to print. If we have macro definitions,
+  // we compute them now, since we may determine that they cannot be printed
+  // as macros, in which case we print the assertions of the proof as is.
+  std::stringstream outPre;
+  bool hasPre = false;
+  if (!macroDefs.empty())
+  {
+    if (!printDeclarations(outPre, definitions, assertions, macroDefs, pii))
+    {
+      pii = nullptr;
+    }
+    hasPre = true;
+  }
 
   bool wasAlloc;
   for (size_t i = 0; i < 2; i++)
@@ -914,41 +928,12 @@ void EoPrinter::print(EoPrintChannelOut& aout,
       // do not need to print DSL rules
       if (!options().proof.proofPrintReference)
       {
-        // [1] print the declarations
-        printer::smt2::Smt2Printer eprinter(printer::smt2::Variant::eo_variant);
-        // we do not print declarations in a sorted manner to reduce overhead
-        smt::PrintBenchmark pb(nodeManager(), &eprinter, false, &d_tproc);
-        std::stringstream outDecl;
-        std::stringstream outDef;
-        std::stringstream outMacroDef;
-        options::ioutils::applyPrintArithLitToken(outDef, true);
-        options::ioutils::applyPrintArithLitToken(outMacroDef, true);
-        // The terms we print the declarations from, which are the assumptions
-        // in the form they are printed below.
-        std::vector<Node> terms;
-        for (const Node& n : assertions)
+        // [1] print the declarations and [2] the definitions
+        if (!hasPre)
         {
-          terms.push_back(pii != nullptr ? pii->getInputForm(n) : n);
+          printDeclarations(outPre, definitions, assertions, d_emptyVec, pii);
         }
-        // The symbols that are defined as macros, which should not be
-        // declared. Note we print their definitions ourselves below, since
-        // they must be printed as definitions that take parameters.
-        std::unordered_set<Node> macroSyms;
-        for (const Node& d : macroDefs)
-        {
-          Assert(d.getKind() == Kind::EQUAL);
-          macroSyms.insert(d[0]);
-          // ensure the symbols in the body of the definition are declared
-          terms.push_back(d[1]);
-          printMacroDefinition(outMacroDef, eprinter, d);
-        }
-        pb.printDeclarationsFrom(
-            outDecl, outDef, definitions, terms, macroSyms);
-        out << outDecl.str();
-        // [2] print the definitions, where the macro definitions come first
-        // since the remaining definitions may depend on them
-        out << outMacroDef.str();
-        out << outDef.str();
+        out << outPre.str();
       }
       // [3] print proof-level term bindings
       printLetList(out, d_lbind);
@@ -990,6 +975,111 @@ void EoPrinter::print(EoPrintChannelOut& aout,
     // [5] print proof body
     printProofInternal(ao, pnBody, i == 1);
   }
+}
+
+bool EoPrinter::printDeclarations(std::ostream& out,
+                                  const std::vector<Node>& definitions,
+                                  const std::vector<Node>& assertions,
+                                  const std::vector<Node>& macroDefs,
+                                  const ProofInputInfo* pii)
+{
+  printer::smt2::Smt2Printer eprinter(printer::smt2::Variant::eo_variant);
+  // we do not print declarations in a sorted manner to reduce overhead
+  smt::PrintBenchmark pb(nodeManager(), &eprinter, false, &d_tproc);
+  std::stringstream outDecl;
+  std::stringstream outDef;
+  options::ioutils::applyPrintArithLitToken(outDef, true);
+  // the same is required for the definitions we print on out below
+  options::ioutils::applyPrintArithLitToken(out, true);
+  // The terms we print the declarations from, which are the assumptions in
+  // the form they are printed. Note that if we determine below that the
+  // definitions cannot be printed as macros, these declarations are still
+  // accurate, since the symbols of an assertion are a superset of the ones of
+  // its expanded form, whose remaining symbols come from the bodies below.
+  std::vector<Node> terms;
+  for (const Node& n : assertions)
+  {
+    terms.push_back(pii != nullptr ? pii->getInputForm(n) : n);
+  }
+  // The symbols that are defined as macros, which should not be declared.
+  // Note we print their definitions ourselves below, since they must be
+  // printed as definitions that take parameters.
+  std::unordered_set<Node> macroSyms;
+  std::unordered_set<std::string> macroNames;
+  for (const Node& d : macroDefs)
+  {
+    Assert(d.getKind() == Kind::EQUAL);
+    macroSyms.insert(d[0]);
+    std::stringstream ssf;
+    ssf << d[0];
+    macroNames.insert(ssf.str());
+    // ensure the symbols in the body of the definition are declared
+    terms.push_back(d[1]);
+  }
+  pb.printDeclarationsFrom(outDecl, outDef, definitions, terms, macroSyms);
+  bool useMacros = canDefineMacros(macroNames, definitions, terms);
+  out << outDecl.str();
+  if (useMacros)
+  {
+    // print the macro definitions first, since the remaining definitions may
+    // depend on them
+    for (const Node& d : macroDefs)
+    {
+      printMacroDefinition(out, eprinter, d);
+    }
+  }
+  out << outDef.str();
+  return useMacros;
+}
+
+bool EoPrinter::canDefineMacros(const std::unordered_set<std::string>& names,
+                                const std::vector<Node>& definitions,
+                                const std::vector<Node>& terms) const
+{
+  // Eunoia has a single namespace for symbols, in contrast to SMT-LIB, where
+  // e.g. sorts and functions are in separate ones. Thus, we cannot define a
+  // symbol as a macro if its name is used by a sort that we declare.
+  std::unordered_set<TypeNode> types;
+  std::unordered_set<TNode> visited;
+  for (const Node& d : definitions)
+  {
+    expr::getTypes(d, types, visited);
+  }
+  for (const Node& t : terms)
+  {
+    expr::getTypes(t, types, visited);
+  }
+  // We consider the closure of the above types with respect to the types they
+  // are constructed from, e.g. T is declared if (Array Int T) occurs in a
+  // term, as well as the subfield types of datatypes.
+  std::unordered_set<TypeNode> processed;
+  std::vector<TypeNode> toProcess(types.begin(), types.end());
+  while (!toProcess.empty())
+  {
+    TypeNode tn = toProcess.back();
+    toProcess.pop_back();
+    if (!processed.insert(tn).second)
+    {
+      continue;
+    }
+    // uninterpreted sorts and sort constructors are declared by name
+    if (tn.hasName() && names.find(tn.getName()) != names.end())
+    {
+      return false;
+    }
+    if (tn.isDatatype())
+    {
+      const DType& dt = tn.getDType();
+      if (names.find(dt.getName()) != names.end())
+      {
+        return false;
+      }
+      std::unordered_set<TypeNode> sftypes = dt.getSubfieldTypes();
+      toProcess.insert(toProcess.end(), sftypes.begin(), sftypes.end());
+    }
+    toProcess.insert(toProcess.end(), tn.begin(), tn.end());
+  }
+  return true;
 }
 
 void EoPrinter::printMacroDefinition(std::ostream& out,
