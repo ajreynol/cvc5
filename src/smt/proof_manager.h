@@ -171,6 +171,54 @@ class PfManager : protected EnvObj
   /** Initial process of a final proof, just before post-processing */
   void prepareFinalProof(std::shared_ptr<ProofNode> pfn);
   /**
+   * Analyze how much of the refutation pfn is spent below its Boolean
+   * skeleton, and in particular how much is spent rewriting atoms that no
+   * theory lemma ever mentions. Reports to trace pf-urw-summary.
+   */
+  void analyzeUnrewrite(std::shared_ptr<ProofNode> pfn, bool isPre);
+  /** The Boolean skeleton of the refutation, computed by analyzeUnrewrite */
+  std::vector<std::shared_ptr<ProofNode>> d_urwSkeleton;
+  /** The theory lemmas at the frontier of the skeleton */
+  std::vector<std::shared_ptr<ProofNode>> d_urwTlProofs;
+  /** The input lemmas at the frontier of the skeleton */
+  std::vector<std::shared_ptr<ProofNode>> d_urwIlProofs;
+  /** Those input lemmas all of whose atoms are unrewritable */
+  std::vector<std::shared_ptr<ProofNode>> d_urwIlUnrwProofs;
+  /** Those input lemmas with at least one unrewritable atom */
+  std::vector<std::shared_ptr<ProofNode>> d_urwIlAnyUnrwProofs;
+  /** Maps the above to their fraction of unrewritable atoms */
+  std::map<std::shared_ptr<ProofNode>, double> d_urwIlFrac;
+  /** The atoms occurring in theory lemmas */
+  std::unordered_set<Node> d_urwTlAtoms;
+  /** The atoms occurring only in input lemmas */
+  std::unordered_set<Node> d_urwAtoms;
+  /**
+   * Rebuild the proof pn with the atom substitution subs applied throughout,
+   * replacing each proof node in cutRoots, which proves an equality between an
+   * atom and its substituted form, by reflexivity. This discards the rewrite
+   * proofs of the substituted atoms.
+   *
+   * @return The converted proof, or nullptr if any step could not be replayed.
+   */
+  std::shared_ptr<ProofNode> applyUnrewrite(
+      ProofNode* pn,
+      const std::unordered_map<Node, Node>& subs,
+      const std::unordered_set<ProofNode*>& cutRoots,
+      std::unordered_set<Node>& failAtoms);
+  /**
+   * Apply the substitution subs to pfn, dropping any atom whose rewrite proof
+   * cannot be removed without breaking a step, and retrying.
+   *
+   * @return The converted proof, or nullptr if nothing could be removed.
+   */
+  std::shared_ptr<ProofNode> tryUnrewrite(
+      std::shared_ptr<ProofNode> pfn,
+      std::unordered_map<Node, Node> subs,
+      const std::map<Node, std::vector<ProofNode*>>& preimagePf);
+  /** Add all proof nodes in the DAG rooted at pfn to visited */
+  static void countProofNodes(std::shared_ptr<ProofNode> pfn,
+                              std::unordered_set<ProofNode*>& visited);
+  /**
    * Get assertions from the assertions
    */
   void getAssertions(Assertions& as, std::vector<Node>& assertions);

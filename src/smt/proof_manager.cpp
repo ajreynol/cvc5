@@ -238,6 +238,8 @@ std::shared_ptr<ProofNode> PfManager::connectProofToAssertions(
     d_pfpp->setAssertions(assertions, false);
   }
   d_pfpp->process(pfn, d_pppg.get());
+  // repeat the analysis on the fully elaborated proof
+  analyzeUnrewrite(pfn, false);
 
   switch (scopeMode)
   {
@@ -338,106 +340,742 @@ void PfManager::prepareFinalProof(std::shared_ptr<ProofNode> pfn)
     }
   } while (!toProcess.empty());
   Trace("pf-urw-debug") << "Final proof is now " << *pfn.get() << std::endl;
+  analyzeUnrewrite(pfn, true);
+}
 
-  std::unordered_set<ProofNode*> visited;
-  std::unordered_set<ProofNode*>::iterator it;
+namespace {
+/**
+ * Is r a step whose purpose is to justify rewriting, i.e. a rewrite step or
+ * one of the congruence/transitivity steps that glue rewrite steps together?
+ */
+bool isRewriteRule(ProofRule r)
+{
+  switch (r)
+  {
+    case ProofRule::MACRO_REWRITE:
+    case ProofRule::MACRO_SR_EQ_INTRO:
+    case ProofRule::MACRO_SR_PRED_INTRO:
+    case ProofRule::MACRO_SR_PRED_ELIM:
+    case ProofRule::MACRO_SR_PRED_TRANSFORM:
+    case ProofRule::THEORY_REWRITE:
+    case ProofRule::DSL_REWRITE:
+    case ProofRule::EVALUATE:
+    case ProofRule::ARITH_POLY_NORM:
+    case ProofRule::ENCODE_EQ_INTRO:
+    case ProofRule::CONG:
+    case ProofRule::NARY_CONG:
+    case ProofRule::HO_CONG:
+    case ProofRule::TRANS:
+    case ProofRule::REFL:
+    case ProofRule::SYMM: return true;
+    default: break;
+  }
+  return false;
+}
+/**
+ * Is r a step that glues rewrite steps into a proof of an equality?
+ */
+bool isRewriteGlueRule(ProofRule r)
+{
+  switch (r)
+  {
+    case ProofRule::CONG:
+    case ProofRule::NARY_CONG:
+    case ProofRule::HO_CONG:
+    case ProofRule::TRANS:
+    case ProofRule::REFL:
+    case ProofRule::SYMM: return true;
+    default: break;
+  }
+  return false;
+}
+
+/**
+ * Is pn a *rewriting* proof, i.e. a proof of an equality all of whose leaves
+ * are rewrite steps? This distinguishes the congruence/transitivity steps that
+ * assemble a rewrite proof from the ones that assemble a congruence closure
+ * explanation, which look identical rule-wise but have assumptions as leaves.
+ */
+bool isRewriteProof(ProofNode* pn, std::unordered_map<ProofNode*, bool>& cache)
+{
+  std::vector<ProofNode*> visit{pn};
+  while (!visit.empty())
+  {
+    ProofNode* cur = visit.back();
+    auto it = cache.find(cur);
+    if (it != cache.end())
+    {
+      visit.pop_back();
+      continue;
+    }
+    ProofRule r = cur->getRule();
+    if (!isRewriteRule(r) && !isRewriteGlueRule(r))
+    {
+      cache[cur] = false;
+      visit.pop_back();
+      continue;
+    }
+    bool allDone = true;
+    bool res = true;
+    for (const std::shared_ptr<ProofNode>& c : cur->getChildren())
+    {
+      auto itc = cache.find(c.get());
+      if (itc == cache.end())
+      {
+        allDone = false;
+        visit.push_back(c.get());
+      }
+      else if (!itc->second)
+      {
+        res = false;
+      }
+    }
+    if (allDone)
+    {
+      cache[cur] = res;
+      visit.pop_back();
+    }
+  }
+  return cache[pn];
+}
+}  // namespace
+
+void PfManager::analyzeUnrewrite(std::shared_ptr<ProofNode> pfn, bool isPre)
+{
+  if (!options().proof.proofUnrewrite)
+  {
+    return;
+  }
+  std::shared_ptr<ProofNode> cur;
+  if (isPre)
+  {
+    // Partition the refutation into:
+    // (1) the Boolean skeleton, i.e. the maximal prefix of the proof from the
+    // root that uses only Boolean rules, which are agnostic to the content of
+    // the theory literals they operate on,
+    // (2) the frontier proofs "nbProofs" beneath that skeleton, which are
+    // either theory lemmas (closed proofs) or input lemmas (proofs of
+    // preprocessed formulas from the input assertions).
+    //
+    // Note this classification is only meaningful before post-processing,
+    // which connects the theory lemmas to the input assertions. We hold on to
+    // the frontier proofs, which the post-processor updates in place, so that
+    // the same partition can be measured on the elaborated proof.
+    d_urwTlProofs.clear();
+    d_urwIlProofs.clear();
+    d_urwIlUnrwProofs.clear();
+    d_urwIlAnyUnrwProofs.clear();
+    d_urwIlFrac.clear();
+    d_urwAtoms.clear();
+    d_urwSkeleton.clear();
+    std::unordered_set<ProofNode*> visited;
+    std::vector<std::shared_ptr<ProofNode>> visit;
+    std::vector<std::shared_ptr<ProofNode>> nbProofs;
+    visit.push_back(pfn);
+    do
+    {
+      cur = visit.back();
+      visit.pop_back();
+      if (visited.find(cur.get()) == visited.end())
+      {
+        visited.insert(cur.get());
+        if (expr::isBooleanRule(cur->getRule()))
+        {
+          d_urwSkeleton.push_back(cur);
+          const std::vector<std::shared_ptr<ProofNode>>& cs =
+              cur->getChildren();
+          visit.insert(visit.end(), cs.begin(), cs.end());
+        }
+        else
+        {
+          nbProofs.push_back(cur);
+        }
+      }
+    } while (!visit.empty());
+
+    std::unordered_set<TNode> tlVisited;
+    d_urwTlAtoms.clear();
+    for (std::shared_ptr<ProofNode>& p : nbProofs)
+    {
+      Trace("pf-urw") << "*** Frontier: " << p->getResult() << std::endl;
+      std::vector<Node> fas;
+      expr::getFreeAssumptions(p.get(), fas);
+      if (fas.empty())
+      {
+        Trace("pf-urw") << "--> theory lemma" << std::endl;
+        d_urwTlProofs.push_back(p);
+        expr::getTheoryAtoms(p->getResult(), d_urwTlAtoms, tlVisited);
+      }
+      else
+      {
+        Trace("pf-urw") << "--> input lemma via " << fas << std::endl;
+        d_urwIlProofs.push_back(p);
+      }
+    }
+    // An atom occurring in an input lemma but in no theory lemma is
+    // "unrewritable": the SAT solver treated it as an opaque literal, hence
+    // the rewriting that produced it was not required by the refutation.
+    for (std::shared_ptr<ProofNode>& p : d_urwIlProofs)
+    {
+      std::unordered_set<Node> atoms;
+      std::unordered_set<TNode> av;
+      expr::getTheoryAtoms(p->getResult(), atoms, av);
+      size_t nurw = 0;
+      size_t natoms = 0;
+      for (TNode a : atoms)
+      {
+        // Boolean constants are not atoms we could keep in unrewritten form;
+        // in particular a preprocessing step that derives false outright must
+        // keep its rewriting.
+        if (a.isConst())
+        {
+          continue;
+        }
+        natoms++;
+        if (d_urwTlAtoms.find(a) == d_urwTlAtoms.end())
+        {
+          Trace("pf-urw-debug") << "- pure input atom " << a << std::endl;
+          d_urwAtoms.insert(a);
+          nurw++;
+        }
+      }
+      Trace("pf-urw") << "  " << nurw << " / " << natoms
+                      << " atoms are unrewritable" << std::endl;
+      if (nurw > 0)
+      {
+        d_urwIlAnyUnrwProofs.push_back(p);
+        d_urwIlFrac[p] = double(nurw) / double(natoms);
+        if (nurw == natoms)
+        {
+          d_urwIlUnrwProofs.push_back(p);
+        }
+      }
+    }
+  }
+  // Measure the sizes of the three regions on the current form of the proof.
+  std::unordered_set<ProofNode*> tlVisitedPf, ilVisitedPf, urwVisitedPf,
+      anyUrwVisitedPf, allVisitedPf, skelVisitedPf;
+  double estRemovable = 0.0;
+  for (std::shared_ptr<ProofNode>& p : d_urwTlProofs)
+  {
+    countProofNodes(p, tlVisitedPf);
+  }
+  for (std::shared_ptr<ProofNode>& p : d_urwIlProofs)
+  {
+    countProofNodes(p, ilVisitedPf);
+  }
+  for (std::shared_ptr<ProofNode>& p : d_urwIlUnrwProofs)
+  {
+    countProofNodes(p, urwVisitedPf);
+  }
+  for (std::shared_ptr<ProofNode>& p : d_urwIlAnyUnrwProofs)
+  {
+    countProofNodes(p, anyUrwVisitedPf);
+    std::unordered_set<ProofNode*> pv;
+    countProofNodes(p, pv);
+    estRemovable += d_urwIlFrac[p] * double(pv.size());
+  }
+  for (std::shared_ptr<ProofNode>& p : d_urwSkeleton)
+  {
+    skelVisitedPf.insert(p.get());
+  }
+  countProofNodes(pfn, allVisitedPf);
+  size_t nodesInputOnly = 0;
+  for (ProofNode* p : ilVisitedPf)
+  {
+    if (tlVisitedPf.find(p) == tlVisitedPf.end())
+    {
+      nodesInputOnly++;
+    }
+  }
+  // How much of each region is spent justifying rewriting? Nodes reachable
+  // from both an input lemma and a theory lemma are attributed to the input.
+  size_t rwInput = 0;
+  size_t rwTheory = 0;
+  size_t rwTotal = 0;
+  size_t rwpInput = 0;
+  size_t rwpTheory = 0;
+  size_t rwpTotal = 0;
+  std::unordered_map<ProofNode*, bool> rwpCache;
+  for (ProofNode* p : allVisitedPf)
+  {
+    bool isRwp = isRewriteProof(p, rwpCache);
+    bool isRw = isRewriteRule(p->getRule());
+    if (!isRw && !isRwp)
+    {
+      continue;
+    }
+    bool inInput = ilVisitedPf.find(p) != ilVisitedPf.end();
+    bool inTheory = tlVisitedPf.find(p) != tlVisitedPf.end();
+    if (isRw)
+    {
+      rwTotal++;
+      rwInput += inInput ? 1 : 0;
+      rwTheory += (!inInput && inTheory) ? 1 : 0;
+    }
+    if (isRwp)
+    {
+      rwpTotal++;
+      rwpInput += inInput ? 1 : 0;
+      rwpTheory += (!inInput && inTheory) ? 1 : 0;
+    }
+  }
+  // count the atoms of the input lemmas on the current proof
+  std::unordered_set<Node> ilAtoms;
+  std::unordered_set<TNode> ilVisited;
+  for (std::shared_ptr<ProofNode>& p : d_urwIlProofs)
+  {
+    expr::getTheoryAtoms(p->getResult(), ilAtoms, ilVisited);
+  }
+  size_t ilCountTl = 0;
+  size_t ilCount = 0;
+  for (TNode ila : ilAtoms)
+  {
+    if (ila.isConst())
+    {
+      continue;
+    }
+    if (d_urwTlAtoms.find(ila) != d_urwTlAtoms.end())
+    {
+      ilCountTl++;
+    }
+    else
+    {
+      ilCount++;
+    }
+  }
+  // For each unrewritable atom, find the terms it is rewritten *from* within
+  // the input lemmas. If an atom has a single preimage, the rewrite proof
+  // deriving it can be dropped and the atom kept in its original form
+  // everywhere. If it has several, the rewriting is doing real work: it is
+  // merging distinct input atoms into one SAT literal, and dropping it would
+  // break the resolution steps that connect them.
+  // A rewrite proof of l = a' is typically a TRANS chain, whose links also
+  // conclude an equality with a' on one side. Only the maximal node of a chain
+  // gives a genuine preimage, so we skip nodes having a parent that concludes
+  // an equality with the same atom.
+  // Atoms of every frontier lemma, not just the input ones: the same
+  // renaming applies to an atom a theory lemma derives by rewriting, as long
+  // as every producer of the atom rewrites it from the same term.
+  std::unordered_set<Node> frontierAtoms(d_urwTlAtoms.begin(),
+                                         d_urwTlAtoms.end());
+  {
+    std::unordered_set<TNode> av;
+    for (std::shared_ptr<ProofNode>& p : d_urwIlProofs)
+    {
+      expr::getTheoryAtoms(p->getResult(), frontierAtoms, av);
+    }
+  }
+  std::map<ProofNode*, std::vector<ProofNode*>> parents;
+  for (ProofNode* p : allVisitedPf)
+  {
+    for (const std::shared_ptr<ProofNode>& c : p->getChildren())
+    {
+      parents[c.get()].push_back(p);
+    }
+  }
+  std::map<Node, std::unordered_set<Node>> preimage;
+  std::map<Node, std::vector<ProofNode*>> preimagePf;
+  for (ProofNode* p : allVisitedPf)
+  {
+    Node c = p->getResult();
+    if (c.getKind() != Kind::EQUAL)
+    {
+      continue;
+    }
+    for (size_t i = 0; i < 2; i++)
+    {
+      if (frontierAtoms.find(c[i]) == frontierAtoms.end() || c[1 - i] == c[i])
+      {
+        continue;
+      }
+      bool subsumed = false;
+      for (ProofNode* par : parents[p])
+      {
+        Node pc = par->getResult();
+        if (pc.getKind() == Kind::EQUAL && (pc[0] == c[i] || pc[1] == c[i]))
+        {
+          subsumed = true;
+          break;
+        }
+      }
+      // The atom must be replaced by another atom that does not mention it:
+      // substituting a literal by a formula would change the propositional
+      // structure the resolution steps above depend on.
+      if (expr::isBooleanConnective(c[1 - i])
+          || expr::hasSubterm(c[1 - i], c[i]))
+      {
+        continue;
+      }
+      // Renaming the atom to a literal the refutation already uses would
+      // merge two SAT literals, changing the set representation of the
+      // clauses the resolution steps operate on.
+      if (frontierAtoms.find(c[1 - i]) != frontierAtoms.end())
+      {
+        continue;
+      }
+      if (!subsumed)
+      {
+        preimage[c[i]].insert(c[1 - i]);
+        preimagePf[c[i]].push_back(p);
+      }
+    }
+  }
+  size_t urwPre0 = 0;
+  size_t urwPre1 = 0;
+  size_t urwPreM = 0;
+  std::unordered_set<ProofNode*> removable;
+  std::unordered_set<ProofNode*> removableRoots;
+  std::unordered_map<Node, Node> subs;
+  std::unordered_map<Node, Node> subsWide;
+  for (const Node& a : frontierAtoms)
+  {
+    std::map<Node, std::unordered_set<Node>>::iterator itp = preimage.find(a);
+    if (itp != preimage.end() && itp->second.size() == 1)
+    {
+      subsWide[a] = *itp->second.begin();
+    }
+  }
+  for (const Node& a : d_urwAtoms)
+  {
+    std::map<Node, std::unordered_set<Node>>::iterator itp = preimage.find(a);
+    if (itp == preimage.end())
+    {
+      // the atom was already in the input in this form, nothing to remove
+      urwPre0++;
+      continue;
+    }
+    if (itp->second.size() > 1)
+    {
+      Trace("pf-urw") << "  atom " << a << " has " << itp->second.size()
+                      << " preimages " << itp->second << std::endl;
+      urwPreM++;
+      continue;
+    }
+    urwPre1++;
+    subs[a] = *itp->second.begin();
+    for (ProofNode* pf : preimagePf[a])
+    {
+      removableRoots.insert(pf);
+      if (!removable.insert(pf).second)
+      {
+        continue;
+      }
+      for (const std::shared_ptr<ProofNode>& c : pf->getChildren())
+      {
+        countProofNodes(c, removable);
+      }
+    }
+  }
+  // Nodes in a removable rewrite proof may also be reachable from a part of
+  // the proof we are keeping, in which case removing them saves nothing. Walk
+  // the proof again without descending into the removable roots to find what
+  // survives, and discount it.
+  std::unordered_set<ProofNode*> kept;
+  {
+    std::vector<ProofNode*> visit{pfn.get()};
+    while (!visit.empty())
+    {
+      ProofNode* cur = visit.back();
+      visit.pop_back();
+      if (removableRoots.find(cur) != removableRoots.end()
+          || !kept.insert(cur).second)
+      {
+        continue;
+      }
+      for (const std::shared_ptr<ProofNode>& c : cur->getChildren())
+      {
+        visit.push_back(c.get());
+      }
+    }
+  }
+  size_t removableExcl = 0;
+  for (ProofNode* p : removable)
+  {
+    if (kept.find(p) == kept.end())
+    {
+      removableExcl++;
+    }
+  }
+  // Now actually perform the transformation and report what it achieved. We
+  // first try renaming every atom with a unique preimage anywhere in the
+  // refutation, which also reaches the rewriting done inside theory lemmas,
+  // and fall back to the input-only atoms if that does not replay.
+  size_t nodesAfter = 0;
+  size_t urwOk = 0;
+  size_t nsubs = 0;
+  bool inputOnly = options().proof.proofUnrewriteInputOnly;
+  std::unordered_map<Node, Node>& subsUse = inputOnly ? subs : subsWide;
+  if (!isPre && !subsUse.empty())
+  {
+    std::shared_ptr<ProofNode> npfn = tryUnrewrite(pfn, subsUse, preimagePf);
+    if (npfn == nullptr && !inputOnly && !subs.empty())
+    {
+      npfn = tryUnrewrite(pfn, subs, preimagePf);
+    }
+    if (npfn != nullptr)
+    {
+      // the transformation must not introduce new open assumptions
+      std::vector<Node> fa0, fa1;
+      expr::getFreeAssumptions(pfn.get(), fa0);
+      expr::getFreeAssumptions(npfn.get(), fa1);
+      std::unordered_set<Node> fs0(fa0.begin(), fa0.end());
+      bool assumpOk = true;
+      for (const Node& a : fa1)
+      {
+        if (fs0.find(a) == fs0.end())
+        {
+          Trace("pf-urw") << "new assumption " << a << std::endl;
+          assumpOk = false;
+          break;
+        }
+      }
+      if (assumpOk)
+      {
+        std::unordered_set<ProofNode*> nv;
+        countProofNodes(npfn, nv);
+        nodesAfter = nv.size();
+        nsubs = subsUse.size();
+        urwOk = 1;
+        Trace("pf-urw") << "unrewrite: " << allVisitedPf.size() << " -> "
+                        << nodesAfter << " nodes" << std::endl;
+        // install the converted proof, so that it is what we check and print
+        d_pnm->updateNode(pfn.get(), npfn.get());
+      }
+    }
+  }
+  // A single machine-readable summary line, see --trace=pf-urw-summary.
+  Trace("pf-urw-summary")
+      << "(unrewrite-summary :stage " << (isPre ? "pre" : "post")
+      << " :nodes-total " << allVisitedPf.size() << " :nodes-skeleton "
+      << skelVisitedPf.size() << " :nodes-theory-lemmas " << tlVisitedPf.size()
+      << " :nodes-input-lemmas " << ilVisitedPf.size()
+      << " :nodes-input-lemmas-only " << nodesInputOnly
+      << " :nodes-input-lemmas-unrw " << urwVisitedPf.size()
+      << " :nodes-input-lemmas-any-unrw " << anyUrwVisitedPf.size()
+      << " :est-removable " << size_t(estRemovable) << " :rw-total "
+      << rwTotal << " :rw-input " << rwInput << " :rw-theory " << rwTheory
+      << " :rwp-total " << rwpTotal << " :rwp-input " << rwpInput
+      << " :rwp-theory " << rwpTheory << " :urw-atoms " << d_urwAtoms.size()
+      << " :urw-pre0 " << urwPre0 << " :urw-pre1 " << urwPre1
+      << " :urw-pre-multi " << urwPreM << " :urw-removable "
+      << removable.size() << " :urw-removable-excl " << removableExcl
+      << " :urw-applied " << urwOk << " :urw-nodes-after " << nodesAfter
+      << " :urw-subs " << nsubs << " :urw-subs-wide " << subsWide.size()
+      << " :theory-lemmas " << d_urwTlProofs.size() << " :input-lemmas "
+      << d_urwIlProofs.size() << " :input-lemmas-full-unrw "
+      << d_urwIlUnrwProofs.size() << " :atoms-theory " << d_urwTlAtoms.size()
+      << " :atoms-input " << ilAtoms.size() << " :atoms-input-shared "
+      << ilCountTl << " :atoms-input-only " << ilCount << ")" << std::endl;
+}
+
+std::shared_ptr<ProofNode> PfManager::tryUnrewrite(
+    std::shared_ptr<ProofNode> pfn,
+    std::unordered_map<Node, Node> subs,
+    const std::map<Node, std::vector<ProofNode*>>& preimagePf)
+{
+  // The renaming must be injective and must not map a term it also maps from,
+  // otherwise it would merge two SAT literals or chase one into another.
+  std::unordered_set<Node> images;
+  std::vector<Node> bad;
+  for (const std::pair<const Node, Node>& sp : subs)
+  {
+    if (subs.find(sp.second) != subs.end() || !images.insert(sp.second).second)
+    {
+      bad.push_back(sp.first);
+    }
+  }
+  for (const Node& b : bad)
+  {
+    subs.erase(b);
+  }
+  // A step we cannot replay costs us the atoms it mentions, not the whole
+  // transformation: drop them and try again.
+  for (size_t i = 0; i < 8 && !subs.empty(); i++)
+  {
+    std::unordered_set<ProofNode*> roots;
+    for (const std::pair<const Node, Node>& sp : subs)
+    {
+      std::map<Node, std::vector<ProofNode*>>::const_iterator itp =
+          preimagePf.find(sp.first);
+      if (itp != preimagePf.end())
+      {
+        roots.insert(itp->second.begin(), itp->second.end());
+      }
+    }
+    std::unordered_set<Node> failAtoms;
+    std::shared_ptr<ProofNode> np =
+        applyUnrewrite(pfn.get(), subs, roots, failAtoms);
+    if (np != nullptr && np->getResult() == pfn->getResult())
+    {
+      return np;
+    }
+    if (failAtoms.empty())
+    {
+      return nullptr;
+    }
+    Trace("pf-urw") << "unrewrite: retry without " << failAtoms.size()
+                    << " of " << subs.size() << " atoms" << std::endl;
+    for (const Node& a : failAtoms)
+    {
+      subs.erase(a);
+    }
+  }
+  return nullptr;
+}
+
+std::shared_ptr<ProofNode> PfManager::applyUnrewrite(
+    ProofNode* pn,
+    const std::unordered_map<Node, Node>& subs,
+    const std::unordered_set<ProofNode*>& cutRoots,
+    std::unordered_set<Node>& failAtoms)
+{
+  std::vector<Node> ks;
+  std::vector<Node> vs;
+  for (const std::pair<const Node, Node>& sp : subs)
+  {
+    ks.push_back(sp.first);
+    vs.push_back(sp.second);
+  }
+  std::unordered_map<Node, Node> scache;
+  std::unordered_map<ProofNode*, std::shared_ptr<ProofNode>> cache;
+  std::vector<ProofNode*> visit{pn};
+  while (!visit.empty())
+  {
+    ProofNode* cur = visit.back();
+    if (cache.find(cur) != cache.end())
+    {
+      visit.pop_back();
+      continue;
+    }
+    // A node proving (= l a') where we keep the atom in its form l becomes a
+    // reflexivity step, which discards its entire rewrite proof.
+    if (cutRoots.find(cur) != cutRoots.end())
+    {
+      Node res = cur->getResult();
+      Assert(res.getKind() == Kind::EQUAL);
+      std::unordered_map<Node, Node>::const_iterator its = subs.find(res[1]);
+      Node l = (its != subs.end() && its->second == res[0]) ? res[0] : res[1];
+      cache[cur] = d_pnm->mkNode(ProofRule::REFL, {}, {l}, l.eqNode(l));
+      Assert(d_pnm->getChecker()->checkDebug(ProofRule::REFL, {}, {l})
+             == l.eqNode(l));
+      visit.pop_back();
+      continue;
+    }
+    bool allDone = true;
+    bool childFail = false;
+    std::vector<std::shared_ptr<ProofNode>> cch;
+    for (const std::shared_ptr<ProofNode>& c : cur->getChildren())
+    {
+      std::unordered_map<ProofNode*, std::shared_ptr<ProofNode>>::iterator itc =
+          cache.find(c.get());
+      if (itc == cache.end())
+      {
+        allDone = false;
+        visit.push_back(c.get());
+      }
+      else if (itc->second == nullptr)
+      {
+        childFail = true;
+      }
+      else
+      {
+        cch.push_back(itc->second);
+      }
+    }
+    if (!allDone)
+    {
+      continue;
+    }
+    visit.pop_back();
+    if (childFail)
+    {
+      cache[cur] = nullptr;
+      continue;
+    }
+    Node res = cur->getResult();
+    Node cres = res.substitute(ks.begin(), ks.end(), vs.begin(), vs.end());
+    if (cur->getRule() == ProofRule::ASSUME)
+    {
+      // an assumption cannot be renamed, it is fixed by the input
+      cache[cur] = cres == res ? d_pnm->mkAssume(res) : nullptr;
+      continue;
+    }
+    std::vector<Node> cargs;
+    for (const Node& a : cur->getArguments())
+    {
+      cargs.push_back(a.substitute(ks.begin(), ks.end(), vs.begin(), vs.end()));
+    }
+    // Check the replayed step explicitly: mkNode trusts the expected
+    // conclusion unless proof checking is eager, which would let an unsound
+    // renaming through.
+    std::vector<Node> cconc;
+    for (const std::shared_ptr<ProofNode>& c : cch)
+    {
+      cconc.push_back(c->getResult());
+    }
+    std::shared_ptr<ProofNode> np;
+    // Ask what the step proves rather than whether it proves cres: some rule
+    // checkers echo back the expected conclusion when they cannot recompute
+    // it, which would let an inconsistent renaming through.
+    Node checked =
+        d_pnm->getChecker()->checkDebug(cur->getRule(), cconc, cargs);
+    if (!checked.isNull() && checked == cres)
+    {
+      np = d_pnm->mkNode(cur->getRule(), cch, cargs, cres);
+    }
+    if (np == nullptr)
+    {
+      Trace("pf-urw-debug") << "unrewrite failed at " << cur->getRule() << " "
+                            << cres << std::endl;
+      // record which renamed atoms this step involves, so the caller can drop
+      // them and try again
+      std::unordered_set<Node> ats;
+      std::unordered_set<TNode> av;
+      expr::getTheoryAtoms(res, ats, av);
+      for (const Node& a : ats)
+      {
+        if (subs.find(a) != subs.end())
+        {
+          failAtoms.insert(a);
+        }
+      }
+      for (const Node& a : cur->getArguments())
+      {
+        std::unordered_set<Node> ats2;
+        std::unordered_set<TNode> av2;
+        expr::getTheoryAtoms(a, ats2, av2);
+        for (const Node& a2 : ats2)
+        {
+          if (subs.find(a2) != subs.end())
+          {
+            failAtoms.insert(a2);
+          }
+        }
+      }
+    }
+    cache[cur] = np;
+  }
+  return cache[pn];
+}
+
+void PfManager::countProofNodes(std::shared_ptr<ProofNode> pfn,
+                                std::unordered_set<ProofNode*>& visited)
+{
   std::vector<std::shared_ptr<ProofNode>> visit;
-  std::vector<std::shared_ptr<ProofNode>> nbProofs;
+  std::shared_ptr<ProofNode> cur;
   visit.push_back(pfn);
   do
   {
     cur = visit.back();
     visit.pop_back();
-    it = visited.find(cur.get());
-    if (it == visited.end())
+    if (visited.find(cur.get()) == visited.end())
     {
       visited.insert(cur.get());
-      ProofRule id = cur->getRule();
-      if (expr::isBooleanRule(id))
-      {
-        const std::vector<std::shared_ptr<ProofNode>>& cs = cur->getChildren();
-        visit.insert(visit.end(), cs.begin(), cs.end());
-      }
-      else
-      {
-        nbProofs.push_back(cur);
-      }
+      const std::vector<std::shared_ptr<ProofNode>>& cs = cur->getChildren();
+      visit.insert(visit.end(), cs.begin(), cs.end());
     }
   } while (!visit.empty());
-
-
-  std::unordered_set<Node> tlAtoms, ilAtoms;
-  std::unordered_set<TNode> tlVisited, ilVisited;
-  std::vector<std::shared_ptr<ProofNode>> tlProofs;
-  std::vector<std::shared_ptr<ProofNode>> inputProofs;
-  std::map<std::shared_ptr<ProofNode>, std::vector<Node>> fassumps;
-  for (std::shared_ptr<ProofNode>& p : nbProofs)
-  {
-    Trace("pf-urw") << "*** Final input: " << cur->getResult() << std::endl;
-    // Trace("pf-urw") << "Its proof is " << *cur.get() << std::endl;
-    std::vector<Node>& fas = fassumps[p];
-    expr::getFreeAssumptions(p.get(), fas);
-    if (fas.empty())
-    {
-      Trace("pf-urw") << "--> theory lemma" << std::endl;
-      tlProofs.push_back(p);
-      expr::getTheoryAtoms(p->getResult(), tlAtoms, tlVisited);
-    }
-    else
-    {
-      Trace("pf-urw") << "--> input lemma via " << fas << std::endl;
-      inputProofs.push_back(p);
-      expr::getTheoryAtoms(p->getResult(), ilAtoms, ilVisited);
-      /*
-      for (const Node& a : fas)
-      {
-        expr::getTheoryAtoms(a, ilAtoms, ilVisited);
-      }
-      */
-    }
-  }
-  Trace("pf-urw") << "Atoms in theory lemmas: " << tlAtoms.size() << std::endl;
-  size_t ilCountTl = 0;
-  size_t ilCount = 0;
-  for (TNode ila : ilAtoms)
-  {
-    if (tlAtoms.find(ila)!=tlAtoms.end())
-    {
-      ilCountTl++;
-      Trace("pf-urw-debug") << "- input+t atom " << ila << std::endl;
-    }
-    else
-    {
-      ilCount++;
-      Trace("pf-urw-debug") << "- pure input atom " << ila << std::endl;
-    }
-  }
-  Trace("pf-urw") << "Atoms in input+theory lemmas: " << ilCountTl << std::endl;
-  Trace("pf-urw") << "Atoms in only input lemmas: " << ilCount << std::endl;
-  for (std::shared_ptr<ProofNode>& p : inputProofs)
-  {
-
-    Trace("pf-urw-debug") << "* work on " << p->getResult() << std::endl;
-    std::vector<Node>& fas = fassumps[p];
-    Assert (!fas.empty());
-    ilAtoms.clear();
-    ilVisited.clear();
-    expr::getTheoryAtoms(p->getResult(), ilAtoms, ilVisited);
-    std::unordered_set<Node> toUrw;
-    for (TNode a : ilAtoms)
-    {
-      if (tlAtoms.find(a)==tlAtoms.end())
-      {
-        toUrw.insert(a);
-      }
-    }
-    Trace("pf-urw") << "  " << toUrw.size() << " / " << ilAtoms.size() << " assumptions are unrewritable" << std::endl;
-    if (toUrw.empty())
-    {
-      continue;
-    }
-    Trace("pf-urw") << "  proof is " << *p.get() << std::endl;
-  }
 }
 
 void PfManager::checkFinalProof(std::shared_ptr<ProofNode> pfn)

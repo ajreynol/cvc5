@@ -285,6 +285,7 @@ bool isBooleanRule(ProofRule r)
   {
     case ProofRule::RESOLUTION:
     case ProofRule::CHAIN_RESOLUTION:
+    case ProofRule::CHAIN_M_RESOLUTION:
     case ProofRule::FACTORING:
     case ProofRule::REORDERING:
     case ProofRule::SPLIT:

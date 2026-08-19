@@ -285,3 +285,11 @@ name   = "Proof"
   type       = "bool"
   default    = "false"
   help       = "Process the proof with unrewriting"
+
+[[option]]
+  name       = "proofUnrewriteInputOnly"
+  category   = "expert"
+  long       = "proof-unrewrite-input-only"
+  type       = "bool"
+  default    = "false"
+  help       = "restrict unrewriting to atoms that occur only in input lemmas"
