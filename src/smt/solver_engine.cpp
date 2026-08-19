@@ -1499,9 +1499,9 @@ std::vector<Node> SolverEngine::getAssertionsInternal() const
   std::vector<Node> res;
   for (const Node& n : al)
   {
-    // return the form of the assertion in the input, which is n itself unless
+    // return the input form of the assertion, which is n itself unless
     // definitions were expanded in it
-    res.emplace_back(as.getOriginalForm(n));
+    res.emplace_back(as.getInputForm(n));
   }
   return res;
 }

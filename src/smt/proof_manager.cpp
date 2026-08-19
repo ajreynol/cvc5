@@ -50,7 +50,7 @@ void ProofInputInfo::initialize(const smt::Assertions& as)
   const context::CDList<Node>& al = as.getAssertionList();
   for (const Node& a : al)
   {
-    Node ia = as.getOriginalForm(a);
+    Node ia = as.getInputForm(a);
     if (ia != a)
     {
       d_inputForm[a] = ia;

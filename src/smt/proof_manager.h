@@ -61,7 +61,7 @@ class ProofPostprocess;
  * proofDefineFunMacros), in which case the assertions given to the SMT solver
  * are the result of expanding the definitions in the input. For such proofs,
  * the definitions are printed as macro definitions and the assumptions are
- * printed in their original form, which is well defined since the two are
+ * printed in their input form, which is well defined since the two are
  * equivalent modulo the expansion of these definitions.
  */
 struct ProofInputInfo
@@ -69,13 +69,13 @@ struct ProofInputInfo
   /** Initialize this class based on the assertions as */
   void initialize(const smt::Assertions& as);
   /**
-   * Get the form of assertion a in the input, which is a itself if a was not
+   * Get the input form of assertion a, which is a itself if a was not
    * modified.
    */
   Node getInputForm(const Node& a) const;
   /** The definitions that are treated as macros, in the order they were made */
   std::vector<Node> d_macroDefs;
-  /** Maps assertions to their form in the input */
+  /** Maps assertions to their input form */
   std::map<Node, Node> d_inputForm;
 };
 

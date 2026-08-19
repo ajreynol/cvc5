@@ -41,7 +41,7 @@ Assertions::Assertions(Env& env)
       d_assertionList(userContext()),
       d_assertionListDefs(userContext()),
       d_macroDefs(userContext()),
-      d_origAssertions(userContext()),
+      d_inputForm(userContext()),
       d_globalDefineFunLemmasIndex(userContext(), 0)
 {
 }
@@ -98,10 +98,10 @@ const context::CDList<Node>& Assertions::getMacroDefinitions() const
   return d_macroDefs;
 }
 
-Node Assertions::getOriginalForm(const Node& n) const
+Node Assertions::getInputForm(const Node& n) const
 {
-  NodeNodeMap::const_iterator it = d_origAssertions.find(n);
-  if (it != d_origAssertions.end())
+  NodeNodeMap::const_iterator it = d_inputForm.find(n);
+  if (it != d_inputForm.end())
   {
     return (*it).second;
   }
@@ -147,14 +147,14 @@ void Assertions::addFormula(TNode n, bool isFunDef, bool maybeHasFv)
     }
     if (nn != n && isMacroExpansion(n))
     {
-      // Remember the form of this assertion in the input, which is used when
+      // Remember the input form of this assertion, which is used when
       // printing proofs and unsat cores. We only do so if expanding the
       // definitions in n is equivalent to macro expansion, in which case nn
       // and n can be used interchangeably in an output that treats these
       // definitions as macros.
-      if (d_origAssertions.find(nn) == d_origAssertions.end())
+      if (d_inputForm.find(nn) == d_inputForm.end())
       {
-        d_origAssertions.insert(nn, n);
+        d_inputForm.insert(nn, n);
       }
     }
   }

@@ -892,8 +892,8 @@ void EoPrinter::print(EoPrintChannelOut& aout,
   // The definitions from the input that are treated as macros. These are
   // printed as (Eunoia) define commands below, which are macros as well.
   // Their applications have been expanded in the assertions above; we print
-  // the assumptions in the form they had in the input, which is equivalent
-  // to the assertion after the definitions are expanded.
+  // the assumptions in their input form, which is equivalent to the assertion
+  // after the definitions are expanded.
   const std::vector<Node>& macroDefs =
       pii != nullptr ? pii->d_macroDefs : d_emptyVec;
 
@@ -963,7 +963,7 @@ void EoPrinter::print(EoPrintChannelOut& aout,
       }
       processed.insert(n);
       // note the identifier is allocated for the assertion, whereas we print
-      // the form it had in the input
+      // its input form
       size_t id = allocateAssumeId(n, wasAlloc);
       Node na = pii != nullptr ? pii->getInputForm(n) : n;
       Node nc = d_tproc.convert(na);

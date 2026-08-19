@@ -59,7 +59,7 @@ class EoPrinter : protected EnvObj
    * @param pii Information relating the assertions of pfn to the input, if
    * they differ. This is the case e.g. if definitions were expanded in the
    * assertions, in which case they are printed as macro definitions and the
-   * assumptions are printed in their original form.
+   * assumptions are printed in their input form.
    */
   void print(std::ostream& out,
              std::shared_ptr<ProofNode> pfn,

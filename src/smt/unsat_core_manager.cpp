@@ -98,10 +98,10 @@ void UnsatCoreManager::getUnsatCoreInternal(std::shared_ptr<ProofNode> pfn,
     if (std::find(fassumps.begin(), fassumps.end(), a) != fassumps.end())
     {
       Trace("unsat-core") << "\tyes\n";
-      // Add the form of the assertion in the input, which is a itself unless
+      // Add the input form of the assertion, which is a itself unless
       // definitions were expanded in it. This ensures the core corresponds to
       // the input, e.g. that named assertions can be identified.
-      coreSet.insert(as.getOriginalForm(a));
+      coreSet.insert(as.getInputForm(a));
     }
   }
   core.insert(core.end(), coreSet.begin(), coreSet.end());

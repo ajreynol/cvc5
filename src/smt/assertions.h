@@ -111,16 +111,16 @@ class Assertions : protected EnvObj
    */
   const context::CDList<Node>& getMacroDefinitions() const;
   /**
-   * Get the form of assertion n in the input, that is, the form of n prior to
+   * Get the input form of assertion n, that is, the form of n prior to
    * expanding the definitions that are treated as macros. Returns n itself if
    * n was not modified.
    *
-   * Note that n and its original form are equivalent modulo the expansion of
-   * the definitions returned by getMacroDefinitions above. Hence, the original
-   * form can be used in an output (e.g. a proof) that treats these definitions
-   * as macros.
+   * Note that n and its input form are equivalent modulo the expansion of the
+   * definitions returned by getMacroDefinitions above. Hence, the input form
+   * can be used in an output (e.g. a proof) that treats these definitions as
+   * macros.
    */
-  Node getOriginalForm(const Node& n) const;
+  Node getInputForm(const Node& n) const;
   /** Get the set corresponding to the above */
   std::unordered_set<Node> getCurrentAssertionListDefitions() const;
   /**
@@ -201,10 +201,10 @@ class Assertions : protected EnvObj
   /** The definitions that are treated as macros, see getMacroDefinitions */
   AssertionList d_macroDefs;
   /**
-   * Maps the assertions in d_assertionList to their form in the input, for
-   * those that were changed by expanding the definitions in d_macroDefs.
+   * Maps the assertions in d_assertionList to their input form, for those
+   * that were changed by expanding the definitions in d_macroDefs.
    */
-  NodeNodeMap d_origAssertions;
+  NodeNodeMap d_inputForm;
   /**
    * List of lemmas generated for global (recursive) function definitions. We
    * assert this list of definitions in each check-sat call.
