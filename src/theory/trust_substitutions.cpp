@@ -48,12 +48,15 @@ TrustSubstitutionMap::TrustSubstitutionMap(Env& env,
   }
 }
 
-void TrustSubstitutionMap::addSubstitution(TNode x, TNode t, ProofGenerator* pg)
+void TrustSubstitutionMap::addSubstitution(TNode x,
+                                           TNode t,
+                                           ProofGenerator* pg,
+                                           bool trackProof)
 {
   Trace("trust-subs") << "TrustSubstitutionMap::addSubstitution: add " << x
                       << " -> " << t << std::endl;
   d_subs.addSubstitution(x, t);
-  if (isProofEnabled())
+  if (isProofEnabled() && trackProof)
   {
     TrustNode tnl = TrustNode::mkTrustRewrite(x, t, pg);
     d_tsubs.push_back(tnl);

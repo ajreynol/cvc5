@@ -33,6 +33,12 @@
 
 namespace cvc5::internal {
 
+namespace printer {
+namespace smt2 {
+class Smt2Printer;
+}
+}  // namespace printer
+
 namespace proof {
 
 class EoPrinter : protected EnvObj
@@ -50,19 +56,27 @@ class EoPrinter : protected EnvObj
    * @param pfn The proof node.
    * @param psm The scope mode, which determines whether there are outermost
    * scope to process in pfn. If this is the case, we print assume steps.
+   * @param pii Information relating the assertions of pfn to the input, if
+   * they differ. This is the case e.g. if definitions were expanded in the
+   * assertions, in which case they are printed as macro definitions and the
+   * assumptions are printed in their original form.
    */
   void print(std::ostream& out,
              std::shared_ptr<ProofNode> pfn,
-             ProofScopeMode psm = ProofScopeMode::DEFINITIONS_AND_ASSERTIONS);
+             ProofScopeMode psm = ProofScopeMode::DEFINITIONS_AND_ASSERTIONS,
+             const ProofInputInfo* pii = nullptr);
   /**
    * Same as above, but with a Eunoia print channel.
    * @param out The output stream.
    * @param pfn The proof node.
    * @param psm The scope mode.
+   * @param pii Information relating the assertions of pfn to the input, if
+   * they differ.
    */
   void print(EoPrintChannelOut& out,
              std::shared_ptr<ProofNode> pfn,
-             ProofScopeMode psm = ProofScopeMode::DEFINITIONS_AND_ASSERTIONS);
+             ProofScopeMode psm = ProofScopeMode::DEFINITIONS_AND_ASSERTIONS,
+             const ProofInputInfo* pii = nullptr);
   /**
    * Print the proof, assuming that previous proofs have been printed on this
    * printer that have (partially) given the definition of subterms and
@@ -168,6 +182,19 @@ class EoPrinter : protected EnvObj
   size_t allocateProofId(const ProofNode* pn, bool& wasAlloc);
   /** Print let list to output stream out */
   void printLetList(std::ostream& out, LetBinding& lbind);
+  /**
+   * Print the definition def, which is an equality (= f t), as a Eunoia
+   * define command, which is a macro. If t is a lambda, the definition is
+   * printed with the parameters of that lambda, e.g. (= f (lambda (x) t')) is
+   * printed as (define f ((x T)) t').
+   *
+   * @param out The output stream.
+   * @param eprinter The printer to use for printing the command.
+   * @param def The definition.
+   */
+  void printMacroDefinition(std::ostream& out,
+                            const printer::smt2::Smt2Printer& eprinter,
+                            const Node& def);
   /** Reference to the term processor */
   BaseEoNodeConverter& d_tproc;
   /** Assume id counter */

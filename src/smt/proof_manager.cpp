@@ -37,6 +37,37 @@
 
 using namespace cvc5::internal::rewriter;
 namespace cvc5::internal {
+
+void ProofInputInfo::initialize(const smt::Assertions& as)
+{
+  const context::CDList<Node>& mdefs = as.getMacroDefinitions();
+  if (mdefs.empty())
+  {
+    // the assertions correspond to the input
+    return;
+  }
+  d_macroDefs.insert(d_macroDefs.end(), mdefs.begin(), mdefs.end());
+  const context::CDList<Node>& al = as.getAssertionList();
+  for (const Node& a : al)
+  {
+    Node ia = as.getOriginalForm(a);
+    if (ia != a)
+    {
+      d_inputForm[a] = ia;
+    }
+  }
+}
+
+Node ProofInputInfo::getInputForm(const Node& a) const
+{
+  std::map<Node, Node>::const_iterator it = d_inputForm.find(a);
+  if (it != d_inputForm.end())
+  {
+    return it->second;
+  }
+  return a;
+}
+
 namespace smt {
 
 PfManager::PfManager(Env& env)
@@ -310,6 +341,7 @@ void PfManager::printProof(std::ostream& out,
                            std::shared_ptr<ProofNode> fp,
                            options::ProofFormatMode mode,
                            ProofScopeMode scopeMode,
+                           Assertions& as,
                            const std::map<Node, std::string>& assertionNames)
 {
   Trace("smt-proof") << "PfManager::printProof: start " << mode << std::endl;
@@ -334,7 +366,11 @@ void PfManager::printProof(std::ostream& out,
   {
     proof::EoNodeConverter atp(nodeManager());
     proof::EoPrinter eop(d_env, atp, d_rewriteDb.get());
-    eop.print(out, fp, scopeMode);
+    // Compute how the assertions of the proof relate to the input, so that
+    // the assumptions we print match the input.
+    ProofInputInfo pii;
+    pii.initialize(as);
+    eop.print(out, fp, scopeMode, &pii);
   }
   else if (mode == options::ProofFormatMode::ALETHE)
   {

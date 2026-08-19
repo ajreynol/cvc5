@@ -841,7 +841,8 @@ void EoPrinter::printLetList(std::ostream& out, LetBinding& lbind)
 
 void EoPrinter::print(std::ostream& out,
                       std::shared_ptr<ProofNode> pfn,
-                      ProofScopeMode psm)
+                      ProofScopeMode psm,
+                      const ProofInputInfo* pii)
 {
   // ensures options are set once and for all
   options::ioutils::applyOutputLanguage(out, Language::LANG_SMTLIB_V2_6);
@@ -849,12 +850,13 @@ void EoPrinter::print(std::ostream& out,
   options::ioutils::applyPrintSkolemDefinitions(out, true);
   // allocate a print channel
   EoPrintChannelOut aprint(out, d_lbindUse, d_termLetPrefix, true);
-  print(aprint, pfn, psm);
+  print(aprint, pfn, psm, pii);
 }
 
 void EoPrinter::print(EoPrintChannelOut& aout,
                       std::shared_ptr<ProofNode> pfn,
-                      ProofScopeMode psm)
+                      ProofScopeMode psm,
+                      const ProofInputInfo* pii)
 {
   std::ostream& out = aout.getOStream();
   Assert(d_pletMap.empty());
@@ -887,6 +889,13 @@ void EoPrinter::print(EoPrintChannelOut& aout,
       dscope != nullptr ? dscope->getArguments() : d_emptyVec;
   const std::vector<Node>& assertions =
       ascope != nullptr ? ascope->getArguments() : d_emptyVec;
+  // The definitions from the input that are treated as macros. These are
+  // printed as (Eunoia) define commands below, which are macros as well.
+  // Their applications have been expanded in the assertions above; we print
+  // the assumptions in the form they had in the input, which is equivalent
+  // to the assertion after the definitions are expanded.
+  const std::vector<Node>& macroDefs =
+      pii != nullptr ? pii->d_macroDefs : d_emptyVec;
 
   bool wasAlloc;
   for (size_t i = 0; i < 2; i++)
@@ -911,10 +920,34 @@ void EoPrinter::print(EoPrintChannelOut& aout,
         smt::PrintBenchmark pb(nodeManager(), &eprinter, false, &d_tproc);
         std::stringstream outDecl;
         std::stringstream outDef;
+        std::stringstream outMacroDef;
         options::ioutils::applyPrintArithLitToken(outDef, true);
-        pb.printDeclarationsFrom(outDecl, outDef, definitions, assertions);
+        options::ioutils::applyPrintArithLitToken(outMacroDef, true);
+        // The terms we print the declarations from, which are the assumptions
+        // in the form they are printed below.
+        std::vector<Node> terms;
+        for (const Node& n : assertions)
+        {
+          terms.push_back(pii != nullptr ? pii->getInputForm(n) : n);
+        }
+        // The symbols that are defined as macros, which should not be
+        // declared. Note we print their definitions ourselves below, since
+        // they must be printed as definitions that take parameters.
+        std::unordered_set<Node> macroSyms;
+        for (const Node& d : macroDefs)
+        {
+          Assert(d.getKind() == Kind::EQUAL);
+          macroSyms.insert(d[0]);
+          // ensure the symbols in the body of the definition are declared
+          terms.push_back(d[1]);
+          printMacroDefinition(outMacroDef, eprinter, d);
+        }
+        pb.printDeclarationsFrom(
+            outDecl, outDef, definitions, terms, macroSyms);
         out << outDecl.str();
-        // [2] print the definitions
+        // [2] print the definitions, where the macro definitions come first
+        // since the remaining definitions may depend on them
+        out << outMacroDef.str();
         out << outDef.str();
       }
       // [3] print proof-level term bindings
@@ -929,8 +962,11 @@ void EoPrinter::print(EoPrintChannelOut& aout,
         continue;
       }
       processed.insert(n);
+      // note the identifier is allocated for the assertion, whereas we print
+      // the form it had in the input
       size_t id = allocateAssumeId(n, wasAlloc);
-      Node nc = d_tproc.convert(n);
+      Node na = pii != nullptr ? pii->getInputForm(n) : n;
+      Node nc = d_tproc.convert(na);
       ao->printAssume(nc, id, false);
     }
     for (const Node& n : definitions)
@@ -954,6 +990,43 @@ void EoPrinter::print(EoPrintChannelOut& aout,
     // [5] print proof body
     printProofInternal(ao, pnBody, i == 1);
   }
+}
+
+void EoPrinter::printMacroDefinition(std::ostream& out,
+                                     const printer::smt2::Smt2Printer& eprinter,
+                                     const Node& def)
+{
+  Assert(def.getKind() == Kind::EQUAL && def[0].isVar());
+  Node body = def[1];
+  std::vector<Node> formals;
+  if (body.getKind() == Kind::LAMBDA)
+  {
+    // Replace the bound variables of the definition by raw symbols, which are
+    // printed as their name. This is necessary since the parameters of a
+    // Eunoia define are ordinary symbols, whereas bound variables are
+    // otherwise printed as (@var "x" T) by the node converter below.
+    std::vector<Node> vars(body[0].begin(), body[0].end());
+    for (const Node& v : vars)
+    {
+      std::stringstream ssv;
+      ssv << v;
+      formals.push_back(NodeManager::mkRawSymbol(ssv.str(), v.getType()));
+    }
+    body = body[1].substitute(
+        vars.begin(), vars.end(), formals.begin(), formals.end());
+  }
+  // Note that we do not letify the body of the definition, since the let
+  // list is printed after the definitions.
+  body = d_tproc.convert(body);
+  TypeNode range = def[0].getType();
+  if (range.isFunction())
+  {
+    range = range.getRangeType();
+  }
+  std::stringstream ssf;
+  ssf << def[0];
+  eprinter.toStreamCmdDefineFunction(out, ssf.str(), formals, range, body);
+  out << std::endl;
 }
 
 void EoPrinter::printNext(EoPrintChannelOut& aout,
