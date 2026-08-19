@@ -1,4 +1,5 @@
 ; COMMAND-LINE: --proof-define-fun-macros --produce-unsat-cores
+; DISABLE-TESTER: alethe
 ; EXPECT: unsat
 ; EXPECT: (
 ; EXPECT: A1

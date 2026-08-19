@@ -1,4 +1,5 @@
 ; COMMAND-LINE: --proof-define-fun-macros --check-proofs
+; DISABLE-TESTER: alethe
 ; EXPECT: unsat
 (set-logic UFLIA)
 (define-fun f ((x Int)) Int (+ x 1))

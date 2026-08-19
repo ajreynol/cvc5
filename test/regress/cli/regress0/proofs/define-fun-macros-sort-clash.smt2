@@ -1,4 +1,5 @@
 ; COMMAND-LINE: --proof-define-fun-macros --check-proofs
+; DISABLE-TESTER: alethe
 ; EXPECT: unsat
 ; The name f is used for both a sort and a defined function, which are in
 ; separate namespaces in SMT-LIB but not in the proof output. Thus f cannot
