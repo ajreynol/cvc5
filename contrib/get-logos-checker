@@ -42,7 +42,7 @@ LOGOS_DIR="$BASE_DIR/logos-checker"
 mkdir -p $LOGOS_DIR
 
 # download and unpack logos
-LOGOS_VERSION="87202fa32c49a79eb904ab6cb128089c4d1f9e42"
+LOGOS_VERSION="eeccaf51a82db59feb28cb625894ca37ca3ec1d9"
 download "https://github.com/ajreynol/logos/archive/$LOGOS_VERSION.tar.gz" $BASE_DIR/tmp/logos.tgz
 tar --strip 1 -xzf $BASE_DIR/tmp/logos.tgz -C $LOGOS_DIR
 
