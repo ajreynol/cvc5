@@ -455,10 +455,11 @@ class CpcLogosTester(CpcTesterBase):
             proof, exit_code = self.gen_proof(benchmark_info, cvc5_args)
             if exit_code != EXIT_OK:
                 return exit_code
-            # Logos does not support definitions, which are printed in the
-            # preamble of the proof for benchmarks that use define-fun.
-            if b"define-fun" in proof:
-                print_info("Skipped: proof contains definitions")
+            # Logos does not support lambda, which cvc5 prints in the
+            # preamble of the proof for benchmarks that use define-fun. Note
+            # that plain definitions are printed as define, which is supported.
+            if b"lambda" in proof:
+                print_info("Skipped: proof contains a lambda")
                 return EXIT_SKIP
             tmpf.write(proof)
             tmpf.flush()
