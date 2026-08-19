@@ -36,6 +36,39 @@ namespace theory {
 
 TheoryEngineModelBuilder::TheoryEngineModelBuilder(Env& env) : EnvObj(env) {}
 
+bool TheoryEngineModelBuilder::getFreeFunctionSymbols(
+    TNode n, std::unordered_set<Node>& syms)
+{
+  bool ret = false;
+  std::unordered_set<TNode> visited;
+  std::vector<TNode> visit{n};
+  TNode cur;
+  do
+  {
+    cur = visit.back();
+    visit.pop_back();
+    if (!visited.insert(cur).second)
+    {
+      continue;
+    }
+    if (cur.isVar())
+    {
+      if (cur.getKind() != Kind::BOUND_VARIABLE && cur.getType().isFunction())
+      {
+        syms.insert(cur);
+        ret = true;
+      }
+      continue;
+    }
+    if (cur.hasOperator())
+    {
+      visit.push_back(cur.getOperator());
+    }
+    visit.insert(visit.end(), cur.begin(), cur.end());
+  } while (!visit.empty());
+  return ret;
+}
+
 void TheoryEngineModelBuilder::Assigner::initialize(
     TypeNode tn, TypeEnumeratorProperties* tep, const std::vector<Node>& aes)
 {
@@ -1128,6 +1161,10 @@ bool TheoryEngineModelBuilder::buildModel(TheoryModel* tm)
   Trace("model-builder") << "Copy representatives to model..." << std::endl;
   tm->d_reps.clear();
   std::map<Node, Node>::iterator itMap;
+  // The equivalence classes whose assignment is postponed, see below.
+  std::vector<Node> hoFuncEqc;
+  // The function symbols that occur free in the values of the above classes.
+  std::unordered_set<Node> hoFuncSyms;
   for (itMap = d_constantReps.begin(); itMap != d_constantReps.end(); ++itMap)
   {
     // The "constant" representative is a model value, which may be a lambda
@@ -1137,6 +1174,19 @@ bool TheoryEngineModelBuilder::buildModel(TheoryModel* tm)
     Node normc = itMap->second;
     if (!normc.isConst())
     {
+      // If we are a lambda whose body contains function symbols, e.g. if
+      // (= a (lambda ((x Int)) (f (g x)))) was asserted, then normalizing it
+      // requires the values of f and g, which are computed lazily and are
+      // thus not available yet. We postpone the assignment of such classes
+      // until the remainder of the model is finalized below.
+      if (logicInfo().isHigherOrder()
+          && getFreeFunctionSymbols(normc, hoFuncSyms))
+      {
+        Trace("model-builder") << "    Postpone assignment of "
+                               << itMap->first << std::endl;
+        hoFuncEqc.push_back(itMap->first);
+        continue;
+      }
       normc = normalize(tm, normc, true);
     }
     // mark this as the final representative
@@ -1155,6 +1205,43 @@ bool TheoryEngineModelBuilder::buildModel(TheoryModel* tm)
     for (const Node& node : noRepSet)
     {
       tm->assignRepresentative(node, node, false);
+    }
+  }
+
+  if (!hoFuncEqc.empty())
+  {
+    Trace("model-builder")
+        << "Assign postponed higher-order function representatives..."
+        << std::endl;
+    // The values of the function symbols occurring in the postponed values
+    // are computed on demand. We compute them now, and remember them in
+    // d_constantReps so that normalize below is able to replace them. Note
+    // that we skip the symbols belonging to a postponed equivalence class,
+    // since these are handled by the (recursive) call to normalize below.
+    for (const Node& f : hoFuncSyms)
+    {
+      if (!tm->d_equalityEngine->hasTerm(f))
+      {
+        continue;
+      }
+      Node fr = tm->d_equalityEngine->getRepresentative(f);
+      if (d_constantReps.find(fr) != d_constantReps.end())
+      {
+        continue;
+      }
+      Node fv = tm->getRepresentative(f);
+      Trace("model-builder")
+          << "    Value of " << f << " is " << fv << std::endl;
+      d_constantReps[fr] = fv;
+    }
+    d_normalizedCache.clear();
+    for (const Node& eqc : hoFuncEqc)
+    {
+      Node normc = normalize(tm, d_constantReps[eqc], true);
+      // remember the normalized form, in case another postponed class refers
+      // to this one
+      d_constantReps[eqc] = normc;
+      tm->assignRepresentative(eqc, normc, true);
     }
   }
 
@@ -1262,17 +1349,43 @@ Node TheoryEngineModelBuilder::normalize(TheoryModel* m, TNode r, bool evalOnly)
     return (*it).second;
   }
   Trace("model-builder-debug") << "do normalize on " << r << std::endl;
+  if (!d_normalizeActive.insert(r).second)
+  {
+    // A cyclic dependency, e.g. if the value of a function symbol is a lambda
+    // whose body contains that same function symbol. We cannot normalize in
+    // this case, so we return r itself. Note we do not cache here.
+    Trace("model-builder-debug") << "...cyclic, do not normalize" << std::endl;
+    return r;
+  }
   Node retNode = r;
   if (r.getNumChildren() > 0)
   {
+    // The list of subterms of r that we will normalize. For applications of
+    // uninterpreted functions, this includes the operator, which may be a
+    // function variable that was assigned a lambda in the model, when in
+    // higher-order logic.
+    std::vector<Node> rc;
+    // Note that we only do this when higher-order, since otherwise function
+    // symbols are internal nodes of the equality engine and hence do not have
+    // a representative.
+    bool isApplyUf =
+        (r.getKind() == Kind::APPLY_UF && logicInfo().isHigherOrder());
     std::vector<Node> children;
     if (r.getMetaKind() == kind::metakind::PARAMETERIZED)
     {
-      children.push_back(r.getOperator());
+      if (isApplyUf)
+      {
+        rc.push_back(r.getOperator());
+      }
+      else
+      {
+        children.push_back(r.getOperator());
+      }
     }
-    for (size_t i = 0, nchild = r.getNumChildren(); i < nchild; ++i)
+    rc.insert(rc.end(), r.begin(), r.end());
+    for (const Node& rcc : rc)
     {
-      Node ri = r[i];
+      Node ri = rcc;
       bool recurse = true;
       if (!ri.isConst())
       {
@@ -1284,20 +1397,20 @@ Node TheoryEngineModelBuilder::normalize(TheoryModel* m, TNode r, bool evalOnly)
           {
             ri = (*itMap).second;
             Trace("model-builder-debug")
-                << i << ": const child " << ri << std::endl;
+                << rcc << ": const child " << ri << std::endl;
             // need to recurse if d_constantReps stores a non-constant
             recurse = !ri.isConst();
           }
           else if (!evalOnly)
           {
             recurse = false;
-            Trace("model-builder-debug") << i << ": keep " << ri << std::endl;
+            Trace("model-builder-debug") << rcc << ": keep " << ri << std::endl;
           }
         }
         else
         {
           Trace("model-builder-debug")
-              << i << ": no hasTerm " << ri << std::endl;
+              << rcc << ": no hasTerm " << ri << std::endl;
         }
         if (recurse)
         {
@@ -1309,6 +1422,7 @@ Node TheoryEngineModelBuilder::normalize(TheoryModel* m, TNode r, bool evalOnly)
     retNode = nodeManager()->mkNode(r.getKind(), children);
     retNode = rewrite(retNode);
   }
+  d_normalizeActive.erase(r);
   d_normalizedCache[r] = retNode;
   return retNode;
 }

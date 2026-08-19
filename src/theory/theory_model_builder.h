@@ -147,6 +147,15 @@ class TheoryEngineModelBuilder : protected EnvObj
    * each child is constant.
    */
   Node normalize(TheoryModel* m, TNode r, bool evalOnly);
+  /** get free function symbols
+   *
+   * Adds to syms the variables of function type that occur free in n, and
+   * returns true if at least one such symbol was found. This is used to
+   * determine whether a (higher-order) model value is a lambda whose body
+   * requires the value of other function symbols, e.g.
+   * (lambda ((x Int)) (f (g x))).
+   */
+  static bool getFreeFunctionSymbols(TNode n, std::unordered_set<Node>& syms);
   /** assign constant representative
    *
    * Called when equivalence class eqc is assigned a constant
@@ -171,6 +180,8 @@ class TheoryEngineModelBuilder : protected EnvObj
    * normalized form, used during buildModel.
    */
   NodeMap d_normalizedCache;
+  /** The terms that normalize is currently computing, used to break cycles. */
+  std::unordered_set<Node> d_normalizeActive;
   /** mapping from terms to the constant associated with their equivalence class
    */
   std::map<Node, Node> d_constantReps;
