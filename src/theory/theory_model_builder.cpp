@@ -1182,8 +1182,8 @@ bool TheoryEngineModelBuilder::buildModel(TheoryModel* tm)
       if (logicInfo().isHigherOrder()
           && getFreeFunctionSymbols(normc, hoFuncSyms))
       {
-        Trace("model-builder") << "    Postpone assignment of "
-                               << itMap->first << std::endl;
+        Trace("model-builder")
+            << "    Postpone assignment of " << itMap->first << std::endl;
         hoFuncEqc.push_back(itMap->first);
         continue;
       }
