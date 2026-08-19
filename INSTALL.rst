@@ -43,14 +43,22 @@ Compilation on Windows
 ^^^^^^^^^^^^^^^^^^^^^^
 
 Install `MSYS2 <https://www.msys2.org/>`_ and `Python <https://www.python.org/downloads/windows/>`_ on your system.
-Launch a `MINGW64 environment <https://www.msys2.org/docs/environments/>`_ and
-install the required packages for building cvc5:
+Then, launch the appropriate `MSYS2 environment <https://www.msys2.org/docs/environments/>`_ and
+install the required dependencies:
+
+- On x86_64 machines, open a `CLANG64` shell and run:
 
 .. code:: bash
 
-  pacman -S git make mingw-w64-x86_64-cmake mingw-w64-x86_64-gcc mingw-w64-x86_64-gmp zip
+  pacman -S git make mingw-w64-clang-x86_64-cmake mingw-w64-clang-x86_64-clang mingw-w64-clang-x86_64-gmp zip
 
-Clone the cvc5 repository and follow the general build steps above.
+- On ARM64 machines, open a `CLANGARM64` shell and run:
+
+.. code:: bash
+
+  pacman -S git make mingw-w64-clang-aarch64-cmake mingw-w64-clang-aarch64-clang mingw-w64-clang-aarch64-gmp zip
+
+After that, clone the cvc5 repository and follow the general build steps above.
 The built binary ``cvc5.exe`` and the DLL libraries are located in
 ``<build_dir>/bin``. The import libraries and the static libraries
 can be found in ``<build_dir>/lib``.
@@ -129,7 +137,7 @@ This option takes precedence over ``--wasm`` and ``--wasm-flags`` if used togeth
 Available configurations:
 
 - ``no-modular-static-page``: Optimized for static web pages with runtime methods,
-environment settings, and memory configuration pre-configured for web deployment.
+  environment settings, and memory configuration pre-configured for web deployment.
 
 For example, to generate a HTML page, use:
 
@@ -162,17 +170,18 @@ installed in a non-standard location, you can use ``--dep-path`` to define an
 additional search path for all dependencies. Versions given are minimum
 versions; more recent versions should be compatible.
 
-- `GNU C and C++ (gcc and g++, >= 7) <https://gcc.gnu.org>`_
-  or `Clang (>= 5) <https://clang.llvm.org>`_
+- `GNU C and C++ (gcc and g++, >= 10) <https://gcc.gnu.org>`_
+  or `Clang (>= 12) <https://clang.llvm.org>`_
 - `CMake >= 3.16 <https://cmake.org>`_
 - `GNU Make <https://www.gnu.org/software/make/>`_
   or `Ninja <https://ninja-build.org/>`_
 - `Python >= 3.7 <https://www.python.org>`_
   + module `tomli <https://pypi.org/project/tomli/>`_ (Python < 3.11)
   + module `pyparsing <https://pypi.org/project/pyparsing/>`_
-- `GMP v6.3 (GNU Multi-Precision arithmetic library) <https://gmplib.org>`_
+- `GMP >= v6.3 (GNU Multi-Precision arithmetic library) <https://gmplib.org>`_
+- `MPFR >= v4.2.1 (GNU Multiple Precision Floating-Point Reliable Library) <https://www.mpfr.org>`_
 - `CaDiCaL >= 2.1.0 (SAT solver) <https://github.com/arminbiere/cadical>`_
-- `SymFPU <https://github.com/martin-cs/symfpu/tree/CVC4>`_
+- `SymFPU <https://github.com/martin-cs/symfpu/tree/main>`_
 
 If ``--auto-download`` is given, the Python modules will be installed automatically in
 a virtual environment if they are missing. To install the modules globally and skip
@@ -185,7 +194,7 @@ CaDiCaL (SAT solver)
 used for the bit-vector solver. It can be downloaded and built automatically.
 
 
-GMP (GNU Multi-Precision arithmetic library)
+GMP (GNU Multi-Precision Arithmetic Library)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 GMP is usually available on your distribution and should be used from there. If
@@ -193,11 +202,19 @@ it is not, or you want to cross-compile, or you want to build cvc5 statically
 but the distribution does not ship static libraries, cvc5 builds GMP
 automatically when ``--auto-download`` is given.
 
+MPFR (GNU Multi-Precision Floating-Point Reliable Library)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+MPFR is usually available on your distribution and should be used from there. If
+it is not, or you want to cross-compile, or you want to build cvc5 statically
+but the distribution does not ship static libraries, cvc5 builds MPFR
+automatically when ``--auto-download`` is given.
+
 
 SymFPU (Support for the Theory of Floating Point Numbers)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-`SymFPU <https://github.com/martin-cs/symfpu/tree/CVC4>`_ is an implementation
+`SymFPU <https://github.com/martin-cs/symfpu/tree/main>`_ is an implementation
 of SMT-LIB/IEEE-754 floating-point operations in terms of bit-vector operations.
 It is required for supporting the theory of floating-point numbers and can be
 downloaded and built automatically.
@@ -226,7 +243,7 @@ may improve performance. It can be downloaded and built automatically. Configure
 cvc5 with ``configure.sh --kissat`` to build with this dependency.
 
 
-LibPoly >= v0.2.0 (Optional polynomial library)
+LibPoly >= v0.2.1 (Optional polynomial library)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 `LibPoly <https://github.com/SRI-CSL/libpoly>`_ is required for CAD-based
@@ -289,6 +306,16 @@ a package named `libedit-dev`, `libedit-devel`, or similar.  Configure cvc5 with
 to run tests related to interactive mode with this dependency, you will need
 the Python module `pexpect <https://pexpect.readthedocs.io/en/stable/>`_.
 
+Normaliz (Optional rational cones library)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+`Normaliz <https://www.normaliz.uni-osnabrueck.de/>`_ is required for 
+liastar solver extension. We recommend downloading it using the ``--auto-download`` 
+configuration flag. It is included in the build through the
+``--normaliz --gpl`` configuration flag.
+
+Normaliz is covered by the GPLv3 license. See below for the ramifications of this.
+
 
 Google Test Unit Testing Framework (Unit Tests)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -322,7 +349,7 @@ Dependencies for Language Bindings
   - `Cython <https://cython.org/>`_ >= 3.0.0
   - `pip <https://pip.pypa.io/>`_ >= 23.0
   - `pytest <https://docs.pytest.org/en/6.2.x/>`_
-  - `repairwheel <https://github.com/jvolkman/repairwheel>`_ >= 0.3.1
+  - `repairwheel <https://github.com/jvolkman/repairwheel>`_ >= 0.3.2
   - `setuptools <https://setuptools.pypa.io/>`_ >= 66.1.0
   - The source for the `pythonic API <https://github.com/cvc5/cvc5_pythonic_api>`_
 
@@ -409,8 +436,9 @@ The API tests are not built by default.
 
 .. code::
 
-    make apitests                         # build and run all API C++ tests
+    make apitests                         # build and run all API tests
     make capitests                        # build and run all API C tests
+    make cppapitests                      # build and run all API C++ tests
     make <api_test>                       # build test/api/cpp/<api_test>.cpp
     make capi_<api_test>                  # build test/api/c/<api_test>.c
     ctest api/cpp/<api_test>              # run test/api/cpp/<api_test><.ext>

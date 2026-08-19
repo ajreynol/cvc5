@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Aina Niemetz, Andrew Reynolds, Gereon Kremer
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2025 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -33,23 +30,24 @@ extern "C" {
 #include <stddef.h>
 #include <stdint.h>
 
-// char32_t is a built-in keyword in C++11 and defined in C11 via <uchar.h>. See:
+// char32_t is a built-in keyword in C++11 and defined in C11 via <uchar.h>.
+// See:
 //   https://en.cppreference.com/w/cpp/keyword/char32_t.html
 //   https://en.cppreference.com/w/c/header/uchar.html
 // However, the uchar.h header is missing in Apple Clang. See:
 //   https://github.com/llvm/llvm-project/issues/41443
 // This workaround defines char32_t when uchar.h is not available (in C mode)
 #ifndef __cplusplus
-  #ifdef __has_include
-    #if __has_include(<uchar.h>)
-      #include <uchar.h>
-    #else
-      typedef uint_least32_t char32_t;
-    #endif
-  #else
-    // Fallback if __has_include is not supported
-    typedef uint_least32_t char32_t;
-  #endif
+#ifdef __has_include
+#if __has_include(<uchar.h>)
+#include <uchar.h>
+#else
+typedef uint_least32_t char32_t;
+#endif
+#else
+// Fallback if __has_include is not supported
+typedef uint_least32_t char32_t;
+#endif
 #endif
 
 /* -------------------------------------------------------------------------- */
@@ -153,6 +151,59 @@ typedef struct cvc5_stat_t* Cvc5Stat;
  * A cvc5 statistics instance.
  */
 typedef struct cvc5_stats_t* Cvc5Statistics;
+
+/* -------------------------------------------------------------------------- */
+/* Error handling                                                             */
+/* -------------------------------------------------------------------------- */
+
+/** \addtogroup c_error_handling
+ *  @{
+ */
+
+/**
+ * Determine if an error occurred during the most recent cvc5 C API call on the
+ * current thread.
+ *
+ * Rather than terminating the process, cvc5 C API functions record errors in
+ * thread-local state and return a default value (e.g., `NULL`, `false`, or `0`)
+ * on failure. After invoking a C API function, the caller can use this function
+ * to check whether the call succeeded, and `cvc5_get_error_message()` to
+ * retrieve the associated error message.
+ *
+ * The error state is reset at the beginning of each (non-query) C API call,
+ * thus it always reflects the outcome of the most recent such call. It can also
+ * be reset manually via `cvc5_reset_error()`.
+ *
+ * @note This function does not itself modify the error state.
+ *
+ * @return True if the most recent C API call on this thread resulted in an
+ *         error.
+ */
+CVC5_EXPORT bool cvc5_has_error(void);
+
+/**
+ * Retrieve the error message associated with the most recent error on the
+ * current thread.
+ *
+ * @note This function does not itself modify the error state. The returned
+ *       pointer is owned by cvc5 and is only valid until the next C API call on
+ *       this thread.
+ *
+ * @return The message of the most recent error, or the empty string if no
+ *         error has occurred (i.e., if `cvc5_has_error()` returns false).
+ */
+CVC5_EXPORT const char* cvc5_get_error_message(void);
+
+/**
+ * Reset the thread-local error state.
+ *
+ * After calling this function, `cvc5_has_error()` returns false and
+ * `cvc5_get_error_message()` returns the empty string, until the next error
+ * occurs.
+ */
+CVC5_EXPORT void cvc5_reset_error(void);
+
+/** @} */
 
 /* -------------------------------------------------------------------------- */
 /* Cvc5Result                                                                 */
@@ -1374,8 +1425,10 @@ CVC5_EXPORT bool cvc5_term_is_string_value(Cvc5Term term);
  *          cvc5_term_get_u32string_value(). It will be removed in a future
  *          release.
  */
-CVC5_EXPORT __attribute__((deprecated("Use cvc5_term_get_u32string_value instead")))
-const wchar_t* cvc5_term_get_string_value(Cvc5Term term);
+CVC5_EXPORT
+__attribute__((deprecated("Use cvc5_term_get_u32string_value instead")))
+const wchar_t*
+cvc5_term_get_string_value(Cvc5Term term);
 
 /**
  * Get the native UTF-32 string representation of a string value.
@@ -3185,9 +3238,9 @@ CVC5_EXPORT Cvc5Term cvc5_mk_string(Cvc5TermManager* tm,
  *          cvc5_mk_string_from_char32(). It will be removed in a future
  *          release.
  */
-CVC5_EXPORT __attribute__((deprecated("Use cvc5_mk_string_from_char32 instead")))
-Cvc5Term cvc5_mk_string_from_wchar(Cvc5TermManager* tm,
-                                   const wchar_t* s);
+CVC5_EXPORT __attribute__((
+    deprecated("Use cvc5_mk_string_from_char32 instead"))) Cvc5Term
+cvc5_mk_string_from_wchar(Cvc5TermManager* tm, const wchar_t* s);
 
 /**
  * Create a String constant from a UTF-32 string.
@@ -3537,6 +3590,8 @@ typedef enum
  *   is denoted as #CVC5_OPTION_INFO_MODES.
  *
  * \endverbatim
+ *
+ *  @note A typedef alias with the same name is also available for convenience.
  */
 struct Cvc5OptionInfo
 {
@@ -3680,6 +3735,8 @@ CVC5_EXPORT const char* cvc5_option_info_to_string(const Cvc5OptionInfo* info);
 
 /**
  * A cvc5 plugin.
+ *
+ * @note A typedef alias with the same name is also available for convenience.
  */
 struct Cvc5Plugin
 {

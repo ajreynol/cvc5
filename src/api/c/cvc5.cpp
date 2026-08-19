@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Aina Niemetz, Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2025 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -26,6 +23,19 @@ extern "C" {
 
 #include "api/c/cvc5_c_structs.h"
 #include "api/c/cvc5_checks.h"
+
+/* -------------------------------------------------------------------------- */
+/* Error handling                                                             */
+/* -------------------------------------------------------------------------- */
+
+bool cvc5_has_error() { return cvc5::cvc5_capi_has_error(); }
+
+const char* cvc5_get_error_message()
+{
+  return cvc5::cvc5_capi_get_error_message();
+}
+
+void cvc5_reset_error() { cvc5::cvc5_capi_reset_error(); }
 
 /* -------------------------------------------------------------------------- */
 /* Cvc5Kind                                                                   */
@@ -739,7 +749,9 @@ const Cvc5Sort* cvc5_sort_get_instantiated_parameters(Cvc5Sort sort,
   }
   *size = res.size();
   CVC5_CAPI_TRY_CATCH_END;
-  return *size > 0 ? res.data() : nullptr;
+  // On error, `size` may be invalid (e.g. NULL) and `res` may hold stale data,
+  // so we must not dereference `size` here; gate on the error state instead.
+  return cvc5::cvc5_capi_has_error() || res.empty() ? nullptr : res.data();
 }
 
 Cvc5Sort cvc5_sort_substitute(Cvc5Sort sort, Cvc5Sort s, Cvc5Sort replacement)
@@ -829,7 +841,9 @@ const Cvc5Sort* cvc5_sort_dt_constructor_get_domain(Cvc5Sort sort, size_t* size)
   }
   *size = res.size();
   CVC5_CAPI_TRY_CATCH_END;
-  return *size > 0 ? res.data() : nullptr;
+  // On error, `size` may be invalid (e.g. NULL) and `res` may hold stale data,
+  // so we must not dereference `size` here; gate on the error state instead.
+  return cvc5::cvc5_capi_has_error() || res.empty() ? nullptr : res.data();
 }
 
 Cvc5Sort cvc5_sort_dt_constructor_get_codomain(Cvc5Sort sort)
@@ -914,7 +928,9 @@ const Cvc5Sort* cvc5_sort_fun_get_domain(Cvc5Sort sort, size_t* size)
   }
   *size = res.size();
   CVC5_CAPI_TRY_CATCH_END;
-  return *size > 0 ? res.data() : nullptr;
+  // On error, `size` may be invalid (e.g. NULL) and `res` may hold stale data,
+  // so we must not dereference `size` here; gate on the error state instead.
+  return cvc5::cvc5_capi_has_error() || res.empty() ? nullptr : res.data();
 }
 
 Cvc5Sort cvc5_sort_fun_get_codomain(Cvc5Sort sort)
@@ -1094,7 +1110,9 @@ const Cvc5Sort* cvc5_sort_tuple_get_element_sorts(Cvc5Sort sort, size_t* size)
   }
   *size = res.size();
   CVC5_CAPI_TRY_CATCH_END;
-  return *size > 0 ? res.data() : nullptr;
+  // On error, `size` may be invalid (e.g. NULL) and `res` may hold stale data,
+  // so we must not dereference `size` here; gate on the error state instead.
+  return cvc5::cvc5_capi_has_error() || res.empty() ? nullptr : res.data();
 }
 
 Cvc5Sort cvc5_sort_nullable_get_element_sort(Cvc5Sort sort)
@@ -1641,7 +1659,9 @@ const Cvc5Sort* cvc5_dt_get_parameters(Cvc5Datatype dt, size_t* size)
   }
   *size = res.size();
   CVC5_CAPI_TRY_CATCH_END;
-  return *size > 0 ? res.data() : nullptr;
+  // On error, `size` may be invalid (e.g. NULL) and `res` may hold stale data,
+  // so we must not dereference `size` here; gate on the error state instead.
+  return cvc5::cvc5_capi_has_error() || res.empty() ? nullptr : res.data();
 }
 
 bool cvc5_dt_is_parametric(Cvc5Datatype dt)
@@ -2890,7 +2910,7 @@ Cvc5Sort cvc5_mk_record_sort(Cvc5TermManager* tm,
   Cvc5Sort res = nullptr;
   CVC5_CAPI_TRY_CATCH_BEGIN;
   CVC5_CAPI_CHECK_NOT_NULL(tm);
-  if (names != NULL)
+  if (names != nullptr)
   {
     CVC5_CAPI_CHECK_NOT_NULL(sorts);
     std::vector<std::pair<std::string, cvc5::Sort>> cfields;
@@ -4869,6 +4889,8 @@ const char** cvc5_get_option_names(Cvc5* cvc5, size_t* size)
   return res.data();
 }
 
+static thread_local std::vector<const char*> c_modes;
+
 template <class... Ts>
 struct overloaded : Ts...
 {
@@ -4987,7 +5009,7 @@ void cvc5_get_option_info(Cvc5* cvc5, const char* option, Cvc5OptionInfo* info)
               info->info_double.has_max = true;
             }
           },
-          [info](const cvc5::OptionInfo::ModeInfo& vi) {
+          [info](const cvc5::OptionInfo::ModeInfo&) {
             info->kind = CVC5_OPTION_INFO_MODES;
             info->info_mode.cur =
                 std::get<cvc5::OptionInfo::ModeInfo>(cpp_info.valueInfo)
@@ -4998,7 +5020,6 @@ void cvc5_get_option_info(Cvc5* cvc5, const char* option, Cvc5OptionInfo* info)
             info->info_mode.num_modes =
                 std::get<cvc5::OptionInfo::ModeInfo>(cpp_info.valueInfo)
                     .modes.size();
-            static thread_local std::vector<const char*> c_modes;
             c_modes.clear();
             for (const auto& m :
                  std::get<cvc5::OptionInfo::ModeInfo>(cpp_info.valueInfo).modes)
@@ -5275,11 +5296,13 @@ const char* cvc5_get_model(Cvc5* cvc5,
   std::vector<cvc5::Sort> csorts;
   for (size_t i = 0; i < nsorts; ++i)
   {
+    CVC5_CAPI_CHECK_SORT_AT_IDX(sorts, i);
     csorts.push_back(sorts[i]->d_sort);
   }
   std::vector<cvc5::Term> cconsts;
   for (size_t i = 0; i < nconsts; ++i)
   {
+    CVC5_CAPI_CHECK_TERM_AT_IDX(consts, i);
     cconsts.push_back(consts[i]->d_term);
   }
   str = cvc5->d_solver.getModel(csorts, cconsts);
@@ -5706,7 +5729,9 @@ const Cvc5Term* cvc5_get_sygus_constraints(Cvc5* cvc5, size_t* size)
   }
   *size = res.size();
   CVC5_CAPI_TRY_CATCH_END;
-  return *size > 0 ? res.data() : nullptr;
+  // On error, `size` may be invalid (e.g. NULL) and `res` may hold stale data,
+  // so we must not dereference `size` here; gate on the error state instead.
+  return cvc5::cvc5_capi_has_error() || res.empty() ? nullptr : res.data();
 }
 
 void cvc5_add_sygus_assume(Cvc5* cvc5, Cvc5Term term)
@@ -5732,7 +5757,9 @@ const Cvc5Term* cvc5_get_sygus_assumptions(Cvc5* cvc5, size_t* size)
   }
   *size = res.size();
   CVC5_CAPI_TRY_CATCH_END;
-  return *size > 0 ? res.data() : nullptr;
+  // On error, `size` may be invalid (e.g. NULL) and `res` may hold stale data,
+  // so we must not dereference `size` here; gate on the error state instead.
+  return cvc5::cvc5_capi_has_error() || res.empty() ? nullptr : res.data();
 }
 
 void cvc5_add_sygus_inv_constraint(

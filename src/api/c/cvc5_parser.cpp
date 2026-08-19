@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Aina Niemetz, Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2025 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -185,7 +182,9 @@ const Cvc5Sort* cvc5_sm_get_declared_sorts(Cvc5SymbolManager* sm, size_t* size)
   }
   *size = res.size();
   CVC5_CAPI_TRY_CATCH_END;
-  return *size > 0 ? res.data() : nullptr;
+  // On error, `size` may be invalid (e.g. NULL) and `res` may hold stale data,
+  // so we must not dereference `size` here; gate on the error state instead.
+  return cvc5::cvc5_capi_has_error() || res.empty() ? nullptr : res.data();
 }
 
 const Cvc5Term* cvc5_sm_get_declared_terms(Cvc5SymbolManager* sm, size_t* size)
@@ -203,9 +202,10 @@ const Cvc5Term* cvc5_sm_get_declared_terms(Cvc5SymbolManager* sm, size_t* size)
   }
   *size = res.size();
   CVC5_CAPI_TRY_CATCH_END;
-  return *size > 0 ? res.data() : nullptr;
+  // On error, `size` may be invalid (e.g. NULL) and `res` may hold stale data,
+  // so we must not dereference `size` here; gate on the error state instead.
+  return cvc5::cvc5_capi_has_error() || res.empty() ? nullptr : res.data();
 }
-
 
 void cvc5_sm_get_named_terms(Cvc5SymbolManager* sm,
                              size_t* size,

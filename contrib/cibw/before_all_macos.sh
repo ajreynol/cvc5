@@ -1,4 +1,12 @@
 #!/usr/bin/env bash
+###############################################################################
+# This file is part of the cvc5 project.
+#
+# Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+# in the top-level source directory and their institutional affiliations.
+# All rights reserved.  See the file COPYING in the top-level source
+# directory for licensing information.
+# #############################################################################
 
 GPL="$1"
 
@@ -7,7 +15,7 @@ COMMON_CMD="./configure.sh production --auto-download --python-bindings --python
 if [ "$GPL" = "true" ]; then
   # Install build dependencies for GPL libraries
   brew install autoconf automake libtool
-  GPL_FLAGS="--gpl --cln --glpk --cocoa"
+  GPL_FLAGS="--gpl --cln --glpk --cocoa --normaliz"
 else
   GPL_FLAGS=""
 fi

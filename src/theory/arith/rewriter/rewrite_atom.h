@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Gereon Kremer, Andrew Reynolds, Daniel Larraz
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2025 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -88,6 +85,24 @@ Node buildIntegerInequality(NodeManager* nm, Sum&& sum, Kind k);
  * The sum is taken as rvalue as it is modified in the process.
  */
 Node buildRealInequality(NodeManager* nm, Sum&& sum, Kind k);
+
+/**
+ * Return the normal form of the arithmetic equality atom, which is computed by
+ * moving all terms to the left hand side and normalizing the resulting sum.
+ * For example, this returns (= x 1) for the input (= (+ x 1) 2). The returned
+ * node is either an equality or a Boolean constant.
+ *
+ * Note this normalization is not applied by the rewriter, since it does not
+ * preserve the terms of the equality, which is incompatible with theory
+ * combination. It is instead applied to equalities in the input via
+ * ppStaticRewrite, and by the extended rewriter, see
+ * ArithRewriter::rewriteEqualityExt.
+ *
+ * @param nm Pointer to the node manager.
+ * @param atom The equality to normalize.
+ * @return The normal form of atom.
+ */
+Node normalizeEquality(NodeManager* nm, TNode atom);
 
 /**
  * Decompose sum into a (non-constant, constant) part.

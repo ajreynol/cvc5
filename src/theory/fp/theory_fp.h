@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Aina Niemetz, Martin Brain
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2025 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -115,6 +112,11 @@ class TheoryFp : public Theory
   void conflictEqConstantMerge(TNode t1, TNode t2);
 
   bool refineAbstraction(TheoryModel* m, TNode abstract, TNode concrete);
+
+  /**
+   * Purifies operators that convert between real and floating-point.
+   */
+  Node purifyConversions(TNode n);
 
   /** The terms registered via registerTerm(). */
   context::CDHashSet<Node> d_registeredTerms;
