@@ -344,10 +344,10 @@ class AletheTester(Tester):
             print_ok("OK")
         return exit_code
 
-class CpcTester(Tester):
-
-    def __init__(self):
-        super().__init__("cpc")
+class CpcTesterBase(Tester):
+    """Base class for the testers that check proofs in the Cooperating Proof
+    Calculus (CPC). Subclasses generate the proof via `gen_proof` and pass it
+    to their proof checker."""
 
     def applies(self, benchmark_info):
         return (
@@ -355,27 +355,49 @@ class CpcTester(Tester):
             and benchmark_info.expected_output.strip() == "unsat"
         )
 
+    def gen_proof(self, benchmark_info, cvc5_args):
+        """Runs cvc5 to generate a CPC proof for the given benchmark. Returns
+        a pair, where the first component is the body of the proof (as bytes)
+        and the second is the exit code, which is EXIT_OK if the proof was
+        generated successfully."""
+        output, error, exit_status = run_process(
+            [benchmark_info.cvc5_binary]
+            + cvc5_args
+            + [benchmark_info.benchmark_basename],
+            benchmark_info.benchmark_dir,
+            benchmark_info.timeout,
+        )
+        # if we throw an admissible error (with text "in safe mode" or
+        # "in stable mode"), we allow the benchmark to be skipped.
+        if ((benchmark_info.safe_mode or benchmark_info.stable_mode) and
+            has_admissible_mode_error(output, error)):
+            return output, EXIT_SKIP
+        exit_code = self.check_exit_status(EXIT_OK, exit_status, output,
+                                           error, cvc5_args)
+        if exit_code != EXIT_OK:
+            return output, exit_code
+        # strip the unsat and parentheses
+        output, exit_code = self.strip_proof_body(output)
+        if exit_code != EXIT_OK:
+            return output, exit_code
+        if (b"step" not in output) and (b"assume" not in output):
+            print_error("Empty proof")
+            return output, EXIT_FAILURE
+        return output, EXIT_OK
+
+
+class CpcTester(CpcTesterBase):
+
+    def __init__(self):
+        super().__init__("cpc")
+
     def run_internal(self, benchmark_info):
-        exit_code = EXIT_OK
         with tempfile.NamedTemporaryFile() as tmpf:
             cvc5_args = [
                 "--dump-proofs",
                 "--proof-print-conclusion",
             ] + benchmark_info.command_line_args
-            output, error, exit_status = run_process(
-                [benchmark_info.cvc5_binary]
-                + cvc5_args
-                + [benchmark_info.benchmark_basename],
-                benchmark_info.benchmark_dir,
-                benchmark_info.timeout,
-            )
-            # if we throw an admissible error (with text "in safe mode" or
-            # "in stable mode"), we allow the benchmark to be skipped.
-            if ((benchmark_info.safe_mode or benchmark_info.stable_mode) and
-                has_admissible_mode_error(output, error)):
-                return EXIT_SKIP
-            exit_code = self.check_exit_status(EXIT_OK, exit_status, output,
-                                               error, cvc5_args)
+            proof, exit_code = self.gen_proof(benchmark_info, cvc5_args)
             if exit_code != EXIT_OK:
                 return exit_code
             cpc_sig_dir = os.path.abspath(g_args.cpc_sig_dir)
@@ -383,18 +405,8 @@ class CpcTester(Tester):
             # note this line is not necessary if in a safe build
             if not benchmark_info.safe_mode:
                 tmpf.write(("(include \"" + cpc_sig_dir + "/cpc/expert/CpcExpert.eo\")").encode())
-            # strip the unsat and parentheses
-            output, exit_code = self.strip_proof_body(output)
-            if exit_code == EXIT_FAILURE:
-                return EXIT_FAILURE
-            tmpf.write(output)
+            tmpf.write(proof)
             tmpf.flush()
-            output, error = output.decode(), error.decode()
-            if ("step" not in output) and ("assume" not in output):
-                print_error("Empty proof")
-                return EXIT_FAILURE
-            if exit_code != EXIT_OK:
-                return exit_code
             output, error, exit_status = run_process(
                 [benchmark_info.ethos_binary] +
                 [tmpf.name],
@@ -414,6 +426,59 @@ class CpcTester(Tester):
         if exit_code == EXIT_OK:
             print_ok("OK")
         return exit_code
+
+
+class CpcLogosTester(CpcTesterBase):
+    """Checks CPC proofs with the Logos proof checker. In contrast to Ethos,
+    Logos does not read Eunoia signatures, but instead has the definition of
+    CPC built in."""
+
+    def __init__(self):
+        super().__init__("cpc-logos")
+
+    def run_internal(self, benchmark_info):
+        # Logos only models the fragment of CPC that is covered by the base
+        # signature, hence it is only applicable to safe builds.
+        if not benchmark_info.safe_mode:
+            print_info("Skipped: requires a safe build")
+            return EXIT_SKIP
+        with tempfile.NamedTemporaryFile(suffix=".cpc") as tmpf:
+            cvc5_args = [
+                "--dump-proofs",
+                "--proof-print-conclusion",
+            ] + benchmark_info.command_line_args
+            proof, exit_code = self.gen_proof(benchmark_info, cvc5_args)
+            if exit_code != EXIT_OK:
+                return exit_code
+            # Logos does not support definitions, which are printed in the
+            # preamble of the proof for benchmarks that use define-fun.
+            if b"define-fun" in proof:
+                print_info("Skipped: proof contains definitions")
+                return EXIT_SKIP
+            tmpf.write(proof)
+            tmpf.flush()
+            output, error, exit_status = run_process(
+                [benchmark_info.logos_binary] +
+                [tmpf.name],
+                benchmark_info.benchmark_dir,
+                timeout=benchmark_info.timeout,
+            )
+            output, error = output.decode(), error.decode()
+            # Logos exits with LOGOS_STATUS_INCOMPLETE if it accepted the proof
+            # but the proof mentions something its specification of SMT-LIB
+            # semantics does not model, which we accept as well.
+            if exit_status != LOGOS_STATUS_INCOMPLETE:
+                exit_code = self.check_exit_status(EXIT_OK, exit_status, output,
+                                                   error, cvc5_args)
+                if exit_code != EXIT_OK:
+                    return exit_code
+            if ("correct" not in output) and ("incomplete" not in output):
+                print_error("Invalid proof")
+                print()
+                print_outputs(output, error)
+                return EXIT_FAILURE
+        print_ok("OK")
+        return EXIT_OK
 
 class ModelTester(Tester):
 
@@ -550,7 +615,8 @@ g_testers = {
     "abduct": AbductTester(),
     "dump": DumpTester(),
     "alethe": AletheTester(),
-    "cpc": CpcTester()
+    "cpc": CpcTester(),
+    "cpc-logos": CpcLogosTester()
 }
 
 g_default_testers = [
@@ -578,6 +644,7 @@ BenchmarkInfo = collections.namedtuple(
         "carcara_binary",
         "carcara_rare",
         "ethos_binary",
+        "logos_binary",
         "benchmark_dir",
         "benchmark_basename",
         "benchmark_ext",
@@ -605,6 +672,9 @@ EXIT_OK = 0
 EXIT_FAILURE = 1
 EXIT_SKIP = 77
 EXIT_TIMEOUT = 124
+# exit status of Logos when a proof is accepted but is out of the fragment
+# modelled by its specification of SMT-LIB semantics
+LOGOS_STATUS_INCOMPLETE = 2
 STATUS_TIMEOUT = EXIT_TIMEOUT
 CTEST_TIMEOUT_ENV = "CVC5_REGRESSION_TIMEOUT_AS_CTEST_TIMEOUT"
 CTEST_TIMEOUT_MARKER = "CVC5_REGRESSION_CTEST_TIMEOUT"
@@ -853,6 +923,7 @@ def run_regression(
     carcara_binary,
     carcara_rare,
     ethos_binary,
+    logos_binary,
     benchmark_path,
     timeout,
 ):
@@ -932,6 +1003,8 @@ def run_regression(
                     testers.remove("alethe")
                 if "cpc" in testers:
                     testers.remove("cpc")
+                if "cpc-logos" in testers:
+                    testers.remove("cpc-logos")
 
     expected_output = expected_output.strip()
     expected_error = expected_error.strip()
@@ -999,6 +1072,7 @@ def run_regression(
             carcara_binary=carcara_binary,
             carcara_rare=carcara_rare,
             ethos_binary=ethos_binary,
+            logos_binary=logos_binary,
             benchmark_dir=benchmark_dir,
             benchmark_basename=benchmark_basename,
             benchmark_ext=benchmark_ext,
@@ -1060,6 +1134,7 @@ def main():
     parser.add_argument("--carcara-binary", default="")
     parser.add_argument("--carcara-rare", default="")
     parser.add_argument("--ethos-binary", default="")
+    parser.add_argument("--logos-binary", default="")
     parser.add_argument("--cpc-sig-dir", default="")
     parser.add_argument("wrapper", nargs="*")
     parser.add_argument("cvc5_binary")
@@ -1077,6 +1152,7 @@ def main():
     carcara_binary = os.path.abspath(g_args.carcara_binary)
     carcara_rare = os.path.abspath(g_args.carcara_rare)
     ethos_binary = os.path.abspath(g_args.ethos_binary)
+    logos_binary = os.path.abspath(g_args.logos_binary)
 
     wrapper = g_args.wrapper
     if os.environ.get("VALGRIND") == "1" and not wrapper:
@@ -1114,6 +1190,7 @@ def main():
         carcara_binary,
         carcara_rare,
         ethos_binary,
+        logos_binary,
         g_args.benchmark,
         timeout,
     )
