@@ -455,6 +455,17 @@ class CpcLogosTester(CpcTesterBase):
             proof, exit_code = self.gen_proof(benchmark_info, cvc5_args)
             if exit_code != EXIT_OK:
                 return exit_code
+            # A benchmark may print more than one parenthesized block, e.g. if
+            # it has several queries, or if it prints an unsat core or a
+            # difficulty map in addition to its proof. Stripping the result
+            # above then leaves the further blocks in the proof body, which
+            # Logos rejects as trailing input. A block always ends with a line
+            # that consists of a single closing parenthesis, and the body no
+            # longer contains the one that closed the first block, so any such
+            # line means that a further block follows.
+            if b"\n)\n" in b"\n" + proof:
+                print_info("Skipped: benchmark prints more than one block")
+                return EXIT_SKIP
             # Logos does not support lambda, which cvc5 prints in the
             # preamble of the proof for benchmarks that use define-fun. Note
             # that plain definitions are printed as define, which is supported.
