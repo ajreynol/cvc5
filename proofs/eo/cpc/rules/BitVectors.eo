@@ -273,3 +273,299 @@
   :requires (((eo::to_z one) 1) ((eo::zmod (eo::to_z cx) 2) 1) ((eo::zmod (eo::to_z cy) 2) 1))
   :conclusion (= (= xb1 xb2) (= yb1 yb2))
 )
+
+;;;;; ProofRule::BV_ABSTRACTION
+
+; define: $bv_abstraction_lemma_mul_sym
+; args:
+; - x (BitVec n): The first operand of the abstracted term.
+; - s (BitVec n): The second operand of the abstracted term.
+; - t (BitVec n): The abstraction of the term.
+; - l Bool: The formula to check.
+; return: >
+;   True if l is the instantiation for x, s and t of one of the purely
+;   symbolic refinement lemma schemes for bvmul.
+(define $bv_abstraction_lemma_mul_sym
+  ((n Int :implicit) (x (BitVec n)) (s (BitVec n)) (t (BitVec n)) (l Bool))
+  (eo::define ((w ($bv_bitwidth (eo::typeof x))))
+  (eo::define ((zero (eo::to_bin w 0)))
+  (eo::define ((one (eo::to_bin w 1)))
+  (eo::define ((ones ($bv_ones w)))
+  (eo::or
+    ; MUL3_IC
+    (eo::eq l (= (bvand (bvor (bvneg s) s) t) t))
+    ; MUL4_ODD
+    (eo::eq l (= (extract 0 0 t) (bvand (extract 0 0 x) (extract 0 0 s))))
+    ; MUL5
+    (eo::eq l (not (= s (bvnot (bvor t (bvand one (bvor x s)))))))
+    ; MUL6
+    (eo::eq l (not (= (bvand x t) (bvor s (bvnot t)))))
+    ; MUL7
+    (eo::eq l (not (= t (bvshl (bvor s one) (bvshl t x)))))
+    ; MUL8
+    (eo::eq l (= s (bvshl s (bvand x (bvlshr one t)))))
+    ; MUL9
+    (eo::eq l (bvuge t (bvand one (bvlshr (bvand x s) one))))
+    ; MUL10
+    (eo::eq l (not (= x (bvxor one (bvshl x (bvxor s t))))))
+    ; MUL11
+    (eo::eq l (not (= t (bvor one (bvnot (bvxor x s))))))
+    ; MUL12
+    (eo::eq l (not (= t (bvor (bvnot one) (bvxor x s)))))
+    ; MUL13
+    (eo::eq l (not (= x (bvsub (bvshl x (bvadd s t)) one))))
+    ; MUL14
+    (eo::eq l (not (= x (bvsub one (bvshl x (bvsub s t))))))
+    ; MUL15
+    (eo::eq l (not (= s (bvadd one (bvshl s (bvsub t x))))))
+    ; MUL16
+    (eo::eq l (not (= s (bvsub one (bvshl s (bvsub t x))))))
+    ; MUL17
+    (eo::eq l (not (= s (bvadd one (bvshl s (bvsub x t))))))
+    ; MUL18
+    (eo::eq l (not (= t (bvor one (bvadd x s)))))
+    ; MUL19
+    (eo::eq l (not (= x (bvnot (bvshl x (bvadd s t))))))
+  ))))))
+
+; program: $bv_abstraction_lemma_mul
+; args: as $bv_abstraction_lemma_mul_sym above.
+; return: >
+;   True if l is the instantiation for x, s and t of one of the refinement
+;   lemma schemes for bvmul. The first two cases below are the schemes whose
+;   instantiation depends on a (power of two) value of x; all others are
+;   handled by $bv_abstraction_lemma_mul_sym.
+(program $bv_abstraction_lemma_mul
+  ((n Int) (x (BitVec n)) (s (BitVec n)) (t (BitVec n))
+   (c (BitVec n)) (d (BitVec n)) (l Bool))
+  :signature ((BitVec n) (BitVec n) (BitVec n) Bool) Bool
+  (
+  ; MUL1_POW2: (=> (= x 2^i) (= t (bvshl s i)))
+  (($bv_abstraction_lemma_mul x s t (=> (= x c) (= t (bvshl s d))))
+      (eo::eq (eo::to_z c) ($arith_eval_int_pow_2 (eo::to_z d))))
+  ; MUL2_NEG_POW2: (=> (= x -2^i) (= t (bvshl (bvneg s) i)))
+  (($bv_abstraction_lemma_mul x s t (=> (= x c) (= t (bvshl (bvneg s) d))))
+      (eo::eq (eo::to_z c)
+              (eo::add ($arith_eval_int_pow_2 ($bv_bitwidth (eo::typeof x)))
+                       (eo::neg ($arith_eval_int_pow_2 (eo::to_z d))))))
+  (($bv_abstraction_lemma_mul x s t l) ($bv_abstraction_lemma_mul_sym x s t l))
+  )
+)
+
+; define: $bv_abstraction_lemma_udiv_sym
+; args:
+; - x (BitVec n): The first operand of the abstracted term.
+; - s (BitVec n): The second operand of the abstracted term.
+; - t (BitVec n): The abstraction of the term.
+; - l Bool: The formula to check.
+; return: >
+;   True if l is the instantiation for x, s and t of one of the purely
+;   symbolic refinement lemma schemes for bvudiv.
+(define $bv_abstraction_lemma_udiv_sym
+  ((n Int :implicit) (x (BitVec n)) (s (BitVec n)) (t (BitVec n)) (l Bool))
+  (eo::define ((w ($bv_bitwidth (eo::typeof x))))
+  (eo::define ((zero (eo::to_bin w 0)))
+  (eo::define ((one (eo::to_bin w 1)))
+  (eo::define ((ones ($bv_ones w)))
+  (eo::or
+    ; UDIV37
+    (eo::eq l (=> (= s one) (= t x)))
+    ; UDIV2
+    (eo::eq l (=> (and (= s x) (not (= s zero))) (= t one)))
+    ; UDIV3
+    (eo::eq l (=> (= s zero) (= t ones)))
+    ; UDIV4
+    (eo::eq l (=> (and (= x zero) (not (= s zero))) (= t zero)))
+    ; UDIV5
+    (eo::eq l (=> (not (= s zero)) (bvule t x)))
+    ; UDIV6
+    (eo::eq l (=> (and (= s ones) (not (= x ones))) (= t zero)))
+    ; UDIV7
+    (eo::eq l (bvuge x (bvneg (bvand (bvneg s) (bvneg t)))))
+    ; UDIV8
+    (eo::eq l (bvuge (bvneg (bvor s one)) t))
+    ; UDIV9
+    (eo::eq l (not (= t (bvneg (bvand s (bvnot x))))))
+    ; UDIV10
+    (eo::eq l (not (= (bvor s t) (bvand x (bvnot one)))))
+    ; UDIV11
+    (eo::eq l (not (= (bvor s one) (bvand x (bvnot t)))))
+    ; UDIV12
+    (eo::eq l (bvuge (bvand x (bvneg t)) (bvand s t)))
+    ; UDIV13
+    (eo::eq l (bvuge s (bvlshr x t)))
+    ; UDIV14
+    (eo::eq l (bvuge x (bvshl (bvlshr s (bvshl s t)) one)))
+    ; UDIV15
+    (eo::eq l (bvuge x (bvlshr (bvshl t one) (bvshl t s))))
+    ; UDIV16
+    (eo::eq l (bvuge t (bvshl (bvlshr x s) one)))
+    ; UDIV17
+    (eo::eq l (bvuge x (bvand (bvor x t) (bvshl s one))))
+    ; UDIV18
+    (eo::eq l (bvuge x (bvand (bvor x s) (bvshl t one))))
+    ; UDIV19
+    (eo::eq l (not (= (bvlshr x t) (bvor s t))))
+    ; UDIV20
+    (eo::eq l (not (= s (bvnot (bvlshr s (bvlshr t one))))))
+    ; UDIV21
+    (eo::eq l (not (= x (bvnot (bvand x (bvshl t one))))))
+    ; UDIV22
+    (eo::eq l (bvuge t (bvlshr (bvshl x one) s)))
+    ; UDIV23
+    (eo::eq l (bvuge x (bvshl s (bvnot (bvor x t)))))
+    ; UDIV24
+    (eo::eq l (bvuge x (bvshl t (bvnot (bvor x s)))))
+    ; UDIV25
+    (eo::eq l (bvuge x (bvxor t (bvlshr t (bvlshr s one)))))
+    ; UDIV26
+    (eo::eq l (bvuge x (bvxor s (bvlshr s (bvlshr t one)))))
+    ; UDIV27
+    (eo::eq l (bvuge x (bvshl s (bvnot (bvxor x t)))))
+    ; UDIV28
+    (eo::eq l (bvuge x (bvshl t (bvnot (bvxor x s)))))
+    ; UDIV29
+    (eo::eq l (not (= x (bvadd t (bvor s (bvadd x s))))))
+    ; UDIV30
+    (eo::eq l (not (= x (bvadd t (bvadd one (bvshl one x))))))
+    ; UDIV31
+    (eo::eq l (bvuge s (bvlshr (bvadd x t) t)))
+    ; UDIV32
+    (eo::eq l (not (= x (bvadd t (bvadd t (bvor x s))))))
+    ; UDIV33
+    (eo::eq l (bvuge (bvxor s (bvor x t)) (bvxor t one)))
+    ; UDIV34
+    (eo::eq l (bvuge t (bvlshr x (bvsub s one))))
+    ; UDIV35
+    (eo::eq l (bvuge (bvsub s one) (bvlshr x t)))
+    ; UDIV36
+    (eo::eq l (not (= x (bvsub one (bvshl x (bvsub x t))))))
+  ))))))
+
+; program: $bv_abstraction_lemma_udiv
+; args: as $bv_abstraction_lemma_udiv_sym above.
+; return: >
+;   True if l is the instantiation for x, s and t of one of the refinement
+;   lemma schemes for bvudiv. The first case below is the scheme whose
+;   instantiation depends on a (power of two) value of s.
+(program $bv_abstraction_lemma_udiv
+  ((n Int) (x (BitVec n)) (s (BitVec n)) (t (BitVec n))
+   (c (BitVec n)) (d (BitVec n)) (l Bool))
+  :signature ((BitVec n) (BitVec n) (BitVec n) Bool) Bool
+  (
+  ; UDIV1_POW2: (=> (= s 2^i) (= t (bvlshr x i)))
+  (($bv_abstraction_lemma_udiv x s t (=> (= s c) (= t (bvlshr x d))))
+      (eo::eq (eo::to_z c) ($arith_eval_int_pow_2 (eo::to_z d))))
+  (($bv_abstraction_lemma_udiv x s t l) ($bv_abstraction_lemma_udiv_sym x s t l))
+  )
+)
+
+; define: $bv_abstraction_lemma_urem_sym
+; args:
+; - x (BitVec n): The first operand of the abstracted term.
+; - s (BitVec n): The second operand of the abstracted term.
+; - t (BitVec n): The abstraction of the term.
+; - l Bool: The formula to check.
+; return: >
+;   True if l is the instantiation for x, s and t of one of the purely
+;   symbolic refinement lemma schemes for bvurem.
+(define $bv_abstraction_lemma_urem_sym
+  ((n Int :implicit) (x (BitVec n)) (s (BitVec n)) (t (BitVec n)) (l Bool))
+  (eo::define ((w ($bv_bitwidth (eo::typeof x))))
+  (eo::define ((zero (eo::to_bin w 0)))
+  (eo::define ((one (eo::to_bin w 1)))
+  (eo::define ((ones ($bv_ones w)))
+  (eo::or
+    ; UREM1_POW2
+    (eo::eq l (=> (= s one) (= t zero)))
+    ; UREM2
+    (eo::eq l (=> (not (= s zero)) (bvult t s)))
+    ; UREM3
+    (eo::eq l (=> (= x zero) (= t zero)))
+    ; UREM4
+    (eo::eq l (=> (= s zero) (= t x)))
+    ; UREM5
+    (eo::eq l (=> (= s x) (= t zero)))
+    ; UREM6
+    (eo::eq l (=> (bvult x s) (= t x)))
+    ; UREM8
+    (eo::eq l (= x (bvand x (bvor s (bvor t (bvneg s))))))
+    ; UREM9
+    (eo::eq l (bvuge x (bvor t (bvand x s))))
+    ; UREM10
+    (eo::eq l (not (= one (bvand t (bvnot (bvor x s))))))
+    ; UREM11
+    (eo::eq l (not (= t (bvor (bvnot x) (bvneg s)))))
+    ; UREM12
+    (eo::eq l (bvuge (bvand t (bvor x s)) (bvand t one)))
+    ; UREM13
+    (eo::eq l (not (= x (bvor (bvneg x) (bvneg (bvnot t))))))
+    ; UREM14
+    (eo::eq l (bvuge (bvadd x (bvneg s)) t))
+    ; UREM15
+    (eo::eq l (bvuge (bvxor (bvneg s) (bvor x s)) t))
+  ))))))
+
+; program: $bv_abstraction_lemma_urem
+; args: as $bv_abstraction_lemma_urem_sym above.
+; return: >
+;   True if l is the instantiation for x, s and t of one of the refinement
+;   lemma schemes for bvurem. The first case below is the scheme whose
+;   instantiation depends on a (power of two) value of s, whose degenerate
+;   case (s = 1) is handled by $bv_abstraction_lemma_urem_sym.
+(program $bv_abstraction_lemma_urem
+  ((n Int) (m Int) (h Int) (x (BitVec n)) (s (BitVec n)) (t (BitVec n))
+   (c (BitVec n)) (z (BitVec m)) (l Bool))
+  :signature ((BitVec n) (BitVec n) (BitVec n) Bool) Bool
+  (
+  ; UREM1_POW2: (=> (= s 2^i) (= t (concat 0[w-i] x[i-1:0])))
+  (($bv_abstraction_lemma_urem x s t (=> (= s c) (= t (concat z (extract h 0 x)))))
+      (eo::and (eo::eq (eo::to_z z) 0)
+               (eo::eq (eo::to_z c) ($arith_eval_int_pow_2 (eo::add h 1)))))
+  (($bv_abstraction_lemma_urem x s t l) ($bv_abstraction_lemma_urem_sym x s t l))
+  )
+)
+
+; program: $bv_abstraction_lemma
+; args:
+; - l Bool: The formula to check.
+; return: >
+;   True if l is a bit-vector arithmetic abstraction lemma, i.e. if it has the
+;   form (=> (= (op x s) t) lem) where op is one of bvmul, bvudiv and bvurem,
+;   and lem is the instantiation for x, s and t of one of the refinement lemma
+;   schemes of that operator.
+(program $bv_abstraction_lemma
+  ((n Int) (x (BitVec n)) (s (BitVec n)) (t (BitVec n)) (ns (BitVec n) :list) (l Bool))
+  :signature (Bool) Bool
+  (
+  ; Note that bvmul is variadic in cvc5. The abstraction module only abstracts
+  ; its binary applications, which we ensure by requiring that the tail ns of
+  ; the multiplication is its nil terminator.
+  (($bv_abstraction_lemma (=> (= (bvmul x s ns) t) l))
+      (eo::requires (eo::to_z ns) 1 ($bv_abstraction_lemma_mul x s t l)))
+  (($bv_abstraction_lemma (=> (= t (bvmul x s ns)) l))
+      (eo::requires (eo::to_z ns) 1 ($bv_abstraction_lemma_mul x s t l)))
+  (($bv_abstraction_lemma (=> (= (bvudiv x s) t) l)) ($bv_abstraction_lemma_udiv x s t l))
+  (($bv_abstraction_lemma (=> (= t (bvudiv x s)) l)) ($bv_abstraction_lemma_udiv x s t l))
+  (($bv_abstraction_lemma (=> (= (bvurem x s) t) l)) ($bv_abstraction_lemma_urem x s t l))
+  (($bv_abstraction_lemma (=> (= t (bvurem x s)) l)) ($bv_abstraction_lemma_urem x s t l))
+  )
+)
+
+; rule: bv_abstraction
+; implements: ProofRule::BV_ABSTRACTION
+; args:
+; - F Bool: >
+;   The abstraction lemma, of the form (=> (= (op x s) t) l) where op is one of
+;   bvmul, bvudiv, bvurem and l is an instance of one of the refinement lemma
+;   schemes of the bit-vector arithmetic abstraction module.
+; requires: >
+;   That F is an abstraction lemma in the above sense. Note that the antecedent
+;   is required: the schemes constrain the abstraction t of (op x s) and are in
+;   general not valid for an arbitrary t.
+; conclusion: The given lemma.
+(declare-rule bv_abstraction ((F Bool))
+  :args (F)
+  :requires ((($bv_abstraction_lemma F) true))
+  :conclusion F
+)
