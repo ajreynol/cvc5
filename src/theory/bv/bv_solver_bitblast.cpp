@@ -459,7 +459,7 @@ prop::SatValue BVSolverBitblast::refine(
     // We get a different model from the SAT solver in each iteration of this
     // loop, thus have to invalidate TheoryBV's model cache each time.
     d_bv->invalidateModelCache();
-    std::vector<Node> lemmas;
+    std::vector<TrustNode> lemmas;
     d_am->check(lemmas);
     if (lemmas.empty())
     {
@@ -492,9 +492,16 @@ prop::SatValue BVSolverBitblast::refine(
     // an arbitrary Boolean combination of bit-vector atoms, so we assert it
     // through the CNF stream and let the bit-blast registrar bit-blast the
     // atoms it contains (via the BITVECTOR_EAGER_ATOM mechanism).
-    for (const Node& lem : lemmas)
+    //
+    // The lemmas come with proofs (see AbstractionModule) if proofs are
+    // enabled. They are not needed here, since the CNF stream and SAT solver
+    // of this solver are not proof producing: what is surfaced to the rest of
+    // the solver is the final conflict, which is a trusted step
+    // (TrustId::BV_BITBLAST_CONFLICT) that subsumes this refinement.
+    for (const TrustNode& tlem : lemmas)
     {
-      Node eager = nm->mkNode(Kind::BITVECTOR_EAGER_ATOM, rewrite(lem));
+      Node eager =
+          nm->mkNode(Kind::BITVECTOR_EAGER_ATOM, rewrite(tlem.getProven()));
       handleEagerAtom(eager, true);
     }
     result = d_satSolver->solve(assumptions);

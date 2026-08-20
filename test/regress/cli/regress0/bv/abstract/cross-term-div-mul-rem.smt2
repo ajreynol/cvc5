@@ -1,4 +1,5 @@
 ; COMMAND-LINE: --bv-abstraction --bv-abstraction-size=3
+; COMMAND-LINE: --bv-abstraction --bv-abstraction-size=3 --bv-solver=bitblast --produce-proofs --proof-check=eager-simple
 ; EXPECT: unsat
 ; DISABLE-TESTER: proof
 ; The division identity a = (a udiv b) * b + (a urem b) for b != 0. The

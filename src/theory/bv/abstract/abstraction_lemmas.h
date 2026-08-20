@@ -32,6 +32,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <ostream>
 #include <vector>
 
@@ -217,7 +218,33 @@ class LemmaRegistry
    */
   const std::vector<std::unique_ptr<AbstractionLemma>>& lemmas(Kind kind) const;
 
+  /**
+   * Determine whether `lem` is a (guarded) abstraction lemma, that is, whether
+   * it has the form
+   *   (=> (= (op x s) t) l)
+   * where `op` is one of bvmul, bvudiv, bvurem and `l` is the instantiation of
+   * one of the schemes of this registry for `x`, `s` and `t`. Note that the
+   * guard is part of the matched formula: the schemes constrain the
+   * abstraction `t` of `(op x s)` and are in general not valid without it.
+   *
+   * This is the side condition of ProofRule::BV_ABSTRACTION.
+   *
+   * @param lem The formula to check.
+   * @return The kind of the matched scheme, or std::nullopt if `lem` is not an
+   *         abstraction lemma.
+   */
+  std::optional<LemmaKind> isAbstractionLemma(TNode lem) const;
+
  private:
+  /**
+   * Helper for isAbstractionLemma, where `n` is the abstracted term `(op x s)`
+   * and `t` is its abstraction.
+   *
+   * @return The kind of the scheme whose instantiation for `n[0]`, `n[1]` and
+   *         `t` is `l`, or std::nullopt if there is no such scheme.
+   */
+  std::optional<LemmaKind> matchScheme(TNode n, TNode t, TNode l) const;
+
   void initMul(NodeManager* nm);
   void initUdiv(NodeManager* nm);
   void initUrem(NodeManager* nm);

@@ -18,6 +18,7 @@
 #include "expr/node.h"
 #include "proof/proof_checker.h"
 #include "proof/proof_node.h"
+#include "theory/bv/abstract/abstraction_lemmas.h"
 
 namespace cvc5::internal {
 namespace theory {
@@ -37,6 +38,13 @@ class BVProofRuleChecker : public ProofRuleChecker
   Node checkInternal(ProofRule id,
                      const std::vector<Node>& children,
                      const std::vector<Node>& args) override;
+
+ private:
+  /**
+   * The refinement lemma schemes of the bit-vector arithmetic abstraction
+   * module, used as the side condition of ProofRule::BV_ABSTRACTION.
+   */
+  abstract::LemmaRegistry d_absLemmas;
 };
 
 }  // namespace bv

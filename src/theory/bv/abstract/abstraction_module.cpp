@@ -16,6 +16,8 @@
 
 #include "expr/node_manager.h"
 #include "options/bv_options.h"
+#include "proof/proof.h"
+#include "proof/proof_node_algorithm.h"
 #include "smt/env.h"
 #include "theory/bv/theory_bv.h"
 #include "theory/bv/theory_bv_utils.h"
@@ -31,6 +33,9 @@ AbstractionModule::AbstractionModule(Env& env, TheoryBV* bv)
       d_absSize(options().bv.bvAbstractionSize),
       d_valLimiter(options().bv.bvAbstractionValueLimiter),
       d_lemmas(nodeManager()),
+      d_epg(env.isTheoryProofProducing()
+                ? new EagerProofGenerator(env, userContext(), "bv::Abstraction")
+                : nullptr),
       d_stats(statisticsRegistry())
 {
 }
@@ -142,7 +147,7 @@ Node AbstractionModule::abstract(TNode fact)
   return d_cache.at(fact);
 }
 
-void AbstractionModule::check(std::vector<Node>& lemmas)
+void AbstractionModule::check(std::vector<TrustNode>& lemmas)
 {
   ++d_stats.d_numChecks;
   NodeManager* nm = nodeManager();
@@ -200,7 +205,7 @@ void AbstractionModule::check(std::vector<Node>& lemmas)
           inst.substitute(args.begin(), args.end(), vals.begin(), vals.end());
       if (rewrite(subst) == falseNode)
       {
-        lemmas.push_back(inst);
+        lemmas.push_back(mkSchemeLemma(n, t, inst));
         violated = true;
         break;
       }
@@ -218,10 +223,7 @@ void AbstractionModule::check(std::vector<Node>& lemmas)
     if (d_valueInstCount[t] < budget)
     {
       // Tier 3: value instantiation.
-      lemmas.push_back(
-          nm->mkNode(Kind::IMPLIES,
-                     {nm->mkNode(Kind::AND, {x.eqNode(xval), s.eqNode(sval)}),
-                      t.eqNode(value)}));
+      lemmas.push_back(mkValueLemma(n, t, xval, sval, value));
       ++d_valueInstCount[t];
       ++d_stats.d_numLemmasTier3;
     }
@@ -229,10 +231,74 @@ void AbstractionModule::check(std::vector<Node>& lemmas)
     {
       // Tier 4: bit-blasting fallback. Assert t = op(x, s), forcing the real
       // circuit to be bit-blasted; `t` is fully constrained from now on.
-      lemmas.push_back(t.eqNode(nm->mkNode(kind, x, s)));
+      lemmas.push_back(mkBitblastLemma(n, t));
       ++d_stats.d_numLemmasTier4;
     }
   }
+}
+
+TrustNode AbstractionModule::mkSchemeLemma(TNode n, TNode t, const Node& lem)
+{
+  if (d_epg == nullptr)
+  {
+    return TrustNode::mkTrustLemma(lem, nullptr);
+  }
+  // The definition of the abstraction constant `t`, which is trusted: `t` is a
+  // fresh constant whose defining equation is not derivable.
+  Node def = n.eqNode(t);
+  // The scheme instance is valid only relative to that definition, which is
+  // why the guarded form is what BV_ABSTRACTION concludes.
+  Node glem = def.impNode(lem);
+  CDProof cdp(d_env);
+  cdp.addTrustedStep(def, TrustId::BV_ABSTRACTION_DEF, {}, {});
+  cdp.addStep(glem, ProofRule::BV_ABSTRACTION, {}, {glem});
+  cdp.addStep(lem, ProofRule::MODUS_PONENS, {def, glem}, {});
+  return d_epg->mkTrustNode(lem, cdp.getProofFor(lem));
+}
+
+TrustNode AbstractionModule::mkValueLemma(
+    TNode n, TNode t, TNode xval, TNode sval, TNode val)
+{
+  NodeManager* nm = nodeManager();
+  Node eqx = n[0].eqNode(xval);
+  Node eqs = n[1].eqNode(sval);
+  Node eqt = t.eqNode(val);
+  Node lem = nm->mkNode(Kind::IMPLIES, nm->mkNode(Kind::AND, {eqx, eqs}), eqt);
+  if (d_epg == nullptr)
+  {
+    return TrustNode::mkTrustLemma(lem, nullptr);
+  }
+  // Under the assumptions (= x xval) and (= s sval), we have
+  //   (= t n)  by the definition of `t`,
+  //   (= n (op xval sval))  by congruence, and
+  //   (= (op xval sval) val)  by evaluation,
+  // hence (= t val). The assumptions are then discharged by SCOPE.
+  CDProof cdp(d_env);
+  Node def = t.eqNode(n);
+  cdp.addTrustedStep(def, TrustId::BV_ABSTRACTION_DEF, {}, {});
+  Node cong = expr::proveCong(d_env, &cdp, n, {eqx, eqs});
+  if (cong.isNull())
+  {
+    // Should never happen, fall back to a trusted step.
+    Assert(false) << "failed to prove congruence for " << n;
+    return d_epg->mkTrustNodeTrusted(lem, TrustId::BV_ABSTRACTION_DEF, {}, {});
+  }
+  Node eval = nm->mkNode(n.getKind(), xval, sval).eqNode(val);
+  cdp.addStep(eval, ProofRule::MACRO_SR_PRED_INTRO, {}, {eval});
+  cdp.addStep(eqt, ProofRule::TRANS, {def, cong, eval}, {});
+  cdp.addStep(lem, ProofRule::SCOPE, {eqt}, {eqx, eqs});
+  return d_epg->mkTrustNode(lem, cdp.getProofFor(lem));
+}
+
+TrustNode AbstractionModule::mkBitblastLemma(TNode n, TNode t)
+{
+  Node lem = t.eqNode(n);
+  if (d_epg == nullptr)
+  {
+    return TrustNode::mkTrustLemma(lem, nullptr);
+  }
+  // This lemma is the definition of the abstraction constant `t` itself.
+  return d_epg->mkTrustNodeTrusted(lem, TrustId::BV_ABSTRACTION_DEF, {}, {});
 }
 
 #ifdef CVC5_ASSERTIONS

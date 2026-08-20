@@ -20,7 +20,8 @@ namespace cvc5::internal {
 namespace theory {
 namespace bv {
 
-BVProofRuleChecker::BVProofRuleChecker(NodeManager* nm) : ProofRuleChecker(nm)
+BVProofRuleChecker::BVProofRuleChecker(NodeManager* nm)
+    : ProofRuleChecker(nm), d_absLemmas(nm)
 {
 }
 void BVProofRuleChecker::registerTo(ProofChecker* pc)
@@ -30,6 +31,7 @@ void BVProofRuleChecker::registerTo(ProofChecker* pc)
   pc->registerChecker(ProofRule::BV_POLY_NORM, this);
   pc->registerChecker(ProofRule::BV_POLY_NORM_EQ, this);
   pc->registerChecker(ProofRule::BV_EAGER_ATOM, this);
+  pc->registerChecker(ProofRule::BV_ABSTRACTION, this);
 }
 
 Node BVProofRuleChecker::checkInternal(ProofRule id,
@@ -56,6 +58,19 @@ Node BVProofRuleChecker::checkInternal(ProofRule id,
     Assert(args.size() == 1);
     Assert(args[0].getKind() == Kind::BITVECTOR_EAGER_ATOM);
     return args[0].eqNode(args[0][0]);
+  }
+  else if (id == ProofRule::BV_ABSTRACTION)
+  {
+    Assert(children.empty());
+    Assert(args.size() == 1);
+    // The argument is the lemma itself, which must be an instance of one of
+    // the refinement lemma schemes of the abstraction module, guarded by the
+    // equality between the abstracted term and its abstraction.
+    if (!d_absLemmas.isAbstractionLemma(args[0]))
+    {
+      return Node::null();
+    }
+    return args[0];
   }
   else if (id == ProofRule::BV_POLY_NORM)
   {

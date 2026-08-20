@@ -28,9 +28,12 @@
 #ifndef CVC5__THEORY__BV__ABSTRACT__BV_ABSTRACTION_H
 #define CVC5__THEORY__BV__ABSTRACT__BV_ABSTRACTION_H
 
+#include <memory>
 #include <unordered_map>
 
 #include "expr/node.h"
+#include "proof/eager_proof_generator.h"
+#include "proof/trust_node.h"
 #include "smt/env_obj.h"
 #include "theory/bv/abstract/abstraction_lemmas.h"
 #include "util/statistics_stats.h"
@@ -79,9 +82,11 @@ class AbstractionModule : protected EnvObj
    * violated and the allowance for adding value instantiation lemmas (tier-3)
    * has been exhausted, a bit-blasting lemma (tier-4) is added.
    *
-   * @param lemmas Output parameter, the collected refinement lemmas.
+   * @param lemmas Output parameter, the collected refinement lemmas. Each is
+   *               proven by this module (see the mk*Lemma methods below) if
+   *               proofs are enabled.
    */
-  void check(std::vector<Node>& lemmas);
+  void check(std::vector<TrustNode>& lemmas);
 
   /** @return True if `n` is a term that should be abstracted. */
   bool abstractable(TNode n) const;
@@ -111,6 +116,41 @@ class AbstractionModule : protected EnvObj
    */
   Node abstractNode(TNode node);
 
+  /**
+   * Make a tier-1/2 refinement lemma `lem`, which is the instantiation of one
+   * of the schemes of d_lemmas for the abstracted term `n` = (op x s) and its
+   * abstraction `t`.
+   *
+   * If proofs are enabled, `lem` is proven by:
+   *   (1) (= n t)              TRUST (BV_ABSTRACTION_DEF)
+   *   (2) (=> (= n t) lem)     BV_ABSTRACTION
+   *   (3) lem                  MODUS_PONENS (1) (2)
+   * where (1) is the definition of the fresh abstraction constant `t`, and (2)
+   * is checked by matching `lem` against the schemes (see
+   * LemmaRegistry::isAbstractionLemma). Note that (2) requires the guard: the
+   * schemes are in general not valid for an arbitrary `t`.
+   */
+  TrustNode mkSchemeLemma(TNode n, TNode t, const Node& lem);
+
+  /**
+   * Make the tier-3 value instantiation lemma
+   *   (=> (and (= x xval) (= s sval)) (= t val))
+   * for the abstracted term `n` = (op x s) with abstraction `t`, where `val`
+   * is the value of (op xval sval).
+   *
+   * If proofs are enabled, this is derived from the definition of `t`: under
+   * the assumptions (= x xval) and (= s sval), congruence and evaluation give
+   * (= n val), hence (= t val). The assumptions are discharged by SCOPE.
+   */
+  TrustNode mkValueLemma(TNode n, TNode t, TNode xval, TNode sval, TNode val);
+
+  /**
+   * Make the tier-4 bit-blasting lemma (= t n) for the abstracted term `n`
+   * with abstraction `t`. This is the definition of `t`, hence a trusted step
+   * if proofs are enabled.
+   */
+  TrustNode mkBitblastLemma(TNode n, TNode t);
+
   /** The associated bit-vector theory engine. */
   TheoryBV* d_bv;
 
@@ -124,6 +164,9 @@ class AbstractionModule : protected EnvObj
 
   /** The refinement lemma schemes, used by the refinement loop. */
   LemmaRegistry d_lemmas;
+
+  /** Proof generator for the refinement lemmas, if proofs are enabled. */
+  std::unique_ptr<EagerProofGenerator> d_epg;
 
   /** Map from abstraction constant `t` to the node it abstracts. */
   std::unordered_map<Node, Node> d_abs2node;

@@ -175,6 +175,12 @@ enum class TrustId : uint32_t
   BV_BITBLAST_CONFLICT,
   /** A step from BvPpAssert utility */
   BV_PP_ASSERT,
+  /**
+   * The definition of an abstraction constant introduced by the bit-vector
+   * arithmetic abstraction module, i.e. `(= t (op x s))` where `t` is the
+   * fresh constant that abstracts `(op x s)`.
+   */
+  BV_ABSTRACTION_DEF,
   /** Diamonds preprocessing in TheoryUf::ppStaticLearn */
   DIAMONDS,
   /** An extended theory rewrite */

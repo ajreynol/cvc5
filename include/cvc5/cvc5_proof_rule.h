@@ -1423,6 +1423,30 @@ enum ENUM(ProofRule)
   EVALUE(BV_POLY_NORM_EQ),
   /**
    * \verbatim embed:rst:leading-asterisk
+   * **Bit-vectors -- Arithmetic abstraction lemma**
+   *
+   * .. math::
+   *
+   *   \inferrule{-\mid (x \circ s = t) \Rightarrow \ell}
+   *   {(x \circ s = t) \Rightarrow \ell}
+   *
+   * where :math:`\circ` is one of :math:`\{\texttt{bvmul}, \texttt{bvudiv},
+   * \texttt{bvurem}\}` and :math:`\ell` is the instantiation, for these
+   * :math:`x`, :math:`s` and :math:`t`, of one of the refinement lemma schemes
+   * of the bit-vector arithmetic abstraction module, as listed in
+   * :cvc5src:`theory/bv/abstract/abstraction_lemmas.h`.
+   *
+   * Each scheme :math:`\ell[x,s,t]` is a sound over-approximation of its
+   * operator, that is :math:`(x \circ s = t) \Rightarrow \ell` is
+   * :math:`T_{BV}`-valid, which is what this rule concludes. Note that the
+   * antecedent is required: the schemes constrain the abstraction :math:`t` of
+   * :math:`x \circ s` and are in general not valid for an arbitrary
+   * :math:`t`.
+   * \endverbatim
+   */
+  EVALUE(BV_ABSTRACTION),
+  /**
+   * \verbatim embed:rst:leading-asterisk
    * **Datatypes -- Split**
    *
    * .. math::

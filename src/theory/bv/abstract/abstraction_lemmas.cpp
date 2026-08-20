@@ -861,6 +861,80 @@ const std::vector<std::unique_ptr<AbstractionLemma>>& LemmaRegistry::lemmas(
   }
 }
 
+std::optional<LemmaKind> LemmaRegistry::isAbstractionLemma(TNode lem) const
+{
+  if (lem.getKind() != Kind::IMPLIES)
+  {
+    return {};
+  }
+  TNode guard = lem[0];
+  if (guard.getKind() != Kind::EQUAL)
+  {
+    return {};
+  }
+  // The guard (= (op x s) t) determines the operator and all three operands of
+  // the scheme. We do not assume an orientation of the equality here.
+  for (size_t i = 0; i < 2; ++i)
+  {
+    std::optional<LemmaKind> kind = matchScheme(guard[i], guard[1 - i], lem[1]);
+    if (kind)
+    {
+      return kind;
+    }
+  }
+  return {};
+}
+
+std::optional<LemmaKind> LemmaRegistry::matchScheme(TNode n,
+                                                    TNode t,
+                                                    TNode l) const
+{
+  const std::vector<std::unique_ptr<AbstractionLemma>>& ls =
+      lemmas(n.getKind());
+  // Not an abstractable operator, or not the binary variant the schemes are
+  // stated for (cvc5 allows n-ary BITVECTOR_MULT).
+  if (ls.empty() || n.getNumChildren() != 2)
+  {
+    return {};
+  }
+  // Some schemes are not valid for bit-width 1 or 2 (see e.g. MUL5 and MUL9),
+  // which is why the abstraction module never considers such terms (the
+  // minimum of --bv-abstraction-size is 3).
+  if (utils::getSize(n) < 3)
+  {
+    return {};
+  }
+  TNode x = n[0];
+  TNode s = n[1];
+  for (const std::unique_ptr<AbstractionLemma>& lemma : ls)
+  {
+    Node inst = lemma->instance(x, s, t);
+    if (inst.isNull())
+    {
+      // A scheme that depends on a model value. Its instantiations all have
+      // the form (=> (= x c) ...) resp. (=> (= s c) ...), hence the value is
+      // determined by `l` itself: take it and reconstruct the instantiation.
+      if (l.getKind() != Kind::IMPLIES || l[0].getKind() != Kind::EQUAL
+          || l[0][1].getKind() != Kind::CONST_BITVECTOR
+          || utils::getSize(l[0][1]) != utils::getSize(n))
+      {
+        continue;
+      }
+      TNode val = l[0][1];
+      // Only one of xval/sval is used by any of these schemes, thus we can
+      // pass the value for both.
+      inst = lemma->instance(x, s, t, val, val);
+    }
+    if (inst == l)
+    {
+      Trace("bv-abstraction-proof")
+          << "matched " << lemma->getKind() << " for " << n << std::endl;
+      return lemma->getKind();
+    }
+  }
+  return {};
+}
+
 void LemmaRegistry::initMul(NodeManager* nm)
 {
   d_mul.push_back(std::make_unique<Lemma<LemmaKind::MUL1_POW2>>(nm));

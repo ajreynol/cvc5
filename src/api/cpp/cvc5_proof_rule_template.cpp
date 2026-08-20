@@ -120,6 +120,7 @@ const char* toString(ProofRule rule)
     case ProofRule::BV_EAGER_ATOM: return "BV_EAGER_ATOM";
     case ProofRule::BV_POLY_NORM: return "BV_POLY_NORM";
     case ProofRule::BV_POLY_NORM_EQ: return "BV_POLY_NORM_EQ";
+    case ProofRule::BV_ABSTRACTION: return "BV_ABSTRACTION";
     //================================================= Datatype rules
     case ProofRule::DT_SPLIT: return "DT_SPLIT";
     //================================================= Quantifiers rules
