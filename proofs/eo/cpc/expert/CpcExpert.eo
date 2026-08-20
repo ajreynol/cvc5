@@ -12,7 +12,6 @@
 ;
 ; =============================================================================
 
-(include "Lambda.eo")
 (include "./rules/ArithExt.eo")
 (include "./theories/Bags.eo")
 (include "./theories/FloatingPoints.eo")

@@ -91,9 +91,6 @@
 (include "./programs/DistinctValues.eo")
 (include "./programs/AciNorm.eo")
 
-; FIXME temporary
-;(include "./expert/Lambda.eo")
-
 ; disclaimer: >
 ;   All symbols prefixed by @ are not part of the SMT-LIB standard
 ;   and are used to model cvc5's internal symbols, including its skolems,
