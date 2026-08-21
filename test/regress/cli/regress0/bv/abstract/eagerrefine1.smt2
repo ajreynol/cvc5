@@ -1,6 +1,5 @@
 ; COMMAND-LINE: --bv-abstraction
 ; EXPECT: unsat
-; DISABLE-TESTER: proof
 ; Ported from Bitwuzla test/regress/solver/abstract/eagerrefine1.smt2
 (set-logic QF_BV)
 (set-info :status unsat)

@@ -13,6 +13,7 @@
 #include "theory/bv/bv_solver_bitblast.h"
 
 #include "options/bv_options.h"
+#include "proof/lazy_proof.h"
 #include "prop/sat_solver_factory.h"
 #include "theory/bv/theory_bv.h"
 #include "theory/bv/theory_bv_utils.h"
@@ -262,8 +263,25 @@ void BVSolverBitblast::postCheck(Theory::Effort level)
     TrustNode tconflict;
     if (d_epg != nullptr)
     {
-      tconflict = d_epg->mkTrustNodeTrusted(
-          conflict, TrustId::BV_BITBLAST_CONFLICT, {}, {}, true);
+      if (d_refineLemmas.empty())
+      {
+        tconflict = d_epg->mkTrustNodeTrusted(
+            conflict, TrustId::BV_BITBLAST_CONFLICT, {}, {}, true);
+      }
+      else
+      {
+        // The refutation used the refinement lemmas of the abstraction module.
+        // We make them premises of the (trusted) conflict step, so that what
+        // is trusted here is the bit-blasting and SAT reasoning only, and the
+        // lemmas themselves are proven by the abstraction module.
+        Node conc = conflict.notNode();
+        std::vector<Node> targs{
+            mkTrustId(nm, TrustId::BV_BITBLAST_CONFLICT), conc};
+        LazyCDProof lcp(d_env, d_am->getProofGenerator());
+        lcp.addStep(conc, ProofRule::TRUST, d_refineLemmas, targs);
+        tconflict =
+            d_epg->mkTrustNode(conflict, lcp.getProofFor(conc), true);
+      }
     }
     else
     {
@@ -367,6 +385,8 @@ bool BVSolverBitblast::collectModelValues(TheoryModel* m,
 
 void BVSolverBitblast::initSatSolver()
 {
+  // The refinement lemmas are asserted to the SAT solver we are (re)building.
+  d_refineLemmas.clear();
   const auto factory =
       prop::SatSolverFactory::getFactory(options().bv.bvSatSolver);
   d_satSolver.reset(factory(d_env,
@@ -500,8 +520,12 @@ prop::SatValue BVSolverBitblast::refine(
     // (TrustId::BV_BITBLAST_CONFLICT) that subsumes this refinement.
     for (const TrustNode& tlem : lemmas)
     {
-      Node eager =
-          nm->mkNode(Kind::BITVECTOR_EAGER_ATOM, rewrite(tlem.getProven()));
+      Node lem = tlem.getProven();
+      if (d_epg != nullptr)
+      {
+        d_refineLemmas.push_back(lem);
+      }
+      Node eager = nm->mkNode(Kind::BITVECTOR_EAGER_ATOM, rewrite(lem));
       handleEagerAtom(eager, true);
     }
     result = d_satSolver->solve(assumptions);

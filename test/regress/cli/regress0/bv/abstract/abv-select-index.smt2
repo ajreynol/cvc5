@@ -1,6 +1,5 @@
 ; COMMAND-LINE: --bv-abstraction --bv-abstraction-size=3
 ; EXPECT: unsat
-; DISABLE-TESTER: proof
 ; QF_ABV coverage for the shape that exposed abstraction below foreign-theory
 ; terms: the abstracted bvmul feeds the two select indices, which are
 ; syntactically distinct but provably equal (y is forced to 1 by the

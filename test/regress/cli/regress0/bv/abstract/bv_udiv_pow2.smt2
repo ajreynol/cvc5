@@ -1,6 +1,6 @@
 ; COMMAND-LINE: --bv-abstraction --bv-abstraction-size=16
+; COMMAND-LINE: --bv-abstraction --bv-abstraction-size=16 --bv-solver=bitblast --produce-proofs --proof-check=eager-simple
 ; EXPECT: unsat
-; DISABLE-TESTER: proof
 ; Ported from Bitwuzla test/regress/solver/abstract/bv_udiv_pow2.smt2
 (set-logic QF_BV)
 (set-info :status unsat)

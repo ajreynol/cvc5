@@ -91,6 +91,12 @@ class AbstractionModule : protected EnvObj
   /** @return True if `n` is a term that should be abstracted. */
   bool abstractable(TNode n) const;
 
+  /**
+   * @return The proof generator for the refinement lemmas returned by check(),
+   *         or nullptr if proofs are not enabled.
+   */
+  ProofGenerator* getProofGenerator() { return d_epg.get(); }
+
   /** @return True if given node has been abstracted by a constant. */
   bool isAbstracted(TNode node) const;
 

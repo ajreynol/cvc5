@@ -151,6 +151,15 @@ class BVSolverBitblast : public BVSolver
   /** The associated CEGAR abstraction module for bit-vector arithmetic. */
   std::unique_ptr<abstract::AbstractionModule> d_am;
 
+  /**
+   * The refinement lemmas asserted by refine() so far, if proofs are enabled.
+   * They are premises of the conflicts we report: the SAT solver derived the
+   * conflict from the (abstracted) assertions *and* these lemmas. Their proofs
+   * are provided by the abstraction module. Like the lemmas themselves, this
+   * is reset when the SAT solver is rebuilt.
+   */
+  std::vector<Node> d_refineLemmas;
+
   /** The enclosing theory, used to query model values (TheoryBV::getValue). */
   TheoryBV* d_bv;
 
