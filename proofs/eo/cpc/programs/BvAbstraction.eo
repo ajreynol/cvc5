@@ -7,6 +7,11 @@
 ; (op x s) with abstraction t, each scheme l[x,s,t] satisfies
 ; (=> (= (op x s) t) l), which is what the rule bv_abstraction concludes.
 ;
+; Note that the schemes are valid only for bit-widths of at least three; the
+; abstraction module of cvc5 never abstracts terms of a smaller width (the
+; minimum of --bv-abstraction-size is three). This is checked by
+; $bv_abstraction_width_ok below.
+;
 ; Note that cvc5 treats bvand, bvor, bvxor, bvadd and bvmul as variadic, so
 ; that a binary application of these carries a nil terminator that depends on
 ; the bit-width. Such a terminator is not a legal subterm of a pattern, hence
@@ -33,6 +38,17 @@
 ; return: True if c is the bit-vector value in which all bits are one.
 (define $bv_is_ones ((n Int :implicit) (c (BitVec n)))
   (eo::eq c ($bv_ones ($bv_bitwidth (eo::typeof c)))))
+
+; define: $bv_abstraction_width_ok
+; args:
+; - x (BitVec n): An operand of the abstracted term.
+; return: >
+;   True if the bit-width of x is at least three. The refinement lemma schemes
+;   below are (in general) not valid for bit-widths one and two, e.g. MUL5 does
+;   not hold for x=1, s=0, t=0 at width one and MUL9 does not hold for x=s=2,
+;   t=0 at width two.
+(define $bv_abstraction_width_ok ((n Int :implicit) (x (BitVec n)))
+  (eo::gt ($bv_bitwidth (eo::typeof x)) 2))
 
 ; program: $bv_abstraction_lemma_mul
 ; args:
@@ -319,20 +335,27 @@
 ; return: >
 ;   True if l is a bit-vector arithmetic abstraction lemma, i.e. if it has the
 ;   form (=> (= (op x s) t) lem) where op is one of bvmul, bvudiv and bvurem,
-;   and lem is the instantiation for x, s and t of one of the refinement lemma
-;   schemes of that operator.
+;   the bit-width of the operands is at least three, and lem is the
+;   instantiation for x, s and t of one of the refinement lemma schemes of that
+;   operator.
 (program $bv_abstraction_lemma
   ((n Int) (x (BitVec n)) (s (BitVec n)) (t (BitVec n)) (ns (BitVec n) :list) (l Bool))
   :signature (Bool) Bool
   (
   (($bv_abstraction_lemma (=> (= (bvmul x s ns) t) l))
-      (eo::and ($bv_is_one ns) ($bv_abstraction_lemma_mul x s t l)))
+      (eo::and ($bv_abstraction_width_ok x)
+               (eo::and ($bv_is_one ns) ($bv_abstraction_lemma_mul x s t l))))
   (($bv_abstraction_lemma (=> (= t (bvmul x s ns)) l))
-      (eo::and ($bv_is_one ns) ($bv_abstraction_lemma_mul x s t l)))
-  (($bv_abstraction_lemma (=> (= (bvudiv x s) t) l)) ($bv_abstraction_lemma_udiv x s t l))
-  (($bv_abstraction_lemma (=> (= t (bvudiv x s)) l)) ($bv_abstraction_lemma_udiv x s t l))
-  (($bv_abstraction_lemma (=> (= (bvurem x s) t) l)) ($bv_abstraction_lemma_urem x s t l))
-  (($bv_abstraction_lemma (=> (= t (bvurem x s)) l)) ($bv_abstraction_lemma_urem x s t l))
+      (eo::and ($bv_abstraction_width_ok x)
+               (eo::and ($bv_is_one ns) ($bv_abstraction_lemma_mul x s t l))))
+  (($bv_abstraction_lemma (=> (= (bvudiv x s) t) l))
+      (eo::and ($bv_abstraction_width_ok x) ($bv_abstraction_lemma_udiv x s t l)))
+  (($bv_abstraction_lemma (=> (= t (bvudiv x s)) l))
+      (eo::and ($bv_abstraction_width_ok x) ($bv_abstraction_lemma_udiv x s t l)))
+  (($bv_abstraction_lemma (=> (= (bvurem x s) t) l))
+      (eo::and ($bv_abstraction_width_ok x) ($bv_abstraction_lemma_urem x s t l)))
+  (($bv_abstraction_lemma (=> (= t (bvurem x s)) l))
+      (eo::and ($bv_abstraction_width_ok x) ($bv_abstraction_lemma_urem x s t l)))
   (($bv_abstraction_lemma l) false)
   )
 )
