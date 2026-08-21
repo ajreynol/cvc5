@@ -314,6 +314,15 @@ void TheoryEngine::preRegister(TNode preprocessed)
           Unhandled() << "Preregistered term with free variable: "
                       << preprocessed << ", fv=" << *fvs.begin();
         }
+        // The literals we preregister should be in rewritten form. This is
+        // ensured since all formulas asserted to the SAT solver are the result
+        // of preprocessing, which rewrites.
+        Node pr = rewrite(preprocessed);
+        if (pr != preprocessed)
+        {
+          Unhandled() << "Preregistered term that is not rewritten: "
+                      << preprocessed << ", which rewrites to " << pr;
+        }
       }
       // should not have witness
       Assert(!expr::hasSubtermKind(Kind::WITNESS, preprocessed));

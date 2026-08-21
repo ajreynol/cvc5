@@ -510,6 +510,45 @@ Node Rewriter::rewriteTo(theory::TheoryId theoryId,
   Unreachable();
 } /* Rewriter::rewriteTo() */
 
+/**
+ * Check the invariant that a theory rewriter does not change the terms of an
+ * equality, where n is the node that was rewritten and ret is its rewritten
+ * form. In particular, if n is a (non-Boolean) equality, this asserts that ret
+ * is either a Boolean constant, or an equality over the same terms as n,
+ * possibly in the opposite order.
+ *
+ * This invariant is required for theory combination, where the terms of an
+ * equality must not be changed by the rewriter, as otherwise the rewritten
+ * form of an equality may be over terms that are not known to the theory it
+ * is sent to.
+ *
+ * Note this invariant does not apply to Boolean equalities, which are e.g.
+ * rewritten to one of their arguments (for (= t true)) or to other Boolean
+ * connectives.
+ *
+ * This method does nothing if assertions are disabled.
+ */
+static void checkRewriteEquality(CVC5_UNUSED TNode n,
+                                 CVC5_UNUSED TNode ret,
+                                 CVC5_UNUSED bool isPre)
+{
+#ifdef CVC5_ASSERTIONS
+  if (n.getKind() != Kind::EQUAL || n[0].getType().isBoolean())
+  {
+    return;
+  }
+  Assert(ret.isConst()
+         || (ret.getKind() == Kind::EQUAL
+             && ((ret[0] == n[0] && ret[1] == n[1])
+                 || (ret[0] == n[1] && ret[1] == n[0]))))
+      << (isPre ? "Pre" : "Post") << "-rewriting the equality " << n << " to "
+      << ret
+      << " does not preserve its terms. The rewritten form of an equality "
+         "must be either a Boolean constant, or an equality over the same "
+         "terms.";
+#endif
+}
+
 RewriteResponse Rewriter::preRewrite(theory::TheoryId theoryId,
                                      TNode n,
                                      TConvProofGenerator* tcpg)
@@ -521,9 +560,14 @@ RewriteResponse Rewriter::preRewrite(theory::TheoryId theoryId,
         d_theoryRewriters[theoryId]->preRewriteWithProof(n);
     // process the trust rewrite response: store the proof step into
     // tcpg if necessary and then convert to rewrite response.
-    return processTrustRewriteResponse(theoryId, tresponse, true, tcpg);
+    RewriteResponse ret =
+        processTrustRewriteResponse(theoryId, tresponse, true, tcpg);
+    checkRewriteEquality(n, ret.d_node, true);
+    return ret;
   }
-  return d_theoryRewriters[theoryId]->preRewrite(n);
+  RewriteResponse ret = d_theoryRewriters[theoryId]->preRewrite(n);
+  checkRewriteEquality(n, ret.d_node, true);
+  return ret;
 }
 
 RewriteResponse Rewriter::postRewrite(theory::TheoryId theoryId,
@@ -535,9 +579,14 @@ RewriteResponse Rewriter::postRewrite(theory::TheoryId theoryId,
     // same as above, for post-rewrite
     TrustRewriteResponse tresponse =
         d_theoryRewriters[theoryId]->postRewriteWithProof(n);
-    return processTrustRewriteResponse(theoryId, tresponse, false, tcpg);
+    RewriteResponse ret =
+        processTrustRewriteResponse(theoryId, tresponse, false, tcpg);
+    checkRewriteEquality(n, ret.d_node, false);
+    return ret;
   }
-  return d_theoryRewriters[theoryId]->postRewrite(n);
+  RewriteResponse ret = d_theoryRewriters[theoryId]->postRewrite(n);
+  checkRewriteEquality(n, ret.d_node, false);
+  return ret;
 }
 
 RewriteResponse Rewriter::processTrustRewriteResponse(
