@@ -420,6 +420,21 @@ class Theory : protected EnvObj
     Trace("theory") << "Theory<" << getId() << ">::assertFact["
                     << context()->getLevel() << "](" << assertion << ", "
                     << (isPreregistered ? "true" : "false") << ")" << std::endl;
+#ifdef CVC5_ASSERTIONS
+    // The facts of a theory should be in rewritten form. Exceptions are made
+    // for the literals sent by theory combination whose rewritten form no
+    // longer states a (dis)equality over the same terms, namely those that
+    // rewrite to a Boolean constant and those that are Boolean equalities,
+    // see TheoryEngine::assertToTheory.
+    Node ar = rewrite(assertion);
+    TNode fatom =
+        assertion.getKind() == Kind::NOT ? assertion[0] : TNode(assertion);
+    Assert(ar == assertion || ar.isConst()
+           || (fatom.getKind() == Kind::EQUAL
+               && fatom[0].getType().isBoolean()))
+        << "Theory<" << getId() << ">::assertFact: the fact " << assertion
+        << " is not in rewritten form, it rewrites to " << ar;
+#endif
     d_facts.push_back(Assertion(assertion, isPreregistered));
   }
 
