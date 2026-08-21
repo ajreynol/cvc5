@@ -1221,33 +1221,19 @@ void TheoryEngine::assertToTheory(TNode assertion,
     }
   }
 
-  // The literal we send to the theory below. We send the normalized form, so
-  // that the facts of a theory are in rewritten form. This is safe since the
-  // rewriter does not change the terms of a (non-Boolean) equality, which is
-  // required for theory combination. We keep the original literal in two
-  // cases, where the rewritten form no longer states a (dis)equality between
-  // the terms we are communicating to the theory:
-  // (1) if it rewrites to a Boolean constant, in which case the literal is
-  // trivially true or false for the rewriter, but may still be informative
-  // for the theory we are sending it to, e.g. it may state a (dis)equality
-  // between shared terms that the theory cannot infer itself,
-  // (2) if it is a Boolean equality, whose rewritten form (e.g. (not t) for
-  // the literal (= false t)) is not an equality at all.
-  TNode eqAtom = assertion.getKind() == Kind::NOT ? assertion[0] : assertion;
-  Node toAssert =
-      (normalizedLiteral.isConst() || eqAtom[0].getType().isBoolean())
-          ? Node(assertion)
-          : normalizedLiteral;
-
-  // Try and assert
+  // Try and assert. Note that we assert the literal as it was given to us and
+  // not its normalized form. This does not lose the invariant that the facts
+  // of a theory are in rewritten form, since the sources of the literals we
+  // get here construct them in rewritten form already, see
+  // Rewriter::mkRewrittenEquality.
   if (markPropagation(
-          toAssert, originalAssertion, toTheoryIdProp, fromTheoryId))
+          assertion, originalAssertion, toTheoryIdProp, fromTheoryId))
   {
     // Check if has been pre-registered with the theory
-    bool preregistered = d_propEngine->isSatLiteral(toAssert)
-                         && d_env.theoryOf(toAssert) == toTheoryId;
+    bool preregistered = d_propEngine->isSatLiteral(assertion)
+                         && d_env.theoryOf(assertion) == toTheoryId;
     // Assert away
-    theoryOf(toTheoryId)->assertFact(toAssert, preregistered);
+    theoryOf(toTheoryId)->assertFact(assertion, preregistered);
     d_factsAsserted = true;
   }
 

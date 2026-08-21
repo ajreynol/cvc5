@@ -188,8 +188,10 @@ bool SharedTermsDatabase::propagateSharedEquality(TheoryId theory,
     return false;
   }
 
-  // Propagate away
-  Node equality = a.eqNode(b);
+  // Propagate away. Note we construct the equality in rewritten form, so that
+  // the literals we send to theories do not have to be normalized further,
+  // see Rewriter::mkRewrittenEquality.
+  Node equality = d_env.getRewriter()->mkRewrittenEquality(a, b);
   Node equalityToPropagate = value ? equality : equality.notNode();
   d_theoryEngine->assertToTheory(
       equalityToPropagate, equalityToPropagate, theory, THEORY_BUILTIN);

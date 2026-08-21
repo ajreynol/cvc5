@@ -117,6 +117,17 @@ Node Rewriter::rewrite(TNode node)
   return rewriteTo(theoryOf(node), node);
 }
 
+Node Rewriter::mkRewrittenEquality(TNode a, TNode b)
+{
+  // Orient by node id first, which is the orientation used by most theory
+  // rewriters, so that we usually do not have to construct a second node.
+  Node eq = a > b ? b.eqNode(a) : a.eqNode(b);
+  Node req = rewrite(eq);
+  // If the rewritten form is still an equality, it is an equality over a and
+  // b, and we use it. Otherwise, we keep the equality oriented above.
+  return req.getKind() == Kind::EQUAL ? req : eq;
+}
+
 Node Rewriter::extendedRewrite(TNode node, bool aggr)
 {
   quantifiers::ExtendedRewriter er(d_nm, *this, aggr);

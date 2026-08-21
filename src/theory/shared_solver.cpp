@@ -123,10 +123,11 @@ bool SharedSolver::propagateSharedEquality(theory::TheoryId theory,
                                            TNode b,
                                            bool value)
 {
-  // Propagate equality between shared terms to the one who asked for it
-  // As an optimization, we ensure the equality is oriented based on the
-  // same order used by the rewriter for equality.
-  Node equality = a > b ? b.eqNode(a) : a.eqNode(b);
+  // Propagate equality between shared terms to the one who asked for it.
+  // Note we construct the equality in rewritten form, so that the literals we
+  // send to theories do not have to be normalized further, see
+  // Rewriter::mkRewrittenEquality.
+  Node equality = d_env.getRewriter()->mkRewrittenEquality(a, b);
   if (value)
   {
     d_te.assertToTheory(equality, equality, theory, THEORY_BUILTIN);

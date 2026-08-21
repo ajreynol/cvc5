@@ -46,6 +46,25 @@ class Rewriter
   Node rewrite(TNode node);
 
   /**
+   * Return the equality between a and b in the form in which it should be
+   * communicated to theories, which is its rewritten form if that form is an
+   * equality, and otherwise the equality oriented by node id.
+   *
+   * This is used by theory combination, which must communicate an equality
+   * *between a and b*, and hence cannot use the rewritten form when the latter
+   * is not an equality over these terms. This is the case when the equality
+   * rewrites to a Boolean constant, and for Boolean equalities, e.g. (= false
+   * t) rewrites to (not t). In all other cases, the rewritten form is an
+   * equality over a and b by the invariant of the above method, so the result
+   * of this method is in rewritten form.
+   *
+   * @param a The left hand side of the equality.
+   * @param b The right hand side of the equality.
+   * @return The equality between a and b, as described above.
+   */
+  Node mkRewrittenEquality(TNode a, TNode b);
+
+  /**
    * Rewrites the equality node using theoryOf() to determine which rewriter to
    * use on the node corresponding to an equality s = t.
    *
