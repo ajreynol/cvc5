@@ -43,12 +43,26 @@ mkdir -p $LOGOS_DIR
 
 # download and unpack logos
 LOGOS_VERSION="23e5bb76931d91b6200fc48dfc30b663328f1218"
+# Note we delete a previously downloaded archive first, since the download
+# helper passes -c to wget, which appends to (instead of replacing) the file
+# left over from a previous version.
+rm -f $BASE_DIR/tmp/logos.tgz
 download "https://github.com/ajreynol/logos/archive/$LOGOS_VERSION.tar.gz" $BASE_DIR/tmp/logos.tgz
 tar --strip 1 -xzf $BASE_DIR/tmp/logos.tgz -C $LOGOS_DIR
 
-# build and install Logos
+# Build and install Logos. Logos provides a build script that configures the
+# Lean toolchain for the host before invoking Lake. In particular, on older
+# Linux systems the Clang/LLVM binaries bundled with the Lean toolchain may
+# fail to run against the host's glibc; the script detects this and falls back
+# to the host C compiler and archiver, while keeping the link libraries of the
+# Lean toolchain. We fall back to a plain Lake build for older versions of
+# Logos that do not provide the script.
 pushd $LOGOS_DIR
-lake build logos
+if [ -f scripts/build.sh ]; then
+  bash scripts/build.sh logos
+else
+  lake build logos
+fi
 mkdir -p $BASE_DIR/bin
 cp ./.lake/build/bin/logos $BASE_DIR/bin/logos
 popd
