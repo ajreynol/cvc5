@@ -429,9 +429,9 @@ class Theory : protected EnvObj
     Node ar = rewrite(assertion);
     TNode fatom =
         assertion.getKind() == Kind::NOT ? assertion[0] : TNode(assertion);
-    Assert(ar == assertion || ar.isConst()
-           || (fatom.getKind() == Kind::EQUAL
-               && fatom[0].getType().isBoolean()))
+    Assert(
+        ar == assertion || ar.isConst()
+        || (fatom.getKind() == Kind::EQUAL && fatom[0].getType().isBoolean()))
         << "Theory<" << getId() << ">::assertFact: the fact " << assertion
         << " is not in rewritten form, it rewrites to " << ar;
 #endif
