@@ -67,9 +67,15 @@ class EqProof
    * are either t or (= t true/false).
    *
    * @param p a pointer to a CDProof to store the conversion of this EqProof
+   * @param assumps the literals that this proof may assume, which are the
+   * assumptions gathered by the equality engine explanation this proof was
+   * built from. This is used to recognize predicate equalities that are
+   * assumptions themselves, e.g. (= true t) may be an asserted literal, since
+   * the rewriter does not eliminate Boolean equalities, see
+   * TheoryBoolRewriter::rewriteEqualityExt.
    * @return the node that is the conclusion of the proof as added to p.
    */
-  Node addToProof(CDProof* p) const;
+  Node addToProof(CDProof* p, const std::vector<Node>& assumps) const;
 
  private:
   /**
@@ -87,7 +93,8 @@ class EqProof
    */
   Node addToProof(CDProof* p,
                   std::unordered_map<Node, Node>& visited,
-                  std::unordered_set<Node>& assumptions) const;
+                  std::unordered_set<Node>& assumptions,
+                  const std::unordered_set<Node>& assumps) const;
 
   /** Removes all reflexivity steps, i.e. (= t t), from premises. */
   void cleanReflPremises(std::vector<Node>& premises) const;
@@ -346,6 +353,7 @@ class EqProof
       CDProof* p,
       std::unordered_map<Node, Node>& visited,
       std::unordered_set<Node>& assumptions,
+      const std::unordered_set<Node>& assumps,
       bool isNary) const;
 
 }; /* class EqProof */

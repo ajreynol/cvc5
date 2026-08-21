@@ -127,7 +127,17 @@ bool SharedSolver::propagateSharedEquality(theory::TheoryId theory,
   // Note we construct the equality in rewritten form, so that the literals we
   // send to theories do not have to be normalized further, see
   // Rewriter::mkRewrittenEquality.
-  Node equality = d_env.getRewriter()->mkRewrittenEquality(a, b);
+  Node req;
+  Node equality = d_env.getRewriter()->mkRewrittenEquality(a, b, req);
+  // If the (dis)equality between a and b is trivially true, the propagation
+  // carries no information. We do not send it, which maintains the invariant
+  // that the facts of a theory are never trivially true. Note that if it is
+  // trivially false, we send it below, which TheoryEngine::assertToTheory
+  // recognizes as a conflict.
+  if (req.isConst() && req.getConst<bool>() == value)
+  {
+    return true;
+  }
   if (value)
   {
     d_te.assertToTheory(equality, equality, theory, THEORY_BUILTIN);

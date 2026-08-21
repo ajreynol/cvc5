@@ -1444,9 +1444,23 @@ void TheoryArithPrivate::setupAtom(TNode atom)
     natom = rewriter::normalizeEquality(nodeManager(), atom);
     Trace("arith::setup") << "Normalize " << atom << " to " << natom
                           << std::endl;
-    // Note the normal form is not a Boolean constant, since atom is in
-    // rewritten form, which evaluates equalities between constant sides.
-    Assert(natom.getKind() == Kind::EQUAL);
+    if (natom.isConst())
+    {
+      // The equality is trivially true or false. Note the rewriter does not
+      // evaluate such equalities, since this does not preserve their terms,
+      // see rewriter::normalizeEquality. There is no constraint corresponding
+      // to atom in this case, we instead send a lemma that determines its
+      // value. Note we mark the atom as setup before sending the lemma, since
+      // sending a lemma may lead to this atom being preregistered again.
+      markSetup(atom);
+      Node lem = natom.getConst<bool>() ? Node(atom) : atom.notNode();
+      // Note that a proof is provided by the theory lemma step for now, since
+      // relating atom to its normal form requires a polynomial normalization
+      // step to an equality between constants, which is not available here.
+      outputTrustedLemma(TrustNode::mkTrustLemma(lem, nullptr),
+                         InferenceId::ARITH_CONST_ATOM);
+      return;
+    }
     // Note that we do *not* set up the normal form of atom here. Doing so
     // would introduce a second literal for the constraint of atom, which the
     // SAT solver would then have to relate to atom via the lemma below. It
@@ -1517,7 +1531,15 @@ void TheoryArithPrivate::preRegisterTerm(TNode n)
         setupAtom(n);
       }
       ConstraintP c = d_constraintDatabase.lookup(n);
-      Assert(c != NullConstraint);
+      if (c == NullConstraint)
+      {
+        // No constraint corresponds to n, which is the case when n is an
+        // equality whose normal form is a Boolean constant, see setupAtom.
+        Assert(n.getKind() == Kind::EQUAL);
+        Trace("arith::preregister")
+            << "end arith::preRegisterTerm(" << n << "), constant" << endl;
+        return;
+      }
 
       Trace("arith::preregister") << "setup constraint" << c << endl;
       // Note that the constraint may already be preregistered, since multiple
@@ -1824,13 +1846,19 @@ ConstraintP TheoryArithPrivate::constraintFromFactQueue(TNode assertion)
     Assert(simpleKind == Kind::EQUAL || simpleKind == Kind::DISTINCT);
     bool isDistinct = simpleKind == Kind::DISTINCT;
     Node eq = (simpleKind == Kind::DISTINCT) ? assertion[0] : assertion;
-    Assert(!isSetup(eq));
-    // Note that the rewritten form of an equality is a Boolean constant
-    // whenever it is equivalent to one, even though the rewriter does not
-    // otherwise normalize equalities, see rewriter::normalizeEquality. Hence
-    // it suffices to consider the rewritten form here; setupAtom below
-    // computes the normal form that determines the constraint.
-    Node reEq = rewrite(eq);
+    // Note the rewriter does not normalize equalities and in particular does
+    // not evaluate an equality whose normal form is a Boolean constant, see
+    // rewriter::normalizeEquality. We thus compute the normal form here to
+    // determine whether the equality is trivially true or false. Otherwise we
+    // use the rewritten form, whose constraint is set up by setupAtom below.
+    // Note that eq may already be setup in the former case, since setupAtom
+    // marks equalities whose normal form is a Boolean constant as setup.
+    Node reEq = rewriter::normalizeEquality(nodeManager(), eq);
+    if (!reEq.isConst())
+    {
+      Assert(!isSetup(eq));
+      reEq = rewrite(eq);
+    }
     Trace("arith::distinct::const") << "Assertion: " << assertion << std::endl;
     Trace("arith::distinct::const") << "Eq       : " << eq << std::endl;
     Trace("arith::distinct::const") << "reEq     : " << reEq << std::endl;
@@ -1846,7 +1874,14 @@ ConstraintP TheoryArithPrivate::constraintFromFactQueue(TNode assertion)
           Pf assume = d_pnm->mkAssume(assertion);
           std::vector<Node> assumptions = {assertion};
           Node fn = nodeManager()->mkConst(false);
-          Pf pfb = ensurePredTransform(d_pnm, assume, fn);
+          // Note that the rewriter does not evaluate an equality whose normal
+          // form is a Boolean constant, since this does not preserve its
+          // terms, see rewriter::normalizeEquality. Hence we cannot relate
+          // assertion to false by rewriting and use a trusted step instead,
+          // as is done for the same reason in
+          // PreprocessRewriteEq::ppNormalizeEq.
+          Pf pfb = d_pnm->mkTrustedNode(
+              TrustId::THEORY_INFERENCE_ARITH, {assume}, {}, fn);
           Pf pf = d_pnm->mkScope(pfb, assumptions);
           raiseBlackBoxConflict(assertion, pf);
         }

@@ -41,6 +41,11 @@ class NonClausalSimp : public PreprocessingPass
   NonClausalSimp(PreprocessingPassContext* preprocContext);
 
  protected:
+#ifdef CVC5_ASSERTIONS
+  /** Return true if n is trivially true or false, modulo rewriteEqualityExt */
+  bool isConstAfterEqExtRewrite(const Node& n) const;
+#endif
+
   PreprocessingPassResult applyInternal(
       AssertionPipeline* assertionsToPreprocess) override;
 

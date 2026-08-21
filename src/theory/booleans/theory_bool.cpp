@@ -37,6 +37,20 @@ TheoryBool::TheoryBool(Env& env, OutputChannel& out, Valuation valuation)
 {
 }
 
+TrustNode TheoryBool::ppStaticRewrite(TNode atom)
+{
+  if (atom.getKind() != Kind::EQUAL)
+  {
+    return TrustNode::null();
+  }
+  Node atomn = d_rewriter.rewriteEqualityExt(atom);
+  if (atomn == atom)
+  {
+    return TrustNode::null();
+  }
+  return TrustNode::mkTrustRewrite(atom, atomn);
+}
+
 bool TheoryBool::ppAssert(TrustNode tin, TrustSubstitutionMap& outSubstitutions)
 {
   Assert(tin.getKind() == TrustNodeKind::LEMMA);

@@ -442,6 +442,14 @@ TrustNode TheoryDatatypes::ppStaticRewrite(TNode in)
     {
       return TrustNode::mkTrustRewrite(in, nn, nullptr);
     }
+    // Eliminate clashing equalities, which are not rewritten to false by the
+    // rewriter since this does not preserve their terms, see
+    // DatatypesRewriter::rewriteEqualityExt.
+    nn = d_rewriter.rewriteEqualityExt(in);
+    if (nn != in)
+    {
+      return TrustNode::mkTrustRewrite(in, nn, nullptr);
+    }
   }
   return TrustNode::null();
 }

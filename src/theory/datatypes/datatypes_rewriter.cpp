@@ -423,14 +423,19 @@ RewriteResponse DatatypesRewriter::postRewrite(TNode in)
     {
       return RewriteResponse(REWRITE_DONE, nm->mkConst(true));
     }
-    std::vector<Node> rew;
-    if (utils::checkClash(in[0], in[1], rew))
+    // Note that we only rewrite a clashing equality to false here if its sides
+    // are two (distinct) values. Otherwise, rewriting it to false would not
+    // preserve its terms, which is incompatible with theory combination and
+    // would moreover make the equality trivially false although its sides are
+    // not values. Such equalities are instead rewritten by rewriteEqualityExt.
+    if (in[0].isConst() && in[1].isConst())
     {
       Trace("datatypes-rewrite")
-          << "Rewrite clashing equality " << in << " to false" << std::endl;
+          << "Rewrite equality of distinct values " << in << " to false"
+          << std::endl;
       return RewriteResponse(REWRITE_DONE, nm->mkConst(false));
     }
-    else if (in[1] < in[0])
+    if (in[1] < in[0])
     {
       Node ins = nm->mkNode(in.getKind(), in[1], in[0]);
       Trace("datatypes-rewrite")
@@ -444,6 +449,29 @@ RewriteResponse DatatypesRewriter::postRewrite(TNode in)
 
   return RewriteResponse(REWRITE_DONE, in);
 }
+Node DatatypesRewriter::rewriteEqualityExt(Node node)
+{
+  Assert(node.getKind() == Kind::EQUAL);
+  if (!node[0].getType().isDatatype())
+  {
+    return node;
+  }
+  if (node[0] == node[1])
+  {
+    return nodeManager()->mkConst(true);
+  }
+  // A clashing equality is equivalent to false. Note this is not applied by
+  // postRewrite above, since it does not preserve the terms of the equality.
+  std::vector<Node> rew;
+  if (utils::checkClash(node[0], node[1], rew))
+  {
+    Trace("datatypes-rewrite")
+        << "Rewrite clashing equality " << node << " to false" << std::endl;
+    return nodeManager()->mkConst(false);
+  }
+  return node;
+}
+
 Node DatatypesRewriter::expandMatch(Node in)
 {
   Assert(in.getKind() == Kind::MATCH);

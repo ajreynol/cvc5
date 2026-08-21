@@ -40,6 +40,18 @@ class DatatypesRewriter : public TheoryRewriter
  public:
   DatatypesRewriter(NodeManager* nm, Evaluator* sygusEval, const Options& opts);
   RewriteResponse postRewrite(TNode in) override;
+  /**
+   * Return the normal form of the datatype equality node, which is false if
+   * its sides are clashing constructor applications, e.g. this returns false
+   * for (= (cons x nil) nil).
+   *
+   * Note this normalization is not applied by postRewrite, since it does not
+   * preserve the terms of the equality, which is incompatible with theory
+   * combination. It is applied to equalities in the input via ppStaticRewrite,
+   * and by the extended rewriter. This follows the same setup as arithmetic,
+   * see ArithRewriter::rewriteEqualityExt.
+   */
+  Node rewriteEqualityExt(Node node) override;
   RewriteResponse preRewrite(TNode in) override;
 
   /**

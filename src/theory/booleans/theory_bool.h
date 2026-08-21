@@ -36,6 +36,14 @@ class TheoryBool : public Theory
 
   bool ppAssert(TrustNode tin, TrustSubstitutionMap& outSubstitutions) override;
 
+  /**
+   * Eliminates Boolean equalities from the input, e.g. (= x true) is rewritten
+   * to x. Note this is done here and not by the rewriter, since it does not
+   * preserve the terms of the equality, see
+   * TheoryBoolRewriter::rewriteEqualityExt.
+   */
+  TrustNode ppStaticRewrite(TNode atom) override;
+
   std::string identify() const override;
 
  private:

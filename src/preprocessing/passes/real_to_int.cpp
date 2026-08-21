@@ -20,6 +20,7 @@
 #include "preprocessing/assertion_pipeline.h"
 #include "preprocessing/preprocessing_pass_context.h"
 #include "theory/arith/arith_msum.h"
+#include "smt/env.h"
 #include "theory/rewriter.h"
 #include "theory/theory_model.h"
 #include "util/rational.h"
@@ -58,6 +59,20 @@ Node RealToInt::realToIntInternal(TNode n,
           || n.getKind() == Kind::GT || n.getKind() == Kind::LEQ)
       {
         ret = rewrite(n);
+        if (ret.getKind() == Kind::EQUAL)
+        {
+          // The rewriter does not evaluate an equality whose normal form is a
+          // Boolean constant, e.g. (= (to_real k) 8.9) for integer k, since
+          // this does not preserve its terms, see
+          // ArithRewriter::rewriteEqualityExt. We apply the extended equality
+          // rewriter here so that such equalities are handled by the constant
+          // case below.
+          Node rete = rewrite(d_env.getRewriter()->rewriteEqualityExt(ret));
+          if (rete.isConst())
+          {
+            ret = rete;
+          }
+        }
         Trace("real-as-int-debug") << "Now looking at : " << ret << std::endl;
         if (!ret.isConst())
         {

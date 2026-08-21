@@ -1197,11 +1197,12 @@ void TheoryEngine::assertToTheory(TNode assertion,
   // Normalize
   Node normalizedLiteral = rewrite(assertion);
 
-  // See if it rewrites false directly -> conflict
+  // See if it rewrites to a Boolean constant
   if (normalizedLiteral.isConst())
   {
     if (!normalizedLiteral.getConst<bool>())
     {
+      // It rewrites to false directly -> conflict.
       // Mark the propagation for explanations
       if (markPropagation(normalizedLiteral,
                           originalAssertion,
@@ -1219,6 +1220,13 @@ void TheoryEngine::assertToTheory(TNode assertion,
       }
       return;
     }
+    // Otherwise it rewrites to true, in which case it carries no information
+    // for the theory it is being sent to. We do not assert it, which maintains
+    // the invariant that the facts of a theory are never trivially true. Note
+    // that the sources of the literals we get here are expected to avoid
+    // sending trivially true literals in the first place, see e.g.
+    // SharedSolver::propagateSharedEquality.
+    return;
   }
 
   // Try and assert. Note that we assert the literal as it was given to us and
@@ -1546,27 +1554,13 @@ void TheoryEngine::ensureLemmaAtoms(const std::vector<TNode>& atoms,
     Trace("theory::atoms") << "TheoryEngine::ensureLemmaAtoms(): " << eq
                            << " with nf " << eqNormalized << endl;
 
-    // If the equality is a boolean constant, we send immediately
+    // If the equality is a Boolean constant, there is nothing to do. Note
+    // that the atom will not be a literal of the lemma after preprocessing,
+    // hence no theory needs to know its value. Moreover, sending it as a fact
+    // would violate the invariant that the facts of a theory are never
+    // trivially true.
     if (eqNormalized.isConst())
     {
-      if (eqNormalized.getConst<bool>())
-      {
-        assertToTheory(eq,
-                       eqNormalized,
-                       /** to */ atomsTo,
-                       /** Sat solver */ theory::THEORY_SAT_SOLVER);
-      }
-      else
-      {
-        // Use notEq and notEqNormalized to ensure deterministic node ID
-        // assignments
-        Node notEq = eq.notNode();
-        Node notEqNormalized = eqNormalized.notNode();
-        assertToTheory(notEq,
-                       notEqNormalized,
-                       /** to */ atomsTo,
-                       /** Sat solver */ theory::THEORY_SAT_SOLVER);
-      }
       continue;
     }
     else if (eqNormalized.getKind() != Kind::EQUAL)

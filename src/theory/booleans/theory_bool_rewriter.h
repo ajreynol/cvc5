@@ -36,6 +36,19 @@ class TheoryBoolRewriter : public TheoryRewriter
   RewriteResponse postRewrite(TNode node) override;
 
   /**
+   * Return the normal form of the Boolean equality node, which eliminates the
+   * equality when possible, e.g. this returns x for the input (= x true) and
+   * (not x) for the input (= x false).
+   *
+   * Note this normalization is not applied by preRewrite/postRewrite, since it
+   * does not preserve the terms of the equality, which is incompatible with
+   * theory combination. It is applied to equalities in the input via
+   * ppStaticRewrite, and by the extended rewriter. This follows the same setup
+   * as arithmetic, see ArithRewriter::rewriteEqualityExt.
+   */
+  Node rewriteEqualityExt(Node node) override;
+
+  /**
    * Rewrite n based on the proof rewrite rule id.
    * @param id The rewrite rule.
    * @param n The node to rewrite.

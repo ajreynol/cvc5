@@ -21,6 +21,7 @@
 #include "preprocessing/assertion_pipeline.h"
 #include "preprocessing/preprocessing_pass_context.h"
 #include "smt/preprocess_proof_generator.h"
+#include "theory/rewriter.h"
 #include "theory/booleans/circuit_propagator.h"
 #include "theory/theory.h"
 #include "theory/theory_engine.h"
@@ -54,6 +55,29 @@ NonClausalSimp::NonClausalSimp(PreprocessingPassContext* preprocContext)
       d_tsubsList(userContext())
 {
 }
+
+#ifdef CVC5_ASSERTIONS
+/**
+ * Return true if n is a Boolean constant, or is a (possibly negated) equality
+ * whose extended rewritten form is a Boolean constant. The latter is required
+ * since the rewriter does not evaluate equalities that are not between values,
+ * see Rewriter::rewriteEqualityExt.
+ */
+bool NonClausalSimp::isConstAfterEqExtRewrite(const Node& n) const
+{
+  if (n.isConst())
+  {
+    return true;
+  }
+  Node atom = n.getKind() == Kind::NOT ? n[0] : n;
+  if (atom.getKind() != Kind::EQUAL)
+  {
+    return false;
+  }
+  Node ar = d_env.getRewriter()->rewriteEqualityExt(atom);
+  return rewrite(ar).isConst();
+}
+#endif
 
 PreprocessingPassResult NonClausalSimp::applyInternal(
     AssertionPipeline* assertionsToPreprocess)
@@ -183,7 +207,11 @@ PreprocessingPassResult NonClausalSimp::applyInternal(
     {
       // The literal should rewrite to true
       Trace("non-clausal-simplify") << "solved " << learnedLiteral << std::endl;
-      Assert(rewrite(nss.apply(learnedLiteral)).isConst());
+      // Note that the rewriter does not evaluate equalities that are not
+      // between values, e.g. (= x (+ x 1)), hence we may have to apply the
+      // extended equality rewriter here, see
+      // TheoryRewriter::rewriteEqualityExt.
+      Assert(isConstAfterEqExtRewrite(rewrite(nss.apply(learnedLiteral))));
     }
     else
     {

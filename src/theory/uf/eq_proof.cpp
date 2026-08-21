@@ -695,6 +695,7 @@ void EqProof::reduceNestedCongruence(
     CDProof* p,
     std::unordered_map<Node, Node>& visited,
     std::unordered_set<Node>& assumptions,
+    const std::unordered_set<Node>& assumps,
     bool isNary) const
 {
   Trace("eqproof-conv") << "EqProof::reduceNestedCongruence: building for " << i
@@ -706,7 +707,7 @@ void EqProof::reduceNestedCongruence(
                              "congruence step. Reduce second child\n"
                           << push;
     transitivityMatrix[i].push_back(
-        d_children[1]->addToProof(p, visited, assumptions));
+        d_children[1]->addToProof(p, visited, assumptions, assumps));
     Trace("eqproof-conv")
         << pop << "EqProof::reduceNestedCongruence: child conclusion "
         << transitivityMatrix[i].back() << "\n";
@@ -728,6 +729,7 @@ void EqProof::reduceNestedCongruence(
                                             p,
                                             visited,
                                             assumptions,
+                                            assumps,
                                             isNary);
       Trace("eqproof-conv") << pop;
     }
@@ -740,7 +742,7 @@ void EqProof::reduceNestedCongruence(
       Assert(d_children[0]->d_id == MERGED_THROUGH_EQUALITY
              || d_children[0]->d_id == MERGED_THROUGH_TRANS);
       transitivityMatrix[0].push_back(
-          d_children[0]->addToProof(p, visited, assumptions));
+          d_children[0]->addToProof(p, visited, assumptions, assumps));
     }
     return;
   }
@@ -763,7 +765,7 @@ void EqProof::reduceNestedCongruence(
                              "break recursion and indepedently process "
                           << d_node << "\n"
                           << push;
-    transitivityMatrix[i].push_back(addToProof(p, visited, assumptions));
+    transitivityMatrix[i].push_back(addToProof(p, visited, assumptions, assumps));
     Trace("eqproof-conv") << pop
                           << "EqProof::reduceNestedCongruence: Got conclusion "
                           << transitivityMatrix[i].back()
@@ -779,7 +781,7 @@ void EqProof::reduceNestedCongruence(
                             << "-th transitivity congruence child\n"
                             << push;
       d_children[j]->reduceNestedCongruence(
-          i, conclusion, transitivityMatrix, p, visited, assumptions, isNary);
+          i, conclusion, transitivityMatrix, p, visited, assumptions, assumps, isNary);
       Trace("eqproof-conv") << pop;
     }
     else
@@ -788,17 +790,18 @@ void EqProof::reduceNestedCongruence(
                             << "-th transitivity child to proof\n"
                             << push;
       transitivityMatrix[i].push_back(
-          d_children[j]->addToProof(p, visited, assumptions));
+          d_children[j]->addToProof(p, visited, assumptions, assumps));
       Trace("eqproof-conv") << pop;
     }
   }
 }
 
-Node EqProof::addToProof(CDProof* p) const
+Node EqProof::addToProof(CDProof* p, const std::vector<Node>& assumps) const
 {
+  std::unordered_set<Node> assumpsSet(assumps.begin(), assumps.end());
   std::unordered_map<Node, Node> cache;
   std::unordered_set<Node> assumptions;
-  Node conclusion = addToProof(p, cache, assumptions);
+  Node conclusion = addToProof(p, cache, assumptions, assumpsSet);
   Trace("eqproof-conv") << "EqProof::addToProof: root of proof: " << conclusion
                         << "\n";
   Trace("eqproof-conv") << "EqProof::addToProof: tracked assumptions: "
@@ -853,7 +856,8 @@ Node EqProof::addToProof(CDProof* p) const
 
 Node EqProof::addToProof(CDProof* p,
                          std::unordered_map<Node, Node>& visited,
-                         std::unordered_set<Node>& assumptions) const
+                         std::unordered_set<Node>& assumptions,
+                         const std::unordered_set<Node>& assumps) const
 {
   std::unordered_map<Node, Node>::const_iterator it = visited.find(d_node);
   if (it != visited.end())
@@ -883,9 +887,15 @@ Node EqProof::addToProof(CDProof* p,
     //  ---------------- TRUE/FALSE_INTRO
     //  (= t true/false)
     // according to the value of the Boolean constant
+    // Note we do not do this if d_node is an assumption itself, which is
+    // possible since the rewriter does not eliminate Boolean equalities, hence
+    // e.g. (= true t) may be an asserted literal, see
+    // TheoryBoolRewriter::rewriteEqualityExt.
     if (d_node.getKind() == Kind::EQUAL
         && ((d_node[0].getKind() == Kind::CONST_BOOLEAN)
-            != (d_node[1].getKind() == Kind::CONST_BOOLEAN)))
+            != (d_node[1].getKind() == Kind::CONST_BOOLEAN))
+        && assumps.find(d_node) == assumps.end()
+        && assumps.find(d_node[1].eqNode(d_node[0])) == assumps.end())
     {
       Trace("eqproof-conv")
           << "EqProof::addToProof: add an intro step for " << d_node << "\n";
@@ -1023,7 +1033,7 @@ Node EqProof::addToProof(CDProof* p,
       Trace("eqproof-conv")
           << "EqProof::addToProof: recurse on child " << i << "\n"
           << push;
-      premises.push_back(d_children[i]->addToProof(p, visited, assumptions));
+      premises.push_back(d_children[i]->addToProof(p, visited, assumptions, assumps));
       Trace("eqproof-conv") << pop;
     }
     // After building the proper premises we could build a step like
@@ -1148,7 +1158,7 @@ Node EqProof::addToProof(CDProof* p,
               << "EqProof::addToProof: recurse on child " << j << "\n"
               << push;
           children.push_back(
-              childProof->d_children[j]->addToProof(p, visited, assumptions));
+              childProof->d_children[j]->addToProof(p, visited, assumptions, assumps));
           Trace("eqproof-conv") << pop;
         }
         Trace("eqproof-conv") << pop;
@@ -1157,7 +1167,7 @@ Node EqProof::addToProof(CDProof* p,
       Trace("eqproof-conv")
           << "EqProof::addToProof: recurse on child " << i << "\n"
           << push;
-      children.push_back(childProof->addToProof(p, visited, assumptions));
+      children.push_back(childProof->addToProof(p, visited, assumptions, assumps));
       Trace("eqproof-conv") << pop;
     }
     // Eliminate spurious premises. Reasoning below assumes no refl steps.
@@ -1256,8 +1266,14 @@ Node EqProof::addToProof(CDProof* p,
   {
     transitivityChildren.push_back(std::vector<Node>());
   }
-  reduceNestedCongruence(
-      arity, d_node, transitivityChildren, p, visited, assumptions, isNary);
+  reduceNestedCongruence(arity,
+                         d_node,
+                         transitivityChildren,
+                         p,
+                         visited,
+                         assumptions,
+                         assumps,
+                         isNary);
   // The process above may inadvertently make d_node be found to be an
   // assumption of the proof. In which case the construction of the proof below
   // would add a cyclic proof. So we test for short-circuit here.

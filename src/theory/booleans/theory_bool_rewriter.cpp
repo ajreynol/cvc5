@@ -692,48 +692,20 @@ RewriteResponse TheoryBoolRewriter::preRewrite(TNode n)
     }
     case Kind::EQUAL:
     {
-      // rewrite simple cases of IFF
-      if (n[0] == d_true)
-      {
-        // IFF true x
-        return RewriteResponse(REWRITE_AGAIN, n[1]);
-      }
-      else if (n[1] == d_true)
-      {
-        // IFF x true
-        return RewriteResponse(REWRITE_AGAIN, n[0]);
-      }
-      else if (n[0] == d_false)
-      {
-        // IFF false x
-        return RewriteResponse(REWRITE_AGAIN, makeNegation(n[1]));
-      }
-      else if (n[1] == d_false)
-      {
-        // IFF x false
-        return RewriteResponse(REWRITE_AGAIN, makeNegation(n[0]));
-      }
-      else if (n[0] == n[1])
+      // We only apply rewrites here that preserve the terms of the equality,
+      // e.g. we do *not* rewrite (= x true) to x. The rewrites that do not
+      // preserve them are applied by rewriteEqualityExt, which is applied to
+      // equalities in the input via ppStaticRewrite, following the same setup
+      // as arithmetic, see ArithRewriter::rewriteEqualityExt.
+      if (n[0] == n[1])
       {
         // IFF x x
         return RewriteResponse(REWRITE_DONE, d_true);
       }
-      else if (n[0].getKind() == Kind::NOT && n[0][0] == n[1])
+      if (n[0].isConst() && n[1].isConst())
       {
-        // IFF (NOT x) x
+        // the two distinct Boolean constants
         return RewriteResponse(REWRITE_DONE, d_false);
-      }
-      else if (n[1].getKind() == Kind::NOT && n[1][0] == n[0])
-      {
-        // IFF x (NOT x)
-        return RewriteResponse(REWRITE_DONE, d_false);
-      }
-      // check if it is equality between equalities to constants
-      Node ret = rewriteViaEqConstEq(n);
-      if (!ret.isNull())
-      {
-        return RewriteResponse(ret.isConst() ? REWRITE_DONE : REWRITE_AGAIN,
-                               ret);
       }
       // sort
       if (n[0].getId() > n[1].getId())
@@ -923,6 +895,54 @@ RewriteResponse TheoryBoolRewriter::preRewrite(TNode n)
     default: return RewriteResponse(REWRITE_DONE, n);
   }
   return RewriteResponse(REWRITE_DONE, n);
+}
+
+Node TheoryBoolRewriter::rewriteEqualityExt(Node node)
+{
+  Assert(node.getKind() == Kind::EQUAL);
+  if (!node[0].getType().isBoolean())
+  {
+    return node;
+  }
+  // These are the rewrites of Boolean equalities that do not preserve the
+  // terms of the equality, and hence are not applied by preRewrite above.
+  if (node[0] == d_true)
+  {
+    // IFF true x
+    return node[1];
+  }
+  if (node[1] == d_true)
+  {
+    // IFF x true
+    return node[0];
+  }
+  if (node[0] == d_false)
+  {
+    // IFF false x
+    return makeNegation(node[1]);
+  }
+  if (node[1] == d_false)
+  {
+    // IFF x false
+    return makeNegation(node[0]);
+  }
+  if (node[0].getKind() == Kind::NOT && node[0][0] == node[1])
+  {
+    // IFF (NOT x) x
+    return d_false;
+  }
+  if (node[1].getKind() == Kind::NOT && node[1][0] == node[0])
+  {
+    // IFF x (NOT x)
+    return d_false;
+  }
+  // check if it is equality between equalities to constants
+  Node ret = rewriteViaEqConstEq(node);
+  if (!ret.isNull())
+  {
+    return ret;
+  }
+  return node;
 }
 
 Node TheoryBoolRewriter::rewriteViaEqConstEq(const Node& n) const

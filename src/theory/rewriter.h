@@ -48,7 +48,7 @@ class Rewriter
   /**
    * Return the equality between a and b in the form in which it should be
    * communicated to theories, which is its rewritten form if that form is an
-   * equality, and otherwise the equality oriented by node id.
+   * equality over a and b, and otherwise the equality oriented by node id.
    *
    * This is used by theory combination, which must communicate an equality
    * *between a and b*, and hence cannot use the rewritten form when the latter
@@ -58,11 +58,18 @@ class Rewriter
    * equality over a and b by the invariant of the above method, so the result
    * of this method is in rewritten form.
    *
+   * The rewritten form of the equality is returned via req. In particular, if
+   * req is a Boolean constant, then the (dis)equality between a and b is
+   * trivially true or false, in which case the caller is responsible for
+   * ensuring the returned equality is not sent as a fact to a theory, since
+   * the facts of a theory are never trivially true.
+   *
    * @param a The left hand side of the equality.
    * @param b The right hand side of the equality.
+   * @param req Updated to the rewritten form of the equality between a and b.
    * @return The equality between a and b, as described above.
    */
-  Node mkRewrittenEquality(TNode a, TNode b);
+  Node mkRewrittenEquality(TNode a, TNode b, Node& req);
 
   /**
    * Rewrites the equality node using theoryOf() to determine which rewriter to

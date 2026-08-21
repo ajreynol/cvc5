@@ -117,15 +117,24 @@ Node Rewriter::rewrite(TNode node)
   return rewriteTo(theoryOf(node), node);
 }
 
-Node Rewriter::mkRewrittenEquality(TNode a, TNode b)
+Node Rewriter::mkRewrittenEquality(TNode a, TNode b, Node& req)
 {
   // Orient by node id first, which is the orientation used by most theory
   // rewriters, so that we usually do not have to construct a second node.
   Node eq = a > b ? b.eqNode(a) : a.eqNode(b);
-  Node req = rewrite(eq);
-  // If the rewritten form is still an equality, it is an equality over a and
-  // b, and we use it. Otherwise, we keep the equality oriented above.
-  return req.getKind() == Kind::EQUAL ? req : eq;
+  req = rewrite(eq);
+  // If the rewritten form is still an equality over a and b, we use it.
+  // Otherwise, we keep the equality oriented above. The latter is the case
+  // when the equality rewrites to a Boolean constant, and for Boolean
+  // equalities, whose rewritten form may be over different terms, e.g.
+  // (= false t) rewrites to (not t).
+  if (req.getKind() == Kind::EQUAL
+      && ((req[0] == eq[0] && req[1] == eq[1])
+          || (req[0] == eq[1] && req[1] == eq[0])))
+  {
+    return req;
+  }
+  return eq;
 }
 
 Node Rewriter::extendedRewrite(TNode node, bool aggr)
@@ -524,18 +533,24 @@ Node Rewriter::rewriteTo(theory::TheoryId theoryId,
 /**
  * Check the invariant that a theory rewriter does not change the terms of an
  * equality, where n is the node that was rewritten and ret is its rewritten
- * form. In particular, if n is a (non-Boolean) equality, this asserts that ret
- * is either a Boolean constant, or an equality over the same terms as n,
- * possibly in the opposite order.
+ * form. In particular, if n is the equality (= a b), this asserts that ret is
+ * either:
+ * (1) true, in which case a and b are the same term,
+ * (2) false, in which case a and b are two distinct values,
+ * (3) an equality over a and b, possibly in the opposite order.
  *
  * This invariant is required for theory combination, where the terms of an
  * equality must not be changed by the rewriter, as otherwise the rewritten
  * form of an equality may be over terms that are not known to the theory it
- * is sent to.
+ * is sent to. Moreover, it ensures that an equality between terms that are
+ * not values is never trivially true or false, so that the literals we send
+ * to theories are never trivially true.
  *
- * Note this invariant does not apply to Boolean equalities, which are e.g.
- * rewritten to one of their arguments (for (= t true)) or to other Boolean
- * connectives.
+ * The rewrites of equalities that do not satisfy this invariant are instead
+ * applied by TheoryRewriter::rewriteEqualityExt, which is applied to
+ * equalities in the input during preprocessing, see e.g.
+ * ArithRewriter::rewriteEqualityExt and
+ * TheoryBoolRewriter::rewriteEqualityExt.
  *
  * This method does nothing if assertions are disabled.
  */
@@ -544,19 +559,36 @@ static void checkRewriteEquality(CVC5_UNUSED TNode n,
                                  CVC5_UNUSED bool isPre)
 {
 #ifdef CVC5_ASSERTIONS
-  if (n.getKind() != Kind::EQUAL || n[0].getType().isBoolean())
+  if (n.getKind() != Kind::EQUAL)
   {
     return;
   }
-  Assert(ret.isConst()
-         || (ret.getKind() == Kind::EQUAL
-             && ((ret[0] == n[0] && ret[1] == n[1])
-                 || (ret[0] == n[1] && ret[1] == n[0]))))
-      << (isPre ? "Pre" : "Post") << "-rewriting the equality " << n << " to "
-      << ret
-      << " does not preserve its terms. The rewritten form of an equality "
-         "must be either a Boolean constant, or an equality over the same "
-         "terms.";
+  // Note that real algebraic numbers are values, although they are not
+  // constants.
+  auto isValue = [](TNode t) {
+    return t.isConst() || t.getKind() == Kind::REAL_ALGEBRAIC_NUMBER;
+  };
+  bool ok;
+  if (ret.isConst())
+  {
+    // The equality is evaluated to a Boolean constant only if its terms are
+    // the same, or if they are two values, in which case they may denote the
+    // same value although they are distinct terms, e.g. a real algebraic
+    // number and the rational it is equal to.
+    ok = n[0] == n[1] || (isValue(n[0]) && isValue(n[1]));
+  }
+  else
+  {
+    ok = ret.getKind() == Kind::EQUAL
+         && ((ret[0] == n[0] && ret[1] == n[1])
+             || (ret[0] == n[1] && ret[1] == n[0]));
+  }
+  Assert(ok) << (isPre ? "Pre" : "Post") << "-rewriting the equality " << n
+             << " to " << ret
+             << " does not preserve its terms. The rewritten form of an "
+                "equality must be either an equality over the same terms, or "
+                "a Boolean constant if its terms are the same or are two "
+                "values.";
 #endif
 }
 

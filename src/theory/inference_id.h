@@ -87,6 +87,10 @@ enum class InferenceId
   // states the equivalence of two atoms that correspond to the same internal
   // constraint, e.g. (= (= x 0) (= (to_real x) 0.0)) for integer x
   ARITH_EQUIV_ATOM,
+  // states the value of an equality atom whose normal form is a Boolean
+  // constant, e.g. (not (= x (+ x 1))). Note the rewriter does not evaluate
+  // such equalities, see rewriter::normalizeEquality
+  ARITH_CONST_ATOM,
   // tighten integer inequalities to ceiling
   ARITH_TIGHTEN_CEIL,
   // tighten integer inequalities to floor

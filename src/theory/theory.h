@@ -421,17 +421,19 @@ class Theory : protected EnvObj
                     << context()->getLevel() << "](" << assertion << ", "
                     << (isPreregistered ? "true" : "false") << ")" << std::endl;
 #ifdef CVC5_ASSERTIONS
-    // The facts of a theory should be in rewritten form. Exceptions are made
-    // for the literals sent by theory combination whose rewritten form no
-    // longer states a (dis)equality over the same terms, namely those that
-    // rewrite to a Boolean constant and those that are Boolean equalities,
-    // see TheoryEngine::assertToTheory.
     Node ar = rewrite(assertion);
-    TNode fatom =
-        assertion.getKind() == Kind::NOT ? assertion[0] : TNode(assertion);
-    Assert(
-        ar == assertion || ar.isConst()
-        || (fatom.getKind() == Kind::EQUAL && fatom[0].getType().isBoolean()))
+    // A fact should never be trivially true or false, i.e. its rewritten form
+    // should never be a Boolean constant. The sources of the facts of a theory
+    // are responsible for not sending such literals, see e.g.
+    // SharedSolver::propagateSharedEquality.
+    Assert(!ar.isConst())
+        << "Theory<" << getId() << ">::assertFact: the fact " << assertion
+        << " is trivially " << ar;
+    // Moreover, the facts of a theory should be in rewritten form. Note this
+    // holds for the literals sent by theory combination as well, since the
+    // rewritten form of an equality is an equality over the same terms, see
+    // Rewriter::mkRewrittenEquality.
+    Assert(ar == assertion)
         << "Theory<" << getId() << ">::assertFact: the fact " << assertion
         << " is not in rewritten form, it rewrites to " << ar;
 #endif

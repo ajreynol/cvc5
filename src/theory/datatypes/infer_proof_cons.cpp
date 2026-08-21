@@ -210,7 +210,15 @@ void InferProofCons::convert(InferenceId infer,
     break;
     case InferenceId::DATATYPES_CLASH_CONFLICT:
     {
-      cdp->addStep(conc, ProofRule::MACRO_SR_PRED_ELIM, {exp}, {});
+      // The explanation is a clashing equality between constructor
+      // applications. Note the rewriter does not evaluate such an equality to
+      // false, since this does not preserve its terms, see
+      // DatatypesRewriter::rewriteEqualityExt. We thus apply the clash rewrite
+      // rule to it explicitly.
+      Node fn = nm->mkConst(false);
+      tryRewriteRule(exp, fn, ProofRewriteRule::MACRO_DT_CONS_EQ, cdp);
+      Node expf = exp.eqNode(fn);
+      cdp->addStep(conc, ProofRule::EQ_RESOLVE, {exp, expf}, {});
       success = true;
     }
     break;

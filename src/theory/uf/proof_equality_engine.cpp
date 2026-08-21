@@ -546,7 +546,8 @@ void ProofEqEngine::explainWithProof(Node lit,
     Trace("pfee-proof") << "---" << std::endl;
   }
   // add the steps in the equality engine proof to the Proof
-  pf->addToProof(curr);
+  std::vector<Node> assumpsn(assumps.begin(), assumps.end());
+  pf->addToProof(curr, assumpsn);
   Trace("pfee-proof") << "pfee::explainWithProof: finished" << std::endl;
 }
 
