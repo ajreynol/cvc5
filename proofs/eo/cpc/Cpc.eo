@@ -81,7 +81,6 @@
 (include "./rules/Uf.eo")
 (include "./rules/Arith.eo")
 (include "./rules/BitVectors.eo")
-(include "./rules/BvAbstraction.eo")
 (include "./rules/Strings.eo")
 (include "./rules/Sets.eo")
 (include "./rules/ArithBvConv.eo")

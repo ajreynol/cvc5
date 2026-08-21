@@ -2,6 +2,7 @@
 
 (include "../programs/PolyNorm.eo")
 (include "../programs/Bitblasting.eo")
+(include "../programs/BvAbstraction.eo")
 (include "../programs/Nary.eo")
 
 
@@ -272,4 +273,22 @@
   :args ((= (= xb1 xb2) (= yb1 yb2)))
   :requires (((eo::to_z one) 1) ((eo::zmod (eo::to_z cx) 2) 1) ((eo::zmod (eo::to_z cy) 2) 1))
   :conclusion (= (= xb1 xb2) (= yb1 yb2))
+)
+
+; rule: bv_abstraction
+; implements: ProofRule::BV_ABSTRACTION
+; args:
+; - F Bool: >
+;   The abstraction lemma, of the form (=> (= (op x s) t) l) where op is one of
+;   bvmul, bvudiv, bvurem and l is an instance of one of the refinement lemma
+;   schemes of the bit-vector arithmetic abstraction module.
+; requires: >
+;   That F is an abstraction lemma in the above sense. Note that the antecedent
+;   is required: the schemes constrain the abstraction t of (op x s) and are in
+;   general not valid for an arbitrary t.
+; conclusion: The given lemma.
+(declare-rule bv_abstraction ((F Bool))
+  :args (F)
+  :requires ((($bv_abstraction_lemma F) true))
+  :conclusion F
 )
