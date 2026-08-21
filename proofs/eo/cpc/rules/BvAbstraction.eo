@@ -1,0 +1,356 @@
+(include "../programs/BitVectors.eo")
+
+;;;;; ProofRule::BV_ABSTRACTION
+;
+; The refinement lemma schemes of the bit-vector arithmetic abstraction module
+; (see src/theory/bv/abstract/abstraction_lemmas.h). For an abstracted term
+; (op x s) with abstraction t, each scheme l[x,s,t] satisfies
+; (=> (= (op x s) t) l), which is what the rule below concludes.
+;
+; Note that cvc5 treats bvand, bvor, bvxor, bvadd and bvmul as variadic, so
+; that a binary application of these carries a nil terminator that depends on
+; the bit-width. Such a terminator is not a legal subterm of a pattern, hence
+; we bind it as a list variable and check it in the right hand side of the
+; case, which also ensures the application is binary, as the schemes require.
+
+; define: $bv_is_zero
+; args:
+; - c (BitVec n): The term to check.
+; return: True if c is the bit-vector value zero.
+(define $bv_is_zero ((n Int :implicit) (c (BitVec n)))
+  (eo::eq c (eo::to_bin ($bv_bitwidth (eo::typeof c)) 0)))
+
+; define: $bv_is_one
+; args:
+; - c (BitVec n): The term to check.
+; return: True if c is the bit-vector value one.
+(define $bv_is_one ((n Int :implicit) (c (BitVec n)))
+  (eo::eq c (eo::to_bin ($bv_bitwidth (eo::typeof c)) 1)))
+
+; define: $bv_is_ones
+; args:
+; - c (BitVec n): The term to check.
+; return: True if c is the bit-vector value in which all bits are one.
+(define $bv_is_ones ((n Int :implicit) (c (BitVec n)))
+  (eo::eq c ($bv_ones ($bv_bitwidth (eo::typeof c)))))
+
+; program: $bv_abstraction_lemma_mul
+; args:
+; - x (BitVec n): The first operand of the abstracted term.
+; - s (BitVec n): The second operand of the abstracted term.
+; - t (BitVec n): The abstraction of the term.
+; - l Bool: The formula to check.
+; return: >
+;   True if l is the instantiation for x, s and t of one of the refinement
+;   lemma schemes for bvmul.
+(program $bv_abstraction_lemma_mul
+  ((n Int) (x (BitVec n)) (s (BitVec n)) (t (BitVec n))
+   (c (BitVec n)) (d (BitVec n))
+   (czero (BitVec n)) (cone (BitVec n)) (cones (BitVec n))
+   (ln1 (BitVec n) :list) (ln2 (BitVec n) :list) (ln3 (BitVec n) :list)
+   (ln4 (BitVec n) :list) (l Bool))
+  :signature ((BitVec n) (BitVec n) (BitVec n) Bool) Bool
+  (
+  ; MUL1_POW2: (=> (= x 2^i) (= t (bvshl s i)))
+  (($bv_abstraction_lemma_mul x s t (=> (= x c) (= t (bvshl s d))))
+      (eo::eq (eo::to_z c) ($arith_eval_int_pow_2 (eo::to_z d))))
+  ; MUL2_NEG_POW2: (=> (= x -2^i) (= t (bvshl (bvneg s) i)))
+  (($bv_abstraction_lemma_mul x s t (=> (= x c) (= t (bvshl (bvneg s) d))))
+      (eo::eq (eo::to_z c)
+              (eo::add ($arith_eval_int_pow_2 ($bv_bitwidth (eo::typeof x)))
+                       (eo::neg ($arith_eval_int_pow_2 (eo::to_z d))))))
+  ; MUL3_IC
+  (($bv_abstraction_lemma_mul x s t (= (bvand (bvor (bvneg s) s ln1) t ln2) t))
+      (eo::and ($bv_is_zero ln1) ($bv_is_ones ln2)))
+  ; MUL4_ODD
+  (($bv_abstraction_lemma_mul x s t (= (extract 0 0 t) (bvand (extract 0 0 x) (extract 0 0 s) ln1)))
+      ($bv_is_ones ln1))
+  ; MUL5
+  (($bv_abstraction_lemma_mul x s t (not (= s (bvnot (bvor t (bvand cone (bvor x s ln1) ln2) ln3)))))
+      (eo::and ($bv_is_one cone) (eo::and ($bv_is_zero ln1) (eo::and ($bv_is_ones ln2) ($bv_is_zero ln3)))))
+  ; MUL6
+  (($bv_abstraction_lemma_mul x s t (not (= (bvand x t ln1) (bvor s (bvnot t) ln2))))
+      (eo::and ($bv_is_ones ln1) ($bv_is_zero ln2)))
+  ; MUL7
+  (($bv_abstraction_lemma_mul x s t (not (= t (bvshl (bvor s cone ln1) (bvshl t x)))))
+      (eo::and ($bv_is_one cone) ($bv_is_zero ln1)))
+  ; MUL8
+  (($bv_abstraction_lemma_mul x s t (= s (bvshl s (bvand x (bvlshr cone t) ln1))))
+      (eo::and ($bv_is_one cone) ($bv_is_ones ln1)))
+  ; MUL9
+  (($bv_abstraction_lemma_mul x s t (bvuge t (bvand cone (bvlshr (bvand x s ln1) cone) ln2)))
+      (eo::and ($bv_is_one cone) (eo::and ($bv_is_ones ln1) ($bv_is_ones ln2))))
+  ; MUL10
+  (($bv_abstraction_lemma_mul x s t (not (= x (bvxor cone (bvshl x (bvxor s t ln1)) ln2))))
+      (eo::and ($bv_is_one cone) (eo::and ($bv_is_zero ln1) ($bv_is_zero ln2))))
+  ; MUL11
+  (($bv_abstraction_lemma_mul x s t (not (= t (bvor cone (bvnot (bvxor x s ln1)) ln2))))
+      (eo::and ($bv_is_one cone) (eo::and ($bv_is_zero ln1) ($bv_is_zero ln2))))
+  ; MUL12
+  (($bv_abstraction_lemma_mul x s t (not (= t (bvor (bvnot cone) (bvxor x s ln1) ln2))))
+      (eo::and ($bv_is_one cone) (eo::and ($bv_is_zero ln1) ($bv_is_zero ln2))))
+  ; MUL13
+  (($bv_abstraction_lemma_mul x s t (not (= x (bvsub (bvshl x (bvadd s t ln1)) cone))))
+      (eo::and ($bv_is_zero ln1) ($bv_is_one cone)))
+  ; MUL14
+  (($bv_abstraction_lemma_mul x s t (not (= x (bvsub cone (bvshl x (bvsub s t))))))
+      ($bv_is_one cone))
+  ; MUL15
+  (($bv_abstraction_lemma_mul x s t (not (= s (bvadd cone (bvshl s (bvsub t x)) ln1))))
+      (eo::and ($bv_is_one cone) ($bv_is_zero ln1)))
+  ; MUL16
+  (($bv_abstraction_lemma_mul x s t (not (= s (bvsub cone (bvshl s (bvsub t x))))))
+      ($bv_is_one cone))
+  ; MUL17
+  (($bv_abstraction_lemma_mul x s t (not (= s (bvadd cone (bvshl s (bvsub x t)) ln1))))
+      (eo::and ($bv_is_one cone) ($bv_is_zero ln1)))
+  ; MUL18
+  (($bv_abstraction_lemma_mul x s t (not (= t (bvor cone (bvadd x s ln1) ln2))))
+      (eo::and ($bv_is_one cone) (eo::and ($bv_is_zero ln1) ($bv_is_zero ln2))))
+  ; MUL19
+  (($bv_abstraction_lemma_mul x s t (not (= x (bvnot (bvshl x (bvadd s t ln1))))))
+      ($bv_is_zero ln1))
+  (($bv_abstraction_lemma_mul x s t l) false)
+  )
+)
+
+; program: $bv_abstraction_lemma_udiv
+; args:
+; - x (BitVec n): The first operand of the abstracted term.
+; - s (BitVec n): The second operand of the abstracted term.
+; - t (BitVec n): The abstraction of the term.
+; - l Bool: The formula to check.
+; return: >
+;   True if l is the instantiation for x, s and t of one of the refinement
+;   lemma schemes for bvudiv.
+(program $bv_abstraction_lemma_udiv
+  ((n Int) (x (BitVec n)) (s (BitVec n)) (t (BitVec n))
+   (c (BitVec n)) (d (BitVec n))
+   (czero (BitVec n)) (cone (BitVec n)) (cones (BitVec n))
+   (ln1 (BitVec n) :list) (ln2 (BitVec n) :list) (ln3 (BitVec n) :list)
+   (ln4 (BitVec n) :list) (l Bool))
+  :signature ((BitVec n) (BitVec n) (BitVec n) Bool) Bool
+  (
+  ; UDIV1_POW2: (=> (= s 2^i) (= t (bvlshr x i)))
+  (($bv_abstraction_lemma_udiv x s t (=> (= s c) (= t (bvlshr x d))))
+      (eo::eq (eo::to_z c) ($arith_eval_int_pow_2 (eo::to_z d))))
+  ; UDIV37
+  (($bv_abstraction_lemma_udiv x s t (=> (= s cone) (= t x)))
+      ($bv_is_one cone))
+  ; UDIV2
+  (($bv_abstraction_lemma_udiv x s t (=> (and (= s x) (not (= s czero))) (= t cone)))
+      (eo::and ($bv_is_zero czero) ($bv_is_one cone)))
+  ; UDIV3
+  (($bv_abstraction_lemma_udiv x s t (=> (= s czero) (= t cones)))
+      (eo::and ($bv_is_zero czero) ($bv_is_ones cones)))
+  ; UDIV4
+  (($bv_abstraction_lemma_udiv x s t (=> (and (= x czero) (not (= s czero))) (= t czero)))
+      ($bv_is_zero czero))
+  ; UDIV5
+  (($bv_abstraction_lemma_udiv x s t (=> (not (= s czero)) (bvule t x)))
+      ($bv_is_zero czero))
+  ; UDIV6
+  (($bv_abstraction_lemma_udiv x s t (=> (and (= s cones) (not (= x cones))) (= t czero)))
+      (eo::and ($bv_is_ones cones) ($bv_is_zero czero)))
+  ; UDIV7
+  (($bv_abstraction_lemma_udiv x s t (bvuge x (bvneg (bvand (bvneg s) (bvneg t) ln1))))
+      ($bv_is_ones ln1))
+  ; UDIV8
+  (($bv_abstraction_lemma_udiv x s t (bvuge (bvneg (bvor s cone ln1)) t))
+      (eo::and ($bv_is_one cone) ($bv_is_zero ln1)))
+  ; UDIV9
+  (($bv_abstraction_lemma_udiv x s t (not (= t (bvneg (bvand s (bvnot x) ln1)))))
+      ($bv_is_ones ln1))
+  ; UDIV10
+  (($bv_abstraction_lemma_udiv x s t (not (= (bvor s t ln1) (bvand x (bvnot cone) ln2))))
+      (eo::and ($bv_is_zero ln1) (eo::and ($bv_is_one cone) ($bv_is_ones ln2))))
+  ; UDIV11
+  (($bv_abstraction_lemma_udiv x s t (not (= (bvor s cone ln1) (bvand x (bvnot t) ln2))))
+      (eo::and ($bv_is_one cone) (eo::and ($bv_is_zero ln1) ($bv_is_ones ln2))))
+  ; UDIV12
+  (($bv_abstraction_lemma_udiv x s t (bvuge (bvand x (bvneg t) ln1) (bvand s t ln2)))
+      (eo::and ($bv_is_ones ln1) ($bv_is_ones ln2)))
+  ; UDIV13
+  (($bv_abstraction_lemma_udiv x s t (bvuge s (bvlshr x t)))
+      true)
+  ; UDIV14
+  (($bv_abstraction_lemma_udiv x s t (bvuge x (bvshl (bvlshr s (bvshl s t)) cone)))
+      ($bv_is_one cone))
+  ; UDIV15
+  (($bv_abstraction_lemma_udiv x s t (bvuge x (bvlshr (bvshl t cone) (bvshl t s))))
+      ($bv_is_one cone))
+  ; UDIV16
+  (($bv_abstraction_lemma_udiv x s t (bvuge t (bvshl (bvlshr x s) cone)))
+      ($bv_is_one cone))
+  ; UDIV17
+  (($bv_abstraction_lemma_udiv x s t (bvuge x (bvand (bvor x t ln1) (bvshl s cone) ln2)))
+      (eo::and ($bv_is_zero ln1) (eo::and ($bv_is_one cone) ($bv_is_ones ln2))))
+  ; UDIV18
+  (($bv_abstraction_lemma_udiv x s t (bvuge x (bvand (bvor x s ln1) (bvshl t cone) ln2)))
+      (eo::and ($bv_is_zero ln1) (eo::and ($bv_is_one cone) ($bv_is_ones ln2))))
+  ; UDIV19
+  (($bv_abstraction_lemma_udiv x s t (not (= (bvlshr x t) (bvor s t ln1))))
+      ($bv_is_zero ln1))
+  ; UDIV20
+  (($bv_abstraction_lemma_udiv x s t (not (= s (bvnot (bvlshr s (bvlshr t cone))))))
+      ($bv_is_one cone))
+  ; UDIV21
+  (($bv_abstraction_lemma_udiv x s t (not (= x (bvnot (bvand x (bvshl t cone) ln1)))))
+      (eo::and ($bv_is_one cone) ($bv_is_ones ln1)))
+  ; UDIV22
+  (($bv_abstraction_lemma_udiv x s t (bvuge t (bvlshr (bvshl x cone) s)))
+      ($bv_is_one cone))
+  ; UDIV23
+  (($bv_abstraction_lemma_udiv x s t (bvuge x (bvshl s (bvnot (bvor x t ln1)))))
+      ($bv_is_zero ln1))
+  ; UDIV24
+  (($bv_abstraction_lemma_udiv x s t (bvuge x (bvshl t (bvnot (bvor x s ln1)))))
+      ($bv_is_zero ln1))
+  ; UDIV25
+  (($bv_abstraction_lemma_udiv x s t (bvuge x (bvxor t (bvlshr t (bvlshr s cone)) ln1)))
+      (eo::and ($bv_is_one cone) ($bv_is_zero ln1)))
+  ; UDIV26
+  (($bv_abstraction_lemma_udiv x s t (bvuge x (bvxor s (bvlshr s (bvlshr t cone)) ln1)))
+      (eo::and ($bv_is_one cone) ($bv_is_zero ln1)))
+  ; UDIV27
+  (($bv_abstraction_lemma_udiv x s t (bvuge x (bvshl s (bvnot (bvxor x t ln1)))))
+      ($bv_is_zero ln1))
+  ; UDIV28
+  (($bv_abstraction_lemma_udiv x s t (bvuge x (bvshl t (bvnot (bvxor x s ln1)))))
+      ($bv_is_zero ln1))
+  ; UDIV29
+  (($bv_abstraction_lemma_udiv x s t (not (= x (bvadd t (bvor s (bvadd x s ln1) ln2) ln3))))
+      (eo::and ($bv_is_zero ln1) (eo::and ($bv_is_zero ln2) ($bv_is_zero ln3))))
+  ; UDIV30
+  (($bv_abstraction_lemma_udiv x s t (not (= x (bvadd t (bvadd cone (bvshl cone x) ln1) ln2))))
+      (eo::and ($bv_is_one cone) (eo::and ($bv_is_zero ln1) ($bv_is_zero ln2))))
+  ; UDIV31
+  (($bv_abstraction_lemma_udiv x s t (bvuge s (bvlshr (bvadd x t ln1) t)))
+      ($bv_is_zero ln1))
+  ; UDIV32
+  (($bv_abstraction_lemma_udiv x s t (not (= x (bvadd t (bvadd t (bvor x s ln1) ln2) ln3))))
+      (eo::and ($bv_is_zero ln1) (eo::and ($bv_is_zero ln2) ($bv_is_zero ln3))))
+  ; UDIV33
+  (($bv_abstraction_lemma_udiv x s t (bvuge (bvxor s (bvor x t ln1) ln2) (bvxor t cone ln3)))
+      (eo::and ($bv_is_zero ln1) (eo::and ($bv_is_zero ln2) (eo::and ($bv_is_one cone) ($bv_is_zero ln3)))))
+  ; UDIV34
+  (($bv_abstraction_lemma_udiv x s t (bvuge t (bvlshr x (bvsub s cone))))
+      ($bv_is_one cone))
+  ; UDIV35
+  (($bv_abstraction_lemma_udiv x s t (bvuge (bvsub s cone) (bvlshr x t)))
+      ($bv_is_one cone))
+  ; UDIV36
+  (($bv_abstraction_lemma_udiv x s t (not (= x (bvsub cone (bvshl x (bvsub x t))))))
+      ($bv_is_one cone))
+  (($bv_abstraction_lemma_udiv x s t l) false)
+  )
+)
+
+; program: $bv_abstraction_lemma_urem
+; args:
+; - x (BitVec n): The first operand of the abstracted term.
+; - s (BitVec n): The second operand of the abstracted term.
+; - t (BitVec n): The abstraction of the term.
+; - l Bool: The formula to check.
+; return: >
+;   True if l is the instantiation for x, s and t of one of the refinement
+;   lemma schemes for bvurem.
+(program $bv_abstraction_lemma_urem
+  ((n Int) (x (BitVec n)) (s (BitVec n)) (t (BitVec n))
+   (m Int) (h Int) (c (BitVec n)) (z (BitVec m))
+   (czero (BitVec n)) (cone (BitVec n)) (cones (BitVec n))
+   (ln1 (BitVec n) :list) (ln2 (BitVec n) :list) (ln3 (BitVec n) :list)
+   (ln4 (BitVec n) :list) (l Bool))
+  :signature ((BitVec n) (BitVec n) (BitVec n) Bool) Bool
+  (
+  ; UREM1_POW2: (=> (= s 2^i) (= t (concat 0[w-i] x[i-1:0])))
+  (($bv_abstraction_lemma_urem x s t (=> (= s c) (= t (concat z (extract h 0 x)))))
+      (eo::and ($bv_is_zero z)
+               (eo::eq (eo::to_z c) ($arith_eval_int_pow_2 (eo::add h 1)))))
+  ; UREM2
+  (($bv_abstraction_lemma_urem x s t (=> (not (= s czero)) (bvult t s)))
+      ($bv_is_zero czero))
+  ; UREM3
+  (($bv_abstraction_lemma_urem x s t (=> (= x czero) (= t czero)))
+      ($bv_is_zero czero))
+  ; UREM4
+  (($bv_abstraction_lemma_urem x s t (=> (= s czero) (= t x)))
+      ($bv_is_zero czero))
+  ; UREM5
+  (($bv_abstraction_lemma_urem x s t (=> (= s x) (= t czero)))
+      ($bv_is_zero czero))
+  ; UREM6
+  (($bv_abstraction_lemma_urem x s t (=> (bvult x s) (= t x)))
+      true)
+  ; UREM8
+  (($bv_abstraction_lemma_urem x s t (= x (bvand x (bvor s (bvor t (bvneg s) ln1) ln2) ln3)))
+      (eo::and ($bv_is_zero ln1) (eo::and ($bv_is_zero ln2) ($bv_is_ones ln3))))
+  ; UREM9
+  (($bv_abstraction_lemma_urem x s t (bvuge x (bvor t (bvand x s ln1) ln2)))
+      (eo::and ($bv_is_ones ln1) ($bv_is_zero ln2)))
+  ; UREM10
+  (($bv_abstraction_lemma_urem x s t (not (= cone (bvand t (bvnot (bvor x s ln1)) ln2))))
+      (eo::and ($bv_is_one cone) (eo::and ($bv_is_zero ln1) ($bv_is_ones ln2))))
+  ; UREM11
+  (($bv_abstraction_lemma_urem x s t (not (= t (bvor (bvnot x) (bvneg s) ln1))))
+      ($bv_is_zero ln1))
+  ; UREM12
+  (($bv_abstraction_lemma_urem x s t (bvuge (bvand t (bvor x s ln1) ln2) (bvand t cone ln3)))
+      (eo::and ($bv_is_zero ln1) (eo::and ($bv_is_ones ln2) (eo::and ($bv_is_one cone) ($bv_is_ones ln3)))))
+  ; UREM13
+  (($bv_abstraction_lemma_urem x s t (not (= x (bvor (bvneg x) (bvneg (bvnot t)) ln1))))
+      ($bv_is_zero ln1))
+  ; UREM14
+  (($bv_abstraction_lemma_urem x s t (bvuge (bvadd x (bvneg s) ln1) t))
+      ($bv_is_zero ln1))
+  ; UREM15
+  (($bv_abstraction_lemma_urem x s t (bvuge (bvxor (bvneg s) (bvor x s ln1) ln2) t))
+      (eo::and ($bv_is_zero ln1) ($bv_is_zero ln2)))
+  ; UREM1_POW2 (degenerate case s = 1)
+  (($bv_abstraction_lemma_urem x s t (=> (= s cone) (= t czero)))
+      (eo::and ($bv_is_one cone) ($bv_is_zero czero)))
+  (($bv_abstraction_lemma_urem x s t l) false)
+  )
+)
+
+; program: $bv_abstraction_lemma
+; args:
+; - l Bool: The formula to check.
+; return: >
+;   True if l is a bit-vector arithmetic abstraction lemma, i.e. if it has the
+;   form (=> (= (op x s) t) lem) where op is one of bvmul, bvudiv and bvurem,
+;   and lem is the instantiation for x, s and t of one of the refinement lemma
+;   schemes of that operator.
+(program $bv_abstraction_lemma
+  ((n Int) (x (BitVec n)) (s (BitVec n)) (t (BitVec n)) (ns (BitVec n) :list) (l Bool))
+  :signature (Bool) Bool
+  (
+  (($bv_abstraction_lemma (=> (= (bvmul x s ns) t) l))
+      (eo::and ($bv_is_one ns) ($bv_abstraction_lemma_mul x s t l)))
+  (($bv_abstraction_lemma (=> (= t (bvmul x s ns)) l))
+      (eo::and ($bv_is_one ns) ($bv_abstraction_lemma_mul x s t l)))
+  (($bv_abstraction_lemma (=> (= (bvudiv x s) t) l)) ($bv_abstraction_lemma_udiv x s t l))
+  (($bv_abstraction_lemma (=> (= t (bvudiv x s)) l)) ($bv_abstraction_lemma_udiv x s t l))
+  (($bv_abstraction_lemma (=> (= (bvurem x s) t) l)) ($bv_abstraction_lemma_urem x s t l))
+  (($bv_abstraction_lemma (=> (= t (bvurem x s)) l)) ($bv_abstraction_lemma_urem x s t l))
+  (($bv_abstraction_lemma l) false)
+  )
+)
+
+; rule: bv_abstraction
+; implements: ProofRule::BV_ABSTRACTION
+; args:
+; - F Bool: >
+;   The abstraction lemma, of the form (=> (= (op x s) t) l) where op is one of
+;   bvmul, bvudiv, bvurem and l is an instance of one of the refinement lemma
+;   schemes of the bit-vector arithmetic abstraction module.
+; requires: >
+;   That F is an abstraction lemma in the above sense. Note that the antecedent
+;   is required: the schemes constrain the abstraction t of (op x s) and are in
+;   general not valid for an arbitrary t.
+; conclusion: The given lemma.
+(declare-rule bv_abstraction ((F Bool))
+  :args (F)
+  :requires ((($bv_abstraction_lemma F) true))
+  :conclusion F
+)
