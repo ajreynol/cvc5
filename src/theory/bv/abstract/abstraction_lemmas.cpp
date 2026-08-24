@@ -873,16 +873,8 @@ std::optional<LemmaKind> LemmaRegistry::isAbstractionLemma(TNode lem) const
     return {};
   }
   // The guard (= (op x s) t) determines the operator and all three operands of
-  // the scheme. We do not assume an orientation of the equality here.
-  for (size_t i = 0; i < 2; ++i)
-  {
-    std::optional<LemmaKind> kind = matchScheme(guard[i], guard[1 - i], lem[1]);
-    if (kind)
-    {
-      return kind;
-    }
-  }
-  return {};
+  // the scheme.
+  return matchScheme(guard[0], guard[1], lem[1]);
 }
 
 std::optional<LemmaKind> LemmaRegistry::matchScheme(TNode n,
