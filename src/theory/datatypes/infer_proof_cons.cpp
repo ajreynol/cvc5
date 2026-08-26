@@ -121,18 +121,42 @@ void InferProofCons::convert(InferenceId infer,
       Node tst;
       if (expv.empty())
       {
-        // In rare cases, this rule is applied to a constructor without an
-        // explanation and introduces purification variables. In this case, it
-        // can be shown by MACRO_SR_PRED_INTRO. An example of this would be:
-        //   C(a) = C(s(@purify(C(a))))
-        // which requires converting to original form and rewriting.
-        ProofChecker* pc = d_env.getProofNodeManager()->getChecker();
-        Node concc =
-            pc->checkDebug(ProofRule::MACRO_SR_PRED_INTRO, {}, {conc}, conc);
-        if (concc == conc)
+        // Tuples have a single constructor, hence their tester is trivially
+        // true and is not used as the explanation of this rule, see
+        // TheoryDatatypes::instantiate. The premise of DT_INST is the constant
+        // true in this case:
+        //   ------------------------------ DT_INST
+        //   (= true (= x (tuple ...)))
+        //   ------------------------------ SYMM
+        //   (= (= x (tuple ...)) true)
+        //   ------------------------------ TRUE_ELIM
+        //   (= x (tuple ...))
+        Node truen = nm->mkConst(true);
+        Node eq = truen.eqNode(conc);
+        if (d_env.getRewriter()->checkRewriteViaRule(ProofRewriteRule::DT_INST,
+                                                     eq))
         {
-          cdp->addStep(conc, ProofRule::MACRO_SR_PRED_INTRO, {}, {conc});
+          cdp->addTheoryRewriteStep(eq, ProofRewriteRule::DT_INST);
+          Node eqs = conc.eqNode(truen);
+          cdp->addStep(eqs, ProofRule::SYMM, {eq}, {});
+          cdp->addStep(conc, ProofRule::TRUE_ELIM, {eqs}, {});
           success = true;
+        }
+        else
+        {
+          // In rare cases, this rule is applied to a constructor without an
+          // explanation and introduces purification variables. In this case, it
+          // can be shown by MACRO_SR_PRED_INTRO. An example of this would be:
+          //   C(a) = C(s(@purify(C(a))))
+          // which requires converting to original form and rewriting.
+          ProofChecker* pc = d_env.getProofNodeManager()->getChecker();
+          Node concc =
+              pc->checkDebug(ProofRule::MACRO_SR_PRED_INTRO, {}, {conc}, conc);
+          if (concc == conc)
+          {
+            cdp->addStep(conc, ProofRule::MACRO_SR_PRED_INTRO, {}, {conc});
+            success = true;
+          }
         }
       }
       else if (expv.size() == 1)

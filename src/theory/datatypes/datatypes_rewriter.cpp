@@ -73,6 +73,15 @@ Node DatatypesRewriter::rewriteViaRule(ProofRewriteRule id, const Node& n)
       Node t = n[0];
       TypeNode tn = t.getType();
       Assert(tn.isDatatype());
+      if (tn.isTuple())
+      {
+        // Tuples have a single constructor, hence their tester is trivially
+        // true. We never apply this rule to a tuple tester, so that
+        // (is tuple t) does not appear in proofs. The premise of this rule is
+        // the constant true for tuples instead, which is handled by
+        // checkRewriteViaRule below.
+        return Node::null();
+      }
       const DType& dt = tn.getDType();
       size_t i = utils::indexOf(n.getOperator());
       // Note that we set shared selectors to false. This proof rule will
@@ -263,6 +272,32 @@ Node DatatypesRewriter::rewriteViaRule(ProofRewriteRule id, const Node& n)
     default: break;
   }
   return Node::null();
+}
+
+bool DatatypesRewriter::checkRewriteViaRule(ProofRewriteRule id,
+                                           const Node& eq)
+{
+  if (id == ProofRewriteRule::DT_INST && eq[0].isConst()
+      && eq[0].getType().isBoolean() && eq[0].getConst<bool>())
+  {
+    // The tester of a tuple is trivially true and is not used, see
+    // rewriteViaRule above. The premise of this rule, that is, the left hand
+    // side of eq, is the constant true for tuples instead:
+    //   (= true (= t (tuple (tuple.select 0 t) ... (tuple.select n-1 t))))
+    const Node& inst = eq[1];
+    if (inst.getKind() != Kind::EQUAL)
+    {
+      return false;
+    }
+    TypeNode tn = inst[0].getType();
+    if (!tn.isTuple())
+    {
+      return false;
+    }
+    // Note that we set shared selectors to false, as in rewriteViaRule above.
+    return inst[1] == utils::getInstCons(inst[0], tn.getDType(), 0, false);
+  }
+  return TheoryRewriter::checkRewriteViaRule(id, eq);
 }
 
 RewriteResponse DatatypesRewriter::postRewrite(TNode in)

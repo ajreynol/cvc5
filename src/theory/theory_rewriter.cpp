@@ -95,6 +95,13 @@ Node TheoryRewriter::rewriteViaRule(CVC5_UNUSED ProofRewriteRule pr,
   return n;
 }
 
+bool TheoryRewriter::checkRewriteViaRule(ProofRewriteRule id, const Node& eq)
+{
+  Assert(eq.getKind() == Kind::EQUAL);
+  Node rhs = rewriteViaRule(id, eq[0]);
+  return !rhs.isNull() && rhs == eq[1];
+}
+
 ProofRewriteRule TheoryRewriter::findRule(const Node& a,
                                           const Node& b,
                                           TheoryRewriteCtx ctx)

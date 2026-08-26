@@ -50,6 +50,18 @@ class DatatypesRewriter : public TheoryRewriter
    * cannot be rewritten.
    */
   Node rewriteViaRule(ProofRewriteRule id, const Node& n) override;
+  /**
+   * Check whether the proof rewrite rule id proves the equality eq.
+   *
+   * This handles the case of DT_INST for tuples, whose left hand side is the
+   * constant true and hence does not determine the right hand side. For all
+   * other rules, this is the default check based on rewriteViaRule.
+   *
+   * @param id The rewrite rule.
+   * @param eq The equality to check.
+   * @return true if the rewrite rule id proves eq.
+   */
+  bool checkRewriteViaRule(ProofRewriteRule id, const Node& eq) override;
 
   /** normalize codatatype constant
    *

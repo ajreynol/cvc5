@@ -81,18 +81,55 @@
   )
 )
 
+; program: $mk_dt_inst_tuple
+; args:
+; - D Type: The tuple type we are considering.
+; - x D: The tuple term we are applying dt-inst to.
+; return: The instantiation of x, i.e. the term x is equal to.
+; note: >
+;   This is the analogue of $mk_dt_inst for tuples, whose constructor is
+;   determined by the type of x. It fails for types that are not tuples, which
+;   is what restricts the premise true below to tuples.
+(program $mk_dt_inst_tuple ((D Type) (T1 Type) (T2 Type :list) (xt (Tuple T1 T2)) (xu UnitTuple))
+  :signature (Type D) D
+  (
+    (($mk_dt_inst_tuple (Tuple T1 T2) xt)  ($mk_dt_inst_tuple_rec (Tuple T1 T2) xt 0))
+    (($mk_dt_inst_tuple UnitTuple xu)      tuple.unit)
+  )
+)
+
+; program: $mk_dt_inst_prem
+; args:
+; - prem Bool: The premise of the equality proven by dt-inst.
+; - x D: The datatype term we are applying dt-inst to.
+; return: The instantiation of x that is equivalent to prem.
+; note: >
+;   For an ordinary datatype, the premise is the tester for the constructor c
+;   that x is an application of, which is also where c is obtained from.
+;
+;   Tuples have a single constructor, so their tester is trivially true. The
+;   premise is true itself in that case, so that (is tuple x) never appears in
+;   a proof. Note the constructor is then obtained from the type of x.
+(program $mk_dt_inst_prem ((D Type) (C Type) (c C) (x D))
+  :signature (Bool D) D
+  (
+    (($mk_dt_inst_prem true x)      ($mk_dt_inst_tuple (eo::typeof x) x))
+    (($mk_dt_inst_prem (is c x) x)  ($mk_dt_inst (eo::typeof x) c x))
+  )
+)
+
 ; rule: dt-inst
 ; implements: ProofRewriteRule::DT_INST
 ; args:
 ; - eq Bool: The equality to prove.
 ; requires: >
-;   We require that $mk_dt_inst applied to the left hand side returns
-;   the right hand side.
+;   We require that $mk_dt_inst_prem applied to the left hand side and to the
+;   term we are instantiating returns the term it is claimed to be equal to.
 ; conclusion: The given equality.
-(declare-rule dt-inst ((D Type) (T Type) (c T) (x D) (t D))
-  :args ((= (is c x) (= x t)))
-  :requires ((($mk_dt_inst (eo::typeof x) c x) t))
-  :conclusion (= (is c x) (= x t))
+(declare-rule dt-inst ((D Type) (x D) (t D) (prem Bool))
+  :args ((= prem (= x t)))
+  :requires ((($mk_dt_inst_prem prem x) t))
+  :conclusion (= prem (= x t))
 )
 
 ;;;;; ProofRewriteRule::DT_COLLAPSE_SELECTOR

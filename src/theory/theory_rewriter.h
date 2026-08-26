@@ -197,6 +197,20 @@ class TheoryRewriter
    */
   virtual Node rewriteViaRule(ProofRewriteRule id, const Node& n);
   /**
+   * Check whether the proof rewrite rule id proves the equality eq, that is,
+   * whether a proof step THEORY_REWRITE with arguments id and eq is valid.
+   *
+   * By default this is the case if rewriteViaRule(id, eq[0]) returns eq[1].
+   * This method is overridden by theory rewriters that implement rules whose
+   * left hand side does not determine their right hand side, in which case
+   * rewriteViaRule cannot be used to check the rule.
+   *
+   * @param id The rewrite rule.
+   * @param eq The equality to check.
+   * @return true if the rewrite rule id proves eq.
+   */
+  virtual bool checkRewriteViaRule(ProofRewriteRule id, const Node& eq);
+  /**
    * Find the rewrite that proves a == b, if one exists.
    * If none can be found, return ProofRewriteRule::NONE.
    * @param a The left hand side of the rewrite.

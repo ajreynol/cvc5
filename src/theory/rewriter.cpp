@@ -194,6 +194,24 @@ Node Rewriter::rewriteViaRule(ProofRewriteRule id, const Node& n)
   return Node::null();
 }
 
+bool Rewriter::checkRewriteViaRule(ProofRewriteRule id, const Node& eq)
+{
+  Assert(eq.getKind() == Kind::EQUAL);
+  // Dispatches to the appropriate theory, which is the one that owns the left
+  // hand side, that is, the term the rule rewrites. The exception are rules
+  // whose left hand side is the constant true, which carries no information
+  // about the theory the rule belongs to. This is the case for rules that
+  // conclude an equality whose premise is trivially true, e.g. DT_INST for
+  // tuples. We use the right hand side to determine the theory in that case.
+  TNode n = eq[0].isConst() && eq[0].getType().isBoolean() ? eq[1] : eq[0];
+  TheoryRewriter* tr = getTheoryRewriter(theoryOf(n));
+  if (tr != nullptr)
+  {
+    return tr->checkRewriteViaRule(id, eq);
+  }
+  return false;
+}
+
 ProofRewriteRule Rewriter::findRule(const Node& a,
                                     const Node& b,
                                     TheoryRewriteCtx ctx)
