@@ -132,10 +132,11 @@ void InferProofCons::convert(InferenceId infer,
         //   ------------------------------ TRUE_ELIM
         //   (= x (tuple ...))
         Node truen = nm->mkConst(true);
-        Node eq = truen.eqNode(conc);
-        if (d_env.getRewriter()->checkRewriteViaRule(ProofRewriteRule::DT_INST,
-                                                     eq))
+        Node concr =
+            d_env.getRewriter()->rewriteViaRule(ProofRewriteRule::DT_INST, conc);
+        if (concr == truen)
         {
+          Node eq = truen.eqNode(conc);
           cdp->addTheoryRewriteStep(eq, ProofRewriteRule::DT_INST);
           Node eqs = conc.eqNode(truen);
           cdp->addStep(eqs, ProofRule::SYMM, {eq}, {});
