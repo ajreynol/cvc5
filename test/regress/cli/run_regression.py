@@ -600,6 +600,21 @@ COMMAND_LINE = "COMMAND-LINE:"
 REQUIRES = "REQUIRES:"
 DISABLE_TESTER = "DISABLE-TESTER:"
 
+# The features that indicate a restricted build, i.e. one configured with
+# --safe-mode=safe or --safe-mode=stable. A benchmark that such a build rejects
+# must be annotated with "REQUIRES: unrestricted-mode" (rejected by both) or
+# "REQUIRES: no-safe-mode" (rejected by safe mode only).
+UNRESTRICTED_MODE_FEATURE = "unrestricted-mode"
+RESTRICTED_MODE_FEATURES = ["safe-mode", "stable-mode"]
+
+# The error messages cvc5 emits when a restricted build rejects a benchmark.
+# These come from SafeLogicException ("Logic restricted in safe mode."), from
+# the option checks in SolverEngine::setOption (e.g. "expert option x cannot be
+# set in safe mode.") and from the safe option checks in SetDefaults (e.g.
+# "Cannot use --nl-cov due to safe options.").
+RESTRICTED_MODE_ERROR = re.compile(
+    r"in (?:safe|stable) mode|due to safe options")
+
 EXIT_OK = 0
 EXIT_FAILURE = 1
 EXIT_SKIP = 77
@@ -654,6 +669,20 @@ def is_timeout(exit_status, output, error):
         if "interrupted by timeout" in stream:
             return True
     return False
+
+
+def decode_stream(stream):
+    """Decodes the output of a process, which Python 3 returns as bytes."""
+    if isinstance(stream, bytes):
+        return stream.decode(errors="replace")
+    return stream
+
+
+def has_restricted_mode_error(output, error):
+    """Returns true if the process result indicates that cvc5 rejected the
+    benchmark because the build restricts the options and logics it accepts."""
+    return bool(RESTRICTED_MODE_ERROR.search(decode_stream(output))
+                or RESTRICTED_MODE_ERROR.search(decode_stream(error)))
 
 
 def print_colored(color, text):
@@ -846,6 +875,70 @@ def run_benchmark(benchmark_info):
     return (output, error, exit_status)
 
 
+def check_restricted_mode_exclusion(
+    wrapper,
+    cvc5_binary,
+    benchmark_dir,
+    benchmark_basename,
+    command_line_args_configs,
+    timeout,
+    reason,
+):
+    """Checks that a benchmark excluded from a restricted build (i.e. a build
+    configured with --safe-mode=safe or --safe-mode=stable) is indeed rejected
+    by cvc5, instead of skipping the benchmark outright.
+
+    This turns the `REQUIRES` annotation from an unchecked claim into an
+    expected failure. Without it, an annotation that has become stale, e.g.
+    because the option it refers to gained proof support and is now admissible,
+    would silently exclude the benchmark from restricted builds forever, and a
+    regression in a restriction itself would go unnoticed.
+
+    Note that an annotation applies to the whole file and is thus based on the
+    strictest of its configurations, so it suffices that a single configuration
+    is rejected."""
+
+    print()
+    print_info("Restricted mode: {}".format(reason))
+    bin_args = wrapper[:] + [cvc5_binary]
+    timed_out = False
+    last_output = ""
+    last_error = ""
+    watchdog = start_ctest_timeout_watchdog(timeout,
+                                            len(command_line_args_configs))
+    try:
+        for args in command_line_args_configs:
+            output, error, exit_status = run_process(
+                bin_args + args + [benchmark_basename], benchmark_dir, timeout)
+            if has_restricted_mode_error(output, error):
+                print_ok("OK (rejected by the restricted build, as expected)")
+                return EXIT_SKIP if g_args.use_skip_return_code else EXIT_OK
+            if is_timeout(exit_status, output, error):
+                print_error("Timeout")
+                timed_out = True
+                continue
+            last_output = decode_stream(output)
+            last_error = decode_stream(error)
+    finally:
+        if watchdog is not None:
+            watchdog.cancel()
+
+    if timed_out:
+        # We cannot tell whether the benchmark would have been rejected.
+        return EXIT_SKIP if g_args.skip_timeout else EXIT_TIMEOUT
+
+    print_error("The benchmark is excluded ({}), but cvc5 accepted it".format(
+        reason))
+    print("  A restricted build is expected to reject at least one of the")
+    print("  configurations of an excluded benchmark. If cvc5 no longer")
+    print("  restricts this benchmark, remove the REQUIRES annotation so that")
+    print("  it is tested again. If the benchmark is admissible in stable mode")
+    print("  but not in safe mode, use \"REQUIRES: no-safe-mode\" instead of")
+    print("  \"REQUIRES: {}\".".format(UNRESTRICTED_MODE_FEATURE))
+    print_outputs(last_output, last_error)
+    return EXIT_FAILURE
+
+
 def run_regression(
     testers,
     wrapper,
@@ -958,6 +1051,12 @@ def run_regression(
     if "CVC5_REGRESSION_ARGS" in os.environ:
         basic_command_line_args += shlex.split(os.environ["CVC5_REGRESSION_ARGS"])
 
+    # A requirement that is unmet because this is a restricted build does not
+    # skip the benchmark unconditionally. Instead, we check below that cvc5
+    # indeed rejects it. Unmet requirements that are unrelated to the
+    # restrictions take precedence, since the benchmark cannot be run at all in
+    # that case.
+    restricted_mode_reason = None
     for req_feature in requires:
         is_negative = False
         if req_feature.startswith("no-"):
@@ -971,15 +1070,36 @@ def run_regression(
             return EXIT_FAILURE
         if is_negative:
             if req_feature in cvc5_features:
-                print_info("Skipped regression: not compatible with {}".format(
-                    req_feature))
+                reason = "not compatible with {}".format(req_feature)
+                if req_feature in RESTRICTED_MODE_FEATURES:
+                    restricted_mode_reason = reason
+                    continue
+                print_info("Skipped regression: {}".format(reason))
                 return EXIT_SKIP if g_args.use_skip_return_code else EXIT_OK
         elif req_feature not in cvc5_features:
-            print_info("Skipped regression: requires {}".format(req_feature))
+            reason = "requires {}".format(req_feature)
+            if req_feature == UNRESTRICTED_MODE_FEATURE:
+                restricted_mode_reason = reason
+                continue
+            print_info("Skipped regression: {}".format(reason))
             return EXIT_SKIP if g_args.use_skip_return_code else EXIT_OK
 
     if not command_lines:
         command_lines.append("")
+
+    if restricted_mode_reason is not None:
+        return check_restricted_mode_exclusion(
+            wrapper,
+            cvc5_binary,
+            benchmark_dir,
+            benchmark_basename,
+            [
+                basic_command_line_args + shlex.split(command_line)
+                for command_line in command_lines
+            ],
+            timeout,
+            restricted_mode_reason,
+        )
 
     tests = []
     expected_output_lines = expected_output.split()

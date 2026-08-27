@@ -2326,7 +2326,10 @@ void SolverEngine::setOption(const std::string& key,
     // Note that a regression that sets such an option must be marked with
     // "REQUIRES: unrestricted-mode" (or "REQUIRES: no-safe-mode" if the
     // option is admissible in stable mode), as the regression testers do not
-    // infer this from the output of cvc5.
+    // infer this from the output of cvc5. The testers do however verify that a
+    // benchmark marked in this way is indeed rejected, by searching for the
+    // text "in safe mode" or "in stable mode", which must therefore appear in
+    // the error messages below.
     if (key == "trace")
     {
       std::stringstream ss;

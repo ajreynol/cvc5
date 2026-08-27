@@ -160,6 +160,26 @@ individual `COMMAND-LINE` configurations are considered. Annotating a benchmark
 thus disables all of its configurations, so it should be annotated based on the
 strictest requirement of any of its configurations.
 
+These two annotations are not taken at face value. When a build actually
+restricts a benchmark annotated in this way, the regression runner does not skip
+it silently: it runs cvc5 on the benchmark's configurations and requires that at
+least one of them is rejected with an error that mentions "in safe mode" or "in
+stable mode" (a single configuration suffices, since the annotation is based on
+the strictest one). The test is only reported as skipped once that has been
+confirmed. If cvc5 accepts every configuration, the test fails, which means one
+of two things:
+
+* The annotation has become stale, e.g. because the option it refers to gained
+  proof support and is now admissible. Remove the annotation so that the
+  benchmark is tested again in restricted builds. If the benchmark is now
+  admissible in stable mode but not in safe mode, weaken
+  `REQUIRES: unrestricted-mode` to `REQUIRES: no-safe-mode`.
+* A restriction itself has regressed and no longer rejects what it should.
+
+Without this check, an annotation would exclude a benchmark from restricted
+builds indefinitely, and the coverage of those builds would silently shrink as
+safe and stable mode grow.
+
 To disable a specific type of test, the `DISABLE-TESTER` directive can be used.
 The following example disables the abduct tester for a regression:
 

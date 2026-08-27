@@ -43,7 +43,10 @@ class LogicException : public cvc5::internal::Exception
  * admissible in safe mode or stable mode. Note that a regression that throws
  * this exception must be marked with "REQUIRES: unrestricted-mode" (or
  * "REQUIRES: no-safe-mode" if it is admissible in stable mode), as the
- * regression testers do not infer this from the output of cvc5.
+ * regression testers do not infer this from the output of cvc5. The testers do
+ * however verify that a benchmark marked in this way is indeed rejected, by
+ * searching for the text "in safe mode" or "in stable mode" in the output,
+ * which must therefore appear in the message of this exception.
  */
 class SafeLogicException : public LogicException
 {
