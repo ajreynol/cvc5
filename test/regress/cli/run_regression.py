@@ -356,6 +356,7 @@ class CpcTester(Tester):
             cvc5_args = [
                 "--dump-proofs",
                 "--proof-print-conclusion",
+                "--proof-print-reference",
             ] + benchmark_info.command_line_args
             output, error, exit_status = run_process(
                 [benchmark_info.cvc5_binary]
@@ -373,6 +374,17 @@ class CpcTester(Tester):
             # note this line is not necessary if in a safe build
             if not benchmark_info.safe_mode:
                 tmpf.write(("(include \"" + cpc_sig_dir + "/cpc/expert/CpcExpert.eo\")").encode())
+            # Reference the original input file. This makes ethos check that
+            # every assumption of the proof is an assertion of the original
+            # benchmark, which additionally validates that cvc5 did not
+            # silently change the input when parsing it. Note the proof was
+            # generated with --proof-print-reference, hence it does not
+            # redeclare the symbols of the benchmark; they come from the
+            # reference file.
+            benchmark_path = os.path.abspath(
+                os.path.join(benchmark_info.benchmark_dir,
+                             benchmark_info.benchmark_basename))
+            tmpf.write(("(reference \"" + benchmark_path + "\")").encode())
             # strip the unsat and parentheses
             output, exit_code = self.strip_proof_body(output)
             if exit_code == EXIT_FAILURE:
