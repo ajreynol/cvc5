@@ -143,7 +143,7 @@ void InferProofCons::convert(InferenceId infer,
           cdp->addStep(conc, ProofRule::TRUE_ELIM, {eqs}, {});
           success = true;
         }
-        else
+        else if (conc[0].getKind() == Kind::APPLY_CONSTRUCTOR)
         {
           // In rare cases, this rule is applied to a constructor without an
           // explanation and introduces purification variables. In this case, it
@@ -159,6 +159,9 @@ void InferProofCons::convert(InferenceId infer,
             success = true;
           }
         }
+        // Otherwise, this is the instantiation of a tuple that DT_INST does
+        // not apply to, which is the case when using shared selectors. We fall
+        // back to a trusted step below, as we do for the tester case.
       }
       else if (expv.size() == 1)
       {

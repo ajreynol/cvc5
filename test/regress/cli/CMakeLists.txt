@@ -1562,6 +1562,7 @@ set(regress_0_tests
   regress0/proofs/dsl-rule-comp-types.smt2
   regress0/proofs/dt-cons-eq-clash-qfdt.smt2
   regress0/proofs/dt-cons-eq-clash-ufdt.smt2
+  regress0/proofs/dt-inst-tuple-no-tester.smt2
   regress0/proofs/equal-eval-rw_340.smt2
   regress0/proofs/eval-rhs.smt2
   regress0/proofs/exists-shadow-simple.smt2
