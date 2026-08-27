@@ -1,3 +1,5 @@
+; note: cpc reference checking not supported, cvc5 normalizes the argument order of the @array_deq_diff skolem
+; DISABLE-TESTER: cpc
 ; REQUIRES: unrestricted-mode
 ; COMMAND-LINE: --parse-skolem-definitions --print-skolem-definitions
 ;; Non-SMT-LIB benchmark

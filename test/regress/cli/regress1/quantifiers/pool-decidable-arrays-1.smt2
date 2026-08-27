@@ -1,3 +1,5 @@
+; note: cpc reference checking not supported, declare-pool cannot appear in an ethos reference file
+; DISABLE-TESTER: cpc
 ; COMMAND-LINE: --user-pat=strict
 ; EXPECT: unsat
 ; DISABLE-TESTER: unsat-core

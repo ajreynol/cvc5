@@ -1,3 +1,5 @@
+; note: cpc reference checking not supported, the symbol t is used both as a define-fun and as a sort name
+; DISABLE-TESTER: cpc
 ; EXPECT: unsat
 (set-logic ALL)
 (declare-sort i 0)

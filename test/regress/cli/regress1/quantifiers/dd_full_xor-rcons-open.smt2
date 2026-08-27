@@ -1,3 +1,5 @@
+; note: cpc reference checking not supported, cvc5 collapses singleton and/or applications when parsing, so the assumptions of the proof are not syntactically the assertions of this file
+; DISABLE-TESTER: cpc
 ; EXPECT: unsat
 (set-logic UFNIA)
 (declare-fun p (Int) Int)

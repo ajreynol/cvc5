@@ -1,3 +1,5 @@
+; note: cpc reference checking not supported, define-fun-rec cannot appear in an ethos reference file
+; DISABLE-TESTER: cpc
 ; REQUIRES: unrestricted-mode
 ; COMMAND-LINE: --dt-stc-ind --conjecture-gen
 ; DISABLE-TESTER: unsat-core

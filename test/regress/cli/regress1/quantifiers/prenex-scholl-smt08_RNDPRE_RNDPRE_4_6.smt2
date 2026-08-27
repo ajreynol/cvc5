@@ -1,3 +1,5 @@
+; note: cpc reference checking not supported, numerals in this file are Real-typed by cvc5 but Int-typed by ethos
+; DISABLE-TESTER: cpc
 (set-info :smt-lib-version 2.6)
 (set-logic LRA)
 (set-info :source |

@@ -1,3 +1,5 @@
+; note: cpc reference checking not supported, numerals in this file are Real-typed by cvc5 but Int-typed by ethos
+; DISABLE-TESTER: cpc
 ; REQUIRES: no-safe-mode
 ; COMMAND-LINE: --no-nl-cov
 ; EXPECT: unsat

@@ -1,3 +1,5 @@
+; note: cpc reference checking not supported, cvc5 collapses singleton and/or applications and drops :pattern/:qid annotations when parsing, so the assumptions of the proof are not syntactically the assertions of this file
+; DISABLE-TESTER: cpc
 ;; Unary OR is not supported in Alethe
 ; DISABLE-TESTER: alethe
 (set-logic ALL)

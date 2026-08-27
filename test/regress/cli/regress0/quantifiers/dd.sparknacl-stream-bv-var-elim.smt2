@@ -1,3 +1,5 @@
+; note: cpc reference checking not supported, a quantified variable here shadows a declared sort name
+; DISABLE-TESTER: cpc
 ; EXPECT: unsat
 (set-logic ALL)
 (declare-sort b 0)

@@ -1,3 +1,5 @@
+; note: cpc reference checking not supported, define-funs-rec cannot appear in an ethos reference file
+; DISABLE-TESTER: cpc
 ; REQUIRES: unrestricted-mode
 ; EXPECT: unsat
 (set-logic ALL)

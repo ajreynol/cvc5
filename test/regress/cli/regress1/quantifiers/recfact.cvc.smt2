@@ -1,3 +1,5 @@
+; note: cpc reference checking not supported, define-fun-rec cannot appear in an ethos reference file
+; DISABLE-TESTER: cpc
 ; REQUIRES: unrestricted-mode
 ; EXPECT: unsat
 ;; Unsat core checking with proofs at one point had issues for

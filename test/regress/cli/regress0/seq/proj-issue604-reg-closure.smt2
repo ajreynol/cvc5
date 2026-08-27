@@ -1,3 +1,5 @@
+; note: cpc reference checking not supported, the n-ary form of set.insert used here has no Eunoia equivalent, the signature declares it over a typed list
+; DISABLE-TESTER: cpc
 ; REQUIRES: unrestricted-mode
 ; EXPECT: unsat
 ; DISABLE-TESTER: lfsc
