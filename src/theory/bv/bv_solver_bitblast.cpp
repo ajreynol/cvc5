@@ -275,12 +275,11 @@ void BVSolverBitblast::postCheck(Theory::Effort level)
         // is trusted here is the bit-blasting and SAT reasoning only, and the
         // lemmas themselves are proven by the abstraction module.
         Node conc = conflict.notNode();
-        std::vector<Node> targs{
-            mkTrustId(nm, TrustId::BV_BITBLAST_CONFLICT), conc};
+        std::vector<Node> targs{mkTrustId(nm, TrustId::BV_BITBLAST_CONFLICT),
+                                conc};
         LazyCDProof lcp(d_env, d_am->getProofGenerator());
         lcp.addStep(conc, ProofRule::TRUST, d_refineLemmas, targs);
-        tconflict =
-            d_epg->mkTrustNode(conflict, lcp.getProofFor(conc), true);
+        tconflict = d_epg->mkTrustNode(conflict, lcp.getProofFor(conc), true);
       }
     }
     else

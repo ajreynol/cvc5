@@ -263,9 +263,7 @@ TEST_F(TestTheoryWhiteBvAbstractionLemmas, proof_rule_negative)
   // the equality of the guard must have the abstracted term on the left
   Node reverseGuardLemma = t.eqNode(mul).impNode(inst);
   ASSERT_FALSE(reg.isAbstractionLemma(reverseGuardLemma));
-  ASSERT_TRUE(checker.check(ProofRule::BV_ABSTRACTION,
-                            {},
-                            {reverseGuardLemma})
+  ASSERT_TRUE(checker.check(ProofRule::BV_ABSTRACTION, {}, {reverseGuardLemma})
                   .isNull());
   // guard for a different abstraction constant
   ASSERT_FALSE(reg.isAbstractionLemma(mul.eqNode(t2).impNode(inst)));
