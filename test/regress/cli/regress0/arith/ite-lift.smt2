@@ -1,5 +1,3 @@
-; note: cpc reference checking not supported, numerals in this file are Real-typed by cvc5 but Int-typed by ethos
-; DISABLE-TESTER: cpc
 (set-option :incremental false)
 (set-info :status unsat)
 (set-info :category "crafted")

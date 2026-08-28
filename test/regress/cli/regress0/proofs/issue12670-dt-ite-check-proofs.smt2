@@ -1,5 +1,3 @@
-; note: cpc reference checking not supported, the datatype tester ((_ is C) x) is not parsed as the term cvc5 prints for it
-; DISABLE-TESTER: cpc
 ; COMMAND-LINE: --check-proofs
 ; DISABLE-TESTER: unsat-core
 ; EXPECT: unsat

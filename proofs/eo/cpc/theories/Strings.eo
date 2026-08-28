@@ -134,7 +134,7 @@
 ;   declare it to be :right-assoc-nil to model cvc5's treatment of variadic
 ;   functions.
 (declare-const re.union (-> RegLan RegLan RegLan) :right-assoc-nil re.none)
-(declare-const re.diff (-> RegLan RegLan RegLan))
+(declare-const re.diff (-> RegLan RegLan RegLan) :left-assoc)
 (declare-parameterized-const re.loop ((l Int :opaque) (h Int :opaque))
   (-> RegLan (eo::requires ($is_numeral l) true (eo::requires ($is_numeral h) true RegLan))))
 (declare-const str.in_re (-> String RegLan Bool))

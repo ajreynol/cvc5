@@ -1,5 +1,3 @@
-; note: cpc reference checking not supported, define-fun-rec cannot appear in an ethos reference file
-; DISABLE-TESTER: cpc
 (set-logic UFLIA)
 (set-info :status unsat)
 (define-fun-rec sumr ((x Int)) Int 

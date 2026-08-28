@@ -1,5 +1,3 @@
-; note: cpc reference checking not supported, cvc5 collapses singleton and/or applications when parsing, so the assumptions of the proof are not syntactically the assertions of this file
-; DISABLE-TESTER: cpc
 ; REQUIRES: unrestricted-mode
 ; COMMAND-LINE: --ee-mode=distributed
 ; COMMAND-LINE: --ee-mode=central

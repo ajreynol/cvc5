@@ -1,5 +1,3 @@
-; note: cpc reference checking not supported, declare-pool cannot appear in an ethos reference file
-; DISABLE-TESTER: cpc
 ; REQUIRES: unrestricted-mode
 ; COMMAND-LINE: --pool-inst
 ; EXPECT: unsat

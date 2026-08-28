@@ -1,5 +1,3 @@
-; note: cpc reference checking not supported, declare-heap cannot appear in an ethos reference file
-; DISABLE-TESTER: cpc
 ; REQUIRES: unrestricted-mode
 (set-logic QF_SEP_LIA)
 (set-info :status unsat)

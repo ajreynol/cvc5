@@ -1,5 +1,3 @@
-; note: cpc reference checking not supported, numerals in this file are Real-typed by cvc5 but Int-typed by ethos
-; DISABLE-TESTER: cpc
 ; Source: NRA/keymaera/ETCS-essentials-live-range2.proof-node1388.smt2
 ; COMMAND-LINE: --var-ineq-elim-quant
 ; EXPECT: unsat

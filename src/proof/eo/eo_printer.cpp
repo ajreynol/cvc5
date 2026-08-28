@@ -945,11 +945,23 @@ void EoPrinter::print(EoPrintChannelOut& aout,
         continue;
       }
       processed.insert(n);
-      // define-fun are HO equalities that can be proven by refl
+      // define-fun are HO equalities.
       size_t id = allocateAssumeId(n, wasAlloc);
       Node f = d_tproc.convert(n[0]);
       Node lam = d_tproc.convert(n[1]);
-      ao->printStep("refl", f.eqNode(lam), id, {}, {lam});
+      if (options().proof.proofPrintReference)
+      {
+        // When referencing the original input, the checker has read the
+        // define-fun as an assertion equating the symbol with its body, so
+        // the equality is an assumption of the proof.
+        ao->printAssume(f.eqNode(lam), id, false);
+      }
+      else
+      {
+        // Otherwise the symbol was printed as a macro that expands to its
+        // body, hence the equality is provable by refl.
+        ao->printStep("refl", f.eqNode(lam), id, {}, {lam});
+      }
     }
     // [5] print proof body
     printProofInternal(ao, pnBody, i == 1);

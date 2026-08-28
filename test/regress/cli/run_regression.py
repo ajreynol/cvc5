@@ -353,11 +353,17 @@ class CpcTester(Tester):
     def run_internal(self, benchmark_info):
         exit_code = EXIT_OK
         with tempfile.NamedTemporaryFile() as tmpf:
+            # Reference checking is enabled in restricted builds only. These
+            # builds disable the features that lack proof support, which
+            # excludes most of the inputs that ethos cannot faithfully parse.
+            # In other builds, the proof redeclares the symbols of the
+            # benchmark and its assumptions are not checked against the input.
+            reference = benchmark_info.safe_mode
             cvc5_args = [
                 "--dump-proofs",
                 "--proof-print-conclusion",
-                "--proof-print-reference",
-            ] + benchmark_info.command_line_args
+            ] + (["--proof-print-reference"] if reference else []) \
+              + benchmark_info.command_line_args
             output, error, exit_status = run_process(
                 [benchmark_info.cvc5_binary]
                 + cvc5_args
@@ -381,10 +387,11 @@ class CpcTester(Tester):
             # generated with --proof-print-reference, hence it does not
             # redeclare the symbols of the benchmark; they come from the
             # reference file.
-            benchmark_path = os.path.abspath(
-                os.path.join(benchmark_info.benchmark_dir,
-                             benchmark_info.benchmark_basename))
-            tmpf.write(("(reference \"" + benchmark_path + "\")").encode())
+            if reference:
+                benchmark_path = os.path.abspath(
+                    os.path.join(benchmark_info.benchmark_dir,
+                                 benchmark_info.benchmark_basename))
+                tmpf.write(("(reference \"" + benchmark_path + "\")").encode())
             # strip the unsat and parentheses
             output, exit_code = self.strip_proof_body(output)
             if exit_code == EXIT_FAILURE:
