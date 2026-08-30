@@ -40,7 +40,7 @@
 ; - s (Seq T): The sequence term.
 ; return: true if s is a (non standalone seq.unit) sequence constant.
 (program $is_seq_const_rec ((T Type) (e T) (ss (Seq T) :list))
-  :signature ((Seq T)) Int
+  :signature ((Seq T)) Bool
   (
   (($is_seq_const_rec (seq.++ (seq.unit e) ss))   ($is_seq_const_rec ss))
   (($is_seq_const_rec (as seq.empty (Seq T)))     true)
@@ -53,7 +53,7 @@
 ; - s (Seq T): The sequence term.
 ; return: true if s is a sequence constant.
 (program $is_seq_const ((T Type) (e T) (ss (Seq T)))
-  :signature ((Seq T)) Int
+  :signature ((Seq T)) Bool
   (
   (($is_seq_const (seq.unit e)) true)
   (($is_seq_const ss)           ($is_seq_const_rec ss))
