@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Mathias Preiner, Aina Niemetz
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -46,7 +43,7 @@ Node QuantifiersMacros::solve(Node lit, bool reqGround)
   Node body = lit[1];
   bool pol = body.getKind() != Kind::NOT;
   Node n = pol ? body : body[0];
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   if (n.getKind() == Kind::APPLY_UF)
   {
     // predicate case
@@ -257,7 +254,7 @@ Node QuantifiersMacros::solveInEquality(Node n, Node lit)
 Node QuantifiersMacros::solveEq(Node n, Node ndef)
 {
   Assert(n.getKind() == Kind::APPLY_UF);
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   Trace("macros-debug") << "Add macro eq for " << n << std::endl;
   Trace("macros-debug") << "  def: " << ndef << std::endl;
   std::vector<Node> vars;
@@ -265,7 +262,7 @@ Node QuantifiersMacros::solveEq(Node n, Node ndef)
   for (const Node& nc : n)
   {
     vars.push_back(nc);
-    Node v = nm->mkBoundVar(nc.getType());
+    Node v = NodeManager::mkBoundVar(nc.getType());
     fvars.push_back(v);
   }
   Node fdef =
@@ -281,7 +278,7 @@ Node QuantifiersMacros::solveEq(Node n, Node ndef)
   }
   TNode op = n.getOperator();
   TNode fdeft = fdef;
-  Assert(op.getType() == fdef.getType());
+  AssertEqual(op.getType(), fdef.getType());
   return op.eqNode(fdef);
 }
 

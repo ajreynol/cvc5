@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Andres Noetzli, Aina Niemetz
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -44,10 +41,10 @@ ArraySolver::ArraySolver(Env& env,
       d_bsolver(bs),
       d_csolver(cs),
       d_esolver(es),
-      d_coreSolver(env, s, im, tr, cs, es, extt),
+      d_coreSolver(env, s, im, tr, es, extt),
       d_eqProc(context())
 {
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   d_zero = nm->mkConstInt(Rational(0));
 }
 
@@ -152,7 +149,7 @@ void ArraySolver::checkTerms(const std::vector<Node>& terms)
 
 void ArraySolver::checkTerm(Node t, bool checkInv)
 {
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   Kind k = t.getKind();
   Node r = d_state.getRepresentative(t[0]);
   Node rself;
@@ -223,10 +220,9 @@ void ArraySolver::checkTerm(Node t, bool checkInv)
         if (k == Kind::STRING_UPDATE)
         {
           iid = InferenceId::STRINGS_ARRAY_UPDATE_UNIT;
-          eq = nm->mkNode(Kind::ITE,
-                          t[1].eqNode(d_zero),
-                          t.eqNode(t[2]),
-                          t.eqNode(nf.d_nf[0]));
+          eq = nm->mkNode(
+              Kind::ITE,
+              {t[1].eqNode(d_zero), t.eqNode(t[2]), t.eqNode(nf.d_nf[0])});
         }
         else
         {
@@ -319,7 +315,7 @@ void ArraySolver::checkTerm(Node t, bool checkInv)
       // variable, in particular, the purification variable for the substring
       // of the term we are updating.
       Node sstr = nm->mkNode(Kind::STRING_SUBSTR, t[0], currSum, clen);
-      cc = skc->mkSkolemCached(sstr, SkolemCache::SkolemId::SK_PURIFY, "z");
+      cc = skc->mkSkolemCached(sstr, SkolemCache::SK_PURIFY, "z");
     }
     // If it is a constant of length one, then the update/nth is determined
     // in this interval. Notice this is done here as

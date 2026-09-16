@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Mudathir Mohamed, Andrew Reynolds, Kshitij Bansal
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -28,7 +25,6 @@
 #include "theory/sets/solver_state.h"
 #include "theory/sets/term_registry.h"
 #include "theory/sets/theory_sets_rels.h"
-#include "theory/sets/theory_sets_rewriter.h"
 #include "theory/theory.h"
 #include "theory/uf/equality_engine.h"
 
@@ -80,17 +76,14 @@ class TheorySetsPrivate : protected EnvObj
    * Apply the following rule for filter terms (set.filter p A):
    * (=>
    *   (and (set.member x B) (= A B))
-   *   (or
-   *    (and (p x) (set.member x (set.filter p A)))
-   *    (and (not (p x)) (not (set.member x (set.filter p A))))
-   *   )
+   *   (= (set.member x (set.filter p A)) (p x))
    * )
    */
   void checkFilterUp();
   /**
    * Apply the following rule for filter terms (set.filter p A):
    * (=>
-   *   (bag.member x (set.filter p A))
+   *   (set.member x (set.filter p A))
    *   (and
    *    (p x)
    *    (set.member x A)
@@ -98,7 +91,6 @@ class TheorySetsPrivate : protected EnvObj
    * )
    */
   void checkFilterDown();
-
   /**
    * Apply the following rule for map terms (set.map f A):
    * Positive member rule:
@@ -118,7 +110,7 @@ class TheorySetsPrivate : protected EnvObj
    *       (set.member x A)
    *     )
    *   )
-   *   where x is a fresh skolem   
+   *   where x is a fresh skolem
    */
   void checkMapDown();
   void checkGroups();
@@ -286,20 +278,20 @@ class TheorySetsPrivate : protected EnvObj
    * context.
    */
   NodeSet d_termProcessed;
-  
-  //propagation
+
+  // propagation
   class EqcInfo
   {
-  public:
-   EqcInfo(context::Context* c);
-   ~EqcInfo() {}
-   // singleton or emptyset equal to this eqc
-   context::CDO<Node> d_singleton;
+   public:
+    EqcInfo(context::Context* c);
+    ~EqcInfo() {}
+    // singleton or emptyset equal to this eqc
+    context::CDO<Node> d_singleton;
   };
   /** information necessary for equivalence classes */
-  std::map< Node, EqcInfo* > d_eqc_info;
+  std::map<Node, EqcInfo*> d_eqc_info;
   /** get or make eqc info */
-  EqcInfo* getOrMakeEqcInfo( TNode n, bool doMake = false );
+  EqcInfo* getOrMakeEqcInfo(TNode n, bool doMake = false);
 
   /** full check incomplete
    *
@@ -312,7 +304,6 @@ class TheorySetsPrivate : protected EnvObj
   IncompleteId d_fullCheckIncompleteId;
 
  public:
-
   /**
    * Constructs a new instance of TheorySetsPrivate w.r.t. the provided
    * contexts.
@@ -325,8 +316,6 @@ class TheorySetsPrivate : protected EnvObj
                     CarePairArgumentCallback& cpacb);
 
   ~TheorySetsPrivate();
-
-  TheoryRewriter* getTheoryRewriter() { return &d_rewriter; }
 
   /** Get the solver state */
   SolverState* getSolverState() { return &d_state; }
@@ -376,15 +365,13 @@ class TheorySetsPrivate : protected EnvObj
   SolverState& d_state;
   /** The inference manager of the sets solver */
   InferenceManager& d_im;
-  /** Reference to the skolem cache */
-  SkolemCache& d_skCache;
   /** The term registry */
   TermRegistry d_treg;
 
   /** Pointer to the equality engine of theory of sets */
   eq::EqualityEngine* d_equalityEngine;
 
-  bool isCareArg( Node n, unsigned a );
+  bool isCareArg(Node n, unsigned a);
 
   /** expand the definition of the choose operator */
   TrustNode expandChooseOperator(const Node& node,
@@ -394,16 +381,30 @@ class TheorySetsPrivate : protected EnvObj
   /** ensure that the set type is over first class type, throw logic exception
    * if not */
   void ensureFirstClassSetType(TypeNode tn) const;
+  /**
+   * Ensure cardinality is enabled, which may throw a logic exception if
+   * setCardExp is false.
+   */
+  void ensureCardinalityEnabled();
+  /**
+   * Ensure relations are enabled, which may throw a logic exception if
+   * relsExp is false.
+   */
+  void ensureRelationsEnabled();
   /** subtheory solver for the theory of relations */
   std::unique_ptr<TheorySetsRels> d_rels;
   /** subtheory solver for the theory of sets with cardinality */
   std::unique_ptr<CardinalityExtension> d_cardSolver;
+  /** Have we ever seen relations? */
+  bool d_hasEnabledRels;
   /** are relations enabled?
    *
    * This flag is set to true during a full effort check if any constraint
    * involving relational constraints is asserted to this theory.
    */
   bool d_rels_enabled;
+  /** Have we ever seen cardinality? */
+  bool d_hasEnabledCard;
   /** is cardinality enabled?
    *
    * This flag is set to true during a full effort check if any constraint
@@ -417,9 +418,6 @@ class TheorySetsPrivate : protected EnvObj
    * higher order constraints is asserted to this theory.
    */
   bool d_higher_order_kinds_enabled;
-
-  /** The theory rewriter for this theory. */
-  TheorySetsRewriter d_rewriter;
 
   /** a map that maps each set to an existential quantifier generated for
    * operator is_singleton */

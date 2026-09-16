@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Gereon Kremer, Andres Noetzli
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -45,7 +42,7 @@ std::vector<TrustNode> BranchAndBound::branchIntegerVariable(TNode var,
                                                              Rational value)
 {
   std::vector<TrustNode> lems;
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   Integer floor = value.floor();
   if (options().arith.brabTest)
   {
@@ -97,15 +94,16 @@ std::vector<TrustNode> BranchAndBound::branchIntegerVariable(TNode var,
       Pf pfNotRawEq =
           literal == rawEq
               ? pfNotLit
-              : pnm->mkNode(
-                  ProofRule::MACRO_SR_PRED_TRANSFORM,
-                  {pfNotLit, teq.getGenerator()->getProofFor(teq.getProven())},
-                  {rawEq.negate()});
+              : pnm->mkNode(ProofRule::MACRO_SR_PRED_TRANSFORM,
+                            {pfNotLit,
+                             teq.getGenerator()->getProofFor(teq.getProven())},
+                            {rawEq.negate()});
       Pf pfBot =
           pnm->mkNode(ProofRule::CONTRA,
                       {pnm->mkNode(ProofRule::ARITH_TRICHOTOMY,
                                    {pnm->mkAssume(less.negate()), pfNotRawEq},
-                                   {greater}),
+                                   {},
+                                   greater),
                        pnm->mkAssume(greater.negate())},
                       {});
       std::vector<Node> assumptions = {

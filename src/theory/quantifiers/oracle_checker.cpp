@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -25,19 +22,21 @@ namespace cvc5::internal {
 namespace theory {
 namespace quantifiers {
 
-bool OracleChecker::checkConsistent(Node app,
-                                    Node val,
-                                    std::vector<Node>& lemmas)
+OracleChecker::OracleChecker(Env& env)
+    : EnvObj(env), NodeConverter(env.getNodeManager())
+{
+}
+
+Node OracleChecker::checkConsistent(Node app, Node val)
 {
   Node result = evaluateApp(app);
   Trace("oracle-calls") << "checkConsistent " << app << " == " << result
                         << " vs " << val << std::endl;
   if (result != val)
   {
-    lemmas.push_back(result.eqNode(app));
-    return false;
+    return result;
   }
-  return true;
+  return Node::null();
 }
 
 Node OracleChecker::evaluateApp(Node app)
@@ -54,16 +53,30 @@ Node OracleChecker::evaluateApp(Node app)
 
   // get oracle result
   std::vector<Node> retv;
-  caller.callOracle(app, retv);
+  bool ranOracle = caller.callOracle(app, retv);
   if (retv.size() != 1)
   {
-    Assert(false) << "Failed to evaluate " << app
-                  << " to a single return value, got: " << retv << std::endl;
+    DebugUnhandled() << "Failed to evaluate " << app
+                     << " to a single return value, got: " << retv << std::endl;
     return app;
   }
   Node ret = retv[0];
   ret = rewrite(ret);
-  if (ret.getType() != app.getType())
+  if (ranOracle)
+  {
+    // prints the result of the oracle, if it was computed in the call above.
+    // this prints the original application, its result, and the exit code
+    // of the binary.
+    d_env.output(options::OutputTag::ORACLES)
+        << "(oracle-call " << app << " " << ret << ")" << std::endl;
+  }
+  if (ret.getNodeManager() != app.getNodeManager())
+  {
+    throw LogicException(
+        "Evaluated an oracle call that is not associated with the term manager "
+        "of this solver");
+  }
+  if (!CVC5_EQUAL(ret.getType(), app.getType()))
   {
     std::stringstream ss;
     ss << "Evaluated an oracle call with an unexpected type: " << app << " = "

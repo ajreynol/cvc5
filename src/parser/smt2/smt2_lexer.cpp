@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -24,9 +21,7 @@ namespace cvc5 {
 namespace parser {
 
 Smt2Lexer::Smt2Lexer(bool isStrict, bool isSygus)
-    : Lexer(),
-      d_isStrict(isStrict),
-      d_isSygus(isSygus)
+    : Lexer(), d_isStrict(isStrict), d_isSygus(isSygus)
 {
   for (int32_t ch = 'a'; ch <= 'z'; ++ch)
   {
@@ -122,7 +117,6 @@ Token Smt2Lexer::computeNextToken()
   pushToToken(ch);
   switch (ch)
   {
-    case '!': return Token::ATTRIBUTE_TOK;
     case '(': return Token::LPAREN_TOK;
     case ')': return Token::RPAREN_TOK;
     case '|':
@@ -153,7 +147,7 @@ Token Smt2Lexer::computeNextToken()
           // parse [0-9a-fA-F]+
           if (!parseNonEmptyCharList(CharacterClass::HEXADECIMAL_DIGIT))
           {
-            parseError("Error expected hexidecimal string");
+            parseError("Error expected hexadecimal string");
           }
           return Token::HEX_LITERAL;
         case 'f':
@@ -224,6 +218,16 @@ Token Smt2Lexer::computeNextToken()
         {
           pushToToken(ch);
           res = Token::DECIMAL_LITERAL;
+          // parse [0-9]+
+          if (!parseNonEmptyCharList(CharacterClass::DECIMAL_DIGIT))
+          {
+            parseError("Error expected decimal string following .");
+          }
+        }
+        else if (ch == '/')
+        {
+          pushToToken(ch);
+          res = Token::RATIONAL_LITERAL;
           // parse [0-9]+
           if (!parseNonEmptyCharList(CharacterClass::DECIMAL_DIGIT))
           {
@@ -311,6 +315,12 @@ Token Smt2Lexer::tokenizeCurrentSymbol() const
   Assert(!d_token.empty());
   switch (d_token[0])
   {
+    case '!':
+      if (d_token.size() == 1)
+      {
+        return Token::ATTRIBUTE_TOK;
+      }
+      break;
     case 'a':
       if (d_token.size() == 2 && d_token[1] == 's')
       {
@@ -342,6 +352,39 @@ Token Smt2Lexer::tokenizeCurrentSymbol() const
         return Token::INDEX_TOK;
       }
       break;
+    case '-':
+    {
+      // note that `-4`, `-4.0`, `-4/5` are SMT-LIB symbols, hence we only
+      // convert these to literals if we are not strict parsing.
+      if (!d_isStrict && d_token.size() >= 2)
+      {
+        // reparse as a negative numeral, rational or decimal
+        Token ret = Token::INTEGER_LITERAL;
+        for (size_t i = 1, tsize = d_token.size(); i < tsize; i++)
+        {
+          if (isCharacterClass(d_token[i], CharacterClass::DECIMAL_DIGIT))
+          {
+            continue;
+          }
+          else if (i + 1 < tsize && ret == Token::INTEGER_LITERAL)
+          {
+            if (d_token[i] == '.')
+            {
+              ret = Token::DECIMAL_LITERAL;
+              continue;
+            }
+            else if (d_token[i] == '/')
+            {
+              ret = Token::RATIONAL_LITERAL;
+              continue;
+            }
+          }
+          return Token::SYMBOL;
+        }
+        return ret;
+      }
+    }
+    break;
     default: break;
   }
   // otherwise not a special symbol

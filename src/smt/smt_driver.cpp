@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Andres Noetzli
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -28,7 +25,7 @@ namespace cvc5::internal {
 namespace smt {
 
 SmtDriver::SmtDriver(Env& env, SmtSolver& smt, ContextManager* ctx)
-    : EnvObj(env), d_smt(smt), d_ctx(ctx), d_ap(env)
+    : EnvObj(env), d_smt(smt), d_ctx(ctx), d_ap(env), d_illegalChecker(env)
 {
   // set up proofs, this is done after options are finalized, so the
   // preprocess proof has been setup
@@ -53,6 +50,10 @@ Result SmtDriver::checkSat(const std::vector<Node>& assumptions)
   {
     // then, initialize the assertions
     as.setAssumptions(assumptions);
+
+    // the assertions are now finalized, we call the illegal checker to
+    // verify that any new assertions are legal
+    d_illegalChecker.checkAssertions(as);
 
     // make the check, where notice smt engine should be fully inited by now
 
@@ -156,9 +157,48 @@ SmtDriverSingleCall::SmtDriverSingleCall(Env& env,
 
 Result SmtDriverSingleCall::checkSatNext(preprocessing::AssertionPipeline& ap)
 {
+  // preprocess
   d_smt.preprocess(ap);
+
+  if (options().base.preprocessOnly)
+  {
+    return Result(Result::UNKNOWN, UnknownExplanation::REQUIRES_FULL_CHECK);
+  }
+
+  // assert to internal
   d_smt.assertToInternal(ap);
-  return d_smt.checkSatInternal();
+  // get result
+  Result result = d_smt.checkSatInternal();
+  // handle preprocessing-specific modifications to result
+  if (ap.isNegated())
+  {
+    Trace("smt") << "SmtSolver::process global negate " << result << std::endl;
+    if (result.getStatus() == Result::UNSAT)
+    {
+      result = Result(Result::SAT);
+    }
+    else if (result.getStatus() == Result::SAT)
+    {
+      // Only can answer unsat if the theory is satisfaction complete. In
+      // other words, a "sat" result for a closed formula indicates that the
+      // formula is true in *all* models.
+      // This includes linear arithmetic and bitvectors, which are the primary
+      // targets for the global negate option. Other logics are possible
+      // here but not considered.
+      LogicInfo logic = logicInfo();
+      if ((logic.isPure(theory::THEORY_ARITH) && logic.isLinear())
+          || logic.isPure(theory::THEORY_BV))
+      {
+        result = Result(Result::UNSAT);
+      }
+      else
+      {
+        result = Result(Result::UNKNOWN, UnknownExplanation::UNKNOWN_REASON);
+      }
+    }
+    Trace("smt") << "SmtSolver::global negate returned " << result << std::endl;
+  }
+  return result;
 }
 
 void SmtDriverSingleCall::getNextAssertions(

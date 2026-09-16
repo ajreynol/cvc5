@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Andres Noetzli, Aina Niemetz
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -34,7 +31,7 @@ uint32_t getDefaultAlphabetCardinality();
  * Make the conjunction of nodes in a. Removes duplicate conjuncts, returns
  * true if a is empty, and a single literal if a has size 1.
  */
-Node mkAnd(const std::vector<Node>& a);
+Node mkAnd(NodeManager* nm, const std::vector<Node>& a);
 
 /**
  * Adds all (non-duplicate) children of <k> applications from n to conj. For
@@ -49,13 +46,14 @@ void flattenOp(Kind k, Node n, std::vector<Node>& conj);
  * when n = str.++( x, y ), c is { x, y }
  * when n = str.++( x, str.++( y, z ), w ), c is { x, str.++( y, z ), w )
  * when n = x, c is { x }
+ * when n = "", c is { "" }
  *
  * Also applies to regular expressions (re.++ above).
  */
 void getConcat(Node n, std::vector<Node>& c);
 
 /**
- * Make the concatentation from vector c of (string-like or regular
+ * Make the concatenation from vector c of (string-like or regular
  * expression) type tn.
  */
 Node mkConcat(const std::vector<Node>& c, TypeNode tn);
@@ -69,6 +67,15 @@ Node mkPrefix(Node t, Node n);
  * Returns (suf t n), which is (str.substr t n (- (str.len t) n)).
  */
 Node mkSuffix(Node t, Node n);
+
+/**
+ * Returns (str.substr t 0 (- (str.len t) n)).
+ */
+Node mkPrefixExceptLen(Node t, Node n);
+/**
+ * Returns (str.substr t (- (str.len t) n) n).
+ */
+Node mkSuffixOfLen(Node t, Node n);
 
 /**
  * Make a unit, returns either (str.unit n) or (seq.unit n) depending
@@ -183,9 +190,9 @@ bool isSimpleRegExp(Node r);
  */
 void getRegexpComponents(Node r, std::vector<Node>& result);
 
-/** Print the vector n as a concatentation term on output stream out */
+/** Print the vector n as a concatenation term on output stream out */
 void printConcat(std::ostream& out, std::vector<Node>& n);
-/** Print the vector n as a concatentation term on trace given by c */
+/** Print the vector n as a concatenation term on trace given by c */
 void printConcatTrace(std::vector<Node>& n, const char* c);
 
 /** Is k a string-specific kind? */
@@ -218,7 +225,7 @@ unsigned getLoopMinOccurrences(TNode node);
  * FORALL returned by this method. This ensures that E-matching is not applied
  * to the quantified formula.
  */
-Node mkForallInternal(Node bvl, Node body);
+Node mkForallInternal(NodeManager* nm, Node bvl, Node body);
 
 /**
  * Make abstract value for string-like term n whose length is given by len.

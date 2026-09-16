@@ -1,4 +1,14 @@
 #!/usr/bin/env python3
+###############################################################################
+# This file is part of the cvc5 project.
+#
+# Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+# in the top-level source directory and their institutional affiliations.
+# All rights reserved.  See the file COPYING in the top-level source
+# directory for licensing information.
+# #############################################################################
+#
+##
 
 import argparse
 import collections
@@ -45,7 +55,7 @@ def identify_next_version():
         sys.exit(1)
     logging.debug('git version info: {}'.format(curversion))
 
-    re_release = re.compile('^cvc5-(\d+)\.(\d+)\.(\d+)')
+    re_release = re.compile(r'^cvc5-(\d+)\.(\d+)\.(\d+)')
     m = re_release.match(curversion)
     if m:
         major, minor, patch = map(int, m.groups())

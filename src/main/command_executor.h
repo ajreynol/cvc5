@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Gereon Kremer, Kshitij Bansal
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -85,6 +82,16 @@ class CommandExecutor
   void storeOptionsAsOriginal();
 
   /**
+   * Set option internal. This method should be used to set options on the
+   * underlying solver that do not originate from the user. We do this to
+   * set expert or undocumented options that should not throw an exception
+   * e.g. when using --safe-options.
+   * @param key The option to set
+   * @param value The value to set
+   */
+  void setOptionInternal(const std::string& key, const std::string& value);
+
+  /**
    * Prints statistics to an output stream.
    * Checks whether statistics should be printed according to the options.
    * Thus, this method can always be called without checking the options.
@@ -110,10 +117,8 @@ class CommandExecutor
 
   bool solverInvoke(cvc5::Solver* solver,
                     parser::SymManager* sm,
-                    parser::Cmd* cmd,
-                    std::ostream& out);
+                    parser::Cmd* cmd);
 }; /* class CommandExecutor */
-
 
 }  // namespace main
 }  // namespace cvc5

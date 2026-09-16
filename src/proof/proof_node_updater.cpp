@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Haniel Barbosa, Hanna Lachnitt
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -16,6 +13,7 @@
 #include "proof/proof_node_updater.h"
 
 #include "proof/lazy_proof.h"
+#include "proof/proof_checker.h"
 #include "proof/proof_ensure_closed.h"
 #include "proof/proof_node_algorithm.h"
 #include "proof/proof_node_manager.h"
@@ -26,29 +24,46 @@ namespace cvc5::internal {
 ProofNodeUpdaterCallback::ProofNodeUpdaterCallback() {}
 ProofNodeUpdaterCallback::~ProofNodeUpdaterCallback() {}
 
-bool ProofNodeUpdaterCallback::update(Node res,
-                                      ProofRule id,
-                                      const std::vector<Node>& children,
-                                      const std::vector<Node>& args,
-                                      CDProof* cdp,
-                                      bool& continueUpdate)
+bool ProofNodeUpdaterCallback::shouldUpdate(
+    CVC5_UNUSED std::shared_ptr<ProofNode> pn,
+    CVC5_UNUSED const std::vector<Node>& fa,
+    CVC5_UNUSED bool& continueUpdate)
 {
   return false;
 }
 
-bool ProofNodeUpdaterCallback::shouldUpdatePost(std::shared_ptr<ProofNode> pn,
-                                                const std::vector<Node>& fa)
+bool ProofNodeUpdaterCallback::update(
+    CVC5_UNUSED Node res,
+    CVC5_UNUSED ProofRule id,
+    CVC5_UNUSED const std::vector<Node>& children,
+    CVC5_UNUSED const std::vector<Node>& args,
+    CVC5_UNUSED CDProof* cdp,
+    CVC5_UNUSED bool& continueUpdate)
 {
   return false;
 }
 
-bool ProofNodeUpdaterCallback::updatePost(Node res,
-                                          ProofRule id,
-                                          const std::vector<Node>& children,
-                                          const std::vector<Node>& args,
-                                          CDProof* cdp)
+bool ProofNodeUpdaterCallback::shouldUpdatePost(
+    CVC5_UNUSED std::shared_ptr<ProofNode> pn,
+    CVC5_UNUSED const std::vector<Node>& fa)
 {
   return false;
+}
+
+bool ProofNodeUpdaterCallback::updatePost(
+    CVC5_UNUSED Node res,
+    CVC5_UNUSED ProofRule id,
+    CVC5_UNUSED const std::vector<Node>& children,
+    CVC5_UNUSED const std::vector<Node>& args,
+    CVC5_UNUSED CDProof* cdp)
+{
+  return false;
+}
+
+void ProofNodeUpdaterCallback::finalize(
+    CVC5_UNUSED std::shared_ptr<ProofNode> pn)
+{
+  // do nothing
 }
 
 ProofNodeUpdater::ProofNodeUpdater(Env& env,
@@ -127,12 +142,20 @@ void ProofNodeUpdater::processInternal(std::shared_ptr<ProofNode> pf,
     it = visited.find(cur);
     if (it == visited.end())
     {
-      // check if there is a proof in resCache with the same result
+      // Check if there is a proof in resCache with the same result.
+      // Note that if this returns true, we update the contents of the current
+      // proof. Moreover, parents will replace the reference to this proof.
+      // Thus, replacing the contents of this proof is not (typically)
+      // necessary, but is done anyways in case there are any other references
+      // to this proof that are not handled by this loop, that is, proof
+      // nodes having this as a child that are not subproofs of pf.
       if (checkMergeProof(cur, resCache, cfaMap))
       {
+        Trace("pf-process-merge") << "...merged on previsit" << std::endl;
         visited[cur] = true;
         continue;
       }
+      preSimplify(cur);
       // run update to a fixed point
       bool continueUpdate = true;
       while (runUpdate(cur, fa, continueUpdate) && continueUpdate)
@@ -181,23 +204,156 @@ void ProofNodeUpdater::processInternal(std::shared_ptr<ProofNode> pf,
       traversing.pop_back();
       visited[cur] = true;
       // finalize the node
-      if (cur->getRule() == ProofRule::SCOPE)
+      ProofRule id = cur->getRule();
+      if (id == ProofRule::SCOPE)
       {
         const std::vector<Node>& args = cur->getArguments();
         Assert(fa.size() >= args.size());
         fa.resize(fa.size() - args.size());
       }
       // maybe found a proof in the meantime, i.e. a subproof of the current
-      // proof with the same result.
-      if (checkMergeProof(cur, resCache, cfaMap))
+      // proof with the same result. Same as above, updating the contents here
+      // is typically not necessary since references to this proof will be
+      // replaced.
+      // maybe found a proof in the meantime, i.e. a subproof of the current
+      // proof with the same result. Same as above, updating the contents here
+      // is typically not necessary since references to this proof will be
+      // replaced.
+      if (!checkMergeProof(cur, resCache, cfaMap))
       {
-        visited[cur] = true;
-        continue;
+        runFinalize(cur, fa, resCache, resCacheNcWaiting, cfaMap, cfaAllowed);
       }
-      runFinalize(cur, fa, resCache, resCacheNcWaiting, cfaMap, cfaAllowed);
+      else
+      {
+        Trace("pf-process-merge") << "...merged on postvisit " << id << " / "
+                                  << cur->getRule() << std::endl;
+      }
+      // call the finalize callback, independent of whether it was merged
+      d_cb.finalize(cur);
     }
   } while (!visit.empty());
   Trace("pf-process") << "ProofNodeUpdater::process: finished" << std::endl;
+}
+
+void ProofNodeUpdater::preSimplify(std::shared_ptr<ProofNode> cur)
+{
+  if (!d_mergeSubproofs)
+  {
+    return;
+  }
+  std::shared_ptr<ProofNode> toMerge;
+  do
+  {
+    ProofRule id = cur->getRule();
+    toMerge = nullptr;
+    switch (id)
+    {
+      case ProofRule::AND_ELIM:
+      {
+        // hardcoded for pattern (AND_ELIM (AND_INTRO ...))
+        const std::vector<std::shared_ptr<ProofNode>>& children =
+            cur->getChildren();
+        Assert(children.size() == 1);
+        if (children[0]->getRule() == ProofRule::AND_INTRO)
+        {
+          const std::vector<Node>& args = cur->getArguments();
+          Assert(args.size() == 1);
+          uint32_t i;
+          if (ProofRuleChecker::getUInt32(args[0], i))
+          {
+            const std::vector<std::shared_ptr<ProofNode>>& cc =
+                children[0]->getChildren();
+            if (i < cc.size())
+            {
+              Trace("pfu-pre-simplify")
+                  << "Pre-simplify AND_ELIM over AND_INTRO" << std::endl;
+              toMerge = cc[i];
+            }
+          }
+        }
+      }
+      break;
+      case ProofRule::SYMM:
+      {
+        // hardcoded for pattern (SYMM (SYMM ...))
+        const std::vector<std::shared_ptr<ProofNode>>& children =
+            cur->getChildren();
+        Assert(children.size() == 1);
+        if (children[0]->getRule() == ProofRule::SYMM)
+        {
+          const std::vector<std::shared_ptr<ProofNode>>& cc =
+              children[0]->getChildren();
+          Trace("pfu-pre-simplify")
+              << "Pre-simplify SYMM over SYMM" << std::endl;
+          toMerge = cc[0];
+        }
+      }
+      break;
+      default: break;
+    }
+    // Generic search, which checks if there is a descendent of this proof node
+    // (up to a default bound, set to 2), which proves the same conclusion as
+    // this node. If this is the case, then we immediately take that subproof.
+    // This heuristic makes a big difference for proofs e.g. of the form
+    // F1 ......... Fn
+    // ---------------- AND_INTRO
+    // (and F1 .... Fn)
+    // ---------------- MACRO_SR_PRED_INTRO
+    // false
+    // where one of Fi is false. In this case, we *only* want to post-process
+    // the proof of Fi.
+    // The case above occurs often in practice when a single assertion in the
+    // rewrite rewrites to false. This optimization saves the internal work of
+    // post-processing F1 ... F{i-1} F{i+1} ... Fn. The depth is configurable by
+    // --proof-pre-simp-lookahead=N, default 2.
+    uint64_t depthLimit = options().proof.proofPreSimpLookahead;
+    if (toMerge == nullptr && depthLimit > 0)
+    {
+      Node res = cur->getResult();
+      std::vector<std::pair<size_t, std::shared_ptr<ProofNode>>> toProcess;
+      toProcess.emplace_back(0, cur);
+      std::unordered_map<std::shared_ptr<ProofNode>, size_t> processed;
+      std::unordered_map<std::shared_ptr<ProofNode>, size_t>::iterator itp;
+      do
+      {
+        std::pair<size_t, std::shared_ptr<ProofNode>> p = toProcess.back();
+        toProcess.pop_back();
+        std::shared_ptr<ProofNode> cc = p.second;
+        // do not traverse SCOPE
+        if (cc->getRule() == ProofRule::SCOPE)
+        {
+          continue;
+        }
+        itp = processed.find(cc);
+        if (itp != processed.end() && p.first >= itp->second)
+        {
+          continue;
+        }
+        if (p.first > 0)
+        {
+          if (cc->getResult() == res)
+          {
+            toMerge = cc;
+            break;
+          }
+        }
+        if (p.first < depthLimit)
+        {
+          const std::vector<std::shared_ptr<ProofNode>>& children =
+              cc->getChildren();
+          for (const std::shared_ptr<ProofNode>& cp : children)
+          {
+            toProcess.emplace_back(p.first + 1, cp);
+          }
+        }
+      } while (!toProcess.empty());
+    }
+    if (toMerge != nullptr && toMerge != cur)
+    {
+      ProofNodeManager* pnm = d_env.getProofNodeManager();
+      pnm->updateNode(cur.get(), toMerge.get());
+    }
+  } while (toMerge != nullptr);
 }
 
 bool ProofNodeUpdater::updateProofNode(std::shared_ptr<ProofNode> cur,
@@ -249,6 +405,8 @@ bool ProofNodeUpdater::updateProofNode(std::shared_ptr<ProofNode> cur,
                          "pfnu-debug",
                          "ProofNodeUpdater:postupdate");
     }
+    // since we updated, we pre-simplify again
+    preSimplify(cur);
     Trace("pf-process-debug") << "..finished" << std::endl;
     return true;
   }
@@ -290,8 +448,7 @@ void ProofNodeUpdater::runFinalize(
     // cache the result if we don't contain an assumption
     if (!expr::containsAssumption(cur.get(), cfaMap, cfaAllowed))
     {
-      Trace("pf-process-debug")
-          << "No assumption pf: " << *cur.get() << std::endl;
+      Trace("pf-process-debug") << "No assumption pf: " << res << std::endl;
       // cache result if we are merging subproofs
       resCache[res] = cur;
       // go back and merge into the non-closed proofs of the same fact
@@ -309,9 +466,38 @@ void ProofNodeUpdater::runFinalize(
     }
     else
     {
-      Trace("pf-process-debug") << "Assumption pf: " << *cur.get() << ", with "
+      Trace("pf-process-debug") << "Assumption pf: " << res << ", with "
                                 << cfaAllowed.size() << std::endl;
       resCacheNcWaiting[res].push_back(cur);
+    }
+    // Now, do update of children, that is, we replace children of the current
+    // proof with the representative child in the cache, if they are different.
+    // This is necessary to do here since we only locally update the contents of
+    // a proof when a duplicate is encountered. Updating the reference to a
+    // child is done here.
+    std::map<Node, std::shared_ptr<ProofNode>>::iterator itr;
+    const std::vector<std::shared_ptr<ProofNode>>& ccp = cur->getChildren();
+    std::vector<std::shared_ptr<ProofNode>> newChildren;
+    bool childChanged = false;
+    for (const std::shared_ptr<ProofNode>& cp : ccp)
+    {
+      Node cpres = cp->getResult();
+      itr = resCache.find(cpres);
+      if (itr != resCache.end() && itr->second != cp)
+      {
+        newChildren.emplace_back(itr->second);
+        childChanged = true;
+      }
+      else
+      {
+        newChildren.emplace_back(cp);
+      }
+    }
+    if (childChanged)
+    {
+      ProofNodeManager* pnm = d_env.getProofNodeManager();
+      pnm->updateNode(
+          cur.get(), cur->getRule(), newChildren, cur->getArguments());
     }
   }
   if (d_debugFreeAssumps)
