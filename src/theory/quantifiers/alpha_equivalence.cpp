@@ -16,6 +16,7 @@
 #include "proof/method_id.h"
 #include "proof/proof.h"
 #include "proof/proof_node.h"
+#include "proof/proof_node_algorithm.h"
 #include "theory/builtin/proof_checker.h"
 
 using namespace cvc5::internal::kind;
@@ -303,20 +304,30 @@ TrustNode AlphaEquivalence::reduceQuantifier(Node q)
     {
       Node eq2 = sret.eqNode(q);
       transEq.push_back(eq2);
-      Node eq2r = extendedRewrite(eq2);
-      if (eq2r.isConst() && eq2r.getConst<bool>())
+      // Prefer a direct reconstruction. Extended rewriting may establish this
+      // equality by rewriting it to its symmetric form, which is not enough
+      // for elaborating MACRO_SR_PRED_INTRO into a proof of true.
+      if (expr::proveEqualityWithRewriteSteps(d_env, cdp, sret, q))
       {
-        // ---------- MACRO_SR_PRED_INTRO
-        // sret = q
-        std::vector<Node> pfArgs2;
-        pfArgs2.push_back(eq2);
-        addMethodIds(nodeManager(),
-                     pfArgs2,
-                     MethodId::SB_DEFAULT,
-                     MethodId::SBA_SEQUENTIAL,
-                     MethodId::RW_EXT_REWRITE);
-        cdp.addStep(eq2, ProofRule::MACRO_SR_PRED_INTRO, {}, pfArgs2);
         success = true;
+      }
+      else
+      {
+        Node eq2r = extendedRewrite(eq2);
+        if (eq2r.isConst() && eq2r.getConst<bool>())
+        {
+          // ---------- MACRO_SR_PRED_INTRO
+          // sret = q
+          std::vector<Node> pfArgs2;
+          pfArgs2.push_back(eq2);
+          addMethodIds(nodeManager(),
+                       pfArgs2,
+                       MethodId::SB_DEFAULT,
+                       MethodId::SBA_SEQUENTIAL,
+                       MethodId::RW_EXT_REWRITE);
+          cdp.addStep(eq2, ProofRule::MACRO_SR_PRED_INTRO, {}, pfArgs2);
+          success = true;
+        }
       }
     }
     // if successful, store the proof and remember the proof generator
@@ -324,7 +335,7 @@ TrustNode AlphaEquivalence::reduceQuantifier(Node q)
     {
       if (transEq.size() > 1)
       {
-        // TRANS of ALPHA_EQ and MACRO_SR_PRED_INTRO steps from above
+        // TRANS of ALPHA_EQ and the final equality proof from above
         cdp.addStep(proveLem, ProofRule::TRANS, transEq, {});
       }
       std::shared_ptr<ProofNode> pn = cdp.getProofFor(lem);
