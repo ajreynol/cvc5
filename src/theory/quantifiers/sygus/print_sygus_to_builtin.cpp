@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Aina Niemetz
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -26,7 +23,6 @@ namespace quantifiers {
 
 Node getPrintableSygusToBuiltin(Node n)
 {
-  NodeManager* nm = NodeManager::currentNM();
   std::unordered_map<TNode, Node> visited;
   std::unordered_map<TNode, Node>::iterator it;
   std::vector<TNode> visit;
@@ -77,7 +73,7 @@ Node getPrintableSygusToBuiltin(Node n)
         // then, annotate with the name of the datatype
         std::stringstream ss;
         ss << "(! " << ret << " :gterm " << dt.getName() << ")";
-        ret = nm->mkRawSymbol(ss.str(), ret.getType());
+        ret = NodeManager::mkRawSymbol(ss.str(), ret.getType());
       }
       visited[cur] = ret;
     }

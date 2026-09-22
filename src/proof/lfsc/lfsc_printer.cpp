@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Hans-Joerg Schurr, Abdalrhman Mohamed
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -55,7 +52,7 @@ LfscPrinter::LfscPrinter(Env& env,
 void LfscPrinter::print(std::ostream& out, const ProofNode* pn)
 {
   Trace("lfsc-print-debug") << "; ORIGINAL PROOF: " << *pn << std::endl;
-  Assert (!pn->getChildren().empty());
+  Assert(!pn->getChildren().empty());
   // closing parentheses
   std::stringstream cparen;
   const std::vector<Node>& definitions = pn->getArguments();
@@ -186,12 +183,11 @@ void LfscPrinter::print(std::ostream& out, const ProofNode* pn)
     }
     const DType& dt = stc.getDType();
     preamble << "; DATATYPE " << dt.getName() << std::endl;
-    NodeManager* nm = nodeManager();
     for (size_t i = 0, ncons = dt.getNumConstructors(); i < ncons; i++)
     {
       const DTypeConstructor& cons = dt[i];
       std::string cname = d_tproc.getNameForUserNameOf(cons.getConstructor());
-      Node cc = nm->mkRawSymbol(cname, stc);
+      Node cc = NodeManager::mkRawSymbol(cname, stc);
       // print constructor/tester
       preamble << "(declare " << cc << " term)" << std::endl;
       for (size_t j = 0, nargs = cons.getNumArgs(); j < nargs; j++)
@@ -199,7 +195,7 @@ void LfscPrinter::print(std::ostream& out, const ProofNode* pn)
         const DTypeSelector& arg = cons[j];
         // print selector
         std::string sname = d_tproc.getNameForUserNameOf(arg.getSelector());
-        Node sc = nm->mkRawSymbol(sname, stc);
+        Node sc = NodeManager::mkRawSymbol(sname, stc);
         preamble << "(declare " << sc << " term)" << std::endl;
       }
     }
@@ -384,7 +380,7 @@ void LfscPrinter::printTypeDefinition(
       if (tupleArityProcessed.find(arity) == tupleArityProcessed.end())
       {
         tupleArityProcessed.insert(arity);
-        if (arity>0)
+        if (arity > 0)
         {
           os << "(declare Tuple";
           os << "_" << arity;
@@ -541,11 +537,6 @@ void LfscPrinter::printProofInternal(
           Assert(passumeIt != passumeMap.end());
           out->printId(passumeIt->second, d_assumpPrefix);
         }
-        else if (r == ProofRule::ENCODE_EQ_INTRO)
-        {
-          // just add child
-          visit.push_back(PExpr(cur->getChildren()[0].get()));
-        }
         else if (isLambda)
         {
           Assert(cur->getArguments().size() == 3);
@@ -678,7 +669,7 @@ bool LfscPrinter::computeProofArgs(const ProofNode* pn,
   for (const Node& a : args)
   {
     Node ac = d_tproc.convert(a);
-    Assert(!ac.isNull());
+    Assert(!ac.isNull()) << "Could not convert " << a << " in " << r;
     as.push_back(ac);
   }
   // The proof expression stream, which packs the next expressions (proofs,
@@ -801,10 +792,6 @@ bool LfscPrinter::computeProofArgs(const ProofNode* pn,
          << d_tproc.convertType(children[0]->getResult()[0].getType()) << cs[0]
          << cs[1];
       break;
-    case ProofRule::CONCAT_CONFLICT:
-      pf << h << h << args[0].getConst<bool>()
-         << d_tproc.convertType(children[0]->getResult()[0].getType()) << cs[0];
-      break;
     case ProofRule::RE_UNFOLD_POS:
       if (children[0]->getResult()[1].getKind() != Kind::REGEXP_CONCAT)
       {
@@ -866,11 +853,6 @@ bool LfscPrinter::computeProofArgs(const ProofNode* pn,
         case LfscRule::PROCESS_SCOPE: pf << h << h << as[2] << cs[0]; break;
         case LfscRule::AND_INTRO2: pf << h << h << cs[0] << cs[1]; break;
         case LfscRule::ARITH_SUM_UB: pf << h << h << h << cs[0] << cs[1]; break;
-        case LfscRule::CONCAT_CONFLICT_DEQ:
-          pf << h << h << h << h << as[2].getConst<bool>()
-             << d_tproc.convertType(children[0]->getResult()[0].getType())
-             << cs[0] << cs[1];
-          break;
         case LfscRule::INSTANTIATE:
           pf << h << h << h << h << as[2] << cs[0];
           break;
@@ -884,7 +866,7 @@ bool LfscPrinter::computeProofArgs(const ProofNode* pn,
       ProofRewriteRule di = ProofRewriteRule::NONE;
       if (!rewriter::getRewriteRule(args[0], di))
       {
-        Assert(false);
+        DebugUnhandled();
       }
       Trace("lfsc-print-debug2") << "Printing dsl rule " << di << std::endl;
       const rewriter::RewriteProofRule& rpr = d_rdb->getRule(di);
@@ -906,7 +888,7 @@ bool LfscPrinter::computeProofArgs(const ProofNode* pn,
             // notice we use d_tproc.getNullTerminator and not
             // expr::getNullTerminator here, which has subtle differences
             // e.g. re.empty vs (str.to_re "").
-            Node null = d_tproc.getNullTerminator(k, v.getType());
+            Node null = d_tproc.getNullTerminator(nm, k, v.getType());
             Node t;
             if (as[i].getNumChildren() == 1)
             {

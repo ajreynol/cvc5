@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Aina Niemetz, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -31,22 +28,6 @@ using namespace cvc5::internal::kind;
 namespace cvc5::internal {
 namespace theory {
 namespace strings {
-
-/**
- * Attributes used for constructing unique bound variables. The following
- * attributes are used to construct (deterministic) bound variables for
- * eliminations within eliminateConcat and eliminateStar respectively.
- */
-struct ReElimConcatIndexAttributeId
-{
-};
-typedef expr::Attribute<ReElimConcatIndexAttributeId, Node>
-    ReElimConcatIndexAttribute;
-struct ReElimStarIndexAttributeId
-{
-};
-typedef expr::Attribute<ReElimStarIndexAttributeId, Node>
-    ReElimStarIndexAttribute;
 
 RegExpElimination::RegExpElimination(Env& env, bool isAgg, context::Context* c)
     : EnvObj(env),
@@ -76,14 +57,12 @@ TrustNode RegExpElimination::eliminateTrusted(Node atom)
   Node eatom = eliminate(atom, d_isAggressive);
   if (!eatom.isNull())
   {
-    // Currently aggressive doesnt work due to fresh bound variables
-    if (isProofEnabled() && !d_isAggressive)
+    if (isProofEnabled())
     {
       ProofNodeManager* pnm = d_env.getProofNodeManager();
       Node eq = atom.eqNode(eatom);
-      Node aggn = NodeManager::currentNM()->mkConst(d_isAggressive);
       std::shared_ptr<ProofNode> pn =
-          pnm->mkNode(ProofRule::MACRO_RE_ELIM, {}, {atom, aggn}, eq);
+          pnm->mkTrustedNode(TrustId::RE_ELIM, {}, {}, eq);
       d_epg->setProofFor(eq, pn);
       return TrustNode::mkTrustRewrite(atom, eatom, d_epg.get());
     }
@@ -94,7 +73,7 @@ TrustNode RegExpElimination::eliminateTrusted(Node atom)
 
 Node RegExpElimination::eliminateConcat(Node atom, bool isAgg)
 {
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = atom.getNodeManager();
   BoundVarManager* bvm = nm->getBoundVarManager();
   Node x = atom[0];
   Node lenx = nm->mkNode(Kind::STRING_LENGTH, x);
@@ -284,8 +263,8 @@ Node RegExpElimination::eliminateConcat(Node atom, bool isAgg)
           Node cacheVal =
               BoundVarManager::getCacheValue(atom, nm->mkConstInt(Rational(i)));
           TypeNode intType = nm->integerType();
-          Node k =
-              bvm->mkBoundVar<ReElimConcatIndexAttribute>(cacheVal, intType);
+          Node k = bvm->mkBoundVar(
+              BoundVarId::STRINGS_RE_ELIM_CONCAT_INDEX, cacheVal, intType);
           non_greedy_find_vars.push_back(k);
           prev_end = nm->mkNode(Kind::ADD, prev_end, k);
         }
@@ -368,9 +347,9 @@ Node RegExpElimination::eliminateConcat(Node atom, bool isAgg)
         std::vector<Node> children2;
         for (const Node& v : non_greedy_find_vars)
         {
-          Node bound = nm->mkNode(Kind::AND,
-                                  nm->mkNode(Kind::LEQ, zero, v),
-                                  nm->mkNode(Kind::LT, v, lenx));
+          Node bound = nm->mkNode(
+              Kind::AND,
+              {nm->mkNode(Kind::LEQ, zero, v), nm->mkNode(Kind::LT, v, lenx)});
           children2.push_back(bound);
         }
         children2.push_back(res);
@@ -485,11 +464,12 @@ Node RegExpElimination::eliminateConcat(Node atom, bool isAgg)
         Node cacheVal =
             BoundVarManager::getCacheValue(atom, nm->mkConstInt(Rational(i)));
         TypeNode intType = nm->integerType();
-        k = bvm->mkBoundVar<ReElimConcatIndexAttribute>(cacheVal, intType);
+        k = bvm->mkBoundVar(
+            BoundVarId::STRINGS_RE_ELIM_CONCAT_INDEX, cacheVal, intType);
         Node bound = nm->mkNode(
             Kind::AND,
-            nm->mkNode(Kind::LEQ, zero, k),
-            nm->mkNode(Kind::LEQ, k, nm->mkNode(Kind::SUB, lenx, lens)));
+            {nm->mkNode(Kind::LEQ, zero, k),
+             nm->mkNode(Kind::LEQ, k, nm->mkNode(Kind::SUB, lenx, lens))});
         echildren.push_back(bound);
       }
       Node substrEq = nm->mkNode(Kind::STRING_SUBSTR, x, k, lens).eqNode(s);
@@ -544,7 +524,7 @@ Node RegExpElimination::eliminateStar(Node atom, bool isAgg)
   }
   // only aggressive rewrites below here
 
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = atom.getNodeManager();
   BoundVarManager* bvm = nm->getBoundVarManager();
   Node x = atom[0];
   Node lenx = nm->mkNode(Kind::STRING_LENGTH, x);
@@ -568,7 +548,8 @@ Node RegExpElimination::eliminateStar(Node atom, bool isAgg)
   bool lenOnePeriod = true;
   std::vector<Node> char_constraints;
   TypeNode intType = nm->integerType();
-  Node index = bvm->mkBoundVar<ReElimStarIndexAttribute>(atom, intType);
+  Node index =
+      bvm->mkBoundVar(BoundVarId::STRINGS_RE_ELIM_STAR_INDEX, atom, intType);
   Node substr_ch =
       nm->mkNode(Kind::STRING_SUBSTR, x, index, nm->mkConstInt(Rational(1)));
   // handle the case where it is purely characters
@@ -605,8 +586,8 @@ Node RegExpElimination::eliminateStar(Node atom, bool isAgg)
   {
     Assert(!char_constraints.empty());
     Node bound = nm->mkNode(Kind::AND,
-                            nm->mkNode(Kind::LEQ, zero, index),
-                            nm->mkNode(Kind::LT, index, lenx));
+                            {nm->mkNode(Kind::LEQ, zero, index),
+                             nm->mkNode(Kind::LT, index, lenx)});
     Node conc = char_constraints.size() == 1
                     ? char_constraints[0]
                     : nm->mkNode(Kind::OR, char_constraints);
@@ -633,10 +614,10 @@ Node RegExpElimination::eliminateStar(Node atom, bool isAgg)
         // lens is a positive constant, so it is safe to use total div/mod here.
         Node bound = nm->mkNode(
             Kind::AND,
-            nm->mkNode(Kind::LEQ, zero, index),
-            nm->mkNode(Kind::LT,
-                       index,
-                       nm->mkNode(Kind::INTS_DIVISION_TOTAL, lenx, lens)));
+            {nm->mkNode(Kind::LEQ, zero, index),
+             nm->mkNode(Kind::LT,
+                        index,
+                        nm->mkNode(Kind::INTS_DIVISION_TOTAL, lenx, lens))});
         Node conc = nm->mkNode(Kind::STRING_SUBSTR,
                                x,
                                nm->mkNode(Kind::MULT, index, lens),

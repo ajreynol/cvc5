@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Haniel Barbosa, Hans-Joerg Schurr
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -27,7 +24,6 @@
 #include "proof/proof_node_updater.h"
 #include "rewriter/rewrites.h"
 #include "smt/env_obj.h"
-#include "smt/proof_final_callback.h"
 #include "smt/proof_post_processor_dsl.h"
 #include "smt/witness_form.h"
 #include "theory/inference_id.h"
@@ -41,11 +37,11 @@ namespace smt {
  * connecting proofs of preprocessing, and expanding macro ProofRule
  * applications.
  */
-class ProofPostprocessCallback : public ProofNodeUpdaterCallback, protected EnvObj
+class ProofPostprocessCallback : public ProofNodeUpdaterCallback,
+                                 protected EnvObj
 {
  public:
-  ProofPostprocessCallback(Env& env,
-                           bool updateScopedAssumptions);
+  ProofPostprocessCallback(Env& env, bool updateScopedAssumptions);
   ~ProofPostprocessCallback() {}
   /**
    * Initialize, called once for each new ProofNode to process. This initializes
@@ -62,17 +58,6 @@ class ProofPostprocessCallback : public ProofNodeUpdaterCallback, protected EnvO
    * has no effect.
    */
   void setEliminateRule(ProofRule rule);
-  /**
-   * Set collecting all trusted rules. All proofs of trusted rules can be
-   * obtained by getTrustedProofs below.
-   */
-  void setCollectAllTrustedRules();
-  /**
-   * Get trusted proofs, which is the set of all trusted proofs
-   * that were encountered in the last call to process, collected at
-   * post-order traversal.
-   */
-  std::unordered_set<std::shared_ptr<ProofNode>>& getTrustedProofs();
   /** Should proof pn be updated? */
   bool shouldUpdate(std::shared_ptr<ProofNode> pn,
                     const std::vector<Node>& fa,
@@ -87,13 +72,6 @@ class ProofPostprocessCallback : public ProofNodeUpdaterCallback, protected EnvO
               const std::vector<Node>& args,
               CDProof* cdp,
               bool& continueUpdate) override;
-  /**
-   * Can merge. This returns false if pn is a trusted proof, since we do not
-   * want the proof node updater to merge its contents into another proof,
-   * which we otherwise would not be informed of and would lead to trusted
-   * proofs that are not recorded in d_trustedPfs.
-   */
-  bool canMerge(std::shared_ptr<ProofNode> pn) override;
 
  private:
   /** Common constants */
@@ -108,15 +86,16 @@ class ProofPostprocessCallback : public ProofNodeUpdaterCallback, protected EnvO
   std::vector<Node> d_wfAssumptions;
   /** Kinds of proof rules we are eliminating */
   std::unordered_set<ProofRule, std::hash<ProofRule>> d_elimRules;
-  /** Whether we are collecting all trusted rules */
-  bool d_collectAllTrusted;
-  /** Set of all proofs to attempt to reconstruct */
-  std::unordered_set<std::shared_ptr<ProofNode>> d_trustedPfs;
+  /**
+   * Counts number of proof nodes for each rule that were
+   * expanded in macro elimination by this class.
+   */
+  HistogramStat<ProofRule> d_macroExpand;
   /** Whether we post-process assumptions in scope. */
   bool d_updateScopedAssumptions;
   //---------------------------------reset at the begining of each update
   /** Mapping assumptions to their proof from preprocessing */
-  std::map<Node, std::shared_ptr<ProofNode> > d_assumpToProof;
+  std::map<Node, std::shared_ptr<ProofNode>> d_assumpToProof;
   //---------------------------------end reset at the begining of each update
   /** Return true if id is a proof rule that we should expand */
   bool shouldExpand(ProofRule id) const;
@@ -137,6 +116,19 @@ class ProofPostprocessCallback : public ProofNodeUpdaterCallback, protected EnvO
                     const std::vector<Node>& args,
                     CDProof* cdp,
                     Node res = Node::null());
+  /**
+   * Called when we require expanding a macro step from within the method above.
+   * This makes a recursive call to the above method.
+   * @param id The rule of the application
+   * @param children The children of the application
+   * @param args The arguments of the application
+   * @param cdp The proof to add to
+   * @return The conclusion of the rule, or null if this rule is not eliminated.
+   */
+  Node addExpandStep(ProofRule id,
+                     const std::vector<Node>& children,
+                     const std::vector<Node>& args,
+                     CDProof* cdp);
   /**
    * Update the proof rule application, called during expand macros when
    * we wish to apply the update method. This method has the same behavior
@@ -188,7 +180,6 @@ class ProofPostprocessCallback : public ProofNodeUpdaterCallback, protected EnvO
   bool addToTransChildren(Node eq,
                           std::vector<Node>& tchildren,
                           bool isSymm = false);
-
 };
 
 /**
@@ -236,18 +227,13 @@ class ProofPostprocess : protected EnvObj
   ProofPostprocessCallback d_cb;
   /** The DSL post processor */
   std::unique_ptr<ProofPostprocessDsl> d_ppdsl;
+  /** Eliminate trusted rules? */
+  bool d_elimTrustedRules;
   /**
    * The updater, which is responsible for expanding macros in the final proof
    * and connecting preprocessed assumptions to input assumptions.
    */
   ProofNodeUpdater d_updater;
-  /** The post process callback for finalization */
-  ProofFinalCallback d_finalCb;
-  /**
-   * The finalizer, which is responsible for taking stats and checking for
-   * (lazy) pedantic failures.
-   */
-  ProofNodeUpdater d_finalizer;
 };
 
 }  // namespace smt

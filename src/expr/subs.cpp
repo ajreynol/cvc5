@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Gereon Kremer, Aina Niemetz
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -55,9 +52,8 @@ std::optional<Node> Subs::find(TNode v) const
 
 void Subs::add(Node v)
 {
-  SkolemManager* sm = NodeManager::currentNM()->getSkolemManager();
   // default, use a fresh skolem of the same type
-  Node s = sm->mkDummySkolem("sk", v.getType());
+  Node s = NodeManager::mkDummySkolem("sk", v.getType());
   add(v, s);
 }
 
