@@ -43,28 +43,6 @@ namespace {
 // A helper function to compute 2^b as a Rational
 Rational intpow2(uint32_t b) { return Rational(Integer(2).pow(b), Integer(1)); }
 
-void collectUfAppsForQuantifierMatrix(
-    TNode n, std::unordered_set<Node>& applys, bool underBinder = false)
-{
-  if (underBinder)
-  {
-    return;
-  }
-  if (n.getKind() == Kind::APPLY_UF)
-  {
-    applys.insert(n);
-  }
-  else if (n.getKind() == Kind::FORALL || n.getKind() == Kind::EXISTS
-           || n.getKind() == Kind::LAMBDA)
-  {
-    return;
-  }
-  for (const Node& cn : n)
-  {
-    collectUfAppsForQuantifierMatrix(cn, applys);
-  }
-}
-
 }  // namespace
 
 IntBlaster::IntBlaster(Env& env,
@@ -73,7 +51,7 @@ IntBlaster::IntBlaster(Env& env,
     : EnvObj(env),
       d_binarizeCache(userContext()),
       d_intblastCache(userContext()),
-      d_rangeAssertions(userContext()),
+      d_rangeNodes(userContext()),
       d_bitwiseAssertions(userContext()),
       d_iandUtils(nodeManager()),
       d_mode(mode),
@@ -105,11 +83,42 @@ void IntBlaster::addRangeConstraint(Node node,
   Node rangeConstraint = mkRangeConstraint(node, size);
   Trace("int-blaster-debug")
       << "range constraint computed: " << rangeConstraint << std::endl;
-  if (d_rangeAssertions.find(rangeConstraint) == d_rangeAssertions.end())
+  if (d_rangeNodes.find(node) == d_rangeNodes.end())
   {
     Trace("int-blaster-debug")
-        << "range constraint added to cache and lemmas " << std::endl;
-    d_rangeAssertions.insert(rangeConstraint);
+        << "node added to cache and constraints added to lemmas " << std::endl;
+    d_rangeNodes.insert(node);
+    TrustNode trn = TrustNode::mkTrustLemma(rangeConstraint, this);
+    lemmas.push_back(trn);
+  }
+}
+
+void IntBlaster::addQuantifiedRangeConstraint(Node f,
+                                              uint32_t size,
+                                              std::vector<TrustNode>& lemmas)
+{
+  std::vector<TypeNode> argTypes = f.getType().getArgTypes();
+  std::vector<Node> boundVars;
+  for (const TypeNode& tn : argTypes)
+  {
+    Node newBoundVar = NodeManager::mkBoundVar(tn);
+    boundVars.push_back(newBoundVar);
+  }
+  std::vector<Node> inputs = boundVars;
+  inputs.insert(inputs.begin(), f);
+  Node apply = d_nm->mkNode(Kind::APPLY_UF, inputs);
+  Node rangeConstraint = mkRangeConstraint(apply, size);
+  Node boundVarList = d_nm->mkNode(Kind::BOUND_VAR_LIST, boundVars);
+  rangeConstraint = d_nm->mkNode(Kind::FORALL, boundVarList, rangeConstraint);
+  Trace("int-blaster-debug")
+      << "quantified range constraint computed: " << rangeConstraint
+      << std::endl;
+  if (d_rangeNodes.find(f) == d_rangeNodes.end())
+  {
+    Trace("int-blaster-debug") << "function added to cache, and quantified "
+                                  "range constraint added to cache and lemmas "
+                               << std::endl;
+    d_rangeNodes.insert(f);
     TrustNode trn = TrustNode::mkTrustLemma(rangeConstraint, this);
     lemmas.push_back(trn);
   }
@@ -144,10 +153,7 @@ Node IntBlaster::maxInt(uint32_t k)
   return d_nm->mkConstInt(max_value);
 }
 
-Node IntBlaster::pow2(uint32_t k)
-{
-  return d_nm->mkConstInt(intpow2(k));
-}
+Node IntBlaster::pow2(uint32_t k) { return d_nm->mkConstInt(intpow2(k)); }
 
 Node IntBlaster::modpow2(Node n, uint32_t exponent)
 {
@@ -333,17 +339,17 @@ Node IntBlaster::translateWithChildren(
   // Store the translated node
   Node returnNode;
 
-   /**
-    * higher order logic allows comparing between functions
-    * The translation does not support this,
-    * as the translated functions may be different outside
-    * of the bounds that were relevant for the original
-    * bit-vectors.
-    */
-   if (childrenTypesChanged(original) && logicInfo().isHigherOrder())
-   {
-     throw LogicException("bv-to-int does not support higher order logic ");
-   }
+  /**
+   * higher order logic allows comparing between functions
+   * The translation does not support this,
+   * as the translated functions may be different outside
+   * of the bounds that were relevant for the original
+   * bit-vectors.
+   */
+  if (childrenTypesChanged(original) && logicInfo().isHigherOrder())
+  {
+    throw LogicException("bv-to-int does not support higher order logic ");
+  }
   // Translate according to the kind of the original node.
   switch (oldKind)
   {
@@ -373,9 +379,9 @@ Node IntBlaster::translateWithChildren(
           d_nm->mkNode(Kind::INTS_DIVISION_TOTAL, translated_children);
       returnNode = d_nm->mkNode(
           Kind::ITE,
-          d_nm->mkNode(Kind::EQUAL, translated_children[1], d_zero),
-          d_nm->mkNode(Kind::SUB, pow2BvSize, d_one),
-          divNode);
+          {d_nm->mkNode(Kind::EQUAL, translated_children[1], d_zero),
+           d_nm->mkNode(Kind::SUB, pow2BvSize, d_one),
+           divNode});
       break;
     }
     case Kind::BITVECTOR_UREM:
@@ -548,8 +554,8 @@ Node IntBlaster::translateWithChildren(
     {
       uint32_t bvsize = original[0].getType().getBitVectorSize();
       returnNode = d_nm->mkNode(Kind::LT,
-                                uts(translated_children[0], bvsize),
-                                uts(translated_children[1], bvsize));
+                                {uts(translated_children[0], bvsize),
+                                 uts(translated_children[1], bvsize)});
       break;
     }
     case Kind::BITVECTOR_ULE:
@@ -581,8 +587,8 @@ Node IntBlaster::translateWithChildren(
       returnNode =
           d_nm->mkNode(Kind::ITE,
                        d_nm->mkNode(Kind::LT,
-                                    uts(translated_children[0], bvsize),
-                                    uts(translated_children[1], bvsize)),
+                                    {uts(translated_children[0], bvsize),
+                                     uts(translated_children[1], bvsize)}),
                        d_one,
                        d_zero);
       break;
@@ -689,9 +695,21 @@ Node IntBlaster::translateWithChildren(
       }
       break;
     }
+    case Kind::INST_PATTERN:
+    case Kind::INST_PATTERN_LIST:
+    {
+      returnNode = d_nm->mkNode(oldKind, translated_children);
+      Trace("int-blaster-debug") << "pattern or list: " << oldKind << std::endl;
+      Trace("int-blaster-debug")
+          << "original pattern/list node: " << original << std::endl;
+      Trace("int-blaster-debug")
+          << "result pattern/list node: " << returnNode << std::endl;
+      break;
+    }
     case Kind::FORALL:
     {
-      returnNode = translateQuantifiedFormula(original);
+      returnNode =
+          translateQuantifiedFormula(original, translated_children, lemmas);
       break;
     }
     default:
@@ -847,7 +865,8 @@ Node IntBlaster::translateNoChildren(Node original,
   }
   else
   {
-    // original is a constant (value) or an operator with no arguments (e.g., PI)
+    // original is a constant (value) or an operator with no arguments (e.g.,
+    // PI)
     if (original.getKind() == Kind::CONST_BITVECTOR)
     {
       // Bit-vector constants are transformed into their integer value.
@@ -1008,9 +1027,9 @@ Node IntBlaster::createShiftNode(std::vector<Node> children,
     Node pow2Node = d_nm->mkNode(Kind::POW2, y);
     if (isLeftShift)
     {
-      return d_nm->mkNode(Kind::INTS_MODULUS_TOTAL,
-                          d_nm->mkNode(Kind::MULT, x, pow2Node),
-                          pow2(bvsize));
+      return d_nm->mkNode(
+          Kind::INTS_MODULUS_TOTAL,
+          {d_nm->mkNode(Kind::MULT, x, pow2Node), pow2(bvsize)});
     }
     else
     {
@@ -1026,8 +1045,7 @@ Node IntBlaster::createShiftNode(std::vector<Node> children,
     if (isLeftShift)
     {
       body = d_nm->mkNode(Kind::INTS_MODULUS_TOTAL,
-                          d_nm->mkNode(Kind::MULT, x, pow2(i)),
-                          pow2(bvsize));
+                          {d_nm->mkNode(Kind::MULT, x, pow2(i)), pow2(bvsize)});
     }
     else
     {
@@ -1043,22 +1061,23 @@ Node IntBlaster::createShiftNode(std::vector<Node> children,
   return ite;
 }
 
-Node IntBlaster::translateQuantifiedFormula(Node quantifiedNode)
+Node IntBlaster::translateQuantifiedFormula(
+    Node quantifiedNode,
+    const std::vector<Node>& translated_children,
+    std::vector<TrustNode>& lemmas)
 {
-  Kind k = quantifiedNode.getKind();
   Node boundVarList = quantifiedNode[0];
   Assert(boundVarList.getKind() == Kind::BOUND_VAR_LIST);
+  Assert(translated_children.size() == quantifiedNode.getNumChildren());
+
   // Since bit-vector variables are being translated to
   // integer variables, we need to substitute the new ones
   // for the old ones.
   std::vector<Node> oldBoundVars;
   std::vector<Node> newBoundVars;
 
-  // Range constraints for quantified variables and translated terms.
-  // For universals, variable ranges are assumptions, while translated term
-  // ranges are obligations.
-  std::vector<Node> varRangeConstraints;
-  std::vector<Node> termRangeConstraints;
+  // range constraints for quantified variables and terms
+  std::vector<Node> rangeConstraints;
 
   // collect range constraints for quantified variables
   for (Node bv : quantifiedNode[0])
@@ -1069,9 +1088,10 @@ Node IntBlaster::translateQuantifiedFormula(Node quantifiedNode)
       // bit-vector variables are replaced by integer ones.
       // the new variables induce range constraints based on the
       // original bit-width.
+      Assert(d_intblastCache.find(bv) != d_intblastCache.end());
       Node newBoundVar = d_intblastCache[bv];
       newBoundVars.push_back(newBoundVar);
-      varRangeConstraints.push_back(
+      rangeConstraints.push_back(
           mkRangeConstraint(newBoundVar, bv.getType().getBitVectorSize()));
     }
     else
@@ -1081,50 +1101,50 @@ Node IntBlaster::translateQuantifiedFormula(Node quantifiedNode)
     }
   }
 
-  // Collect range constraints for UF applications in the current matrix.
-  // Applications under nested binders are handled by those binders instead.
+  // collect range constraints for UF applications
+  // that involve quantified variables
   std::unordered_set<Node> applys;
-  collectUfAppsForQuantifierMatrix(quantifiedNode[1], applys);
-  for (const Node& app : applys)
+  expr::getKindSubterms(quantifiedNode[1], Kind::APPLY_UF, false, applys);
+  for (const Node& apply : applys)
   {
-    if (!app.getType().isBitVector() || !expr::hasBoundVar(app))
+    Node f = apply.getOperator();
+
+    TypeNode range = f.getType().getRangeType();
+    if (range.isBitVector())
     {
-      continue;
+      Assert(d_intblastCache.find(f) != d_intblastCache.end());
+      Assert(!d_intblastCache[f].get().isNull());
+      Node translated_f = d_intblastCache[f];
+      addQuantifiedRangeConstraint(
+          translated_f, range.getBitVectorSize(), lemmas);
     }
-    Node trApp = d_intblastCache[app];
-    Assert(!trApp.isNull());
-    trApp = trApp.substitute(oldBoundVars.begin(),
-                             oldBoundVars.end(),
-                             newBoundVars.begin(),
-                             newBoundVars.end());
-    termRangeConstraints.push_back(
-        mkRangeConstraint(trApp, app.getType().getBitVectorSize()));
   }
 
   // the body of the quantifier
-  Node matrix = d_intblastCache[quantifiedNode[1]];
+  Node matrix = translated_children[1];
   // make the substitution
   matrix = matrix.substitute(oldBoundVars.begin(),
                              oldBoundVars.end(),
                              newBoundVars.begin(),
                              newBoundVars.end());
-  Node varRanges = d_nm->mkAnd(varRangeConstraints);
-  Node termRanges = d_nm->mkAnd(termRangeConstraints);
-  if (k == Kind::FORALL)
+  // A node to represent all the range constraints.
+  Node ranges = d_nm->mkAnd(rangeConstraints);
+  // Add the range constraints to the left side of an implication.
+  Assert(quantifiedNode.getKind() == Kind::FORALL);
+  matrix = d_nm->mkNode(Kind::IMPLIES, ranges, matrix);
+  // create the new quantified formula and return it.
+  Node newBoundVarsList = d_nm->mkNode(Kind::BOUND_VAR_LIST, newBoundVars);
+  Node result;
+  // if there was an instantiation pattern, include its translation.
+  if (quantifiedNode.getNumChildren() == 3)
   {
-    // Bound variable ranges restrict the domain we quantify over. Range
-    // constraints for translated UF applications remain part of the obligation.
-    matrix = d_nm->mkNode(Kind::IMPLIES,
-                          varRanges,
-                          d_nm->mkNode(Kind::AND, termRanges, matrix));
+    result = d_nm->mkNode(
+        Kind::FORALL, newBoundVarsList, matrix, translated_children[2]);
   }
   else
   {
-    matrix = d_nm->mkNode(Kind::AND, varRanges, termRanges, matrix);
+    result = d_nm->mkNode(Kind::FORALL, newBoundVarsList, matrix);
   }
-  // create the new quantified formula and return it.
-  Node newBoundVarsList = d_nm->mkNode(Kind::BOUND_VAR_LIST, newBoundVars);
-  Node result = d_nm->mkNode(k, newBoundVarsList, matrix);
   return result;
 }
 

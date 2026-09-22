@@ -214,6 +214,7 @@ std::unique_ptr<Cmd> Smt2CmdParser::parseNextCommand()
       std::vector<std::string> dnames;
       std::vector<size_t> arities;
       std::string name = d_tparser.parseSymbol(CHECK_UNDECLARED, SYM_SORT);
+      d_state.checkReservedSymbol(name);
       dnames.push_back(name);
       bool isCo = (tok == Token::DECLARE_CODATATYPE_TOK);
       // parse <datatype_dec>
@@ -238,6 +239,7 @@ std::unique_ptr<Cmd> Smt2CmdParser::parseNextCommand()
       while (d_lex.eatTokenChoice(Token::LPAREN_TOK, Token::RPAREN_TOK))
       {
         std::string name = d_tparser.parseSymbol(CHECK_UNDECLARED, SYM_SORT);
+        d_state.checkReservedSymbol(name);
         size_t arity = d_tparser.parseIntegerNumeral();
         dnames.push_back(name);
         arities.push_back(arity);
@@ -315,7 +317,8 @@ std::unique_ptr<Cmd> Smt2CmdParser::parseNextCommand()
         binName = d_tparser.parseSymbol(CHECK_NONE, SYM_VARIABLE);
       }
       // not supported
-      d_state.warning("Oracles not supported via the text interface in this version");
+      d_state.warning(
+          "Oracles not supported via the text interface in this version");
       cmd.reset(new EmptyCommand());
     }
     break;
@@ -886,7 +889,7 @@ std::unique_ptr<Cmd> Smt2CmdParser::parseNextCommand()
       {
         ss = d_state.stripQuotes(ss);
       }
-      else if (key=="use-portfolio")
+      else if (key == "use-portfolio")
       {
         // we don't allow setting portfolio via the command line
         d_lex.parseError("Can only enable use-portfolio via the command line");
