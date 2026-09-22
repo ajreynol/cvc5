@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Morgan Deters, Gereon Kremer
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -69,10 +66,12 @@ InstantiationEngine::InstantiationEngine(Env& env,
 
 InstantiationEngine::~InstantiationEngine() {}
 
-std::string InstantiationEngine::identify() const { return "InstEngine"; }
+std::string InstantiationEngine::identify() const { return "ematching"; }
 
-void InstantiationEngine::presolve() {
-  for( unsigned i=0; i<d_instStrategies.size(); ++i ){
+void InstantiationEngine::presolve()
+{
+  for (unsigned i = 0; i < d_instStrategies.size(); ++i)
+  {
     d_instStrategies[i]->presolve();
   }
 }
@@ -81,9 +80,9 @@ void InstantiationEngine::doInstantiationRound(Theory::Effort effort,
                                                ieval::TermEvaluatorMode tev)
 {
   size_t lastWaiting = d_qim.numPendingLemmas();
-  //iterate over an internal effort level e
+  // iterate over an internal effort level e
   int e = 0;
-  int eLimit = effort==Theory::EFFORT_LAST_CALL ? 10 : 2;
+  int eLimit = effort == Theory::EFFORT_LAST_CALL ? 10 : 2;
   bool finished = false;
   bool singleQuant = (tev == ieval::TermEvaluatorMode::CONFLICT
                       && !options().quantifiers.cbqiAllConflict);
@@ -97,7 +96,8 @@ void InstantiationEngine::doInstantiationRound(Theory::Effort effort,
       Trace("inst-engine-debug") << "IE: Instantiate " << q << "..." << std::endl;
       //int e_use = d_quantEngine->getRelevance( q )==-1 ? e - 1 : e;
       int e_use = e;
-      if( e_use>=0 ){
+      if (e_use >= 0)
+      {
         Trace("inst-engine-debug") << "inst-engine : " << q << std::endl;
         //check each instantiation strategy
         for (InstStrategy* is : d_instStrategies)
@@ -123,7 +123,7 @@ void InstantiationEngine::doInstantiationRound(Theory::Effort effort,
         }
       }
     }
-    //do not consider another level if already added lemma at this level
+    // do not consider another level if already added lemma at this level
     if (d_qim.numPendingLemmas() > lastWaiting)
     {
       finished = true;
@@ -140,12 +140,14 @@ bool InstantiationEngine::needsCheck( Theory::Effort e ){
   return d_qstate.getInstWhenNeedsCheck(e);
 }
 
-void InstantiationEngine::reset_round( Theory::Effort e ){
-  //if not, proceed to instantiation round
-  //reset the instantiation strategies
-  for( unsigned i=0; i<d_instStrategies.size(); ++i ){
+void InstantiationEngine::reset_round(Theory::Effort e)
+{
+  // if not, proceed to instantiation round
+  // reset the instantiation strategies
+  for (unsigned i = 0; i < d_instStrategies.size(); ++i)
+  {
     InstStrategy* is = d_instStrategies[i];
-    is->processResetInstantiationRound( e );
+    is->processResetInstantiationRound(e);
   }
 }
 
@@ -157,13 +159,7 @@ void InstantiationEngine::check(Theory::Effort e, QEffort quant_e)
   {
     return;
   }
-  double clSet = 0;
-  if (TraceIsOn("inst-engine"))
-  {
-    clSet = double(clock()) / double(CLOCKS_PER_SEC);
-    Trace("inst-engine") << "---Instantiation Engine Round, effort = " << e
-                         << "---" << std::endl;
-  }
+  beginCallDebug();
   // collect all active quantified formulas belonging to this
   bool quantActive = false;
   d_quants.clear();
@@ -225,16 +221,12 @@ void InstantiationEngine::check(Theory::Effort e, QEffort quant_e)
   {
     d_quants.clear();
   }
-  if (TraceIsOn("inst-engine"))
-  {
-    double clSet2 = double(clock()) / double(CLOCKS_PER_SEC);
-    Trace("inst-engine") << "Finished instantiation engine, time = "
-                         << (clSet2 - clSet) << std::endl;
-  }
+  endCallDebug();
 }
 
-bool InstantiationEngine::checkCompleteFor( Node q ) {
-  //TODO?
+bool InstantiationEngine::checkCompleteFor(CVC5_UNUSED Node q)
+{
+  // TODO?
   return false;
 }
 
@@ -243,7 +235,7 @@ void InstantiationEngine::checkOwnership(Node q)
   if (options().quantifiers.userPatternsQuant == options::UserPatMode::STRICT
       && q.getNumChildren() == 3)
   {
-    //if strict triggers, take ownership of this quantified formula
+    // if strict triggers, take ownership of this quantified formula
     if (QuantAttributes::hasPattern(q))
     {
       d_qreg.setOwner(q, this, 1);
@@ -280,14 +272,18 @@ void InstantiationEngine::registerQuantifier(Node q)
   }
 }
 
-void InstantiationEngine::addUserPattern(Node q, Node pat) {
-  if (d_isup) {
+void InstantiationEngine::addUserPattern(Node q, Node pat)
+{
+  if (d_isup)
+  {
     d_isup->addUserPattern(q, pat);
   }
 }
 
-void InstantiationEngine::addUserNoPattern(Node q, Node pat) {
-  if (d_i_ag) {
+void InstantiationEngine::addUserNoPattern(Node q, Node pat)
+{
+  if (d_i_ag)
+  {
     d_i_ag->addUserNoPattern(q, pat);
   }
 }

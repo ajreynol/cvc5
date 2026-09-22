@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Morgan Deters, Aina Niemetz
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -19,6 +16,7 @@
 #include "expr/dtype_cons.h"
 #include "expr/node_algorithm.h"
 #include "expr/skolem_manager.h"
+#include "expr/sort_to_term.h"
 #include "expr/type_matcher.h"
 #include "util/rational.h"
 
@@ -31,6 +29,7 @@ DType::DType(std::string name, bool isCo)
       d_params(),
       d_isCo(isCo),
       d_isTuple(false),
+      d_isNullable(false),
       d_isRecord(false),
       d_constructors(),
       d_resolved(false),
@@ -50,6 +49,7 @@ DType::DType(std::string name, const std::vector<TypeNode>& params, bool isCo)
       d_params(params),
       d_isCo(isCo),
       d_isTuple(false),
+      d_isNullable(false),
       d_isRecord(false),
       d_constructors(),
       d_resolved(false),
@@ -89,6 +89,8 @@ bool DType::isCodatatype() const { return d_isCo; }
 bool DType::isSygus() const { return !d_sygusType.isNull(); }
 
 bool DType::isTuple() const { return d_isTuple; }
+
+bool DType::isNullable() const { return d_isNullable; }
 
 bool DType::isRecord() const { return d_isRecord; }
 
@@ -327,8 +329,7 @@ void DType::setSygus(TypeNode st, Node bvl, bool allowConst, bool allowAll)
     if (!hasConstant)
     {
       // add an arbitrary one
-      NodeManager* nm = NodeManager::currentNM();
-      Node op = nm->mkGroundTerm(st);
+      Node op = NodeManager::mkGroundTerm(st);
       // use same naming convention as SygusDatatype
       std::stringstream ss;
       ss << getName() << "_" << getNumConstructors() << "_" << op;
@@ -350,6 +351,12 @@ void DType::setTuple()
 {
   Assert(!d_resolved);
   d_isTuple = true;
+}
+
+void DType::setNullable()
+{
+  Assert(!d_resolved);
+  d_isNullable = true;
 }
 
 void DType::setRecord()
@@ -555,11 +562,17 @@ CardinalityClass DType::getCardinalityClass(TypeNode t) const
   // if we have one constructor and FINITE otherwise.
   CardinalityClass c = d_constructors.size() == 1 ? CardinalityClass::ONE
                                                   : CardinalityClass::FINITE;
+  Trace("datatypes-card-class")
+      << "Compute cardinality class of " << t << "..." << std::endl;
   for (std::shared_ptr<DTypeConstructor> ctor : d_constructors)
   {
     CardinalityClass cc = ctor->getCardinalityClass(t);
+    Trace("datatypes-card-class")
+        << "- constructor " << ctor->getName() << " is " << cc << std::endl;
     c = maxCardinalityClass(c, cc);
   }
+  Trace("datatypes-card-class")
+      << "Cardinality class of " << t << " is " << c << std::endl;
   d_cardClass[t] = c;
   return c;
 }
@@ -911,13 +924,15 @@ Node DType::getSharedSelector(TypeNode dtt, TypeNode t, size_t index) const
   }
   // make the shared selector
   Node s;
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = dtt.getNodeManager();
   std::stringstream ss;
   ss << "sel_" << index;
   SkolemManager* sm = nm->getSkolemManager();
-  TypeNode stype = nm->mkSelectorType(dtt, t);
-  Node nindex = nm->mkConstInt(Rational(index));
-  s = sm->mkSkolemFunction(SkolemFunId::SHARED_SELECTOR, stype, nindex);
+  std::vector<Node> cacheVals;
+  cacheVals.push_back(nm->mkConst(SortToTerm(dtt)));
+  cacheVals.push_back(nm->mkConst(SortToTerm(t)));
+  cacheVals.push_back(nm->mkConstInt(Rational(index)));
+  s = sm->mkSkolemFunction(SkolemId::SHARED_SELECTOR, cacheVals);
   d_sharedSel[dtt][t][index] = s;
   Trace("dt-shared-sel") << "Made " << s << " of type " << dtt << " -> " << t
                          << std::endl;
@@ -992,3 +1007,11 @@ void DType::toStream(std::ostream& out) const
 }
 
 }  // namespace cvc5::internal
+
+namespace std {
+size_t hash<cvc5::internal::DType>::operator()(
+    const cvc5::internal::DType& dt) const
+{
+  return std::hash<std::string>()(dt.getName());
+}
+}  // namespace std

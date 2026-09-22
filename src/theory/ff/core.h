@@ -1,16 +1,20 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Alex Ozdemir
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
  * ****************************************************************************
  *
- * Finite fields UNSAT trace construction
+ * Finite fields UNSAT core construction.
+ *
+ * Essentially a dependency graph for polynomials in the ideal.
+ * It is a dependency graph for proofs in IdealCalc (Figure 4 from [OKTB23])
+ *
+ * Hooks into CoCoA.
+ *
+ * [OKTB23]: https://doi.org/10.1007/978-3-031-37703-7_8
  */
 
 #include "cvc5_private.h"
@@ -33,8 +37,7 @@ namespace theory {
 namespace ff {
 
 /**
- * A non-incremental dependency graph for CoCoA polynomials in Groebner basis
- * computation.
+ * A dependency graph for CoCoA polynomials in Groebner basis computation.
  *
  * We represent polynomials as their strings.
  */
@@ -42,8 +45,7 @@ class Tracer
 {
  public:
   /**
-   * Set up tracing for these inputs.
-   * Creating it connects to the CoCoA callbacks.
+   * Create a tracer with these inputs.
    */
   Tracer(const std::vector<CoCoA::RingElem>& inputs);
 
@@ -55,42 +57,51 @@ class Tracer
   /** CoCoA callback management */
 
   /**
-   * Hook up to CoCoA callbacks. Don't move the object after calling this. Must be called before CoCoA is used.
+   * Hook up to CoCoA callbacks. Don't move the object after calling this. Must
+   * be called before CoCoA is used.
    */
   void setFunctionPointers();
 
   /**
    * Unhook from CoCoA callbacks. Should be called after you're done tracing.
+   * Also clears the global handler `std::function`s so they don't retain
+   * captured pointers into this Tracer past its lifetime.
    */
   void unsetFunctionPointers();
 
- private:
-
-
   /**
-   * Call this when s = spoly(p, q);
+   * Destructor. If `setFunctionPointers()` was called and
+   * `unsetFunctionPointers()` has not yet run (e.g. stack unwinding through a
+   * `FfTimeoutException`), the global CoCoA handler slots still hold
+   * `std::function`s that captured `this`. Detach them here so a later CoCoA
+   * call doesn't dereference freed memory.
    */
+  ~Tracer();
+
+ private:
+  /** CoCoA calls these functions */
+
+  /** Call this when s = spoly(p, q); */
   void sPoly(CoCoA::ConstRefRingElem p,
              CoCoA::ConstRefRingElem q,
              CoCoA::ConstRefRingElem s);
-  /**
-   * Call this when we start reducing p.
-   */
+
+  /** Tracing reduction p ->_q1 p1 ->_q2 p2 ->_q3 ... ->_qN -> r */
+
+  /** Call this when we start reducing p. */
   void reductionStart(CoCoA::ConstRefRingElem p);
-  /**
-   * Call this when there is a reduction on q.
-   */
+  /** Call this when there is a reduction on q. */
   void reductionStep(CoCoA::ConstRefRingElem q);
-  /**
-   * Call this when we finish reducing with r.
-   */
+  /** Call this when we finish reducing with r. */
   void reductionEnd(CoCoA::ConstRefRingElem r);
+
+  /** Internal helper functions */
 
   void addItem(const std::string&& item);
   void addDep(const std::string& parent, const std::string& child);
 
   /**
-   * (key, vals) where key is in the ideal if vals are.
+   * (key, vals) where key is known to be in the ideal when vals are.
    */
   std::unordered_map<std::string, std::vector<std::string>> d_parents{};
   /**
@@ -98,6 +109,10 @@ class Tracer
    */
   std::unordered_map<std::string, size_t> d_inputNumbers;
 
+  /**
+   * Sequence of dependencies for a reduction in progress.
+   * See reductionStart, reductionStep, reductionEnd.
+   */
   std::vector<std::string> d_reductionSeq{};
 
   /**
@@ -111,6 +126,9 @@ class Tracer
   std::function<void(CoCoA::ConstRefRingElem)> d_reductionStart{};
   std::function<void(CoCoA::ConstRefRingElem)> d_reductionStep{};
   std::function<void(CoCoA::ConstRefRingElem)> d_reductionEnd{};
+
+  /** True between `setFunctionPointers()` and `unsetFunctionPointers()`. */
+  bool d_handlersRegistered{false};
 };
 
 }  // namespace ff

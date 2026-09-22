@@ -1,16 +1,17 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Alex Ozdemir
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
  * ****************************************************************************
  *
- * A field-specific theory (non-incremental)
+ * A field-specific theory.
+ * That is, the sub-theory for GF(p) for some fixed p.
+ * Implements Figure 2, "DecisionProcedure" from [OKTB23].
+ *
+ * [OKTB23]: https://doi.org/10.1007/978-3-031-37703-7_8
  */
 
 #include "cvc5_private.h"
@@ -30,8 +31,10 @@
 #include "expr/node.h"
 #include "smt/env_obj.h"
 #include "theory/ff/stats.h"
+#include "theory/ff/util.h"
 #include "theory/theory.h"
 #include "util/integer.h"
+#include "util/result.h"
 
 namespace cvc5::internal {
 namespace theory {
@@ -49,7 +52,7 @@ namespace ff {
  *
  * For now, our implementation assumes that the finite field has prime order.
  */
-class SubTheory : protected EnvObj
+class SubTheory : protected EnvObj, public FieldObj
 {
  public:
   /**
@@ -58,7 +61,7 @@ class SubTheory : protected EnvObj
    * Parameters:
    * * modulus: the size of this field for this theory, a prime.
    */
-  SubTheory(Env& env, FfStatistics* stats, Integer modulus);
+  SubTheory(Env& env, FfStatistics* stats, const Integer& modulus);
 
   /**
    * Assert a fact to this theory.
@@ -67,8 +70,10 @@ class SubTheory : protected EnvObj
 
   /**
    * Check the current facts.
+   *
+   * Does nothing below full effort.
    */
-  void postCheck(Theory::Effort);
+  Result postCheck(Theory::Effort);
 
   /**
    * Has a conflict been detected?
@@ -90,11 +95,6 @@ class SubTheory : protected EnvObj
 
  private:
   /**
-   * Set the conflict to be all facts.
-   */
-  void setTrivialConflict();
-
-  /**
    * Facts, in notification order.
    *
    * Contains only the facts in *this specific field*.
@@ -110,7 +110,7 @@ class SubTheory : protected EnvObj
 
   /**
    * A model, if we've found one. A map from variable nodes to their constant
-   * values.
+   * values. Meaningless if d_conflict is non-empty.
    */
   std::unordered_map<Node, Node> d_model{};
 
@@ -118,19 +118,6 @@ class SubTheory : protected EnvObj
    * Statistics shared among all finite-field sub-theories.
    */
   FfStatistics* d_stats;
-  /**
-   * The base field of the multivariate polynomial ring.
-   *
-   * That is, the field that the polynomial coefficients live in/the
-   * finite-field constants live in.
-   *
-   * For now, we assume this is a prime-order finite-field.
-   */
-  CoCoA::ring d_baseRing;
-  /**
-   * The prime modulus for the base field.
-   */
-  Integer d_modulus;
 };
 
 }  // namespace ff

@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Gereon Kremer, Tim King
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -23,6 +20,7 @@
 #include "theory/arith/arith_subs.h"
 #include "theory/arith/branch_and_bound.h"
 #include "theory/arith/inference_manager.h"
+#include "theory/arith/linear/linear_solver.h"
 #include "theory/arith/pp_rewrite_eq.h"
 #include "theory/arith/proof_checker.h"
 #include "theory/theory.h"
@@ -37,17 +35,13 @@ class NonlinearExtension;
 
 class EqualitySolver;
 
-namespace linear {
-class TheoryArithPrivate;
-}
-
 /**
  * Implementation of linear and non-linear integer and real arithmetic.
  * The linear arithmetic solver is based upon:
  * http://research.microsoft.com/en-us/um/people/leonardo/cav06.pdf
  */
-class TheoryArith : public Theory {
-  friend class linear::TheoryArithPrivate;
+class TheoryArith : public Theory
+{
  public:
   TheoryArith(Env& env, OutputChannel& out, Valuation valuation);
   virtual ~TheoryArith();
@@ -98,8 +92,7 @@ class TheoryArith : public Theory {
 
   void presolve() override;
   void notifyRestart() override;
-  PPAssertStatus ppAssert(TrustNode tin,
-                          TrustSubstitutionMap& outSubstitutions) override;
+  bool ppAssert(TrustNode tin, TrustSubstitutionMap& outSubstitutions) override;
   /**
    * Preprocess rewrite terms, return the trust node encapsulating the
    * preprocessed form of n, and the proof generator that can provide the
@@ -110,7 +103,7 @@ class TheoryArith : public Theory {
    */
   TrustNode ppRewrite(TNode atom, std::vector<SkolemLemma>& lems) override;
   TrustNode ppStaticRewrite(TNode atom) override;
-  void ppStaticLearn(TNode in, NodeBuilder& learned) override;
+  void ppStaticLearn(TNode in, std::vector<TrustNode>& learned) override;
 
   std::string identify() const override { return std::string("TheoryArith"); }
 
@@ -123,10 +116,7 @@ class TheoryArith : public Theory {
   std::pair<bool, Node> entailmentCheck(TNode lit) override;
 
   /** Return a reference to the arith::InferenceManager. */
-  InferenceManager& getInferenceManager()
-  {
-    return d_im;
-  }
+  InferenceManager& getInferenceManager() { return d_im; }
 
  private:
   /**
@@ -169,7 +159,7 @@ class TheoryArith : public Theory {
   /** The equality solver */
   std::unique_ptr<EqualitySolver> d_eqSolver;
   /** The (old) linear arithmetic solver */
-  linear::TheoryArithPrivate* d_internal;
+  linear::LinearSolver d_internal;
 
   /**
    * The non-linear extension, responsible for all approaches for non-linear
@@ -201,7 +191,7 @@ class TheoryArith : public Theory {
   /** Checks the proof rules of this theory. */
   ArithProofRuleChecker d_checker;
 
-};/* class TheoryArith */
+}; /* class TheoryArith */
 
 }  // namespace arith
 }  // namespace theory

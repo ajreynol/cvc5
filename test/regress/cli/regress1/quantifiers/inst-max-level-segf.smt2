@@ -1,5 +1,5 @@
-; DISABLE-TESTER: lfsc
-; DISABLE-TESTER: alf
+; REQUIRES: unrestricted-mode
+
 ; COMMAND-LINE: --inst-max-level=0 --simplification=none
 ; EXPECT: unsat
 (set-logic UF)

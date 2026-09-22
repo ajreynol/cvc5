@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Mudathir Mohamed, Aina Niemetz, Andres Noetzli
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -43,7 +40,6 @@ public class Op extends AbstractPointer
 
   /**
    * Syntactic equality operator.
-   * @api.note Both operators must belong to the same solver object.
    * @param t The operator to compare to for equality.
    * @return True if the operators are syntactically identical.
    */
@@ -51,15 +47,21 @@ public class Op extends AbstractPointer
   public boolean equals(Object t)
   {
     if (this == t)
+    {
       return true;
+    }
     if (t == null || getClass() != t.getClass())
+    {
       return false;
+    }
     return equals(pointer, ((Op) t).getPointer());
   }
 
   private native boolean equals(long pointer1, long pointer2);
 
   /**
+   * Get the kind of this operator.
+   *
    * @return The kind of this operator.
    */
   public Kind getKind()
@@ -79,6 +81,8 @@ public class Op extends AbstractPointer
   private native int getKind(long pointer);
 
   /**
+   * Determine if this operator is a null term.
+   *
    * @return True if this operator is a null term.
    */
   public boolean isNull()
@@ -89,6 +93,8 @@ public class Op extends AbstractPointer
   private native boolean isNull(long pointer);
 
   /**
+   * Determine if this operator is indexed.
+   *
    * @return True iff this operator is indexed.
    */
   public boolean isIndexed()
@@ -99,6 +105,8 @@ public class Op extends AbstractPointer
   private native boolean isIndexed(long pointer);
 
   /**
+   * Get the number of indices of this op.
+   *
    * @return The number of indices of this op.
    */
   public int getNumIndices()
@@ -112,7 +120,7 @@ public class Op extends AbstractPointer
    * Get the index at position {@code i}.
    * @param i The position of the index to return.
    * @return The index at position {@code i}.
-   * @throws CVC5ApiException
+   * @throws CVC5ApiException on error
    */
   public Term get(int i) throws CVC5ApiException
   {
@@ -127,4 +135,16 @@ public class Op extends AbstractPointer
    * @return A string representation of this operator.
    */
   protected native String toString(long pointer);
+
+  /**
+   * Get the hash value of an operator.
+   * @return The hash value.
+   */
+  @Override
+  public int hashCode()
+  {
+    return Long.hashCode(hashCode(pointer));
+  }
+
+  private native long hashCode(long pointer);
 }

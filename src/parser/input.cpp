@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -15,9 +12,9 @@
 
 #include "parser/input.h"
 
-#include <fstream>
+#include <cvc5/cvc5_parser.h>
 
-#include "parser/parser_exception.h"
+#include <fstream>
 
 namespace cvc5 {
 namespace parser {
@@ -33,7 +30,7 @@ class FileInput : public Input
     {
       std::stringstream ss;
       ss << "Couldn't open file: " << filename;
-      throw InputStreamException(ss.str());
+      throw ParserException(ss.str());
     }
   }
   std::istream* getStream() override { return &d_fs; }

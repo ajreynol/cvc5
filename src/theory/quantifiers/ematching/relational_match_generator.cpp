@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Andres Noetzli, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -60,7 +57,7 @@ RelationalMatchGenerator::RelationalMatchGenerator(
 
 void RelationalMatchGenerator::resetInstantiationRound() { d_counter = 0; }
 
-bool RelationalMatchGenerator::reset(Node eqc)
+bool RelationalMatchGenerator::reset(CVC5_UNUSED Node eqc)
 {
   d_counter = 0;
   return true;
@@ -90,7 +87,7 @@ int RelationalMatchGenerator::getNextMatch(InstMatch& m)
       // try the opposite polarity
       checkPol = !d_pol;
     }
-    NodeManager* nm = NodeManager::currentNM();
+    NodeManager* nm = nodeManager();
     // falsify ( d_var <d_rel> d_rhs ) = checkPol
     s = rhs;
     if (!checkPol)
@@ -106,8 +103,7 @@ int RelationalMatchGenerator::getNextMatch(InstMatch& m)
     if (m.set(d_vindex, s))
     {
       Trace("relational-match-gen") << "...success" << std::endl;
-      int ret = continueNextMatch(
-          m, InferenceId::QUANTIFIERS_INST_E_MATCHING_RELATIONAL);
+      int ret = continueNextMatch(m);
       if (ret > 0)
       {
         Trace("relational-match-gen") << "...returned " << ret << std::endl;
@@ -122,6 +118,11 @@ int RelationalMatchGenerator::getNextMatch(InstMatch& m)
     }
   }
   return -1;
+}
+
+InferenceId RelationalMatchGenerator::getInferenceId()
+{
+  return InferenceId::QUANTIFIERS_INST_E_MATCHING_RELATIONAL;
 }
 
 }  // namespace inst

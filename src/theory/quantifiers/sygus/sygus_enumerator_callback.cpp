@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -17,6 +14,7 @@
 
 #include "theory/datatypes/sygus_datatype_utils.h"
 #include "theory/quantifiers/sygus/example_eval_cache.h"
+#include "theory/quantifiers/sygus/sygus_enumerator.h"
 #include "theory/quantifiers/sygus/sygus_stats.h"
 #include "theory/quantifiers/sygus/term_database_sygus.h"
 #include "theory/quantifiers/sygus_sampler.h"
@@ -64,7 +62,8 @@ bool SygusEnumeratorCallback::addTerm(const Node& n,
   return true;
 }
 
-Node SygusEnumeratorCallback::getCacheValue(const Node& n, const Node& bn)
+Node SygusEnumeratorCallback::getCacheValue(CVC5_UNUSED const Node& n,
+                                            const Node& bn)
 {
   // By default, we cache based on the rewritten form.
   // Further criteria for uniqueness (e.g. weights) may go here.
@@ -84,7 +83,7 @@ bool SygusEnumeratorCallback::addTermInternal(const Node& n,
     }
     // Is it equivalent under examples?
     // NOTE: currently assumes the cache value is the rewritten form of bn
-    Assert(cval.getType() == bn.getType());
+    AssertEqual(cval.getType(), bn.getType());
     Node bne = d_eec->addSearchVal(n.getType(), cval);
     if (!bne.isNull())
     {

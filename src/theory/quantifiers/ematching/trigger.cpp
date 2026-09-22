@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Gereon Kremer, Morgan Deters
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -49,7 +46,8 @@ Trigger::Trigger(Env& env,
                  QuantifiersRegistry& qr,
                  TermRegistry& tr,
                  Node q,
-                 std::vector<Node>& nodes)
+                 std::vector<Node>& nodes,
+                 bool isUser)
     : EnvObj(env),
       d_qstate(qs),
       d_qim(qim),
@@ -85,32 +83,40 @@ Trigger::Trigger(Env& env,
     Node ns = d_qreg.substituteInstConstantsToBoundVariables(nt, q);
     extNodes.push_back(ns);
   }
-  d_trNode = NodeManager::currentNM()->mkNode(Kind::SEXPR, extNodes);
+  d_trNode = nodeManager()->mkNode(Kind::SEXPR, extNodes);
   if (isOutputOn(OutputTag::TRIGGER))
   {
+    output(OutputTag::TRIGGER) << (isUser ? "(user-trigger " : "(trigger ");
     QuantAttributes& qa = d_qreg.getQuantAttributes();
-    output(OutputTag::TRIGGER) << "(trigger " << qa.quantToString(q) << " "
-                               << d_trNode << ")" << std::endl;
+    output(OutputTag::TRIGGER) << qa.quantToString(q) << " " << d_trNode;
   }
   QuantifiersStatistics& stats = qs.getStats();
-  if( d_nodes.size()==1 ){
+  if (d_nodes.size() == 1)
+  {
     if (TriggerTermInfo::isSimpleTrigger(d_nodes[0]))
     {
       d_mg = new InstMatchGeneratorSimple(env, this, q, d_nodes[0]);
-      ++(stats.d_triggers);
-    }else{
-      d_mg = InstMatchGenerator::mkInstMatchGenerator(env, this, q, d_nodes[0]);
       ++(stats.d_simple_triggers);
+      output(OutputTag::TRIGGER) << " :simple";
     }
-  }else{
+    else
+    {
+      d_mg = InstMatchGenerator::mkInstMatchGenerator(env, this, q, d_nodes[0]);
+      ++(stats.d_triggers);
+    }
+  }
+  else
+  {
     if (options().quantifiers.multiTriggerCache)
     {
       d_mg = new InstMatchGeneratorMulti(env, this, q, d_nodes);
+      output(OutputTag::TRIGGER) << " :multi-cache";
     }
     else
     {
       d_mg =
           InstMatchGenerator::mkInstMatchGeneratorMulti(env, this, q, d_nodes);
+      output(OutputTag::TRIGGER) << " :multi";
     }
     if (TraceIsOn("multi-trigger"))
     {
@@ -122,13 +128,15 @@ Trigger::Trigger(Env& env,
     }
     ++(stats.d_multi_triggers);
   }
+  if (isOutputOn(OutputTag::TRIGGER))
+  {
+    output(OutputTag::TRIGGER) << ")" << std::endl;
+  }
 
   Trace("trigger-debug") << "Finished making trigger." << std::endl;
 }
 
-Trigger::~Trigger() {
-  delete d_mg;
-}
+Trigger::~Trigger() { delete d_mg; }
 
 void Trigger::setEvaluatorMode(ieval::TermEvaluatorMode tev)
 {
@@ -145,7 +153,7 @@ bool Trigger::isMultiTrigger() const { return d_nodes.size() > 1; }
 
 Node Trigger::getInstPattern() const
 {
-  return NodeManager::currentNM()->mkNode(Kind::INST_PATTERN, d_nodes);
+  return nodeManager()->mkNode(Kind::INST_PATTERN, d_nodes);
 }
 
 uint64_t Trigger::addInstantiations()
@@ -158,10 +166,9 @@ uint64_t Trigger::addInstantiations()
     eq::EqualityEngine* ee = d_qstate.getEqualityEngine();
     for (const Node& gt : d_groundTerms)
     {
-      if (!ee->hasTerm(gt))
+      if (!ee->hasTerm(gt) && !gt.getType().isBoolean())
       {
-        SkolemManager* sm = NodeManager::currentNM()->getSkolemManager();
-        Node k = sm->mkPurifySkolem(gt);
+        Node k = SkolemManager::mkPurifySkolem(gt);
         Node eq = k.eqNode(gt);
         Trace("trigger-gt-lemma")
             << "Trigger: ground term purify lemma: " << eq << std::endl;
@@ -182,8 +189,9 @@ uint64_t Trigger::addInstantiations()
   return gtAddedLemmas + addedLemmas;
 }
 
-bool Trigger::sendInstantiation(std::vector<Node>& m, InferenceId id)
+bool Trigger::sendInstantiation(std::vector<Node>& m)
 {
+  InferenceId id = d_mg->getInferenceId();
   return d_qim.getInstantiate()->addInstantiation(d_quant, m, id, d_trNode);
 }
 
@@ -193,7 +201,7 @@ Node Trigger::ensureGroundTermPreprocessed(Valuation& val,
                                            Node n,
                                            std::vector<Node>& gts)
 {
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = n.getNodeManager();
   std::unordered_map<TNode, Node> visited;
   std::unordered_map<TNode, Node>::iterator it;
   std::vector<TNode> visit;
@@ -206,7 +214,7 @@ Node Trigger::ensureGroundTermPreprocessed(Valuation& val,
     it = visited.find(cur);
     if (it == visited.end())
     {
-      if (cur.getNumChildren() == 0)
+      if (cur.getNumChildren() == 0 || cur.getKind() == Kind::BOUND_VAR_LIST)
       {
         visited[cur] = cur;
       }
@@ -253,7 +261,7 @@ Node Trigger::ensureGroundTermPreprocessed(Valuation& val,
   return visited[n];
 }
 
-void Trigger::debugPrint(const char* c) const
+void Trigger::debugPrint(CVC5_UNUSED const char* c) const
 {
   Trace(c) << "TRIGGER( " << d_nodes << " )" << std::endl;
 }

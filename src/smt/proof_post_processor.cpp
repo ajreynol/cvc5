@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Haniel Barbosa, Alex Ozdemir
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -16,11 +13,14 @@
 #include "smt/proof_post_processor.h"
 
 #include "expr/skolem_manager.h"
+#include "options/base_options.h"
 #include "options/proof_options.h"
 #include "preprocessing/assertion_pipeline.h"
 #include "proof/proof_node_algorithm.h"
 #include "proof/proof_node_manager.h"
 #include "proof/resolution_proofs_util.h"
+#include "proof/subtype_elim_proof_converter.h"
+#include "theory/arith/arith_proof_utilities.h"
 #include "theory/arith/arith_utilities.h"
 #include "theory/builtin/proof_checker.h"
 #include "theory/bv/bitblast/bitblast_proof_generator.h"
@@ -37,17 +37,16 @@ namespace cvc5::internal {
 namespace smt {
 
 ProofPostprocessCallback::ProofPostprocessCallback(Env& env,
-                                                   rewriter::RewriteDb* rdb,
                                                    bool updateScopedAssumptions)
     : EnvObj(env),
       d_pc(nullptr),
       d_pppg(nullptr),
-      d_rdbPc(env, rdb),
       d_wfpm(env),
-      d_elimAllTrusted(false),
+      d_macroExpand(statisticsRegistry().registerHistogram<ProofRule>(
+          "ProofPostprocessCallback::macroExpandCount")),
       d_updateScopedAssumptions(updateScopedAssumptions)
 {
-  d_true = NodeManager::currentNM()->mkConst(true);
+  d_true = nodeManager()->mkConst(true);
 }
 
 void ProofPostprocessCallback::initializeUpdate(ProofGenerator* pppg)
@@ -63,14 +62,9 @@ void ProofPostprocessCallback::setEliminateRule(ProofRule rule)
   d_elimRules.insert(rule);
 }
 
-void ProofPostprocessCallback::setEliminateAllTrustedRules()
-{
-  d_elimAllTrusted = true;
-}
-
 bool ProofPostprocessCallback::shouldUpdate(std::shared_ptr<ProofNode> pn,
                                             const std::vector<Node>& fa,
-                                            bool& continueUpdate)
+                                            CVC5_UNUSED bool& continueUpdate)
 {
   ProofRule id = pn->getRule();
   if (shouldExpand(id))
@@ -94,12 +88,19 @@ bool ProofPostprocessCallback::shouldUpdate(std::shared_ptr<ProofNode> pn,
   return true;
 }
 
+bool ProofPostprocessCallback::shouldUpdatePost(
+    CVC5_UNUSED std::shared_ptr<ProofNode> pn,
+    CVC5_UNUSED const std::vector<Node>& fa)
+{
+  return false;
+}
+
 bool ProofPostprocessCallback::update(Node res,
                                       ProofRule id,
                                       const std::vector<Node>& children,
                                       const std::vector<Node>& args,
                                       CDProof* cdp,
-                                      bool& continueUpdate)
+                                      CVC5_UNUSED bool& continueUpdate)
 {
   Trace("smt-proof-pp-debug") << "- Post process " << id << " " << children
                               << " / " << args << std::endl;
@@ -170,15 +171,7 @@ bool ProofPostprocessCallback::updateInternal(Node res,
 
 bool ProofPostprocessCallback::shouldExpand(ProofRule id) const
 {
-  if (d_elimRules.find(id) != d_elimRules.end())
-  {
-    return true;
-  }
-  if (d_elimAllTrusted && d_pc->getPedanticLevel(id) > 0)
-  {
-    return true;
-  }
-  return false;
+  return d_elimRules.find(id) != d_elimRules.end();
 }
 
 Node ProofPostprocessCallback::expandMacros(ProofRule id,
@@ -192,7 +185,23 @@ Node ProofPostprocessCallback::expandMacros(ProofRule id,
     // not eliminated
     return Node::null();
   }
+  d_macroExpand << id;
   Trace("smt-proof-pp-debug") << "Expand macro " << id << std::endl;
+  if (id == ProofRule::TRUST)
+  {
+    TrustId tid;
+    getTrustId(args[0], tid);
+    // maybe we can show it rewrites to true based on rewriting
+    // modulo original forms (MACRO_SR_PRED_INTRO).
+    TheoryProofStepBuffer psb(d_pc);
+    if (psb.applyPredIntro(
+            res, {}, MethodId::SB_DEFAULT, MethodId::SBA_SEQUENTIAL))
+    {
+      cdp->addSteps(psb);
+      return res;
+    }
+    return Node::null();
+  }
   // macro elimination
   if (id == ProofRule::MACRO_SR_EQ_INTRO)
   {
@@ -262,10 +271,10 @@ Node ProofPostprocessCallback::expandMacros(ProofRule id,
     {
       Node eq = ts.eqNode(tr);
       // apply REWRITE proof rule
-      if (!updateInternal(eq, ProofRule::REWRITE, {}, rargs, cdp))
+      if (!updateInternal(eq, ProofRule::MACRO_REWRITE, {}, rargs, cdp))
       {
         // if not elimianted, add as step
-        cdp->addStep(eq, ProofRule::REWRITE, {}, rargs);
+        cdp->addStep(eq, ProofRule::MACRO_REWRITE, {}, rargs);
       }
       tchildren.push_back(eq);
     }
@@ -282,10 +291,14 @@ Node ProofPostprocessCallback::expandMacros(ProofRule id,
   {
     std::vector<Node> tchildren;
     std::vector<Node> sargs = args;
+    MethodId idr = MethodId::RW_REWRITE;
+    if (args.size() >= 4)
+    {
+      getMethodId(args[3], idr);
+    }
     // take into account witness form, if necessary
-    bool reqWitness = d_wfpm.requiresWitnessFormIntro(args[0]);
-    Trace("smt-proof-pp-debug")
-        << "...pred intro reqWitness=" << reqWitness << std::endl;
+    WitnessReq reqw = d_wfpm.requiresWitnessFormIntro(args[0], idr);
+    Trace("smt-proof-pp-debug") << "...pred intro reqw=" << reqw << std::endl;
     // (TRUE_ELIM
     // (TRANS
     //    (MACRO_SR_EQ_INTRO <children> :args (t args[1:]))
@@ -298,26 +311,35 @@ Node ProofPostprocessCallback::expandMacros(ProofRule id,
     // that this rule application is immediately expanded in the recursive
     // call and not added to the proof.
     Node conc =
-        expandMacros(ProofRule::MACRO_SR_EQ_INTRO, children, sargs, cdp);
+        addExpandStep(ProofRule::MACRO_SR_EQ_INTRO, children, sargs, cdp);
     Trace("smt-proof-pp-debug")
         << "...pred intro conclusion is " << conc << std::endl;
     Assert(!conc.isNull());
     Assert(conc.getKind() == Kind::EQUAL);
     Assert(conc[0] == args[0]);
-    tchildren.push_back(conc);
-    if (reqWitness)
+    addToTransChildren(conc, tchildren);
+    Node wc = conc[1];
+    if (reqw == WitnessReq::WITNESS || reqw == WitnessReq::WITNESS_AND_REWRITE)
     {
       Node weq = addProofForWitnessForm(conc[1], cdp);
       Trace("smt-proof-pp-debug") << "...weq is " << weq << std::endl;
-      if (addToTransChildren(weq, tchildren))
-      {
-        // toWitness(apply_SR(t)) = apply_SR(toWitness(apply_SR(t)))
-        // rewrite again, don't need substitution. Also we always use the
-        // default rewriter, due to the definition of MACRO_SR_PRED_INTRO.
-        Node weqr =
-            expandMacros(ProofRule::MACRO_SR_EQ_INTRO, {}, {weq[1]}, cdp);
-        addToTransChildren(weqr, tchildren);
-      }
+      // note this may be reflexive
+      addToTransChildren(weq, tchildren);
+      wc = weq[1];
+    }
+    if (reqw == WitnessReq::REWRITE || reqw == WitnessReq::WITNESS_AND_REWRITE)
+    {
+      // toWitness(apply_SR(t)) = apply_SR(toWitness(apply_SR(t)))
+      // rewrite again, don't need substitution. Also we always use the
+      // default rewriter, due to the definition of MACRO_SR_PRED_INTRO.
+      Node weqr = addExpandStep(ProofRule::MACRO_SR_EQ_INTRO, {}, {wc}, cdp);
+      addToTransChildren(weqr, tchildren);
+    }
+    if (tchildren.empty())
+    {
+      // if trivial corner case, go back and add conc (which must be reflexive,
+      // since we already tried to add it via addToTransChildren).
+      tchildren.push_back(conc);
     }
     // apply transitivity if necessary
     Node eq = addProofForTrans(tchildren, cdp);
@@ -339,7 +361,7 @@ Node ProofPostprocessCallback::expandMacros(ProofRule id,
     srargs.push_back(children[0]);
     srargs.insert(srargs.end(), args.begin(), args.end());
     Node conc =
-        expandMacros(ProofRule::MACRO_SR_EQ_INTRO, schildren, srargs, cdp);
+        addExpandStep(ProofRule::MACRO_SR_EQ_INTRO, schildren, srargs, cdp);
     Assert(!conc.isNull());
     Assert(conc.getKind() == Kind::EQUAL);
     Assert(conc[0] == children[0]);
@@ -374,8 +396,14 @@ Node ProofPostprocessCallback::expandMacros(ProofRule id,
     std::vector<Node> schildren(children.begin() + 1, children.end());
     std::vector<Node> sargs = args;
     // first, compute if we need
-    bool reqWitness = d_wfpm.requiresWitnessFormTransform(children[0], args[0]);
-    Trace("smt-proof-pp-debug") << "...reqWitness=" << reqWitness << std::endl;
+    MethodId idr = MethodId::RW_REWRITE;
+    if (args.size() >= 4)
+    {
+      getMethodId(args[3], idr);
+    }
+    WitnessReq reqw =
+        d_wfpm.requiresWitnessFormTransform(children[0], args[0], idr);
+    Trace("smt-proof-pp-debug") << "...reqw=" << reqw << std::endl;
     // convert both sides, in three steps, take symmetry of second chain
     for (unsigned r = 0; r < 2; r++)
     {
@@ -390,22 +418,27 @@ Node ProofPostprocessCallback::expandMacros(ProofRule id,
       Assert(!eq.isNull() && eq.getKind() == Kind::EQUAL && eq[0] == sargs[0]);
       addToTransChildren(eq, tchildrenr);
       // apply_SR(t) = toWitness(apply_SR(t))
-      if (reqWitness)
+      Node wc = eq[1];
+      if (reqw == WitnessReq::WITNESS
+          || reqw == WitnessReq::WITNESS_AND_REWRITE)
       {
         Node weq = addProofForWitnessForm(eq[1], cdp);
         Trace("smt-proof-pp-debug")
             << "transform toWitness (" << r << "): " << weq << std::endl;
-        if (addToTransChildren(weq, tchildrenr))
-        {
-          // toWitness(apply_SR(t)) = apply_SR(toWitness(apply_SR(t)))
-          // rewrite again, don't need substitution. Also, we always use the
-          // default rewriter, due to the definition of MACRO_SR_PRED_TRANSFORM.
-          Node weqr =
-              expandMacros(ProofRule::MACRO_SR_EQ_INTRO, {}, {weq[1]}, cdp);
-          Trace("smt-proof-pp-debug") << "transform rewrite_witness (" << r
-                                      << "): " << weqr << std::endl;
-          addToTransChildren(weqr, tchildrenr);
-        }
+        // note this may be reflexive
+        addToTransChildren(weq, tchildrenr);
+        wc = weq[1];
+      }
+      if (reqw == WitnessReq::REWRITE
+          || reqw == WitnessReq::WITNESS_AND_REWRITE)
+      {
+        // toWitness(apply_SR(t)) = apply_SR(toWitness(apply_SR(t)))
+        // rewrite again, don't need substitution. Also, we always use the
+        // default rewriter, due to the definition of MACRO_SR_PRED_TRANSFORM.
+        Node weqr = addExpandStep(ProofRule::MACRO_SR_EQ_INTRO, {}, {wc}, cdp);
+        Trace("smt-proof-pp-debug")
+            << "transform rewrite_witness (" << r << "): " << weqr << std::endl;
+        addToTransChildren(weqr, tchildrenr);
       }
       Trace("smt-proof-pp-debug")
           << "transform connect (" << r << ")" << std::endl;
@@ -430,19 +463,29 @@ Node ProofPostprocessCallback::expandMacros(ProofRule id,
       Trace("smt-proof-pp-debug")
           << "transform finish (" << r << ")" << std::endl;
     }
-
     // apply transitivity if necessary
     Node eq = addProofForTrans(tchildren, cdp);
-
+    if (eq.isNull() || eq[1] != args[0])
+    {
+      DebugUnhandled() << "Failed proof for MACRO_SR_PRED_TRANSFORM";
+      Trace("smt-proof-pp-debug")
+          << "Failed transitivity from " << tchildren << std::endl;
+      return Node::null();
+    }
     cdp->addStep(eq[1], ProofRule::EQ_RESOLVE, {children[0], eq}, {});
     return args[0];
   }
-  else if (id == ProofRule::MACRO_RESOLUTION
-           || id == ProofRule::MACRO_RESOLUTION_TRUST)
+  else if (id == ProofRule::CHAIN_M_RESOLUTION)
   {
     ProofNodeManager* pnm = d_env.getProofNodeManager();
     // first generate the naive chain_resolution
-    std::vector<Node> chainResArgs{args.begin() + 1, args.end()};
+    Assert(args.size() == 3);
+    std::vector<Node> pols(args[1].begin(), args[1].end());
+    std::vector<Node> lits(args[2].begin(), args[2].end());
+    Assert(lits.size() == pols.size());
+    Assert(pols.size() == children.size() - 1);
+    NodeManager* nm = nodeManager();
+    std::vector<Node> chainResArgs(args.begin() + 1, args.end());
     Node chainConclusion = d_pc->checkDebug(
         ProofRule::CHAIN_RESOLUTION, children, chainResArgs, Node::null(), "");
     Trace("smt-proof-pp-debug") << "Original conclusion: " << args[0] << "\n";
@@ -456,10 +499,10 @@ Node ProofPostprocessCallback::expandMacros(ProofRule id,
     //   FACTORING step
     // - if the order is not the same, add a REORDERING step
     // - if there are literals in chainConclusion that are not in the original
-    //   conclusion, we need to transform the MACRO_RESOLUTION into a series of
-    //   CHAIN_RESOLUTION + FACTORING steps, so that we explicitly eliminate all
-    //   these "crowding" literals. We do this via FACTORING so we avoid adding
-    //   an exponential number of premises, which would happen if we just
+    //   conclusion, we need to transform the CHAIN_M_RESOLUTION into a series
+    //   of CHAIN_RESOLUTION + FACTORING steps, so that we explicitly eliminate
+    //   all these "crowding" literals. We do this via FACTORING so we avoid
+    //   adding an exponential number of premises, which would happen if we just
     //   repeated in the premises the clauses needed for eliminating crowding
     //   literals, which could themselves add crowding literals.
     if (chainConclusion == args[0])
@@ -471,7 +514,6 @@ Node ProofPostprocessCallback::expandMacros(ProofRule id,
       return chainConclusion;
     }
     size_t initProofSize = cdp->getNumProofNodes();
-    NodeManager* nm = NodeManager::currentNM();
     // If we got here, then chainConclusion is NECESSARILY an OR node
     Assert(chainConclusion.getKind() == Kind::OR);
     // get the literals in the chain conclusion
@@ -501,7 +543,14 @@ Node ProofPostprocessCallback::expandMacros(ProofRule id,
     //
     // Thus we rely on the standard utility to determine if args[0] is singleton
     // based on the premises and arguments of the resolution
-    if (proof::isSingletonClause(args[0], children, chainResArgs))
+    std::vector<Node> chainResArgsOrig;
+    // the proof utilities below expect to interleave literals and polarities
+    for (size_t i = 0, nsteps = args[1].getNumChildren(); i < nsteps; i++)
+    {
+      chainResArgsOrig.push_back(args[1][i]);
+      chainResArgsOrig.push_back(args[2][i]);
+    }
+    if (proof::isSingletonClause(args[0], children, chainResArgsOrig))
     {
       conclusionLits.push_back(args[0]);
     }
@@ -518,16 +567,18 @@ Node ProofPostprocessCallback::expandMacros(ProofRule id,
     // chain.
     if (chainConclusionLitsSet != conclusionLitsSet)
     {
+      chainResArgsOrig.insert(chainResArgsOrig.begin(), args[0]);
       Trace("smt-proof-pp-debug") << "..need to eliminate crowding lits.\n";
       Trace("crowding-lits") << "..need to eliminate crowding lits.\n";
       Trace("crowding-lits") << "..premises: " << children << "\n";
-      Trace("crowding-lits") << "..args: " << args << "\n";
+      Trace("crowding-lits") << "..args: " << chainResArgsOrig << "\n";
       chainConclusion =
-          proof::eliminateCrowdingLits(d_env.getOptions().proof.optResReconSize,
+          proof::eliminateCrowdingLits(nm,
+                                       d_env.getOptions().proof.optResReconSize,
                                        chainConclusionLits,
                                        conclusionLits,
                                        children,
-                                       args,
+                                       chainResArgsOrig,
                                        cdp,
                                        pnm);
       // update vector of lits. Note that the set is no longer used, so we don't
@@ -599,7 +650,7 @@ Node ProofPostprocessCallback::expandMacros(ProofRule id,
   }
   else if (id == ProofRule::SUBS)
   {
-    NodeManager* nm = NodeManager::currentNM();
+    NodeManager* nm = nodeManager();
     // Notice that a naive way to reconstruct SUBS is to do a term conversion
     // proof for each substitution.
     // The proof of f(a) * { a -> g(b) } * { b -> c } = f(g(c)) is:
@@ -628,6 +679,8 @@ Node ProofPostprocessCallback::expandMacros(ProofRule id,
     {
       getMethodId(args[2], ida);
     }
+    Trace("smt-proof-pp-debug")
+        << "Expand SUBS " << ids << " " << ida << std::endl;
     std::vector<std::shared_ptr<CDProof>> pfs;
     std::vector<TNode> vsList;
     std::vector<TNode> ssList;
@@ -734,6 +787,11 @@ Node ProofPostprocessCallback::expandMacros(ProofRule id,
     {
       // substitutions are pre-rewrites
       tcpg.addRewriteStep(vvec[j], svec[j], pgs[j], true);
+      if (ida == MethodId::SBA_FIXPOINT)
+      {
+        // fixed point substitutions are also post-rewrites
+        tcpg.addRewriteStep(vvec[j], svec[j], pgs[j], false);
+      }
     }
     // add the proof constructed by the term conversion utility
     std::shared_ptr<ProofNode> pfn = tcpg.getProofForRewriting(t);
@@ -782,7 +840,7 @@ Node ProofPostprocessCallback::expandMacros(ProofRule id,
             << eq << std::endl
             << eqq << std::endl
             << "from " << children << " applied to " << t << std::endl;
-        cdp->addStep(eqq, ProofRule::TRUST_SUBS, children, {eqq});
+        cdp->addTrustedStep(eqq, TrustId::SUBS_NO_ELABORATE, children, {});
       }
     }
     else
@@ -791,7 +849,7 @@ Node ProofPostprocessCallback::expandMacros(ProofRule id,
     }
     return eqq;
   }
-  else if (id == ProofRule::REWRITE)
+  else if (id == ProofRule::MACRO_REWRITE)
   {
     // get the kind of rewrite
     MethodId idr = MethodId::RW_REWRITE;
@@ -817,15 +875,17 @@ Node ProofPostprocessCallback::expandMacros(ProofRule id,
         // did not have a proof of rewriting, probably isExtEq is true
         if (isExtEq)
         {
-          // update to THEORY_REWRITE with idr
+          // update to TRUST_THEORY_REWRITE with idr
           Assert(args.size() >= 1);
-          Node tid = builtin::BuiltinProofRuleChecker::mkTheoryIdNode(theoryId);
-          cdp->addStep(eq, ProofRule::THEORY_REWRITE, {}, {eq, tid, args[1]});
+          Node tid = builtin::BuiltinProofRuleChecker::mkTheoryIdNode(
+              nodeManager(), theoryId);
+          cdp->addStep(
+              eq, ProofRule::TRUST_THEORY_REWRITE, {}, {eq, tid, args[1]});
         }
         else
         {
           // this should never be applied
-          cdp->addStep(eq, ProofRule::TRUST_REWRITE, {}, {eq});
+          cdp->addTrustedStep(eq, TrustId::REWRITE_NO_ELABORATE, {}, {});
         }
       }
       else
@@ -862,8 +922,8 @@ Node ProofPostprocessCallback::expandMacros(ProofRule id,
         {
           // will expand this as a default rewrite if needed
           Node eqd = retCurr.eqNode(retDef);
-          Node mid = mkMethodId(midi);
-          cdp->addStep(eqd, ProofRule::REWRITE, {}, {retCurr, mid});
+          Node mid = mkMethodId(nodeManager(), midi);
+          cdp->addStep(eqd, ProofRule::MACRO_REWRITE, {}, {retCurr, mid});
           transEq.push_back(eqd);
         }
         retCurr = retDef;
@@ -875,23 +935,12 @@ Node ProofPostprocessCallback::expandMacros(ProofRule id,
       }
       if (retCurr != ret)
       {
-        // try to prove the rewritten form is equal to the extended rewritten
-        // form, treated as a stand alone (theory) rewrite
+        // We were unable to show it via ordinary rewriting, so we insert
+        // a trusted step. This cannot be TRUST_THEORY_REWRITE since it is
+        // not an ordinary theory rewrite.
         Node eqp = retCurr.eqNode(ret);
-        std::vector<Node> targs;
-        targs.push_back(eqp);
-        targs.push_back(
-            builtin::BuiltinProofRuleChecker::mkTheoryIdNode(theoryId));
-        // in this case, must be a non-standard rewrite kind
-        Assert(args.size() >= 2);
-        targs.push_back(args[1]);
-        Node eqpp = expandMacros(ProofRule::THEORY_REWRITE, {}, targs, cdp);
+        cdp->addTrustedStep(eqp, TrustId::EXT_THEORY_REWRITE, {}, {});
         transEq.push_back(eqp);
-        if (eqpp.isNull())
-        {
-          // don't know how to eliminate
-          return Node::null();
-        }
       }
       if (transEq.size() > 1)
       {
@@ -908,58 +957,13 @@ Node ProofPostprocessCallback::expandMacros(ProofRule id,
   }
   else if (id == ProofRule::MACRO_ARITH_SCALE_SUM_UB)
   {
-    Trace("macro::arith") << "Expand MACRO_ARITH_SCALE_SUM_UB" << std::endl;
-    if (TraceIsOn("macro::arith"))
-    {
-      for (const auto& child : children)
-      {
-        Trace("macro::arith") << "  child: " << child << std::endl;
-      }
-      Trace("macro::arith") << "   args: " << args << std::endl;
-    }
-    Assert(args.size() == children.size());
-    NodeManager* nm = NodeManager::currentNM();
-    ProofStepBuffer steps{d_pc};
-
-    // Scale all children, accumulating
-    std::vector<Node> scaledRels;
-    for (size_t i = 0; i < children.size(); ++i)
-    {
-      TNode child = children[i];
-      TNode scalar = args[i];
-      bool isPos = scalar.getConst<Rational>() > 0;
-      Node scalarCmp = nm->mkNode(
-          isPos ? Kind::GT : Kind::LT, scalar, nm->mkConstInt(Rational(0)));
-      // (= scalarCmp true)
-      Node scalarCmpOrTrue =
-          steps.tryStep(ProofRule::EVALUATE, {}, {scalarCmp});
-      Assert(!scalarCmpOrTrue.isNull());
-      // scalarCmp
-      steps.addStep(ProofRule::TRUE_ELIM, {scalarCmpOrTrue}, {}, scalarCmp);
-      // (and scalarCmp relation)
-      Node scalarCmpAndRel =
-          steps.tryStep(ProofRule::AND_INTRO, {scalarCmp, child}, {});
-      Assert(!scalarCmpAndRel.isNull());
-      // (=> (and scalarCmp relation) scaled)
-      Node impl = steps.tryStep(
-          isPos ? ProofRule::ARITH_MULT_POS : ProofRule::ARITH_MULT_NEG,
-          {},
-          {scalar, child});
-      Assert(!impl.isNull());
-      // scaled
-      Node scaled =
-          steps.tryStep(ProofRule::MODUS_PONENS, {scalarCmpAndRel, impl}, {});
-      Assert(!scaled.isNull());
-      scaledRels.emplace_back(scaled);
-    }
-
-    Node sumBounds = steps.tryStep(ProofRule::ARITH_SUM_UB, scaledRels, {});
-    cdp->addSteps(steps);
-    Trace("macro::arith") << "Expansion done. Proved: " << sumBounds
-                          << std::endl;
+    Node sumBounds =
+        theory::arith::expandMacroSumUb(nodeManager(), children, args, cdp);
+    Assert(!sumBounds.isNull());
+    Assert(res.isNull() || sumBounds == res);
     return sumBounds;
   }
-  else if (id == ProofRule::STRING_INFERENCE)
+  else if (id == ProofRule::MACRO_STRING_INFERENCE)
   {
     // get the arguments
     Node conc;
@@ -969,14 +973,14 @@ Node ProofPostprocessCallback::expandMacros(ProofRule id,
     if (theory::strings::InferProofCons::unpackArgs(
             args, conc, iid, isRev, exp))
     {
-      if (theory::strings::InferProofCons::convertAndAddProofTo(
-              cdp, conc, iid, isRev, exp))
+      if (theory::strings::InferProofCons::convert(
+              d_env, iid, isRev, conc, exp, cdp))
       {
         return conc;
       }
     }
   }
-  else if (id == ProofRule::BV_BITBLAST)
+  else if (id == ProofRule::MACRO_BV_BITBLAST)
   {
     bv::BBProof bb(d_env, nullptr, true);
     Node eq = args[0];
@@ -986,48 +990,21 @@ Node ProofPostprocessCallback::expandMacros(ProofRule id,
     bb.getProofGenerator()->addProofTo(eq[0].eqNode(bbAtom), cdp);
     return eq;
   }
-  else if (d_elimAllTrusted && d_pc->getPedanticLevel(id) > 0)
-  {
-    if (res.isNull())
-    {
-      res = d_pc->checkDebug(id, children, args);
-      Assert(!res.isNull());
-    }
-    bool reqTrueElim = false;
-    // if not an equality, make (= res true).
-    if (res.getKind() != Kind::EQUAL)
-    {
-      res = res.eqNode(d_true);
-      reqTrueElim = true;
-    }
-    TheoryId tid = THEORY_LAST;
-    MethodId mid = MethodId::RW_REWRITE;
-    // if theory rewrite, get diagnostic information
-    if (id == ProofRule::THEORY_REWRITE)
-    {
-      builtin::BuiltinProofRuleChecker::getTheoryId(args[1], tid);
-      getMethodId(args[2], mid);
-    }
-    int64_t recLimit = options().proof.proofRewriteRconsRecLimit;
-    // attempt to reconstruct the proof of the equality into cdp using the
-    // rewrite database proof reconstructor
-    if (d_rdbPc.prove(cdp, res[0], res[1], tid, mid, recLimit))
-    {
-      // If we made (= res true) above, conclude the original res.
-      if (reqTrueElim)
-      {
-        cdp->addStep(res[0], ProofRule::TRUE_ELIM, {res}, {});
-        res = res[0];
-      }
-      // if successful, we update the proof
-      return res;
-    }
-    // otherwise no update
-  }
-
-  // TRUST, PREPROCESS, THEORY_LEMMA, THEORY_PREPROCESS?
-
   return Node::null();
+}
+
+Node ProofPostprocessCallback::addExpandStep(ProofRule id,
+                                             const std::vector<Node>& children,
+                                             const std::vector<Node>& args,
+                                             CDProof* cdp)
+{
+  // For now, this is a (locally) recursive call to expand macros; alternatively
+  // we could add the step to cdp and allow the proof node updater to call us
+  // again. This has the advantage that it may be possible to do more aggressive
+  // merging, e.g. if a subproof in expanded call was duplicated in multiple
+  // expansions, at the cost of generating more intermediate proof nodes. At
+  // the moment, this is not worthwhile.
+  return expandMacros(id, children, args, cdp);
 }
 
 Node ProofPostprocessCallback::addProofForWitnessForm(Node t, CDProof* cdp)
@@ -1048,9 +1025,10 @@ Node ProofPostprocessCallback::addProofForWitnessForm(Node t, CDProof* cdp)
   }
   else
   {
-    Assert(false) << "ProofPostprocessCallback::addProofForWitnessForm: failed "
-                     "to add proof for witness form of "
-                  << t;
+    DebugUnhandled()
+        << "ProofPostprocessCallback::addProofForWitnessForm: failed "
+           "to add proof for witness form of "
+        << t;
   }
   return eq;
 }
@@ -1116,12 +1094,15 @@ ProofPostprocess::ProofPostprocess(Env& env,
                                    rewriter::RewriteDb* rdb,
                                    bool updateScopedAssumptions)
     : EnvObj(env),
-      d_cb(env, rdb, updateScopedAssumptions),
-      // the update merges subproofs
-      d_updater(env, d_cb, options().proof.proofPpMerge),
-      d_finalCb(env),
-      d_finalizer(env, d_finalCb)
+      d_cb(env, updateScopedAssumptions),
+      d_elimTrustedRules(false),
+      // the update merges subproofs if proofPpMerge is true
+      d_updater(env, d_cb, options().proof.proofPpMerge)
 {
+  if (rdb != nullptr)
+  {
+    d_ppdsl.reset(new ProofPostprocessDsl(env, rdb));
+  }
 }
 
 ProofPostprocess::~ProofPostprocess() {}
@@ -1134,17 +1115,25 @@ void ProofPostprocess::process(std::shared_ptr<ProofNode> pf,
   d_cb.initializeUpdate(pppg);
   // now, process
   d_updater.process(pf);
-  // take stats and check pedantic
-  d_finalCb.initializeUpdate();
-  d_finalizer.process(pf);
 
-  std::stringstream serr;
-  bool wasPedanticFailure = d_finalCb.wasPedanticFailure(serr);
-  if (wasPedanticFailure)
+  // eliminate subtypes if option is specified
+  if (options().proof.proofElimSubtypes)
   {
-    AlwaysAssert(!wasPedanticFailure)
-        << "ProofPostprocess::process: pedantic failure:" << std::endl
-        << serr.str();
+    SubtypeElimConverterCallback secc(d_env);
+    ProofNodeConverter subtypeConvert(d_env, secc);
+    std::shared_ptr<ProofNode> pfc = subtypeConvert.process(pf);
+    AlwaysAssert(pfc != nullptr);
+    // now update
+    d_env.getProofNodeManager()->updateNode(pf.get(), pfc.get());
+  }
+  if (d_elimTrustedRules && d_ppdsl != nullptr)
+  {
+    // go back and find the (possibly new) trusted steps
+    std::vector<std::shared_ptr<ProofNode>> tproofs;
+    std::unordered_set<ProofRule> trustRules{ProofRule::TRUST,
+                                             ProofRule::TRUST_THEORY_REWRITE};
+    expr::getSubproofRules(pf, trustRules, tproofs);
+    d_ppdsl->reconstruct(tproofs);
   }
 }
 
@@ -1155,7 +1144,7 @@ void ProofPostprocess::setEliminateRule(ProofRule rule)
 
 void ProofPostprocess::setEliminateAllTrustedRules()
 {
-  d_cb.setEliminateAllTrustedRules();
+  d_elimTrustedRules = true;
 }
 
 void ProofPostprocess::setAssertions(const std::vector<Node>& assertions,
