@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Gereon Kremer, Haniel Barbosa
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -27,8 +24,9 @@
 #include "proof/buffered_proof_generator.h"
 #include "proof/eager_proof_generator.h"
 #include "proof/lazy_proof.h"
+#include "smt/env_obj.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 
 class Env;
 class ProofNode;
@@ -63,7 +61,7 @@ class EqualityEngine;
  * in a SAT-context dependent manner in a context-dependent (CDProof) object.
  * It furthermore maintains an internal FactProofGenerator class for managing
  * proofs of facts whose steps are explicitly provided (those that are given
- * concrete PfRule, children, and args). Call these "simple facts".
+ * concrete ProofRule, children, and args). Call these "simple facts".
  *
  * Overall, this class is an eager proof generator (theory/proof_generator.h),
  * in that it stores (copies) of proofs for lemmas at the moment they are sent
@@ -106,11 +104,14 @@ class ProofEqEngine : public EagerProofGenerator
    * holds in the equality engine, this method returns false.
    */
   bool assertFact(Node lit,
-                  PfRule id,
+                  ProofRule id,
                   const std::vector<Node>& exp,
                   const std::vector<Node>& args);
   /** Same as above but where exp is (conjunctive) node */
-  bool assertFact(Node lit, PfRule id, Node exp, const std::vector<Node>& args);
+  bool assertFact(Node lit,
+                  ProofRule id,
+                  Node exp,
+                  const std::vector<Node>& args);
   /**
    * Multi-step version of assert fact via a proof step buffer. This method
    * is similar to above, but the justification for lit may have multiple steps.
@@ -170,7 +171,7 @@ class ProofEqEngine : public EagerProofGenerator
    * internally so that this class may respond to a call to
    * ProofGenerator::getProof(...).
    */
-  TrustNode assertConflict(PfRule id,
+  TrustNode assertConflict(ProofRule id,
                            const std::vector<Node>& exp,
                            const std::vector<Node>& args);
   /** Generator version, where pg has a proof of false from assumptions exp */
@@ -214,7 +215,7 @@ class ProofEqEngine : public EagerProofGenerator
    * The formula can be queried via TrustNode::getProven in the standard way.
    */
   TrustNode assertLemma(Node conc,
-                        PfRule id,
+                        ProofRule id,
                         const std::vector<Node>& exp,
                         const std::vector<Node>& noExplain,
                         const std::vector<Node>& args);
@@ -286,8 +287,6 @@ class ProofEqEngine : public EagerProofGenerator
   /** common nodes */
   Node d_true;
   Node d_false;
-  /** the proof node manager */
-  ProofNodeManager* d_pnm;
   /** The SAT-context-dependent proof object */
   LazyCDProof d_proof;
   /**
@@ -301,6 +300,6 @@ class ProofEqEngine : public EagerProofGenerator
 
 }  // namespace eq
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__THEORY__STRINGS__PROOF_MANAGER_H */

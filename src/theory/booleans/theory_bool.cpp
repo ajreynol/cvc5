@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Morgan Deters, Dejan Jovanovic
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -19,7 +16,6 @@
 #include <vector>
 
 #include "proof/proof_node_manager.h"
-#include "smt_util/boolean_simplification.h"
 #include "theory/booleans/circuit_propagator.h"
 #include "theory/booleans/theory_bool_rewriter.h"
 #include "theory/substitutions.h"
@@ -28,41 +24,65 @@
 #include "theory/valuation.h"
 #include "util/hash.h"
 
-namespace cvc5 {
+using namespace cvc5::internal::kind;
+
+namespace cvc5::internal {
 namespace theory {
 namespace booleans {
 
 TheoryBool::TheoryBool(Env& env, OutputChannel& out, Valuation valuation)
-    : Theory(THEORY_BOOL, env, out, valuation)
+    : Theory(THEORY_BOOL, env, out, valuation),
+      d_rewriter(nodeManager()),
+      d_checker(nodeManager())
 {
 }
 
-Theory::PPAssertStatus TheoryBool::ppAssert(
-    TrustNode tin, TrustSubstitutionMap& outSubstitutions)
+bool TheoryBool::ppAssert(TrustNode tin, TrustSubstitutionMap& outSubstitutions)
 {
+  Assert(tin.getKind() == TrustNodeKind::LEMMA);
   TNode in = tin.getNode();
-  if (in.getKind() == kind::CONST_BOOLEAN && !in.getConst<bool>()) {
-    // If we get a false literal, we're in conflict
-    return PP_ASSERT_STATUS_CONFLICT;
+  if (in.getKind() == Kind::CONST_BOOLEAN)
+  {
+    if (in.getConst<bool>())
+    {
+      return true;
+    }
+    // should not be a false literal, which should be caught by preprocessing
+    Assert(in.getConst<bool>());
   }
 
   // Add the substitution from the variable to its value
-  if (in.getKind() == kind::NOT) {
+  if (in.getKind() == Kind::NOT)
+  {
     if (in[0].isVar())
     {
       outSubstitutions.addSubstitutionSolved(
-          in[0], NodeManager::currentNM()->mkConst<bool>(false), tin);
-      return PP_ASSERT_STATUS_SOLVED;
+          in[0], nodeManager()->mkConst<bool>(false), tin);
+      return true;
     }
-  } else {
-    if (in.isVar())
+    else if (in[0].getKind() == Kind::EQUAL && in[0][0].getType().isBoolean())
     {
-      outSubstitutions.addSubstitutionSolved(
-          in, NodeManager::currentNM()->mkConst<bool>(true), tin);
-      return PP_ASSERT_STATUS_SOLVED;
+      TNode eq = in[0];
+      if (eq[0].isVar() && d_valuation.isLegalElimination(eq[0], eq[1]))
+      {
+        outSubstitutions.addSubstitutionSolved(eq[0], eq[1].notNode(), tin);
+        return true;
+      }
+      else if (eq[1].isVar() && d_valuation.isLegalElimination(eq[1], eq[0]))
+      {
+        outSubstitutions.addSubstitutionSolved(eq[1], eq[0].notNode(), tin);
+        return true;
+      }
     }
   }
+  else if (in.isVar())
+  {
+    outSubstitutions.addSubstitutionSolved(
+        in, nodeManager()->mkConst<bool>(true), tin);
+    return true;
+  }
 
+  // the positive Boolean equality case is handled in the default way
   return Theory::ppAssert(tin, outSubstitutions);
 }
 
@@ -74,4 +94,4 @@ std::string TheoryBool::identify() const { return std::string("TheoryBool"); }
 
 }  // namespace booleans
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal

@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Morgan Deters, Clark Barrett, Tim King
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -27,24 +24,25 @@
 #include "expr/node.h"
 #include "util/statistics_stats.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace arrays {
 
 typedef context::CDList<TNode> CTNodeList;
 using RowLemmaType = std::tuple<TNode, TNode, TNode, TNode>;
 
-struct RowLemmaTypeHashFunction {
-  size_t operator()(const RowLemmaType& q) const {
+struct RowLemmaTypeHashFunction
+{
+  size_t operator()(const RowLemmaType& q) const
+  {
     TNode n1, n2, n3, n4;
     std::tie(n1, n2, n3, n4) = q;
-    return (size_t) (n1.getId()*0x9e3779b9 + n2.getId()*0x30000059 +
-        n3.getId()*0x60000005 + n4.getId()*0x07FFFFFF);
-
+    return (size_t)(n1.getId() * 0x9e3779b9 + n2.getId() * 0x30000059
+                    + n3.getId() * 0x60000005 + n4.getId() * 0x07FFFFFF);
   }
-};/* struct RowLemmaTypeHashFunction */
+}; /* struct RowLemmaTypeHashFunction */
 
-void printList (CTNodeList* list);
+void printList(CTNodeList* list);
 
 bool inList(const CTNodeList* l, const TNode el);
 
@@ -54,8 +52,9 @@ bool inList(const CTNodeList* l, const TNode el);
  * call the destructor.
  */
 
-class Info {
-public:
+class Info
+{
+ public:
   context::CDO<bool> isNonLinear;
   context::CDO<bool> rIntro1Applied;
   context::CDO<TNode> modelRep;
@@ -74,16 +73,17 @@ public:
   /**
    * prints the information
    */
-  void print() const {
-    Assert(indices != NULL && stores != NULL && in_stores != NULL);
-    Trace("arrays-info")<<"  indices   ";
+  void print() const
+  {
+    Assert(indices != nullptr && stores != nullptr && in_stores != nullptr);
+    Trace("arrays-info") << "  indices   ";
     printList(indices);
-    Trace("arrays-info")<<"  stores ";
+    Trace("arrays-info") << "  stores ";
     printList(stores);
-    Trace("arrays-info")<<"  in_stores ";
+    Trace("arrays-info") << "  in_stores ";
     printList(in_stores);
   }
-};/* class Info */
+}; /* class Info */
 
 typedef std::unordered_map<Node, Info*> CNodeInfoMap;
 
@@ -96,8 +96,9 @@ typedef std::unordered_map<Node, Info*> CNodeInfoMap;
  *    stores in which it appears (terms of the form STORE a _ _ )
  *
  */
-class ArrayInfo {
-private:
+class ArrayInfo
+{
+ private:
   context::Context* ct;
   CNodeInfoMap info_map;
 
@@ -126,10 +127,12 @@ private:
    */
   void mergeLists(CTNodeList* la, const CTNodeList* lb) const;
 
-public:
+ public:
   const Info* emptyInfo;
 
-  ArrayInfo(context::Context* c, std::string statisticsPrefix = "");
+  ArrayInfo(StatisticsRegistry& sr,
+            context::Context* c,
+            std::string statisticsPrefix = "");
 
   ~ArrayInfo();
 
@@ -156,9 +159,9 @@ public:
 
   const Info* getInfo(const TNode a) const;
 
-  const bool isNonLinear(const TNode a) const;
+  bool isNonLinear(const TNode a) const;
 
-  const bool rIntro1Applied(const TNode a) const;
+  bool rIntro1Applied(const TNode a) const;
 
   const TNode getModelRep(const TNode a) const;
 
@@ -181,10 +184,10 @@ public:
    *  a should be the canonical representative of b
    */
   void mergeInfo(const TNode a, const TNode b);
-};/* class ArrayInfo */
+}; /* class ArrayInfo */
 
 }  // namespace arrays
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__THEORY__ARRAYS__ARRAY_INFO_H */

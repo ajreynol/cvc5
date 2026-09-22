@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Aina Niemetz, Andrew Reynolds, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -29,7 +26,7 @@
 #include "theory/trust_substitutions.h"
 #include "util/resource_manager.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 
 class Env;
 class TheoryEngine;
@@ -79,7 +76,11 @@ class PreprocessingPassContext : protected EnvObj
   /** Spend resource in the resource manager of the associated Env. */
   void spendResource(Resource r);
 
-  /** Get a reference to the top-level substitution map */
+  /**
+   * Get a reference to the top-level substitution map. Note that all
+   * substitutions added to this map should use the addSubstitution methods
+   * below for the purposes of proper debugging information.
+   */
   theory::TrustSubstitutionMap& getTopLevelSubstitutions() const;
 
   /** Record symbols in assertions
@@ -114,11 +115,15 @@ class PreprocessingPassContext : protected EnvObj
   /** Same as above, with proof id */
   void addSubstitution(const Node& lhs,
                        const Node& rhs,
-                       PfRule id,
+                       ProofRule id,
                        const std::vector<Node>& args);
-
+  /** Add top level substitutions for a substitution map */
+  void addSubstitutions(theory::TrustSubstitutionMap& tm);
 
  private:
+  /** Helper method for printing substitutions */
+  void printSubstitution(const Node& lhs, const Node& rhs) const;
+
   /** Pointer to the theory engine associated with this context. */
   TheoryEngine* d_theoryEngine;
   /** Pointer to the prop engine associated with this context. */
@@ -139,6 +144,6 @@ class PreprocessingPassContext : protected EnvObj
 };  // class PreprocessingPassContext
 
 }  // namespace preprocessing
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__PREPROCESSING__PREPROCESSING_PASS_CONTEXT_H */

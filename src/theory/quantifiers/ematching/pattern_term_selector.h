@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -24,7 +21,7 @@
 #include "options/quantifiers_options.h"
 #include "theory/quantifiers/ematching/trigger_term_info.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace quantifiers {
 namespace inst {
@@ -38,6 +35,7 @@ class PatternTermSelector
 {
  public:
   /**
+   * @param opts Reference to the options, which impacts pattern term selection
    * @param q The quantified formula we are selecting pattern terms for
    * @param tstrt the selection strategy (see options/quantifiers_mode.h),
    * @param exc The set of terms we are excluding as pattern terms.
@@ -46,10 +44,18 @@ class PatternTermSelector
    * also returning f(f(x)). This is default true since it helps in practice
    * to filter trigger instances.
    */
-  PatternTermSelector(Node q,
+  PatternTermSelector(const Options& opts,
+                      Node q,
                       options::TriggerSelMode tstrt,
                       const std::vector<Node>& exc = {},
                       bool filterInst = true);
+  /** Custom version with options specified manually */
+  PatternTermSelector(Node q,
+                      options::TriggerSelMode tstrt,
+                      const std::vector<Node>& exc = {},
+                      bool filterInst = true,
+                      bool purifyTriggers = false,
+                      bool relationalTriggers = false);
   ~PatternTermSelector();
   /** collect pattern terms
    *
@@ -73,7 +79,7 @@ class PatternTermSelector
    * (2) Relational triggers are put into solved form, e.g.
    *      getIsUsableTrigger( (= (+ x a) 5), q ) may return (= x (- 5 a)).
    */
-  static Node getIsUsableTrigger(Node n, Node q);
+  Node getIsUsableTrigger(Node n, Node q) const;
   /** get the variable associated with an inversion for n
    *
    * A term n with an inversion variable x has the following property :
@@ -96,7 +102,10 @@ class PatternTermSelector
    * This returns the union of all free variables in usable triggers that are
    * subterms of n.
    */
-  static void getTriggerVariables(Node n, Node q, std::vector<Node>& tvars);
+  static void getTriggerVariables(const Options& opts,
+                                  Node n,
+                                  Node q,
+                                  std::vector<Node>& tvars);
 
  protected:
   /** Is n a usable trigger in quantified formula q?
@@ -104,21 +113,21 @@ class PatternTermSelector
    * A usable trigger is one that is matchable and contains free variables only
    * from q.
    */
-  static bool isUsableTrigger(Node n, Node q);
+  bool isUsableTrigger(Node n, Node q) const;
   /** Is n a usable atomic trigger?
    *
    * A usable atomic trigger is a term that is both a useable trigger and an
    * atomic trigger.
    */
-  static bool isUsableAtomicTrigger(Node n, Node q);
+  bool isUsableAtomicTrigger(Node n, Node q) const;
   /** is subterm of trigger usable (helper function for isUsableTrigger) */
-  static bool isUsable(Node n, Node q);
+  bool isUsable(Node n, Node q) const;
   /** returns an equality that is equivalent to the equality eq and
    * is a usable trigger for q if one exists, otherwise returns Node::null().
    */
-  static Node getIsUsableEq(Node q, Node eq);
+  Node getIsUsableEq(Node q, Node eq) const;
   /** returns whether n1 == n2 is a usable (relational) trigger for q. */
-  static bool isUsableEqTerms(Node q, Node n1, Node n2);
+  bool isUsableEqTerms(Node q, Node n1, Node n2) const;
   /** Helper for collect, with a fixed strategy for selection and filtering */
   void collectInternal(Node n,
                        std::vector<Node>& patTerms,
@@ -157,7 +166,7 @@ class PatternTermSelector
    * stored in nodes. This updates nodes so that no pairs of distinct nodes
    * (i,j) is such that i is a trigger instance of j or vice versa (see below).
    */
-  static void filterInstances(std::vector<Node>& nodes);
+  void filterInstances(std::vector<Node>& nodes) const;
 
   /** is instance of
    *
@@ -176,10 +185,10 @@ class PatternTermSelector
    *
    * Notice that n1 and n2 are in instantiation constant form.
    */
-  static int isInstanceOf(Node n1,
-                          Node n2,
-                          const std::vector<Node>& fv1,
-                          const std::vector<Node>& fv2);
+  int isInstanceOf(Node n1,
+                   Node n2,
+                   const std::unordered_set<Node>& fv1,
+                   const std::unordered_set<Node>& fv2) const;
   /** The quantified formula this trigger is for. */
   Node d_quant;
   /** The trigger selection strategy */
@@ -188,11 +197,15 @@ class PatternTermSelector
   std::vector<Node> d_excluded;
   /** Whether we are filtering instances */
   bool d_filterInst;
+  /** Whether we are purifying triggers */
+  bool d_purifyTriggers;
+  /** Whether we are using relational triggers */
+  bool d_relTriggers;
 };
 
 }  // namespace inst
 }  // namespace quantifiers
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif

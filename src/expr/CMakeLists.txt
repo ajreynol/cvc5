@@ -1,10 +1,7 @@
 ###############################################################################
-# Top contributors (to current version):
-#   Mathias Preiner, Andrew Reynolds, Aina Niemetz
-#
 # This file is part of the cvc5 project.
 #
-# Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+# Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
 # in the top-level source directory and their institutional affiliations.
 # All rights reserved.  See the file COPYING in the top-level source
 # directory for licensing information.
@@ -14,6 +11,11 @@
 ##
 
 libcvc5_add_sources(
+  aci_norm.cpp
+  aci_norm.h
+  algorithm/flatten.h
+  annotation_elim_node_converter.cpp
+  annotation_elim_node_converter.h
   array_store_all.cpp
   array_store_all.h
   ascription_type.cpp
@@ -22,18 +24,30 @@ libcvc5_add_sources(
   attribute.cpp
   attribute_internals.h
   attribute_unique_id.h
+  bound_var_id.cpp
+  bound_var_id.h
+  beta_reduce_converter.cpp
+  beta_reduce_converter.h
   bound_var_manager.cpp
   bound_var_manager.h
   cardinality_constraint.cpp
   cardinality_constraint.h
   codatatype_bound_variable.cpp
   codatatype_bound_variable.h
+  elim_shadow_converter.cpp
+  elim_shadow_converter.h
+  elim_witness_converter.cpp
+  elim_witness_converter.h
   emptyset.cpp
   emptyset.h
   emptybag.cpp
   emptybag.h
-  expr_iomanip.cpp
-  expr_iomanip.h
+  free_var_cache.cpp
+  free_var_cache.h
+  function_array_const.cpp
+  function_array_const.h
+  internal_skolem_id.cpp
+  internal_skolem_id.h
   kind_map.h
   match_trie.cpp
   match_trie.h
@@ -49,25 +63,30 @@ libcvc5_add_sources(
   node_builder.h
   node_converter.cpp
   node_converter.h
-  node_manager.cpp
-  node_manager.h
   node_manager_attributes.h
   node_self_iterator.h
   node_trie.cpp
   node_trie.h
+  node_trie_algorithm.cpp
+  node_trie_algorithm.h
   node_traversal.cpp
   node_traversal.h
   node_value.cpp
   node_value.h
+  oracle.h
+  oracle_caller.cpp
+  oracle_caller.h
+  plugin.cpp
+  plugin.h
   sequence.cpp
   sequence.h
   node_visitor.h
   skolem_manager.cpp
   skolem_manager.h
-  symbol_manager.cpp
-  symbol_manager.h
-  symbol_table.cpp
-  symbol_table.h
+  sort_type_size.cpp
+  sort_type_size.h
+  subtype_elim_node_converter.cpp
+  subtype_elim_node_converter.h
   term_canonize.cpp
   term_canonize.h
   term_context.cpp
@@ -81,8 +100,6 @@ libcvc5_add_sources(
   type_matcher.h
   type_node.cpp
   type_node.h
-  datatype_index.h
-  datatype_index.cpp
   dtype.h
   dtype.cpp
   dtype_cons.h
@@ -91,14 +108,22 @@ libcvc5_add_sources(
   dtype_selector.cpp
   sequence.cpp
   sequence.h
+  sort_to_term.cpp
+  sort_to_term.h
   subs.cpp
   subs.h
   sygus_datatype.cpp
   sygus_datatype.h
-  uninterpreted_constant.cpp
-  uninterpreted_constant.h
+  sygus_grammar.cpp
+  sygus_grammar.h
+  sygus_term_enumerator.cpp
+  sygus_term_enumerator.h
   variadic_trie.cpp
   variadic_trie.h
+  non_closed_node_converter.cpp
+  non_closed_node_converter.h
+  normalize_sort_converter.cpp
+  normalize_sort_converter.h
 )
 
 libcvc5_add_sources(GENERATED
@@ -106,7 +131,10 @@ libcvc5_add_sources(GENERATED
   kind.h
   metakind.cpp
   metakind.h
+  node_manager.cpp
+  node_manager.h
   type_checker.cpp
+  type_properties.cpp
   type_properties.h
 )
 
@@ -114,68 +142,107 @@ libcvc5_add_sources(GENERATED
 # Generate code for kinds.
 #
 
-set(mkkind_script ${CMAKE_CURRENT_LIST_DIR}/mkkind)
-set(mkmetakind_script ${CMAKE_CURRENT_LIST_DIR}/mkmetakind)
-set(mkexpr_script ${CMAKE_CURRENT_LIST_DIR}/mkexpr)
+set(mkkind_script ${CMAKE_CURRENT_LIST_DIR}/mkkind.py)
+set(mkmetakind_script ${CMAKE_CURRENT_LIST_DIR}/mkmetakind.py)
+set(mkexpr_script ${CMAKE_CURRENT_LIST_DIR}/mkexpr.py)
 
 add_custom_command(
   OUTPUT kind.h
   COMMAND
+    ${Python_EXECUTABLE}
     ${mkkind_script}
-    ${CMAKE_CURRENT_LIST_DIR}/kind_template.h
-    ${KINDS_FILES}
-    > ${CMAKE_CURRENT_BINARY_DIR}/kind.h
-  DEPENDS mkkind kind_template.h ${KINDS_FILES}
+    --template ${CMAKE_CURRENT_LIST_DIR}/kind_template.h
+    --output ${CMAKE_CURRENT_BINARY_DIR}/kind.h
+    --kinds ${KINDS_TOML_FILES}
+  DEPENDS mkkind.py kind_template.h ${KINDS_TOML_FILES}
 )
 
 add_custom_command(
   OUTPUT kind.cpp
   COMMAND
+    ${Python_EXECUTABLE}
     ${mkkind_script}
-    ${CMAKE_CURRENT_LIST_DIR}/kind_template.cpp
-    ${KINDS_FILES}
-    > ${CMAKE_CURRENT_BINARY_DIR}/kind.cpp
-  DEPENDS mkkind kind_template.cpp kind.h ${KINDS_FILES}
+    --template ${CMAKE_CURRENT_LIST_DIR}/kind_template.cpp
+    --output ${CMAKE_CURRENT_BINARY_DIR}/kind.cpp
+    --kinds ${KINDS_TOML_FILES}
+  DEPENDS mkkind.py kind_template.cpp kind.h ${KINDS_TOML_FILES}
 )
 
 add_custom_command(
   OUTPUT type_properties.h
   COMMAND
+    ${Python_EXECUTABLE}
     ${mkkind_script}
-    ${CMAKE_CURRENT_LIST_DIR}/type_properties_template.h
-    ${KINDS_FILES}
-    > ${CMAKE_CURRENT_BINARY_DIR}/type_properties.h
-  DEPENDS mkkind type_properties_template.h ${KINDS_FILES}
+    --template ${CMAKE_CURRENT_LIST_DIR}/type_properties_template.h
+    --output ${CMAKE_CURRENT_BINARY_DIR}/type_properties.h
+    --kinds ${KINDS_TOML_FILES}
+  DEPENDS mkkind.py type_properties_template.h ${KINDS_TOML_FILES}
+)
+
+add_custom_command(
+  OUTPUT type_properties.cpp
+  COMMAND
+    ${Python_EXECUTABLE}
+    ${mkkind_script}
+    --template ${CMAKE_CURRENT_LIST_DIR}/type_properties_template.cpp
+    --output ${CMAKE_CURRENT_BINARY_DIR}/type_properties.cpp
+    --kinds ${KINDS_TOML_FILES}
+  DEPENDS mkkind.py type_properties_template.cpp type_properties.h ${KINDS_TOML_FILES}
 )
 
 add_custom_command(
   OUTPUT metakind.h
   COMMAND
+    ${Python_EXECUTABLE}
     ${mkmetakind_script}
-    ${CMAKE_CURRENT_LIST_DIR}/metakind_template.h
-    ${KINDS_FILES}
-    > ${CMAKE_CURRENT_BINARY_DIR}/metakind.h
-  DEPENDS mkmetakind metakind_template.h ${KINDS_FILES}
+    --template ${CMAKE_CURRENT_LIST_DIR}/metakind_template.h
+    --output ${CMAKE_CURRENT_BINARY_DIR}/metakind.h
+    --kinds ${KINDS_TOML_FILES}
+  DEPENDS mkmetakind.py metakind_template.h ${KINDS_TOML_FILES}
 )
 
 add_custom_command(
   OUTPUT metakind.cpp
   COMMAND
+    ${Python_EXECUTABLE}
     ${mkmetakind_script}
-    ${CMAKE_CURRENT_LIST_DIR}/metakind_template.cpp
-    ${KINDS_FILES}
-    > ${CMAKE_CURRENT_BINARY_DIR}/metakind.cpp
-  DEPENDS mkmetakind metakind_template.cpp metakind.h ${KINDS_FILES}
+    --template ${CMAKE_CURRENT_LIST_DIR}/metakind_template.cpp
+    --output ${CMAKE_CURRENT_BINARY_DIR}/metakind.cpp
+    --kinds ${KINDS_TOML_FILES}
+  DEPENDS mkmetakind.py metakind_template.cpp metakind.h ${KINDS_TOML_FILES}
+)
+
+add_custom_command(
+  OUTPUT node_manager.h
+  COMMAND
+    ${Python_EXECUTABLE}
+    ${mkmetakind_script}
+    --template ${CMAKE_CURRENT_LIST_DIR}/node_manager_template.h
+    --output ${CMAKE_CURRENT_BINARY_DIR}/node_manager.h
+    --kinds ${KINDS_TOML_FILES}
+  DEPENDS mkmetakind.py node_manager_template.h ${KINDS_TOML_FILES}
+)
+
+add_custom_command(
+  OUTPUT node_manager.cpp
+  COMMAND
+    ${Python_EXECUTABLE}
+    ${mkmetakind_script}
+    --template ${CMAKE_CURRENT_LIST_DIR}/node_manager_template.cpp
+    --output ${CMAKE_CURRENT_BINARY_DIR}/node_manager.cpp
+    --kinds ${KINDS_TOML_FILES}
+  DEPENDS mkmetakind.py node_manager_template.cpp node_manager.h ${KINDS_TOML_FILES}
 )
 
 add_custom_command(
   OUTPUT type_checker.cpp
   COMMAND
+    ${Python_EXECUTABLE}
     ${mkexpr_script}
-    ${CMAKE_CURRENT_LIST_DIR}/type_checker_template.cpp
-    ${KINDS_FILES}
-    > ${CMAKE_CURRENT_BINARY_DIR}/type_checker.cpp
-  DEPENDS mkexpr type_checker_template.cpp ${KINDS_FILES}
+    --template ${CMAKE_CURRENT_LIST_DIR}/type_checker_template.cpp
+    --output ${CMAKE_CURRENT_BINARY_DIR}/type_checker.cpp
+    --kinds ${KINDS_TOML_FILES}
+  DEPENDS mkexpr.py type_checker_template.cpp ${KINDS_TOML_FILES}
 )
 
 add_custom_target(gen-expr
@@ -184,6 +251,9 @@ add_custom_target(gen-expr
     kind.h
     metakind.cpp
     metakind.h
+    node_manager.cpp
+    node_manager.h
     type_checker.cpp
+    type_properties.cpp
     type_properties.h
 )

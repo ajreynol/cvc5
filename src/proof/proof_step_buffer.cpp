@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Aina Niemetz
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -15,14 +12,15 @@
 
 #include "proof/proof_step_buffer.h"
 
+#include "proof/proof.h"
 #include "proof/proof_checker.h"
 
-using namespace cvc5::kind;
+using namespace cvc5::internal::kind;
 
-namespace cvc5 {
+namespace cvc5::internal {
 
-ProofStep::ProofStep() : d_rule(PfRule::UNKNOWN) {}
-ProofStep::ProofStep(PfRule r,
+ProofStep::ProofStep() : d_rule(ProofRule::UNKNOWN) {}
+ProofStep::ProofStep(ProofRule r,
                      const std::vector<Node>& children,
                      const std::vector<Node>& args)
     : d_rule(r), d_children(children), d_args(args)
@@ -47,16 +45,32 @@ std::ostream& operator<<(std::ostream& out, ProofStep step)
   return out;
 }
 
-ProofStepBuffer::ProofStepBuffer(ProofChecker* pc) : d_checker(pc) {}
+ProofStepBuffer::ProofStepBuffer(ProofChecker* pc,
+                                 bool ensureUnique,
+                                 bool autoSym)
+    : d_autoSym(autoSym), d_checker(pc), d_ensureUnique(ensureUnique)
+{
+}
 
-Node ProofStepBuffer::tryStep(PfRule id,
+Node ProofStepBuffer::tryStep(ProofRule id,
+                              const std::vector<Node>& children,
+                              const std::vector<Node>& args,
+                              Node expected)
+{
+  bool added;
+  return tryStep(added, id, children, args, expected);
+}
+
+Node ProofStepBuffer::tryStep(bool& added,
+                              ProofRule id,
                               const std::vector<Node>& children,
                               const std::vector<Node>& args,
                               Node expected)
 {
   if (d_checker == nullptr)
   {
-    Assert(false) << "ProofStepBuffer::ProofStepBuffer: no proof checker.";
+    added = false;
+    DebugUnhandled() << "ProofStepBuffer::ProofStepBuffer: no proof checker.";
     return Node::null();
   }
   Node res =
@@ -64,19 +78,55 @@ Node ProofStepBuffer::tryStep(PfRule id,
   if (!res.isNull())
   {
     // add proof step
-    d_steps.push_back(
-        std::pair<Node, ProofStep>(res, ProofStep(id, children, args)));
+    added = addStep(id, children, args, res);
+  }
+  else
+  {
+    added = false;
   }
   return res;
 }
 
-void ProofStepBuffer::addStep(PfRule id,
+bool ProofStepBuffer::addStep(ProofRule id,
                               const std::vector<Node>& children,
                               const std::vector<Node>& args,
                               Node expected)
 {
+  if (d_ensureUnique)
+  {
+    if (d_allSteps.find(expected) != d_allSteps.end())
+    {
+      Trace("psb-debug") << "Discard " << expected << " from " << id
+                         << std::endl;
+      return false;
+    }
+    d_allSteps.insert(expected);
+    // if we are automatically considering symmetry, we also add the symmetric
+    // fact here
+    if (d_autoSym)
+    {
+      Node sexpected = CDProof::getSymmFact(expected);
+      if (!sexpected.isNull())
+      {
+        d_allSteps.insert(sexpected);
+      }
+    }
+    Trace("psb-debug") << "Add " << expected << " from " << id << std::endl;
+  }
   d_steps.push_back(
       std::pair<Node, ProofStep>(expected, ProofStep(id, children, args)));
+  return true;
+}
+bool ProofStepBuffer::addTrustedStep(TrustId id,
+                                     const std::vector<Node>& children,
+                                     const std::vector<Node>& args,
+                                     Node conc)
+{
+  std::vector<Node> sargs;
+  sargs.push_back(mkTrustId(conc.getNodeManager(), id));
+  sargs.push_back(conc);
+  sargs.insert(sargs.end(), args.begin(), args.end());
+  return addStep(ProofRule::TRUST, children, sargs, conc);
 }
 
 void ProofStepBuffer::addSteps(ProofStepBuffer& psb)
@@ -96,6 +146,10 @@ void ProofStepBuffer::popStep()
   Assert(!d_steps.empty());
   if (!d_steps.empty())
   {
+    if (d_ensureUnique)
+    {
+      d_allSteps.erase(d_steps.back().first);
+    }
     d_steps.pop_back();
   }
 }
@@ -107,6 +161,10 @@ const std::vector<std::pair<Node, ProofStep>>& ProofStepBuffer::getSteps() const
   return d_steps;
 }
 
-void ProofStepBuffer::clear() { d_steps.clear(); }
+void ProofStepBuffer::clear()
+{
+  d_steps.clear();
+  d_allSteps.clear();
+}
 
-}  // namespace cvc5
+}  // namespace cvc5::internal

@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -17,63 +14,172 @@
 
 #include "expr/attribute.h"
 #include "expr/skolem_manager.h"
-#include "expr/uninterpreted_constant.h"
-#include "util/cardinality.h"
+#include "expr/sort_to_term.h"
+#include "theory/builtin/generic_op.h"
+#include "util/uninterpreted_sort_value.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace builtin {
 
-TypeNode UninterpretedConstantTypeRule::computeType(NodeManager* nodeManager,
-                                                    TNode n,
-                                                    bool check)
+TypeNode EqualityTypeRule::preComputeType(NodeManager* nm, CVC5_UNUSED TNode n)
 {
-  return n.getConst<UninterpretedConstant>().getType();
+  return nm->booleanType();
+}
+TypeNode EqualityTypeRule::computeType(NodeManager* nodeManager,
+                                       TNode n,
+                                       bool check,
+                                       std::ostream* errOut)
+{
+  if (check)
+  {
+    TypeNode lhsType = n[0].getTypeOrNull();
+    TypeNode rhsType = n[1].getTypeOrNull();
+    if (!lhsType.isComparableTo(rhsType))
+    {
+      if (errOut)
+      {
+        (*errOut) << "Subexpressions must have the same type:" << std::endl;
+        (*errOut) << "Equation: " << n << std::endl;
+        (*errOut) << "Type 1: " << lhsType << std::endl;
+        (*errOut) << "Type 2: " << rhsType << std::endl;
+      }
+      return TypeNode::null();
+    }
+  }
+  return nodeManager->booleanType();
 }
 
-/**
- * Attribute for caching the ground term for each type. Maps TypeNode to the
- * skolem to return for mkGroundTerm.
- */
-struct GroundTermAttributeId
+TypeNode SExprTypeRule::preComputeType(NodeManager* nm, CVC5_UNUSED TNode n)
 {
-};
-typedef expr::Attribute<GroundTermAttributeId, Node> GroundTermAttribute;
+  return nm->sExprType();
+}
+TypeNode SExprTypeRule::computeType(NodeManager* nodeManager,
+                                    CVC5_UNUSED TNode n,
+                                    CVC5_UNUSED bool check,
+                                    CVC5_UNUSED std::ostream* errOut)
+{
+  return nodeManager->sExprType();
+}
+
+TypeNode UninterpretedSortValueTypeRule::preComputeType(
+    CVC5_UNUSED NodeManager* nm, CVC5_UNUSED TNode n)
+{
+  return TypeNode::null();
+}
+TypeNode UninterpretedSortValueTypeRule::computeType(
+    CVC5_UNUSED NodeManager* nodeManager,
+    TNode n,
+    CVC5_UNUSED bool check,
+    CVC5_UNUSED std::ostream* errOut)
+{
+  return n.getConst<UninterpretedSortValue>().getType();
+}
+
+TypeNode WitnessTypeRule::preComputeType(CVC5_UNUSED NodeManager* nm,
+                                         CVC5_UNUSED TNode n)
+{
+  return TypeNode::null();
+}
+TypeNode WitnessTypeRule::computeType(NodeManager* nodeManager,
+                                      TNode n,
+                                      bool check,
+                                      std::ostream* errOut)
+{
+  if (!CVC5_EQUAL(n[0].getTypeOrNull(), nodeManager->boundVarListType()))
+  {
+    if (errOut)
+    {
+      (*errOut) << "expected a bound var list for WITNESS expression, got `"
+                << n[0].getType().toString() << "'";
+    }
+    return TypeNode::null();
+  }
+  if (n[0].getNumChildren() != 1)
+  {
+    if (errOut)
+    {
+      (*errOut) << "expected a bound var list with one argument for WITNESS "
+                   "expression";
+    }
+    return TypeNode::null();
+  }
+  if (check)
+  {
+    TypeNode rangeType = n[1].getTypeOrNull();
+    if (!rangeType.isBoolean())
+    {
+      if (errOut)
+      {
+        (*errOut)
+            << "expected a body of a WITNESS expression to have Boolean type";
+      }
+      return TypeNode::null();
+    }
+    if (n.getNumChildren() == 3)
+    {
+      if (!CVC5_EQUAL(n[2].getTypeOrNull(), nodeManager->instPatternListType()))
+      {
+        if (errOut)
+        {
+          (*errOut)
+              << "third argument of witness is not instantiation pattern list";
+        }
+        return TypeNode::null();
+      }
+    }
+  }
+  // The type of a witness function is the type of its bound variable.
+  return n[0][0].getType();
+}
+
+TypeNode ApplyIndexedSymbolicTypeRule::preComputeType(
+    CVC5_UNUSED NodeManager* nm, CVC5_UNUSED TNode n)
+{
+  return TypeNode::null();
+}
+TypeNode ApplyIndexedSymbolicTypeRule::computeType(
+    NodeManager* nodeManager,
+    TNode n,
+    CVC5_UNUSED bool check,
+    CVC5_UNUSED std::ostream* errOut)
+{
+  // get the concrete application version of this, if possible
+  Node cn = GenericOp::getConcreteApp(n);
+  if (cn == n)
+  {
+    // if it cannot be made concrete, it has abstract type
+    return nodeManager->mkAbstractType(Kind::ABSTRACT_TYPE);
+  }
+  // if we can make concrete, return its type
+  return cn.getType();
+}
+
+TypeNode TypeOfTypeRule::preComputeType(CVC5_UNUSED NodeManager* nm,
+                                        CVC5_UNUSED TNode n)
+{
+  return TypeNode::null();
+}
+
+TypeNode TypeOfTypeRule::computeType(NodeManager* nodeManager,
+                                     CVC5_UNUSED TNode n,
+                                     CVC5_UNUSED bool check,
+                                     CVC5_UNUSED std::ostream* errOut)
+{
+  return nodeManager->builtinOperatorType();
+}
 
 Node SortProperties::mkGroundTerm(TypeNode type)
 {
-  Assert(type.getKind() == kind::SORT_TYPE);
-  GroundTermAttribute gta;
-  if (type.hasAttribute(gta))
-  {
-    return type.getAttribute(gta);
-  }
-  SkolemManager* sm = NodeManager::currentNM()->getSkolemManager();
-  Node k = sm->mkDummySkolem(
-      "groundTerm", type, "a ground term created for type " + type.toString());
-  type.setAttribute(gta, k);
-  return k;
-}
-
-Cardinality FunctionProperties::computeCardinality(TypeNode type)
-{
-  // Don't assert this; allow other theories to use this cardinality
-  // computation.
-  //
-  // Assert(type.getKind() == kind::FUNCTION_TYPE);
-
-  Cardinality argsCard(1);
-  // get the largest cardinality of function arguments/return type
-  for (size_t i = 0, i_end = type.getNumChildren() - 1; i < i_end; ++i)
-  {
-    argsCard *= type[i].getCardinality();
-  }
-
-  Cardinality valueCard = type[type.getNumChildren() - 1].getCardinality();
-
-  return valueCard ^ argsCard;
+  // we typically use this method for sorts, although there are other types
+  // where it is used as well, e.g. arrays that are not closed enumerable.
+  NodeManager* nm = type.getNodeManager();
+  SkolemManager* sm = nm->getSkolemManager();
+  std::vector<Node> cacheVals;
+  cacheVals.push_back(nm->mkConst(SortToTerm(type)));
+  return sm->mkSkolemFunction(SkolemId::GROUND_TERM, cacheVals);
 }
 
 }  // namespace builtin
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal

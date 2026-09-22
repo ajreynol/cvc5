@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -17,7 +14,7 @@
 
 #include "theory/theory_engine.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 
 SharedSolverDistributed::SharedSolverDistributed(Env& env, TheoryEngine& te)
@@ -37,7 +34,7 @@ void SharedSolverDistributed::setEqualityEngine(eq::EqualityEngine* ee)
 
 void SharedSolverDistributed::preRegisterSharedInternal(TNode t)
 {
-  if (t.getKind() == kind::EQUAL)
+  if (t.getKind() == Kind::EQUAL)
   {
     // When sharing is enabled, we propagate from the shared terms manager also
     d_sharedTerms.addEqualityToPropagate(t);
@@ -59,8 +56,10 @@ EqualityStatus SharedSolverDistributed::getEqualityStatus(TNode a, TNode b)
       return EQUALITY_FALSE_AND_PROPAGATED;
     }
   }
-  // otherwise, ask the theory
-  return d_te.theoryOf(Theory::theoryOf(a.getType()))->getEqualityStatus(a, b);
+  // otherwise, ask the theory, which may depend on the uninterpreted sort owner
+  TheoryId tid =
+      Theory::theoryOf(a.getType(), d_env.getUninterpretedSortOwner());
+  return d_te.theoryOf(tid)->getEqualityStatus(a, b);
 }
 
 TrustNode SharedSolverDistributed::explain(TNode literal, TheoryId id)
@@ -91,4 +90,4 @@ void SharedSolverDistributed::assertShared(TNode n, bool polarity, TNode reason)
 }
 
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal

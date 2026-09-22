@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Morgan Deters, Gereon Kremer, Tim King
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -13,17 +10,17 @@
  * Header for main cvc5 driver.
  */
 
+#include <cvc5/cvc5.h>
+
 #include <memory>
 #include <string>
 
-#include "api/cpp/cvc5.h"
 #include "base/cvc5config.h"
 
 #ifndef CVC5__MAIN__MAIN_H
 #define CVC5__MAIN__MAIN_H
 
-namespace cvc5 {
-namespace main {
+namespace cvc5::main {
 
 class CommandExecutor;
 
@@ -34,7 +31,7 @@ extern const char* progPath;
 extern std::string progName;
 
 /** A reference for use by the signal handlers to print statistics */
-extern std::unique_ptr<cvc5::main::CommandExecutor> pExecutor;
+extern std::unique_ptr<CommandExecutor> pExecutor;
 
 /**
  * If true, will not spin on segfault even when CVC5_DEBUG is on.
@@ -43,10 +40,9 @@ extern std::unique_ptr<cvc5::main::CommandExecutor> pExecutor;
  */
 extern bool segvSpin;
 
-}  // namespace main
-}  // namespace cvc5
+}  // namespace cvc5::main
 
 /** Actual cvc5 driver functions **/
-int runCvc5(int argc, char* argv[], std::unique_ptr<cvc5::api::Solver>&);
+int runCvc5(int argc, char* argv[], std::unique_ptr<cvc5::Solver>&);
 
 #endif /* CVC5__MAIN__MAIN_H */

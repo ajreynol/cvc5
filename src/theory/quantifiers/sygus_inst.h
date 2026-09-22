@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Mathias Preiner, Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -26,7 +23,7 @@
 #include "theory/decision_strategy.h"
 #include "theory/quantifiers/quant_module.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 
 class QuantifiersEngine;
@@ -90,9 +87,9 @@ class SygusInst : public QuantifiersModule
   void preRegisterQuantifier(Node q) override;
 
   /* For collecting global terms from all available assertions. */
-  void ppNotifyAssertions(const std::vector<Node>& assertions);
+  void ppNotifyAssertions(const std::vector<Node>& assertions) override;
 
-  std::string identify() const override { return "SygusInst"; }
+  std::string identify() const override;
 
  private:
   /* Lookup counterexample literal or create a new one for quantifier 'q'. */
@@ -110,6 +107,9 @@ class SygusInst : public QuantifiersModule
    * Returns true if a new lemma (not cached) was added, and false otherwise.
    */
   bool sendEvalUnfoldLemmas(const std::vector<Node>& lemmas);
+
+  /** Return true if this module should process quantified formula q */
+  bool shouldProcess(Node q);
 
   /* Maps quantifiers to a vector of instantiation constants. */
   std::unordered_map<Node, std::vector<Node>> d_inst_constants;
@@ -145,6 +145,6 @@ class SygusInst : public QuantifiersModule
 
 }  // namespace quantifiers
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif

@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Gereon Kremer
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -23,14 +20,13 @@
 #include "theory/arith/operator_elim.h"
 #include "theory/logic_info.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 
 class SkolemLemma;
 
 namespace arith {
 
-class ArithState;
 class InferenceManager;
 class OperatorElim;
 
@@ -44,11 +40,7 @@ class OperatorElim;
 class ArithPreprocess : protected EnvObj
 {
  public:
-  ArithPreprocess(Env& env,
-                  ArithState& state,
-                  InferenceManager& im,
-                  ProofNodeManager* pnm,
-                  OperatorElim& oe);
+  ArithPreprocess(Env& env, InferenceManager& im, OperatorElim& oe);
   ~ArithPreprocess() {}
   /**
    * Call eliminate operators on formula n, return the resulting trust node,
@@ -90,6 +82,6 @@ class ArithPreprocess : protected EnvObj
 
 }  // namespace arith
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif

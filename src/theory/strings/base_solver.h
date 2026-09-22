@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Andres Noetzli, Mudathir Mohamed
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -29,7 +26,7 @@
 #include "theory/strings/solver_state.h"
 #include "theory/strings/term_registry.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace strings {
 
@@ -44,7 +41,7 @@ class BaseSolver : protected EnvObj
   using NodeSet = context::CDHashSet<Node>;
 
  public:
-  BaseSolver(Env& env, SolverState& s, InferenceManager& im);
+  BaseSolver(Env& env, SolverState& s, InferenceManager& im, TermRegistry& tr);
   ~BaseSolver();
 
   //-----------------------inference steps
@@ -80,6 +77,41 @@ class BaseSolver : protected EnvObj
   //-----------------------end inference steps
 
   //-----------------------query functions
+  enum class CardinalityResponse
+  {
+    // we don't have to check cardinality for the given type
+    NO_REQ,
+    // we have to check cardinality
+    REQ,
+    // we don't know how to check cardinality
+    UNHANDLED
+  };
+  /**
+   * Get the cardinality requirement for type tn, which is either:
+   * - NO_REQ, meaning there is no restriction on the number of equivalence
+   * classes for tn,
+   * - REQ, meaning we have a finite cardinality based on which we need to
+   * check cardinality for. In this case, typeCardSize is set of the cardinality
+   * of tn.
+   * - UNHANDLED, meaning we don't know how to handle cardinality for tn, in
+   * which case model construction is not guaranteed to succeed.
+   */
+  CardinalityResponse getCardinalityReq(TypeNode tn,
+                                        size_t& typeCardSize) const;
+  /**
+   * If there are eqcCount equivalence classes of a type with fixed cardinality
+   * typeCardSize all having length lr, this returns false if we have to
+   * add a cardinality inference.
+   *
+   * If this method returns false, then lenNeed is set to the length that
+   * is required for the equivalence classes to have.
+   */
+  bool isCardinalityOk(size_t typeCardSize,
+                       Node lr,
+                       size_t eqcCount,
+                       size_t& lenNeed) const;
+  /** Same as above, without tracking lenNeed. */
+  bool isCardinalityOk(size_t typeCardSize, Node lr, size_t eqcCount) const;
   /**
    * Is n congruent to another term in the current context that has not been
    * marked congruent? If so, we can ignore n.
@@ -106,7 +138,7 @@ class BaseSolver : protected EnvObj
   /**
    * Get the set of equivalence classes of type string.
    */
-  const std::vector<Node>& getStringEqc() const;
+  const std::vector<Node>& getStringLikeEqc() const;
   //-----------------------end query functions
 
  private:
@@ -132,7 +164,7 @@ class BaseSolver : protected EnvObj
   struct BaseEqcInfo
   {
     /**
-     * Either a constant or a concatentation of constants and variables that
+     * Either a constant or a concatenation of constants and variables that
      * this equivalence class is entailed to be equal to. If it is a
      * concatenation, this is the concatenation that is currently known to have
      * the highest score (see `d_bestScore`).
@@ -169,6 +201,8 @@ class BaseSolver : protected EnvObj
      * index: the child of n we are currently processing,
      * s : reference to solver state,
      * er : the representative of the empty equivalence class.
+     * overwrite : if this is set to true then an existing element at the same
+     *             index is updated to `n`
      *
      * We store the vector of terms that n was indexed by in the vector c.
      */
@@ -176,6 +210,7 @@ class BaseSolver : protected EnvObj
              unsigned index,
              const SolverState& s,
              Node er,
+             bool overwrite,
              std::vector<Node>& c);
     /** Clear this trie */
     void clear() { d_children.clear(); }
@@ -213,10 +248,18 @@ class BaseSolver : protected EnvObj
   void checkCardinalityType(TypeNode tn,
                             std::vector<std::vector<Node> >& cols,
                             std::vector<Node>& lts);
+  /**
+   * Called when a and b are constant-like terms in the same equivalence class.
+   *
+   * @return true if a conflict was discovered
+   */
+  bool processConstantLike(Node a, Node b);
   /** The solver state object */
   SolverState& d_state;
   /** The (custom) output channel of the theory of strings */
   InferenceManager& d_im;
+  /** Reference to the term registry of theory of strings */
+  TermRegistry& d_termReg;
   /** Commonly used constants */
   Node d_emptyString;
   Node d_false;
@@ -232,12 +275,17 @@ class BaseSolver : protected EnvObj
    */
   NodeSet d_congruent;
   /**
+   * Set of equalities that we have applied STRINGS_UNIT_INJ_OOB to
+   * in the current user context
+   */
+  NodeSet d_strUnitOobEq;
+  /**
    * Maps equivalence classes to their info, see description of `BaseEqcInfo`
    * for more information.
    */
   std::map<Node, BaseEqcInfo> d_eqcInfo;
-  /** The list of equivalence classes of type string */
-  std::vector<Node> d_stringsEqc;
+  /** The list of equivalence classes of string-like types */
+  std::vector<Node> d_stringLikeEqc;
   /** A term index for each type, function kind pair */
   std::map<TypeNode, std::map<Kind, TermIndex> > d_termIndex;
   /** the cardinality of the alphabet */
@@ -246,6 +294,6 @@ class BaseSolver : protected EnvObj
 
 }  // namespace strings
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__THEORY__STRINGS__BASE_SOLVER_H */

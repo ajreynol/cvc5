@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -18,7 +15,7 @@
 #include "proof/proof_ensure_closed.h"
 #include "proof/proof_generator.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 
 const char* toString(TrustNodeKind tnk)
 {
@@ -74,6 +71,11 @@ TrustNode TrustNode::mkReplaceGenTrustNode(const TrustNode& orig,
   return TrustNode(orig.getKind(), orig.getProven(), g);
 }
 
+TrustNode TrustNode::mkTrustNode(TrustNodeKind tnk, Node p, ProofGenerator* g)
+{
+  return TrustNode(tnk, p, g);
+}
+
 TrustNode TrustNode::null()
 {
   return TrustNode(TrustNodeKind::INVALID, Node::null());
@@ -123,16 +125,17 @@ Node TrustNode::getLemmaProven(Node lem) { return lem; }
 
 Node TrustNode::getPropExpProven(TNode lit, Node exp)
 {
-  return NodeManager::currentNM()->mkNode(kind::IMPLIES, exp, lit);
+  return NodeManager::mkNode(Kind::IMPLIES, exp, lit);
 }
 
 Node TrustNode::getRewriteProven(TNode n, Node nr) { return n.eqNode(nr); }
 
-void TrustNode::debugCheckClosed(const char* c,
+void TrustNode::debugCheckClosed(const Options& opts,
+                                 const char* c,
                                  const char* ctx,
                                  bool reqNullGen)
 {
-  pfgEnsureClosed(d_proven, d_gen, c, ctx, reqNullGen);
+  pfgEnsureClosed(opts, d_proven, d_gen, c, ctx, reqNullGen);
 }
 
 std::string TrustNode::identifyGenerator() const
@@ -151,4 +154,4 @@ std::ostream& operator<<(std::ostream& out, TrustNode n)
   return out;
 }
 
-}  // namespace cvc5
+}  // namespace cvc5::internal

@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -25,7 +22,7 @@
 #include "theory/quantifiers/master_eq_notify.h"
 #include "theory/uf/equality_engine.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 
 /**
@@ -61,8 +58,12 @@ class EqEngineManagerCentral : public EqEngineManager
    * per theories and connects them to a master equality engine.
    */
   void initializeTheories() override;
-  /** Notify this class that we are building the model. */
-  void notifyBuildingModel();
+
+  /**
+   * Return true if the theory with the given id uses central equality engine
+   * with the given options.
+   */
+  static bool usesCentralEqualityEngine(const Options& opts, TheoryId id);
 
  private:
   /**
@@ -123,6 +124,6 @@ class EqEngineManagerCentral : public EqEngineManager
 };
 
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__THEORY__EE_MANAGER_CENTRAL__H */

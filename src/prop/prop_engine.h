@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Morgan Deters, Dejan Jovanovic
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -20,17 +17,23 @@
 #ifndef CVC5__PROP_ENGINE_H
 #define CVC5__PROP_ENGINE_H
 
+#include <cvc5/cvc5_types.h>
+
 #include "context/cdlist.h"
 #include "expr/node.h"
+#include "proof/proof.h"
 #include "proof/trust_node.h"
+#include "prop/learned_db.h"
 #include "prop/skolem_def_manager.h"
+#include "smt/env_obj.h"
+#include "theory/inference_id.h"
 #include "theory/output_channel.h"
 #include "theory/skolem_lemma.h"
 #include "util/result.h"
+#include "util/statistics_stats.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 
-class Env;
 class ResourceManager;
 class ProofNodeManager;
 class TheoryEngine;
@@ -42,7 +45,7 @@ class DecisionEngine;
 namespace prop {
 
 class CnfStream;
-class CDCLTSatSolverInterface;
+class CDCLTSatSolver;
 class ProofCnfStream;
 class PropPfManager;
 class TheoryProxy;
@@ -51,13 +54,13 @@ class TheoryProxy;
  * PropEngine is the abstraction of a Sat Solver, providing methods for
  * solving the SAT problem and conversion to CNF (via the CnfStream).
  */
-class PropEngine
+class PropEngine : protected EnvObj
 {
  public:
   /**
    * Create a PropEngine with a particular decision and theory engine.
    */
-  PropEngine(TheoryEngine* te, Env& env);
+  PropEngine(Env& env, TheoryEngine* te);
 
   /**
    * Destructor.
@@ -70,15 +73,6 @@ class PropEngine
    * This method converts and asserts true and false into the CNF stream.
    */
   void finishInit();
-
-  /**
-   * This is called by SolverEngine, at shutdown time, just before
-   * destruction.  It is important because there are destruction
-   * ordering issues between some parts of the system (notably between
-   * PropEngine and Theory).  For now, there's nothing to do here in
-   * the PropEngine.
-   */
-  void shutdown() {}
 
   /**
    * Preprocess the given node. Return the REWRITE trust node corresponding to
@@ -108,6 +102,13 @@ class PropEngine
   TrustNode removeItes(TNode node, std::vector<theory::SkolemLemma>& ppLemmas);
 
   /**
+   * Notify that lhs was substituted by rhs during preprocessing. This impacts
+   * the tracked learned literals and output traces.
+   * @param lhs The left-hand side of the substitution
+   * @param rhs The right-hand side of the substitution
+   */
+  void notifyTopLevelSubstitution(const Node& lhs, const Node& rhs) const;
+  /**
    * Converts the given formulas to CNF and assert the CNF to the SAT solver.
    * These formulas are asserted permanently for the current context.
    * Information about which assertions correspond to skolem definitions is
@@ -126,21 +127,41 @@ class PropEngine
    * The formula can be removed by the SAT solver after backtracking lower
    * than the (SAT and SMT) level at which it was asserted.
    *
-   * @param trn the trust node storing the formula to assert
-   * @param p the properties of the lemma
+   * @param id The inference identifier.
+   * @param trn The trust node storing the formula to assert.
+   * @param p The properties of the lemma.
    */
-  void assertLemma(TrustNode tlemma, theory::LemmaProperty p);
+  void assertLemma(theory::InferenceId id,
+                   TrustNode tlemma,
+                   theory::LemmaProperty p);
 
   /**
-   * If ever n is decided upon, it must be in the given phase.  This
-   * occurs *globally*, i.e., even if the literal is untranslated by
-   * user pop and retranslated, it keeps this phase.  The associated
-   * variable will _always_ be phase-locked.
+   * This is called when a theory propagation was explained with texp.
+   * In other words, texp corresponds to a formula that was added to the SAT
+   * solver. This method is only used for proofs. It stores the proof of the
+   * clause corresponding to texp in the proof CNF stream.
+   *
+   * @param texp The explained propagation.
+   */
+  void notifyExplainedPropagation(TrustNode texp);
+
+  /**
+   * Configure the preferred phase of a decision variable. This occurs
+   * *globally*, i.e., even if the literal is untranslated by user pop and
+   * retranslated, it keeps this phase.
+   *
+   * @note This phase is always enforced when the SAT solver decides to make a
+   *       decision on this variable on its own. If a decision is injected into
+   *       the SAT solver via TheoryProxy::getNextDecisionRequest(), the
+   *       preferred phase will only be considered if the decision was derived
+   *       by the decision engine. It will be ignored if the decision was
+   *       derived from a theory (the phase enforced by the theory overrides
+   *       the preferred phase).
    *
    * @param n the node in question; must have an associated SAT literal
    * @param phase the phase to use
    */
-  void requirePhase(TNode n, bool phase);
+  void preferPhase(TNode n, bool phase);
 
   /**
    * Return whether the given literal is a SAT decision.  Either phase
@@ -150,20 +171,28 @@ class PropEngine
   bool isDecision(Node lit) const;
 
   /**
-   * Return SAT context level at which `lit` was decided on.
+   * Get the current list of decisions made by the SAT solver at the moment in
+   * time that getPropDecisions() is called.
    *
-   * @param lit: The node in question, must have an associated SAT literal.
-   * @return Decision level of the SAT variable of `lit` (phase is disregarded),
-   *         or -1 if `lit` has not been assigned yet.
+   * @return List of decisions made by the SAT solver.
    */
-  int32_t getDecisionLevel(Node lit) const;
+  std::vector<Node> getPropDecisions() const;
 
   /**
-   * Return the user-context level when `lit` was introduced..
+   * Get the order heap from the SAT solver.
+   * order_heap is a priority queue of variables ordered with
+   * respect to the variable activity. The order heap is made available here
+   * in order to make partitions based on the literals contained in the heap.
    *
-   * @return User-context level or -1 if not yet introduced.
+   * @return List of Nodes from the SAT variables order heap.
    */
-  int32_t getIntroLevel(Node lit) const;
+  std::vector<Node> getPropOrderHeap() const;
+
+  /**
+   * Return whether lit has a fixed SAT assignment (i.e., implied by input
+   * assertions).
+   */
+  bool isFixed(TNode lit) const;
 
   /**
    * Checks the current context for satisfiability.
@@ -245,7 +274,7 @@ class PropEngine
   /**
    * Get the assertion level of the SAT solver.
    */
-  unsigned getAssertionLevel() const;
+  uint32_t getAssertionLevel() const;
 
   /**
    * Return true if we are currently searching (either in this or
@@ -262,7 +291,7 @@ class PropEngine
 
   /**
    * Informs the ResourceManager that a resource has been spent.  If out of
-   * resources, can throw an UnsafeInterruptException exception.
+   * resources, the solver is interrupted using a callback.
    */
   void spendResource(Resource r);
 
@@ -278,9 +307,6 @@ class PropEngine
    */
   bool properExplanation(TNode node, TNode expl) const;
 
-  /** Retrieve this modules proof CNF stream. */
-  ProofCnfStream* getProofCnfStream();
-
   /** Checks that the proof is closed w.r.t. asserted formulas to this engine as
    * well as to the given assertions. */
   void checkProof(const context::CDList<Node>& assertions);
@@ -289,42 +315,86 @@ class PropEngine
    * Return the prop engine proof. This should be called only when proofs are
    * enabled. Returns a proof of false whose free assumptions are the
    * preprocessed assertions.
+   *
+   * @param connectCnf If this flag is false, then all clausified preprocessed
+   * assertion and theory lemmas are free assumptions in the returned proof
+   * instead of being connected to their proofs.
    */
-  std::shared_ptr<ProofNode> getProof();
+  std::shared_ptr<ProofNode> getProof(bool connectCnf = true);
+
+  /** Return the vector of proofs for the respective proof component requested.
+   *
+   * The components may be of theory lemma proofs (closed proofs of valid theory
+   * clauses) or of preprocessed assertion proofs (them the preprocessed
+   * assertion assumptions to the added clauses to the SAT solver).
+   */
+  std::vector<std::shared_ptr<ProofNode>> getProofLeaves(
+      modes::ProofComponent pc);
 
   /** Is proof enabled? */
   bool isProofEnabled() const;
 
-  /** Retrieve unsat core from SAT solver for assumption-based unsat cores. */
+  /**
+   * Retrieve unsat core of preprocessing assertions.
+   *
+   * For assumption-based unsat cores, this is retrived from the SAT solver.
+   * For proof-based unsat cores, this is computed via the free assumptions of
+   * the proof.
+   */
   void getUnsatCore(std::vector<Node>& core);
 
-  /** Return the prop engine proof for assumption-based unsat cores. */
-  std::shared_ptr<ProofNode> getRefutation();
+  /**
+   * Retrieve the lemmas used to derive unsat.
+   */
+  std::vector<Node> getUnsatCoreLemmas();
+
+  /** Get the zero-level assertions of the given type */
+  std::vector<Node> getLearnedZeroLevelLiterals(
+      modes::LearnedLitType ltype) const;
+
+  /** Get the zero-level assertions that should be used on deep restart */
+  std::vector<Node> getLearnedZeroLevelLiteralsForRestart() const;
+
+  /** Get the literal type through the ZLL utilities */
+  modes::LearnedLitType getLiteralType(const Node& lit) const;
 
  private:
   /** Dump out the satisfying assignment (after SAT result) */
   void printSatisfyingAssignment();
+  /** Print reason for answering unknown on output when applicable */
+  void outputIncompleteReason(
+      UnknownExplanation uexp,
+      theory::IncompleteId iid = theory::IncompleteId::UNKNOWN);
 
   /**
    * Converts the given formula to CNF and asserts the CNF to the SAT solver.
    * The formula can be removed by the SAT solver after backtracking lower
    * than the (SAT and SMT) level at which it was asserted.
    *
-   * @param trn the trust node storing the formula to assert
-   * @param removable whether this lemma can be quietly removed based
-   * on an activity heuristic
+   * @param id The inference identifier.
+   * @param trn The trust node storing the formula to assert.
+   * @param removable Whether this lemma can be quietly removed based
+   * on an activity heuristic.
+   * @param local Whether this lemma is considered local to the SAT context.
+   * In this case, we must cache whether it has been added to the SAT solver
+   * already.
    */
-  void assertTrustedLemmaInternal(TrustNode trn, bool removable);
+  void assertTrustedLemmaInternal(theory::InferenceId id,
+                                  TrustNode trn,
+                                  bool removable,
+                                  bool local);
   /**
    * Assert node as a formula to the CNF stream
-   * @param node The formula to assert
-   * @param negated Whether to assert the negation of node
-   * @param removable Whether the formula is removable
-   * @param input Whether the formula came from the input
+   * @param id The inference identifier.
+   * @param node The formula to assert.
+   * @param negated Whether to assert the negation of node.
+   * @param removable Whether the formula is removable.
+   * @param input Whether the formula came from the input.
    * @param pg Pointer to a proof generator that can provide a proof of node
    * (or its negation if negated is true).
    */
-  void assertInternal(TNode node,
+  void assertInternal(theory::InferenceId id,
+                      TNode node,
                       bool negated,
                       bool removable,
                       bool input,
@@ -335,9 +405,12 @@ class PropEngine
    * obtained from preprocessing it, and removable is whether the lemma is
    * removable.
    */
-  void assertLemmasInternal(TrustNode trn,
+  void assertLemmasInternal(theory::InferenceId id,
+                            TrustNode trn,
                             const std::vector<theory::SkolemLemma>& ppLemmas,
-                            bool removable);
+                            bool removable,
+                            bool inprocess,
+                            bool local);
 
   /**
    * Indicates that the SAT solver is currently solving something and we should
@@ -348,12 +421,6 @@ class PropEngine
   /** The theory engine we will be using */
   TheoryEngine* d_theoryEngine;
 
-  /** Reference to the environment */
-  Env& d_env;
-
-  /** The decision engine we will be using */
-  std::unique_ptr<decision::DecisionEngine> d_decisionEngine;
-
   /** The skolem definition manager */
   std::unique_ptr<SkolemDefManager> d_skdm;
 
@@ -361,15 +428,15 @@ class PropEngine
   TheoryProxy* d_theoryProxy;
 
   /** The SAT solver proxy */
-  CDCLTSatSolverInterface* d_satSolver;
+  CDCLTSatSolver* d_satSolver;
 
   /** List of all of the assertions that need to be made */
   std::vector<Node> d_assertionList;
 
   /** The CNF converter in use */
   CnfStream* d_cnfStream;
-  /** Proof-producing CNF converter */
-  std::unique_ptr<ProofCnfStream> d_pfCnfStream;
+  /** A default proof generator for theory lemmas */
+  CDProof d_theoryLemmaPg;
 
   /** The proof manager for prop engine */
   std::unique_ptr<PropPfManager> d_ppm;
@@ -382,9 +449,22 @@ class PropEngine
    * cores are enabled.
    */
   context::CDList<Node> d_assumptions;
+  /**
+   * Local lemmas
+   */
+  context::CDHashSet<Node> d_localLemmas;
+  /** Statistics */
+  struct Statistics
+  {
+    Statistics(StatisticsRegistry& sr);
+    /** Number of atoms allocated when asserting the input formula */
+    IntStat d_numInputAtoms;
+  };
+  /** Statistics */
+  Statistics d_stats;
 };
 
 }  // namespace prop
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__PROP_ENGINE_H */

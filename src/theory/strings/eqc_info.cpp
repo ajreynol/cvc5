@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Aina Niemetz
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -20,9 +17,9 @@
 
 using namespace std;
 using namespace cvc5::context;
-using namespace cvc5::kind;
+using namespace cvc5::internal::kind;
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace strings {
 
@@ -31,15 +28,15 @@ EqcInfo::EqcInfo(context::Context* c)
       d_codeTerm(c),
       d_cardinalityLemK(c),
       d_normalizedLength(c),
-      d_prefixC(c),
-      d_suffixC(c)
+      d_firstBound(c),
+      d_secondBound(c)
 {
 }
 
 Node EqcInfo::addEndpointConst(Node t, Node c, bool isSuf)
 {
   // check conflict
-  Node prev = isSuf ? d_suffixC : d_prefixC;
+  Node prev = isSuf ? d_secondBound : d_firstBound;
   if (!prev.isNull())
   {
     Trace("strings-eager-pconf-debug") << "Check conflict " << prev << ", " << t
@@ -100,28 +97,7 @@ Node EqcInfo::addEndpointConst(Node t, Node c, bool isSuf)
     {
       Trace("strings-eager-pconf")
           << "Conflict for " << prevC << ", " << c << std::endl;
-      std::vector<Node> ccs;
-      Node r[2];
-      for (unsigned i = 0; i < 2; i++)
-      {
-        Node tp = i == 0 ? t : prev;
-        if (tp.getKind() == STRING_IN_REGEXP)
-        {
-          ccs.push_back(tp);
-          r[i] = tp[0];
-        }
-        else
-        {
-          r[i] = tp;
-        }
-      }
-      if (r[0] != r[1])
-      {
-        ccs.push_back(r[0].eqNode(r[1]));
-      }
-      Assert(!ccs.empty());
-      Node ret =
-          ccs.size() == 1 ? ccs[0] : NodeManager::currentNM()->mkNode(AND, ccs);
+      Node ret = mkMergeConflict(t, prev, false);
       Trace("strings-eager-pconf")
           << "String: eager prefix conflict: " << ret << std::endl;
       return ret;
@@ -129,15 +105,43 @@ Node EqcInfo::addEndpointConst(Node t, Node c, bool isSuf)
   }
   if (isSuf)
   {
-    d_suffixC = t;
+    d_secondBound = t;
   }
   else
   {
-    d_prefixC = t;
+    d_firstBound = t;
   }
   return Node::null();
 }
 
+Node EqcInfo::mkMergeConflict(Node t, Node prev, bool isArith)
+{
+  Trace("strings-eager-debug")
+      << "mkMergeConflict " << t << ", " << prev << std::endl;
+  NodeManager* nm = t.getNodeManager();
+  std::vector<Node> ccs;
+  Node r[2];
+  for (unsigned i = 0; i < 2; i++)
+  {
+    Node tp = i == 0 ? t : prev;
+    if (tp.getKind() == Kind::STRING_IN_REGEXP)
+    {
+      ccs.push_back(tp);
+      r[i] = isArith ? nm->mkNode(Kind::STRING_LENGTH, tp[0]) : tp[0];
+    }
+    else
+    {
+      r[i] = tp;
+    }
+  }
+  if (r[0] != r[1])
+  {
+    ccs.push_back(r[0].eqNode(r[1]));
+  }
+  Assert(!ccs.empty());
+  return nm->mkAnd(ccs);
+}
+
 }  // namespace strings
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal

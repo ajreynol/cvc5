@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Andres Noetzli, Haniel Barbosa
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -23,11 +20,12 @@
 #include "theory/booleans/theory_bool_rewriter.h"
 #include "theory/theory.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace booleans {
 
-class TheoryBool : public Theory {
+class TheoryBool : public Theory
+{
  public:
   TheoryBool(Env& env, OutputChannel& out, Valuation valuation);
 
@@ -36,8 +34,7 @@ class TheoryBool : public Theory {
   /** get the proof checker of this theory */
   ProofRuleChecker* getProofChecker() override;
 
-  PPAssertStatus ppAssert(TrustNode tin,
-                          TrustSubstitutionMap& outSubstitutions) override;
+  bool ppAssert(TrustNode tin, TrustSubstitutionMap& outSubstitutions) override;
 
   std::string identify() const override;
 
@@ -46,10 +43,10 @@ class TheoryBool : public Theory {
   TheoryBoolRewriter d_rewriter;
   /** Proof rule checker */
   BoolProofRuleChecker d_checker;
-};/* class TheoryBool */
+}; /* class TheoryBool */
 
 }  // namespace booleans
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__THEORY__BOOLEANS__THEORY_BOOL_H */

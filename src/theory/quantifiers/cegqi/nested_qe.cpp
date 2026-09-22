@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -19,9 +16,11 @@
 #include "expr/node_algorithm.h"
 #include "expr/subs.h"
 #include "smt/env.h"
+#include "smt/set_defaults.h"
+#include "theory/rewriter.h"
 #include "theory/smt_engine_subsolver.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace quantifiers {
 
@@ -58,7 +57,7 @@ bool NestedQe::hasProcessed(Node q) const
 
 bool NestedQe::getNestedQuantification(Node q, std::unordered_set<Node>& nqs)
 {
-  expr::getKindSubterms(q[1], kind::FORALL, true, nqs);
+  expr::getKindSubterms(q[1], Kind::FORALL, true, nqs);
   return !nqs.empty();
 }
 
@@ -70,15 +69,15 @@ bool NestedQe::hasNestedQuantification(Node q)
 
 Node NestedQe::doNestedQe(Env& env, Node q, bool keepTopLevel)
 {
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = env.getNodeManager();
   Node qOrig = q;
   bool inputExists = false;
-  if (q.getKind() == kind::EXISTS)
+  if (q.getKind() == Kind::EXISTS)
   {
-    q = nm->mkNode(kind::FORALL, q[0], q[1].negate());
+    q = nm->mkNode(Kind::FORALL, q[0], q[1].negate());
     inputExists = true;
   }
-  Assert(q.getKind() == kind::FORALL);
+  Assert(q.getKind() == Kind::FORALL);
   std::unordered_set<Node> nqs;
   if (!getNestedQuantification(q, nqs))
   {
@@ -119,7 +118,8 @@ Node NestedQe::doNestedQe(Env& env, Node q, bool keepTopLevel)
   Node qeBody = sk.apply(q[1]);
   qeBody = snqe.apply(qeBody);
   // undo the skolemization
-  qeBody = sk.rapply(qeBody, true);
+  qeBody = sk.rapply(qeBody);
+  qeBody = env.getRewriter()->rewrite(qeBody);
   // reconstruct the body
   std::vector<Node> qargs;
   qargs.push_back(q[0]);
@@ -128,18 +128,21 @@ Node NestedQe::doNestedQe(Env& env, Node q, bool keepTopLevel)
   {
     qargs.push_back(q[2]);
   }
-  return nm->mkNode(inputExists ? kind::EXISTS : kind::FORALL, qargs);
+  return nm->mkNode(inputExists ? Kind::EXISTS : Kind::FORALL, qargs);
 }
 
 Node NestedQe::doQe(Env& env, Node q)
 {
-  Assert(q.getKind() == kind::FORALL);
+  Assert(q.getKind() == Kind::FORALL);
   Trace("cegqi-nested-qe") << "  Apply qe to " << q << std::endl;
-  NodeManager* nm = NodeManager::currentNM();
-  q = nm->mkNode(kind::EXISTS, q[0], q[1].negate());
+  q = NodeManager::mkNode(Kind::EXISTS, q[0], q[1].negate());
   std::unique_ptr<SolverEngine> smt_qe;
-  initializeSubsolver(smt_qe, env);
-  Node qqe = smt_qe->getQuantifierElimination(q, true, false);
+  Options subOptions;
+  subOptions.copyValues(env.getOptions());
+  smt::SetDefaults::disableChecking(subOptions);
+  SubsolverSetupInfo ssi(env, subOptions);
+  initializeSubsolver(env.getNodeManager(), smt_qe, ssi);
+  Node qqe = smt_qe->getQuantifierElimination(q, true);
   if (expr::hasBoundVar(qqe))
   {
     Trace("cegqi-nested-qe") << "  ...failed QE" << std::endl;
@@ -153,4 +156,4 @@ Node NestedQe::doQe(Env& env, Node q)
 
 }  // namespace quantifiers
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal

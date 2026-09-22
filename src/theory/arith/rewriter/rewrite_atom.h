@@ -1,0 +1,136 @@
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Utilities for rewriting atoms in the arithmetic rewriter.
+ */
+
+#include "cvc5_private.h"
+
+#ifndef CVC5__THEORY__ARITH__REWRITER__REWRITE_ATOM_H
+#define CVC5__THEORY__ARITH__REWRITER__REWRITE_ATOM_H
+
+#include <optional>
+
+#include "expr/node.h"
+#include "theory/arith/rewriter/addition.h"
+
+namespace cvc5::internal {
+namespace theory {
+namespace arith {
+namespace rewriter {
+
+/**
+ * Tries to evaluate the given relation. Returns std::nullopt if either left
+ * or right is not a value (constant or a real algebraic number).
+ * Assumes rel to be a relational operator, i.e. one of <,<=,=,!=,>=,>.
+ */
+std::optional<bool> tryEvaluateRelation(Kind rel, TNode left, TNode right);
+
+/**
+ * Tries to evaluate a reflexive relation. Returns std::nullopt if the atom
+ * is either not a relational operator or not reflexive (i.e. the two terms are
+ * not identical).
+ * Assumes atom to be a relational operator, i.e. one of <,<=,=,!=,>=,>.
+ */
+std::optional<bool> tryEvaluateRelationReflexive(Kind rel,
+                                                 TNode left,
+                                                 TNode right);
+
+/**
+ * Build a node `(kind left right)`. If negate is true, it returns the negation
+ * of this as `(not (kind left right))`. Before doing so, try to evaluate it to
+ * true or false using the tryEvaluateRelation method.
+ */
+Node buildRelation(Kind kind, Node left, Node right, bool negate = false);
+
+/**
+ * Build an integer inequality from the given sum. The result is equivalent to
+ * `(k sum 0)`. We first normalize the non-constant coefficients to integers
+ * (using GCD and LCM), tighten the inequality if possible and turn it into a
+ * weak inequality. The result is the resulting sum compared with the constant
+ * where the overall inequalit is possibly negated.
+ * The sum is taken as rvalue as it is modified in the process.
+ */
+Node buildIntegerInequality(NodeManager* nm, Sum&& sum, Kind k);
+
+/**
+ * Build a real inequality from the given sum. The result is equivalent to
+ * `(k sum 0)`. We normalize the leading coefficient to be one or minus one.
+ * The result is the resulting sum compared with the constant.
+ * The sum is taken as rvalue as it is modified in the process.
+ */
+Node buildRealInequality(NodeManager* nm, Sum&& sum, Kind k);
+
+/**
+ * Return the normal form of the arithmetic equality atom, which is computed by
+ * moving all terms to the left hand side and normalizing the resulting sum.
+ * For example, this returns (= x 1) for the input (= (+ x 1) 2). The returned
+ * node is either an equality or a Boolean constant.
+ *
+ * Note that this normalization is *not* applied by the rewriter, since it does
+ * not preserve the terms of the equality, which is incompatible with theory
+ * combination. It is instead applied to equalities in the input via
+ * ppStaticRewrite, by the extended rewriter, by the linear arithmetic solver,
+ * and by utilities that require equalities in normal form.
+ *
+ * If negated is non-null, it is set to true if the difference of the sides of
+ * the returned equality is a *negative* multiple of the difference of the
+ * sides of atom, and false if it is a positive one. This is used by the
+ * rewriter to orient atom in the same direction as its normal form, which
+ * ensures that a normal form is itself in rewritten form.
+ *
+ * @param nm Pointer to the node manager.
+ * @param atom The equality to normalize.
+ * @param negated Whether the returned equality is a negative multiple of atom.
+ * @return The normal form of atom.
+ */
+Node normalizeEquality(NodeManager* nm, TNode atom, bool* negated = nullptr);
+
+/**
+ * Decompose sum into a (non-constant, constant) part.
+ * @param nm Pointer to node manager.
+ * @param sum The sum.
+ * @param negated Updated to true if we negated the sum.
+ * @param followLCoeffSign if true, the leading coefficient is made positive,
+ * possibly negating all other coefficients.
+ * @return a pair p such that p.first + p.second (possibly negated) is
+ * equivalent to sum and p.first does not contain constant sums and p.second is
+ * constant.
+ */
+std::pair<Node, Node> decomposeSum(NodeManager* nm,
+                                   Sum&& sum,
+                                   bool& negated,
+                                   bool followLCoeffSign);
+/**
+ * Decompose sum into a (non-constant, constant) part.
+ * @param nm Pointer to node manager.
+ * @param sum The sum.
+ * @return a pair p such that p.first + p.second is equivalent to sum and
+ * p.first does not contain constant sums and p.second is constant.
+ */
+std::pair<Node, Node> decomposeSum(NodeManager* nm, Sum&& sum);
+
+/**
+ * Decompose relation a <> b into a (non-constant, constant) part.
+ * @param nm Pointer to node manager.
+ * @param a The first term.
+ * @param b The second term.
+ * @return a pair p such that p.first <> p.second is equivalent to a <> b and
+ * p.first does not contain constant sums and p.second is constant.
+ */
+std::pair<Node, Node> decomposeRelation(NodeManager* nm,
+                                        const Node& a,
+                                        const Node& b);
+
+}  // namespace rewriter
+}  // namespace arith
+}  // namespace theory
+}  // namespace cvc5::internal
+
+#endif

@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Gereon Kremer
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -24,19 +21,19 @@
 #include <memory>
 #include <ostream>
 
-namespace cvc5 {
+namespace cvc5::internal {
 
 namespace detail {
 /*
  * Open a file as an output stream and return it as a pointer. The caller
  * assumes the ownership of the returned pointer.
  */
-std::ostream* openOStream(const std::string& filename);
+std::unique_ptr<std::ostream> openOStream(const std::string& filename);
 /*
  * Open a file as an input stream and return it as a pointer. The caller
  * assumes the ownership of the returned pointer.
  */
-std::istream* openIStream(const std::string& filename);
+std::unique_ptr<std::istream> openIStream(const std::string& filename);
 }  // namespace detail
 
 /**
@@ -51,7 +48,9 @@ class ManagedStream
 {
  public:
   ManagedStream(Stream* nonowned, std::string description)
-  : d_nonowned(nonowned), d_description(std::move(description)) {}
+      : d_nonowned(nonowned), d_description(std::move(description))
+  {
+  }
   virtual ~ManagedStream() {}
 
   /**
@@ -64,13 +63,13 @@ class ManagedStream
     if constexpr (std::is_same<Stream, std::ostream>::value)
     {
       d_nonowned = nullptr;
-      d_owned.reset(detail::openOStream(value));
+      d_owned = detail::openOStream(value);
       d_description = value;
     }
     else if constexpr (std::is_same<Stream, std::istream>::value)
     {
       d_nonowned = nullptr;
-      d_owned.reset(detail::openIStream(value));
+      d_owned = detail::openIStream(value);
       d_description = value;
     }
   }
@@ -148,6 +147,6 @@ class ManagedOut : public ManagedStream<std::ostream>
   bool specialCases(const std::string& value) override final;
 };
 
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__OPTIONS__MANAGED_STREAMS_H */

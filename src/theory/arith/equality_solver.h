@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -22,19 +19,25 @@
 #include "expr/node.h"
 #include "proof/trust_node.h"
 #include "smt/env_obj.h"
-#include "theory/arith/arith_state.h"
 #include "theory/ee_setup_info.h"
+#include "theory/theory_state.h"
 #include "theory/uf/equality_engine.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace arith {
 
 class InferenceManager;
 
+namespace linear {
+class ArithCongruenceManager;
+}
+
 /**
  * The arithmetic equality solver. This class manages arithmetic equalities
- * in the default way via an equality engine.
+ * in the default way via an equality engine, or defers to the congruence
+ * manager of linear arithmetic if setCongruenceManager is called on a
+ * non-null congruence manager.
  *
  * Since arithmetic has multiple ways of propagating literals, it tracks
  * the literals that it propagates and only explains the literals that
@@ -45,7 +48,7 @@ class EqualitySolver : protected EnvObj
   using NodeSet = context::CDHashSet<Node>;
 
  public:
-  EqualitySolver(Env& env, ArithState& astate, InferenceManager& aim);
+  EqualitySolver(Env& env, TheoryState& astate, InferenceManager& aim);
   ~EqualitySolver() {}
   //--------------------------------- initialization
   /**
@@ -70,6 +73,9 @@ class EqualitySolver : protected EnvObj
    */
   TrustNode explain(TNode lit);
 
+  /** Set the congruence manager, which will be notified of propagations */
+  void setCongruenceManager(linear::ArithCongruenceManager* acm);
+
  private:
   /** Notification class from the equality engine */
   class EqualitySolverNotify : public eq::EqualityEngineNotify
@@ -85,9 +91,13 @@ class EqualitySolver : protected EnvObj
                                      bool value) override;
 
     void eqNotifyConstantTermMerge(TNode t1, TNode t2) override;
-    void eqNotifyNewClass(TNode t) override {}
-    void eqNotifyMerge(TNode t1, TNode t2) override {}
-    void eqNotifyDisequal(TNode t1, TNode t2, TNode reason) override {}
+    void eqNotifyNewClass(CVC5_UNUSED TNode t) override {}
+    void eqNotifyMerge(CVC5_UNUSED TNode t1, CVC5_UNUSED TNode t2) override {}
+    void eqNotifyDisequal(CVC5_UNUSED TNode t1,
+                          CVC5_UNUSED TNode t2,
+                          CVC5_UNUSED TNode reason) override
+    {
+    }
 
    private:
     /** reference to parent */
@@ -98,7 +108,7 @@ class EqualitySolver : protected EnvObj
   /** Conflict when two constants merge */
   void conflictEqConstantMerge(TNode a, TNode b);
   /** reference to the state */
-  ArithState& d_astate;
+  TheoryState& d_astate;
   /** reference to parent */
   InferenceManager& d_aim;
   /** Equality solver notify */
@@ -107,10 +117,12 @@ class EqualitySolver : protected EnvObj
   eq::EqualityEngine* d_ee;
   /** The literals we have propagated */
   NodeSet d_propLits;
+  /** Pointer to the congruence manager, for notifications of propagations */
+  linear::ArithCongruenceManager* d_acm;
 };
 
 }  // namespace arith
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif

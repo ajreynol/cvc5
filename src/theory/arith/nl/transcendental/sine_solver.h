@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Gereon Kremer, Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -16,12 +13,14 @@
 #ifndef CVC5__THEORY__ARITH__NL__TRANSCENDENTAL__SINE_SOLVER_H
 #define CVC5__THEORY__ARITH__NL__TRANSCENDENTAL__SINE_SOLVER_H
 
+#include <cstddef>
 #include <map>
 
 #include "expr/node.h"
+#include "smt/env_obj.h"
 #include "theory/arith/nl/transcendental/transcendental_state.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace arith {
 namespace nl {
@@ -39,17 +38,29 @@ namespace transcendental {
  * It's main functionality are methods that implement lemma schemas below,
  * which return a set of lemmas that should be sent on the output channel.
  */
-class SineSolver
+class SineSolver : protected EnvObj
 {
  public:
-  SineSolver(TranscendentalState* tstate);
+  SineSolver(Env& env, TranscendentalState* tstate);
   ~SineSolver();
 
+  /** do reductions
+   *
+   * This method determines any applications of sin(x) that can be reasoned
+   * about "precisely", either via symmetry:
+   *   x = -y => sin(x) = -sin(y)
+   * or via boundary points, e.g.:
+   *   x = pi/2 => sin(x) = 1
+   * Each application of sin(x) for which a reduction of the latter form exists
+   * is removed from the range of d_funcMap in the transcendental state, and
+   * thus will not be considered for other lemma schemas.
+   */
+  void doReductions();
   /**
    * Introduces new_a as purified version of a which is also shifted to the main
-   * phase (from -pi to pi). y is the new skolem used for purification.
+   * phase (from -pi to pi). new_a[0] is the new skolem used for purification.
    */
-  void doPhaseShift(TNode a, TNode new_a, TNode y);
+  void doPhaseShift(TNode a, TNode new_a);
 
   /**
    * check initial refine
@@ -83,8 +94,11 @@ class SineSolver
   void checkMonotonic();
 
   /** Sent tangent lemma around c for e */
-  void doTangentLemma(
-      TNode e, TNode c, TNode poly_approx, int region, std::uint64_t d);
+  void doTangentLemma(TNode e,
+                      TNode c,
+                      TNode poly_approx,
+                      TranscendentalRegion region,
+                      std::uint64_t d);
 
   /** Sent secant lemmas around c for e */
   void doSecantLemmas(TNode e,
@@ -93,13 +107,29 @@ class SineSolver
                       TNode poly_approx_c,
                       unsigned d,
                       unsigned actual_d,
-                      int region);
+                      TranscendentalRegion region);
+
+  /**
+   * Does n of the form sin(x) have an exact model value? This is true if
+   * the model value of x is in the domain of d_mpointsSine.
+   */
+  bool hasExactModelValue(TNode n) const;
+
+  /**
+   * In the following let y be (@transcendental_purify_arg x) and let s
+   * be (@transcendental_sine_phase_shift x).
+   * Make the lemma for the phase shift of arguments to SINE x and y, where
+   * s is the (integral) shift. The lemma conceptually says that y is
+   * in the bounds [-pi, pi] and y is offset from x by an integral factor of
+   * 2*pi.
+   */
+  static Node getPhaseShiftLemma(const Node& x);
 
  private:
   std::pair<Node, Node> getSecantBounds(TNode e,
                                         TNode c,
                                         unsigned d,
-                                        int region);
+                                        TranscendentalRegion region);
 
   /** region to lower bound
    *
@@ -109,14 +139,16 @@ class SineSolver
    * is invalid, or there is no lower bound for the
    * region.
    */
-  Node regionToLowerBound(int region)
+  Node regionToLowerBound(TranscendentalRegion region) const
   {
     switch (region)
     {
-      case 1: return d_data->d_pi_2;
-      case 2: return d_data->d_zero;
-      case 3: return d_data->d_pi_neg_2;
-      case 4: return d_data->d_pi_neg;
+      case TranscendentalRegion::SINE_PI_OVER_TWO_TO_PI: return d_mpoints[1];
+      case TranscendentalRegion::SINE_ZERO_TO_PI_OVER_TWO: return d_mpoints[2];
+      case TranscendentalRegion::SINE_NEG_PI_OVER_TWO_TO_ZERO:
+        return d_mpoints[3];
+      case TranscendentalRegion::SINE_NEG_PI_TO_NEG_PI_OVER_TWO:
+        return d_mpoints[4];
       default: return Node();
     }
   }
@@ -129,38 +161,57 @@ class SineSolver
    * is invalid, or there is no upper bound for the
    * region.
    */
-  Node regionToUpperBound(int region)
+  Node regionToUpperBound(TranscendentalRegion region) const
   {
     switch (region)
     {
-      case 1: return d_data->d_pi;
-      case 2: return d_data->d_pi_2;
-      case 3: return d_data->d_zero;
-      case 4: return d_data->d_pi_neg_2;
+      case TranscendentalRegion::SINE_PI_OVER_TWO_TO_PI: return d_mpoints[0];
+      case TranscendentalRegion::SINE_ZERO_TO_PI_OVER_TWO: return d_mpoints[1];
+      case TranscendentalRegion::SINE_NEG_PI_OVER_TWO_TO_ZERO:
+        return d_mpoints[2];
+      case TranscendentalRegion::SINE_NEG_PI_TO_NEG_PI_OVER_TWO:
+        return d_mpoints[3];
       default: return Node();
     }
   }
 
-  int regionToMonotonicityDir(int region)
+  MonotonicityDirection regionToMonotonicityDir(
+      TranscendentalRegion region) const
   {
     switch (region)
     {
-      case 1:
-      case 4: return -1;
-      case 2:
-      case 3: return 1;
-      default: return 0;
+      case TranscendentalRegion::SINE_PI_OVER_TWO_TO_PI:
+      case TranscendentalRegion::SINE_NEG_PI_TO_NEG_PI_OVER_TWO:
+        return MonotonicityDirection::DECREASING;
+      case TranscendentalRegion::SINE_ZERO_TO_PI_OVER_TWO:
+      case TranscendentalRegion::SINE_NEG_PI_OVER_TWO_TO_ZERO:
+        return MonotonicityDirection::INCREASING;
+      default: return MonotonicityDirection::NONE;
     }
   }
-  Convexity regionToConvexity(int region)
+  Convexity regionToConvexity(TranscendentalRegion region) const
   {
     switch (region)
     {
-      case 1:
-      case 2: return Convexity::CONCAVE;
-      case 3:
-      case 4: return Convexity::CONVEX;
+      case TranscendentalRegion::SINE_PI_OVER_TWO_TO_PI:
+      case TranscendentalRegion::SINE_ZERO_TO_PI_OVER_TWO:
+        return Convexity::CONCAVE;
+      case TranscendentalRegion::SINE_NEG_PI_OVER_TWO_TO_ZERO:
+      case TranscendentalRegion::SINE_NEG_PI_TO_NEG_PI_OVER_TWO:
+        return Convexity::CONVEX;
       default: return Convexity::UNKNOWN;
+    }
+  }
+
+  TranscendentalRegion indexToRegion(std::size_t index) const
+  {
+    switch (index)
+    {
+      case 1: return TranscendentalRegion::SINE_PI_OVER_TWO_TO_PI;
+      case 2: return TranscendentalRegion::SINE_ZERO_TO_PI_OVER_TWO;
+      case 3: return TranscendentalRegion::SINE_NEG_PI_OVER_TWO_TO_ZERO;
+      case 4: return TranscendentalRegion::SINE_NEG_PI_TO_NEG_PI_OVER_TWO;
+      default: return TranscendentalRegion::INVALID;
     }
   }
 
@@ -170,12 +221,19 @@ class SineSolver
   /** The transcendental functions we have done initial refinements on */
   std::map<Node, bool> d_tf_initial_refine;
 
+  /** PI, -PI */
+  Node d_pi;
+  Node d_neg_pi;
+  /** the boundary points */
+  std::vector<Node> d_mpoints;
+  /** mapping from values c to known points for sin(c) */
+  std::map<Node, Node> d_mpointsSine;
 }; /* class SineSolver */
 
 }  // namespace transcendental
 }  // namespace nl
 }  // namespace arith
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__THEORY__ARITH__TRANSCENDENTAL_SOLVER_H */

@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Yoni Zohar
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -18,13 +15,16 @@
 #include "proof/proof_checker.h"
 #include "util/rational.h"
 
-namespace cvc5 {
+using namespace cvc5::internal::kind;
+
+namespace cvc5::internal {
 namespace proof {
 
 const char* toString(LfscRule id)
 {
   switch (id)
   {
+    case LfscRule::DEFINITION: return "refl";
     case LfscRule::SCOPE: return "scope";
     case LfscRule::NEG_SYMM: return "neg_symm";
     case LfscRule::CONG: return "cong";
@@ -35,6 +35,7 @@ const char* toString(LfscRule id)
     case LfscRule::ARITH_SUM_UB: return "arith_sum_ub";
     case LfscRule::INSTANTIATE: return "instantiate";
     case LfscRule::SKOLEMIZE: return "skolemize";
+    case LfscRule::BETA_REDUCE: return "beta_reduce";
     case LfscRule::LAMBDA: return "\\";
     case LfscRule::PLET: return "plet";
     default: return "?";
@@ -64,18 +65,18 @@ LfscRule getLfscRule(Node n)
   return lr;
 }
 
-Node mkLfscRuleNode(LfscRule r)
+Node mkLfscRuleNode(NodeManager* nm, LfscRule r)
 {
-  return NodeManager::currentNM()->mkConst(Rational(static_cast<uint32_t>(r)));
+  return nm->mkConstInt(Rational(static_cast<uint32_t>(r)));
 }
 
 bool LfscProofLetifyTraverseCallback::shouldTraverse(const ProofNode* pn)
 {
-  if (pn->getRule() == PfRule::SCOPE)
+  if (pn->getRule() == ProofRule::SCOPE)
   {
     return false;
   }
-  if (pn->getRule() != PfRule::LFSC_RULE)
+  if (pn->getRule() != ProofRule::LFSC_RULE)
   {
     return true;
   }
@@ -85,4 +86,4 @@ bool LfscProofLetifyTraverseCallback::shouldTraverse(const ProofNode* pn)
 }
 
 }  // namespace proof
-}  // namespace cvc5
+}  // namespace cvc5::internal

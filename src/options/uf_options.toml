@@ -3,11 +3,11 @@ name   = "Uninterpreted Functions Theory"
 
 [[option]]
   name       = "ufSymmetryBreaker"
-  alias      = ["uf-symmetry-breaker"]
   category   = "regular"
   long       = "symmetry-breaker"
   type       = "bool"
   default    = "true"
+  no_support = ["proofs"]
   help       = "use UF symmetry breaker (Deharbe et al., CADE 2011)"
 
 [[option]]
@@ -45,25 +45,57 @@ name   = "Uninterpreted Functions Theory"
   help       = "use fair strategy for finite model finding multiple sorts"
 
 [[option]]
-  name       = "ufssFairnessMonotone"
-  category   = "regular"
-  long       = "uf-ss-fair-monotone"
-  type       = "bool"
-  default    = "false"
-  help       = "group monotone sorts when enforcing fairness for finite model finding"
-
-[[option]]
-  name       = "ufHo"
-  category   = "regular"
-  long       = "uf-ho"
-  type       = "bool"
-  default    = "false"
-  help       = "enable support for higher-order reasoning"
-
-[[option]]
   name       = "ufHoExt"
-  category   = "regular"
+  category   = "expert"
   long       = "uf-ho-ext"
   type       = "bool"
   default    = "true"
   help       = "apply extensionality on function symbols"
+
+[[option]]
+  name       = "ufHoLazyLambdaLift"
+  category   = "regular"
+  long       = "uf-lazy-ll"
+  type       = "bool"
+  default    = "true"
+  help       = "do lambda lifting lazily"
+
+[[option]]
+  name       = "ufHoLambdaQe"
+  category   = "expert"
+  long       = "uf-lambda-qe"
+  type       = "bool"
+  default    = "false"
+  help       = "apply quantifier elimination eagerly when two lambdas are equated"
+
+[[option]]
+  name       = "eagerArithBvConv"
+  category   = "regular"
+  long       = "eager-arith-bv-conv"
+  type       = "bool"
+  default    = "false"
+  help       = "eagerly expand bit-vector to arithmetic conversions during preprocessing"
+
+[[option]]
+  name       = "modelBasedArithBvConv"
+  category   = "expert"
+  long       = "model-based-arith-bv-conv"
+  type       = "bool"
+  default    = "false"
+  help       = "model-based inferences for bit-vector to arithmetic conversions"
+
+[[option]]
+  name       = "ufHoExp"
+  category   = "expert"
+  long       = "uf-ho-exp"
+  type       = "bool"
+  default    = "true"
+  help       = "enables the higher-order logic solver in applicable logics"
+
+[[option]]
+  name       = "ufCardExp"
+  category   = "expert"
+  long       = "uf-card-exp"
+  type       = "bool"
+  default    = "true"
+  help       = "allows logics with UF+cardinality"

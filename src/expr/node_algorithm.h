@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Andres Noetzli, Yoni Zohar
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -27,7 +24,7 @@
 #include "expr/node.h"
 #include "expr/type_node.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace expr {
 
 /**
@@ -57,7 +54,42 @@ bool hasSubtermKind(Kind k, Node n);
  * @return true iff there is a term in n that has any kind ks
  */
 bool hasSubtermKinds(const std::unordered_set<Kind, kind::KindHashFunction>& ks,
-                     Node n);
+                     TNode n);
+
+/**
+ * @param k The kind of node to check
+ * @param n The node to search in.
+ * @param ts The subterms of n that have that kind.
+ * @param nested Whether we search beneath other applications of k.
+ */
+void getSubtermsKind(Kind k,
+                     TNode n,
+                     std::unordered_set<Node>& ts,
+                     bool nested = true);
+
+/**
+ * @param ks The kinds of node to check
+ * @param n The node to search in.
+ * @param ts Maps kinds to the subterms of n that have that kind.
+ * @param nested Whether we search beneath other applications of terms with
+ * kinds in ks.
+ */
+void getSubtermsKinds(
+    const std::unordered_set<Kind, kind::KindHashFunction>& ks,
+    TNode n,
+    std::map<Kind, std::unordered_set<Node>>& ts,
+    bool nested = true);
+
+/**
+ * @param ks The kinds of node to check
+ * @param n The node to search in.
+ * @param visited A cache of nodes we have already visited (and did not contain
+ * a kind in ks)
+ * @return the illegal kind we found
+ */
+Kind hasSubtermKinds(const std::unordered_set<Kind, kind::KindHashFunction>& ks,
+                     TNode n,
+                     std::unordered_set<TNode>& visited);
 
 /**
  * Check if the node n has a subterm that occurs in t.
@@ -77,12 +109,35 @@ bool hasSubterm(TNode n, const std::vector<Node>& t, bool strict = false);
 bool hasBoundVar(TNode n);
 
 /**
+ * @param n The node under investigation
+ * @param fvs The variables to find
+ * @return true iff n contains a variable fvs as a bound variable (i.e. as
+ * the child of a variable list of a binder).
+ */
+bool hasBoundVar(TNode n, const std::unordered_set<Node>& fvs);
+
+/**
  * Returns true iff the node n contains a free variable, that is, a node
  * of kind BOUND_VARIABLE that is not bound in n.
+ *
+ * NOTE: this method should only be called on terms that do not have shadowing,
+ * which is the case if n is rewritten. Otherwise, an assertion failure is
+ * thrown in debug builds.
+ *
  * @param n The node under investigation
  * @return true iff this node contains a free variable.
  */
 bool hasFreeVar(TNode n);
+
+/**
+ * Returns true iff the node n contains a free variable, that is, a node
+ * of kind BOUND_VARIABLE that is not bound in n, or a BOUND_VARIABLE that
+ * is shadowed (e.g. it is bound twice in the same context).
+ * @param n The node under investigation
+ * @param wasShadow Set to true if n had a shadowed variable.
+ * @return true iff this node contains a free or shadowed variable.
+ */
+bool hasFreeOrShadowedVar(TNode n, bool& wasShadow);
 
 /**
  * Returns true iff the node n contains a closure, that is, a node
@@ -96,29 +151,33 @@ bool hasClosure(Node n);
 /**
  * Get the free variables in n, that is, the subterms of n of kind
  * BOUND_VARIABLE that are not bound in n, adds these to fvs.
+ *
+ * NOTE: this method should only be called on terms that do not have shadowing,
+ * which is the case if n is rewritten.
+ *
  * @param n The node under investigation
  * @param fvs The set which free variables are added to
- * @param computeFv If this flag is false, then we only return true/false and
- * do not add to fvs.
  * @return true iff this node contains a free variable.
  */
-bool getFreeVariables(TNode n,
-                      std::unordered_set<Node>& fvs,
-                      bool computeFv = true);
+bool getFreeVariables(TNode n, std::unordered_set<Node>& fvs);
 /**
  * Get the free variables in n, that is, the subterms of n of kind
  * BOUND_VARIABLE that are not bound in n or occur in scope, adds these to fvs.
  * @param n The node under investigation
  * @param fvs The set which free variables are added to
  * @param scope The scope we are considering.
- * @param computeFv If this flag is false, then we only return true/false and
- * do not add to fvs.
  * @return true iff this node contains a free variable.
  */
 bool getFreeVariablesScope(TNode n,
                            std::unordered_set<Node>& fvs,
-                           std::unordered_set<TNode>& scope,
-                           bool computeFv = true);
+                           std::unordered_set<TNode>& scope);
+/**
+ * Return true if n has any free variables in the given scope.
+ * @param n The node under investigation
+ * @param scope The scope we are considering.
+ * @return true iff this node contains a free variable.
+ */
+bool hasFreeVariablesScope(TNode n, std::unordered_set<TNode>& scope);
 
 /**
  * Get all variables in n.
@@ -126,7 +185,17 @@ bool getFreeVariablesScope(TNode n,
  * @param vs The set which free variables are added to
  * @return true iff this node contains a free variable.
  */
-bool getVariables(TNode n, std::unordered_set<TNode>& vs);
+bool getVariables(TNode n, std::unordered_set<Node>& vs);
+/**
+ * Get all variables in n.
+ * @param n The node under investigation
+ * @param vs The set which free variables are added to
+ * @param visited A cache of nodes we have already visited
+ * @return true iff this node contains a free variable.
+ */
+bool getVariables(TNode n,
+                  std::unordered_set<Node>& vs,
+                  std::unordered_set<TNode>& visited);
 
 /**
  * For term n, this function collects the symbols that occur as a subterms
@@ -179,25 +248,6 @@ void getOperatorsMap(TNode n,
                      std::map<TypeNode, std::unordered_set<Node>>& ops,
                      std::unordered_set<TNode>& visited);
 
-/*
- * Substitution of Nodes in a capture avoiding way.
- * If x occurs free in n and it is substituted by a term t
- * and t includes some variable y that is bound in n,
- * then using alpha conversion y is replaced with a fresh bound variable
- * before the substitution.
- *
- */
-Node substituteCaptureAvoiding(TNode n, Node src, Node dest);
-
-/**
- * Same as substituteCaptureAvoiding above, but with a
- * simultaneous substitution of a vector of variables.
- * Elements in source will be replaced by their corresponding element in dest.
- * Both vectors should have the same size.
- */
-Node substituteCaptureAvoiding(TNode n,
-                               std::vector<Node>& src,
-                               std::vector<Node>& dest);
 /**
  * Collect all types in n, which adds to types all types for which a subterm
  * of n has that type. Operators are not considered in the traversal.
@@ -247,7 +297,49 @@ void getComponentTypes(TypeNode t, std::unordered_set<TypeNode>& types);
  */
 bool match(Node n1, Node n2, std::unordered_map<Node, Node>& subs);
 
+/**
+ * For each subterm of n1 and n2 at the same position that have different
+ * operators, we add the corresponding equality to eqs.
+ *
+ * Additionally, we use an isHo flag to determine if we are traversing
+ * operators. As an example of the difference:
+ * Given n1 = (f (g a) b), n2 = (f (h b) c),
+ * If isHo is false, we return eqs = { b = c, (g a) = (h b) }.
+ * If isHo is true, we return eqs = { b = c, g = h, a = b }.
+ *
+ * This method will never traverse binders that have disequal variable lists.
+ *
+ * Intuitively, this method returns a set of equalities that suffices to
+ * show that n1 rewrites to n2 using the "term conversion proof generator"
+ * which is configured to rewrite operators iff isHo is true.
+ *
+ * @param n1 the term (containing free vars) to compare an instance term
+ * against
+ * @param n2 the instance term in question
+ * @param eqs The list of equalities we are populating.
+ * @param isHo If true, we consider matching on operators. This means that
+ * an APPLY_UF with distinct operators with the same type will be added as
+ * a match condition.
+ */
+void getConversionConditions(Node n1,
+                             Node n2,
+                             std::vector<Node>& eqs,
+                             bool isHo = false);
+
+/** Is the top symbol of cur a Boolean connective? */
+bool isBooleanConnective(TNode cur);
+
+/** Is n a theory atom? */
+bool isTheoryAtom(TNode cur);
+
+/**
+ * Returns true iff the node n contains a subterm with abstract type.
+ * @param n The node under investigation
+ * @return true iff this node contains a subterm with abstract type
+ */
+bool hasAbstractSubterm(TNode n);
+
 }  // namespace expr
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif

@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -23,7 +20,7 @@
 
 #include "theory/type_enumerator.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 
 /* Type set
@@ -39,7 +36,7 @@ class TypeSet
   typedef TypeSetMap::const_iterator const_iterator;
 
  public:
-  TypeSet() : d_tep(NULL) {}
+  TypeSet() : d_tep(nullptr) {}
   ~TypeSet();
   /** set the properties of the type set
    *
@@ -52,17 +49,15 @@ class TypeSet
   void add(TypeNode t, TNode n);
   /** get the set of values of type t */
   std::set<Node>* getSet(TypeNode t) const;
-  /** get the next enumerated term of type t
-   *
-   * useBaseType is whether
-   */
-  Node nextTypeEnum(TypeNode t, bool useBaseType = false);
+  /** get the next enumerated term of type t */
+  Node nextTypeEnum(TypeNode t);
 
   bool empty() { return d_typeSet.empty(); }
   iterator begin() { return d_typeSet.begin(); }
   iterator end() { return d_typeSet.end(); }
   static TypeNode getType(iterator it) { return (*it).first; }
   static std::set<Node>& getSet(iterator it) { return *(*it).second; }
+
  private:
   /** sets of values for each type */
   TypeSetMap d_typeSet;
@@ -84,6 +79,6 @@ class TypeSet
 }; /* class TypeSet */
 
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__THEORY__TYPE_SET_H */

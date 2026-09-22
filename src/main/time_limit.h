@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Gereon Kremer
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -18,8 +15,7 @@
 
 #include <cstdint>
 
-namespace cvc5 {
-namespace main {
+namespace cvc5::main {
 
 /**
  * This class makes sure that the main thread signals back to the time
@@ -30,7 +26,7 @@ namespace main {
  */
 struct TimeLimit
 {
-    ~TimeLimit();
+  ~TimeLimit();
 };
 
 /**
@@ -45,7 +41,6 @@ struct TimeLimit
  */
 TimeLimit install_time_limit(uint64_t ms);
 
-}  // namespace main
-}  // namespace cvc5
+}  // namespace cvc5::main
 
 #endif /* CVC5__MAIN__TIME_LIMIT_H */

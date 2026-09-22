@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Haniel Barbosa, Alex Ozdemir
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -20,10 +17,10 @@
 
 #include <vector>
 
+#include "cvc5/cvc5_proof_rule.h"
 #include "expr/node.h"
-#include "proof/proof_rule.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 
 class ProofNodeManager;
 class ProofNode;
@@ -34,6 +31,7 @@ using Pf = std::shared_ptr<ProofNode>;
 struct ProofNodeHashFunction
 {
   inline size_t operator()(std::shared_ptr<ProofNode> pfn) const;
+  size_t operator()(const ProofNode* pfn) const;
 }; /* struct ProofNodeHashFunction */
 
 /** A node in a proof
@@ -88,12 +86,12 @@ class ProofNode
   friend class ProofNodeManager;
 
  public:
-  ProofNode(PfRule id,
+  ProofNode(ProofRule id,
             const std::vector<std::shared_ptr<ProofNode>>& children,
             const std::vector<Node>& args);
   ~ProofNode() {}
   /** get the rule of this proof node */
-  PfRule getRule() const;
+  ProofRule getRule() const;
   /** Get children */
   const std::vector<std::shared_ptr<ProofNode>>& getChildren() const;
   /** Get arguments */
@@ -104,19 +102,31 @@ class ProofNode
    * Returns true if this is a closed proof (i.e. it has no free assumptions).
    */
   bool isClosed();
-  /** Print debug on output strem os */
-  void printDebug(std::ostream& os) const;
+  /** Print debug on output strem os
+   *
+   * @param os the stream to print to
+   * @param printConclusion Whether to print conclusions
+   */
+  void printDebug(std::ostream& os, bool printConclusion = false) const;
+  /**
+   * Clone this proof node, which creates a deep copy of this proof node and
+   * returns it. The dag structure of pn is the same as that in the returned
+   * proof node.
+   *
+   * @return the cloned proof node.
+   */
+  std::shared_ptr<ProofNode> clone() const;
 
  private:
   /**
    * Set value, called to overwrite the contents of this ProofNode with the
    * given arguments.
    */
-  void setValue(PfRule id,
+  void setValue(ProofRule id,
                 const std::vector<std::shared_ptr<ProofNode>>& children,
                 const std::vector<Node>& args);
   /** The proof rule */
-  PfRule d_rule;
+  ProofRule d_rule;
   /** The children of this proof node */
   std::vector<std::shared_ptr<ProofNode>> d_children;
   /** arguments of this node */
@@ -126,6 +136,17 @@ class ProofNode
   /** Was d_proven actually checked, or is it trusted? */
   bool d_provenChecked;
 };
+}  // namespace cvc5::internal
+
+namespace std {
+template <>
+struct hash<cvc5::internal::ProofNode>
+{
+  size_t operator()(const cvc5::internal::ProofNode& node) const;
+};
+}  // namespace std
+
+namespace cvc5::internal {
 
 inline size_t ProofNodeHashFunction::operator()(
     std::shared_ptr<ProofNode> pfn) const
@@ -142,6 +163,6 @@ inline size_t ProofNodeHashFunction::operator()(
  */
 std::ostream& operator<<(std::ostream& out, const ProofNode& pn);
 
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__PROOF__PROOF_NODE_H */

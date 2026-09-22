@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Morgan Deters, Tim King
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -16,15 +13,21 @@
 
 #include "expr/ascription_type.h"
 #include "expr/dtype.h"
+#include "expr/node_algorithm.h"
 #include "expr/node_manager.h"
-#include "expr/skolem_manager.h"
 #include "expr/type_matcher.h"
 #include "options/datatypes_options.h"
 
-using namespace cvc5::kind;
-using namespace cvc5::theory;
+using namespace cvc5::internal::kind;
+using namespace cvc5::internal::theory;
 
-namespace cvc5 {
+namespace cvc5::internal {
+
+/** Attribute true for variables that represent any constant */
+struct SygusAnyConstAttributeId
+{
+};
+typedef expr::Attribute<SygusAnyConstAttributeId, bool> SygusAnyConstAttribute;
 
 DTypeConstructor::DTypeConstructor(std::string name,
                                    unsigned weight)
@@ -40,20 +43,16 @@ DTypeConstructor::DTypeConstructor(std::string name,
   Assert(name != "");
 }
 
-void DTypeConstructor::addArg(std::string selectorName, TypeNode selectorType)
+void DTypeConstructor::addArg(std::string selectorName, TypeNode rangeType)
 {
   // We don't want to introduce a new data member, because eventually
   // we're going to be a constant stuffed inside a node.  So we stow
   // the selector type away inside a var until resolution (when we can
   // create the proper selector type)
   Assert(!isResolved());
-  Assert(!selectorType.isNull());
-  SkolemManager* sm = NodeManager::currentNM()->getSkolemManager();
-  Node sel = sm->mkDummySkolem(
-      "unresolved_" + selectorName,
-      selectorType,
-      "is an unresolved selector type placeholder",
-      NodeManager::SKOLEM_EXACT_NAME | NodeManager::SKOLEM_NO_NOTIFY);
+  Assert(!rangeType.isNull());
+  Node sel = NodeManager::mkDummySkolem(
+      "unresolved_" + selectorName, rangeType, SkolemFlags::SKOLEM_EXACT_NAME);
   // can use null updater for now
   Node nullNode;
   Trace("datatypes") << "DTypeConstructor::addArg: " << sel << std::endl;
@@ -84,6 +83,16 @@ Node DTypeConstructor::getConstructor() const
   return d_constructor;
 }
 
+Node DTypeConstructor::getInstantiatedConstructor(TypeNode returnType) const
+{
+  Assert(isResolved());
+  NodeManager* nm = returnType.getNodeManager();
+  return nm->mkNode(
+      Kind::APPLY_TYPE_ASCRIPTION,
+      nm->mkConst(AscriptionType(getInstantiatedConstructorType(returnType))),
+      d_constructor);
+}
+
 Node DTypeConstructor::getTester() const
 {
   Assert(isResolved());
@@ -94,6 +103,16 @@ void DTypeConstructor::setSygus(Node op)
 {
   Assert(!isResolved());
   d_sygusOp = op;
+  if (op.getKind() == Kind::SKOLEM)
+  {
+    // check if stands for the "any constant" constructor
+    if (op.getInternalSkolemId() == InternalSkolemId::SYGUS_ANY_CONSTANT)
+    {
+      // mark with attribute, which is a faster lookup
+      SygusAnyConstAttribute saca;
+      op.setAttribute(saca, true);
+    }
+  }
 }
 
 Node DTypeConstructor::getSygusOp() const
@@ -105,8 +124,22 @@ Node DTypeConstructor::getSygusOp() const
 bool DTypeConstructor::isSygusIdFunc() const
 {
   Assert(isResolved());
-  return (d_sygusOp.getKind() == LAMBDA && d_sygusOp[0].getNumChildren() == 1
+  Assert(!d_sygusOp.isNull());
+  return (d_sygusOp.getKind() == Kind::LAMBDA
+          && d_sygusOp[0].getNumChildren() == 1
           && d_sygusOp[0][0] == d_sygusOp[1]);
+}
+
+bool DTypeConstructor::isSygusAnyConstant() const
+{
+  Assert(isResolved());
+  Assert(!d_sygusOp.isNull());
+  return isSygusAnyConstantOp(d_sygusOp);
+}
+
+bool DTypeConstructor::isSygusAnyConstantOp(const Node& n)
+{
+  return n.getAttribute(SygusAnyConstAttribute());
 }
 
 unsigned DTypeConstructor::getWeight() const
@@ -117,12 +150,12 @@ unsigned DTypeConstructor::getWeight() const
 
 size_t DTypeConstructor::getNumArgs() const { return d_args.size(); }
 
-TypeNode DTypeConstructor::getSpecializedConstructorType(
+TypeNode DTypeConstructor::getInstantiatedConstructorType(
     TypeNode returnType) const
 {
   Assert(isResolved());
   Assert(returnType.isDatatype())
-      << "DTypeConstructor::getSpecializedConstructorType: expected datatype, "
+      << "DTypeConstructor::getInstantiatedConstructorType: expected datatype, "
          "got "
       << returnType;
   TypeNode ctn = d_constructor.getType();
@@ -148,7 +181,7 @@ const std::vector<std::shared_ptr<DTypeSelector> >& DTypeConstructor::getArgs()
   return d_args;
 }
 
-Cardinality DTypeConstructor::getCardinality(TypeNode t) const
+Cardinality DTypeConstructor::getCardinality() const
 {
   Assert(isResolved());
 
@@ -190,7 +223,7 @@ std::pair<CardinalityClass, bool> DTypeConstructor::computeCardinalityInfo(
   if (isParam)
   {
     paramTypes = t.getDType().getParameters();
-    instTypes = t.getParamTypes();
+    instTypes = t.getInstantiatedParamTypes();
   }
   for (unsigned i = 0, nargs = getNumArgs(); i < nargs; i++)
   {
@@ -228,48 +261,47 @@ const DTypeSelector& DTypeConstructor::operator[](size_t index) const
 TypeNode DTypeConstructor::getArgType(size_t index) const
 {
   Assert(index < getNumArgs());
-  return (*this)[index].getType().getSelectorRangeType();
+  return (*this)[index].getType().getDatatypeSelectorRangeType();
 }
 
-Node DTypeConstructor::getSelectorInternal(TypeNode domainType,
-                                           size_t index) const
+Node DTypeConstructor::getSelector(size_t index) const
 {
   Assert(isResolved());
   Assert(index < getNumArgs());
-  if (options::dtSharedSelectors())
-  {
-    computeSharedSelectors(domainType);
-    Assert(d_sharedSelectors[domainType].size() == getNumArgs());
-    return d_sharedSelectors[domainType][index];
-  }
-  else
-  {
-    return d_args[index]->getSelector();
-  }
+  return d_args[index]->getSelector();
+}
+
+Node DTypeConstructor::getSharedSelector(TypeNode domainType,
+                                         size_t index) const
+{
+  Assert(isResolved());
+  Assert(index < getNumArgs());
+  computeSharedSelectors(domainType);
+  Assert(d_sharedSelectors[domainType].size() == getNumArgs());
+  return d_sharedSelectors[domainType][index];
 }
 
 int DTypeConstructor::getSelectorIndexInternal(Node sel) const
 {
   Assert(isResolved());
-  if (options::dtSharedSelectors())
+  Assert(sel.getType().isDatatypeSelector());
+  // might be a builtin selector
+  if (sel.hasAttribute(DTypeIndexAttr()))
   {
-    Assert(sel.getType().isSelector());
-    TypeNode domainType = sel.getType().getSelectorDomainType();
-    computeSharedSelectors(domainType);
-    std::map<Node, unsigned>::iterator its =
-        d_sharedSelectorIndex[domainType].find(sel);
-    if (its != d_sharedSelectorIndex[domainType].end())
-    {
-      return (int)its->second;
-    }
-  }
-  else
-  {
-    unsigned sindex = DType::indexOf(sel);
+    size_t sindex = DType::indexOf(sel);
     if (getNumArgs() > sindex && d_args[sindex]->getSelector() == sel)
     {
       return static_cast<int>(sindex);
     }
+  }
+  // otherwise, check shared selector
+  TypeNode domainType = sel.getType().getDatatypeSelectorDomainType();
+  computeSharedSelectors(domainType);
+  std::map<Node, unsigned>::iterator its =
+      d_sharedSelectorIndex[domainType].find(sel);
+  if (its != d_sharedSelectorIndex[domainType].end())
+  {
+    return (int)its->second;
   }
   return -1;
 }
@@ -302,7 +334,7 @@ bool DTypeConstructor::involvesUninterpretedType() const
 {
   for (size_t i = 0, nargs = getNumArgs(); i < nargs; i++)
   {
-    if (!getArgType(i).isSort())
+    if (!getArgType(i).isUninterpretedSort())
     {
       return true;
     }
@@ -320,7 +352,7 @@ Cardinality DTypeConstructor::computeCardinality(
   if (isParam)
   {
     paramTypes = t.getDType().getParameters();
-    instTypes = t.getParamTypes();
+    instTypes = t.getInstantiatedParamTypes();
   }
   for (size_t i = 0, nargs = d_args.size(); i < nargs; i++)
   {
@@ -351,12 +383,19 @@ bool DTypeConstructor::computeWellFounded(
   for (size_t i = 0, nargs = getNumArgs(); i < nargs; i++)
   {
     TypeNode t = getArgType(i);
-    if (t.isDatatype())
+    // must look at all types that occur as subterms of t, as we could have
+    // nested recursion.
+    std::unordered_set<TypeNode> ctypes;
+    expr::getComponentTypes(t, ctypes);
+    for (const TypeNode& ct : ctypes)
     {
-      const DType& dt = t.getDType();
-      if (!dt.computeWellFounded(processing))
+      if (ct.isDatatype())
       {
-        return false;
+        const DType& dt = ct.getDType();
+        if (!dt.computeWellFounded(processing))
+        {
+          return false;
+        }
       }
     }
   }
@@ -368,7 +407,7 @@ Node DTypeConstructor::computeGroundTerm(TypeNode t,
                                          std::map<TypeNode, Node>& gt,
                                          bool isValue) const
 {
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = t.getNodeManager();
   std::vector<Node> groundTerms;
   groundTerms.push_back(getConstructor());
   Trace("datatypes-init") << "cons " << d_constructor
@@ -382,7 +421,7 @@ Node DTypeConstructor::computeGroundTerm(TypeNode t,
   if (isParam)
   {
     paramTypes = t.getDType().getParameters();
-    instTypes = TypeNode(t).getParamTypes();
+    instTypes = TypeNode(t).getInstantiatedParamTypes();
   }
   for (size_t i = 0, nargs = getNumArgs(); i < nargs; i++)
   {
@@ -411,7 +450,8 @@ Node DTypeConstructor::computeGroundTerm(TypeNode t,
     else
     {
       // call mkGroundValue or mkGroundTerm based on isValue
-      arg = isValue ? selType.mkGroundValue() : selType.mkGroundTerm();
+      arg = isValue ? NodeManager::mkGroundValue(selType)
+                    : NodeManager::mkGroundTerm(selType);
     }
     if (arg.isNull())
     {
@@ -431,7 +471,7 @@ Node DTypeConstructor::computeGroundTerm(TypeNode t,
     }
   }
 
-  Node groundTerm = nm->mkNode(APPLY_CONSTRUCTOR, groundTerms);
+  Node groundTerm = nm->mkNode(Kind::APPLY_CONSTRUCTOR, groundTerms);
   if (isParam)
   {
     Assert(DType::datatypeOf(d_constructor).isParametric());
@@ -439,10 +479,10 @@ Node DTypeConstructor::computeGroundTerm(TypeNode t,
     Trace("datatypes-init") << "ambiguous type for " << groundTerm
                             << ", ascribe to " << t << std::endl;
     groundTerms[0] = nm->mkNode(
-        APPLY_TYPE_ASCRIPTION,
-        nm->mkConst(AscriptionType(getSpecializedConstructorType(t))),
+        Kind::APPLY_TYPE_ASCRIPTION,
+        nm->mkConst(AscriptionType(getInstantiatedConstructorType(t))),
         groundTerms[0]);
-    groundTerm = nm->mkNode(APPLY_CONSTRUCTOR, groundTerms);
+    groundTerm = nm->mkNode(Kind::APPLY_CONSTRUCTOR, groundTerms);
   }
   Trace("datatypes-init") << "...return " << groundTerm << std::endl;
   Assert(!isValue || groundTerm.isConst()) << "Non-constant term " << groundTerm
@@ -457,13 +497,13 @@ void DTypeConstructor::computeSharedSelectors(TypeNode domainType) const
     TypeNode ctype;
     if (domainType.isParametricDatatype())
     {
-      ctype = getSpecializedConstructorType(domainType);
+      ctype = getInstantiatedConstructorType(domainType);
     }
     else
     {
       ctype = d_constructor.getType();
     }
-    Assert(ctype.isConstructor());
+    Assert(ctype.isDatatypeConstructor());
     Assert(ctype.getNumChildren() - 1 == getNumArgs());
     // compute the shared selectors
     const DType& dt = DType::datatypeOf(d_constructor);
@@ -498,8 +538,7 @@ bool DTypeConstructor::resolve(
   Trace("datatypes") << "DTypeConstructor::resolve, self type is " << self
                      << std::endl;
 
-  NodeManager* nm = NodeManager::currentNM();
-  SkolemManager* sm = nm->getSkolemManager();
+  NodeManager* nm = self.getNodeManager();
   size_t index = 0;
   std::vector<TypeNode> argTypes;
   Trace("datatypes-init") << "Initialize constructor " << d_name << std::endl;
@@ -562,17 +601,15 @@ bool DTypeConstructor::resolve(
     }
     // Internally, selectors (and updaters) are fresh internal skolems which
     // we constructor via mkDummySkolem.
-    arg->d_selector = sm->mkDummySkolem(
-        argName,
-        nm->mkSelectorType(self, range),
-        "is a selector",
-        NodeManager::SKOLEM_EXACT_NAME | NodeManager::SKOLEM_NO_NOTIFY);
+    arg->d_selector =
+        NodeManager::mkDummySkolem(argName,
+                                   nm->mkSelectorType(self, range),
+                                   SkolemFlags::SKOLEM_EXACT_NAME);
     std::string updateName("update_" + argName);
-    arg->d_updater = sm->mkDummySkolem(
-        updateName,
-        nm->mkDatatypeUpdateType(self, range),
-        "is a selector",
-        NodeManager::SKOLEM_EXACT_NAME | NodeManager::SKOLEM_NO_NOTIFY);
+    arg->d_updater =
+        NodeManager::mkDummySkolem(updateName,
+                                   nm->mkDatatypeUpdateType(self, range),
+                                   SkolemFlags::SKOLEM_EXACT_NAME);
     // must set indices to ensure datatypes::utils::indexOf works
     arg->d_selector.setAttribute(DTypeConsIndexAttr(), cindex);
     arg->d_selector.setAttribute(DTypeIndexAttr(), index);
@@ -600,17 +637,13 @@ bool DTypeConstructor::resolve(
   // The name of the tester variable does not matter, it is only used
   // internally.
   std::string testerName("is_" + d_name);
-  d_tester = sm->mkDummySkolem(
-      testerName,
-      nm->mkTesterType(self),
-      "is a tester",
-      NodeManager::SKOLEM_EXACT_NAME | NodeManager::SKOLEM_NO_NOTIFY);
-  d_constructor = sm->mkDummySkolem(
-      getName(),
-      nm->mkConstructorType(argTypes, self),
-      "is a constructor",
-      NodeManager::SKOLEM_EXACT_NAME | NodeManager::SKOLEM_NO_NOTIFY);
-  Assert(d_constructor.getType().isConstructor());
+  d_tester = NodeManager::mkDummySkolem(
+      testerName, nm->mkTesterType(self), SkolemFlags::SKOLEM_EXACT_NAME);
+  d_constructor =
+      NodeManager::mkDummySkolem(getName(),
+                                 nm->mkConstructorType(argTypes, self),
+                                 SkolemFlags::SKOLEM_EXACT_NAME);
+  Assert(d_constructor.getType().isDatatypeConstructor());
   // associate constructor with all selectors
   for (std::shared_ptr<DTypeSelector> sel : d_args)
   {
@@ -639,20 +672,26 @@ TypeNode DTypeConstructor::doParametricSubstitution(
     children.push_back(
         doParametricSubstitution((*i), paramTypes, paramReplacements));
   }
-  for (size_t i = 0, psize = paramTypes.size(); i < psize; ++i)
+  if (range.getKind() == Kind::INSTANTIATED_SORT_TYPE)
   {
-    if (paramTypes[i].getSortConstructorArity() == origChildren.size())
+    // paramTypes contains a list of uninterpreted sort constructors.
+    // paramReplacements contains a list of instantiated parametric datatypes.
+    // If range is (INSTANTIATED_SORT_TYPE c T1 ... Tn), and
+    //    paramTypes[i] is c
+    //    paramReplacements[i] is (PARAMETRIC_DATATYPE d S1 ... Sn)
+    // then we return (PARAMETRIC_DATATYPE d T'1 ... T'n) where T'1 ...T'n
+    // is the result of recursively processing T1 ... Tn.
+    for (size_t i = 0, psize = paramTypes.size(); i < psize; ++i)
     {
-      TypeNode tn = paramTypes[i].instantiateSortConstructor(origChildren);
-      if (range == tn)
+      if (paramTypes[i] == origChildren[0])
       {
-        TypeNode tret =
-            paramReplacements[i].instantiateParametricDatatype(children);
+        std::vector<TypeNode> params(children.begin() + 1, children.end());
+        TypeNode tret = paramReplacements[i].instantiate(params);
         return tret;
       }
     }
   }
-  NodeBuilder nb(range.getKind());
+  NodeBuilder nb(range.getNodeManager(), range.getKind());
   for (size_t i = 0, csize = children.size(); i < csize; ++i)
   {
     nb << children[i];
@@ -688,4 +727,12 @@ std::ostream& operator<<(std::ostream& os, const DTypeConstructor& ctor)
   return os;
 }
 
-}  // namespace cvc5
+}  // namespace cvc5::internal
+
+namespace std {
+size_t hash<cvc5::internal::DTypeConstructor>::operator()(
+    const cvc5::internal::DTypeConstructor& cons) const
+{
+  return std::hash<std::string>()(cons.getName());
+}
+}  // namespace std

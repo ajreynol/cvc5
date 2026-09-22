@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Morgan Deters, Dejan Jovanovic
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -39,7 +36,7 @@
 #include "theory/valuation.h"
 #include "util/statistics_stats.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 
 class ProofNodeManager;
 class TheoryEngine;
@@ -47,6 +44,7 @@ class ProofRuleChecker;
 
 namespace theory {
 
+class CarePairArgumentCallback;
 class DecisionManager;
 struct EeSetupInfo;
 class OutputChannel;
@@ -58,7 +56,7 @@ class TheoryState;
 class TrustSubstitutionMap;
 
 namespace eq {
-  class EqualityEngine;
+class EqualityEngine;
 }  // namespace eq
 
 /**
@@ -97,36 +95,8 @@ namespace eq {
  */
 class Theory : protected EnvObj
 {
-  friend class ::cvc5::TheoryEngine;
-
- private:
-  // Disallow default construction, copy, assignment.
-  Theory() = delete;
-  Theory(const Theory&) = delete;
-  Theory& operator=(const Theory&) = delete;
-
-  /** An integer identifying the type of the theory. */
-  TheoryId d_id;
-
-  /**
-   * The assertFact() queue.
-   *
-   * These can not be TNodes as some atoms (such as equalities) are sent
-   * across theories without being stored in a global map.
-   */
-  context::CDList<Assertion> d_facts;
-
-  /** Index into the head of the facts list */
-  context::CDO<unsigned> d_factsHead;
-
-  /** Indices for splitting on the shared terms. */
-  context::CDO<unsigned> d_sharedTermsIndex;
-
-  /** The care graph the theory will use during combination. */
-  CareGraph* d_careGraph;
-
-  /** Pointer to the decision manager. */
-  DecisionManager* d_decManager;
+  friend class CarePairArgumentCallback;
+  friend class internal::TheoryEngine;
 
  protected:
   /** Name of this theory instance. Along with the TheoryId this should
@@ -141,21 +111,31 @@ class Theory : protected EnvObj
   /** time spent in theory combination */
   TimerStat d_computeCareGraphTime;
 
-  /**
-   * The only method to add suff to the care graph.
-   */
+  /** Add (t1, t2) to the care graph */
   void addCarePair(TNode t1, TNode t2);
+  /**
+   * Assuming a is f(a1, ..., an) and b is f(b1, ..., bn), this method adds
+   * (ai, bi) to the care graph for each i where ai is not equal to bi.
+   */
+  void addCarePairArgs(TNode a, TNode b);
+  /**
+   * Process care pair arguments for a and b. By default, this calls the
+   * method above if a and b are not equal according to the equality engine
+   * of this theory.
+   */
+  virtual void processCarePairArgs(TNode a, TNode b);
+  /**
+   * Are care disequal? Return true if x and y are distinct constants, shared
+   * terms that are disequal according to the valuation, or otherwise
+   * disequal according to the equality engine of this theory.
+   */
+  virtual bool areCareDisequal(TNode x, TNode y);
 
   /**
    * The function should compute the care graph over the shared terms.
    * The default function returns all the pairs among the shared variables.
    */
   virtual void computeCareGraph();
-
-  /**
-   * A list of shared terms that the theory has.
-   */
-  context::CDList<TNode> d_sharedTerms;
 
   /**
    * Construct a Theory.
@@ -168,17 +148,6 @@ class Theory : protected EnvObj
          OutputChannel& out,
          Valuation valuation,
          std::string instance = "");  // taking : No default.
-
-  /**
-   * This is called at shutdown time by the TheoryEngine, just before
-   * destruction.  It is important because there are destruction
-   * ordering issues between PropEngine and Theory (based on what
-   * hard-links to Nodes are outstanding).  As the fact queue might be
-   * nonempty, we ensure here that it's clear.  If you overload this,
-   * you must make an explicit call here to this->Theory::shutdown()
-   * too.
-   */
-  virtual void shutdown() {}
 
   /**
    * The output channel for the Theory.
@@ -220,6 +189,13 @@ class Theory : protected EnvObj
 
   /** Pointer to proof node manager */
   ProofNodeManager* d_pnm;
+
+  /**
+   * Whether we can exit early from check at standard effort if no facts are
+   * asserted.
+   */
+  bool d_checkEarlyExit;
+
   /**
    * Are proofs enabled?
    *
@@ -227,47 +203,9 @@ class Theory : protected EnvObj
    */
   bool proofsEnabled() const;
 
-  /**
-   * Returns the next assertion in the assertFact() queue.
-   *
-   * @return the next assertion in the assertFact() queue
-   */
-  inline Assertion get();
-
-  /**
-   * Set separation logic heap. This is called when the location and data
-   * types for separation logic are determined. This should be called at
-   * most once, before solving.
-   *
-   * This currently should be overridden by the separation logic theory only.
-   */
-  virtual void declareSepHeap(TypeNode locT, TypeNode dataT) {}
-
-  /**
-   * The theory that owns the uninterpreted sort.
-   */
-  static TheoryId s_uninterpretedSortOwner;
-
   void printFacts(std::ostream& os) const;
   void debugPrintFacts() const;
 
-  /** is legal elimination
-   *
-   * Returns true if x -> val is a legal elimination of variable x. This is
-   * useful for ppAssert, when x = val is an entailed equality. This function
-   * determines whether indeed x can be eliminated from the problem via the
-   * substituion x -> val.
-   *
-   * The following criteria imply that x -> val is *not* a legal elimination:
-   * (1) If x is contained in val,
-   * (2) If the type of val is not a subtype of the type of x,
-   * (3) If val contains an operator that cannot be evaluated, and
-   * produceModels is true. For example, x -> sqrt(2) is not a legal
-   * elimination if we are producing models. This is because we care about the
-   * value of x, and its value must be computed (approximated) by the
-   * non-linear solver.
-   */
-  bool isLegalElimination(TNode x, TNode val);
   //--------------------------------- private initialization
   /**
    * Called to set the official equality engine. This should be done by
@@ -341,11 +279,11 @@ class Theory : protected EnvObj
   /**
    * Return the ID of the theory responsible for the given type.
    */
-  static inline TheoryId theoryOf(TypeNode typeNode)
+  static inline TheoryId theoryOf(TypeNode typeNode,
+                                  TheoryId usortOwner = theory::THEORY_UF)
   {
-    Trace("theory::internal") << "theoryOf(" << typeNode << ")" << std::endl;
     TheoryId id;
-    if (typeNode.getKind() == kind::TYPE_CONSTANT)
+    if (typeNode.getKind() == Kind::TYPE_CONSTANT)
     {
       id = typeConstantToTheoryId(typeNode.getConst<TypeConstant>());
     }
@@ -355,57 +293,51 @@ class Theory : protected EnvObj
     }
     if (id == THEORY_BUILTIN)
     {
-      Trace("theory::internal")
-          << "theoryOf(" << typeNode << ") == " << s_uninterpretedSortOwner
-          << std::endl;
-      return s_uninterpretedSortOwner;
+      return usortOwner;
     }
     return id;
   }
 
   /**
    * Returns the ID of the theory responsible for the given node.
+   *
+   * Note this method does not take into account "Boolean term skolem". Boolean
+   * term skolems always belong to THEORY_UF. This case is handled in
+   * Env::theoryOf.
+   *
+   * @param node The node in question.
+   * @param mdoe The theoryof mode, which impacts which theory owns e.g.
+   * variables.
+   * @param usortOwner The theory that owns uninterpreted sorts.
+   * @return The theory that owns node.
    */
-  static TheoryId theoryOf(options::TheoryOfMode mode, TNode node);
+  static TheoryId theoryOf(
+      TNode node,
+      options::TheoryOfMode mode = options::TheoryOfMode::THEORY_OF_TYPE_BASED,
+      TheoryId usortOwner = theory::THEORY_UF);
 
   /**
-   * Returns the ID of the theory responsible for the given node.
-   */
-  static inline TheoryId theoryOf(TNode node)
-  {
-    return theoryOf(options::theoryOfMode(), node);
-  }
-
-  /**
-   * Set the owner of the uninterpreted sort.
-   */
-  static void setUninterpretedSortOwner(TheoryId theory)
-  {
-    s_uninterpretedSortOwner = theory;
-  }
-
-  /**
-   * Get the owner of the uninterpreted sort.
-   */
-  static TheoryId getUninterpretedSortOwner()
-  {
-    return s_uninterpretedSortOwner;
-  }
-
-  /**
-   * Checks if the node is a leaf node of this theory
+   * Checks if the node is a leaf node of this theory.
    */
   inline bool isLeaf(TNode node) const
   {
-    return node.getNumChildren() == 0 || theoryOf(node) != d_id;
+    // variables have 0 children thus theoryOf is not impacted by whether
+    // node is a Boolean term skolem.
+    return node.getNumChildren() == 0
+           || theoryOf(node, options().theory.theoryOfMode) != d_id;
   }
 
   /**
    * Checks if the node is a leaf node of a theory.
    */
-  inline static bool isLeafOf(TNode node, TheoryId theoryId)
+  inline static bool isLeafOf(
+      TNode node,
+      TheoryId theoryId,
+      options::TheoryOfMode mode = options::TheoryOfMode::THEORY_OF_TYPE_BASED)
   {
-    return node.getNumChildren() == 0 || theoryOf(node) != theoryId;
+    // variables have 0 children thus theoryOf is not impacted by whether
+    // node is a Boolean term skolem.
+    return node.getNumChildren() == 0 || theoryOf(node, mode) != theoryId;
   }
 
   /** Returns true if the assertFact queue is empty*/
@@ -508,21 +440,26 @@ class Theory : protected EnvObj
   virtual EqualityStatus getEqualityStatus(TNode a, TNode b);
 
   /**
-   * Return the model value of the give shared term (or null if not
-   * available).
-   *
-   * TODO (project #39): this method is likely to become deprecated.
+   * Return the candidate model value of the give shared term (or null if not
+   * available). A candidate model value is one computed at full effort,
+   * prior to running theory combination and final model construction.
+   * Typically only non-parametric theories are able to implement this method,
+   * since model construction for parametric theories involves running final
+   * model construction.
    */
-  virtual Node getModelValue(TNode var) { return Node::null(); }
+  virtual Node getCandidateModelValue(CVC5_UNUSED TNode var)
+  {
+    return Node::null();
+  }
 
   /** T-propagate new literal assignments in the current context. */
-  virtual void propagate(Effort level = EFFORT_FULL) {}
+  virtual void propagate(CVC5_UNUSED Effort level = EFFORT_FULL) {}
 
   /**
    * Return an explanation for the literal represented by parameter n
    * (which was previously propagated by this theory).
    */
-  virtual TrustNode explain(TNode n)
+  virtual TrustNode explain(CVC5_UNUSED TNode n)
   {
     Unimplemented() << "Theory " << identify()
                     << " propagated a node but doesn't implement the "
@@ -625,14 +562,21 @@ class Theory : protected EnvObj
    *
    * @param termSet The set to add terms to
    * @param includeShared Whether to include the shared terms of the theory
+   * @param irrKind The kinds
    */
   void collectAssertedTerms(std::set<Node>& termSet,
-                            bool includeShared = true) const;
+                            bool includeShared,
+                            const std::set<Kind>& irrKinds) const;
+  /** Same as above, using the irrelevant model kinds for irrKinds.*/
+  void collectAssertedTermsForModel(std::set<Node>& termSet,
+                                    bool includeShared = true) const;
   /**
    * Helper function for collectAssertedTerms, adds all subterms
    * belonging to this theory to termSet.
    */
-  void collectTerms(TNode n, std::set<Node>& termSet) const;
+  void collectTerms(TNode n,
+                    std::set<Node>& termSet,
+                    const std::set<Kind>& irrKinds) const;
   /**
    * Collect model values, after equality information is added to the model.
    * The argument termSet is the set of relevant terms returned by
@@ -642,28 +586,18 @@ class Theory : protected EnvObj
                                   const std::set<Node>& termSet);
   /** if theories want to do something with model after building, do it here
    */
-  virtual void postProcessModel(TheoryModel* m) {}
+  virtual void postProcessModel(CVC5_UNUSED TheoryModel* m) {}
   //--------------------------------- end collect model info
 
   //--------------------------------- preprocessing
   /**
    * Statically learn from assertion "in," which has been asserted
-   * true at the top level.  The theory should only add (via
-   * ::operator<< or ::append()) to the "learned" builder---it should
-   * *never* clear it.  It is a conjunction to add to the formula at
-   * the top-level and may contain other theories' contributions.
+   * true at the top level.
    */
-  virtual void ppStaticLearn(TNode in, NodeBuilder& learned) {}
-
-  enum PPAssertStatus
+  virtual void ppStaticLearn(CVC5_UNUSED TNode in,
+                             CVC5_UNUSED std::vector<TrustNode>& learned)
   {
-    /** Atom has been solved  */
-    PP_ASSERT_STATUS_SOLVED,
-    /** Atom has not been solved */
-    PP_ASSERT_STATUS_UNSOLVED,
-    /** Atom is inconsistent */
-    PP_ASSERT_STATUS_CONFLICT
-  };
+  }
 
   /**
    * Given a literal and its proof generator (encapsulated by trust node tin),
@@ -673,9 +607,13 @@ class Theory : protected EnvObj
    * Note that tin has trust node kind LEMMA. Its proof generator should be
    * taken into account when adding a substitution to outSubstitutions when
    * proofs are enabled.
+   *
+   * @param tin The literal and its proof generator.
+   * @param outSubstitutions The substitution map to add to, if applicable.
+   * @return true iff the literal can be removed from the input, e.g. when
+   * the substitution it entails is added to outSubstitutions.
    */
-  virtual PPAssertStatus ppAssert(TrustNode tin,
-                                  TrustSubstitutionMap& outSubstitutions);
+  virtual bool ppAssert(TrustNode tin, TrustSubstitutionMap& outSubstitutions);
 
   /**
    * Given a term of the theory coming from the input formula or
@@ -686,10 +624,11 @@ class Theory : protected EnvObj
    * carries information about the proof generator for the rewrite, which can
    * be the null TrustNode if n is unchanged.
    *
-   * Notice this method is used both in the "theory rewrite equalities"
-   * preprocessing pass, where n is an equality from the input formula,
-   * and in theory preprocessing, where n is a (non-equality) term occurring
-   * in the input or generated in a lemma.
+   * Notice this method is only in theory preprocessing. It is called on all
+   * (non-equality) terms n that occur in the input formula or in lemmas. We
+   * do not pass equality terms to this method, since they should never be
+   * preprocessed in lemmas. Instead, equalities may be prepreocessed in
+   * the ppStaticRewrite method below.
    *
    * @param n the node to preprocess-rewrite.
    * @param lems a set of lemmas that should be added as a consequence of
@@ -702,7 +641,27 @@ class Theory : protected EnvObj
    * Note that ppRewrite should not return WITNESS terms, since the internal
    * calculus works in "original forms" and not "witness forms".
    */
-  virtual TrustNode ppRewrite(TNode n, std::vector<SkolemLemma>& lems)
+  virtual TrustNode ppRewrite(CVC5_UNUSED TNode n,
+                              CVC5_UNUSED std::vector<SkolemLemma>& lems)
+  {
+    return TrustNode::null();
+  }
+  /**
+   * Similar to the above method, given a term of the theory coming from the
+   * input formula, this method can be overridden in a theory implementation to
+   * rewrite the term into an equivalent form. This method returns a TrustNode
+   * of kind TrustNodeKind::REWRITE, as in ppRewrite.
+   *
+   * Notice this method is used in the "static preprocess rewrite"
+   * preprocessing pass, where n is a term from the input formula.
+   * It is not called on lemmas generated during solving.
+   *
+   * @param n the node to preprocess-rewrite.
+   *
+   * Note that ppRewrite should not return WITNESS terms, since the internal
+   * calculus works in "original forms" and not "witness forms".
+   */
+  virtual TrustNode ppStaticRewrite(CVC5_UNUSED TNode n)
   {
     return TrustNode::null();
   }
@@ -711,7 +670,10 @@ class Theory : protected EnvObj
    * Notify preprocessed assertions. Called on new assertions after
    * preprocessing before they are asserted to theory engine.
    */
-  virtual void ppNotifyAssertions(const std::vector<Node>& assertions) {}
+  virtual void ppNotifyAssertions(
+      CVC5_UNUSED const std::vector<Node>& assertions)
+  {
+  }
   //--------------------------------- end preprocessing
 
   /**
@@ -727,18 +689,6 @@ class Theory : protected EnvObj
    * the theory.
    */
   virtual void presolve() {}
-
-  /**
-   * A Theory is called with postsolve exactly one time per user
-   * check-sat.  postsolve() is called after the query has completed
-   * (regardless of whether sat, unsat, or unknown), and after any
-   * model-querying related to the query has been performed.
-   * After this call, the theory will not get another check() or
-   * propagate() call until presolve() is called again.  A Theory
-   * cannot raise conflicts, add lemmas, or propagate literals during
-   * postsolve().
-   */
-  virtual void postsolve() {}
 
   /**
    * Notification sent to the theory wheneven the search restarts.
@@ -784,31 +734,6 @@ class Theory : protected EnvObj
   typedef context::CDList<TNode>::const_iterator shared_terms_iterator;
 
   /**
-   * Provides access to the shared terms, primarily intended for theory
-   * debugging purposes.
-   *
-   * @return the iterator to the beginning of the shared terms list
-   */
-  shared_terms_iterator shared_terms_begin() const
-  {
-    return d_sharedTerms.begin();
-  }
-
-  /**
-   * Provides access to the facts queue, primarily intended for theory
-   * debugging purposes.
-   *
-   * @return the iterator to the end of the shared terms list
-   */
-  shared_terms_iterator shared_terms_end() const { return d_sharedTerms.end(); }
-
-  /**
-   * This is a utility function for constructing a copy of the currently
-   * shared terms in a queriable form.  As this is
-   */
-  std::unordered_set<TNode> currentlySharedTerms() const;
-
-  /**
    * This allows the theory to be queried for whether a literal, lit, is
    * entailed by the theory.  This returns a pair of a Boolean and a node E.
    *
@@ -852,50 +777,55 @@ class Theory : protected EnvObj
    */
   virtual std::pair<bool, Node> entailmentCheck(TNode lit);
 
-  /** Return true if this theory uses central equality engine */
-  bool usesCentralEqualityEngine() const;
-  /** uses central equality engine (static) */
-  static bool usesCentralEqualityEngine(TheoryId id);
-  /** Explains/propagates via central equality engine only */
+  /**
+   * Return true if this theory explains and propagates via central equality
+   * engine only when the theory uses the central equality engine.
+   */
   static bool expUsingCentralEqualityEngine(TheoryId id);
+
+ private:
+  // Disallow default construction, copy, assignment.
+  Theory() = delete;
+  Theory(const Theory&) = delete;
+  Theory& operator=(const Theory&) = delete;
+
+  /**
+   * Returns the next assertion in the assertFact() queue.
+   *
+   * @return the next assertion in the assertFact() queue
+   */
+  Assertion get();
+
+  /** An integer identifying the type of the theory. */
+  TheoryId d_id;
+
+  /**
+   * The assertFact() queue.
+   *
+   * These can not be TNodes as some atoms (such as equalities) are sent
+   * across theories without being stored in a global map.
+   */
+  context::CDList<Assertion> d_facts;
+
+  /** Index into the head of the facts list */
+  context::CDO<unsigned> d_factsHead;
+
+  /** The care graph the theory will use during combination. */
+  CareGraph* d_careGraph;
+
+  /** Pointer to the decision manager. */
+  DecisionManager* d_decManager;
 }; /* class Theory */
 
 std::ostream& operator<<(std::ostream& os, theory::Theory::Effort level);
 
-
-inline theory::Assertion Theory::get() {
-  Assert(!done()) << "Theory::get() called with assertion queue empty!";
-
-  // Get the assertion
-  Assertion fact = d_facts[d_factsHead];
-  d_factsHead = d_factsHead + 1;
-
-  Trace("theory") << "Theory::get() => " << fact << " (" << d_facts.size() - d_factsHead << " left)" << std::endl;
-
-  return fact;
-}
-
 inline std::ostream& operator<<(std::ostream& out,
-                                const cvc5::theory::Theory& theory)
+                                const cvc5::internal::theory::Theory& theory)
 {
   return out << theory.identify();
 }
 
-inline std::ostream& operator << (std::ostream& out, theory::Theory::PPAssertStatus status) {
-  switch (status) {
-  case theory::Theory::PP_ASSERT_STATUS_SOLVED:
-    out << "SOLVE_STATUS_SOLVED"; break;
-  case theory::Theory::PP_ASSERT_STATUS_UNSOLVED:
-    out << "SOLVE_STATUS_UNSOLVED"; break;
-  case theory::Theory::PP_ASSERT_STATUS_CONFLICT:
-    out << "SOLVE_STATUS_CONFLICT"; break;
-  default:
-    Unhandled();
-  }
-  return out;
-}
-
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__THEORY__THEORY_H */

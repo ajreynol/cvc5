@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Gereon Kremer, Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -16,9 +13,11 @@
 #ifndef CVC5__THEORY__ARITH__NL__TRANSCENDENTAL__TAYLOR_GENERATOR_H
 #define CVC5__THEORY__ARITH__NL__TRANSCENDENTAL__TAYLOR_GENERATOR_H
 
+#include <cstdint>
+
 #include "expr/node.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace arith {
 namespace nl {
@@ -41,7 +40,7 @@ class TaylorGenerator
     Node d_upperPos;
   };
 
-  TaylorGenerator();
+  TaylorGenerator(NodeManager* nm);
 
   /**
    * Return the variable used as x in getTaylor().
@@ -104,8 +103,10 @@ class TaylorGenerator
                                          NlModel& model);
 
  private:
-  NodeManager* d_nm;
   const Node d_taylor_real_fv;
+
+  /** the associated node manager */
+  NodeManager* d_nm;
 
   /**
    * For every kind (EXP or SINE) and every degree we store the taylor series up
@@ -119,6 +120,6 @@ class TaylorGenerator
 }  // namespace nl
 }  // namespace arith
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__THEORY__ARITH__TRANSCENDENTAL_SOLVER_H */

@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -23,7 +20,7 @@
 
 #include "theory/theory.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace strings {
 
@@ -33,8 +30,11 @@ namespace strings {
  * details on the individual steps, see documentation on the inference schemas
  * within Strategy.
  */
-enum InferStep
+enum class InferStep : uint32_t
 {
+  // placeholder specfying no inference step
+  NONE,
+
   // indicates that the strategy should break if lemmas or facts are added
   BREAK,
   // check initial
@@ -47,8 +47,8 @@ enum InferStep
   CHECK_CYCLES,
   // check flat forms
   CHECK_FLAT_FORMS,
-  // check register terms pre-normal forms
-  CHECK_REGISTER_TERMS_PRE_NF,
+  // check normal forms equalities, propagate only
+  CHECK_NORMAL_FORMS_EQ_PROP,
   // check normal forms equalities
   CHECK_NORMAL_FORMS_EQ,
   // check normal forms disequalities
@@ -59,12 +59,25 @@ enum InferStep
   CHECK_LENGTH_EQC,
   // check register terms for normal forms
   CHECK_REGISTER_TERMS_NF,
+  // check for eager extended function reductions
+  CHECK_EXTF_REDUCTION_EAGER,
   // check extended function reductions
   CHECK_EXTF_REDUCTION,
+  // check regular expression memberships eagerly (prior to CAV 14 procedure)
+  CHECK_MEMBERSHIP_EAGER,
   // check regular expression memberships
   CHECK_MEMBERSHIP,
   // check cardinality
   CHECK_CARDINALITY,
+  // check sequence updates wrt concat
+  CHECK_SEQUENCES_ARRAY_CONCAT,
+  // check sequence array-like reasoning
+  CHECK_SEQUENCES_ARRAY,
+  // check sequence
+  CHECK_SEQUENCES_ARRAY_EAGER,
+
+  // unknown inference step
+  UNKNOWN
 };
 std::ostream& operator<<(std::ostream& out, InferStep i);
 
@@ -74,10 +87,10 @@ std::ostream& operator<<(std::ostream& out, InferStep i);
  * This stores a sequence of the above enum that indicates the calls to
  * runInferStep to make on the theory of strings, given by parent.
  */
-class Strategy
+class Strategy : protected EnvObj
 {
  public:
-  Strategy();
+  Strategy(Env& env);
   ~Strategy();
   /** is this strategy initialized? */
   bool isStrategyInit() const;
@@ -112,6 +125,6 @@ class Strategy
 
 }  // namespace strings
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__THEORY__STRINGS__STRATEGY_H */

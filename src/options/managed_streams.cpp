@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Gereon Kremer
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -18,16 +15,15 @@
 
 #include "options/managed_streams.h"
 
-#include <string.h>
-
 #include <cerrno>
+#include <cstring>
 #include <fstream>
 #include <iostream>
 #include <sstream>
 
 #include "options/option_exception.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 
 std::string cvc5_errno_failreason()
 {
@@ -72,12 +68,11 @@ std::string cvc5_errno_failreason()
 
 namespace detail {
 
-std::ostream* openOStream(const std::string& filename)
+std::unique_ptr<std::ostream> openOStream(const std::string& filename)
 {
   errno = 0;
-  std::ostream* res;
-  res = new std::ofstream(filename);
-  if (res == nullptr || !*res)
+  std::unique_ptr<std::ostream> res = std::make_unique<std::ofstream>(filename);
+  if (!res || !*res)
   {
     std::stringstream ss;
     ss << "Cannot open file: `" << filename << "': " << cvc5_errno_failreason();
@@ -85,12 +80,11 @@ std::ostream* openOStream(const std::string& filename)
   }
   return res;
 }
-std::istream* openIStream(const std::string& filename)
+std::unique_ptr<std::istream> openIStream(const std::string& filename)
 {
   errno = 0;
-  std::istream* res;
-  res = new std::ifstream(filename);
-  if (res == nullptr || !*res)
+  std::unique_ptr<std::istream> res = std::make_unique<std::ifstream>(filename);
+  if (!res || !*res)
   {
     std::stringstream ss;
     ss << "Cannot open file: `" << filename << "': " << cvc5_errno_failreason();
@@ -153,4 +147,4 @@ bool ManagedOut::specialCases(const std::string& value)
   return false;
 }
 
-}  // namespace cvc5
+}  // namespace cvc5::internal

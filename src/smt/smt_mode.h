@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Ying Sheng, Morgan Deters
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -20,12 +17,12 @@
 
 #include <iosfwd>
 
-namespace cvc5 {
+namespace cvc5::internal {
 
 /**
  * The mode of the solver, which is an extension of Figure 4.1 on
  * page 52 of the SMT-LIB version 2.6 standard
- * http://smtlib.cs.uiowa.edu/papers/smt-lib-reference-v2.6-r2017-07-18.pdf
+ * http://smt-lib.org/papers/smt-lib-reference-v2.6-r2017-07-18.pdf
  */
 enum class SmtMode
 {
@@ -41,8 +38,12 @@ enum class SmtMode
   UNSAT,
   // immediately after a successful call to get-abduct
   ABDUCT,
-  // immediately after a successful call to get-interpol
-  INTERPOL
+  // immediately after a successful call to get-interpolant
+  INTERPOL,
+  // immediately after a successful call to check-synth or check-synth-next
+  SYNTH,
+  // immediately after a successful call to find-synth or find-synth-next
+  FIND_SYNTH
 };
 /**
  * Writes a SmtMode to a stream.
@@ -53,6 +54,6 @@ enum class SmtMode
  */
 std::ostream& operator<<(std::ostream& out, SmtMode m);
 
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif

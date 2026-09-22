@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -21,18 +18,33 @@
 #include <unordered_set>
 
 #include "proof/conv_proof_generator.h"
+#include "proof/method_id.h"
 #include "proof/proof.h"
 #include "proof/proof_generator.h"
+#include "smt/env_obj.h"
 
-namespace cvc5 {
-
-class Env;
+namespace cvc5::internal {
 
 namespace theory {
 class Rewriter;
 }
 
 namespace smt {
+
+/** A response to requiresWitnessFormTransform/requiresWitnessFormIntro */
+enum WitnessReq
+{
+  // we require converting to witness form and rewriting again
+  WITNESS_AND_REWRITE,
+  // we require converting to witness form
+  WITNESS,
+  // we require rewriting again
+  REWRITE,
+  // we don't require anything
+  NONE
+};
+/** Print method */
+std::ostream& operator<<(std::ostream& out, WitnessReq wr);
 
 /**
  * The witness form proof generator, which acts as a wrapper around a
@@ -41,7 +53,7 @@ namespace smt {
  * The proof steps managed by this class are stored in a context-independent
  * manager, which matches how witness forms are managed in SkolemManager.
  */
-class WitnessFormGenerator : public ProofGenerator
+class WitnessFormGenerator : protected EnvObj, public ProofGenerator
 {
  public:
   WitnessFormGenerator(Env& env);
@@ -63,16 +75,16 @@ class WitnessFormGenerator : public ProofGenerator
    *   Rewriter::rewrite(toWitness(t)) == Rewriter::rewrite(toWitness(s))
    * The rule MACRO_SR_PRED_TRANSFORM concludes t == s if the above holds.
    * This method returns false if:
-   *   Rewriter::rewrite(t) == Rewriter::rewrite(s)
+   *   rewriteViaMethod(t, idr) == rewriteViaMethod(s, idr)
    * which means that the proof of the above fact does not need to do
    * witness form conversion to prove conclusions of MACRO_SR_PRED_TRANSFORM.
    */
-  bool requiresWitnessFormTransform(Node t, Node s) const;
+  WitnessReq requiresWitnessFormTransform(Node t, Node s, MethodId idr) const;
   /**
    * Same as above, with s = true. This is intended for use with
    * MACRO_SR_PRED_INTRO.
    */
-  bool requiresWitnessFormIntro(Node t) const;
+  WitnessReq requiresWitnessFormIntro(Node t, MethodId idr) const;
   /**
    * Get witness form equalities. This returns a set of equalities of the form:
    *   k = toWitness(k)
@@ -88,16 +100,14 @@ class WitnessFormGenerator : public ProofGenerator
    * of this class (d_tcpg).
    */
   Node convertToWitnessForm(Node t);
-  /**
-   * Return a proof generator that can prove the given axiom exists.
-   */
-  ProofGenerator* convertExistsInternal(Node exists);
+  /** The true node */
+  Node d_true;
   /** The rewriter we are using */
   theory::Rewriter* d_rewriter;
   /** The term conversion proof generator */
   TConvProofGenerator d_tcpg;
   /** The nodes we have already added rewrite steps for in d_tcpg */
-  std::unordered_set<TNode> d_visited;
+  std::unordered_set<Node> d_visited;
   /** The set of equalities added as proof steps */
   std::unordered_set<Node> d_eqs;
   /** Lazy proof storing witness intro steps */
@@ -107,6 +117,6 @@ class WitnessFormGenerator : public ProofGenerator
 };
 
 }  // namespace smt
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif

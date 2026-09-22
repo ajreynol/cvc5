@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -18,38 +15,37 @@
 #include "theory/quantifiers/term_util.h"
 #include "util/rational.h"
 
-using namespace cvc5::kind;
+using namespace cvc5::internal::kind;
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace quantifiers {
 namespace inst {
 
-RelationalMatchGenerator::RelationalMatchGenerator(Trigger* tparent,
-                                                   Node rtrigger,
-                                                   bool hasPol,
-                                                   bool pol)
-    : InstMatchGenerator(tparent, Node::null()),
+RelationalMatchGenerator::RelationalMatchGenerator(
+    Env& env, Trigger* tparent, Node rtrigger, bool hasPol, bool pol)
+    : InstMatchGenerator(env, tparent, Node::null()),
       d_vindex(-1),
       d_hasPol(hasPol),
       d_pol(pol),
       d_counter(0)
 {
-  Assert((rtrigger.getKind() == EQUAL && rtrigger[0].getType().isReal())
-         || rtrigger.getKind() == GEQ);
+  Assert(
+      (rtrigger.getKind() == Kind::EQUAL && rtrigger[0].getType().isRealOrInt())
+      || rtrigger.getKind() == Kind::GEQ);
   Trace("relational-match-gen")
       << "Relational trigger: " << rtrigger << ", hasPol/pol = " << hasPol
       << "/" << pol << std::endl;
   for (size_t i = 0; i < 2; i++)
   {
-    if (rtrigger[i].getKind() == INST_CONSTANT)
+    if (rtrigger[i].getKind() == Kind::INST_CONSTANT)
     {
       d_var = rtrigger[i];
       d_vindex = d_var.getAttribute(InstVarNumAttribute());
       d_rhs = rtrigger[1 - i];
       Assert(!quantifiers::TermUtil::hasInstConstAttr(d_rhs));
       Kind k = rtrigger.getKind();
-      d_rel = (i == 0 ? k : (k == GEQ ? LEQ : k));
+      d_rel = (i == 0 ? k : (k == Kind::GEQ ? Kind::LEQ : k));
       break;
     }
   }
@@ -59,13 +55,13 @@ RelationalMatchGenerator::RelationalMatchGenerator(Trigger* tparent,
       << "Failed to initialize RelationalMatchGenerator";
 }
 
-bool RelationalMatchGenerator::reset(Node eqc)
+bool RelationalMatchGenerator::reset(CVC5_UNUSED Node eqc)
 {
   d_counter = 0;
   return true;
 }
 
-int RelationalMatchGenerator::getNextMatch(Node q, InstMatch& m)
+int RelationalMatchGenerator::getNextMatch(InstMatch& m)
 {
   Trace("relational-match-gen") << "getNextMatch, rel match gen" << std::endl;
   // try (up to) two different terms
@@ -89,20 +85,23 @@ int RelationalMatchGenerator::getNextMatch(Node q, InstMatch& m)
       // try the opposite polarity
       checkPol = !d_pol;
     }
-    NodeManager* nm = NodeManager::currentNM();
+    NodeManager* nm = nodeManager();
     // falsify ( d_var <d_rel> d_rhs ) = checkPol
     s = rhs;
     if (!checkPol)
     {
-      s = nm->mkNode(PLUS, s, nm->mkConst(Rational(d_rel == GEQ ? -1 : 1)));
+      s = nm->mkNode(Kind::ADD,
+                     s,
+                     nm->mkConstRealOrInt(
+                         s.getType(), Rational(d_rel == Kind::GEQ ? -1 : 1)));
     }
     d_counter++;
     Trace("relational-match-gen")
         << "...try set " << s << " for " << checkPol << std::endl;
-    if (m.set(d_qstate, d_vindex, s))
+    if (m.set(d_vindex, s))
     {
       Trace("relational-match-gen") << "...success" << std::endl;
-      int ret = continueNextMatch(q, m, InferenceId::UNKNOWN);
+      int ret = continueNextMatch(m);
       if (ret > 0)
       {
         Trace("relational-match-gen") << "...returned " << ret << std::endl;
@@ -112,14 +111,19 @@ int RelationalMatchGenerator::getNextMatch(Node q, InstMatch& m)
       // failed
       if (rmPrev)
       {
-        m.d_vals[d_vindex] = Node::null();
+        m.reset(d_vindex);
       }
     }
   }
   return -1;
 }
 
+InferenceId RelationalMatchGenerator::getInferenceId()
+{
+  return InferenceId::QUANTIFIERS_INST_E_MATCHING_RELATIONAL;
+}
+
 }  // namespace inst
 }  // namespace quantifiers
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal

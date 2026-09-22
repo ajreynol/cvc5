@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -24,7 +21,7 @@
 #include "expr/node_trie.h"
 #include "theory/quantifiers/ematching/inst_match_generator.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace quantifiers {
 namespace inst {
@@ -47,14 +44,16 @@ class InstMatchGeneratorSimple : public IMGenerator
 {
  public:
   /** constructors */
-  InstMatchGeneratorSimple(Trigger* tparent, Node q, Node pat);
+  InstMatchGeneratorSimple(Env& env, Trigger* tparent, Node q, Node pat);
 
   /** Reset instantiation round. */
   void resetInstantiationRound() override;
   /** Add instantiations. */
-  uint64_t addInstantiations(Node q) override;
+  uint64_t addInstantiations(InstMatch& m) override;
   /** Get active score. */
   int getActiveScore() override;
+  /** Get the inference id, for statistics. */
+  InferenceId getInferenceId() override;
 
  private:
   /** quantified formula for the trigger term */
@@ -101,6 +100,6 @@ class InstMatchGeneratorSimple : public IMGenerator
 }  // namespace inst
 }  // namespace quantifiers
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif

@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Tim King, Mathias Preiner, Aina Niemetz
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -22,6 +19,7 @@
 #include <sstream>
 #include <string>
 
+#include "options/base_options.h"
 #include "options/bv_options.h"
 #include "options/decision_options.h"
 #include "options/language.h"
@@ -29,7 +27,7 @@
 #include "options/option_exception.h"
 #include "options/quantifiers_options.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 
 class Options;
 
@@ -43,13 +41,10 @@ namespace options {
 class OptionsHandler
 {
  public:
-  OptionsHandler(Options* options);
+  explicit OptionsHandler(Options* options);
 
   template <typename T>
-  void checkMinimum(const std::string& option,
-                    const std::string& flag,
-                    T value,
-                    T minimum) const
+  static void checkMinimum(const std::string& flag, T value, T minimum)
   {
     if (value < minimum)
     {
@@ -61,10 +56,7 @@ class OptionsHandler
     }
   }
   template <typename T>
-  void checkMaximum(const std::string& option,
-                    const std::string& flag,
-                    T value,
-                    T maximum) const
+  static void checkMaximum(const std::string& flag, T value, T maximum)
   {
     if (value > maximum)
     {
@@ -78,114 +70,55 @@ class OptionsHandler
 
   /******************************* base options *******************************/
   /** Apply the error output stream to the different output channels */
-  void setErrStream(const std::string& option,
-                    const std::string& flag,
-                    const ManagedErr& me);
+  void setErrStream(const std::string& flag, const ManagedErr& me) const;
 
   /** Convert option value to Language enum */
-  Language stringToLanguage(const std::string& option,
-                            const std::string& flag,
-                            const std::string& optarg);
-  /** Check that lang is not LANG_AST (not allowed as input language) */
-  void languageIsNotAST(const std::string& option,
-                        const std::string& flag,
-                        Language lang);
-  /** Apply the output language to the default output stream */
-  void applyOutputLanguage(const std::string& option,
-                           const std::string& flag,
-                           Language lang);
+  Language stringToLanguage(const std::string& flag,
+                            const std::string& optarg) const;
+  /** Set the input language. Check that lang is not LANG_AST */
+  void setInputLanguage(const std::string& flag, Language lang) const;
   /** Apply verbosity to the different output channels */
-  void setVerbosity(const std::string& option,
-                    const std::string& flag,
-                    int value);
+  void setVerbosity(const std::string& flag, int value) const;
   /** Decrease verbosity and call setVerbosity */
-  void decreaseVerbosity(const std::string& option, const std::string& flag);
+  void decreaseVerbosity(const std::string& flag, bool value);
   /** Increase verbosity and call setVerbosity */
-  void increaseVerbosity(const std::string& option, const std::string& flag);
+  void increaseVerbosity(const std::string& flag, bool value);
   /** If statistics are disabled, disable statistics sub-options */
-  void setStats(const std::string& option, const std::string& flag, bool value);
+  void setStats(const std::string& flag, bool value) const;
   /** If statistics sub-option is disabled, enable statistics */
-  void setStatsDetail(const std::string& option,
-                      const std::string& flag,
-                      bool value);
+  void setStatsDetail(const std::string& flag, bool value) const;
   /** Enable a particular trace tag */
-  void enableTraceTag(const std::string& option,
-                      const std::string& flag,
-                      const std::string& optarg);
-  /** Enable a particular debug tag */
-  void enableDebugTag(const std::string& option,
-                      const std::string& flag,
-                      const std::string& optarg);
+  void enableTraceTag(const std::string& flag, const std::string& optarg) const;
   /** Enable a particular output tag */
-  void enableOutputTag(const std::string& option,
-                       const std::string& flag,
-                       const std::string& optarg);
-  /** Apply print success flag to the different output channels */
-  void setPrintSuccess(const std::string& option,
-                       const std::string& flag,
-                       bool value);
+  void enableOutputTag(const std::string& flag, OutputTag optarg) const;
   /** Pass the resource weight specification to the resource manager */
-  void setResourceWeight(const std::string& option,
-                         const std::string& flag,
-                         const std::string& optarg);
+  void setResourceWeight(const std::string& flag,
+                         const std::string& optarg) const;
 
   /******************************* bv options *******************************/
 
-  /** Check that abc is enabled */
-  void abcEnabledBuild(const std::string& option,
-                       const std::string& flag,
-                       bool value);
-  /** Check that abc is enabled */
-  void abcEnabledBuild(const std::string& option,
-                       const std::string& flag,
-                       const std::string& value);
   /** Check that the sat solver mode is compatible with other bv options */
-  void checkBvSatSolver(const std::string& option,
-                        const std::string& flag,
-                        SatSolverMode m);
-  /** Check that we use eager bitblasting for aig */
-  void setBitblastAig(const std::string& option,
-                      const std::string& flag,
-                      bool arg);
-
-  /******************************* expr options *******************************/
-  /** Set ExprSetDepth on all output streams */
-  void setDefaultExprDepth(const std::string& option,
-                           const std::string& flag,
-                           int depth);
-  /** Set ExprDag on all output streams */
-  void setDefaultDagThresh(const std::string& option,
-                           const std::string& flag,
-                           int dag);
+  void checkBvSatSolver(const std::string& flag, BvSatSolverMode m) const;
 
   /******************************* main options *******************************/
   /** Show the solver build configuration and exit */
-  void showConfiguration(const std::string& option, const std::string& flag);
+  void showConfiguration(const std::string& flag, bool value) const;
   /** Show copyright information and exit */
-  void showCopyright(const std::string& option, const std::string& flag);
+  void showCopyright(const std::string& flag, bool value) const;
   /** Show version information and exit */
-  void showVersion(const std::string& option, const std::string& flag);
-  /** Show all debug tags and exit */
-  void showDebugTags(const std::string& option, const std::string& flag);
+  void showVersion(const std::string& flag, bool value) const;
   /** Show all trace tags and exit */
-  void showTraceTags(const std::string& option, const std::string& flag);
+  void showTraceTags(const std::string& flag, bool value) const;
 
-  /******************************* smt options *******************************/
-  /** Set a mode on the dumping output stream. */
-  void setDumpMode(const std::string& option,
-                   const std::string& flag,
-                   const std::string& optarg);
-  /** Set the dumping output stream. */
-  void setDumpStream(const std::string& option,
-                     const std::string& flag,
-                     const ManagedOut& mo);
+  /***************************** parser options *******************************/
+  void strictParsing(const std::string& flag, bool value) const;
 
  private:
   /** Pointer to the containing Options object.*/
-  Options* d_options;
+  Options* const d_options;
 }; /* class OptionHandler */
 
 }  // namespace options
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /*  CVC5__OPTIONS__OPTIONS_HANDLER_H */

@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Aina Niemetz, Andres Noetzli, Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -21,10 +18,9 @@
 #include "util/rational.h"
 #include "util/string.h"
 
-namespace cvc5 {
+using namespace cvc5::internal::theory::strings;
 
-using namespace theory::strings;
-
+namespace cvc5::internal {
 namespace test {
 
 class TestTheoryBlackStringsSkolemCache : public TestSmt
@@ -33,20 +29,20 @@ class TestTheoryBlackStringsSkolemCache : public TestSmt
 
 TEST_F(TestTheoryBlackStringsSkolemCache, mkSkolemCached)
 {
-  Node zero = d_nodeManager->mkConst(Rational(0));
+  Node zero = d_nodeManager->mkConstInt(Rational(0));
   Node n = d_skolemManager->mkDummySkolem("n", d_nodeManager->integerType());
   Node a = d_skolemManager->mkDummySkolem("a", d_nodeManager->stringType());
   Node b = d_skolemManager->mkDummySkolem("b", d_nodeManager->stringType());
   Node c = d_skolemManager->mkDummySkolem("c", d_nodeManager->stringType());
   Node d = d_skolemManager->mkDummySkolem("d", d_nodeManager->stringType());
   Node sa = d_nodeManager->mkNode(
-      kind::STRING_SUBSTR,
+      Kind::STRING_SUBSTR,
       a,
       zero,
-      d_nodeManager->mkNode(kind::STRING_INDEXOF, a, b, zero));
-  Node sc = d_nodeManager->mkNode(kind::STRING_SUBSTR, c, zero, n);
+      d_nodeManager->mkNode(Kind::STRING_INDEXOF, a, b, zero));
+  Node sc = d_nodeManager->mkNode(Kind::STRING_SUBSTR, c, zero, n);
 
-  SkolemCache sk(nullptr);
+  SkolemCache sk(d_nodeManager.get(), nullptr);
 
   // Check that skolems are shared between:
   //
@@ -60,4 +56,4 @@ TEST_F(TestTheoryBlackStringsSkolemCache, mkSkolemCached)
   }
 }
 }  // namespace test
-}  // namespace cvc5
+}  // namespace cvc5::internal

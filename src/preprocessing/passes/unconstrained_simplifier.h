@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Clark Barrett, Andres Noetzli, Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -30,10 +27,10 @@
 #include "theory/substitutions.h"
 #include "util/statistics_stats.h"
 
-namespace cvc5 {
-namespace context {
+namespace cvc5::context {
 class Context;
 }
+namespace cvc5::internal {
 namespace preprocessing {
 namespace passes {
 
@@ -66,12 +63,12 @@ class UnconstrainedSimplifier : public PreprocessingPass
    * quantified formula).
    */
   void visitAll(TNode assertion);
-  Node newUnconstrainedVar(TypeNode t, TNode var);
+  Node newUnconstrainedVar(TypeNode t);
   void processUnconstrained();
 };
 
 }  // namespace passes
 }  // namespace preprocessing
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif

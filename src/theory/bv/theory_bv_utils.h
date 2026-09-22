@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Aina Niemetz, Andrew Reynolds, Tim King
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -15,7 +12,8 @@
 
 #include "cvc5_private.h"
 
-#pragma once
+#ifndef CVC5__THEORY__BV__THEORY_BV_UTILS_H
+#define CVC5__THEORY__BV__THEORY_BV_UTILS_H
 
 #include <set>
 #include <unordered_map>
@@ -25,7 +23,7 @@
 #include "expr/node_manager.h"
 #include "util/integer.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace bv {
 
@@ -41,7 +39,7 @@ typedef std::unordered_set<Node> NodeSet;
 unsigned getSize(TNode node);
 
 /* Get bit at given index. */
-const bool getBit(TNode node, unsigned i);
+bool getBit(TNode node, unsigned i);
 
 /* Get the upper index of given extract node. */
 unsigned getExtractHigh(TNode node);
@@ -85,28 +83,28 @@ bool isEqualityTerm(TNode term, TNodeBoolMap& cache);
 bool isBitblastAtom(Node lit);
 
 /* Create Boolean node representing true. */
-Node mkTrue();
+Node mkTrue(NodeManager* nm);
 /* Create Boolean node representing false. */
-Node mkFalse();
+Node mkFalse(NodeManager* nm);
 /* Create bit-vector node representing a bit-vector of ones of given size. */
-Node mkOnes(unsigned size);
+Node mkOnes(NodeManager* nm, unsigned size);
 /* Create bit-vector node representing a zero bit-vector of given size. */
-Node mkZero(unsigned size);
+Node mkZero(NodeManager* nm, unsigned size);
 /* Create bit-vector node representing a bit-vector value one of given size. */
-Node mkOne(unsigned size);
+Node mkOne(NodeManager* nm, unsigned size);
 /* Create bit-vector node representing the min signed value of given size. */
-Node mkMinSigned(unsigned size);
+Node mkMinSigned(NodeManager* nm, unsigned size);
 /* Create bit-vector node representing the max signed value of given size. */
-Node mkMaxSigned(unsigned size);
+Node mkMaxSigned(NodeManager* nm, unsigned size);
 
 /* Create bit-vector constant of given size and value. */
-Node mkConst(unsigned size, unsigned int value);
-Node mkConst(unsigned size, Integer& value);
+Node mkConst(NodeManager* nm, unsigned size, unsigned int value);
+Node mkConst(NodeManager* nm, unsigned size, Integer& value);
 /* Create bit-vector constant from given bit-vector. */
-Node mkConst(const BitVector& value);
+Node mkConst(NodeManager* nm, const BitVector& value);
 
 /* Create bit-vector variable. */
-Node mkVar(unsigned size);
+Node mkVar(NodeManager* nm, unsigned size);
 
 /* Create n-ary bit-vector node of kind BITVECTOR_AND, BITVECTOR_OR or
  * BITVECTOR_XOR where its children are sorted  */
@@ -114,16 +112,21 @@ Node mkSortedNode(Kind kind, TNode child1, TNode child2);
 Node mkSortedNode(Kind kind, std::vector<Node>& children);
 
 /* Create n-ary node of associative/commutative kind.  */
-template<bool ref_count>
-Node mkNaryNode(Kind k, const std::vector<NodeTemplate<ref_count>>& nodes)
+template <bool ref_count>
+Node mkNaryNode(NodeManager* nm,
+                Kind k,
+                const std::vector<NodeTemplate<ref_count>>& nodes)
 {
-  Assert(k == kind::AND || k == kind::OR || k == kind::XOR
-         || k == kind::BITVECTOR_AND || k == kind::BITVECTOR_OR
-         || k == kind::BITVECTOR_XOR || k == kind::BITVECTOR_ADD
-         || k == kind::BITVECTOR_SUB || k == kind::BITVECTOR_MULT);
+  Assert(k == Kind::AND || k == Kind::OR || k == Kind::XOR
+         || k == Kind::BITVECTOR_AND || k == Kind::BITVECTOR_OR
+         || k == Kind::BITVECTOR_XOR || k == Kind::BITVECTOR_ADD
+         || k == Kind::BITVECTOR_SUB || k == Kind::BITVECTOR_MULT);
 
-  if (nodes.size() == 1) { return nodes[0]; }
-  return NodeManager::currentNM()->mkNode(k, nodes);
+  if (nodes.size() == 1)
+  {
+    return nodes[0];
+  }
+  return nm->mkNode(k, nodes);
 }
 
 /* Create node of kind NOT. */
@@ -131,17 +134,24 @@ Node mkNot(Node child);
 /* Create node of kind AND. */
 Node mkAnd(TNode node1, TNode node2);
 /* Create n-ary node of kind AND. */
-template<bool ref_count>
+template <bool ref_count>
 Node mkAnd(const std::vector<NodeTemplate<ref_count>>& conjunctions)
 {
   std::set<TNode> all(conjunctions.begin(), conjunctions.end());
   Assert(all.size() > 0);
 
   /* All the same, or just one  */
-  if (all.size() == 1) { return conjunctions[0]; }
+  if (all.size() == 1)
+  {
+    return conjunctions[0];
+  }
 
-  NodeBuilder conjunction(kind::AND);
-  for (TNode n : all) { conjunction << n; }
+  NodeManager* nm = conjunctions[0].getNodeManager();
+  NodeBuilder conjunction(nm, Kind::AND);
+  for (TNode n : all)
+  {
+    conjunction << n;
+  }
   return conjunction;
 }
 
@@ -150,17 +160,24 @@ Node mkAnd(const std::vector<NodeTemplate<ref_count>>& conjunctions)
 /* Create node of kind OR. */
 Node mkOr(TNode node1, TNode node2);
 /* Create n-ary node of kind OR.  */
-template<bool ref_count>
+template <bool ref_count>
 Node mkOr(const std::vector<NodeTemplate<ref_count>>& nodes)
 {
   std::set<TNode> all(nodes.begin(), nodes.end());
   Assert(all.size() > 0);
 
   /* All the same, or just one  */
-  if (all.size() == 1) { return nodes[0]; }
+  if (all.size() == 1)
+  {
+    return nodes[0];
+  }
 
-  NodeBuilder disjunction(kind::OR);
-  for (TNode n : all) { disjunction << n; }
+  NodeManager* nm = nodes[0].getNodeManager();
+  NodeBuilder disjunction(nm, Kind::OR);
+  for (TNode n : all)
+  {
+    disjunction << n;
+  }
   return disjunction;
 }
 /* Create node of kind XOR. */
@@ -174,7 +191,7 @@ Node mkSignExtend(TNode node, unsigned amount);
 Node mkExtract(TNode node, unsigned high, unsigned low);
 /* Create extract node of bit-width 1 where the resulting node represents
  * the bit at given index.  */
-Node mkBitOf(TNode node, unsigned index);
+Node mkBit(TNode node, unsigned index);
 
 /* Create n-ary concat node of given children.  */
 Node mkConcat(TNode t1, TNode t2);
@@ -182,17 +199,13 @@ Node mkConcat(std::vector<Node>& children);
 /* Create concat by repeating given node n times.
  * Returns given node if n = 1. */
 Node mkConcat(TNode node, unsigned repeat);
+/* Create the repeat node ((_ repeat <repeat>) n). */
+Node mkRepeat(TNode node, unsigned repeat);
 
 /* Create bit-vector addition node representing the increment of given node. */
 Node mkInc(TNode t);
 /* Create bit-vector addition node representing the decrement of given node. */
 Node mkDec(TNode t);
-
-/* Unsigned multiplication overflow detection.
- * See M.Gok, M.J. Schulte, P.I. Balzola, "Efficient integer multiplication
- * overflow detection circuits", 2001.
- * http://ieeexplore.ieee.org/document/987767 */
-Node mkUmulo(TNode t1, TNode t2);
 
 /* Create conjunction.  */
 Node mkConjunction(const std::vector<TNode>& nodes);
@@ -204,26 +217,9 @@ Node flattenAnd(std::vector<TNode>& queue);
 void intersect(const std::vector<uint32_t>& v1,
                const std::vector<uint32_t>& v2,
                std::vector<uint32_t>& intersection);
+}  // namespace utils
 
-/**
- * Returns the rewritten form of node, which is a term of the form bv2nat(x).
- * The return value of this method is the integer sum:
- *   (+ ite( (= ((_ extract (n-1) (n-1)) x) 1) (^ 2 (n-1)) 0)
- *      ...
- *      ite( (= ((_ extract 0 0) x) 1) (^ 2 0) 0))
- * where n is the bitwidth of x.
- */
-Node eliminateBv2Nat(TNode node);
-/**
- * Returns the rewritten form of node, which is a term of the form int2bv(x).
- * The return value of this method is the concatenation term:
- *   (bvconcat ite( (>= (mod x (^ 2 n)) (^ 2 (n-1))) (_ bv1 1) (_ bv1 0))
- *             ...
- *             ite( (>= (mod x (^ 2 1)) (^ 2 0)) (_ bv1 1) (_ bv1 0)))
- * where n is the bit-width of x.
- */
-Node eliminateInt2Bv(TNode node);
-}
-}
-}
-}  // namespace cvc5
+}  // namespace bv
+}  // namespace theory
+}  // namespace cvc5::internal
+#endif

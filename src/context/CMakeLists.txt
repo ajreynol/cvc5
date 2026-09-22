@@ -1,10 +1,7 @@
 ###############################################################################
-# Top contributors (to current version):
-#   Mathias Preiner, Aina Niemetz, Gereon Kremer
-#
 # This file is part of the cvc5 project.
 #
-# Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+# Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
 # in the top-level source directory and their institutional affiliations.
 # All rights reserved.  See the file COPYING in the top-level source
 # directory for licensing information.
@@ -14,7 +11,6 @@
 ##
 
 set(LIBCONTEXT_SOURCES
-  cddense_set.h
   cdhashmap.h
   cdhashmap_forward.h
   cdhashset.h
@@ -31,6 +27,7 @@ set(LIBCONTEXT_SOURCES
   context.h
   context_mm.cpp
   context_mm.h
+  default_clean_up.h
 )
 
 add_library(cvc5context OBJECT ${LIBCONTEXT_SOURCES})

@@ -2,8 +2,16 @@ id     = "FP"
 name   = "Floating-Point"
 
 [[option]]
+  name       = "fp"
+  category   = "expert"
+  long       = "fp"
+  type       = "bool"
+  default    = "true"
+  help       = "enables the floating point theory in applicable logics"
+
+[[option]]
   name       = "fpExp"
-  category   = "regular"
+  category   = "expert"
   long       = "fp-exp"
   type       = "bool"
   default    = "false"

@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Mudathir Mohamed, Gereon Kremer
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -24,7 +21,7 @@
 #include "expr/node.h"
 #include "smt/env_obj.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace bags {
 
@@ -40,7 +37,7 @@ class TermRegistry : protected EnvObj
   typedef context::CDHashMap<Node, Node> NodeMap;
 
  public:
-  TermRegistry(Env& env, SolverState& state, InferenceManager& im);
+  TermRegistry(Env& env);
 
   /**
    * Returns the existing empty bag for type tn
@@ -49,8 +46,6 @@ class TermRegistry : protected EnvObj
   Node getEmptyBag(TypeNode tn);
 
  private:
-  /** The inference manager */
-  InferenceManager& d_im;
   /** Map from bag terms to their proxy variables */
   NodeMap d_proxy;
   /** Backwards map of above */
@@ -61,6 +56,6 @@ class TermRegistry : protected EnvObj
 
 }  // namespace bags
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__THEORY__BAGS__TERM_REGISTRY_H */

@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andres Noetzli, Morgan Deters, Aina Niemetz
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -23,15 +20,15 @@
 #include "base/exception.h"
 #include "theory/theory_id.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace kind {
 
-enum Kind_t
+enum class Kind_t
 {
   UNDEFINED_KIND = -1, /**< undefined */
   NULL_EXPR,           /**< Null kind */
   // clang-format off
-  ${kind_decls} LAST_KIND /**< marks the upper-bound of this enumeration */
+${kind_decls} LAST_KIND /**< marks the upper-bound of this enumeration */
   // clang-format on
 
 }; /* enum Kind_t */
@@ -40,7 +37,7 @@ enum Kind_t
 
 // import Kind into the "cvc5" namespace but keep the individual kind
 // constants under kind::
-typedef ::cvc5::kind::Kind_t Kind;
+typedef cvc5::internal::kind::Kind_t Kind;
 
 namespace kind {
 
@@ -53,7 +50,7 @@ namespace kind {
  * @param k The kind
  * @return The name of the kind
  */
-const char* toString(cvc5::Kind k);
+const char* toString(cvc5::internal::Kind k);
 
 /**
  * Writes a kind name to a stream.
@@ -62,18 +59,24 @@ const char* toString(cvc5::Kind k);
  * @param k The kind to write to the stream
  * @return The stream
  */
-std::ostream& operator<<(std::ostream&, cvc5::Kind);
+std::ostream& operator<<(std::ostream&, cvc5::internal::Kind);
 
-/** Returns true if the given kind is associative. This is used by ExprManager to
- * decide whether it's safe to modify big expressions by changing the grouping of
- * the arguments. */
+/** Returns true if the given kind is associative. This is used by ExprManager
+ * to decide whether it's safe to modify big expressions by changing the
+ * grouping of the arguments. */
 /* TODO: This could be generated. */
-bool isAssociative(::cvc5::Kind k);
-std::string kindToString(::cvc5::Kind k);
+bool isAssociative(cvc5::internal::Kind k);
+std::string kindToString(cvc5::internal::Kind k);
+
+/** Return true if k is a closure kind. */
+bool isClosureKind(cvc5::internal::Kind k);
 
 struct KindHashFunction
 {
-  inline size_t operator()(::cvc5::Kind k) const { return k; }
+  inline size_t operator()(cvc5::internal::Kind k) const
+  {
+    return static_cast<size_t>(k);
+  }
 }; /* struct KindHashFunction */
 
 }  // namespace kind
@@ -101,11 +104,11 @@ std::ostream& operator<<(std::ostream& out, TypeConstant typeConstant);
 
 namespace theory {
 
-::cvc5::theory::TheoryId kindToTheoryId(::cvc5::Kind k);
-::cvc5::theory::TheoryId typeConstantToTheoryId(
-    ::cvc5::TypeConstant typeConstant);
+cvc5::internal::theory::TheoryId kindToTheoryId(cvc5::internal::Kind k);
+cvc5::internal::theory::TheoryId typeConstantToTheoryId(
+    cvc5::internal::TypeConstant typeConstant);
 
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__KIND_H */

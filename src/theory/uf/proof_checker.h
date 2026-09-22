@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Haniel Barbosa
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -22,7 +19,7 @@
 #include "proof/proof_checker.h"
 #include "proof/proof_node.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace uf {
 
@@ -30,7 +27,7 @@ namespace uf {
 class UfProofRuleChecker : public ProofRuleChecker
 {
  public:
-  UfProofRuleChecker() {}
+  UfProofRuleChecker(NodeManager* nm) : ProofRuleChecker(nm) {}
   ~UfProofRuleChecker() {}
 
   /** Register all rules owned by this rule checker into pc. */
@@ -38,13 +35,13 @@ class UfProofRuleChecker : public ProofRuleChecker
 
  protected:
   /** Return the conclusion of the given proof step, or null if it is invalid */
-  Node checkInternal(PfRule id,
+  Node checkInternal(ProofRule id,
                      const std::vector<Node>& children,
                      const std::vector<Node>& args) override;
 };
 
 }  // namespace uf
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__THEORY__UF__PROOF_CHECKER_H */

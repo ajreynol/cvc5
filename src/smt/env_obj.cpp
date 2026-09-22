@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Aina Niemetz
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -20,13 +17,20 @@
 #include "smt/env.h"
 #include "theory/rewriter.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 
 EnvObj::EnvObj(Env& env) : d_env(env) {}
+
+NodeManager* EnvObj::nodeManager() const { return d_env.getNodeManager(); }
 
 Node EnvObj::rewrite(TNode node) const
 {
   return d_env.getRewriter()->rewrite(node);
+}
+
+Node EnvObj::rewriteEqualityExt(TNode node) const
+{
+  return d_env.getRewriter()->rewriteEqualityExt(node);
 }
 
 Node EnvObj::extendedRewrite(TNode node, bool aggr) const
@@ -70,4 +74,20 @@ StatisticsRegistry& EnvObj::statisticsRegistry() const
   return d_env.getStatisticsRegistry();
 }
 
-}  // namespace cvc5
+bool EnvObj::isOutputOn(OutputTag tag) const { return d_env.isOutputOn(tag); }
+
+std::ostream& EnvObj::output(OutputTag tag) const { return d_env.output(tag); }
+
+bool EnvObj::isVerboseOn(int64_t level) const
+{
+  return d_env.isVerboseOn(level);
+}
+
+std::ostream& EnvObj::verbose(int64_t level) const
+{
+  return d_env.verbose(level);
+}
+
+std::ostream& EnvObj::warning() const { return verbose(0); }
+
+}  // namespace cvc5::internal

@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -13,10 +10,12 @@
  * The printer for LFSC proofs
  */
 
+#include <functional>
+
 #include "cvc5_private.h"
 
-#ifndef CVC4__PROOF__LFSC__LFSC_PRINTER_H
-#define CVC4__PROOF__LFSC__LFSC_PRINTER_H
+#ifndef CVC5__PROOF__LFSC__LFSC_PRINTER_H
+#define CVC5__PROOF__LFSC__LFSC_PRINTER_H
 
 #include <iosfwd>
 #include <map>
@@ -27,8 +26,10 @@
 #include "proof/lfsc/lfsc_util.h"
 #include "proof/print_expr.h"
 #include "proof/proof_node.h"
+#include "rewriter/rewrite_db.h"
+#include "smt/env_obj.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace proof {
 
 class LfscPrintChannel;
@@ -41,18 +42,16 @@ class LfscPrintChannel;
  * It expects to print proof nodes that have been processed by the LFSC
  * proof post processor.
  */
-class LfscPrinter
+class LfscPrinter : protected EnvObj
 {
  public:
-  LfscPrinter(LfscNodeConverter& ltp);
+  LfscPrinter(Env& env, LfscNodeConverter& ltp, rewriter::RewriteDb* rdb);
   ~LfscPrinter() {}
 
   /**
-   * Print the full proof of assertions => false by pn on output stream out.
+   * Print the full proof of false by pn on output stream out.
    */
-  void print(std::ostream& out,
-             const std::vector<Node>& assertions,
-             const ProofNode* pn);
+  void print(std::ostream& out, const ProofNode* pn);
 
   /**
    * Print node to stream in the expected format of LFSC.
@@ -64,6 +63,35 @@ class LfscPrinter
   void printType(std::ostream& out, TypeNode n);
 
  private:
+  /**
+   * This ensures that the type definition of type tn has been
+   * printed, which ensures that all of its component types, and the
+   * user-defined subfields of datatype types among those are declared. This
+   * furthermore includes running to a fixed point in the case that tn contains
+   * subfield types that are themselves datatypes.
+   * Notice that type definitions do not include printing the symbols of the
+   * datatype.
+   *
+   * @param os The stream to print to
+   * @param tn The type to ensure the definition(s) are printed for
+   * @param processed The types whose definitions we have already printed
+   * @param tupleArityProcessed The arity of tuples that we have declared.
+   * Note this is only required until we have a more robust treatment of
+   * tuples in the LFSC signature
+   */
+  void ensureTypeDefinitionPrinted(
+      std::ostream& os,
+      TypeNode tn,
+      std::unordered_set<TypeNode>& processed,
+      std::unordered_set<size_t>& tupleArityProcessed);
+  /**
+   * print type definition, which is the same as above, but does not process
+   * component types.
+   */
+  void printTypeDefinition(std::ostream& os,
+                           TypeNode tn,
+                           std::unordered_set<TypeNode>& processed,
+                           std::unordered_set<size_t>& tupleArityProcessed);
   /**
    * Print node to stream in the expected format of LFSC.
    */
@@ -89,9 +117,13 @@ class LfscPrinter
                      bool letTop = true);
   /**
    * print let list, prints definitions of lbind on out in order, and closing
-   * parentheses on cparen.
+   * parentheses on cparen. If asDefs is true, then the definition is printed
+   * as a standalone define statement on out.
    */
-  void printLetList(std::ostream& out, std::ostream& cparen, LetBinding& lbind);
+  void printLetList(std::ostream& out,
+                    std::ostream& cparen,
+                    LetBinding& lbind,
+                    bool asDefs = false);
 
   //------------------------------ printing proofs
   /**
@@ -113,6 +145,18 @@ class LfscPrinter
                           const std::map<const ProofNode*, size_t>& pletMap,
                           std::map<Node, size_t>& passumeMap);
   /**
+   * Print a plet proof on output channel out, where p is the letified
+   * proof and pid is its identifier for the given name prefix.
+   * The remaining arguments are used for printing p.
+   */
+  void printPLet(LfscPrintChannel* out,
+                 const ProofNode* p,
+                 size_t pid,
+                 const std::string& prefix,
+                 const LetBinding& lbind,
+                 const std::map<const ProofNode*, size_t>& pletMap,
+                 std::map<Node, size_t>& passumeMap);
+  /**
    * Get the arguments for the proof node application. This adds the arguments
    * of the given proof to the vector pargs.
    *
@@ -125,6 +169,10 @@ class LfscPrinter
   void computeProofLetification(const ProofNode* pn,
                                 std::vector<const ProofNode*>& pletList,
                                 std::map<const ProofNode*, size_t>& pletMap);
+  /** Print DSL rule */
+  void printDslRule(std::ostream& out,
+                    ProofRewriteRule id,
+                    std::vector<Node>& format);
   //------------------------------ end printing proofs
   /** The term processor */
   LfscNodeConverter& d_tproc;
@@ -137,11 +185,31 @@ class LfscPrinter
   TypeNode d_boolType;
   /** assumption counter */
   size_t d_assumpCounter;
-  /** for debugging the open rules, the set of PfRule we have warned about */
-  std::unordered_set<PfRule, PfRuleHashFunction> d_trustWarned;
+  /** Counter for plet definitions for children of trust steps */
+  size_t d_trustChildPletCounter;
+  /** term prefix */
+  std::string d_termLetPrefix;
+  /** assumption prefix */
+  std::string d_assumpPrefix;
+  /** proof letified prefix */
+  std::string d_pletPrefix;
+  /** proof letified trust child prefix */
+  std::string d_pletTrustChildPrefix;
+  /** for debugging the open rules, the set of ProofRule we have warned about */
+  std::unordered_set<ProofRule, std::hash<ProofRule>> d_trustWarned;
+  /** Pointer to the rewrite database */
+  rewriter::RewriteDb* d_rdb;
+  /**
+   * Mapping rewrite rules to format for conditions.
+   * The output of a DslRule is thus listing the term arguments, then
+   * a list of ( holes | child proofs ) based on this list.
+   * Each rule is mapped to a list of terms, where Node::null signifies
+   * positions of holes, non-null nodes are child proofs to print.
+   */
+  std::map<ProofRewriteRule, std::vector<Node>> d_dslFormat;
 };
 
 }  // namespace proof
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif

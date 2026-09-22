@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Morgan Deters, Liana Hadarean, Tim King
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -51,16 +48,17 @@
 #include "context/context.h"
 #include "expr/node.h"
 #include "expr/node_builder.h"
-#include "smt/smt_statistics_registry.h"
+#include "smt/env_obj.h"
 #include "util/statistics_stats.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace uf {
 
-class SymmetryBreaker : public context::ContextNotifyObj {
-
-  class Template {
+class SymmetryBreaker : protected EnvObj, public context::ContextNotifyObj
+{
+  class Template
+  {
     Node d_template;
     NodeBuilder d_assertions;
     std::unordered_map<TNode, std::set<TNode>> d_sets;
@@ -69,22 +67,23 @@ class SymmetryBreaker : public context::ContextNotifyObj {
     TNode find(TNode n);
     bool matchRecursive(TNode t, TNode n);
 
-  public:
-    Template();
+   public:
+    Template(NodeManager* nm);
     bool match(TNode n);
     std::unordered_map<TNode, std::set<TNode>>& partitions() { return d_sets; }
-    Node assertions() {
-      switch(d_assertions.getNumChildren()) {
-      case 0: return Node::null();
-      case 1: return d_assertions[0];
-      default: return Node(d_assertions);
+    Node assertions()
+    {
+      switch (d_assertions.getNumChildren())
+      {
+        case 0: return Node::null();
+        case 1: return d_assertions[0];
+        default: return Node(d_assertions);
       }
     }
     void reset();
-  };/* class SymmetryBreaker::Template */
+  }; /* class SymmetryBreaker::Template */
 
-public:
-
+ public:
   typedef std::set<TNode> Permutation;
   typedef std::set<Permutation> Permutations;
   typedef TNode Term;
@@ -127,10 +126,11 @@ public:
   Node norm(TNode n);
 
   std::string d_name;
-  
+
   // === STATISTICS ===
   /** number of new clauses that come from the SymmetryBreaker */
-  struct Statistics {
+  struct Statistics
+  {
     /** number of new clauses that come from the SymmetryBreaker */
     IntStat d_clauses;
     IntStat d_units;
@@ -145,7 +145,7 @@ public:
     /** time spent in initial round of normalization */
     TimerStat d_initNormalizationTimer;
 
-    Statistics(const std::string& name);
+    Statistics(StatisticsRegistry& sr, const std::string& name);
   };
 
   Statistics d_stats;
@@ -153,25 +153,25 @@ public:
  protected:
   void contextNotifyPop() override
   {
-    Debug("ufsymm") << "UFSYMM: clearing state due to pop" << std::endl;
+    Trace("ufsymm") << "UFSYMM: clearing state due to pop" << std::endl;
     clear();
   }
 
  public:
-  SymmetryBreaker(context::Context* context, std::string name = "");
+  SymmetryBreaker(Env& env, std::string name = "");
 
   void assertFormula(TNode phi);
   void apply(std::vector<Node>& newClauses);
 
-};/* class SymmetryBreaker */
+}; /* class SymmetryBreaker */
 
 }  // namespace uf
 }  // namespace theory
 
 std::ostream& operator<<(
     std::ostream& out,
-    const ::cvc5::theory::uf::SymmetryBreaker::Permutation& p);
+    const cvc5::internal::theory::uf::SymmetryBreaker::Permutation& p);
 
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__THEORY__UF__SYMMETRY_BREAKER_H */

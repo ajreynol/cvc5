@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Hanna Lachnitt
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -15,12 +12,14 @@
 
 #include "cvc5_private.h"
 
-#ifndef CVC4__PROOF__ALETHE_PROOF_RULE_H
-#define CVC4__PROOF__ALETHE_PROOF_RULE_H
+#ifndef CVC5__PROOF__ALETHE__ALETHE_PROOF_RULE_H
+#define CVC5__PROOF__ALETHE__ALETHE_PROOF_RULE_H
 
-#include <memory>
+#include <iostream>
 
-namespace cvc5 {
+#include "expr/node.h"
+
+namespace cvc5::internal {
 
 namespace proof {
 
@@ -58,6 +57,24 @@ enum class AletheRule : uint32_t
   //
   // where y1,...,yn are not free in (forall (x1,...,xn) F2)
   ANCHOR_BIND,
+  // ======== skolemization rules
+  // G,x->(choice (x) F1) > j.  (= F1 F2)
+  // ------------------------------------
+  // G > k. (= (exists (x) F1) F2)
+  //
+  // G,x->(choice (x) (not F1)) > j.  (= F1 F2)
+  // ------------------------------------------
+  // G > k. (= (forall (x) F1) F2)
+  ANCHOR_SKO_FORALL,
+  ANCHOR_SKO_EX,
+  // ======== onepoint
+  // G,xk1,...,xkm,xji->tj1,...,xjo->tjo > (= F1 F2)
+  // -----------------------------------------------
+  // G > (= (Q (x1,...,xn) F1) (Q (xk1,...,xkm) F2))
+  //
+  // where Q is forall or exists, n = m + o, k1,...,km and j1,...,jo are
+  // monotone mappings to 1,...,n, and no xki appears in xj1,...,xjo
+  ANCHOR_ONEPOINT,
   // ======== input
   // > i. F
   ASSUME,
@@ -73,6 +90,13 @@ enum class AletheRule : uint32_t
   // ======== not_not
   // > i.  (cl (not(not(not F)))  F)
   NOT_NOT,
+  // ======== and_intro
+  // G > i1. F1
+  // ...
+  // G > in. Fn
+  // ...
+  // G > k. (and F1 ... Fn)
+  AND_INTRO,
   // ======== and_pos
   // > i.  (cl (not(and F1 ... Fn))  Fi)
   // , with 1 <= i <= n
@@ -163,6 +187,29 @@ enum class AletheRule : uint32_t
   // Tautology of linear disequalities.
   // > i. (cl F1 ... Fn)
   LA_GENERIC,
+  // Tautology for multiplying both sides of inequality by positive factor
+  LA_MULT_POS,
+  // Tautology for multiplying both sides of inequality by negative factor
+  LA_MULT_NEG,
+  // ======== la_mult_sign
+  // > i. (f1 ^ ... ^ fn) -> m <> 0
+  //
+  // in which each fi are variables compared to zero (less, greater or not
+  // equal), m is a monomial from these variables and <> is the comparison (less
+  // or greater) that results from the signs of the variables.
+  LA_MULT_SIGN,
+  // ======== la_mult_abs_comparison
+  // > i1. F1
+  // ...
+  // > in. Fn
+  // ----------
+  // > j. F
+  //
+  // where F is of the form |t1 * tn| <> |s1 <> sn|. If <> is an equality, than
+  // each Fi is |ti| = |si|. Otherwise <> is > then each ti is different from
+  // zero, and each Fi is either an equality or > between the absolute values of
+  // ti, si.
+  LA_MULT_ABS_COMPARISON,
   // Tautology of linear integer arithmetic
   // > i. (cl F1 ... Fn)
   LIA_GENERIC,
@@ -207,6 +254,10 @@ enum class AletheRule : uint32_t
   // This rule is equivalent to the th_resolution rule but is emitted by the SAT
   // solver.
   RESOLUTION,
+  // ======== resolution from CHAIN_RESOLUTION or RESOLUTIONS
+  // Same as resolution but premises might have been printed as (cl (or F1 ...
+  // Fn)) instead of (cl F1 ... Fn)
+  RESOLUTION_OR,
   // ======== refl
   // G > i. (= F1 F2)
   REFL,
@@ -225,6 +276,15 @@ enum class AletheRule : uint32_t
   // G > j. (= (f F1 ... Fn) (f G1 ... Gn))
   // where f is an n-ary function symbol.
   CONG,
+  // ======== ho_cong
+  // G > i0. (= f g)
+  // G > i1. (= F1 G1)
+  // ...
+  // G > in. (= Fn Gn)
+  // ...
+  // G > j. (= (f F1 ... Fn) (g G1 ... Gn))
+  // where f and g are n-ary function symbols.
+  HO_CONG,
   // ======== and
   // > i. (and F1 ... Fn)
   // ...
@@ -332,13 +392,31 @@ enum class AletheRule : uint32_t
   // ite, i.e. Gi := (ite Fi Hi Hi'), then Fi = (ite Fi (= Gi Hi) (= Gi Hi')) if
   // Hi is of sort Bool
   ITE_INTRO,
-  // ======== duplicated_literals
+  // ======== intro rules for arithmetic operators
+  // The rules below behave similarly to ite_intro, in that they introduce
+  // formulas defining the semantics of the respective operators.
+  // ======== div_intro
+  // > i. (and (<= (* b (div a b)) a) (< a (* b (+ (div a b) c))))
+  // where b is a constant different from 0 and c is 1 if b > 0, -1 otherwise.
+  DIV_INTRO,
+  // ======== log2_intro
+  // > i. (and
+  //        (=> (< 0 x)
+  //            (and (<= (int.pow2 (int.log2 x)) x)
+  //                 (< x (int.pow2 (+ (int.log2 x) 1)))))
+  //         (=> (not (< 0 x)) (= (int.log2 x) 0)))
+  LOG2_INTRO,
+  // ======== to_int_intro
+  // > i. (and (<= 0 (- x (to_real (to_int x))))
+  //           (< (- x (to_real (to_int x))) 1))
+  TO_INT_INTRO,
+  // ======== contraction
   // > i. (cl F1 ... Fn)
   // ...
   // > j. (cl Fk1 ... Fkm)
   // where m <= n and k1,...,km is a monotonic map to 1,...,n such that Fk1 ...
   // Fkm are pairwise distinct and {F1,...,Fn} = {Fk1 ... Fkm}
-  DUPLICATED_LITERALS,
+  CONTRACTION,
   // ======== connective_def
   //  G > i. (= (xor F1 F2) (or (and (not F1) F2) (and F1 (not F2))))
   // or
@@ -347,8 +425,9 @@ enum class AletheRule : uint32_t
   //  G > i. (= (ite F1 F2 F3) (and (=> F1 F2) (=> (not F1) (not F3))))
   CONNECTIVE_DEF,
   // ======== Simplify rules
-  // The following rules are simplifying rules introduced as tautologies that can be
-  // verified by a number of simple transformations
+  // The following rules are simplifying rules introduced as tautologies that
+  // can be verified by a number of simple transformations
+  AC_SIMP,
   ITE_SIMPLIFY,
   EQ_SIMPLIFY,
   AND_SIMPLIFY,
@@ -366,6 +445,13 @@ enum class AletheRule : uint32_t
   COMP_SIMPLIFY,
   NARY_ELIM,
   QNT_SIMPLIFY,
+  ALL_SIMPLIFY,
+  // Simplifications based on AC, identity, duplicates
+  ACI_SIMP,
+  EVALUATE,
+  POLY_SIMP,
+  POLY_SIMP_REL,
+  RARE_REWRITE,
   // ======== let
   // G,x1->F1,...,xn->Fn > j. (= G G')
   // ---------------------------------
@@ -391,13 +477,85 @@ enum class AletheRule : uint32_t
   // ...
   // > j. (not (= G F))
   NOT_SYMM,
+  // ======== miniscope_distribute
+  // > i. (= (forall (x1 ... xn) (and F1 ... Fm))
+  // (and (forall (x1 ... xn) F1) ... (forall (x1 ... xn) Fm)))
+  //
+  // or
+  //
+  // > i. (= (exists (x1 ... xn) (or F1 ... Fm))
+  // (or (exists (x1 ... xn) F1) ... (exists (x1 ... xn) Fm)))
+  MINISCOPE_DISTRIBUTE,
+  // ======== miniscope_split
+  // > i. (= (forall (x1 ... xn) (or F1 ... Fm))
+  // (or (forall (x1,1 ... x1,n1) F1) ... (forall (xm,1 ... xm,nm) Fm)))
+  //
+  // or
+  //
+  // > i. (= (exists (x1 ... xn) (and F1 ... Fm))
+  // (and (exists (x1,1 ... x1,n1) F1) ... (exists (xm,1 ... xm,nm) Fm)))
+  //
+  // where {x1,1,...,xm,nm} is a subset of {x1,...,xn} and the right side of the
+  // equality has no free variables in {x1,...,xn}
+  MINISCOPE_SPLIT,
+  // ======== miniscope_ite
+  // > i. (= (forall (x1 ... xn) (ite F1 F2 F3))
+  // (ite F1 (forall (x1 ... xn) F2) (forall (x1 ... xn) F3))
+  MINISCOPE_ITE,
   // ======== reorder
   // > i1. F1
   // ...
   // > j. F2
   // where set representation of F1 and F2 are the same and the number of
   // literals in C2 is the same of that of C1.
-  REORDER,
+  REORDERING,
+  // ======== HO
+  // > i. (= ((lambda (x_1   ... x_n) t) t_1 ... t_k)
+  //         (lambda (x_k+1 ... x_n) t){x_1 -> t1, ..., x_k -> t_k})
+  // where if k = n then the rhs has no lambda binding t.
+  BETA_EQUIVALENCE,
+  // ======== arrays
+  // > l. (= (select (store a i e) i) e)
+  ARRAYS_IDX,
+  // > k. (not (= i j))
+  // > l. (= (select (store a i e) j) (select a j))
+  ARRAYS_ROW,
+  // > k. (not (= (select (store a i e) j) (select a j)))
+  // > l. (= i j)
+  ARRAYS_ROW_CONTRA,
+  // > k. (not (= a b))
+  // > l. (not (not (= (select a k) (select b k))))
+  // where k is (choice (x I) (or (= a b) (not (= (select a x) (select b x))))),
+  // with type of x coming from the array sort of a.
+  ARRAYS_EXT,
+  // ======== bitvector
+  //  > i. (cl (= t bbt(t)))
+  BV_BITBLAST_STEP_VAR,
+  BV_BITBLAST_STEP_BVAND,
+  BV_BITBLAST_STEP_BVOR,
+  BV_BITBLAST_STEP_BVXOR,
+  BV_BITBLAST_STEP_BVXNOR,
+  BV_BITBLAST_STEP_BVNOT,
+  BV_BITBLAST_STEP_BVADD,
+  BV_BITBLAST_STEP_BVNEG,
+  BV_BITBLAST_STEP_BVMULT,
+  BV_BITBLAST_STEP_BVULE,
+  BV_BITBLAST_STEP_BVULT,
+  BV_BITBLAST_STEP_BVSLT,
+  BV_BITBLAST_STEP_BVCOMP,
+  BV_BITBLAST_STEP_EXTRACT,
+  BV_BITBLAST_STEP_BVEQUAL,
+  BV_BITBLAST_STEP_CONCAT,
+  BV_BITBLAST_STEP_CONST,
+  BV_BITBLAST_STEP_SIGN_EXTEND,
+  // ======== temporary
+  // These rules are not in the Alethe standard, they are defined by
+  // their respective CPC counterpart for now.
+  BV_BITWISE_SLICING,
+  BV_REPEAT_ELIM,
+  // ======== hole
+  // Used for unjustified steps
+  HOLE,
   // ======== undefined
   // Used in case that a step in the proof rule could not be translated.
   UNDEFINED
@@ -420,8 +578,11 @@ const char* aletheRuleToString(AletheRule id);
  */
 std::ostream& operator<<(std::ostream& out, AletheRule id);
 
+/** Convert a node holding an id to the corresponding AletheRule */
+AletheRule getAletheRule(Node n);
+
 }  // namespace proof
 
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
-#endif /* CVC4__PROOF__ALETHE_PROOF_RULE_H */
+#endif /* CVC5__PROOF__ALETHE__ALETHE_PROOF_RULE_H */

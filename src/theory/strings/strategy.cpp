@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -17,7 +14,7 @@
 
 #include "options/strings_options.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace strings {
 
@@ -25,25 +22,55 @@ std::ostream& operator<<(std::ostream& out, InferStep s)
 {
   switch (s)
   {
-    case BREAK: out << "break"; break;
-    case CHECK_INIT: out << "check_init"; break;
-    case CHECK_CONST_EQC: out << "check_const_eqc"; break;
-    case CHECK_EXTF_EVAL: out << "check_extf_eval"; break;
-    case CHECK_CYCLES: out << "check_cycles"; break;
-    case CHECK_FLAT_FORMS: out << "check_flat_forms"; break;
-    case CHECK_NORMAL_FORMS_EQ: out << "check_normal_forms_eq"; break;
-    case CHECK_NORMAL_FORMS_DEQ: out << "check_normal_forms_deq"; break;
-    case CHECK_CODES: out << "check_codes"; break;
-    case CHECK_LENGTH_EQC: out << "check_length_eqc"; break;
-    case CHECK_EXTF_REDUCTION: out << "check_extf_reduction"; break;
-    case CHECK_MEMBERSHIP: out << "check_membership"; break;
-    case CHECK_CARDINALITY: out << "check_cardinality"; break;
-    default: out << "?"; break;
+    case InferStep::NONE: out << "none"; break;
+    case InferStep::BREAK: out << "break"; break;
+    case InferStep::CHECK_INIT: out << "check_init"; break;
+    case InferStep::CHECK_CONST_EQC: out << "check_const_eqc"; break;
+    case InferStep::CHECK_EXTF_EVAL: out << "check_extf_eval"; break;
+    case InferStep::CHECK_CYCLES: out << "check_cycles"; break;
+    case InferStep::CHECK_FLAT_FORMS: out << "check_flat_forms"; break;
+    case InferStep::CHECK_NORMAL_FORMS_EQ_PROP:
+      out << "check_normal_forms_eq_prop";
+      break;
+    case InferStep::CHECK_NORMAL_FORMS_EQ:
+      out << "check_normal_forms_eq";
+      break;
+    case InferStep::CHECK_NORMAL_FORMS_DEQ:
+      out << "check_normal_forms_deq";
+      break;
+    case InferStep::CHECK_CODES: out << "check_codes"; break;
+    case InferStep::CHECK_LENGTH_EQC: out << "check_length_eqc"; break;
+    case InferStep::CHECK_REGISTER_TERMS_NF:
+      out << "check_register_terms_nf";
+      break;
+    case InferStep::CHECK_EXTF_REDUCTION_EAGER:
+      out << "check_extf_reduction_eager";
+      break;
+    case InferStep::CHECK_EXTF_REDUCTION: out << "check_extf_reduction"; break;
+    case InferStep::CHECK_MEMBERSHIP_EAGER:
+      out << "check_membership_eager";
+      break;
+    case InferStep::CHECK_MEMBERSHIP: out << "check_membership"; break;
+    case InferStep::CHECK_CARDINALITY: out << "check_cardinality"; break;
+    case InferStep::CHECK_SEQUENCES_ARRAY_CONCAT:
+      out << "check_sequences_update_concat_terms";
+      break;
+    case InferStep::CHECK_SEQUENCES_ARRAY:
+      out << "check_sequences_array";
+      break;
+    case InferStep::CHECK_SEQUENCES_ARRAY_EAGER:
+      out << "check_sequences_array_eager";
+      break;
+    case InferStep::UNKNOWN: out << "?"; break;
+    default:
+      Unreachable();
+      out << "?unhandled";
+      break;
   }
   return out;
 }
 
-Strategy::Strategy() : d_strategy_init(false) {}
+Strategy::Strategy(Env& env) : EnvObj(env), d_strategy_init(false) {}
 
 Strategy::~Strategy() {}
 
@@ -75,11 +102,11 @@ std::vector<std::pair<InferStep, int> >::iterator Strategy::stepEnd(
 void Strategy::addStrategyStep(InferStep s, int effort, bool addBreak)
 {
   // must run check init first
-  Assert((s == CHECK_INIT) == d_infer_steps.empty());
+  Assert((s == InferStep::CHECK_INIT) == d_infer_steps.empty());
   d_infer_steps.push_back(std::pair<InferStep, int>(s, effort));
   if (addBreak)
   {
-    d_infer_steps.push_back(std::pair<InferStep, int>(BREAK, 0));
+    d_infer_steps.push_back(std::pair<InferStep, int>(InferStep::BREAK, 0));
   }
 }
 
@@ -93,56 +120,52 @@ void Strategy::initializeStrategy()
     d_strategy_init = true;
     // beginning indices
     step_begin[Theory::EFFORT_FULL] = 0;
-    if (options::stringEager())
-    {
-      step_begin[Theory::EFFORT_STANDARD] = 0;
-    }
     // add the inference steps
-    addStrategyStep(CHECK_INIT);
-    addStrategyStep(CHECK_CONST_EQC);
-    addStrategyStep(CHECK_EXTF_EVAL, 0);
+    addStrategyStep(InferStep::CHECK_INIT);
+    addStrategyStep(InferStep::CHECK_CONST_EQC);
+    addStrategyStep(InferStep::CHECK_EXTF_EVAL, 0);
+    if (options().strings.seqArray == options::SeqArrayMode::EAGER)
+    {
+      addStrategyStep(InferStep::CHECK_SEQUENCES_ARRAY_EAGER);
+    }
     // we must check cycles before using flat forms
-    addStrategyStep(CHECK_CYCLES);
-    if (options::stringFlatForms())
+    addStrategyStep(InferStep::CHECK_CYCLES);
+    if (options().strings.stringFlatForms)
     {
-      addStrategyStep(CHECK_FLAT_FORMS);
+      addStrategyStep(InferStep::CHECK_FLAT_FORMS);
     }
-    addStrategyStep(CHECK_EXTF_REDUCTION, 1);
-    if (options::stringEager())
+    addStrategyStep(InferStep::CHECK_EXTF_REDUCTION_EAGER);
+    addStrategyStep(InferStep::CHECK_MEMBERSHIP_EAGER);
+    addStrategyStep(InferStep::CHECK_NORMAL_FORMS_EQ_PROP);
+    addStrategyStep(InferStep::CHECK_NORMAL_FORMS_EQ);
+    addStrategyStep(InferStep::CHECK_EXTF_EVAL, 1);
+    addStrategyStep(InferStep::CHECK_NORMAL_FORMS_DEQ);
+    addStrategyStep(InferStep::CHECK_CODES);
+    if (options().strings.stringLenNorm)
     {
-      // do only the above inferences at standard effort, if applicable
-      step_end[Theory::EFFORT_STANDARD] = d_infer_steps.size() - 1;
+      addStrategyStep(InferStep::CHECK_LENGTH_EQC);
     }
-    if (!options::stringEagerLen())
+    if (options().strings.seqArray != options::SeqArrayMode::NONE)
     {
-      addStrategyStep(CHECK_REGISTER_TERMS_PRE_NF);
+      addStrategyStep(InferStep::CHECK_SEQUENCES_ARRAY_CONCAT);
+      addStrategyStep(InferStep::CHECK_SEQUENCES_ARRAY);
     }
-    addStrategyStep(CHECK_NORMAL_FORMS_EQ);
-    addStrategyStep(CHECK_EXTF_EVAL, 1);
-    if (!options::stringEagerLen() && options::stringLenNorm())
+    if (options().strings.stringExp)
     {
-      addStrategyStep(CHECK_LENGTH_EQC, 0, false);
-      addStrategyStep(CHECK_REGISTER_TERMS_NF);
+      addStrategyStep(InferStep::CHECK_EXTF_REDUCTION);
     }
-    addStrategyStep(CHECK_NORMAL_FORMS_DEQ);
-    addStrategyStep(CHECK_CODES);
-    if (options::stringEagerLen() && options::stringLenNorm())
-    {
-      addStrategyStep(CHECK_LENGTH_EQC);
-    }
-    if (options::stringExp() && !options::stringGuessModel())
-    {
-      addStrategyStep(CHECK_EXTF_REDUCTION, 2);
-    }
-    addStrategyStep(CHECK_MEMBERSHIP);
-    addStrategyStep(CHECK_CARDINALITY);
+    addStrategyStep(InferStep::CHECK_MEMBERSHIP);
+    addStrategyStep(InferStep::CHECK_CARDINALITY);
     step_end[Theory::EFFORT_FULL] = d_infer_steps.size() - 1;
-    if (options::stringExp() && options::stringGuessModel())
+    if (options().strings.stringModelBasedReduction)
     {
       step_begin[Theory::EFFORT_LAST_CALL] = d_infer_steps.size();
-      // these two steps are run in parallel
-      addStrategyStep(CHECK_EXTF_REDUCTION, 2, false);
-      addStrategyStep(CHECK_EXTF_EVAL, 3);
+      addStrategyStep(InferStep::CHECK_EXTF_EVAL, 3);
+      if (options().strings.stringExp)
+      {
+        addStrategyStep(InferStep::CHECK_EXTF_REDUCTION);
+      }
+      addStrategyStep(InferStep::CHECK_MEMBERSHIP);
       step_end[Theory::EFFORT_LAST_CALL] = d_infer_steps.size() - 1;
     }
     // set the beginning/ending ranges
@@ -159,4 +182,4 @@ void Strategy::initializeStrategy()
 
 }  // namespace strings
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal

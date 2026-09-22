@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Morgan Deters, Andrew Reynolds, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -21,7 +18,7 @@
 #include <iosfwd>
 #include <memory>
 
-namespace cvc5 {
+namespace cvc5::internal {
 
 class TypeNode;
 
@@ -59,6 +56,6 @@ struct AscriptionTypeHashFunction
 /** An output routine for AscriptionTypes */
 std::ostream& operator<<(std::ostream& out, AscriptionType at);
 
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__ASCRIPTION_TYPE_H */

@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Morgan Deters, Tim King
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -27,7 +24,7 @@
 #include "expr/type_node.h"
 #include "util/cardinality.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 
 // ----------------------- datatype attributes
 /**
@@ -122,7 +119,7 @@ class DType
   /**
    * Get the datatype of a constructor, selector, or tester operator.
    */
-  static const DType& datatypeOf(Node item);
+  CVC5_NO_DANGLING static const DType& datatypeOf(Node item);
 
   /**
    * Get the index of a constructor or tester in its datatype, or the
@@ -177,7 +174,7 @@ class DType
    * @param cargs the arguments of the constructor.
    * It should be the case that cargs are sygus datatypes that
    * encode the arguments of op. For example, a sygus constructor
-   * with op = PLUS should be such that cargs.size()>=2 and
+   * with op = ADD should be such that cargs.size()>=2 and
    * the sygus type of cargs[i] is Real/Int for each i.
    * @param weight denotes the value added by the constructor when computing the
    * size of datatype terms. Passing a value < 0 denotes the default weight for
@@ -213,6 +210,9 @@ class DType
   /** set that this datatype is a tuple */
   void setTuple();
 
+  /** set that this datatype is a nullable */
+  void setNullable();
+
   /** set that this datatype is a record */
   void setRecord();
 
@@ -242,6 +242,9 @@ class DType
 
   /** is this a tuple datatype? */
   bool isTuple() const;
+
+  /** is this a nullable datatype? */
+  bool isNullable() const;
 
   /** is this a record datatype? */
   bool isRecord() const;
@@ -281,8 +284,8 @@ class DType
    * @param fmfEnabled Whether finite model finding is enabled
    * @return true if finite model finding is enabled
    */
-  bool isFinite(TypeNode t, bool fmfEnabled=false) const;
-  bool isFinite(bool fmfEnabled=false) const;
+  bool isFinite(TypeNode t, bool fmfEnabled = false) const;
+  bool isFinite(bool fmfEnabled = false) const;
 
   /** is well-founded
    *
@@ -436,6 +439,14 @@ class DType
 
  private:
   /**
+   * Collect unresolved datatype types. This is called by NodeManager when
+   * constructing datatypes from datatype declarations. This adds all
+   * unresolved datatype types to unresTypes, which are then considered
+   * when constructing the datatype (for details, see
+   * NodeManager::mkMutualDatatypeTypesInternal).
+   */
+  void collectUnresolvedDatatypeTypes(std::set<TypeNode>& unresTypes) const;
+  /**
    * DTypes refer to themselves, recursively, and we have a
    * chicken-and-egg problem.  The TypeNode around the DType
    * cannot exist until the DType is finalized, and the DType
@@ -562,6 +573,8 @@ class DType
   bool d_isCo;
   /** whether the datatype is a tuple */
   bool d_isTuple;
+  /** whether the datatype is a nullable */
+  bool d_isNullable;
   /** whether the datatype is a record */
   bool d_isRecord;
   /** the constructors of this datatype */
@@ -626,61 +639,19 @@ class DType
   mutable std::map<TypeNode, CardinalityClass> d_cardClass;
 }; /* class DType */
 
-/**
- * A hash function for DTypes.  Needed to store them in hash sets
- * and hash maps.
- */
-struct DTypeHashFunction
-{
-  size_t operator()(const DType& dt) const
-  {
-    return std::hash<std::string>()(dt.getName());
-  }
-  size_t operator()(const DType* dt) const
-  {
-    return std::hash<std::string>()(dt->getName());
-  }
-}; /* struct DTypeHashFunction */
-
-/* stores an index to DType residing in NodeManager */
-class DTypeIndexConstant
-{
- public:
-  DTypeIndexConstant(size_t index);
-
-  size_t getIndex() const { return d_index; }
-  bool operator==(const DTypeIndexConstant& uc) const
-  {
-    return d_index == uc.d_index;
-  }
-  bool operator!=(const DTypeIndexConstant& uc) const { return !(*this == uc); }
-  bool operator<(const DTypeIndexConstant& uc) const
-  {
-    return d_index < uc.d_index;
-  }
-  bool operator<=(const DTypeIndexConstant& uc) const
-  {
-    return d_index <= uc.d_index;
-  }
-  bool operator>(const DTypeIndexConstant& uc) const { return !(*this <= uc); }
-  bool operator>=(const DTypeIndexConstant& uc) const { return !(*this < uc); }
-
- private:
-  const size_t d_index;
-}; /* class DTypeIndexConstant */
-
-std::ostream& operator<<(std::ostream& out, const DTypeIndexConstant& dic);
-
-struct DTypeIndexConstantHashFunction
-{
-  size_t operator()(const DTypeIndexConstant& dic) const
-  {
-    return IntegerHashFunction()(dic.getIndex());
-  }
-}; /* struct DTypeIndexConstantHashFunction */
-
 std::ostream& operator<<(std::ostream& os, const DType& dt);
 
-}  // namespace cvc5
+}  // namespace cvc5::internal
+
+namespace std {
+/**
+ * A hash function for DTypes.
+ */
+template <>
+struct hash<cvc5::internal::DType>
+{
+  size_t operator()(const cvc5::internal::DType& dt) const;
+};
+}  // namespace std
 
 #endif

@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Aina Niemetz
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -19,21 +16,21 @@
 #include "theory/rewriter.h"
 #include "theory/strings/theory_strings_preprocess.h"
 
-using namespace cvc5::theory;
+using namespace cvc5::internal::theory;
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace preprocessing {
 namespace passes {
 
 StringsEagerPp::StringsEagerPp(PreprocessingPassContext* preprocContext)
-    : PreprocessingPass(preprocContext, "strings-eager-pp"){};
+    : PreprocessingPass(preprocContext, "strings-eager-pp") {};
 
 PreprocessingPassResult StringsEagerPp::applyInternal(
     AssertionPipeline* assertionsToPreprocess)
 {
-  NodeManager* nm = NodeManager::currentNM();
-  theory::strings::SkolemCache skc(nullptr);
-  theory::strings::StringsPreprocess pp(&skc);
+  NodeManager* nm = nodeManager();
+  theory::strings::SkolemCache skc(nm, nullptr);
+  theory::strings::StringsPreprocess pp(d_env, &skc);
   for (size_t i = 0, nasserts = assertionsToPreprocess->size(); i < nasserts;
        ++i)
   {
@@ -49,7 +46,13 @@ PreprocessingPassResult StringsEagerPp::applyInternal(
     }
     if (prev != rew)
     {
-      assertionsToPreprocess->replace(i, rewrite(rew));
+      assertionsToPreprocess->replace(
+          i, rew, nullptr, TrustId::PREPROCESS_STRINGS_EAGER_PP);
+      assertionsToPreprocess->ensureRewritten(i);
+      if (assertionsToPreprocess->isInConflict())
+      {
+        return PreprocessingPassResult::CONFLICT;
+      }
     }
   }
 
@@ -58,4 +61,4 @@ PreprocessingPassResult StringsEagerPp::applyInternal(
 
 }  // namespace passes
 }  // namespace preprocessing
-}  // namespace cvc5
+}  // namespace cvc5::internal

@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Aina Niemetz
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -23,7 +20,12 @@
 
 #include "expr/node.h"
 
-namespace cvc5 {
+namespace cvc5::context {
+class Context;
+class UserContext;
+}  // namespace cvc5::context
+
+namespace cvc5::internal {
 
 class Env;
 class LogicInfo;
@@ -31,10 +33,10 @@ class NodeManager;
 class Options;
 class StatisticsRegistry;
 
-namespace context {
-class Context;
-class UserContext;
-}  // namespace context
+namespace options {
+enum class OutputTag;
+}
+using OutputTag = options::OutputTag;
 
 class EnvObj
 {
@@ -45,11 +47,19 @@ class EnvObj
   /** Destructor.  */
   virtual ~EnvObj() {}
 
+  /** Get a pointer to the node manager */
+  NodeManager* nodeManager() const;
+
   /**
    * Rewrite a node.
    * This is a wrapper around theory::Rewriter::rewrite via Env.
    */
   Node rewrite(TNode node) const;
+  /**
+   * Rewrite a node.
+   * This is a wrapper around theory::Rewriter::rewriteEqualityExt via Env.
+   */
+  Node rewriteEqualityExt(TNode node) const;
   /**
    * Extended rewrite a node.
    * This is a wrapper around theory::Rewriter::extendedRewrite via Env.
@@ -88,9 +98,24 @@ class EnvObj
   /** Get the statistics registry via Env. */
   StatisticsRegistry& statisticsRegistry() const;
 
+  /** Convenience wrapper for Env::isOutputOn(). */
+  bool isOutputOn(OutputTag tag) const;
+
+  /** Convenience wrapper for Env::output(). */
+  std::ostream& output(OutputTag tag) const;
+
+  /** Convenience wrapper for Env::isVerboseOn(). */
+  bool isVerboseOn(int64_t level) const;
+
+  /** Convenience wrapper for Env::verbose(). */
+  std::ostream& verbose(int64_t) const;
+
+  /** Convenience wrapper for Env::verbose(0). */
+  std::ostream& warning() const;
+
   /** The associated environment. */
   Env& d_env;
 };
 
-}  // namespace cvc5
+}  // namespace cvc5::internal
 #endif

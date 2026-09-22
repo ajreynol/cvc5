@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -25,8 +22,9 @@
 
 #include "expr/node.h"
 #include "expr/type_node.h"
+#include "smt/env_obj.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace quantifiers {
 
@@ -113,16 +111,16 @@ class SynthConjectureProcessArg
 };
 
 /** This structure stores information regarding conjecture-specific
-* analysis of a single function to synthesize within
-* a conjecture to synthesize.
-*
-* It maintains information about each of the function to
-* synthesize's arguments.
-*/
-struct SynthConjectureProcessFun
+ * analysis of a single function to synthesize within
+ * a conjecture to synthesize.
+ *
+ * It maintains information about each of the function to
+ * synthesize's arguments.
+ */
+struct SynthConjectureProcessFun : protected EnvObj
 {
  public:
-  SynthConjectureProcessFun() {}
+  SynthConjectureProcessFun(Env& env);
   ~SynthConjectureProcessFun() {}
   /** initialize this class for function f */
   void init(Node f);
@@ -266,10 +264,10 @@ struct SynthConjectureProcessFun
  * sygus to SynthConjectureProcess::getSymmetryBreakingPredicate(...), which are
  * used for pruning search space based on conjecture-specific analysis.
  */
-class SynthConjectureProcess
+class SynthConjectureProcess : protected EnvObj
 {
  public:
-  SynthConjectureProcess();
+  SynthConjectureProcess(Env& env);
   ~SynthConjectureProcess();
   /** simplify the synthesis conjecture q
    * Returns a formula that is equivalent to q.
@@ -301,15 +299,16 @@ class SynthConjectureProcess
    */
   bool getIrrelevantArgs(Node f, std::unordered_set<unsigned>& args);
   /** get symmetry breaking predicate
-  *
-  * Returns a formula that restricts the enumerative search space (for a given
-  * depth) for a term x of sygus type tn whose top symbol is the tindex^{th}
-  * constructor, where x is a subterm of enumerator e.
-  */
+   *
+   * Returns a formula that restricts the enumerative search space (for a given
+   * depth) for a term x of sygus type tn whose top symbol is the tindex^{th}
+   * constructor, where x is a subterm of enumerator e.
+   */
   Node getSymmetryBreakingPredicate(
       Node x, Node e, TypeNode tn, unsigned tindex, unsigned depth);
   /** print out debug information about this conjecture */
   void debugPrint(const char* c);
+
  private:
   /** process conjunct
    *
@@ -350,6 +349,6 @@ class SynthConjectureProcess
 
 }  // namespace quantifiers
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif

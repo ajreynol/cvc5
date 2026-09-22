@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -18,18 +15,18 @@
 #include "theory/quantifiers/quantifiers_state.h"
 #include "theory/quantifiers/term_database.h"
 
-using namespace cvc5::kind;
+using namespace cvc5::internal::kind;
 using namespace cvc5::context;
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace quantifiers {
 
 EntailmentCheck::EntailmentCheck(Env& env, QuantifiersState& qs, TermDb& tdb)
     : EnvObj(env), d_qstate(qs), d_tdb(tdb)
 {
-  d_true = NodeManager::currentNM()->mkConst(true);
-  d_false = NodeManager::currentNM()->mkConst(false);
+  d_true = nodeManager()->mkConst(true);
+  d_false = nodeManager()->mkConst(false);
 }
 
 EntailmentCheck::~EntailmentCheck() {}
@@ -49,18 +46,17 @@ Node EntailmentCheck::evaluateTerm2(TNode n,
   Trace("term-db-eval") << "evaluate term : " << n << std::endl;
   Node ret = n;
   Kind k = n.getKind();
-  if (k == FORALL)
+  if (k == Kind::FORALL)
   {
     // do nothing
   }
-  else if (k == BOUND_VARIABLE)
+  else if (k == Kind::BOUND_VARIABLE)
   {
     std::map<TNode, TNode>::iterator it = subs.find(n);
     if (it != subs.end())
     {
       if (!subsRep)
       {
-        Assert(d_qstate.hasTerm(it->second));
         ret = d_qstate.getRepresentative(it->second);
       }
       else
@@ -92,14 +88,14 @@ Node EntailmentCheck::evaluateTerm2(TNode n,
       else if (c == d_true || c == d_false)
       {
         // short-circuiting
-        if ((k == AND && c == d_false) || (k == OR && c == d_true))
+        if ((k == Kind::AND && c == d_false) || (k == Kind::OR && c == d_true))
         {
           ret = c;
           ret_set = true;
           reqHasTerm = false;
           break;
         }
-        else if (k == ITE && i == 0)
+        else if (k == Kind::ITE && i == 0)
         {
           ret = evaluateTerm2(n[c == d_true ? 1 : 2],
                               visited,
@@ -143,9 +139,9 @@ Node EntailmentCheck::evaluateTerm2(TNode n,
         {
           args.insert(args.begin(), n.getOperator());
         }
-        ret = NodeManager::currentNM()->mkNode(n.getKind(), args);
+        ret = nodeManager()->mkNode(n.getKind(), args);
         ret = rewrite(ret);
-        if (ret.getKind() == EQUAL)
+        if (ret.getKind() == Kind::EQUAL)
         {
           if (d_qstate.areDisequal(ret[0], ret[1]))
           {
@@ -154,7 +150,7 @@ Node EntailmentCheck::evaluateTerm2(TNode n,
         }
         if (useEntailmentTests)
         {
-          if (ret.getKind() == EQUAL || ret.getKind() == GEQ)
+          if (ret.getKind() == Kind::EQUAL || ret.getKind() == Kind::GEQ)
           {
             Valuation& val = d_qstate.getValuation();
             for (unsigned j = 0; j < 2; j++)
@@ -177,8 +173,8 @@ Node EntailmentCheck::evaluateTerm2(TNode n,
   if (reqHasTerm && !ret.isNull())
   {
     Kind rk = ret.getKind();
-    if (rk != OR && rk != AND && rk != EQUAL && rk != ITE && rk != NOT
-        && rk != FORALL)
+    if (rk != Kind::OR && rk != Kind::AND && rk != Kind::EQUAL
+        && rk != Kind::ITE && rk != Kind::NOT && rk != Kind::FORALL)
     {
       if (!d_qstate.hasTerm(ret))
       {
@@ -202,7 +198,7 @@ TNode EntailmentCheck::getEntailedTerm2(TNode n,
     Trace("term-db-entail") << "...exists in ee, return rep " << std::endl;
     return n;
   }
-  else if (n.getKind() == BOUND_VARIABLE)
+  else if (n.getKind() == Kind::BOUND_VARIABLE)
   {
     std::map<TNode, TNode>::iterator it = subs.find(n);
     if (it != subs.end())
@@ -218,7 +214,7 @@ TNode EntailmentCheck::getEntailedTerm2(TNode n,
       return getEntailedTerm2(it->second, subs, subsRep);
     }
   }
-  else if (n.getKind() == ITE)
+  else if (n.getKind() == Kind::ITE)
   {
     for (uint32_t i = 0; i < 2; i++)
     {
@@ -298,41 +294,31 @@ bool EntailmentCheck::isEntailed2(TNode n,
   Trace("term-db-entail") << "Check entailed : " << n << ", pol = " << pol
                           << std::endl;
   Assert(n.getType().isBoolean());
-  if (n.getKind() == EQUAL && !n[0].getType().isBoolean())
+  Kind k = n.getKind();
+  if (k == Kind::EQUAL && !n[0].getType().isBoolean())
   {
-    TNode n1 = getEntailedTerm2(n[0], subs, subsRep);
+    TNode n1 = n[0].isConst() ? n[0] : getEntailedTerm2(n[0], subs, subsRep);
     if (!n1.isNull())
     {
-      TNode n2 = getEntailedTerm2(n[1], subs, subsRep);
+      TNode n2 = n[1].isConst() ? n[1] : getEntailedTerm2(n[1], subs, subsRep);
       if (!n2.isNull())
       {
-        if (n1 == n2)
+        if (pol)
         {
-          return pol;
+          // must check for equality here
+          return d_qstate.areEqual(n1, n2);
         }
-        else
-        {
-          Assert(d_qstate.hasTerm(n1));
-          Assert(d_qstate.hasTerm(n2));
-          if (pol)
-          {
-            return d_qstate.areEqual(n1, n2);
-          }
-          else
-          {
-            return d_qstate.areDisequal(n1, n2);
-          }
-        }
+        return d_qstate.areDisequal(n1, n2);
       }
     }
   }
-  else if (n.getKind() == NOT)
+  else if (k == Kind::NOT)
   {
     return isEntailed2(n[0], subs, subsRep, !pol);
   }
-  else if (n.getKind() == OR || n.getKind() == AND)
+  else if (k == Kind::OR || k == Kind::AND)
   {
-    bool simPol = (pol && n.getKind() == OR) || (!pol && n.getKind() == AND);
+    bool simPol = (pol && k == Kind::OR) || (!pol && k == Kind::AND);
     for (size_t i = 0, nchild = n.getNumChildren(); i < nchild; i++)
     {
       if (isEntailed2(n[i], subs, subsRep, pol))
@@ -353,41 +339,39 @@ bool EntailmentCheck::isEntailed2(TNode n,
     return !simPol;
     // Boolean equality here
   }
-  else if (n.getKind() == EQUAL || n.getKind() == ITE)
+  else if (k == Kind::EQUAL || k == Kind::ITE)
   {
+    Assert(n[0].getType().isBoolean());
     for (size_t i = 0; i < 2; i++)
     {
       if (isEntailed2(n[0], subs, subsRep, i == 0))
       {
-        size_t ch = (n.getKind() == EQUAL || i == 0) ? 1 : 2;
-        bool reqPol = (n.getKind() == ITE || i == 0) ? pol : !pol;
+        size_t ch = (k == Kind::EQUAL || i == 0) ? 1 : 2;
+        bool reqPol = (k == Kind::ITE || i == 0) ? pol : !pol;
         return isEntailed2(n[ch], subs, subsRep, reqPol);
       }
     }
   }
-  else if (n.getKind() == APPLY_UF)
+  else if (k == Kind::FORALL)
   {
+    if (!pol)
+    {
+      return isEntailed2(n[1], subs, subsRep, pol);
+    }
+  }
+  else if (k == Kind::BOUND_VARIABLE || k == Kind::APPLY_UF)
+  {
+    // handles APPLY_UF, Boolean variable cases
     TNode n1 = getEntailedTerm2(n, subs, subsRep);
     if (!n1.isNull())
     {
       Assert(d_qstate.hasTerm(n1));
-      if (n1 == d_true)
+      n1 = d_qstate.getRepresentative(n1);
+      if (n1.isConst())
       {
-        return pol;
-      }
-      else if (n1 == d_false)
-      {
-        return !pol;
-      }
-      else
-      {
-        return d_qstate.getRepresentative(n1) == (pol ? d_true : d_false);
+        return n1.getConst<bool>() == pol;
       }
     }
-  }
-  else if (n.getKind() == FORALL && !pol)
-  {
-    return isEntailed2(n[1], subs, subsRep, pol);
   }
   return false;
 }
@@ -408,4 +392,4 @@ bool EntailmentCheck::isEntailed(TNode n,
 
 }  // namespace quantifiers
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal

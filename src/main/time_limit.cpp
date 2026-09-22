@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Gereon Kremer
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -44,8 +41,9 @@
 #include "base/cvc5config.h"
 
 #if HAVE_SETITIMER
-#include <signal.h>
 #include <sys/time.h>
+
+#include <csignal>
 #else
 #include <atomic>
 #include <chrono>
@@ -58,29 +56,28 @@
 #include "base/exception.h"
 #include "signal_handlers.h"
 
-namespace cvc5 {
-namespace main {
+namespace cvc5::main {
 
 #if HAVE_SETITIMER
 TimeLimit::~TimeLimit() {}
 
-void posix_timeout_handler(int sig, siginfo_t* info, void*)
+void posix_timeout_handler(CVC5_UNUSED int sig,
+                           CVC5_UNUSED siginfo_t* info,
+                           void*)
 {
   signal_handlers::timeout_handler();
 }
 #else
 std::atomic<bool> abort_timer_flag;
 
-TimeLimit::~TimeLimit()
-{
-  abort_timer_flag.store(true);
-}
+TimeLimit::~TimeLimit() { abort_timer_flag.store(true); }
 #endif
 
 TimeLimit install_time_limit(uint64_t ms)
 {
   // Skip if no time limit shall be set.
-  if (ms == 0) {
+  if (ms == 0)
+  {
     return TimeLimit();
   }
 
@@ -90,10 +87,10 @@ TimeLimit install_time_limit(uint64_t ms)
   sact.sa_sigaction = posix_timeout_handler;
   sact.sa_flags = SA_SIGINFO;
   sigemptyset(&sact.sa_mask);
-  if (sigaction(SIGALRM, &sact, NULL))
+  if (sigaction(SIGALRM, &sact, nullptr))
   {
-    throw Exception(std::string("sigaction(SIGALRM) failure: ")
-                    + strerror(errno));
+    throw internal::Exception(std::string("sigaction(SIGALRM) failure: ")
+                              + strerror(errno));
   }
 
   // Check https://linux.die.net/man/2/setitimer
@@ -108,14 +105,15 @@ TimeLimit install_time_limit(uint64_t ms)
   // Argument 3: old timer configuration, we don't want to know
   if (setitimer(ITIMER_REAL, &timerspec, nullptr))
   {
-    throw Exception(std::string("timer_settime() failure: ") + strerror(errno));
+    throw internal::Exception(std::string("timer_settime() failure: ")
+                              + strerror(errno));
   }
 #else
   abort_timer_flag.store(false);
-  std::thread t([ms]()
-  {
+  std::thread t([ms]() {
     // when to stop
-    auto limit = std::chrono::system_clock::now() + std::chrono::milliseconds(ms);
+    auto limit =
+        std::chrono::system_clock::now() + std::chrono::milliseconds(ms);
     while (limit > std::chrono::system_clock::now())
     {
       // check if the main thread is done
@@ -131,5 +129,4 @@ TimeLimit install_time_limit(uint64_t ms)
   return TimeLimit();
 }
 
-}  // namespace main
-}  // namespace cvc5
+}  // namespace cvc5::main

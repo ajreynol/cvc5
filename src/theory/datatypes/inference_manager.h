@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Gereon Kremer
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -22,12 +19,14 @@
 #include "theory/datatypes/infer_proof_cons.h"
 #include "theory/inference_manager_buffered.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 
 class EagerProofGenerator;
 
 namespace theory {
 namespace datatypes {
+
+class TheoryDatatypes;
 
 /**
  * The datatypes inference manager, which uses the above class for
@@ -38,10 +37,7 @@ class InferenceManager : public InferenceManagerBuffered
   friend class DatatypesInference;
 
  public:
-  InferenceManager(Env& env,
-                   Theory& t,
-                   TheoryState& state,
-                   ProofNodeManager* pnm);
+  InferenceManager(Env& env, TheoryDatatypes& t, TheoryState& state);
   ~InferenceManager();
   /**
    * Add pending inference, which may be processed as either a fact or
@@ -69,7 +65,7 @@ class InferenceManager : public InferenceManagerBuffered
   /**
    * Send lemma immediately on the output channel
    */
-  void sendDtLemma(Node lem,
+  bool sendDtLemma(Node lem,
                    InferenceId id,
                    LemmaProperty p = LemmaProperty::NONE);
   /**
@@ -78,8 +74,6 @@ class InferenceManager : public InferenceManagerBuffered
   void sendDtConflict(const std::vector<Node>& conf, InferenceId id);
 
  private:
-  /** Are proofs enabled? */
-  bool isProofEnabled() const;
   /**
    * Process datatype inference as a lemma
    */
@@ -100,11 +94,14 @@ class InferenceManager : public InferenceManagerBuffered
    * status for proof generation. If this is not done, then it is possible
    * to have proofs with missing connections and hence free assumptions.
    */
-  Node prepareDtInference(Node conc, Node exp, InferenceId id, InferProofCons* ipc);
+  Node prepareDtInference(Node conc,
+                          Node exp,
+                          InferenceId id,
+                          InferProofCons* ipc);
+  /** The theory of datatypes, which owns this inference manager */
+  TheoryDatatypes& d_dt;
   /** The false node */
   Node d_false;
-  /** Pointer to the proof node manager */
-  ProofNodeManager* d_pnm;
   /** The inference to proof converter */
   std::unique_ptr<InferProofCons> d_ipc;
   /** An eager proof generator for lemmas */
@@ -113,6 +110,6 @@ class InferenceManager : public InferenceManagerBuffered
 
 }  // namespace datatypes
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif

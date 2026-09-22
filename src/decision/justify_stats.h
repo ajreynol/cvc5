@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -20,13 +17,13 @@
 
 #include "util/statistics_registry.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace decision {
 
 class JustifyStatistics
 {
  public:
-  JustifyStatistics();
+  JustifyStatistics(StatisticsRegistry& sr);
   ~JustifyStatistics();
   /** Number of times we considered an assertion not leading to a decision */
   IntStat d_numStatusNoDecision;
@@ -40,9 +37,11 @@ class JustifyStatistics
   IntStat d_maxAssertionsSize;
   /** Maximum skolem definition size we considered */
   IntStat d_maxSkolemDefsSize;
+  /** Get next decision time */
+  TimerStat d_time;
 };
 
-}
-}  // namespace cvc5
+}  // namespace decision
+}  // namespace cvc5::internal
 
 #endif /* CVC5__DECISION__JUSTIFY_STATS_H */

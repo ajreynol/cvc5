@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Aina Niemetz, Gereon Kremer
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -23,7 +20,7 @@
 #include "preprocessing/preprocessing_pass.h"
 #include "proof/trust_node.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 
 class LazyCDProof;
 class ProofNodeManager;
@@ -79,15 +76,8 @@ class NonClausalSimp : public PreprocessingPass
   Node processRewrittenLearnedLit(TrustNode trn);
   /** Is proof enabled? */
   bool isProofEnabled() const;
-  /** The proof node manager */
-  ProofNodeManager* d_pnm;
   /** the learned literal preprocess proof generator */
   std::unique_ptr<smt::PreprocessProofGenerator> d_llpg;
-  /**
-   * An lazy proof for learned literals that are reasserted into the assertions
-   * pipeline by this class.
-   */
-  std::unique_ptr<LazyCDProof> d_llra;
   /**
    * A context-dependent list of trust substitution maps, which are required
    * for storing proofs.
@@ -97,6 +87,6 @@ class NonClausalSimp : public PreprocessingPass
 
 }  // namespace passes
 }  // namespace preprocessing
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif

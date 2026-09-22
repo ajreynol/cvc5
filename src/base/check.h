@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Tim King, Mathias Preiner, Andres Noetzli
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -33,13 +30,14 @@
 #ifndef CVC5__CHECK_H
 #define CVC5__CHECK_H
 
+#include <cvc5/cvc5_export.h>
+
 #include <cstdarg>
 #include <ostream>
 
 #include "base/exception.h"
-#include "cvc5_export.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 
 // Implementation notes:
 // To understand FatalStream and OStreamVoider, it is useful to understand
@@ -90,7 +88,7 @@ class OstreamVoider
 //     }
 //   }
 #define CVC5_FATAL() \
-  FatalStream(__PRETTY_FUNCTION__, __FILE__, __LINE__).stream()
+  internal::FatalStream(__PRETTY_FUNCTION__, __FILE__, __LINE__).stream()
 
 /* GCC <= 9.2 ignores CVC5_NO_RETURN of ~FatalStream() if
  * used in template classes (e.g., CDHashMap::save()).  As a workaround we
@@ -103,7 +101,9 @@ class OstreamVoider
 // inserted into.
 #define CVC5_FATAL_IF(cond, function, file, line) \
   CVC5_PREDICT_FALSE(!(cond))                     \
-  ? (void)0 : OstreamVoider() & FatalStream(function, file, line).stream()
+  ? (void)0                                       \
+  : cvc5::internal::OstreamVoider()               \
+          & cvc5::internal::FatalStream(function, file, line).stream()
 
 // If `cond` is false, log an error message and abort()'s the process.
 // Otherwise, does nothing. This leaves a hanging std::ostream& that can be
@@ -123,6 +123,32 @@ class OstreamVoider
 #else
 #define Assert(cond) \
   CVC5_FATAL_IF(false, __PRETTY_FUNCTION__, __FILE__, __LINE__)
+#endif
+
+// CVC5_EQUAL(lhs, rhs) checks if two expressions are equal while forcing
+// a left-to-right evaluation order. This is essential when expressions
+// have side effects (e.g., generating new node IDs) and a predictable,
+// deterministic evaluation order is required.
+#define CVC5_EQUAL(lhs, rhs) \
+  ([&] {                     \
+    auto _l = (lhs);         \
+    auto _r = (rhs);         \
+    return _l == _r;         \
+  }())
+
+// AssertEqual(lhs, rhs) asserts that two expressions are equal, forcing
+// a left-to-right evaluation order.
+// Refer to CVC5_EQUAL for specific use cases involving side effects.
+#define AssertEqual(lhs, rhs) Assert(CVC5_EQUAL(lhs, rhs))
+
+// DebugUnhandled() triggers an assertion failure (when CVC5_ASSERTIONS is
+// enabled) to flag potential unhandled code paths. When running under
+// the Clang Static Analyzer, it becomes a no-op so the analyzer can continue
+// exploring the production control flow.
+#if defined(__clang_analyzer__)
+#define DebugUnhandled() Assert(true)
+#else
+#define DebugUnhandled() Assert(false)
 #endif
 
 class AssertArgumentException : public Exception
@@ -169,32 +195,33 @@ class AssertArgumentException : public Exception
 
 #define InternalError() CVC5_FATAL() << "Internal error detected "
 
-#define IllegalArgument(arg, msg...)      \
-  throw ::cvc5::IllegalArgumentException( \
-      "",                                 \
-      #arg,                               \
-      __PRETTY_FUNCTION__,                \
-      ::cvc5::IllegalArgumentException::formatVariadic(msg).c_str());
+#define IllegalArgument(arg, msg...)              \
+  throw cvc5::internal::IllegalArgumentException( \
+      "",                                         \
+      #arg,                                       \
+      __PRETTY_FUNCTION__,                        \
+      cvc5::internal::IllegalArgumentException::formatVariadic(msg).c_str());
 // This cannot use check argument directly as this forces
 // CheckArgument to use a va_list. This is unsupported in Swig.
-#define PrettyCheckArgument(cond, arg, msg...)                            \
-  do                                                                      \
-  {                                                                       \
-    if (__builtin_expect((!(cond)), false))                               \
-    {                                                                     \
-      throw ::cvc5::IllegalArgumentException(                             \
-          #cond,                                                          \
-          #arg,                                                           \
-          __PRETTY_FUNCTION__,                                            \
-          ::cvc5::IllegalArgumentException::formatVariadic(msg).c_str()); \
-    }                                                                     \
+#define PrettyCheckArgument(cond, arg, msg...)                          \
+  do                                                                    \
+  {                                                                     \
+    if (__builtin_expect((!(cond)), false))                             \
+    {                                                                   \
+      throw cvc5::internal::IllegalArgumentException(                   \
+          #cond,                                                        \
+          #arg,                                                         \
+          __PRETTY_FUNCTION__,                                          \
+          cvc5::internal::IllegalArgumentException::formatVariadic(msg) \
+              .c_str());                                                \
+    }                                                                   \
   } while (0)
 #define AlwaysAssertArgument(cond, arg, msg...)                         \
   do                                                                    \
   {                                                                     \
     if (__builtin_expect((!(cond)), false))                             \
     {                                                                   \
-      throw ::cvc5::AssertArgumentException(                            \
+      throw cvc5::internal::AssertArgumentException(                    \
           #cond, #arg, __PRETTY_FUNCTION__, __FILE__, __LINE__, ##msg); \
     }                                                                   \
   } while (0)
@@ -209,6 +236,6 @@ class AssertArgumentException : public Exception
     cond, arg, msg...) /*__builtin_expect( ( cond ), true )*/
 #endif                 /* CVC5_ASSERTIONS */
 
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__CHECK_H */

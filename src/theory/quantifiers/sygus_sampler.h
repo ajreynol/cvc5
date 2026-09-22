@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Mathias Preiner, Fabian Wolff
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -19,10 +16,12 @@
 #define CVC5__THEORY__QUANTIFIERS__SYGUS_SAMPLER_H
 
 #include <map>
+
+#include "smt/env_obj.h"
 #include "theory/quantifiers/lazy_trie.h"
 #include "theory/quantifiers/term_enumeration.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 
 class Env;
 
@@ -65,7 +64,7 @@ class TermDbSygus;
  * Notice that the number of sample points can be configured for the above
  * options using sygus-samples=N.
  */
-class SygusSampler : public LazyTrieEvaluator
+class SygusSampler : protected EnvObj, public LazyTrieEvaluator
 {
  public:
   SygusSampler(Env& env);
@@ -95,10 +94,7 @@ class SygusSampler : public LazyTrieEvaluator
    * terms of the analog of the type of f, that is, the builtin type that
    * f's type encodes in the deep embedding.
    */
-  virtual void initializeSygus(TermDbSygus* tds,
-                               Node f,
-                               unsigned nsamples,
-                               bool useSygusType);
+  virtual void initializeSygus(TypeNode ftn, unsigned nsamples);
   /** register term n with this sampler database
    *
    * forceKeep is whether we wish to force that n is chosen as a representative
@@ -113,10 +109,9 @@ class SygusSampler : public LazyTrieEvaluator
    *
    * Appends sample point #index to the vector pt, d_vars to vars.
    */
-  void getSamplePoint(unsigned index,
-                      std::vector<Node>& pt);
+  const std::vector<Node>& getSamplePoint(size_t index) const;
   /** Add pt to the set of sample points considered by this sampler */
-  void addSamplePoint(std::vector<Node>& pt);
+  void addSamplePoint(const std::vector<Node>& pt);
   /** evaluate n on sample point index */
   Node evaluate(Node n, unsigned index) override;
   /**
@@ -169,22 +164,8 @@ class SygusSampler : public LazyTrieEvaluator
    */
   bool containsFreeVariables(Node a, Node b, bool strict = false);
   //--------------------------end queries about terms
-  /** check equivalent
-   *
-   * Check whether bv and bvr are equivalent on all sample points, print
-   * an error if not. Used with --sygus-rr-verify.
-   *
-   * @param bv The original term
-   * @param bvr The rewritten form of bvr
-   * @param out The output stream to write if the rewrite was unsound.
-   */
-  void checkEquivalent(Node bv, Node bvr, std::ostream& out);
 
  protected:
-  /** The environment we are using to evaluate terms and samples */
-  Env& d_env;
-  /** sygus term database of d_qe */
-  TermDbSygus* d_tds;
   /** term enumerator object (used for random sampling) */
   TermEnumeration d_tenum;
   /** samples */
@@ -313,11 +294,11 @@ class SygusSampler : public LazyTrieEvaluator
                            double rinc,
                            unsigned depth = 0);
   /** map from sygus types to non-variable constructors */
-  std::map<TypeNode, std::vector<unsigned> > d_rvalue_cindices;
+  std::map<TypeNode, std::vector<uint32_t> > d_rvalue_cindices;
   /** map from sygus types to non-variable nullary constructors */
-  std::map<TypeNode, std::vector<unsigned> > d_rvalue_null_cindices;
+  std::map<TypeNode, std::vector<uint32_t> > d_rvalue_null_cindices;
   /** the random string alphabet */
-  std::vector<unsigned> d_rstring_alphabet;
+  std::vector<uint32_t> d_rstring_alphabet;
   /** map from variables to sygus types that include them */
   std::map<Node, std::vector<TypeNode> > d_var_sygus_types;
   /** map from constants to sygus types that include them */
@@ -328,6 +309,6 @@ class SygusSampler : public LazyTrieEvaluator
 
 }  // namespace quantifiers
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__THEORY__QUANTIFIERS__SYGUS_SAMPLER_H */
