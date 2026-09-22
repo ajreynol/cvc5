@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Tim King, Gereon Kremer, Morgan Deters
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -32,10 +29,9 @@
 #include <string>
 
 #include "base/exception.h"
-#include "cvc5_export.h"  // remove when Cvc language support is removed
 #include "util/integer.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 
 /**
  * A multi-precision rational constant.
@@ -52,7 +48,7 @@ namespace cvc5 {
  * in danger of invoking the char* constructor, from whence you will segfault.
  */
 
-class CVC5_EXPORT Rational
+class Rational
 {
  public:
   /**
@@ -74,46 +70,11 @@ class CVC5_EXPORT Rational
   /**
    * Constructs a Rational from a C string in a given base (defaults to 10).
    *
-   * Throws std::invalid_argument if the string is not a valid rational.
-   * For more information about what is a valid rational string,
-   * see CLN's documentation for read_rational.
+   * Throws std::invalid_argument if the string is not a valid rational, i.e.,
+   * if it does not match sign{digit}+/sign{digit}+.
    */
-  explicit Rational(const char* s, unsigned base = 10)
-  {
-    cln::cl_read_flags flags;
-
-    flags.syntax = cln::syntax_rational;
-    flags.lsyntax = cln::lsyntax_standard;
-    flags.rational_base = base;
-    try
-    {
-      d_value = read_rational(flags, s, NULL, NULL);
-    }
-    catch (...)
-    {
-      std::stringstream ss;
-      ss << "Rational() failed to parse value \"" << s << "\" in base=" << base;
-      throw std::invalid_argument(ss.str());
-    }
-  }
-  Rational(const std::string& s, unsigned base = 10)
-  {
-    cln::cl_read_flags flags;
-
-    flags.syntax = cln::syntax_rational;
-    flags.lsyntax = cln::lsyntax_standard;
-    flags.rational_base = base;
-    try
-    {
-      d_value = read_rational(flags, s.c_str(), NULL, NULL);
-    }
-    catch (...)
-    {
-      std::stringstream ss;
-      ss << "Rational() failed to parse value \"" << s << "\" in base=" << base;
-      throw std::invalid_argument(ss.str());
-    }
-  }
+  explicit Rational(const char* s, uint32_t base = 10);
+  Rational(const std::string& s, uint32_t base = 10);
 
   /**
    * Creates a Rational from another Rational, q, by performing a deep copy.
@@ -129,8 +90,8 @@ class CVC5_EXPORT Rational
   Rational(unsigned long int n) : d_value(n) {}
 
 #ifdef CVC5_NEED_INT64_T_OVERLOADS
-  Rational(int64_t n) : d_value(static_cast<long>(n)) {}
-  Rational(uint64_t n) : d_value(static_cast<unsigned long>(n)) {}
+  Rational(int64_t n) : d_value(n) {}
+  Rational(uint64_t n) : d_value(n) {}
 #endif /* CVC5_NEED_INT64_T_OVERLOADS */
 
   /**
@@ -154,14 +115,8 @@ class CVC5_EXPORT Rational
   }
 
 #ifdef CVC5_NEED_INT64_T_OVERLOADS
-  Rational(int64_t n, int64_t d) : d_value(static_cast<long>(n))
-  {
-    d_value /= cln::cl_I(d);
-  }
-  Rational(uint64_t n, uint64_t d) : d_value(static_cast<unsigned long>(n))
-  {
-    d_value /= cln::cl_I(d);
-  }
+  Rational(int64_t n, int64_t d) : d_value(n) { d_value /= cln::cl_I(d); }
+  Rational(uint64_t n, uint64_t d) : d_value(n) { d_value /= cln::cl_I(d); }
 #endif /* CVC5_NEED_INT64_T_OVERLOADS */
 
   Rational(const Integer& n, const Integer& d) : d_value(n.get_cl_I())
@@ -228,7 +183,7 @@ class CVC5_EXPORT Rational
     }
   }
 
-  bool isIntegral() const { return getDenominator() == 1; }
+  bool isIntegral() const { return cln::denominator(d_value) == 1; }
 
   Integer floor() const { return Integer(cln::floor1(d_value)); }
 
@@ -334,11 +289,14 @@ class CVC5_EXPORT Rational
 
 struct RationalHashFunction
 {
-  inline size_t operator()(const cvc5::Rational& r) const { return r.hash(); }
+  inline size_t operator()(const cvc5::internal::Rational& r) const
+  {
+    return r.hash();
+  }
 }; /* struct RationalHashFunction */
 
-std::ostream& operator<<(std::ostream& os, const Rational& n) CVC5_EXPORT;
+std::ostream& operator<<(std::ostream& os, const Rational& n);
 
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__RATIONAL_H */

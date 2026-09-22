@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Morgan Deters, Aina Niemetz
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -20,11 +17,16 @@
 
 #include <vector>
 
+#include "context/cdhashmap.h"
+#include "context/cdlist.h"
 #include "expr/node.h"
+#include "smt/assertions.h"
+#include "smt/env_obj.h"
+#include "smt/preprocessor.h"
 #include "theory/logic_info.h"
 #include "util/result.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 
 class SolverEngine;
 class Env;
@@ -42,10 +44,7 @@ class QuantifiersEngine;
 
 namespace smt {
 
-class Assertions;
-class SmtEngineState;
-class Preprocessor;
-struct SmtEngineStatistics;
+struct SolverEngineStatistics;
 
 /**
  * A solver for SMT queries.
@@ -61,20 +60,17 @@ struct SmtEngineStatistics;
  * models) can be queries using other classes that examine the state of the
  * TheoryEngine directly, which can be accessed via getTheoryEngine.
  */
-class SmtSolver
+class SmtSolver : protected EnvObj
 {
+  using NodeList = context::CDList<Node>;
+
  public:
-  SmtSolver(Env& env,
-            SmtEngineState& state,
-            Preprocessor& pp,
-            SmtEngineStatistics& stats);
+  SmtSolver(Env& env, SolverEngineStatistics& stats);
   ~SmtSolver();
   /**
-   * Create theory engine, prop engine based on the logic info.
-   *
-   * @param logicInfo the logic information
+   * Create theory engine, prop engine based on the environment.
    */
-  void finishInit(const LogicInfo& logicInfo);
+  void finishInit();
   /** Reset all assertions, global declarations, etc.  */
   void resetAssertions();
   /**
@@ -84,36 +80,24 @@ class SmtSolver
    */
   void interrupt();
   /**
-   * This is called by the destructor of SolverEngine, just before destroying
-   * the PropEngine, TheoryEngine, and DecisionEngine (in that order).  It is
-   * important because there are destruction ordering issues between PropEngine
-   * and Theory.
+   * Get the list of preprocessed assertions. Only valid if
+   * trackPreprocessedAssertions is true.
    */
-  void shutdown();
+  const context::CDList<Node>& getPreprocessedAssertions() const;
   /**
-   * Check satisfiability (used to check satisfiability and entailment)
-   * in SolverEngine. This is done via adding assumptions (when necessary) to
-   * assertions as, preprocessing and pushing assertions into the prop engine
-   * of this class, and checking for satisfiability via the prop engine.
-   *
-   * @param as The object managing the assertions in SolverEngine. This class
-   * maintains a current set of (unprocessed) assertions which are pushed
-   * into the internal members of this class (TheoryEngine and PropEngine)
-   * during this call.
-   * @param assumptions The assumptions for this check-sat call, which are
-   * temporary assertions.
-   * @param isEntailmentCheck Whether this is an entailment check (assumptions
-   * are negated in this case).
+   * Get the skolem map corresponding to the preprocessed assertions. Only valid
+   * if trackPreprocessedAssertions is true.
    */
-  Result checkSatisfiability(Assertions& as,
-                             const std::vector<Node>& assumptions,
-                             bool isEntailmentCheck);
+  const context::CDHashMap<size_t, Node>& getPreprocessedSkolemMap() const;
+  /** Performs a push on the underlying prop engine. */
+  void pushPropContext();
+  /** Performs a pop on the underlying prop engine. */
+  void popPropContext();
   /**
-   * Process the assertions that have been asserted in as. This moves the set of
-   * assertions that have been buffered into as, preprocesses them, pushes them
-   * into the SMT solver, and clears the buffer.
+   * Reset the prop engine trail and call the postsolve method of the
+   * underlying TheoryEngine.
    */
-  void processAssertions(Assertions& as);
+  void resetTrail();
   //------------------------------------------ access methods
   /** Get a pointer to the TheoryEngine owned by this solver. */
   TheoryEngine* getTheoryEngine();
@@ -123,24 +107,50 @@ class SmtSolver
   theory::QuantifiersEngine* getQuantifiersEngine();
   /** Get a pointer to the preprocessor */
   Preprocessor* getPreprocessor();
+  /** Get the assertions maintained by this SMT solver */
+  Assertions& getAssertions();
   //------------------------------------------ end access methods
+  /**
+   * Preprocess the assertions. This calls the preprocessor on the assertions
+   * d_asserts and records d_ppAssertions / d_ppSkolemMap if necessary.
+   */
+  void preprocess(preprocessing::AssertionPipeline& ap);
+  /**
+   * Push the assertions to the prop engine. Assumes that the assertions
+   * (d_asserts) have been preprocessed. This pushes the assertions
+   * into the prop engine of this solver and subsequently clears d_asserts.
+   */
+  void assertToInternal(preprocessing::AssertionPipeline& ap);
+  /**
+   * Check satisfiability based on the current state of the prop engine.
+   * This assumes we have pushed the necessary assertions to it. It post
+   * processes the results based on the options.
+   */
+  Result checkSatInternal();
 
  private:
-  /** Reference to the environment */
-  Env& d_env;
-  /** Reference to the state of the SolverEngine */
-  SmtEngineState& d_state;
-  /** Reference to the preprocessor of SolverEngine */
-  Preprocessor& d_pp;
+  /** Whether we track information necessary for deep restarts */
+  bool trackPreprocessedAssertions() const;
+  /** Finish initialization of preprocessor */
+  void finishInitPreprocessor();
+  /** The preprocessor of this SMT solver */
+  Preprocessor d_pp;
+  /** Assertions manager */
+  Assertions d_asserts;
   /** Reference to the statistics of SolverEngine */
-  SmtEngineStatistics& d_stats;
+  SolverEngineStatistics& d_stats;
   /** The theory engine */
   std::unique_ptr<TheoryEngine> d_theoryEngine;
   /** The propositional engine */
   std::unique_ptr<prop::PropEngine> d_propEngine;
+  //------------------------------------------ Bookkeeping for deep restarts
+  /** The exact list of preprocessed assertions we sent to the PropEngine */
+  NodeList d_ppAssertions;
+  /** The skolem map associated with d_ppAssertions */
+  context::CDHashMap<size_t, Node> d_ppSkolemMap;
 };
 
 }  // namespace smt
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__SMT__SMT_SOLVER_H */

@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Mathias Preiner, Paul Meng
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -23,7 +20,7 @@
 #include "smt/env_obj.h"
 #include "theory/quantifiers/quant_util.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace quantifiers {
 
@@ -34,24 +31,31 @@ namespace quantifiers {
  * type T1 and 3 free variables of type T2, then it is stored at
  * d_children[T1][2].d_children[T2][3].
  */
-class AlphaEquivalenceTypeNode {
-public:
- /** children of this node */
- std::map<std::pair<TypeNode, size_t>, AlphaEquivalenceTypeNode> d_children;
- /**
-  * map from canonized quantifier bodies to a quantified formula whose
-  * canonized body is that term.
-  */
- std::map<Node, Node> d_quant;
- /** register node
-  *
-  * This registers term q to this trie. The term t is the canonical form of
-  * q, typs/typCount represent a multi-set of types of free variables in t.
-  */
- Node registerNode(Node q,
-                   Node t,
-                   std::vector<TypeNode>& typs,
-                   std::map<TypeNode, size_t>& typCount);
+class AlphaEquivalenceTypeNode
+{
+  using NodeMap = context::CDHashMap<Node, Node>;
+
+ public:
+  AlphaEquivalenceTypeNode(context::Context* c);
+  /** children of this node */
+  std::map<std::pair<TypeNode, size_t>,
+           std::unique_ptr<AlphaEquivalenceTypeNode>>
+      d_children;
+  /**
+   * map from canonized quantifier bodies to a quantified formula whose
+   * canonized body is that term.
+   */
+  NodeMap d_quant;
+  /** register node
+   *
+   * This registers term q to this trie. The term t is the canonical form of
+   * q, typs/typCount represent a multi-set of types of free variables in t.
+   */
+  Node registerNode(context::Context* c,
+                    Node q,
+                    Node t,
+                    std::vector<TypeNode>& typs,
+                    std::map<TypeNode, size_t>& typCount);
 };
 
 /**
@@ -60,10 +64,9 @@ public:
 class AlphaEquivalenceDb
 {
  public:
-  AlphaEquivalenceDb(expr::TermCanonize* tc, bool sortCommChildren)
-      : d_tc(tc), d_sortCommutativeOpChildren(sortCommChildren)
-  {
-  }
+  AlphaEquivalenceDb(context::Context* c,
+                     expr::TermCanonize* tc,
+                     bool sortCommChildren);
   /** adds quantified formula q to this database
    *
    * This function returns a quantified formula q' that is alpha-equivalent to
@@ -87,6 +90,8 @@ class AlphaEquivalenceDb
    * had been added to this class, or q otherwise.
    */
   Node addTermToTypeTrie(Node t, Node q);
+  /** The context we depend on */
+  context::Context* d_context;
   /** a trie per # of variables per type */
   AlphaEquivalenceTypeNode d_ae_typ_trie;
   /** pointer to the term canonize utility */
@@ -98,7 +103,7 @@ class AlphaEquivalenceDb
    * in addTermWithSubstitution. The range in d_bvmap[q] contains the mapping
    * from canonical free variables to variables in q.
    */
-  std::map<Node, std::map<Node, TNode> > d_bvmap;
+  std::map<Node, std::map<Node, TNode>> d_bvmap;
 };
 
 /**
@@ -109,31 +114,46 @@ class AlphaEquivalence : protected EnvObj
 {
  public:
   AlphaEquivalence(Env& env);
-  ~AlphaEquivalence(){}
+  ~AlphaEquivalence() {}
   /** reduce quantifier
    *
    * If non-null, its return value is a trust node containing the lemma
-   * justifying why q is reducible.  This lemma is of the form ( q = q' ) where
+   * justifying why q is reducible. This lemma is of the form ( q' = q ) where
    * q' is a quantified formula that was previously registered to this class via
-   * a call to reduceQuantifier, and q and q' are alpha-equivalent.
+   * a call to reduceQuantifier. Their equivalence may involve renaming bound
+   * variables, reordering the universally quantified variable list, and
+   * reordering arguments of commutative operators in their bodies. Annotations
+   * such as patterns and names are ignored when comparing the formulas.
+   *
+   * When proofs are enabled, we attempt to justify the equality by removing
+   * annotations, renaming variables, reordering the variable list, and then
+   * recursively applying normalization and congruence to the bodies, with
+   * extended rewriting as a fallback. If no matching formula was previously
+   * registered, this method registers q and returns a null trust node.
    */
   TrustNode reduceQuantifier(Node q);
 
  private:
+  /**
+   * Add the alpha equivalence step f = f { vars -> subs } to cdp, where we
+   * ensure that f does not contain vars. Return the conclusion of this step.
+   */
+  Node addAlphaEquivStep(CDProof& cdp,
+                         const Node& f,
+                         const std::vector<Node>& vars,
+                         const std::vector<Node>& subs);
   /** a term canonizer */
   expr::TermCanonize d_termCanon;
   /** the database of quantified formulas registered to this class */
   AlphaEquivalenceDb d_aedb;
-  /** Pointer to the proof node manager */
-  ProofNodeManager* d_pnm;
   /** An eager proof generator storing alpha equivalence proofs.*/
   std::unique_ptr<EagerProofGenerator> d_pfAlpha;
   /** Are proofs enabled for this object? */
   bool isProofEnabled() const;
 };
 
-}
-}
-}  // namespace cvc5
+}  // namespace quantifiers
+}  // namespace theory
+}  // namespace cvc5::internal
 
 #endif

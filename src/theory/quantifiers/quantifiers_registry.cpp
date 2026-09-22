@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Morgan Deters
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -19,15 +16,15 @@
 #include "theory/quantifiers/quant_module.h"
 #include "theory/quantifiers/term_util.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace quantifiers {
 
 QuantifiersRegistry::QuantifiersRegistry(Env& env)
     : QuantifiersUtil(env),
-      d_quantAttr(),
-      d_quantBoundInf(options::fmfTypeCompletionThresh(),
-                      options::finiteModelFind()),
+      d_quantAttr(userContext()),
+      d_quantBoundInf(options().quantifiers.fmfTypeCompletionThresh,
+                      options().quantifiers.finiteModelFind),
       d_quantPreproc(env)
 {
 }
@@ -38,8 +35,9 @@ void QuantifiersRegistry::registerQuantifier(Node q)
   {
     return;
   }
-  NodeManager* nm = NodeManager::currentNM();
-  Debug("quantifiers-engine")
+  Assert(q.getKind() == Kind::FORALL);
+  NodeManager* nm = nodeManager();
+  Trace("quantifiers-engine")
       << "Instantiation constants for " << q << " : " << std::endl;
   for (size_t i = 0, nvars = q[0].getNumChildren(); i < nvars; i++)
   {
@@ -48,7 +46,7 @@ void QuantifiersRegistry::registerQuantifier(Node q)
     Node ic = nm->mkInstConstant(q[0][i].getType());
     d_inst_constants_map[ic] = q;
     d_inst_constants[q].push_back(ic);
-    Debug("quantifiers-engine") << "  " << ic << std::endl;
+    Trace("quantifiers-engine") << "  " << ic << std::endl;
     // set the var number attribute
     InstVarNumAttribute ivna;
     ic.setAttribute(ivna, i);
@@ -59,7 +57,7 @@ void QuantifiersRegistry::registerQuantifier(Node q)
   d_quantAttr.computeAttributes(q);
 }
 
-bool QuantifiersRegistry::reset(Theory::Effort e) { return true; }
+bool QuantifiersRegistry::reset(CVC5_UNUSED Theory::Effort e) { return true; }
 
 std::string QuantifiersRegistry::identify() const
 {
@@ -144,42 +142,42 @@ Node QuantifiersRegistry::substituteBoundVariablesToInstConstants(Node n,
                                                                   Node q)
 {
   registerQuantifier(q);
-  return n.substitute(d_vars[q].begin(),
-                      d_vars[q].end(),
-                      d_inst_constants[q].begin(),
-                      d_inst_constants[q].end());
+  std::vector<Node>& vars = d_vars.at(q);
+  std::vector<Node>& consts = d_inst_constants.at(q);
+  Assert(vars.size() == q[0].getNumChildren());
+  Assert(vars.size() == consts.size());
+  return n.substitute(vars.begin(), vars.end(), consts.begin(), consts.end());
 }
 
 Node QuantifiersRegistry::substituteInstConstantsToBoundVariables(Node n,
                                                                   Node q)
 {
   registerQuantifier(q);
-  return n.substitute(d_inst_constants[q].begin(),
-                      d_inst_constants[q].end(),
-                      d_vars[q].begin(),
-                      d_vars[q].end());
+  std::vector<Node>& vars = d_vars.at(q);
+  std::vector<Node>& consts = d_inst_constants.at(q);
+  Assert(vars.size() == q[0].getNumChildren());
+  Assert(vars.size() == consts.size());
+  return n.substitute(consts.begin(), consts.end(), vars.begin(), vars.end());
 }
 
-Node QuantifiersRegistry::substituteBoundVariables(Node n,
-                                                   Node q,
-                                                   std::vector<Node>& terms)
+Node QuantifiersRegistry::substituteBoundVariables(
+    Node n, Node q, const std::vector<Node>& terms)
 {
   registerQuantifier(q);
-  Assert(d_vars[q].size() == terms.size());
-  return n.substitute(
-      d_vars[q].begin(), d_vars[q].end(), terms.begin(), terms.end());
+  std::vector<Node>& vars = d_vars.at(q);
+  Assert(vars.size() == q[0].getNumChildren());
+  Assert(vars.size() == terms.size());
+  return n.substitute(vars.begin(), vars.end(), terms.begin(), terms.end());
 }
 
-Node QuantifiersRegistry::substituteInstConstants(Node n,
-                                                  Node q,
-                                                  std::vector<Node>& terms)
+Node QuantifiersRegistry::substituteInstConstants(
+    Node n, Node q, const std::vector<Node>& terms)
 {
   registerQuantifier(q);
-  Assert(d_inst_constants[q].size() == terms.size());
-  return n.substitute(d_inst_constants[q].begin(),
-                      d_inst_constants[q].end(),
-                      terms.begin(),
-                      terms.end());
+  std::vector<Node>& consts = d_inst_constants.at(q);
+  Assert(consts.size() == q[0].getNumChildren());
+  Assert(consts.size() == terms.size());
+  return n.substitute(consts.begin(), consts.end(), terms.begin(), terms.end());
 }
 
 QuantAttributes& QuantifiersRegistry::getQuantAttributes()
@@ -215,4 +213,4 @@ bool QuantifiersRegistry::getNameForQuant(Node q, Node& name, bool req) const
 
 }  // namespace quantifiers
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal

@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andres Noetzli, Andrew Reynolds, Morgan Deters
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -20,13 +17,33 @@
 #ifndef CVC5__THEORY__THEORY_REWRITER_H
 #define CVC5__THEORY__THEORY_REWRITER_H
 
+#include <cvc5/cvc5_proof_rule.h>
+
 #include "expr/node.h"
 #include "proof/trust_node.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 
 class Rewriter;
+
+/**
+ * A context for when to try theory rewrites.
+ */
+enum class TheoryRewriteCtx
+{
+  // Attempt to use the theory rewrite prior to DSL rewrite reconstruction.
+  PRE_DSL,
+  // Attempt to use the theory rewrite during subcalls in DSL rewrite
+  // reconstruction.
+  DSL_SUBCALL,
+  // Attempt to use the theory rewrite only after DSL rewrite reconstruction
+  // fails.
+  POST_DSL,
+};
+
+/** Print a TheoryRewriteCtx to an output stream */
+std::ostream& operator<<(std::ostream& os, TheoryRewriteCtx trc);
 
 /**
  * Theory rewriters signal whether more rewriting is needed (or not)
@@ -34,13 +51,20 @@ class Rewriter;
  */
 enum RewriteStatus
 {
-  /** The node is fully rewritten (no more rewrites apply) */
+  /**
+   * The node is fully rewritten (no more rewrites apply for the original
+   * kind). If the rewrite changes the kind, the rewriter will apply another
+   * round of rewrites.
+   */
   REWRITE_DONE,
   /** The node may be rewritten further */
   REWRITE_AGAIN,
   /** Subnodes of the node may be rewritten further */
   REWRITE_AGAIN_FULL
 }; /* enum RewriteStatus */
+
+/** Print a RewriteStatus to an output stream */
+std::ostream& operator<<(std::ostream& os, RewriteStatus rs);
 
 /**
  * Instances of this class serve as response codes from
@@ -80,6 +104,7 @@ struct TrustRewriteResponse
 class TheoryRewriter
 {
  public:
+  TheoryRewriter(NodeManager* nm) : d_nm(nm) {}
   virtual ~TheoryRewriter() = default;
 
   /**
@@ -87,24 +112,24 @@ class TheoryRewriter
    *
    * @param rewriter The rewriter to register the rewrites with.
    */
-  virtual void registerRewrites(Rewriter* rewriter) {}
+  virtual void registerRewrites(CVC5_UNUSED Rewriter* rewriter) {}
 
   /**
-   * Performs a pre-rewrite step.
+   * Performs a post-rewrite step.
    *
    * @param node The node to rewrite
    */
   virtual RewriteResponse postRewrite(TNode node) = 0;
 
   /**
-   * Performs a pre-rewrite step, with proofs.
+   * Performs a post-rewrite step, with proofs.
    *
    * @param node The node to rewrite
    */
   virtual TrustRewriteResponse postRewriteWithProof(TNode node);
 
   /**
-   * Performs a post-rewrite step.
+   * Performs a pre-rewrite step.
    *
    * @param node The node to rewrite
    */
@@ -141,11 +166,8 @@ class TheoryRewriter
 
   /**
    * Expand definitions in the term node. This returns a term that is
-   * equivalent to node. It wraps this term in a TrustNode of kind
-   * TrustNodeKind::REWRITE. If node is unchanged by this method, the
-   * null TrustNode may be returned. This is an optimization to avoid
-   * constructing the trivial equality (= node node) internally within
-   * TrustNode.
+   * equivalent to node. If node is unchanged by this method, the
+   * null Node may be returned.
    *
    * The purpose of this method is typically to eliminate the operators in node
    * that are syntax sugar that cannot otherwise be eliminated during rewriting.
@@ -160,11 +182,75 @@ class TheoryRewriter
    * Where possible rewrite rules should be used, definitions should only be
    * used when rewrites are not possible, for example in handling
    * under-specified operations using partially defined functions.
+   *
+   * @param node The node to expand.
+   * @return the expanded form of node.
    */
-  virtual TrustNode expandDefinition(Node node);
+  virtual Node expandDefinition(Node node);
+
+  /**
+   * Rewrite n based on the proof rewrite rule id.
+   * @param id The rewrite rule.
+   * @param n The node to rewrite.
+   * @return The rewritten version of n based on id, or Node::null() if n
+   * cannot be rewritten.
+   */
+  virtual Node rewriteViaRule(ProofRewriteRule id, const Node& n);
+  /**
+   * Find the rewrite that proves a == b, if one exists.
+   * If none can be found, return ProofRewriteRule::NONE.
+   * @param a The left hand side of the rewrite.
+   * @param b The right hand side of the rewrite.
+   * @param ctx The context under which we are finding the rewrites.
+   * @return An identifier, if one exists, that rewrites a to b. In particular,
+   * the returned rule is either ProofRewriteRule::NONE or is a rule id such
+   * that rewriteViaRule(id, a) returns b.
+   */
+  ProofRewriteRule findRule(const Node& a, const Node& b, TheoryRewriteCtx ctx);
+
+ protected:
+  /**
+   * Register proof rewrite rule. This method is called to notify the RARE
+   * DSL rewrite rule reconstruction algorithm that the rewrite rule id
+   * should be tried during proof reconstruction. This method should be
+   * called in the constructor of the theory rewriter.
+   *
+   * @param id The rewrite rule this theory rewriter implements via
+   * rewriteViaRule.
+   * @param ctx The context for the rewrite, which indicates when the RARE
+   * proof reconstruction should attempt this rule.
+   */
+  void registerProofRewriteRule(ProofRewriteRule id, TheoryRewriteCtx ctx);
+  /** The underlying node manager */
+  NodeManager* d_nm;
+  /**
+   * The proof rewrite rules implemented by this rewriter, for each context.
+   * This caches the calls to registerProofRewriteRule.
+   */
+  std::map<TheoryRewriteCtx, std::vector<ProofRewriteRule>> d_pfTheoryRewrites;
+  /** Get a pointer to the node manager */
+  NodeManager* nodeManager() const;
+};
+
+/**
+ * The null theory rewriter, which does not perform any rewrites. This is used
+ * if a theory does not have an (active) rewriter.
+ */
+class NoOpTheoryRewriter : public TheoryRewriter
+{
+ public:
+  NoOpTheoryRewriter(NodeManager* nm, TheoryId tid);
+  /** Performs a post-rewrite step. */
+  RewriteResponse postRewrite(TNode node) override;
+  /** Performs a pre-rewrite step. */
+  RewriteResponse preRewrite(TNode node) override;
+
+ private:
+  /** The theory id */
+  TheoryId d_tid;
 };
 
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__THEORY__THEORY_REWRITER_H */

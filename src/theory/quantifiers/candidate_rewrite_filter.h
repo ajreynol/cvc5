@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -21,12 +18,14 @@
 #define CVC5__THEORY__QUANTIFIERS__CANDIDATE_REWRITE_FILTER_H
 
 #include <map>
+
 #include "expr/match_trie.h"
+#include "smt/env_obj.h"
 #include "theory/quantifiers/dynamic_rewrite.h"
 #include "theory/quantifiers/sygus/term_database_sygus.h"
 #include "theory/quantifiers/sygus_sampler.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace quantifiers {
 
@@ -46,10 +45,10 @@ namespace quantifiers {
  * pairs". A relevant pair ( t, s ) typically corresponds to a (candidate)
  * rewrite t = s.
  */
-class CandidateRewriteFilter
+class CandidateRewriteFilter : protected EnvObj
 {
  public:
-  CandidateRewriteFilter();
+  CandidateRewriteFilter(Env& env);
 
   /** initialize
    *
@@ -172,6 +171,6 @@ class CandidateRewriteFilter
 
 }  // namespace quantifiers
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__THEORY__QUANTIFIERS__CANDIDATE_REWRITE_FILTER_H */

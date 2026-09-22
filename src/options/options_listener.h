@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -20,7 +17,7 @@
 
 #include <string>
 
-namespace cvc5 {
+namespace cvc5::internal {
 
 class OptionsListener
 {
@@ -33,6 +30,6 @@ class OptionsListener
   virtual void notifySetOption(const std::string& key) = 0;
 };
 
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__OPTIONS__OPTION_LISTENER_H */

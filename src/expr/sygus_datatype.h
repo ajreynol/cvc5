@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Haniel Barbosa
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -25,13 +22,7 @@
 #include "expr/node.h"
 #include "expr/type_node.h"
 
-namespace cvc5 {
-
-/** Attribute true for variables that represent any constant */
-struct SygusAnyConstAttributeId
-{
-};
-typedef expr::Attribute<SygusAnyConstAttributeId, bool> SygusAnyConstAttribute;
+namespace cvc5::internal {
 
 /**
  * Information necessary to specify a sygus constructor. Further detail on these
@@ -82,7 +73,7 @@ class SygusDatatype
    *
    * It should be the case that argTypes are sygus datatype types (possibly
    * unresolved) that encode the arguments of the builtin operator. That is,
-   * if op is the builtin PLUS operator, then argTypes could contain 2+
+   * if op is the builtin ADD operator, then argTypes could contain 2+
    * sygus datatype types that encode integer.
    */
   void addConstructor(Node op,
@@ -94,7 +85,8 @@ class SygusDatatype
    * the arguments argTypes should correspond to sygus datatypes that encode
    * the types of the arguments of the kind.
    */
-  void addConstructor(Kind k,
+  void addConstructor(NodeManager* nm,
+                      Kind k,
                       const std::vector<TypeNode>& argTypes,
                       int weight = -1);
   /**
@@ -135,6 +127,6 @@ class SygusDatatype
   DType d_dt;
 };
 
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif

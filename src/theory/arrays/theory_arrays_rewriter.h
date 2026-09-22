@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Clark Barrett, Morgan Deters, Andres Noetzli
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -26,15 +23,13 @@
 
 #include "theory/rewriter.h"
 #include "theory/theory_rewriter.h"
-#include "theory/type_enumerator.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 
-class EagerProofGenerator;
+class Env;
+class TConvProofGenerator;
 
 namespace theory {
-
-class Rewriter;
 
 namespace arrays {
 
@@ -43,48 +38,73 @@ uint64_t getMostFrequentValueCount(TNode store);
 void setMostFrequentValue(TNode store, TNode value);
 void setMostFrequentValueCount(TNode store, uint64_t count);
 
-static inline Node mkEqNode(Node a, Node b) {
-  return a.eqNode(b);
-}
-
 class TheoryArraysRewriter : public TheoryRewriter
 {
  public:
-  TheoryArraysRewriter(Rewriter* rewriter, ProofNodeManager* pnm);
+  TheoryArraysRewriter(NodeManager* nm, Rewriter* r);
 
   /** Normalize a constant whose index type has cardinality indexCard */
-  static Node normalizeConstant(TNode node, Cardinality indexCard);
+  static Node normalizeConstant(NodeManager* nm,
+                                TNode node,
+                                Cardinality indexCard);
 
   /* Expands the eqrange predicate (eqrange a b i j) to the quantified formula
    * (forall ((x T))
    *  (=> (and (<= i x) (<= x j)) (= (select a x) (select b x)))).
    */
-  static Node expandEqRange(TNode node);
+  static Node expandEqRange(NodeManager* nm, TNode node);
 
   RewriteResponse postRewrite(TNode node) override;
 
   RewriteResponse preRewrite(TNode node) override;
 
-  TrustNode expandDefinition(Node node) override;
+  /**
+   * Rewrite n based on the proof rewrite rule id.
+   * @param id The rewrite rule.
+   * @param n The node to rewrite.
+   * @return The rewritten version of n based on id, or Node::null() if n
+   * cannot be rewritten.
+   */
+  Node rewriteViaRule(ProofRewriteRule id, const Node& n) override;
 
-  static inline void init() {}
-  static inline void shutdown() {}
+  Node expandDefinition(Node node) override;
 
- private:
   /**
    * Puts array constant node into normal form. This is so that array constants
    * that are distinct nodes are semantically disequal.
+   *
+   * This method should only be called on STORE chains whose AST is built
+   * from constant terms only.
    */
-  static Node normalizeConstant(TNode node);
+  static Node normalizeConstant(NodeManager* nm, TNode node);
 
-  /** The associated rewriter. */
+  /**
+   * @param n The term to rewrite, expected to be a store or select whose
+   * index can be "pushed" beneath indices on the first argument.
+   * @param pg If provided, stores a set of small step rewrites that suffice
+   * to show that n rewrites to the returned term.
+   * @return the result of rewriting n.
+   */
+  Node computeNormalizeOp(const Node& n,
+                          TConvProofGenerator* pg = nullptr) const;
+
+ private:
+  /**
+   * Pointer to the rewriter. NOTE this is a cyclic dependency, and should
+   * be removed.
+   */
   Rewriter* d_rewriter;
-
-  std::unique_ptr<EagerProofGenerator> d_epg;
+  /**
+   * Make rewritten equality.
+   * @param a The first term.
+   * @param b The second term.
+   * @return the rewritten form of the equality between a and b.
+   */
+  Node mkEqNode(const Node& a, const Node& b) const;
 }; /* class TheoryArraysRewriter */
 
 }  // namespace arrays
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__THEORY__ARRAYS__THEORY_ARRAYS_REWRITER_H */

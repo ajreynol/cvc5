@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Gereon Kremer, Makai Mann
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -23,11 +20,10 @@
 #include "theory/inference_id.h"
 #include "theory/inference_manager_buffered.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace arith {
 
-class ArithState;
 class TheoryArith;
 
 /**
@@ -46,10 +42,7 @@ class InferenceManager : public InferenceManagerBuffered
   using NodeSet = context::CDHashSet<Node>;
 
  public:
-  InferenceManager(Env& env,
-                   TheoryArith& ta,
-                   ArithState& astate,
-                   ProofNodeManager* pnm);
+  InferenceManager(Env& env, TheoryArith& ta, TheoryState& s);
 
   /**
    * Add a lemma as pending lemma to this inference manager.
@@ -131,6 +124,6 @@ class InferenceManager : public InferenceManagerBuffered
 
 }  // namespace arith
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif

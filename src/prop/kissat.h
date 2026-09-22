@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Aina Niemetz
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -23,12 +20,13 @@
 #ifdef CVC5_USE_KISSAT
 
 #include "prop/sat_solver.h"
+#include "util/statistics_registry.h"
 
 extern "C" {
 #include <kissat/kissat.h>
 }
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace prop {
 
 class KissatSolver : public SatSolver
@@ -38,14 +36,9 @@ class KissatSolver : public SatSolver
  public:
   ~KissatSolver() override;
 
-  ClauseId addClause(SatClause& clause, bool removable) override;
+  ClauseId addClause(const SatClause& clause, bool removable) override;
 
-  ClauseId addXorClause(SatClause& clause, bool rhs, bool removable) override;
-
-  SatVariable newVar(bool isTheoryAtom = false,
-                     bool preRegister = false,
-                     bool canErase = true) override;
-
+  SatVariable newVar(bool isTheoryAtom, bool canErase) override;
   SatVariable trueVar() override;
   SatVariable falseVar() override;
 
@@ -53,13 +46,13 @@ class KissatSolver : public SatSolver
   SatValue solve(long unsigned int&) override;
   SatValue solve(const std::vector<SatLiteral>& assumptions) override;
 
+  void getUnsatAssumptions(std::vector<SatLiteral>& unsat_assumptions) override;
+
   void interrupt() override;
 
   SatValue value(SatLiteral l) override;
 
   SatValue modelValue(SatLiteral l) override;
-
-  unsigned getAssertionLevel() const override;
 
   bool ok() const override;
 
@@ -77,12 +70,14 @@ class KissatSolver : public SatSolver
    * Private to disallow creation outside of SatSolverFactory.
    * Function init() must be called after creation.
    */
-  KissatSolver(StatisticsRegistry& registry, const std::string& name = "");
+  explicit KissatSolver(StatisticsRegistry& registry,
+                        const std::string& name = "");
+
   /**
    * Initialize SAT solver instance.
    * Note: Split out to not call virtual functions in constructor.
    */
-  void init();
+  void initialize() override;
 
   kissat* d_solver;
 
@@ -95,7 +90,7 @@ class KissatSolver : public SatSolver
 };
 
 }  // namespace prop
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif  // CVC5_USE_KISSAT
 #endif  // CVC5__PROP__KISSAT_H

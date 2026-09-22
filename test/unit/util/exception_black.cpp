@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Aina Niemetz, Morgan Deters
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -19,7 +16,7 @@
 #include "base/exception.h"
 #include "test.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace test {
 
 class TestUtilBlackException : public TestInternal
@@ -51,4 +48,4 @@ TEST_F(TestUtilBlackException, exceptions)
   ASSERT_EQ(s3.str(), std::string("three of 'em!"));
 }
 }  // namespace test
-}  // namespace cvc5
+}  // namespace cvc5::internal

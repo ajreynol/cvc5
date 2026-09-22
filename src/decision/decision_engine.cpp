@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Kshitij Bansal, Aina Niemetz, Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -14,24 +11,16 @@
  */
 #include "decision/decision_engine.h"
 
-#include "decision/decision_engine_old.h"
-#include "options/decision_options.h"
-#include "prop/sat_solver.h"
-#include "smt/env.h"
 #include "util/resource_manager.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace decision {
 
-DecisionEngine::DecisionEngine(Env& env)
-    : EnvObj(env), d_cnfStream(nullptr), d_satSolver(nullptr)
+DecisionEngine::DecisionEngine(Env& env,
+                               prop::CDCLTSatSolver* ss,
+                               prop::CnfStream* cs)
+    : EnvObj(env), d_satSolver(ss), d_cnfStream(cs)
 {
-}
-
-void DecisionEngine::finishInit(CDCLTSatSolverInterface* ss, CnfStream* cs)
-{
-  d_satSolver = ss;
-  d_cnfStream = cs;
 }
 
 prop::SatLiteral DecisionEngine::getNext(bool& stopSearch)
@@ -40,14 +29,20 @@ prop::SatLiteral DecisionEngine::getNext(bool& stopSearch)
   return getNextInternal(stopSearch);
 }
 
-DecisionEngineEmpty::DecisionEngineEmpty(Env& env) : DecisionEngine(env) {}
-bool DecisionEngineEmpty::isDone() { return false; }
-void DecisionEngineEmpty::addAssertion(TNode assertion) {}
-void DecisionEngineEmpty::addSkolemDefinition(TNode lem, TNode skolem) {}
-prop::SatLiteral DecisionEngineEmpty::getNextInternal(bool& stopSearch)
+DecisionEngineEmpty::DecisionEngineEmpty(Env& env)
+    : DecisionEngine(env, nullptr, nullptr)
 {
-  return undefSatLiteral;
+}
+bool DecisionEngineEmpty::isDone() { return false; }
+void DecisionEngineEmpty::addAssertions(
+    CVC5_UNUSED const std::vector<TNode>& lems)
+{
+}
+prop::SatLiteral DecisionEngineEmpty::getNextInternal(
+    CVC5_UNUSED bool& stopSearch)
+{
+  return prop::undefSatLiteral;
 }
 
 }  // namespace decision
-}  // namespace cvc5
+}  // namespace cvc5::internal

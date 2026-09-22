@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Aina Niemetz, Gereon Kremer
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -16,7 +13,7 @@
 #include "test.h"
 #include "util/real_algebraic_number.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace test {
 
 #ifndef CVC5_POLY_IMP
@@ -29,15 +26,15 @@ class TestUtilBlackRealAlgebraicNumber : public TestInternal
 
 TEST_F(TestUtilBlackRealAlgebraicNumber, creation)
 {
-  ASSERT_TRUE(isZero(RealAlgebraicNumber()));
-  ASSERT_TRUE(isOne(RealAlgebraicNumber(Integer(1))));
-  ASSERT_FALSE(isOne(RealAlgebraicNumber(Rational(2))));
+  ASSERT_TRUE(RealAlgebraicNumber().isZero());
+  ASSERT_TRUE(RealAlgebraicNumber(Integer(1)).isOne());
+  ASSERT_FALSE(RealAlgebraicNumber(Rational(2)).isOne());
   RealAlgebraicNumber sqrt2({-2, 0, 1}, 1, 2);
   ASSERT_TRUE(RealAlgebraicNumber(Integer(1)) < sqrt2);
   ASSERT_TRUE(sqrt2 < RealAlgebraicNumber(Integer(2)));
 }
 
-TEST_F(TestUtilBlackRealAlgebraicNumber, comprison)
+TEST_F(TestUtilBlackRealAlgebraicNumber, comparison)
 {
   RealAlgebraicNumber msqrt3({-3, 0, 1}, -2, -1);
   RealAlgebraicNumber msqrt2({-2, 0, 1}, -2, -1);
@@ -63,9 +60,9 @@ TEST_F(TestUtilBlackRealAlgebraicNumber, sgn)
   RealAlgebraicNumber zero;
   RealAlgebraicNumber sqrt2({-2, 0, 1}, 1, 2);
 
-  ASSERT_EQ(sgn(msqrt2), -1);
-  ASSERT_EQ(sgn(zero), 0);
-  ASSERT_EQ(sgn(sqrt2), 1);
+  ASSERT_EQ(msqrt2.sgn(), -1);
+  ASSERT_EQ(zero.sgn(), 0);
+  ASSERT_EQ(sqrt2.sgn(), 1);
 }
 
 TEST_F(TestUtilBlackRealAlgebraicNumber, arithmetic)
@@ -79,5 +76,16 @@ TEST_F(TestUtilBlackRealAlgebraicNumber, arithmetic)
   ASSERT_EQ(-msqrt2 + sqrt2, sqrt2 + sqrt2);
   ASSERT_EQ(msqrt2 * sqrt2, RealAlgebraicNumber(Integer(-2)));
 }
+
+TEST_F(TestUtilBlackRealAlgebraicNumber, division)
+{
+  RealAlgebraicNumber msqrt2({-2, 0, 1}, -2, -1);
+  RealAlgebraicNumber sqrt2({-2, 0, 1}, 1, 2);
+  RealAlgebraicNumber mone({1, 1}, -2, 0);
+
+  ASSERT_EQ(msqrt2 / sqrt2, mone);
+  ASSERT_TRUE((sqrt2 / sqrt2).isOne());
+}
+
 }  // namespace test
-}  // namespace cvc5
+}  // namespace cvc5::internal

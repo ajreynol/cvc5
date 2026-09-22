@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -23,7 +20,10 @@
 #include "context/cdlist.h"
 #include "theory/uf/equality_engine.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
+
+class Env;
+
 namespace theory {
 namespace quantifiers {
 
@@ -55,7 +55,7 @@ class DynamicRewriter
   typedef context::CDList<Node> NodeList;
 
  public:
-  DynamicRewriter(const std::string& name, context::Context* c);
+  DynamicRewriter(Env& env, context::Context* c, const std::string& name);
   ~DynamicRewriter() {}
   /** inform this class that the equality a = b holds. */
   void addRewrite(Node a, Node b);
@@ -120,6 +120,6 @@ class DynamicRewriter
 
 }  // namespace quantifiers
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__THEORY__QUANTIFIERS__DYNAMIC_REWRITER_H */

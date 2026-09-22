@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Andres Noetzli, Haniel Barbosa
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -19,154 +16,176 @@
 
 #include "base/modal_exception.h"
 #include "expr/node_algorithm.h"
+#include "expr/subtype_elim_node_converter.h"
 #include "options/base_options.h"
 #include "options/expr_options.h"
 #include "options/language.h"
 #include "options/smt_options.h"
-#include "smt/abstract_values.h"
+#include "proof/lazy_proof.h"
+#include "proof/proof_node_algorithm.h"
 #include "smt/env.h"
-#include "smt/solver_engine.h"
 #include "theory/trust_substitutions.h"
+#include "util/result.h"
 
-using namespace cvc5::theory;
-using namespace cvc5::kind;
+using namespace cvc5::internal::theory;
+using namespace cvc5::internal::kind;
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace smt {
 
-Assertions::Assertions(Env& env, AbstractValues& absv)
-    : d_env(env),
-      d_absValues(absv),
-      d_produceAssertions(false),
-      d_assertionList(env.getUserContext()),
-      d_globalNegation(false),
-      d_assertions()
+Assertions::Assertions(Env& env)
+    : EnvObj(env),
+      d_assertionList(userContext()),
+      d_assertionListDefs(userContext()),
+      d_globalDefineFunLemmasIndex(userContext(), 0)
 {
 }
 
-Assertions::~Assertions()
-{
-}
+Assertions::~Assertions() {}
 
-void Assertions::finishInit()
+void Assertions::refresh()
 {
-  // [MGD 10/20/2011] keep around in incremental mode, due to a
-  // cleanup ordering issue and Nodes/TNodes.  If SAT is popped
-  // first, some user-context-dependent TNodes might still exist
-  // with rc == 0.
-  if (options::produceAssertions() || options::incrementalSolving())
+  // Global definitions are asserted now to ensure they always exist. This is
+  // done at the beginning of preprocessing, to ensure that definitions take
+  // priority over, e.g. solving during preprocessing. See issue #7479.
+  size_t numGlobalDefs = d_globalDefineFunLemmas.size();
+  for (size_t i = d_globalDefineFunLemmasIndex.get(); i < numGlobalDefs; i++)
   {
-    // In the case of incremental solving, we appear to need these to
-    // ensure the relevant Nodes remain live.
-    d_produceAssertions = true;
-    d_globalDefineFunLemmas.reset(new std::vector<Node>());
+    addFormula(d_globalDefineFunLemmas[i], true, false);
   }
+  d_globalDefineFunLemmasIndex = numGlobalDefs;
 }
 
-void Assertions::clearCurrent()
+void Assertions::setAssumptions(const std::vector<Node>& assumptions)
 {
-  d_assertions.clear();
-  d_assertions.getIteSkolemMap().clear();
-}
-
-void Assertions::initializeCheckSat(const std::vector<Node>& assumptions,
-                                    bool isEntailmentCheck)
-{
-  NodeManager* nm = NodeManager::currentNM();
-  // reset global negation
-  d_globalNegation = false;
-  // clear the assumptions
   d_assumptions.clear();
-  if (isEntailmentCheck)
-  {
-    size_t size = assumptions.size();
-    if (size > 1)
-    {
-      /* Assume: not (BIGAND assumptions)  */
-      d_assumptions.push_back(nm->mkNode(AND, assumptions).notNode());
-    }
-    else if (size == 1)
-    {
-      /* Assume: not expr  */
-      d_assumptions.push_back(assumptions[0].notNode());
-    }
-  }
-  else
-  {
-    /* Assume: BIGAND assumptions  */
-    d_assumptions = assumptions;
-  }
+  d_assumptions = assumptions;
 
-  Result r(Result::SAT_UNKNOWN, Result::UNKNOWN_REASON);
-  for (const Node& e : d_assumptions)
+  for (const Node& n : d_assumptions)
   {
-    // Substitute out any abstract values in ex.
-    Node n = d_absValues.substituteAbstractValues(e);
     // Ensure expr is type-checked at this point.
     ensureBoolean(n);
-    addFormula(n, true, true, false, false);
-  }
-  if (d_globalDefineFunLemmas != nullptr)
-  {
-    // Global definitions are asserted at check-sat-time because we have to
-    // make sure that they are always present (they are essentially level
-    // zero assertions)
-    for (const Node& lemma : *d_globalDefineFunLemmas)
-    {
-      addFormula(lemma, true, false, true, false);
-    }
+    addFormula(n, false, false);
   }
 }
 
 void Assertions::assertFormula(const Node& n)
 {
   ensureBoolean(n);
-  bool maybeHasFv = language::isLangSygus(options::inputLanguage());
-  addFormula(n, true, false, false, maybeHasFv);
+  bool maybeHasFv = language::isLangSygus(options().base.inputLanguage);
+  addFormula(n, false, maybeHasFv);
 }
 
 std::vector<Node>& Assertions::getAssumptions() { return d_assumptions; }
-bool Assertions::isGlobalNegated() const { return d_globalNegation; }
-void Assertions::flipGlobalNegated() { d_globalNegation = !d_globalNegation; }
 
-preprocessing::AssertionPipeline& Assertions::getAssertionPipeline()
+const context::CDList<Node>& Assertions::getAssertionList() const
 {
-  return d_assertions;
+  return d_assertionList;
 }
 
-context::CDList<Node>* Assertions::getAssertionList()
+const context::CDList<Node>& Assertions::getAssertionListDefinitions() const
 {
-  return d_produceAssertions ? &d_assertionList : nullptr;
+  return d_assertionListDefs;
 }
 
-void Assertions::addFormula(TNode n,
-                            bool inInput,
-                            bool isAssumption,
-                            bool isFunDef,
-                            bool maybeHasFv)
+std::unordered_set<Node> Assertions::getCurrentAssertionListDefitions() const
 {
-  // add to assertion list if it exists
-  if (d_produceAssertions)
+  std::unordered_set<Node> defSet;
+  for (const Node& a : d_assertionListDefs)
   {
-    d_assertionList.push_back(n);
+    defSet.insert(a);
   }
+  return defSet;
+}
+
+void Assertions::addFormula(TNode n, bool isFunDef, bool maybeHasFv)
+{
+  // add to assertion list
+  d_assertionList.push_back(n);
   if (n.isConst() && n.getConst<bool>())
   {
     // true, nothing to do
     return;
   }
-  Trace("smt") << "Assertions::addFormula(" << n << ", inInput = " << inInput
-               << ", isAssumption = " << isAssumption
-               << ", isFunDef = " << isFunDef << std::endl;
-  if (isFunDef)
+  Trace("smt") << "Assertions::addFormula(" << n << ", isFunDef = " << isFunDef
+               << std::endl;
+  // In non-incremental, we treat higher-order equality as define-fun
+  if (!options().base.incrementalSolving || isFunDef)
   {
     // if a non-recursive define-fun, just add as a top-level substitution
-    if (n.getKind() == EQUAL && n[0].isVar())
+    if (n.getKind() == Kind::EQUAL && n[0].isVar())
     {
-      // A define-fun is an assumption in the overall proof, thus
-      // we justify the substitution with ASSUME here.
+      Trace("smt-define-fun")
+          << "Define fun: " << n[0] << " = " << n[1] << std::endl;
+      NodeManager* nm = nodeManager();
+      TrustSubstitutionMap& tsm = d_env.getTopLevelSubstitutions();
+      if (!isFunDef
+          && (tsm.get().hasSubstitution(n[0])
+              || n[1].getKind() != Kind::LAMBDA))
+      {
+        return;
+      }
+      // If it is a lambda, we rewrite the body, otherwise we rewrite itself.
+      // For lambdas, we prefer rewriting only the body since we don't want
+      // higher-order rewrites (e.g. value normalization) to apply by default.
+      TrustNode defRewBody;
+      // For efficiency, we only do this if it is a lambda.
+      // Note this is important since some benchmarks treat define-fun as a
+      // global let. We should not eagerly rewrite in these cases.
+      if (n[1].getKind() == Kind::LAMBDA)
+      {
+        // Rewrite the body of the lambda.
+        defRewBody = tsm.applyTrusted(n[1][1], d_env.getRewriter());
+      }
+      Node defRew = n[1];
+      // If we rewrote the body
+      if (!defRewBody.isNull())
+      {
+        // The rewritten form is the rewritten body with original variable list.
+        defRew = defRewBody.getNode();
+        defRew = nm->mkNode(Kind::LAMBDA, n[1][0], defRew);
+      }
+      if (expr::hasSubterm(defRew, n[0]))
+      {
+        return;
+      }
+      // if we need to track proofs
+      if (d_env.isProofProducing())
+      {
+        // initialize the proof generator if not already done so
+        if (d_defFunRewPf == nullptr)
+        {
+          d_defFunRewPf = std::make_shared<LazyCDProof>(d_env);
+        }
+        // A define-fun is an assumption in the overall proof, thus
+        // we justify the substitution with ASSUME here.
+        d_defFunRewPf->addStep(n, ProofRule::ASSUME, {}, {n});
+        // If changed, prove the rewrite
+        if (defRew != n[1])
+        {
+          Node eqBody = defRewBody.getProven();
+          d_defFunRewPf->addLazyStep(eqBody, defRewBody.getGenerator());
+          Node eqRew = n[1].eqNode(defRew);
+          Assert(n[1].getKind() == Kind::LAMBDA);
+          // congruence over the binder
+          std::vector<Node> cargs;
+          ProofRule cr = expr::getCongRule(n[1], cargs);
+          d_defFunRewPf->addStep(eqRew, cr, {eqBody}, cargs);
+          // Proof is:
+          //                            ------ from tsm
+          //                            t = t'
+          // ------------------ ASSUME  -------------------------- CONG
+          // n = lambda x. t            lambda x. t = lambda x. t'
+          // ------------------------------------------------------ TRANS
+          // n = lambda x. t'
+          Node eqFinal = n[0].eqNode(defRew);
+          d_defFunRewPf->addStep(eqFinal, ProofRule::TRANS, {n, eqRew}, {});
+        }
+      }
+      Trace("smt-define-fun") << "...rewritten to " << defRew << std::endl;
+      d_assertionListDefs.push_back(n);
       d_env.getTopLevelSubstitutions().addSubstitution(
-          n[0], n[1], PfRule::ASSUME, {}, {n});
+          n[0], defRew, d_defFunRewPf.get());
       return;
     }
   }
@@ -174,6 +193,9 @@ void Assertions::addFormula(TNode n,
   // Ensure that it does not contain free variables
   if (maybeHasFv)
   {
+    // Note that API users and the smt2 parser may generate assertions with
+    // shadowed variables, which are resolved during rewriting. Hence we do not
+    // check for this here.
     if (expr::hasFreeVar(n))
     {
       std::stringstream se;
@@ -184,7 +206,7 @@ void Assertions::addFormula(TNode n,
       else
       {
         se << "Cannot process assertion with free variable.";
-        if (language::isLangSygus(options::inputLanguage()))
+        if (language::isLangSygus(options().base.inputLanguage))
         {
           // Common misuse of SyGuS is to use top-level assert instead of
           // constraint when defining the synthesis conjecture.
@@ -194,34 +216,30 @@ void Assertions::addFormula(TNode n,
       throw ModalException(se.str().c_str());
     }
   }
-
-  // Add the normalized formula to the queue
-  d_assertions.push_back(n, isAssumption, true);
 }
 
 void Assertions::addDefineFunDefinition(Node n, bool global)
 {
-  n = d_absValues.substituteAbstractValues(n);
-  if (global && d_globalDefineFunLemmas != nullptr)
+  if (global)
   {
     // Global definitions are asserted at check-sat-time because we have to
     // make sure that they are always present
-    Assert(!language::isLangSygus(options::inputLanguage()));
-    d_globalDefineFunLemmas->emplace_back(n);
+    Assert(!language::isLangSygus(options().base.inputLanguage));
+    d_globalDefineFunLemmas.emplace_back(n);
   }
   else
   {
     // We don't permit functions-to-synthesize within recursive function
     // definitions currently. Thus, we should check for free variables if the
     // input language is SyGuS.
-    bool maybeHasFv = language::isLangSygus(options::inputLanguage());
-    addFormula(n, true, false, true, maybeHasFv);
+    bool maybeHasFv = language::isLangSygus(options().base.inputLanguage);
+    addFormula(n, true, maybeHasFv);
   }
 }
 
 void Assertions::ensureBoolean(const Node& n)
 {
-  TypeNode type = n.getType(options::typeChecking());
+  TypeNode type = n.getType(options().expr.typeChecking);
   if (!type.isBoolean())
   {
     std::stringstream ss;
@@ -232,15 +250,5 @@ void Assertions::ensureBoolean(const Node& n)
   }
 }
 
-void Assertions::setProofGenerator(smt::PreprocessProofGenerator* pppg)
-{
-  d_assertions.setProofGenerator(pppg);
-}
-
-bool Assertions::isProofEnabled() const
-{
-  return d_assertions.isProofEnabled();
-}
-
 }  // namespace smt
-}  // namespace cvc5
+}  // namespace cvc5::internal

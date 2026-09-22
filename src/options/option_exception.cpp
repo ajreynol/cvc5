@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andres Noetzli
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -15,6 +12,8 @@
 
 #include "options/option_exception.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 const std::string OptionException::s_errPrefix = "Error in option parsing: ";
-}  // namespace cvc5
+const std::string FatalOptionException::s_errPrefix =
+    "Fatal error in option parsing: ";
+}  // namespace cvc5::internal

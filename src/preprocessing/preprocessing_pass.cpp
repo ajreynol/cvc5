@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Justin Xu, Abdalrhman Mohamed, Andres Noetzli
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -15,45 +12,41 @@
 
 #include "preprocessing/preprocessing_pass.h"
 
+#include <unordered_map>
+
 #include "preprocessing/assertion_pipeline.h"
 #include "preprocessing/preprocessing_pass_context.h"
 #include "printer/printer.h"
-#include "smt/dump.h"
 #include "smt/env.h"
-#include "smt/output_manager.h"
-#include "smt/smt_engine_scope.h"
-#include "smt/smt_statistics_registry.h"
+#include "theory/trust_substitutions.h"
 #include "util/statistics_stats.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace preprocessing {
 
 PreprocessingPassResult PreprocessingPass::apply(
-    AssertionPipeline* assertionsToPreprocess) {
+    AssertionPipeline* assertionsToPreprocess)
+{
   TimerStat::CodeTimer codeTimer(d_timer);
   Trace("preprocessing") << "PRE " << d_name << std::endl;
-  Chat() << d_name << "..." << std::endl;
-  dumpAssertions(("pre-" + d_name).c_str(), *assertionsToPreprocess);
+  verbose(2) << d_name << "..." << std::endl;
   PreprocessingPassResult result = applyInternal(assertionsToPreprocess);
-  dumpAssertions(("post-" + d_name).c_str(), *assertionsToPreprocess);
   Trace("preprocessing") << "POST " << d_name << std::endl;
   return result;
 }
 
-void PreprocessingPass::dumpAssertions(const char* key,
-                                       const AssertionPipeline& assertionList) {
-  if (Dump.isOn("assertions") && Dump.isOn(std::string("assertions:") + key))
+void PreprocessingPass::addSubstitutions(
+    AssertionPipeline* assertionsToPreprocess, theory::TrustSubstitutionMap& tm)
+{
+  const std::unordered_map<Node, Node> subs = tm.get().getSubstitutions();
+  for (const std::pair<const Node, Node>& s : subs)
   {
-    // Push the simplified assertions to the dump output stream
-    Env& env = d_preprocContext->getEnv();
-    const Printer& printer = env.getPrinter();
-    std::ostream& out = env.getDumpOut();
-
-    for (const auto& n : assertionList)
+    if (s.first.getKind() == Kind::SKOLEM)
     {
-      printer.toStreamCmdAssert(out, n);
+      assertionsToPreprocess->removeIteSkolem(s.first);
     }
   }
+  d_preprocContext->addSubstitutions(tm);
 }
 
 PreprocessingPass::PreprocessingPass(PreprocessingPassContext* preprocContext,
@@ -65,9 +58,7 @@ PreprocessingPass::PreprocessingPass(PreprocessingPassContext* preprocContext,
 {
 }
 
-PreprocessingPass::~PreprocessingPass() {
-  Assert(smt::smtEngineInScope());
-}
+PreprocessingPass::~PreprocessingPass() {}
 
 }  // namespace preprocessing
-}  // namespace cvc5
+}  // namespace cvc5::internal

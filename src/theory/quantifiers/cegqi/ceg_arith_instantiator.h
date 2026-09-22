@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Tim King, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -19,11 +16,12 @@
 #define CVC5__THEORY__QUANTIFIERS__CEG_ARITH_INSTANTIATOR_H
 
 #include <vector>
+
 #include "expr/node.h"
-#include "theory/quantifiers/cegqi/ceg_instantiator.h"
+#include "theory/quantifiers/cegqi/instantiator.h"
 #include "theory/quantifiers/cegqi/vts_term_cache.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace quantifiers {
 
@@ -206,10 +204,18 @@ class ArithInstantiator : public Instantiator
                                     Node theta,
                                     Node inf_coeff,
                                     Node delta_coeff);
+  /** Return the rewritten form of the negation of t */
+  Node negate(const Node& t) const;
+  /**
+   * Make the node from base value, with infinity and delta coefficients.
+   */
+  Node mkVtsSum(const Node& val,
+                const Node& inf_coeff,
+                const Node& delta_coeff);
 };
 
 }  // namespace quantifiers
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__THEORY__QUANTIFIERS__CEG_ARITH_INSTANTIATOR_H */

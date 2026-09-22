@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -15,8 +12,8 @@
 
 #include "cvc5_private.h"
 
-#ifndef CVC4__PROOF__LFSC__LFSC_PRINT_CHANNEL_H
-#define CVC4__PROOF__LFSC__LFSC_PRINT_CHANNEL_H
+#ifndef CVC5__PROOF__LFSC__LFSC_PRINT_CHANNEL_H
+#define CVC5__PROOF__LFSC__LFSC_PRINT_CHANNEL_H
 
 #include <iostream>
 #include <map>
@@ -25,8 +22,9 @@
 #include "printer/let_binding.h"
 #include "proof/lfsc/lfsc_util.h"
 #include "proof/proof_node.h"
+#include "rewriter/rewrite_proof_rule.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace proof {
 
 /**
@@ -41,26 +39,27 @@ class LfscPrintChannel
   LfscPrintChannel() {}
   virtual ~LfscPrintChannel() {}
   /** Print node n */
-  virtual void printNode(TNode n) {}
+  virtual void printNode(CVC5_UNUSED TNode n) {}
   /** Print type node n */
-  virtual void printTypeNode(TypeNode tn) {}
+  virtual void printTypeNode(CVC5_UNUSED TypeNode tn) {}
   /** Print a hole */
   virtual void printHole() {}
   /**
    * Print an application of the trusting the result res, whose source is the
    * given proof rule.
    */
-  virtual void printTrust(TNode res, PfRule src) {}
+  virtual void printTrust(CVC5_UNUSED TNode res, CVC5_UNUSED ProofRule src) {}
   /** Print the opening of the rule of proof rule pn, e.g. "(and_elim ". */
-  virtual void printOpenRule(const ProofNode* pn) {}
+  virtual void printOpenRule(CVC5_UNUSED const ProofNode* pn) {}
   /** Print the opening of LFSC rule lr, e.g. "(cong " */
-  virtual void printOpenLfscRule(LfscRule lr) {}
+  virtual void printOpenLfscRule(CVC5_UNUSED LfscRule lr) {}
   /** Print the closing of # nparen proof rules */
-  virtual void printCloseRule(size_t nparen = 1) {}
-  /** Print a letified proof with the given identifier */
-  virtual void printProofId(size_t id) {}
-  /** Print a proof assumption with the given identifier */
-  virtual void printAssumeId(size_t id) {}
+  virtual void printCloseRule(CVC5_UNUSED size_t nparen = 1) {}
+  /** Print an identifier for the given prefix */
+  virtual void printId(CVC5_UNUSED size_t id,
+                       CVC5_UNUSED const std::string& prefix)
+  {
+  }
   /** Print an end line */
   virtual void printEndLine() {}
 };
@@ -73,12 +72,11 @@ class LfscPrintChannelOut : public LfscPrintChannel
   void printNode(TNode n) override;
   void printTypeNode(TypeNode tn) override;
   void printHole() override;
-  void printTrust(TNode res, PfRule src) override;
+  void printTrust(TNode res, ProofRule src) override;
   void printOpenRule(const ProofNode* pn) override;
   void printOpenLfscRule(LfscRule lr) override;
   void printCloseRule(size_t nparen = 1) override;
-  void printProofId(size_t id) override;
-  void printAssumeId(size_t id) override;
+  void printId(size_t id, const std::string& prefix) override;
   void printEndLine() override;
   //------------------- helper methods
   /**
@@ -90,9 +88,8 @@ class LfscPrintChannelOut : public LfscPrintChannel
    */
   static void printTypeNodeInternal(std::ostream& out, TypeNode tn);
   static void printRule(std::ostream& out, const ProofNode* pn);
-  static void printId(std::ostream& out, size_t id);
-  static void printProofId(std::ostream& out, size_t id);
-  static void printAssumeId(std::ostream& out, size_t id);
+  static void printId(std::ostream& out, size_t id, const std::string& prefix);
+  static void printProofRewriteRule(std::ostream& out, ProofRewriteRule id);
   //------------------- end helper methods
  private:
   /**
@@ -114,15 +111,20 @@ class LfscPrintChannelPre : public LfscPrintChannel
  public:
   LfscPrintChannelPre(LetBinding& lbind);
   void printNode(TNode n) override;
-  void printTrust(TNode res, PfRule src) override;
+  void printTrust(TNode res, ProofRule src) override;
   void printOpenRule(const ProofNode* pn) override;
+
+  /** Get the DSL rewrites */
+  const std::unordered_set<ProofRewriteRule>& getDslRewrites() const;
 
  private:
   /** The let binding */
   LetBinding& d_lbind;
+  /** The DSL rules we have seen */
+  std::unordered_set<ProofRewriteRule> d_dprs;
 };
 
 }  // namespace proof
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif

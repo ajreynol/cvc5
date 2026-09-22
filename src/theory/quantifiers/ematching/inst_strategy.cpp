@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -18,7 +15,7 @@
 #include "smt/env.h"
 #include "theory/quantifiers/quantifiers_state.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace quantifiers {
 
@@ -37,14 +34,15 @@ std::string InstStrategy::identify() const { return std::string("Unknown"); }
 
 options::UserPatMode InstStrategy::getInstUserPatMode() const
 {
-  if (options::userPatternsQuant() == options::UserPatMode::INTERLEAVE)
+  if (options().quantifiers.userPatternsQuant
+      == options::UserPatMode::INTERLEAVE)
   {
     return d_qstate.getInstRounds() % 2 == 0 ? options::UserPatMode::USE
                                              : options::UserPatMode::RESORT;
   }
-  return options::userPatternsQuant();
+  return options().quantifiers.userPatternsQuant;
 }
 
 }  // namespace quantifiers
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal

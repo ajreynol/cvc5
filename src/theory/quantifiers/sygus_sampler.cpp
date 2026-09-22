@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Andres Noetzli, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -23,6 +20,7 @@
 #include "options/base_options.h"
 #include "options/quantifiers_options.h"
 #include "printer/printer.h"
+#include "theory/datatypes/sygus_datatype_utils.h"
 #include "theory/quantifiers/lazy_trie.h"
 #include "theory/quantifiers/sygus/term_database_sygus.h"
 #include "theory/rewriter.h"
@@ -32,21 +30,22 @@
 #include "util/sampler.h"
 #include "util/string.h"
 
-namespace cvc5 {
+using namespace cvc5::internal::kind;
+
+namespace cvc5::internal {
 namespace theory {
 namespace quantifiers {
 
 SygusSampler::SygusSampler(Env& env)
-    : d_env(env), d_tds(nullptr), d_use_sygus_type(false), d_is_valid(false)
+    : EnvObj(env), d_use_sygus_type(false), d_is_valid(false)
 {
 }
 
-void SygusSampler::initialize(TypeNode tn,
+void SygusSampler::initialize(CVC5_UNUSED TypeNode tn,
                               const std::vector<Node>& vars,
                               unsigned nsamples,
                               bool unique_type_ids)
 {
-  d_tds = nullptr;
   d_use_sygus_type = false;
   d_is_valid = true;
   d_ftn = TypeNode::null();
@@ -91,20 +90,15 @@ void SygusSampler::initialize(TypeNode tn,
   initializeSamples(nsamples);
 }
 
-void SygusSampler::initializeSygus(TermDbSygus* tds,
-                                   Node f,
-                                   unsigned nsamples,
-                                   bool useSygusType)
+void SygusSampler::initializeSygus(TypeNode ftn, unsigned nsamples)
 {
-  d_tds = tds;
-  d_use_sygus_type = useSygusType;
   d_is_valid = true;
-  d_ftn = f.getType();
+  d_ftn = ftn;
   Assert(d_ftn.isDatatype());
   const DType& dt = d_ftn.getDType();
   Assert(dt.isSygus());
 
-  Trace("sygus-sample") << "Register sampler for " << f << std::endl;
+  Trace("sygus-sample") << "Register sampler for " << ftn << std::endl;
 
   d_vars.clear();
   d_type_vars.clear();
@@ -184,7 +178,7 @@ void SygusSampler::initializeSamples(unsigned nsamples)
                           << vt << std::endl;
   }
   std::map<unsigned, std::map<Node, std::vector<TypeNode> >::iterator> sts;
-  if (options::sygusSampleGrammar())
+  if (options().quantifiers.sygusSampleGrammar)
   {
     for (unsigned j = 0, size = types.size(); j < size; j++)
     {
@@ -200,15 +194,15 @@ void SygusSampler::initializeSamples(unsigned nsamples)
     {
       Node v = d_vars[j];
       Node r;
-      if (options::sygusSampleGrammar())
+      if (options().quantifiers.sygusSampleGrammar)
       {
         // choose a random start sygus type, if possible
         if (sts[j] != d_var_sygus_types.end())
         {
-          unsigned ntypes = sts[j]->second.size();
-          if(ntypes > 0)
+          size_t ntypes = sts[j]->second.size();
+          if (ntypes > 0)
           {
-            unsigned index = Random::getRandom().pick(0, ntypes - 1);
+            size_t index = Random::getRandom().pick<size_t>(0, ntypes - 1);
             if (index < ntypes)
             {
               // currently hard coded to 0.0, 0.5
@@ -229,7 +223,7 @@ void SygusSampler::initializeSamples(unsigned nsamples)
     }
     if (d_samples_trie.add(sample_pt))
     {
-      if (Trace.isOn("sygus-sample"))
+      if (TraceIsOn("sygus-sample"))
       {
         Trace("sygus-sample") << "Sample point #" << i << " : ";
         for (const Node& r : sample_pt)
@@ -265,7 +259,6 @@ bool SygusSampler::PtTrie::add(std::vector<Node>& pt)
     curr = &(curr->d_children[pt[i]]);
   }
   bool retVal = curr->d_children.empty();
-  curr = &(curr->d_children[Node::null()]);
   return retVal;
 }
 
@@ -276,25 +269,9 @@ Node SygusSampler::registerTerm(Node n, bool forceKeep)
     // do nothing
     return n;
   }
-  Node bn = n;
   TypeNode tn = n.getType();
-  // If we are using sygus types, get the builtin analog of n.
-  if (d_use_sygus_type)
-  {
-    bn = d_tds->sygusToBuiltin(n);
-    d_builtin_to_sygus[tn][bn] = n;
-  }
   // cache based on the (original) type of n
-  Node res = d_trie[tn].add(bn, this, 0, d_samples.size(), forceKeep);
-  // If we are using sygus types, map back to an original.
-  // Notice that d_builtin_to_sygus is not necessarily bijective.
-  if (d_use_sygus_type)
-  {
-    std::map<Node, Node>& bts = d_builtin_to_sygus[tn];
-    Assert(bts.find(res) != bts.end());
-    res = res != bn ? bts[res] : n;
-  }
-  return res;
+  return d_trie[tn].add(n, this, 0, d_samples.size(), forceKeep);
 }
 
 bool SygusSampler::isContiguous(Node n)
@@ -456,15 +433,13 @@ void SygusSampler::getVariables(std::vector<Node>& vars) const
   vars.insert(vars.end(), d_vars.begin(), d_vars.end());
 }
 
-void SygusSampler::getSamplePoint(unsigned index,
-                                  std::vector<Node>& pt)
+const std::vector<Node>& SygusSampler::getSamplePoint(size_t index) const
 {
   Assert(index < d_samples.size());
-  std::vector<Node>& spt = d_samples[index];
-  pt.insert(pt.end(), spt.begin(), spt.end());
+  return d_samples[index];
 }
 
-void SygusSampler::addSamplePoint(std::vector<Node>& pt)
+void SygusSampler::addSamplePoint(const std::vector<Node>& pt)
 {
   Assert(pt.size() == d_vars.size());
   d_samples.push_back(pt);
@@ -499,7 +474,7 @@ int SygusSampler::getDiffSamplePointIndex(Node a, Node b)
 
 Node SygusSampler::getRandomValue(TypeNode tn)
 {
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   if (tn.isBoolean())
   {
     return nm->mkConst(Random::getRandom().pickWithProb(0.5));
@@ -513,7 +488,7 @@ Node SygusSampler::getRandomValue(TypeNode tn)
   {
     unsigned e = tn.getFloatingPointExponentSize();
     unsigned s = tn.getFloatingPointSignificandSize();
-    return nm->mkConst(options::sygusSampleFpUniform()
+    return nm->mkConst(options().quantifiers.sygusSampleFpUniform
                            ? Sampler::pickFpUniform(e, s)
                            : Sampler::pickFpBiased(e, s));
   }
@@ -565,11 +540,11 @@ Node SygusSampler::getRandomValue(TypeNode tn)
 
     std::vector<unsigned> vec;
     double ext_freq = .5;
-    unsigned base = tn.isString() ? d_rstring_alphabet.size() : 10;
+    size_t base = tn.isString() ? d_rstring_alphabet.size() : 10;
     while (Random::getRandom().pickWithProb(ext_freq))
     {
       // add a digit
-      unsigned digit = Random::getRandom().pick(0, base - 1);
+      size_t digit = Random::getRandom().pick<size_t>(0, base - 1);
       if (tn.isString())
       {
         digit = d_rstring_alphabet[digit];
@@ -587,14 +562,14 @@ Node SygusSampler::getRandomValue(TypeNode tn)
       std::vector<Node> sum;
       for (unsigned j = 0, size = vec.size(); j < size; j++)
       {
-        Node digit = nm->mkConst(Rational(vec[j]) * curr);
+        Node digit = nm->mkConstInt(Rational(vec[j]) * curr);
         sum.push_back(digit);
         curr = curr * baser;
       }
       Node ret;
       if (sum.empty())
       {
-        ret = nm->mkConst(Rational(0));
+        ret = nm->mkConstInt(Rational(0));
       }
       else if (sum.size() == 1)
       {
@@ -602,16 +577,17 @@ Node SygusSampler::getRandomValue(TypeNode tn)
       }
       else
       {
-        ret = nm->mkNode(kind::PLUS, sum);
+        ret = nm->mkNode(Kind::ADD, sum);
       }
 
       if (Random::getRandom().pickWithProb(0.5))
       {
         // negative
-        ret = nm->mkNode(kind::UMINUS, ret);
+        ret = nm->mkNode(Kind::NEG, ret);
       }
       ret = d_env.getRewriter()->rewrite(ret);
       Assert(ret.isConst());
+      Assert(ret.getType() == tn);
       return ret;
     }
   }
@@ -625,12 +601,9 @@ Node SygusSampler::getRandomValue(TypeNode tn)
       Rational rr = r.getConst<Rational>();
       if (rr.sgn() == 0)
       {
-        return s;
+        return nm->mkConstReal(s.getConst<Rational>());
       }
-      else
-      {
-        return nm->mkConst(sr / rr);
-      }
+      return nm->mkConstReal(sr / rr);
     }
   }
   // default: use type enumerator
@@ -670,28 +643,28 @@ Node SygusSampler::getSygusRandomValue(TypeNode tn,
   // we refuse to enumerate terms of 10+ depth as a hard limit
   bool terminate = Random::getRandom().pickWithProb(rchance) || depth >= 10;
   // if we terminate, only nullary constructors can be chosen
-  std::vector<unsigned>& cindices =
+  std::vector<uint32_t>& cindices =
       terminate ? d_rvalue_null_cindices[tn] : d_rvalue_cindices[tn];
-  unsigned ncons = cindices.size();
+  size_t ncons = cindices.size();
   // select a random constructor, or random value when index=ncons.
-  unsigned index = Random::getRandom().pick(0, ncons);
+  size_t index = Random::getRandom().pick<size_t>(0, ncons);
   Trace("sygus-sample-grammar")
       << "Random index 0..." << ncons << " was : " << index << std::endl;
   if (index < ncons)
   {
     Trace("sygus-sample-grammar")
         << "Recurse constructor index #" << index << std::endl;
-    unsigned cindex = cindices[index];
+    uint32_t cindex = cindices[index];
     Assert(cindex < dt.getNumConstructors());
     const DTypeConstructor& dtc = dt[cindex];
     // more likely to terminate in recursive calls
     double rchance_new = rchance + (1.0 - rchance) * rinc;
-    std::map<int, Node> pre;
     bool success = true;
     // generate random values for all arguments
-    for (unsigned i = 0, nargs = dtc.getNumArgs(); i < nargs; i++)
+    std::vector<Node> children;
+    for (size_t i = 0, nargs = dtc.getNumArgs(); i < nargs; i++)
     {
-      TypeNode tnc = d_tds->getArgType(dtc, i);
+      TypeNode tnc = dtc.getArgType(i);
       Node c = getSygusRandomValue(tnc, rchance_new, rinc, depth + 1);
       if (c.isNull())
       {
@@ -701,18 +674,18 @@ Node SygusSampler::getSygusRandomValue(TypeNode tn,
       }
       Trace("sygus-sample-grammar")
           << "  child #" << i << " : " << c << std::endl;
-      pre[i] = c;
+      children.emplace_back(c);
     }
     if (success)
     {
-      Trace("sygus-sample-grammar") << "mkGeneric" << std::endl;
-      Node ret = d_tds->mkGeneric(dt, cindex, pre);
+      Trace("sygus-sample-grammar") << "utils::mkSygusTerm" << std::endl;
+      Node ret = datatypes::utils::mkSygusTerm(dt, cindex, children);
       Trace("sygus-sample-grammar") << "...returned " << ret << std::endl;
       ret = d_env.getRewriter()->rewrite(ret);
       Trace("sygus-sample-grammar") << "...after rewrite " << ret << std::endl;
       // A rare case where we generate a non-constant value from constant
       // leaves is (/ n 0).
-      if(ret.isConst())
+      if (ret.isConst())
       {
         return ret;
       }
@@ -764,79 +737,13 @@ void SygusSampler::registerSygusType(TypeNode tn)
       // recurse on all subfields
       for (unsigned j = 0, nargs = dtc.getNumArgs(); j < nargs; j++)
       {
-        TypeNode tnc = d_tds->getArgType(dtc, j);
+        TypeNode tnc = dtc.getArgType(j);
         registerSygusType(tnc);
       }
     }
   }
 }
 
-void SygusSampler::checkEquivalent(Node bv, Node bvr, std::ostream& out)
-{
-  if (bv == bvr)
-  {
-    return;
-  }
-  Trace("sygus-rr-verify") << "Testing rewrite rule " << bv << " ---> " << bvr
-                           << std::endl;
-
-  // see if they evaluate to same thing on all sample points
-  bool ptDisequal = false;
-  bool ptDisequalConst = false;
-  unsigned pt_index = 0;
-  Node bve, bvre;
-  for (unsigned i = 0, npoints = getNumSamplePoints(); i < npoints; i++)
-  {
-    bve = evaluate(bv, i);
-    bvre = evaluate(bvr, i);
-    if (bve != bvre)
-    {
-      ptDisequal = true;
-      pt_index = i;
-      if (bve.isConst() && bvre.isConst())
-      {
-        ptDisequalConst = true;
-        break;
-      }
-    }
-  }
-  // bv and bvr should be equivalent under examples
-  if (ptDisequal)
-  {
-    std::vector<Node> vars;
-    getVariables(vars);
-    std::vector<Node> pt;
-    getSamplePoint(pt_index, pt);
-    Assert(vars.size() == pt.size());
-    std::stringstream ptOut;
-    for (unsigned i = 0, size = pt.size(); i < size; i++)
-    {
-      ptOut << "  " << vars[i] << " -> " << pt[i] << std::endl;
-    }
-    if (!ptDisequalConst)
-    {
-      Notice() << "Warning: " << bv << " and " << bvr
-               << " evaluate to different (non-constant) values on point:"
-               << std::endl;
-      Notice() << ptOut.str();
-      return;
-    }
-    // we have detected unsoundness in the rewriter
-    out << "(unsound-rewrite " << bv << " " << bvr << ")" << std::endl;
-    // debugging information
-    out << "Terms are not equivalent for : " << std::endl;
-    out << ptOut.str();
-    Assert(bve != bvre);
-    out << "where they evaluate to " << bve << " and " << bvre << std::endl;
-
-    if (options::sygusRewVerifyAbort())
-    {
-      AlwaysAssert(false)
-          << "--sygus-rr-verify detected unsoundness in the rewriter!";
-    }
-  }
-}
-
 }  // namespace quantifiers
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal

@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Dejan Jovanovic, Morgan Deters
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -20,15 +17,17 @@
 #include <unordered_set>
 #include <vector>
 
+#include "context/cdhashset.h"
 #include "context/cdinsert_hashmap.h"
 #include "context/context.h"
 #include "expr/node.h"
 #include "expr/term_context.h"
 #include "proof/trust_node.h"
 #include "smt/env_obj.h"
+#include "theory/skolem_lemma.h"
 #include "util/hash.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 
 class LazyCDProof;
 class ProofNodeManager;
@@ -81,7 +80,6 @@ class RemoveTermFormulas : protected EnvObj
    * @param assertion The assertion to remove term formulas from
    * @param newAsserts The new assertions corresponding to axioms for newly
    * introduced skolems.
-   * @param newSkolems The skolems corresponding to each of the newAsserts.
    * @param fixedPoint Whether to run term formula removal on the lemmas in
    * newAsserts. This adds new assertions to this vector until a fixed
    * point is reached. When this option is true, all lemmas in newAsserts
@@ -91,22 +89,14 @@ class RemoveTermFormulas : protected EnvObj
    * generator (if provided) that can prove the equivalence.
    */
   TrustNode run(TNode assertion,
-                std::vector<TrustNode>& newAsserts,
-                std::vector<Node>& newSkolems,
+                std::vector<theory::SkolemLemma>& newAsserts,
                 bool fixedPoint = false);
-  /**
-   * Same as above, but does not track lemmas, and does not run to fixed point.
-   * The relevant lemmas can be extracted by the caller later using getSkolems
-   * and getLemmaForSkolem.
-   */
-  TrustNode run(TNode assertion);
   /**
    * Same as above, but transforms a lemma, returning a LEMMA trust node that
    * proves the same formula as lem with term formulas removed.
    */
   TrustNode runLemma(TrustNode lem,
-                     std::vector<TrustNode>& newAsserts,
-                     std::vector<Node>& newSkolems,
+                     std::vector<theory::SkolemLemma>& newAsserts,
                      bool fixedPoint = false);
 
   /**
@@ -124,6 +114,26 @@ class RemoveTermFormulas : protected EnvObj
    *   (ite n1 (= (ite n1 n2 n3) n2) (= (ite n1 n2 n3) n3))
    */
   static Node getAxiomFor(Node n);
+
+  /**
+   * This is called on a term node that occurs in a term context (see
+   * RtfTermContext) if inTerm is true. If node should be replaced by a skolem,
+   * this method returns this skolem k. If this was the first time that node
+   * was encountered, we set newLem to the lemma for the skolem that
+   * axiomatizes k.
+   *
+   * Otherwise, if t should not be replaced in the term context, this method
+   * returns the null node.
+   */
+  TrustNode runCurrent(TNode node, bool inTerm, TrustNode& newLem);
+
+  /**
+   * Is k a skolem introduced for purifying a Boolean term? This impacts whether
+   * k is treated as a theory atom.
+   * @param k The term in question.
+   * @return true if k is a Boolean term skolem.
+   */
+  bool isBooleanTermSkolem(const Node& k) const;
 
  private:
   typedef context::CDInsertHashMap<
@@ -171,6 +181,10 @@ class RemoveTermFormulas : protected EnvObj
    */
   std::unique_ptr<TConvProofGenerator> d_tpg;
   /**
+   * A proof generator for the term conversion, not text-context sensitive.
+   */
+  std::unique_ptr<TConvProofGenerator> d_tpgi;
+  /**
    * A proof generator for skolems we introduce that are based on axioms that
    * this class is responsible for.
    */
@@ -190,21 +204,33 @@ class RemoveTermFormulas : protected EnvObj
    * the version of assertion with all term formulas removed.
    */
   Node runInternal(TNode assertion,
-                   std::vector<TrustNode>& newAsserts,
-                   std::vector<Node>& newSkolems);
+                   std::vector<theory::SkolemLemma>& newAsserts);
   /**
-   * This is called on curr of the form (t, val) where t is a term and val is
-   * a term context identifier computed by RtfTermContext. If curr should be
-   * replaced by a skolem, this method returns this skolem k. If this was the
-   * first time that t was encountered, we set newLem to the lemma for the
-   * skolem that axiomatizes k.
+   * This is called on a term node that occurs in a term context (see
+   * RtfTermContext) if inTerm is true. If node should be replaced by a skolem,
+   * this method returns this skolem k. If this was the first time that node
+   * was encountered, we set newLem to the lemma for the skolem that
+   * axiomatizes k.
    *
    * Otherwise, if t should not be replaced in the term context, this method
    * returns the null node.
+   *
+   * @param node The node under consideration
+   * @param inTerm Whether we are in a term context (see RtfTermContext)
+   * @param newLem The new lemma axiomatizing the return value
+   * @param cval The term context identifier to cache the proof in pg, if it
+   * exists
+   * @param pg The proof generator to store the proof step
+   * @return the skolem that node should be replaced with, if applicable, or
+   * the null node otherwise.
    */
-  Node runCurrent(std::pair<Node, uint32_t>& curr, TrustNode& newLem);
+  Node runCurrentInternal(TNode node,
+                          bool inTerm,
+                          TrustNode& newLem,
+                          uint32_t cval,
+                          TConvProofGenerator* pg);
   /** Is proof enabled? True if proofs are enabled in any mode. */
   bool isProofEnabled() const;
 }; /* class RemoveTTE */
 
-}  // namespace cvc5
+}  // namespace cvc5::internal

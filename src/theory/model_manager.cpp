@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -24,7 +21,7 @@
 #include "theory/quantifiers_engine.h"
 #include "theory/theory_engine.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 
 ModelManager::ModelManager(Env& env, TheoryEngine& te, EqEngineManager& eem)
@@ -34,7 +31,7 @@ ModelManager::ModelManager(Env& env, TheoryEngine& te, EqEngineManager& eem)
       d_modelEqualityEngine(nullptr),
       d_modelEqualityEngineAlloc(nullptr),
       d_model(new TheoryModel(
-          env, "DefaultModel", options::assignFunctionValues())),
+          env, "DefaultModel", options().theory.assignFunctionValues)),
       d_modelBuilder(nullptr),
       d_modelBuilt(false),
       d_modelBuiltSuccess(false)
@@ -80,6 +77,14 @@ bool ModelManager::buildModel()
     // already computed
     return d_modelBuiltSuccess;
   }
+
+  ResourceManager* rm = d_env.getResourceManager();
+
+  // Disable resource manager limit while building the model. This ensures
+  // that building the model is not interrupted (and shouldn't take too
+  // long).
+  rm->setEnabled(false);
+
   // reset the flags now
   d_modelBuilt = true;
   d_modelBuiltSuccess = false;
@@ -88,20 +93,24 @@ bool ModelManager::buildModel()
   if (!prepareModel())
   {
     Trace("model-builder") << "ModelManager: fail prepare model" << std::endl;
-    return false;
   }
-
-  // now, finish building the model
-  d_modelBuiltSuccess = finishBuildModel();
-
-  if (Trace.isOn("model-final"))
+  else
   {
-    Trace("model-final") << "Final model:" << std::endl;
-    Trace("model-final") << d_model->debugPrintModelEqc() << std::endl;
+    // now, finish building the model
+    d_modelBuiltSuccess = finishBuildModel();
+
+    if (TraceIsOn("model-final"))
+    {
+      Trace("model-final") << "Final model:" << std::endl;
+      Trace("model-final") << d_model->debugPrintModelEqc() << std::endl;
+    }
+
+    Trace("model-builder") << "ModelManager: model built success is "
+                           << d_modelBuiltSuccess << std::endl;
   }
 
-  Trace("model-builder") << "ModelManager: model built success is "
-                         << d_modelBuiltSuccess << std::endl;
+  // Enable resource management again.
+  rm->setEnabled(true);
 
   return d_modelBuiltSuccess;
 }
@@ -118,7 +127,7 @@ void ModelManager::postProcessModel(bool incomplete)
   Trace("model-builder") << "ModelManager: post-process model..." << std::endl;
   // model construction should always succeed unless lemmas were added
   AlwaysAssert(d_modelBuiltSuccess);
-  if (!options::produceModels())
+  if (!options().smt.produceModels)
   {
     return;
   }
@@ -175,4 +184,4 @@ bool ModelManager::collectModelBooleanVariables()
 }
 
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal

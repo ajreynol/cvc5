@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -21,7 +18,7 @@
 #include "theory/ee_manager.h"
 #include "theory/model_manager.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 
 /**
@@ -48,12 +45,13 @@ class ModelManagerDistributed : public ModelManager
    * model, return true if successful.
    */
   bool finishBuildModel() const override;
+
  protected:
   /** Initialize model equality engine */
   void initializeModelEqEngine(eq::EqualityEngineNotify* notify) override;
 };
 
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__THEORY__MODEL_MANAGER_DISTRIBUTED__H */

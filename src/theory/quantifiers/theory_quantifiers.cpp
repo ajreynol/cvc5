@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Morgan Deters, Tim King
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -23,10 +20,10 @@
 #include "theory/trust_substitutions.h"
 #include "theory/valuation.h"
 
-using namespace cvc5::kind;
+using namespace cvc5::internal::kind;
 using namespace cvc5::context;
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace quantifiers {
 
@@ -34,11 +31,12 @@ TheoryQuantifiers::TheoryQuantifiers(Env& env,
                                      OutputChannel& out,
                                      Valuation valuation)
     : Theory(THEORY_QUANTIFIERS, env, out, valuation),
-      d_rewriter(env.getOptions()),
+      d_rewriter(nodeManager(), env.getRewriter(), options()),
+      d_checker(nodeManager()),
       d_qstate(env, valuation, logicInfo()),
       d_qreg(env),
       d_treg(env, d_qstate, d_qreg),
-      d_qim(env, *this, d_qstate, d_qreg, d_treg, d_pnm),
+      d_qim(env, *this, d_qstate, d_qreg, d_treg),
       d_qengine(nullptr)
 {
   // construct the quantifiers engine
@@ -54,14 +52,13 @@ TheoryQuantifiers::TheoryQuantifiers(Env& env,
   // post-construction.
   d_quantEngine = d_qengine.get();
 
-  if (options::macrosQuant())
+  if (options().quantifiers.macrosQuant)
   {
-    d_qmacros.reset(new QuantifiersMacros(d_qreg));
+    d_qmacros.reset(new QuantifiersMacros(env, d_qreg));
   }
 }
 
-TheoryQuantifiers::~TheoryQuantifiers() {
-}
+TheoryQuantifiers::~TheoryQuantifiers() {}
 
 TheoryRewriter* TheoryQuantifiers::getTheoryRewriter() { return &d_rewriter; }
 
@@ -70,10 +67,10 @@ ProofRuleChecker* TheoryQuantifiers::getProofChecker() { return &d_checker; }
 void TheoryQuantifiers::finishInit()
 {
   // quantifiers are not evaluated in getModelValue
-  d_valuation.setUnevaluatedKind(EXISTS);
-  d_valuation.setUnevaluatedKind(FORALL);
+  d_valuation.setUnevaluatedKind(Kind::EXISTS);
+  d_valuation.setUnevaluatedKind(Kind::FORALL);
   // witness is used in several instantiation strategies
-  d_valuation.setUnevaluatedKind(WITNESS);
+  d_valuation.setUnevaluatedKind(Kind::WITNESS);
 }
 
 bool TheoryQuantifiers::needsEqualityEngine(EeSetupInfo& esi)
@@ -85,63 +82,69 @@ bool TheoryQuantifiers::needsEqualityEngine(EeSetupInfo& esi)
 
 void TheoryQuantifiers::preRegisterTerm(TNode n)
 {
-  if (n.getKind() != FORALL)
+  if (n.getKind() != Kind::FORALL)
   {
     return;
   }
-  Debug("quantifiers-prereg")
+  Trace("quantifiers-prereg")
       << "TheoryQuantifiers::preRegisterTerm() " << n << std::endl;
   // Preregister the quantified formula.
   // This initializes the modules used for handling n in this user context.
   getQuantifiersEngine()->preRegisterQuantifier(n);
-  Debug("quantifiers-prereg")
+  Trace("quantifiers-prereg")
       << "TheoryQuantifiers::preRegisterTerm() done " << n << std::endl;
 }
 
-
-void TheoryQuantifiers::presolve() {
-  Debug("quantifiers-presolve") << "TheoryQuantifiers::presolve()" << std::endl;
-  if( getQuantifiersEngine() ){
+void TheoryQuantifiers::presolve()
+{
+  Trace("quantifiers-presolve") << "TheoryQuantifiers::presolve()" << std::endl;
+  if (getQuantifiersEngine())
+  {
     getQuantifiersEngine()->presolve();
   }
 }
 
-Theory::PPAssertStatus TheoryQuantifiers::ppAssert(
-    TrustNode tin, TrustSubstitutionMap& outSubstitutions)
+bool TheoryQuantifiers::ppAssert(TrustNode tin,
+                                 TrustSubstitutionMap& outSubstitutions)
 {
   if (d_qmacros != nullptr)
   {
     bool reqGround =
-        options::macrosQuantMode() != options::MacrosQuantMode::ALL;
+        options().quantifiers.macrosQuantMode != options::MacrosQuantMode::ALL;
     Node eq = d_qmacros->solve(tin.getProven(), reqGround);
     if (!eq.isNull())
     {
       // must be legal
-      if (isLegalElimination(eq[0], eq[1]))
+      if (d_valuation.isLegalElimination(eq[0], eq[1]))
       {
-        outSubstitutions.addSubstitution(eq[0], eq[1]);
-        return Theory::PP_ASSERT_STATUS_SOLVED;
+        // add substitution solved, which ensures we track that eq depends on
+        // tin, which can impact unsat cores.
+        outSubstitutions.addSubstitutionSolved(eq[0], eq[1], tin);
+        return true;
       }
     }
   }
-  return Theory::PP_ASSERT_STATUS_UNSOLVED;
+  return false;
 }
-void TheoryQuantifiers::ppNotifyAssertions(
-    const std::vector<Node>& assertions) {
+
+void TheoryQuantifiers::ppNotifyAssertions(const std::vector<Node>& assertions)
+{
   Trace("quantifiers-presolve")
       << "TheoryQuantifiers::ppNotifyAssertions" << std::endl;
-  if (getQuantifiersEngine()) {
+  if (getQuantifiersEngine())
+  {
     getQuantifiersEngine()->ppNotifyAssertions(assertions);
   }
 }
 
-bool TheoryQuantifiers::collectModelValues(TheoryModel* m,
-                                           const std::set<Node>& termSet)
+bool TheoryQuantifiers::collectModelValues(
+    TheoryModel* m, CVC5_UNUSED const std::set<Node>& termSet)
 {
-  for(assertions_iterator i = facts_begin(); i != facts_end(); ++i) {
-    if ((*i).d_assertion.getKind() == NOT)
+  for (assertions_iterator i = facts_begin(); i != facts_end(); ++i)
+  {
+    if ((*i).d_assertion.getKind() == Kind::NOT)
     {
-      Debug("quantifiers::collectModelInfo")
+      Trace("quantifiers::collectModelInfo")
           << "got quant FALSE: " << (*i).d_assertion[0] << std::endl;
       if (!m->assertPredicate((*i).d_assertion[0], false))
       {
@@ -150,7 +153,7 @@ bool TheoryQuantifiers::collectModelValues(TheoryModel* m,
     }
     else
     {
-      Debug("quantifiers::collectModelInfo")
+      Trace("quantifiers::collectModelInfo")
           << "got quant TRUE : " << *i << std::endl;
       if (!m->assertPredicate(*i, true))
       {
@@ -167,11 +170,14 @@ void TheoryQuantifiers::postCheck(Effort level)
   getQuantifiersEngine()->check(level);
 }
 
-bool TheoryQuantifiers::preNotifyFact(
-    TNode atom, bool polarity, TNode fact, bool isPrereg, bool isInternal)
+bool TheoryQuantifiers::preNotifyFact(TNode atom,
+                                      bool polarity,
+                                      TNode fact,
+                                      CVC5_UNUSED bool isPrereg,
+                                      CVC5_UNUSED bool isInternal)
 {
   Kind k = atom.getKind();
-  if (k == FORALL)
+  if (k == Kind::FORALL)
   {
     getQuantifiersEngine()->assertQuantifier(atom, polarity);
   }
@@ -185,4 +191,4 @@ bool TheoryQuantifiers::preNotifyFact(
 
 }  // namespace quantifiers
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal

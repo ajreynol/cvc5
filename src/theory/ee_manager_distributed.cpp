@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -20,7 +17,7 @@
 #include "theory/theory_engine.h"
 #include "theory/uf/equality_engine.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 
 EqEngineManagerDistributed::EqEngineManagerDistributed(Env& env,
@@ -30,9 +27,7 @@ EqEngineManagerDistributed::EqEngineManagerDistributed(Env& env,
 {
 }
 
-EqEngineManagerDistributed::~EqEngineManagerDistributed()
-{
-}
+EqEngineManagerDistributed::~EqEngineManagerDistributed() {}
 
 void EqEngineManagerDistributed::initializeTheories()
 {
@@ -58,8 +53,8 @@ void EqEngineManagerDistributed::initializeTheories()
     QuantifiersEngine* qe = d_te.getQuantifiersEngine();
     Assert(qe != nullptr);
     d_masterEENotify.reset(new quantifiers::MasterNotifyClass(qe));
-    d_masterEqualityEngine.reset(new eq::EqualityEngine(
-        *d_masterEENotify.get(), c, "theory::master", false));
+    d_masterEqualityEngine = std::make_unique<eq::EqualityEngine>(
+        d_env, c, *d_masterEENotify.get(), "theory::master", false);
   }
   // allocate equality engines per theory
   for (TheoryId theoryId = theory::THEORY_FIRST;
@@ -99,7 +94,7 @@ void EqEngineManagerDistributed::initializeTheories()
   }
 }
 
-void EqEngineManagerDistributed::notifyModel(bool incomplete)
+void EqEngineManagerDistributed::notifyModel(CVC5_UNUSED bool incomplete)
 {
   // should have a consistent master equality engine
   if (d_masterEqualityEngine.get() != nullptr)
@@ -109,4 +104,4 @@ void EqEngineManagerDistributed::notifyModel(bool incomplete)
 }
 
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal

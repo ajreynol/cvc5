@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Mathias Preiner, Aina Niemetz
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -19,15 +16,19 @@
 #include "expr/node_algorithm.h"
 #include "expr/skolem_manager.h"
 #include "theory/quantifiers/term_util.h"
-#include "theory/rewriter.h"
 
-using namespace cvc5;
-using namespace cvc5::kind;
+using namespace cvc5::internal;
+using namespace cvc5::internal::kind;
 using namespace std;
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace quantifiers {
+
+SingleInvocationPartition::SingleInvocationPartition(Env& env)
+    : EnvObj(env), d_has_input_funcs(false)
+{
+}
 
 bool SingleInvocationPartition::init(Node n)
 {
@@ -106,9 +107,9 @@ bool SingleInvocationPartition::inferArgTypes(Node n,
   if (visited.find(n) == visited.end())
   {
     visited[n] = true;
-    if (n.getKind() != FORALL)
+    if (n.getKind() != Kind::FORALL)
     {
-      if (n.getKind() == APPLY_UF)
+      if (n.getKind() == Kind::APPLY_UF)
       {
         for (unsigned i = 0; i < n.getNumChildren(); i++)
         {
@@ -180,8 +181,7 @@ bool SingleInvocationPartition::init(std::vector<Node>& funcs,
   Assert(d_arg_types.empty());
   Assert(d_input_funcs.empty());
   Assert(d_si_vars.empty());
-  NodeManager* nm = NodeManager::currentNM();
-  SkolemManager* sm = nm->getSkolemManager();
+  NodeManager* nm = nodeManager();
   d_has_input_funcs = has_funcs;
   d_arg_types.insert(d_arg_types.end(), typs.begin(), typs.end());
   d_input_funcs.insert(d_input_funcs.end(), funcs.begin(), funcs.end());
@@ -190,13 +190,13 @@ bool SingleInvocationPartition::init(std::vector<Node>& funcs,
   {
     std::stringstream ss;
     ss << "s_" << j;
-    Node si_v = nm->mkBoundVar(ss.str(), d_arg_types[j]);
+    Node si_v = NodeManager::mkBoundVar(ss.str(), d_arg_types[j]);
     d_si_vars.push_back(si_v);
   }
   Assert(d_si_vars.size() == d_arg_types.size());
   for (const Node& inf : d_input_funcs)
   {
-    Node sk = sm->mkDummySkolem("_sik", inf.getType());
+    Node sk = NodeManager::mkDummySkolem("_sik", inf.getType());
     d_input_func_sks.push_back(sk);
   }
   Trace("si-prt") << "SingleInvocationPartition::process " << n << std::endl;
@@ -221,7 +221,7 @@ bool SingleInvocationPartition::init(std::vector<Node>& funcs,
                                    d_input_funcs.end(),
                                    d_input_func_sks.begin(),
                                    d_input_func_sks.end());
-      cr = TermUtil::getQuantSimplify(cr);
+      cr = getQuantSimplify(cr);
       cr = cr.substitute(d_input_func_sks.begin(),
                          d_input_func_sks.end(),
                          d_input_funcs.begin(),
@@ -261,7 +261,8 @@ bool SingleInvocationPartition::init(std::vector<Node>& funcs,
         for (unsigned j = 0; j < args.size(); j++)
         {
           Trace("si-prt") << args[j] << " ";
-          if (args[j].getKind() == BOUND_VARIABLE && !sb.contains(args[j]))
+          if (args[j].getKind() == Kind::BOUND_VARIABLE
+              && !sb.contains(args[j]))
           {
             sb.add(args[j], d_si_vars[j]);
           }
@@ -273,8 +274,8 @@ bool SingleInvocationPartition::init(std::vector<Node>& funcs,
         Trace("si-prt") << std::endl;
         cr = nm->mkOr(children);
         cr = sb.apply(cr);
-        Trace("si-prt-debug") << "...normalized invocations to " << cr
-                              << std::endl;
+        Trace("si-prt-debug")
+            << "...normalized invocations to " << cr << std::endl;
         // now must check if it has other bound variables
         std::unordered_set<Node> fvs;
         expr::getFreeVariables(cr, fvs);
@@ -325,8 +326,8 @@ bool SingleInvocationPartition::init(std::vector<Node>& funcs,
               {
                 termsNs.push_back(v);
                 subsNs.push_back(d_si_vars[k]);
-                Trace("si-prt-debug") << "  ...use " << d_si_vars[k]
-                                      << std::endl;
+                Trace("si-prt-debug")
+                    << "  ...use " << d_si_vars[k] << std::endl;
                 break;
               }
             }
@@ -336,7 +337,6 @@ bool SingleInvocationPartition::init(std::vector<Node>& funcs,
         cr = cr.substitute(
             termsNs.begin(), termsNs.end(), subsNs.begin(), subsNs.end());
       }
-      cr = Rewriter::rewrite(cr);
       Trace("si-prt") << ".....got si=" << singleInvocation
                       << ", result : " << cr << std::endl;
       d_conjuncts[2].push_back(cr);
@@ -349,7 +349,6 @@ bool SingleInvocationPartition::init(std::vector<Node>& funcs,
         Assert(si_terms.size() == si_subs.size());
         cr = cr.substitute(
             si_terms.begin(), si_terms.end(), si_subs.begin(), si_subs.end());
-        cr = Rewriter::rewrite(cr);
         Trace("si-prt") << ".....si version=" << cr << std::endl;
         d_conjuncts[0].push_back(cr);
       }
@@ -375,7 +374,7 @@ bool SingleInvocationPartition::collectConjuncts(Node n,
                                                  bool pol,
                                                  std::vector<Node>& conj)
 {
-  if ((!pol && n.getKind() == OR) || (pol && n.getKind() == AND))
+  if ((!pol && n.getKind() == Kind::OR) || (pol && n.getKind() == Kind::AND))
   {
     for (unsigned i = 0; i < n.getNumChildren(); i++)
     {
@@ -385,11 +384,11 @@ bool SingleInvocationPartition::collectConjuncts(Node n,
       }
     }
   }
-  else if (n.getKind() == NOT)
+  else if (n.getKind() == Kind::NOT)
   {
     return collectConjuncts(n[0], !pol, conj);
   }
-  else if (n.getKind() == FORALL)
+  else if (n.getKind() == Kind::FORALL)
   {
     return false;
   }
@@ -453,7 +452,7 @@ bool SingleInvocationPartition::processConjunct(Node n,
       }
       else
       {
-        if (n.getKind() == kind::APPLY_UF)
+        if (n.getKind() == Kind::APPLY_UF)
         {
           f = n.getOperator();
           success = true;
@@ -496,8 +495,8 @@ bool SingleInvocationPartition::processConjunct(Node n,
           }
           else
           {
-            Trace("si-prt-debug") << "... " << f << " is a bad operator."
-                                  << std::endl;
+            Trace("si-prt-debug")
+                << "... " << f << " is a bad operator." << std::endl;
             ret = false;
           }
         }
@@ -540,7 +539,7 @@ bool SingleInvocationPartition::isAntiSkolemizableType(Node f)
         Node t;
         if (children.size() > 1)
         {
-          t = NodeManager::currentNM()->mkNode(kind::APPLY_UF, children);
+          t = nodeManager()->mkNode(Kind::APPLY_UF, children);
         }
         else
         {
@@ -558,7 +557,7 @@ bool SingleInvocationPartition::isAntiSkolemizableType(Node f)
         {
           rt = tn.getRangeType();
         }
-        Node v = NodeManager::currentNM()->mkBoundVar(ss.str(), rt);
+        Node v = nodeManager()->mkBoundVar(ss.str(), rt);
         d_func_fo_var[f] = v;
         d_fo_var_to_func[v] = f;
         d_func_vars.push_back(v);
@@ -572,14 +571,14 @@ bool SingleInvocationPartition::isAntiSkolemizableType(Node f)
 
 Node SingleInvocationPartition::getConjunct(int index)
 {
-  return d_conjuncts[index].empty() ? NodeManager::currentNM()->mkConst(true)
-                                    : (d_conjuncts[index].size() == 1
-                                           ? d_conjuncts[index][0]
-                                           : NodeManager::currentNM()->mkNode(
-                                                 AND, d_conjuncts[index]));
+  return d_conjuncts[index].empty()
+             ? nodeManager()->mkConst(true)
+             : (d_conjuncts[index].size() == 1
+                    ? d_conjuncts[index][0]
+                    : nodeManager()->mkNode(Kind::AND, d_conjuncts[index]));
 }
 
-void SingleInvocationPartition::debugPrint(const char* c)
+void SingleInvocationPartition::debugPrint(CVC5_UNUSED const char* c)
 {
   Trace(c) << "Single invocation variables : ";
   for (unsigned i = 0; i < d_si_vars.size(); i++)
@@ -617,6 +616,21 @@ void SingleInvocationPartition::debugPrint(const char* c)
   Trace(c) << std::endl;
 }
 
+Node SingleInvocationPartition::getQuantSimplify(TNode n) const
+{
+  std::unordered_set<Node> fvs;
+  expr::getFreeVariables(n, fvs);
+  if (fvs.empty())
+  {
+    return rewrite(n);
+  }
+  std::vector<Node> bvs(fvs.begin(), fvs.end());
+  NodeManager* nm = nodeManager();
+  Node q = nm->mkNode(Kind::FORALL, nm->mkNode(Kind::BOUND_VAR_LIST, bvs), n);
+  q = rewrite(q);
+  return TermUtil::getRemoveQuantifiers(q);
+}
+
 }  // namespace quantifiers
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal

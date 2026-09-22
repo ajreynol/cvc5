@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Morgan Deters, Andres Noetzli, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -18,30 +15,29 @@
 #ifndef CVC5__OUTPUT_H
 #define CVC5__OUTPUT_H
 
+#include <cvc5/cvc5_export.h>
+
+#include <algorithm>
 #include <cstdio>
 #include <ios>
 #include <iostream>
 #include <set>
 #include <string>
 #include <utility>
+#include <vector>
 
-#include "cvc5_export.h"
-
-namespace cvc5 {
-
-template <class T, class U>
-std::ostream& operator<<(std::ostream& out,
-                         const std::pair<T, U>& p) CVC5_EXPORT;
+namespace cvc5::internal {
 
 template <class T, class U>
-std::ostream& operator<<(std::ostream& out, const std::pair<T, U>& p) {
+std::ostream& operator<<(std::ostream& out, const std::pair<T, U>& p)
+{
   return out << "[" << p.first << "," << p.second << "]";
 }
 
 /**
  * A utility class to provide (essentially) a "/dev/null" streambuf.
  * If debugging support is compiled in, but debugging for
- * e.g. "parser" is off, then Debug("parser") returns a stream
+ * e.g. "parser" is off, then Trace("parser") returns a stream
  * attached to a null_streambuf instance so that output is directed to
  * the bit bucket.
  */
@@ -52,7 +48,7 @@ class null_streambuf : public std::streambuf
    * stream.  Perhaps this is not so critical, but recommended; this
    * way the output stream looks like it's functioning, in a non-error
    * state. */
- int overflow(int c) override { return c; }
+  int overflow(int c) override { return c; }
 }; /* class null_streambuf */
 
 /** A null stream-buffer singleton */
@@ -60,10 +56,10 @@ extern null_streambuf null_sb;
 /** A null output stream singleton */
 extern std::ostream null_os CVC5_EXPORT;
 
-class CVC5_EXPORT Cvc5ostream
+class Cvc5ostream
 {
-  static const std::string s_tab;
-  static const int s_indentIosIndex;
+  static const std::string s_tab CVC5_EXPORT;
+  static const int s_indentIosIndex CVC5_EXPORT;
 
   /** The underlying ostream */
   std::ostream* d_os;
@@ -73,25 +69,36 @@ class CVC5_EXPORT Cvc5ostream
   /** The endl manipulator (why do we need to keep this?) */
   std::ostream& (*const d_endl)(std::ostream&);
 
-  // do not allow use
-  Cvc5ostream& operator=(const Cvc5ostream&);
+  Cvc5ostream(const Cvc5ostream&) = delete;
+  Cvc5ostream& operator=(const Cvc5ostream&) = delete;
 
  public:
-  Cvc5ostream() : d_os(NULL), d_firstColumn(false), d_endl(&std::endl) {}
+  Cvc5ostream() : d_os(nullptr), d_firstColumn(false), d_endl(&std::endl) {}
   explicit Cvc5ostream(std::ostream* os)
       : d_os(os), d_firstColumn(true), d_endl(&std::endl)
   {
   }
 
-  void pushIndent() {
-    if(d_os != NULL) {
+  void reset(std::ostream* os)
+  {
+    d_os = os;
+    d_firstColumn = (os != nullptr);
+  }
+
+  void pushIndent()
+  {
+    if (d_os != nullptr)
+    {
       ++d_os->iword(s_indentIosIndex);
     }
   }
-  void popIndent() {
-    if(d_os != NULL) {
+  void popIndent()
+  {
+    if (d_os != nullptr)
+    {
       long& indent = d_os->iword(s_indentIosIndex);
-      if(indent > 0) {
+      if (indent > 0)
+      {
         --indent;
       }
     }
@@ -99,27 +106,46 @@ class CVC5_EXPORT Cvc5ostream
 
   Cvc5ostream& flush()
   {
-    if(d_os != NULL) {
+    if (d_os != nullptr)
+    {
       d_os->flush();
     }
     return *this;
   }
 
-  bool isConnected() const { return d_os != NULL; }
+  bool isConnected() const { return d_os != nullptr; }
   operator std::ostream&() const { return isConnected() ? *d_os : null_os; }
 
   std::ostream* getStreamPointer() const { return d_os; }
 
   template <class T>
-  Cvc5ostream& operator<<(T const& t) CVC5_EXPORT;
+  Cvc5ostream& operator<<(T const& t)
+  {
+    if (d_os != nullptr)
+    {
+      if (d_firstColumn)
+      {
+        d_firstColumn = false;
+        long indent = d_os->iword(s_indentIosIndex);
+        for (long i = 0; i < indent; ++i)
+        {
+          d_os = &(*d_os << s_tab);
+        }
+      }
+      *d_os << t;
+    }
+    return *this;
+  }
 
   // support manipulators, endl, etc..
   Cvc5ostream& operator<<(std::ostream& (*pf)(std::ostream&))
   {
-    if(d_os != NULL) {
+    if (d_os != nullptr)
+    {
       d_os = &(*d_os << pf);
 
-      if(pf == d_endl) {
+      if (pf == d_endl)
+      {
         d_firstColumn = true;
       }
     }
@@ -127,14 +153,16 @@ class CVC5_EXPORT Cvc5ostream
   }
   Cvc5ostream& operator<<(std::ios& (*pf)(std::ios&))
   {
-    if(d_os != NULL) {
+    if (d_os != nullptr)
+    {
       d_os = &(*d_os << pf);
     }
     return *this;
   }
   Cvc5ostream& operator<<(std::ios_base& (*pf)(std::ios_base&))
   {
-    if(d_os != NULL) {
+    if (d_os != nullptr)
+    {
       d_os = &(*d_os << pf);
     }
     return *this;
@@ -157,22 +185,6 @@ inline Cvc5ostream& pop(Cvc5ostream& stream)
   return stream;
 }
 
-template <class T>
-Cvc5ostream& Cvc5ostream::operator<<(T const& t)
-{
-  if(d_os != NULL) {
-    if(d_firstColumn) {
-      d_firstColumn = false;
-      long indent = d_os->iword(s_indentIosIndex);
-      for(long i = 0; i < indent; ++i) {
-        d_os = &(*d_os << s_tab);
-      }
-    }
-    d_os = &(*d_os << t);
-  }
-  return *this;
-}
-
 /**
  * Does nothing; designed for compilation of non-debug/non-trace
  * builds.  None of these should ever be called in such builds, but we
@@ -180,53 +192,16 @@ Cvc5ostream& Cvc5ostream::operator<<(T const& t)
  */
 class NullC
 {
+  mutable Cvc5ostream d_null;
+
  public:
+  NullC() : d_null(nullptr) {}
   operator bool() const { return false; }
-  operator Cvc5ostream() const { return Cvc5ostream(); }
+  operator Cvc5ostream&() const { return d_null; }
   operator std::ostream&() const { return null_os; }
 }; /* class NullC */
 
 extern NullC nullStream CVC5_EXPORT;
-
-/** The debug output class */
-class DebugC
-{
-  std::set<std::string> d_tags;
-  std::ostream* d_os;
-
-public:
-  explicit DebugC(std::ostream* os) : d_os(os) {}
-
-  Cvc5ostream operator()(const std::string& tag) const
-  {
-    if(!d_tags.empty() && d_tags.find(tag) != d_tags.end()) {
-      return Cvc5ostream(d_os);
-    } else {
-      return Cvc5ostream();
-    }
-  }
-
-  bool on(const std::string& tag)
-  {
-    d_tags.insert(tag);
-    return true;
-  }
-  bool off(const std::string& tag)
-  {
-    d_tags.erase(tag);
-    return false;
-  }
-  bool off()                { d_tags.clear(); return false; }
-
-  bool isOn(const std::string& tag) const
-  {
-    return d_tags.find(tag) != d_tags.end();
-  }
-
-  std::ostream& setStream(std::ostream* os) { d_os = os; return *os; }
-  std::ostream& getStream() const { return *d_os; }
-  std::ostream* getStreamPointer() const { return d_os; }
-}; /* class DebugC */
 
 /** The warning output class */
 class WarningC
@@ -234,12 +209,16 @@ class WarningC
   std::set<std::pair<std::string, size_t> > d_alreadyWarned;
   std::ostream* d_os;
 
-public:
+ public:
   explicit WarningC(std::ostream* os) : d_os(os) {}
 
   Cvc5ostream operator()() const { return Cvc5ostream(d_os); }
 
-  std::ostream& setStream(std::ostream* os) { d_os = os; return *d_os; }
+  std::ostream& setStream(std::ostream* os)
+  {
+    d_os = os;
+    return *d_os;
+  }
   std::ostream& getStream() const { return *d_os; }
   std::ostream* getStreamPointer() const { return d_os; }
 
@@ -251,7 +230,8 @@ public:
   bool warnOnce(const std::string& file, size_t line)
   {
     std::pair<std::string, size_t> pr = std::make_pair(file, line);
-    if(d_alreadyWarned.find(pr) != d_alreadyWarned.end()) {
+    if (d_alreadyWarned.find(pr) != d_alreadyWarned.end())
+    {
       // signal caller not to warn again
       return false;
     }
@@ -263,210 +243,116 @@ public:
 
 }; /* class WarningC */
 
-/** The message output class */
-class MessageC
-{
-  std::ostream* d_os;
-
-public:
-  explicit MessageC(std::ostream* os) : d_os(os) {}
-
-  Cvc5ostream operator()() const { return Cvc5ostream(d_os); }
-
-  std::ostream& setStream(std::ostream* os) { d_os = os; return *d_os; }
-  std::ostream& getStream() const { return *d_os; }
-  std::ostream* getStreamPointer() const { return d_os; }
-
-  bool isOn() const { return d_os != &null_os; }
-}; /* class MessageC */
-
-/** The notice output class */
-class NoticeC
-{
-  std::ostream* d_os;
-
-public:
-  explicit NoticeC(std::ostream* os) : d_os(os) {}
-
-  Cvc5ostream operator()() const { return Cvc5ostream(d_os); }
-
-  std::ostream& setStream(std::ostream* os) { d_os = os; return *d_os; }
-  std::ostream& getStream() const { return *d_os; }
-  std::ostream* getStreamPointer() const { return d_os; }
-
-  bool isOn() const { return d_os != &null_os; }
-}; /* class NoticeC */
-
-/** The chat output class */
-class ChatC
-{
-  std::ostream* d_os;
-
-public:
-  explicit ChatC(std::ostream* os) : d_os(os) {}
-
-  Cvc5ostream operator()() const { return Cvc5ostream(d_os); }
-
-  std::ostream& setStream(std::ostream* os) { d_os = os; return *d_os; }
-  std::ostream& getStream() const { return *d_os; }
-  std::ostream* getStreamPointer() const { return d_os; }
-
-  bool isOn() const { return d_os != &null_os; }
-}; /* class ChatC */
-
 /** The trace output class */
 class TraceC
 {
   std::ostream* d_os;
-  std::set<std::string> d_tags;
+  std::vector<std::string> d_tags;
+  mutable Cvc5ostream d_stream;
 
-public:
-  explicit TraceC(std::ostream* os) : d_os(os) {}
+ public:
+  explicit TraceC(std::ostream* os) : d_os(os), d_stream(os) {}
 
-  Cvc5ostream operator()(std::string tag) const
+  Cvc5ostream& operator()() const
   {
-    if(!d_tags.empty() && d_tags.find(tag) != d_tags.end()) {
-      return Cvc5ostream(d_os);
-    } else {
-      return Cvc5ostream();
+    d_stream.reset(d_os);
+    return d_stream;
+  }
+  Cvc5ostream& operator()(const std::string& tag) const
+  {
+    if (isOn(tag))
+    {
+      d_stream.reset(d_os);
     }
+    else
+    {
+      d_stream.reset(nullptr);
+    }
+    return d_stream;
   }
 
   bool on(const std::string& tag)
   {
-    d_tags.insert(tag);
+    d_tags.emplace_back(tag);
     return true;
   }
   bool off(const std::string& tag)
   {
-    d_tags.erase(tag);
+    auto it = std::find(d_tags.begin(), d_tags.end(), tag);
+    if (it != d_tags.end())
+    {
+      *it = d_tags.back();
+      d_tags.pop_back();
+    }
     return false;
   }
-  bool off()                { d_tags.clear(); return false; }
 
   bool isOn(const std::string& tag) const
   {
-    return d_tags.find(tag) != d_tags.end();
+    // This is faster than using std::set::find() or sorting the vector and
+    // using std::lower_bound.
+    return !d_tags.empty()
+           && std::find(d_tags.begin(), d_tags.end(), tag) != d_tags.end();
   }
 
-  std::ostream& setStream(std::ostream* os) { d_os = os; return *d_os; }
+  std::ostream& setStream(std::ostream* os)
+  {
+    d_os = os;
+    return *d_os;
+  }
   std::ostream& getStream() const { return *d_os; }
   std::ostream* getStreamPointer() const { return d_os; }
 
 }; /* class TraceC */
 
-/** The dump output class */
-class DumpOutC
-{
-  std::set<std::string> d_tags;
-  std::ostream* d_os;
-
-public:
-  /**
-   * A copy of cout for use by the dumper.  This is important because
-   * it has different settings (e.g., the expr printing depth is always
-   * unlimited). */
-  static std::ostream dump_cout;
-
-  explicit DumpOutC(std::ostream* os) : d_os(os) {}
-
-  Cvc5ostream operator()(std::string tag)
-  {
-    if(!d_tags.empty() && d_tags.find(tag) != d_tags.end()) {
-      return Cvc5ostream(d_os);
-    } else {
-      return Cvc5ostream();
-    }
-  }
-
-  bool on(const std::string& tag)
-  {
-    d_tags.insert(tag);
-    return true;
-  }
-  bool off(const std::string& tag)
-  {
-    d_tags.erase(tag);
-    return false;
-  }
-  bool off()                { d_tags.clear(); return false; }
-
-  bool isOn(std::string tag) const { return d_tags.find(tag) != d_tags.end(); }
-
-  std::ostream& setStream(std::ostream* os) { d_os = os; return *d_os; }
-  std::ostream& getStream() const { return *d_os; }
-  std::ostream* getStreamPointer() const { return d_os; }
-}; /* class DumpOutC */
-
-/** The debug output singleton */
-extern DebugC DebugChannel CVC5_EXPORT;
 /** The warning output singleton */
 extern WarningC WarningChannel CVC5_EXPORT;
-/** The message output singleton */
-extern MessageC MessageChannel CVC5_EXPORT;
-/** The notice output singleton */
-extern NoticeC NoticeChannel CVC5_EXPORT;
-/** The chat output singleton */
-extern ChatC ChatChannel CVC5_EXPORT;
 /** The trace output singleton */
 extern TraceC TraceChannel CVC5_EXPORT;
-/** The dump output singleton */
-extern DumpOutC DumpOutChannel CVC5_EXPORT;
 
 #ifdef CVC5_MUZZLE
 
-#define Debug ::cvc5::__cvc5_true() ? ::cvc5::nullStream : ::cvc5::DebugChannel
-#define Warning \
-  ::cvc5::__cvc5_true() ? ::cvc5::nullStream : ::cvc5::WarningChannel
-#define WarningOnce \
-  ::cvc5::__cvc5_true() ? ::cvc5::nullStream : ::cvc5::WarningChannel
-#define CVC5Message \
-  ::cvc5::__cvc5_true() ? ::cvc5::nullStream : ::cvc5::MessageChannel
-#define Notice \
-  ::cvc5::__cvc5_true() ? ::cvc5::nullStream : ::cvc5::NoticeChannel
-#define Chat ::cvc5::__cvc5_true() ? ::cvc5::nullStream : ::cvc5::ChatChannel
-#define Trace ::cvc5::__cvc5_true() ? ::cvc5::nullStream : ::cvc5::TraceChannel
-#define DumpOut \
-  ::cvc5::__cvc5_true() ? ::cvc5::nullStream : ::cvc5::DumpOutChannel
+#define Warning                                              \
+  cvc5::internal::__cvc5_true() ? cvc5::internal::nullStream \
+                                : cvc5::internal::WarningChannel
+#define WarningOnce                                          \
+  cvc5::internal::__cvc5_true() ? cvc5::internal::nullStream \
+                                : cvc5::internal::WarningChannel
+#define TraceIsOn \
+  cvc5::internal::__cvc5_true() ? false : cvc5::internal::TraceChannel.isOn
+#define Trace(tag)                                           \
+  cvc5::internal::__cvc5_true() ? cvc5::internal::nullStream \
+                                : cvc5::internal::TraceChannel()
 
 #else /* CVC5_MUZZLE */
 
-#if defined(CVC5_DEBUG) && defined(CVC5_TRACING)
-#define Debug ::cvc5::DebugChannel
-#else /* CVC5_DEBUG && CVC5_TRACING */
-#define Debug ::cvc5::__cvc5_true() ? ::cvc5::nullStream : ::cvc5::DebugChannel
-#endif /* CVC5_DEBUG && CVC5_TRACING */
-#define Warning \
-  (!::cvc5::WarningChannel.isOn()) ? ::cvc5::nullStream : ::cvc5::WarningChannel
-#define WarningOnce                                         \
-  (!::cvc5::WarningChannel.isOn()                           \
-   || !::cvc5::WarningChannel.warnOnce(__FILE__, __LINE__)) \
-      ? ::cvc5::nullStream                                  \
-      : ::cvc5::WarningChannel
-#define CVC5Message \
-  (!::cvc5::MessageChannel.isOn()) ? ::cvc5::nullStream : ::cvc5::MessageChannel
-#define Notice \
-  (!::cvc5::NoticeChannel.isOn()) ? ::cvc5::nullStream : ::cvc5::NoticeChannel
-#define Chat \
-  (!::cvc5::ChatChannel.isOn()) ? ::cvc5::nullStream : ::cvc5::ChatChannel
+#define Warning                                                         \
+  (!cvc5::internal::WarningChannel.isOn()) ? cvc5::internal::nullStream \
+                                           : cvc5::internal::WarningChannel
+#define WarningOnce                                                 \
+  (!cvc5::internal::WarningChannel.isOn()                           \
+   || !cvc5::internal::WarningChannel.warnOnce(__FILE__, __LINE__)) \
+      ? cvc5::internal::nullStream                                  \
+      : cvc5::internal::WarningChannel
 #ifdef CVC5_TRACING
-#define Trace ::cvc5::TraceChannel
+#define TraceIsOn cvc5::internal::TraceChannel.isOn
+#define Trace(tag)                                                     \
+  !cvc5::internal::TraceChannel.isOn(tag) ? cvc5::internal::nullStream \
+                                          : cvc5::internal::TraceChannel()
 #else /* CVC5_TRACING */
-#define Trace ::cvc5::__cvc5_true() ? ::cvc5::nullStream : ::cvc5::TraceChannel
+#define TraceIsOn \
+  cvc5::internal::__cvc5_true() ? false : cvc5::internal::TraceChannel.isOn
+#define Trace(tag)                                           \
+  cvc5::internal::__cvc5_true() ? cvc5::internal::nullStream \
+                                : cvc5::internal::TraceChannel()
 #endif /* CVC5_TRACING */
-#ifdef CVC5_DUMPING
-#define DumpOut ::cvc5::DumpOutChannel
-#else /* CVC5_DUMPING */
-#define DumpOut \
-  ::cvc5::__cvc5_true() ? ::cvc5::nullStream : ::cvc5::DumpOutChannel
-#endif /* CVC5_DUMPING */
 
 #endif /* CVC5_MUZZLE */
 
-// Disallow e.g. !Debug("foo").isOn() forms
+// Disallow e.g. !Trace("foo").isOn() forms
 // because the ! will apply before the ? .
 // If a compiler error has directed you here,
-// just parenthesize it e.g. !(Debug("foo").isOn())
+// just parenthesize it e.g. !(Trace("foo").isOn())
 class __cvc5_true
 {
   CVC5_UNUSED void operator!();
@@ -478,82 +364,6 @@ class __cvc5_true
   inline operator bool() { return true; }
 }; /* __cvc5_true */
 
-#if defined(CVC5_DEBUG) && defined(CVC5_TRACING)
-
-class ScopedDebug
-{
-  std::string d_tag;
-  bool d_oldSetting;
-
-public:
-
-  ScopedDebug(std::string tag, bool newSetting = true) :
-    d_tag(tag) {
-    d_oldSetting = Debug.isOn(d_tag);
-    if(newSetting) {
-      Debug.on(d_tag);
-    } else {
-      Debug.off(d_tag);
-    }
-  }
-
-  ~ScopedDebug() {
-    if(d_oldSetting) {
-      Debug.on(d_tag);
-    } else {
-      Debug.off(d_tag);
-    }
-  }
-}; /* class ScopedDebug */
-
-#else /* CVC5_DEBUG && CVC5_TRACING */
-
-class ScopedDebug
-{
- public:
-  ScopedDebug(std::string tag, bool newSetting = true) {}
-}; /* class ScopedDebug */
-
-#endif /* CVC5_DEBUG && CVC5_TRACING */
-
-#ifdef CVC5_TRACING
-
-class ScopedTrace
-{
-  std::string d_tag;
-  bool d_oldSetting;
-
-public:
-
-  ScopedTrace(std::string tag, bool newSetting = true) :
-    d_tag(tag) {
-    d_oldSetting = Trace.isOn(d_tag);
-    if(newSetting) {
-      Trace.on(d_tag);
-    } else {
-      Trace.off(d_tag);
-    }
-  }
-
-  ~ScopedTrace() {
-    if(d_oldSetting) {
-      Trace.on(d_tag);
-    } else {
-      Trace.off(d_tag);
-    }
-  }
-}; /* class ScopedTrace */
-
-#else /* CVC5_TRACING */
-
-class ScopedTrace
-{
- public:
-  ScopedTrace(std::string tag, bool newSetting = true) {}
-}; /* class ScopedTrace */
-
-#endif /* CVC5_TRACING */
-
 /**
  * Pushes an indentation level on construction, pop on destruction.
  * Useful for tracing recursive functions especially, but also can be
@@ -562,24 +372,13 @@ class ScopedTrace
  */
 class IndentedScope
 {
-  Cvc5ostream d_out;
+  Cvc5ostream& d_out;
 
  public:
-  inline IndentedScope(Cvc5ostream out);
-  inline ~IndentedScope();
+  inline IndentedScope(Cvc5ostream& out) : d_out(out) { d_out << push; }
+  inline ~IndentedScope() { d_out << pop; }
 }; /* class IndentedScope */
 
-#if defined(CVC5_DEBUG) && defined(CVC5_TRACING)
-inline IndentedScope::IndentedScope(Cvc5ostream out) : d_out(out)
-{
-  d_out << push;
-}
-inline IndentedScope::~IndentedScope() { d_out << pop; }
-#else  /* CVC5_DEBUG && CVC5_TRACING */
-inline IndentedScope::IndentedScope(Cvc5ostream out) {}
-inline IndentedScope::~IndentedScope() {}
-#endif /* CVC5_DEBUG && CVC5_TRACING */
-
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__OUTPUT_H */

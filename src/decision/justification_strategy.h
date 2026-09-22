@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -22,6 +19,7 @@
 #include "context/cdo.h"
 #include "decision/assertion_list.h"
 #include "decision/decision_engine.h"
+#include "decision/justify_cache.h"
 #include "decision/justify_info.h"
 #include "decision/justify_stack.h"
 #include "decision/justify_stats.h"
@@ -31,7 +29,7 @@
 #include "prop/sat_solver.h"
 #include "prop/sat_solver_types.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace decision {
 
 /**
@@ -117,7 +115,9 @@ class JustificationStrategy : public DecisionEngine
 {
  public:
   /** Constructor */
-  JustificationStrategy(Env& env);
+  JustificationStrategy(Env& env,
+                        prop::CDCLTSatSolver* ss,
+                        prop::CnfStream* cs);
 
   /** Presolve, called at the beginning of each check-sat call */
   void presolve() override;
@@ -140,41 +140,32 @@ class JustificationStrategy : public DecisionEngine
    * propositionally satisfied by the current assignment.
    */
   bool isDone() override;
-
   /**
-   * Notify this class that assertion is an (input) assertion, not corresponding
-   * to a skolem definition.
+   * Adds assertions lems to satisfy that persist in the user context.
+   * All input assertions and lemmas not marked "local" are added via this call.
+   * @param lems The lemmas to add.
    */
-  void addAssertion(TNode assertion) override;
+  void addAssertions(const std::vector<TNode>& lems) override;
   /**
-   * Notify this class that lem is the skolem definition for skolem, which is
-   * a part of the current assertions.
+   * Adds assertions lems to satisfy that persist in the SAT context.
+   * This is triggered when a literal lit is sent to TheoryEngine that contains
+   * skolems we have yet to see in the current SAT context, where lems are the
+   * skolem definitions for each such skolem.
+   * @param lems The lemmas to add.
    */
-  void addSkolemDefinition(TNode lem, TNode skolem) override;
-  /**
-   * Notify this class that the list of lemmas defs are now active in the
-   * current SAT context. This is triggered when a literal lit is sent to
-   * TheoryEngine that contains skolems we have yet to see in the current SAT
-   * context, where defs are the skolem definitions for each such skolem.
-   */
-  void notifyActiveSkolemDefs(std::vector<TNode>& defs) override;
-  /**
-   * We need notification of active skolem definitions when our skolem
-   * relevance policy is JutificationSkolemRlvMode::ASSERT.
-   */
-  bool needsActiveSkolemDefs() const override;
+  void addLocalAssertions(const std::vector<TNode>& lems) override;
 
  private:
   /**
-   * Helper method to insert assertions in `toProcess` to `d_assertions` or
-   * `d_skolemAssertions` based on `useSkolemList`.
+   * Helper method to insert assertions in `lems` to `d_assertions` or
+   * `d_localAssertions` when `local` is true.
    */
-  void insertToAssertionList(std::vector<TNode>& toProcess, bool useSkolemList);
+  void insertToAssertionList(const std::vector<TNode>& lems, bool local);
   /**
    * Refresh current assertion. This ensures that d_stack has a current
    * assertion to satisfy. If it does not already have one, we take the next
    * assertion from the list of input assertions, or from the relevant
-   * skolem definitions based on the JutificationSkolemMode mode.
+   * local assertions.
    *
    * @return true if we successfully initialized d_stack with the next
    * assertion to satisfy.
@@ -184,12 +175,12 @@ class JustificationStrategy : public DecisionEngine
    * Implements the above function for the case where d_stack must get a new
    * assertion to satisfy.
    *
-   * @param useSkolemList If this is true, we pull the next assertion from
-   * the list of relevant skolem definitions.
+   * @param local If this is true, we pull the next assertion from
+   * the list of relevant local assertions.
    * @return true if we successfully initialized d_stack with the next
    * assertion to satisfy.
    */
-  bool refreshCurrentAssertionFromList(bool useSkolemList);
+  bool refreshCurrentAssertionFromList(bool local);
   /**
    * Let n be the node referenced by ji.
    *
@@ -208,27 +199,15 @@ class JustificationStrategy : public DecisionEngine
    * (2) a null justify node and updates lastChildVal to the value of n.
    */
   JustifyNode getNextJustifyNode(JustifyInfo* ji, prop::SatValue& lastChildVal);
-  /**
-   * Returns the value TRUE/FALSE for n, or UNKNOWN otherwise.
-   *
-   * We return a value for n only if we have justified its values based on its
-   * children. For example, we return UNKNOWN for n of the form (and A B) if
-   * A and B have UNKNOWN value, even if the SAT solver has assigned a value for
-   * (internal) node n. If n itself is a theory literal, we lookup its value
-   * in the SAT solver if it is not already cached.
-   */
-  prop::SatValue lookupValue(TNode n);
   /** Is n a theory literal? */
   static bool isTheoryLiteral(TNode n);
-  /** Is n a theory atom? */
-  static bool isTheoryAtom(TNode n);
   /** The assertions, which are user-context dependent. */
   AssertionList d_assertions;
-  /** The skolem assertions */
-  AssertionList d_skolemAssertions;
+  /** The local assertions, which are SAT-context depdendent */
+  AssertionList d_localAssertions;
 
-  /** Mapping from non-negated nodes to their SAT value */
-  context::CDInsertHashMap<Node, prop::SatValue> d_justified;
+  /** A justification cache */
+  JustifyCache d_jcache;
   /** A justify stack */
   JustifyStack d_stack;
   /** The last decision literal */
@@ -252,6 +231,6 @@ class JustificationStrategy : public DecisionEngine
 };
 
 }  // namespace decision
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__DECISION__JUSTIFICATION_STRATEGY_H */

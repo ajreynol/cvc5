@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Andres Noetzli, Aina Niemetz
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -16,19 +13,22 @@
 #include "theory/quantifiers/dynamic_rewrite.h"
 
 #include "expr/skolem_manager.h"
+#include "smt/env.h"
 #include "theory/rewriter.h"
 
 using namespace std;
-using namespace cvc5::kind;
+using namespace cvc5::internal::kind;
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace quantifiers {
 
-DynamicRewriter::DynamicRewriter(const std::string& name, context::Context* c)
-    : d_equalityEngine(c, "DynamicRewriter::" + name, true), d_rewrites(c)
+DynamicRewriter::DynamicRewriter(Env& env,
+                                 context::Context* c,
+                                 const std::string& name)
+    : d_equalityEngine(env, c, "DynamicRewriter::" + name, true), d_rewrites(c)
 {
-  d_equalityEngine.addFunctionKind(kind::APPLY_UF);
+  d_equalityEngine.addFunctionKind(Kind::APPLY_UF);
 }
 
 void DynamicRewriter::addRewrite(Node a, Node b)
@@ -95,7 +95,7 @@ Node DynamicRewriter::toInternal(Node a)
     if (a.hasOperator())
     {
       Node op = a.getOperator();
-      if (a.getKind() != APPLY_UF)
+      if (a.getKind() != Kind::APPLY_UF)
       {
         op = d_ois_trie[op].getSymbol(a);
         // if this term involves an argument that is not of first class type,
@@ -124,7 +124,7 @@ Node DynamicRewriter::toInternal(Node a)
       }
       else
       {
-        ret = NodeManager::currentNM()->mkNode(APPLY_UF, children);
+        ret = a.getNodeManager()->mkNode(Kind::APPLY_UF, children);
       }
     }
   }
@@ -145,8 +145,7 @@ Node DynamicRewriter::toExternal(Node ai)
 
 Node DynamicRewriter::OpInternalSymTrie::getSymbol(Node n)
 {
-  NodeManager* nm = NodeManager::currentNM();
-  SkolemManager* sm = nm->getSkolemManager();
+  NodeManager* nm = n.getNodeManager();
   std::vector<TypeNode> ctypes;
   for (const Node& cn : n)
   {
@@ -178,11 +177,11 @@ Node DynamicRewriter::OpInternalSymTrie::getSymbol(Node n)
   {
     utype = nm->mkFunctionType(ctypes);
   }
-  Node f = sm->mkDummySkolem("ufd", utype, "internal op for dynamic_rewriter");
+  Node f = NodeManager::mkDummySkolem("ufd", utype);
   curr->d_sym = f;
   return f;
 }
 
 }  // namespace quantifiers
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal

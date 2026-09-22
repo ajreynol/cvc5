@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Morgan Deters, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -30,7 +27,7 @@
 ${type_properties_includes}
 // clang-format on
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace kind {
 
 /**
@@ -56,23 +53,27 @@ ${type_constant_cardinalities}
  * files, so includes contributions from each theory regarding that
  * theory's types.
  */
-inline Cardinality getCardinality(TypeNode typeNode) {
+inline Cardinality getCardinality(TypeNode typeNode)
+{
   AssertArgument(!typeNode.isNull(), typeNode);
-  switch(Kind k = typeNode.getKind()) {
-  case TYPE_CONSTANT:
-    return getCardinality(typeNode.getConst<TypeConstant>());
-    // clang-format off
+  switch (Kind k = typeNode.getKind())
+  {
+    case Kind::TYPE_CONSTANT:
+      return getCardinality(typeNode.getConst<TypeConstant>());
+      // clang-format off
 ${type_cardinalities}
-    // clang-format on
-  default:
-    InternalError() << "A theory kinds file did not provide a cardinality "
-                    << "or cardinality computer for type:\n"
-                    << typeNode << "\nof kind " << k;
+      // clang-format on
+    default:
+      InternalError() << "A theory kinds file did not provide a cardinality "
+                      << "or cardinality computer for type:\n"
+                      << typeNode << "\nof kind " << k;
   }
-}/* getCardinality(TypeNode) */
+} /* getCardinality(TypeNode) */
 
-inline bool isWellFounded(TypeConstant tc) {
-  switch(tc) {
+inline bool isWellFounded(TypeConstant tc)
+{
+  switch (tc)
+  {
     // clang-format off
 ${type_constant_wellfoundednesses}
     // clang-format on
@@ -80,53 +81,30 @@ ${type_constant_wellfoundednesses}
       InternalError() << "No well-foundedness status known for type constant: "
                       << tc;
   }
-}/* isWellFounded(TypeConstant) */
+} /* isWellFounded(TypeConstant) */
 
-inline bool isWellFounded(TypeNode typeNode) {
-  AssertArgument(!typeNode.isNull(), typeNode);
-  switch(Kind k = typeNode.getKind()) {
-  case TYPE_CONSTANT:
-    return isWellFounded(typeNode.getConst<TypeConstant>());
-    // clang-format off
-${type_wellfoundednesses}
-    // clang-format on
-  default:
-    InternalError() << "A theory kinds file did not provide a well-foundedness "
-                    << "or well-foundedness computer for type:\n"
-                    << typeNode << "\nof kind " << k;
-  }
-}/* isWellFounded(TypeNode) */
-
-inline Node mkGroundTerm(TypeConstant tc)
-{
-  switch (tc)
-  {
-    // clang-format off
-${type_constant_groundterms}
-      // clang-format on
-    default:
-      InternalError() << "No ground term known for type constant: " << tc;
-  }
-} /* mkGroundTerm(TypeConstant) */
-
-inline Node mkGroundTerm(TypeNode typeNode)
+inline bool isWellFounded(TypeNode typeNode)
 {
   AssertArgument(!typeNode.isNull(), typeNode);
   switch (Kind k = typeNode.getKind())
   {
-    case TYPE_CONSTANT:
-      return mkGroundTerm(typeNode.getConst<TypeConstant>());
+    case Kind::TYPE_CONSTANT:
+      return isWellFounded(typeNode.getConst<TypeConstant>());
       // clang-format off
-${type_groundterms}
+${type_wellfoundednesses}
       // clang-format on
     default:
-      InternalError() << "A theory kinds file did not provide a ground term "
-                      << "or ground term computer for type:\n"
-                      << typeNode << "\nof kind " << k;
+      InternalError()
+          << "A theory kinds file did not provide a well-foundedness "
+          << "or well-foundedness computer for type:\n"
+          << typeNode << "\nof kind " << k;
   }
-} /* mkGroundTerm(TypeNode) */
+} /* isWellFounded(TypeNode) */
+
+Node mkGroundTerm(NodeManager* nm, TypeConstant tc);
+Node mkGroundTerm(TypeNode typeNode);
 
 }  // namespace kind
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__TYPE_PROPERTIES_H */

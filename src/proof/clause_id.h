@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Paul Meng, Mathias Preiner, Liana Hadarean
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -21,7 +18,7 @@
 #ifndef CVC5__PROOF__CLAUSE_ID_H
 #define CVC5__PROOF__CLAUSE_ID_H
 
-namespace cvc5 {
+namespace cvc5::internal {
 
 /**
  * A ClauseId is a shared identifier between the proofs module and the sat
@@ -32,10 +29,10 @@ typedef unsigned ClauseId;
 /** Reserved clauseId values used in the resolution proof. The represent,
  * respectively, the empty clause, that adding the clause to the SAT solver was
  * a no-op, and that an error occurred when trying to add. */
-const ClauseId ClauseIdEmpty(-1);
-const ClauseId ClauseIdUndef(-2);
-const ClauseId ClauseIdError(-3);
+constexpr ClauseId ClauseIdEmpty(-1);
+constexpr ClauseId ClauseIdUndef(-2);
+constexpr ClauseId ClauseIdError(-3);
 
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__PROOF__CLAUSE_ID_H */

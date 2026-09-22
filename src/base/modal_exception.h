@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Morgan Deters, Andres Noetzli, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -22,23 +19,21 @@
 
 #include "base/exception.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 
-class ModalException : public cvc5::Exception
+class ModalException : public cvc5::internal::Exception
 {
  public:
-  ModalException() :
-    Exception("Feature used while operating in "
-              "incorrect state") {
+  ModalException()
+      : Exception(
+            "Feature used while operating in "
+            "incorrect state")
+  {
   }
 
-  ModalException(const std::string& msg) :
-    Exception(msg) {
-  }
+  ModalException(const std::string& msg) : Exception(msg) {}
 
-  ModalException(const char* msg) :
-    Exception(msg) {
-  }
+  ModalException(const char* msg) : Exception(msg) {}
 }; /* class ModalException */
 
 /**
@@ -48,7 +43,7 @@ class ModalException : public cvc5::Exception
  * TODO(#1108): This exception should not be needed anymore in future versions
  * of the public API.
  */
-class RecoverableModalException : public cvc5::ModalException
+class RecoverableModalException : public cvc5::internal::ModalException
 {
  public:
   RecoverableModalException(const std::string& msg) : ModalException(msg) {}
@@ -56,6 +51,6 @@ class RecoverableModalException : public cvc5::ModalException
   RecoverableModalException(const char* msg) : ModalException(msg) {}
 }; /* class RecoverableModalException */
 
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__SMT__MODAL_EXCEPTION_H */

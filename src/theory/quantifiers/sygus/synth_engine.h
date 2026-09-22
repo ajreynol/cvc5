@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Mathias Preiner, Morgan Deters
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -25,7 +22,7 @@
 #include "theory/quantifiers/sygus/sygus_stats.h"
 #include "theory/quantifiers/sygus/synth_conjecture.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace quantifiers {
 
@@ -57,7 +54,7 @@ class SynthEngine : public QuantifiersModule
   /* Called for new quantifiers */
   void registerQuantifier(Node q) override;
   /** Identify this module (for debugging, dynamic configuration, etc..) */
-  std::string identify() const override { return "SynthEngine"; }
+  std::string identify() const override;
   /** get synth solutions
    *
    * This function adds entries to sol_map that map functions-to-synthesize
@@ -69,7 +66,7 @@ class SynthEngine : public QuantifiersModule
    * SynthConjecture::getSynthSolutions.
    */
   bool getSynthSolutions(std::map<Node, std::map<Node, Node> >& sol_map);
-  /** preregister assertion (before rewrite)
+  /** preprocess notify assertion (before rewrite)
    *
    * The purpose of this method is to inform the solution reconstruction
    * techniques within the single invocation module that n is an original
@@ -77,11 +74,9 @@ class SynthEngine : public QuantifiersModule
    * to help when trying to reconstruct a solution that fits a given input
    * syntax.
    */
-  void preregisterAssertion(Node n);
+  void ppNotifyAssertions(const std::vector<Node>& assertions) override;
 
  private:
-  /** the conjecture formula(s) we are waiting to assign */
-  std::vector<Node> d_waiting_conj;
   /** The synthesis conjectures that this class is managing. */
   std::vector<std::unique_ptr<SynthConjecture> > d_conjs;
   /**
@@ -90,10 +85,6 @@ class SynthEngine : public QuantifiersModule
    * preregisterAssertion.
    */
   SynthConjecture* d_conj;
-  /**
-   * The quantifier elimination preprocess module.
-   */
-  SygusQePreproc d_sqp;
   /** The statistics */
   SygusStatistics d_statistics;
   /** assign quantified formula q as a conjecture
@@ -115,6 +106,6 @@ class SynthEngine : public QuantifiersModule
 
 }  // namespace quantifiers
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif

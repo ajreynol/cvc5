@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -23,7 +20,7 @@
 #include "expr/node.h"
 #include "theory/quantifiers/ematching/inst_match_generator.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace quantifiers {
 namespace inst {
@@ -72,13 +69,16 @@ class InstMatchGeneratorMultiLinear : public InstMatchGenerator
   /** Reset. */
   bool reset(Node eqc) override;
   /** Get the next match. */
-  int getNextMatch(Node q, InstMatch& m) override;
+  int getNextMatch(InstMatch& m) override;
+  /** Get the inference id, for statistics. */
+  InferenceId getInferenceId() override;
 
  protected:
   /** reset the children of this generator */
   int resetChildren();
   /** constructor */
-  InstMatchGeneratorMultiLinear(Trigger* tparent,
+  InstMatchGeneratorMultiLinear(Env& env,
+                                Trigger* tparent,
                                 Node q,
                                 std::vector<Node>& pats);
 };
@@ -86,6 +86,6 @@ class InstMatchGeneratorMultiLinear : public InstMatchGenerator
 }  // namespace inst
 }  // namespace quantifiers
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif

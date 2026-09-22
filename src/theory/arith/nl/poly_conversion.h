@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Gereon Kremer, Aina Niemetz
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -29,7 +26,7 @@
 #include "expr/node.h"
 #include "util/real_algebraic_number.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace arith {
 
@@ -40,24 +37,30 @@ namespace nl {
 /** Bijective mapping between cvc5 variables and poly variables. */
 struct VariableMapper
 {
+  VariableMapper(const poly::Context& ctx) : polyCtx(ctx) {}
+  /** The libpoly context */
+  const poly::Context& polyCtx;
   /** A mapping from cvc5 variables to poly variables. */
-  std::map<cvc5::Node, poly::Variable> mVarCVCpoly;
+  std::map<cvc5::internal::Node, poly::Variable> mVarCVCpoly;
   /** A mapping from poly variables to cvc5 variables. */
-  std::map<poly::Variable, cvc5::Node> mVarpolyCVC;
+  std::map<poly::Variable, cvc5::internal::Node> mVarpolyCVC;
 
   /** Retrieves the according poly variable. */
-  poly::Variable operator()(const cvc5::Node& n);
+  poly::Variable operator()(const cvc5::internal::Node& n);
   /** Retrieves the according cvc5 variable. */
-  cvc5::Node operator()(const poly::Variable& n);
+  cvc5::internal::Node operator()(const poly::Variable& n);
 };
 
-/** Convert a poly univariate polynomial to a cvc5::Node. */
-cvc5::Node as_cvc_upolynomial(const poly::UPolynomial& p,
-                              const cvc5::Node& var);
+/** Convert a poly univariate polynomial to a cvc5::internal::Node. */
+cvc5::internal::Node as_cvc_upolynomial(const poly::UPolynomial& p,
+                                        const cvc5::internal::Node& var);
 
-/** Convert a cvc5::Node to a poly univariate polynomial. */
-poly::UPolynomial as_poly_upolynomial(const cvc5::Node& n,
-                                      const cvc5::Node& var);
+/**
+ * Convert a cvc5::internal::Node to a poly univariate polynomial. Is robust to
+ * n being a `Kind::TO_REAL` wrapper node.
+ */
+poly::UPolynomial as_poly_upolynomial(const cvc5::internal::Node& n,
+                                      const cvc5::internal::Node& var);
 
 /**
  * Constructs a polynomial from the given node.
@@ -68,12 +71,14 @@ poly::UPolynomial as_poly_upolynomial(const cvc5::Node& n,
  * Once the polynomial has been fully constructed, we can oftentimes ignore the
  * denominator (except for its sign, which is always positive, though).
  * This is the case if we are solely interested in the roots of the polynomials
- * (like in the context of CAD). If we need the actual polynomial (for example
- * in the context of ICP) the second overload provides the denominator in the
- * third argument.
+ * (like in the context of coverings). If we need the actual polynomial (for
+ * example in the context of ICP) the second overload provides the denominator
+ * in the third argument. The method is robust to n being a `Kind::TO_REAL`
+ * wrapper node.
  */
-poly::Polynomial as_poly_polynomial(const cvc5::Node& n, VariableMapper& vm);
-poly::Polynomial as_poly_polynomial(const cvc5::Node& n,
+poly::Polynomial as_poly_polynomial(const cvc5::internal::Node& n,
+                                    VariableMapper& vm);
+poly::Polynomial as_poly_polynomial(const cvc5::internal::Node& n,
                                     VariableMapper& vm,
                                     poly::Rational& denominator);
 
@@ -86,7 +91,9 @@ poly::Polynomial as_poly_polynomial(const cvc5::Node& n,
  * multiplications with one or use NONLINEAR_MULT where regular MULT may be
  * sufficient), so it may be sensible to rewrite it afterwards.
  */
-cvc5::Node as_cvc_polynomial(const poly::Polynomial& p, VariableMapper& vm);
+cvc5::internal::Node as_cvc_polynomial(NodeManager* nm,
+                                       const poly::Polynomial& p,
+                                       VariableMapper& vm);
 
 /**
  * Constructs a constraints (a polynomial and a sign condition) from the given
@@ -94,14 +101,6 @@ cvc5::Node as_cvc_polynomial(const poly::Polynomial& p, VariableMapper& vm);
  */
 std::pair<poly::Polynomial, poly::SignCondition> as_poly_constraint(
     Node n, VariableMapper& vm);
-
-/**
- * Transforms a real algebraic number to a node suitable for putting it into a
- * model. The resulting node can be either a constant (suitable for
- * addSubstitution) or a witness term (suitable for
- * addWitness).
- */
-Node ran_to_node(const RealAlgebraicNumber& ran, const Node& ran_variable);
 
 Node ran_to_node(const poly::AlgebraicNumber& an, const Node& ran_variable);
 
@@ -143,9 +142,6 @@ Node excluding_interval_to_lemma(const Node& variable,
  */
 poly::AlgebraicNumber node_to_poly_ran(const Node& n, const Node& ran_variable);
 
-/** Transforms a node to a RealAlgebraicNumber by calling node_to_poly_ran. */
-RealAlgebraicNumber node_to_ran(const Node& n, const Node& ran_variable);
-
 /**
  * Transforms a node to a poly::Value.
  */
@@ -158,12 +154,44 @@ poly::Value node_to_value(const Node& n, const Node& ran_variable);
  */
 std::size_t bitsize(const poly::Value& v);
 
-poly::IntervalAssignment getBounds(VariableMapper& vm, const BoundInference& bi);
+poly::IntervalAssignment getBounds(VariableMapper& vm,
+                                   const BoundInference& bi);
 
 }  // namespace nl
 }  // namespace arith
 }  // namespace theory
-}  // namespace cvc5
+
+class PolyConverter
+{
+ public:
+  /**
+   * Transforms a real algebraic number to a node suitable for putting it into a
+   * model. The resulting node can be either a constant (suitable for
+   * addSubstitution) or a witness term (suitable for addWitness).
+   */
+  static Node ran_to_node(const RealAlgebraicNumber& ran,
+                          const Node& ran_variable);
+  /**
+   * Get the defining polynomial for the given ran, expressed over variable
+   * ran_variable. Returns null if the defining polynomial does not exist.
+   */
+  static Node ran_to_defining_polynomial(const RealAlgebraicNumber& ran,
+                                         const Node& ran_variable);
+  /**
+   * Get the lower bound for the given ran, which is a constant real.
+   */
+  static Node ran_to_lower(NodeManager* nm, const RealAlgebraicNumber& ran);
+  /**
+   * Get the upper bound for the given ran, which is a constant real.
+   */
+  static Node ran_to_upper(NodeManager* nm, const RealAlgebraicNumber& ran);
+
+  /** Transforms a node to a RealAlgebraicNumber by calling node_to_poly_ran. */
+  static RealAlgebraicNumber node_to_ran(const Node& n,
+                                         const Node& ran_variable);
+};
+
+}  // namespace cvc5::internal
 
 #endif
 

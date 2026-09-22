@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Morgan Deters, Tim King, Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -24,18 +21,20 @@
 #include "expr/type_node.h"
 #include "util/integer.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 
-class NoMoreValuesException : public Exception {
+class NoMoreValuesException : public Exception
+{
  public:
   NoMoreValuesException(TypeNode n)
       : Exception("No more values for type `" + n.toString() + "'")
   {
   }
-};/* class NoMoreValuesException */
+}; /* class NoMoreValuesException */
 
-class TypeEnumeratorInterface {
+class TypeEnumeratorInterface
+{
  public:
   TypeEnumeratorInterface(TypeNode type) : d_type(type) {}
 
@@ -64,39 +63,51 @@ class TypeEnumeratorInterface {
   const TypeNode d_type;
 }; /* class TypeEnumeratorInterface */
 
-// AJR: This class stores particular information that is relevant to type enumeration.
-//      For finite model finding, we set d_fixed_usort=true,
-//      and store the finite cardinality bounds for each uninterpreted sort encountered in the model.
+/**
+ * This class stores particular information that is relevant to type
+ * enumeration. For finite model finding, we set d_fixed_usort=true, and store
+ * the finite cardinality bounds for each uninterpreted sort encountered in the
+ * model. For strings, we store the cardinality for the alphabet that we are
+ * assuming.
+ */
 class TypeEnumeratorProperties
 {
-public:
-  TypeEnumeratorProperties() : d_fixed_usort_card(false){}
-  Integer getFixedCardinality( TypeNode tn ) { return d_fixed_card[tn]; }
+ public:
+  TypeEnumeratorProperties(bool fixUSortCard, uint32_t strAlphaCard)
+      : d_fixed_usort_card(fixUSortCard), d_stringAlphaCard(strAlphaCard)
+  {
+  }
+  Integer getFixedCardinality(TypeNode tn) { return d_fixed_card[tn]; }
   bool d_fixed_usort_card;
-  std::map< TypeNode, Integer > d_fixed_card;
+  std::map<TypeNode, Integer> d_fixed_card;
+  /** Get the alphabet for strings */
+  uint32_t getStringsAlphabetCard() const { return d_stringAlphaCard; }
+
+ private:
+  /** The cardinality of the alphabet */
+  uint32_t d_stringAlphaCard;
 };
 
 template <class T>
-class TypeEnumeratorBase : public TypeEnumeratorInterface {
-public:
-
-  TypeEnumeratorBase(TypeNode type) :
-    TypeEnumeratorInterface(type) {
-  }
+class TypeEnumeratorBase : public TypeEnumeratorInterface
+{
+ public:
+  TypeEnumeratorBase(TypeNode type) : TypeEnumeratorInterface(type) {}
 
   TypeEnumeratorInterface* clone() const override
   {
     return new T(static_cast<const T&>(*this));
   }
 
-};/* class TypeEnumeratorBase */
+}; /* class TypeEnumeratorBase */
 
 /** Type enumerator class.
  * Enumerates values for a type.
  * Its constructor takes the type to enumerate and a pointer to a
  * TypeEnumeratorProperties class, which this type enumerator does not own.
  */
-class TypeEnumerator {
+class TypeEnumerator
+{
   TypeEnumeratorInterface* d_te;
 
   static TypeEnumeratorInterface* mkTypeEnumerator(
@@ -108,12 +119,10 @@ class TypeEnumerator {
   {
   }
 
-  TypeEnumerator(const TypeEnumerator& te) :
-    d_te(te.d_te->clone()) {
-  }
-  TypeEnumerator(TypeEnumeratorInterface* te) : d_te(te){
-  }
-  TypeEnumerator& operator=(const TypeEnumerator& te) {
+  TypeEnumerator(const TypeEnumerator& te) : d_te(te.d_te->clone()) {}
+  TypeEnumerator(TypeEnumeratorInterface* te) : d_te(te) {}
+  TypeEnumerator& operator=(const TypeEnumerator& te)
+  {
     delete d_te;
     d_te = te.d_te->clone();
     return *this;
@@ -126,11 +135,15 @@ class TypeEnumerator {
 // block here.  For now, there doesn't appear a good workaround; just disable
 // assertions on that setup.
 #if defined(CVC5_ASSERTIONS) && !(defined(__clang__))
-    if(d_te->isFinished()) {
-      try {
+    if (d_te->isFinished())
+    {
+      try
+      {
         **d_te;
-        Assert(false) << "expected an NoMoreValuesException to be thrown";
-      } catch(NoMoreValuesException&) {
+        DebugUnhandled() << "expected an NoMoreValuesException to be thrown";
+      }
+      catch (NoMoreValuesException&)
+      {
         // ignore the exception, we're just asserting that it would be thrown
         //
         // This block can crash on clang 3.0 on Mac OS, perhaps related to
@@ -138,11 +151,17 @@ class TypeEnumerator {
         //
         // Hence the #if !(defined(__APPLE__) && defined(__clang__)) above
       }
-    } else {
-      try {
+    }
+    else
+    {
+      try
+      {
         **d_te;
-      } catch(NoMoreValuesException&) {
-        Assert(false) << "didn't expect a NoMoreValuesException to be thrown";
+      }
+      catch (NoMoreValuesException&)
+      {
+        DebugUnhandled()
+            << "didn't expect a NoMoreValuesException to be thrown";
       }
     }
 #endif /* CVC5_ASSERTIONS && !(APPLE || clang) */
@@ -154,13 +173,16 @@ class TypeEnumerator {
 // block above (and perhaps here, too).  For now, there doesn't appear a
 // good workaround; just disable assertions on that setup.
 #if defined(CVC5_ASSERTIONS) && !(defined(__APPLE__) && defined(__clang__))
-    try {
+    try
+    {
       Node n = **d_te;
       Assert(n.isConst()) << "Term " << n
                           << " from type enumerator is not constant";
       Assert(!isFinished());
       return n;
-    } catch(NoMoreValuesException&) {
+    }
+    catch (NoMoreValuesException&)
+    {
       Assert(isFinished());
       throw;
     }
@@ -181,9 +203,9 @@ class TypeEnumerator {
   }
 
   TypeNode getType() const { return d_te->getType(); }
-};/* class TypeEnumerator */
+}; /* class TypeEnumerator */
 
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__THEORY__TYPE_ENUMERATOR_H */

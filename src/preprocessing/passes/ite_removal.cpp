@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Andres Noetzli, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -25,11 +22,11 @@
 #include "theory/rewriter.h"
 #include "theory/theory_preprocessor.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace preprocessing {
 namespace passes {
 
-using namespace cvc5::theory;
+using namespace cvc5::internal::theory;
 
 // TODO (project #42): note this preprocessing pass is deprecated
 IteRemoval::IteRemoval(PreprocessingPassContext* preprocContext)
@@ -47,30 +44,27 @@ PreprocessingPassResult IteRemoval::applyInternal(AssertionPipeline* assertions)
   for (unsigned i = 0, size = assertions->size(); i < size; ++i)
   {
     Node assertion = (*assertions)[i];
-    std::vector<TrustNode> newAsserts;
-    std::vector<Node> newSkolems;
-    TrustNode trn = pe->removeItes(assertion, newAsserts, newSkolems);
+    std::vector<SkolemLemma> newAsserts;
+    TrustNode trn = pe->removeItes(assertion, newAsserts);
     if (!trn.isNull())
     {
       // process
       assertions->replaceTrusted(i, trn);
     }
-    Assert(newSkolems.size() == newAsserts.size());
-    for (unsigned j = 0, nnasserts = newAsserts.size(); j < nnasserts; j++)
+    for (const SkolemLemma& lem : newAsserts)
     {
-      imap[assertions->size()] = newSkolems[j];
-      assertions->pushBackTrusted(newAsserts[j]);
+      imap[assertions->size()] = lem.d_skolem;
+      assertions->pushBackTrusted(lem.d_lemma);
     }
   }
   for (unsigned i = 0, size = assertions->size(); i < size; ++i)
   {
-    assertions->replace(i, rewrite((*assertions)[i]));
+    assertions->ensureRewritten(i);
   }
 
   return PreprocessingPassResult::NO_CONFLICT;
 }
 
-
 }  // namespace passes
 }  // namespace preprocessing
-}  // namespace cvc5
+}  // namespace cvc5::internal

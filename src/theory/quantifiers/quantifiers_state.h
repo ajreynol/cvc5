@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -22,7 +19,7 @@
 #include "theory/theory.h"
 #include "theory/theory_state.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace quantifiers {
 
@@ -32,9 +29,7 @@ namespace quantifiers {
 class QuantifiersState : public TheoryState
 {
  public:
-  QuantifiersState(Env& env,
-                   Valuation val,
-                   const LogicInfo& logicInfo);
+  QuantifiersState(Env& env, Valuation val, const LogicInfo& logicInfo);
   ~QuantifiersState() {}
   /**
    * Increment the instantiation counters, called once at the beginning of when
@@ -60,9 +55,16 @@ class QuantifiersState : public TheoryState
   /** get the stats */
   QuantifiersStatistics& getStats();
 
+  /** Mark conflicting instance */
+  void notifyConflictingInst();
+  /** Is conflicting instance? */
+  bool isConflictingInst() const { return d_conflictInst.get(); }
+
  private:
   /** The number of instantiation rounds in this SAT context */
   context::CDO<uint64_t> d_ierCounterc;
+  /** Conflicting instantiation in this SAT context */
+  context::CDO<bool> d_conflictInst;
   /** The number of total instantiation rounds (full effort) */
   uint64_t d_ierCounter;
   /** The number of total instantiation rounds (last call effort) */
@@ -86,6 +88,6 @@ class QuantifiersState : public TheoryState
 
 }  // namespace quantifiers
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__THEORY__QUANTIFIERS__QUANTIFIERS_STATE_H */

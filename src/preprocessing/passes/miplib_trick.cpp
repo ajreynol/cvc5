@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Mathias Preiner, Andrew Reynolds, Morgan Deters
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -25,20 +22,20 @@
 #include "options/base_options.h"
 #include "preprocessing/assertion_pipeline.h"
 #include "preprocessing/preprocessing_pass_context.h"
-#include "smt/smt_statistics_registry.h"
-#include "smt_util/boolean_simplification.h"
+#include "preprocessing/util/boolean_simplification.h"
 #include "theory/booleans/circuit_propagator.h"
 #include "theory/theory_engine.h"
 #include "theory/theory_model.h"
 #include "theory/trust_substitutions.h"
 #include "util/rational.h"
 
-namespace cvc5 {
+using namespace std;
+using namespace cvc5::internal::kind;
+using namespace cvc5::internal::theory;
+
+namespace cvc5::internal {
 namespace preprocessing {
 namespace passes {
-
-using namespace std;
-using namespace cvc5::theory;
 
 namespace {
 
@@ -76,19 +73,9 @@ MipLibTrick::MipLibTrick(PreprocessingPassContext* preprocContext)
     : PreprocessingPass(preprocContext, "miplib-trick"),
       d_statistics(statisticsRegistry())
 {
-  if (!options().base.incrementalSolving)
-  {
-    NodeManager::currentNM()->subscribeEvents(this);
-  }
 }
 
-MipLibTrick::~MipLibTrick()
-{
-  if (!options().base.incrementalSolving)
-  {
-    NodeManager::currentNM()->unsubscribeEvents(this);
-  }
-}
+MipLibTrick::~MipLibTrick() {}
 
 /**
  * Remove conjuncts in toRemove from conjunction n. Return # of removed
@@ -97,18 +84,18 @@ MipLibTrick::~MipLibTrick()
 size_t MipLibTrick::removeFromConjunction(
     Node& n, const std::unordered_set<unsigned long>& toRemove)
 {
-  Assert(n.getKind() == kind::AND);
-  Node trueNode = NodeManager::currentNM()->mkConst(true);
+  Assert(n.getKind() == Kind::AND);
+  Node trueNode = nodeManager()->mkConst(true);
   size_t removals = 0;
   for (Node::iterator j = n.begin(); j != n.end(); ++j)
   {
     size_t subremovals = 0;
     Node sub = *j;
     if (toRemove.find(sub.getId()) != toRemove.end()
-        || (sub.getKind() == kind::AND
+        || (sub.getKind() == Kind::AND
             && (subremovals = removeFromConjunction(sub, toRemove)) > 0))
     {
-      NodeBuilder b(kind::AND);
+      NodeBuilder b(nodeManager(), Kind::AND);
       b.append(n.begin(), j);
       if (subremovals > 0)
       {
@@ -125,7 +112,7 @@ size_t MipLibTrick::removeFromConjunction(
         {
           ++removals;
         }
-        else if ((*j).getKind() == kind::AND)
+        else if ((*j).getKind() == Kind::AND)
         {
           sub = *j;
           if ((subremovals = removeFromConjunction(sub, toRemove)) > 0)
@@ -166,30 +153,43 @@ size_t MipLibTrick::removeFromConjunction(
   return 0;
 }
 
-void MipLibTrick::nmNotifyNewVar(TNode n)
+void MipLibTrick::collectBooleanVariables(
+    AssertionPipeline* assertionsToPreprocess)
 {
-  if (n.getType().isBoolean())
+  d_boolVars.clear();
+  std::unordered_set<TNode> visited;
+  std::unordered_set<TNode>::iterator it;
+  std::vector<TNode> visit;
+  TNode cur;
+  for (size_t i = 0, size = assertionsToPreprocess->size(); i < size; ++i)
   {
-    d_boolVars.push_back(n);
+    visit.push_back((*assertionsToPreprocess)[i]);
   }
-}
+  do
+  {
+    cur = visit.back();
+    visit.pop_back();
+    it = visited.find(cur);
 
-void MipLibTrick::nmNotifyNewSkolem(TNode n,
-                                    const std::string& comment,
-                                    uint32_t flags)
-{
-  if (n.getType().isBoolean())
-  {
-    d_boolVars.push_back(n);
-  }
+    if (it == visited.end())
+    {
+      visited.insert(cur);
+      if (cur.isVar() && cur.getType().isBoolean())
+      {
+        d_boolVars.push_back(cur);
+      }
+      visit.insert(visit.end(), cur.begin(), cur.end());
+    }
+  } while (!visit.empty());
 }
 
 PreprocessingPassResult MipLibTrick::applyInternal(
     AssertionPipeline* assertionsToPreprocess)
 {
-  Assert(assertionsToPreprocess->getRealAssertionsEnd()
-         == assertionsToPreprocess->size());
   Assert(!options().base.incrementalSolving);
+
+  // collect Boolean variables
+  collectBooleanVariables(assertionsToPreprocess);
 
   context::Context fakeContext;
   TheoryEngine* te = d_preprocContext->getTheoryEngine();
@@ -203,9 +203,8 @@ PreprocessingPassResult MipLibTrick::applyInternal(
       d_preprocContext->getTopLevelSubstitutions();
   SubstitutionMap& top_level_substs = tlsm.get();
 
-  NodeManager* nm = NodeManager::currentNM();
-  SkolemManager* sm = nm->getSkolemManager();
-  Node zero = nm->mkConst(Rational(0)), one = nm->mkConst(Rational(1));
+  NodeManager* nm = nodeManager();
+  Node zero = nm->mkConstInt(Rational(0)), one = nm->mkConstInt(Rational(1));
   Node trueNode = nm->mkConst(true);
 
   unordered_map<TNode, Node> intVars;
@@ -213,7 +212,7 @@ PreprocessingPassResult MipLibTrick::applyInternal(
   {
     if (propagator->isAssigned(v0))
     {
-      Debug("miplib") << "ineligible: " << v0 << " because assigned "
+      Trace("miplib") << "ineligible: " << v0 << " because assigned "
                       << propagator->getAssignment(v0) << endl;
       continue;
     }
@@ -235,7 +234,7 @@ PreprocessingPassResult MipLibTrick::applyInternal(
         assertions.push_back(v0);
       }
     }
-    Debug("miplib") << "for " << v0 << endl;
+    Trace("miplib") << "for " << v0 << endl;
     bool eligible = true;
     map<pair<Node, Node>, uint64_t> marks;
     map<pair<Node, Node>, vector<Rational> > coef;
@@ -245,38 +244,36 @@ PreprocessingPassResult MipLibTrick::applyInternal(
          j1 != assertions.end();
          ++j1)
     {
-      Debug("miplib") << "  found: " << *j1 << endl;
-      if ((*j1).getKind() != kind::IMPLIES)
+      Trace("miplib") << "  found: " << *j1 << endl;
+      if ((*j1).getKind() != Kind::IMPLIES)
       {
         eligible = false;
-        Debug("miplib") << "  -- INELIGIBLE -- (not =>)" << endl;
+        Trace("miplib") << "  -- INELIGIBLE -- (not =>)" << endl;
         break;
       }
       Node conj = BooleanSimplification::simplify((*j1)[0]);
-      if (conj.getKind() == kind::AND && conj.getNumChildren() > 6)
+      if (conj.getKind() == Kind::AND && conj.getNumChildren() > 6)
       {
         eligible = false;
-        Debug("miplib") << "  -- INELIGIBLE -- (N-ary /\\ too big)" << endl;
+        Trace("miplib") << "  -- INELIGIBLE -- (N-ary /\\ too big)" << endl;
         break;
       }
-      if (conj.getKind() != kind::AND && !conj.isVar()
-          && !(conj.getKind() == kind::NOT && conj[0].isVar()))
+      if (conj.getKind() != Kind::AND && !conj.isVar()
+          && !(conj.getKind() == Kind::NOT && conj[0].isVar()))
       {
         eligible = false;
-        Debug("miplib") << "  -- INELIGIBLE -- (not /\\ or literal)" << endl;
+        Trace("miplib") << "  -- INELIGIBLE -- (not /\\ or literal)" << endl;
         break;
       }
-      if ((*j1)[1].getKind() != kind::EQUAL
-          || !(((*j1)[1][0].isVar()
-                && (*j1)[1][1].getKind() == kind::CONST_RATIONAL)
-               || ((*j1)[1][0].getKind() == kind::CONST_RATIONAL
-                   && (*j1)[1][1].isVar())))
+      if ((*j1)[1].getKind() != Kind::EQUAL
+          || !(((*j1)[1][0].isVar() && (*j1)[1][1].isConst())
+               || ((*j1)[1][0].isConst() && (*j1)[1][1].isVar())))
       {
         eligible = false;
-        Debug("miplib") << "  -- INELIGIBLE -- (=> (and X X) X)" << endl;
+        Trace("miplib") << "  -- INELIGIBLE -- (=> (and X X) X)" << endl;
         break;
       }
-      if (conj.getKind() == kind::AND)
+      if (conj.getKind() == Kind::AND)
       {
         vector<Node> posv;
         bool found_x = false;
@@ -289,7 +286,7 @@ PreprocessingPassResult MipLibTrick::applyInternal(
             neg[*ii] = false;
             found_x = found_x || v0 == *ii;
           }
-          else if ((*ii).getKind() == kind::NOT && (*ii)[0].isVar())
+          else if ((*ii).getKind() == Kind::NOT && (*ii)[0].isVar())
           {
             posv.push_back((*ii)[0]);
             neg[(*ii)[0]] = true;
@@ -298,14 +295,14 @@ PreprocessingPassResult MipLibTrick::applyInternal(
           else
           {
             eligible = false;
-            Debug("miplib")
+            Trace("miplib")
                 << "  -- INELIGIBLE -- (non-var: " << *ii << ")" << endl;
             break;
           }
           if (propagator->isAssigned(posv.back()))
           {
             eligible = false;
-            Debug("miplib") << "  -- INELIGIBLE -- (" << posv.back()
+            Trace("miplib") << "  -- INELIGIBLE -- (" << posv.back()
                             << " asserted)" << endl;
             break;
           }
@@ -317,20 +314,17 @@ PreprocessingPassResult MipLibTrick::applyInternal(
         if (!found_x)
         {
           eligible = false;
-          Debug("miplib") << "  --INELIGIBLE -- (couldn't find " << v0
+          Trace("miplib") << "  --INELIGIBLE -- (couldn't find " << v0
                           << " in conjunction)" << endl;
           break;
         }
         sort(posv.begin(), posv.end());
-        const Node pos = NodeManager::currentNM()->mkNode(kind::AND, posv);
-        const TNode var = ((*j1)[1][0].getKind() == kind::CONST_RATIONAL)
-                              ? (*j1)[1][1]
-                              : (*j1)[1][0];
+        const Node pos = nodeManager()->mkNode(Kind::AND, posv);
+        const TNode var = ((*j1)[1][0].isConst()) ? (*j1)[1][1] : (*j1)[1][0];
         const pair<Node, Node> pos_var(pos, var);
-        const Rational& constant =
-            ((*j1)[1][0].getKind() == kind::CONST_RATIONAL)
-                ? (*j1)[1][0].getConst<Rational>()
-                : (*j1)[1][1].getConst<Rational>();
+        const Rational& constant = ((*j1)[1][0].isConst())
+                                       ? (*j1)[1][0].getConst<Rational>()
+                                       : (*j1)[1][1].getConst<Rational>();
         uint64_t mark = 0;
         unsigned countneg = 0, thepos = 0;
         for (unsigned ii = 0; ii < pos.getNumChildren(); ++ii)
@@ -348,20 +342,20 @@ PreprocessingPassResult MipLibTrick::applyInternal(
         if ((marks[pos_var] & (1lu << mark)) != 0)
         {
           eligible = false;
-          Debug("miplib") << "  -- INELIGIBLE -- (remarked)" << endl;
+          Trace("miplib") << "  -- INELIGIBLE -- (remarked)" << endl;
           break;
         }
-        Debug("miplib") << "mark is " << mark << " -- " << (1lu << mark)
+        Trace("miplib") << "mark is " << mark << " -- " << (1lu << mark)
                         << endl;
         marks[pos_var] |= (1lu << mark);
-        Debug("miplib") << "marks[" << pos << "," << var << "] now "
+        Trace("miplib") << "marks[" << pos << "," << var << "] now "
                         << marks[pos_var] << endl;
         if (countneg == pos.getNumChildren())
         {
           if (constant != 0)
           {
             eligible = false;
-            Debug("miplib") << "  -- INELIGIBLE -- (nonzero constant)" << endl;
+            Trace("miplib") << "  -- INELIGIBLE -- (nonzero constant)" << endl;
             break;
           }
         }
@@ -390,26 +384,23 @@ PreprocessingPassResult MipLibTrick::applyInternal(
         if (x != v0 && x != (v0).notNode())
         {
           eligible = false;
-          Debug("miplib")
+          Trace("miplib")
               << "  -- INELIGIBLE -- (x not present where I expect it)" << endl;
           break;
         }
-        const bool xneg = (x.getKind() == kind::NOT);
+        const bool xneg = (x.getKind() == Kind::NOT);
         x = xneg ? x[0] : x;
-        Debug("miplib") << "  x:" << x << "  " << xneg << endl;
-        const TNode var = ((*j1)[1][0].getKind() == kind::CONST_RATIONAL)
-                              ? (*j1)[1][1]
-                              : (*j1)[1][0];
+        Trace("miplib") << "  x:" << x << "  " << xneg << endl;
+        const TNode var = ((*j1)[1][0].isConst()) ? (*j1)[1][1] : (*j1)[1][0];
         const pair<Node, Node> x_var(x, var);
-        const Rational& constant =
-            ((*j1)[1][0].getKind() == kind::CONST_RATIONAL)
-                ? (*j1)[1][0].getConst<Rational>()
-                : (*j1)[1][1].getConst<Rational>();
+        const Rational& constant = ((*j1)[1][0].isConst())
+                                       ? (*j1)[1][0].getConst<Rational>()
+                                       : (*j1)[1][1].getConst<Rational>();
         unsigned mark = (xneg ? 0 : 1);
         if ((marks[x_var] & (1u << mark)) != 0)
         {
           eligible = false;
-          Debug("miplib") << "  -- INELIGIBLE -- (remarked)" << endl;
+          Trace("miplib") << "  -- INELIGIBLE -- (remarked)" << endl;
           break;
         }
         marks[x_var] |= (1u << mark);
@@ -418,7 +409,7 @@ PreprocessingPassResult MipLibTrick::applyInternal(
           if (constant != 0)
           {
             eligible = false;
-            Debug("miplib") << "  -- INELIGIBLE -- (nonzero constant)" << endl;
+            Trace("miplib") << "  -- INELIGIBLE -- (nonzero constant)" << endl;
             break;
           }
         }
@@ -442,15 +433,15 @@ PreprocessingPassResult MipLibTrick::applyInternal(
         const pair<Node, Node>& pos_var = (*j).first;
         const uint64_t mark = (*j).second;
         const unsigned numVars =
-            pos.getKind() == kind::AND ? pos.getNumChildren() : 1;
+            pos.getKind() == Kind::AND ? pos.getNumChildren() : 1;
         uint64_t expected = (uint64_t(1) << (1 << numVars)) - 1;
         expected = (expected == 0) ? -1 : expected;  // fix for overflow
-        Debug("miplib") << "[" << pos << "] => " << hex << mark << " expect "
+        Trace("miplib") << "[" << pos << "] => " << hex << mark << " expect "
                         << expected << dec << endl;
-        Assert(pos.getKind() == kind::AND || pos.isVar());
+        Assert(pos.getKind() == Kind::AND || pos.isVar());
         if (mark != expected)
         {
-          Debug("miplib") << "  -- INELIGIBLE " << pos
+          Trace("miplib") << "  -- INELIGIBLE " << pos
                           << " -- (insufficiently marked, got " << mark
                           << " for " << numVars << " vars, expected "
                           << expected << endl;
@@ -467,24 +458,24 @@ PreprocessingPassResult MipLibTrick::applyInternal(
               if ((k & (k - 1)) != 0)
               {
                 Rational sum = 0;
-                Debug("miplib") << k << " => " << checks[pos_var][k] << endl;
+                Trace("miplib") << k << " => " << checks[pos_var][k] << endl;
                 for (size_t v1 = 1, kk = k; kk != 0; ++v1, kk >>= 1)
                 {
                   if ((kk & 0x1) == 1)
                   {
-                    Assert(pos.getKind() == kind::AND);
-                    Debug("miplib")
+                    Assert(pos.getKind() == Kind::AND);
+                    Trace("miplib")
                         << "var " << v1 << " : " << pos[v1 - 1]
                         << " coef:" << coef[pos_var][v1 - 1] << endl;
                     sum += coef[pos_var][v1 - 1];
                   }
                 }
-                Debug("miplib") << "checkSum is " << sum << " input says "
+                Trace("miplib") << "checkSum is " << sum << " input says "
                                 << checks[pos_var][k] << endl;
                 if (sum != checks[pos_var][k])
                 {
                   eligible = false;
-                  Debug("miplib") << "  -- INELIGIBLE " << pos
+                  Trace("miplib") << "  -- INELIGIBLE " << pos
                                   << " -- (nonlinear combination)" << endl;
                   break;
                 }
@@ -505,11 +496,11 @@ PreprocessingPassResult MipLibTrick::applyInternal(
             continue;
           }
 
-          Debug("miplib") << "  -- ELIGIBLE " << v0 << " , " << pos << " --"
+          Trace("miplib") << "  -- ELIGIBLE " << v0 << " , " << pos << " --"
                           << endl;
           vector<Node> newVars;
           expr::NodeSelfIterator ii, iiend;
-          if (pos.getKind() == kind::AND)
+          if (pos.getKind() == Kind::AND)
           {
             ii = pos.begin();
             iiend = pos.end();
@@ -526,29 +517,25 @@ PreprocessingPassResult MipLibTrick::applyInternal(
             {
               stringstream ss;
               ss << "mipvar_" << *ii;
-              Node newVar = sm->mkDummySkolem(
-                  ss.str(),
-                  nm->integerType(),
-                  "a variable introduced due to scrubbing a miplib encoding",
-                  NodeManager::SKOLEM_EXACT_NAME);
-              Node geq = rewrite(nm->mkNode(kind::GEQ, newVar, zero));
-              Node leq = rewrite(nm->mkNode(kind::LEQ, newVar, one));
+              Node newVar =
+                  NodeManager::mkDummySkolem(ss.str(), nm->integerType());
+              Node geq = rewrite(nm->mkNode(Kind::GEQ, newVar, zero));
+              Node leq = rewrite(nm->mkNode(Kind::LEQ, newVar, one));
               TrustNode tgeq = TrustNode::mkTrustLemma(geq, nullptr);
               TrustNode tleq = TrustNode::mkTrustLemma(leq, nullptr);
 
               Node n = rewrite(geq.andNode(leq));
-              assertionsToPreprocess->push_back(n);
-              TrustSubstitutionMap tnullMap(&fakeContext, nullptr);
+              assertionsToPreprocess->push_back(
+                  n, false, nullptr, TrustId::PREPROCESS_MIPLIB_TRICK_LEMMA);
+              TrustSubstitutionMap tnullMap(d_env, &fakeContext);
               CVC5_UNUSED SubstitutionMap& nullMap = tnullMap.get();
-              Theory::PPAssertStatus status CVC5_UNUSED;  // just for assertions
+              bool status CVC5_UNUSED;  // just for assertions
               status = te->solve(tgeq, tnullMap);
-              Assert(status == Theory::PP_ASSERT_STATUS_UNSOLVED)
-                  << "unexpected solution from arith's ppAssert()";
+              Assert(!status) << "unexpected solution from arith's ppAssert()";
               Assert(nullMap.empty())
                   << "unexpected substitution from arith's ppAssert()";
               status = te->solve(tleq, tnullMap);
-              Assert(status == Theory::PP_ASSERT_STATUS_UNSOLVED)
-                  << "unexpected solution from arith's ppAssert()";
+              Assert(!status) << "unexpected solution from arith's ppAssert()";
               Assert(nullMap.empty())
                   << "unexpected substitution from arith's ppAssert()";
               newVars.push_back(newVar);
@@ -560,30 +547,26 @@ PreprocessingPassResult MipLibTrick::applyInternal(
             }
           }
           Node sum;
-          if (pos.getKind() == kind::AND)
+          if (pos.getKind() == Kind::AND)
           {
-            NodeBuilder sumb(kind::PLUS);
+            NodeBuilder sumb(nodeManager(), Kind::ADD);
             for (size_t jj = 0; jj < pos.getNumChildren(); ++jj)
             {
               sumb << nm->mkNode(
-                  kind::MULT, nm->mkConst(coef[pos_var][jj]), newVars[jj]);
+                  Kind::MULT, nm->mkConstInt(coef[pos_var][jj]), newVars[jj]);
             }
             sum = sumb;
           }
           else
           {
             sum = nm->mkNode(
-                kind::MULT, nm->mkConst(coef[pos_var][0]), newVars[0]);
+                Kind::MULT, nm->mkConstInt(coef[pos_var][0]), newVars[0]);
           }
-          Debug("miplib") << "vars[] " << var << endl
+          Trace("miplib") << "vars[] " << var << endl
                           << "    eq " << rewrite(sum) << endl;
           Node newAssertion = var.eqNode(rewrite(sum));
           if (top_level_substs.hasSubstitution(newAssertion[0]))
           {
-            // Warning() << "RE-SUBSTITUTION " << newAssertion[0] << endl;
-            // Warning() << "REPLACE         " << newAssertion[1] << endl;
-            // Warning() << "ORIG            " <<
-            // top_level_substs.getSubstitution(newAssertion[0]) << endl;
             Assert(top_level_substs.getSubstitution(newAssertion[0])
                    == newAssertion[1]);
           }
@@ -591,27 +574,31 @@ PreprocessingPassResult MipLibTrick::applyInternal(
                    <= options().arith.arithMLTrickSubstitutions)
           {
             top_level_substs.addSubstitution(newAssertion[0], newAssertion[1]);
-            Debug("miplib") << "addSubs: " << newAssertion[0] << " to "
+            Trace("miplib") << "addSubs: " << newAssertion[0] << " to "
                             << newAssertion[1] << endl;
           }
           else
           {
-            Debug("miplib")
+            Trace("miplib")
                 << "skipSubs: " << newAssertion[0] << " to " << newAssertion[1]
                 << " (threshold is "
                 << options().arith.arithMLTrickSubstitutions << ")" << endl;
           }
           newAssertion = rewrite(newAssertion);
-          Debug("miplib") << "  " << newAssertion << endl;
+          Trace("miplib") << "  " << newAssertion << endl;
 
-          assertionsToPreprocess->push_back(newAssertion);
-          Debug("miplib") << "  assertions to remove: " << endl;
+          assertionsToPreprocess->push_back(
+              newAssertion,
+              false,
+              nullptr,
+              TrustId::PREPROCESS_MIPLIB_TRICK_LEMMA);
+          Trace("miplib") << "  assertions to remove: " << endl;
           for (vector<TNode>::const_iterator k = asserts[pos_var].begin(),
                                              k_end = asserts[pos_var].end();
                k != k_end;
                ++k)
           {
-            Debug("miplib") << "    " << *k << endl;
+            Trace("miplib") << "    " << *k << endl;
             removeAssertions.insert((*k).getId());
           }
         }
@@ -620,49 +607,53 @@ PreprocessingPassResult MipLibTrick::applyInternal(
   }
   if (!removeAssertions.empty())
   {
-    Debug("miplib") << " scrubbing miplib encoding..." << endl;
-    for (size_t i = 0, size = assertionsToPreprocess->getRealAssertionsEnd();
-         i < size;
-         ++i)
+    Trace("miplib") << " scrubbing miplib encoding..." << endl;
+    for (size_t i = 0, size = assertionsToPreprocess->size(); i < size; ++i)
     {
       Node assertion = (*assertionsToPreprocess)[i];
       if (removeAssertions.find(assertion.getId()) != removeAssertions.end())
       {
-        Debug("miplib") << " - removing " << assertion << endl;
-        assertionsToPreprocess->replace(i, trueNode);
+        Trace("miplib") << " - removing " << assertion << endl;
+        assertionsToPreprocess->replace(
+            i, trueNode, nullptr, TrustId::PREPROCESS_MIPLIB_TRICK);
         ++d_statistics.d_numMiplibAssertionsRemoved;
       }
-      else if (assertion.getKind() == kind::AND)
+      else if (assertion.getKind() == Kind::AND)
       {
         size_t removals = removeFromConjunction(assertion, removeAssertions);
         if (removals > 0)
         {
-          Debug("miplib") << " - reduced " << assertion << endl;
-          Debug("miplib") << " -      by " << removals << " conjuncts" << endl;
+          Trace("miplib") << " - reduced " << assertion << endl;
+          Trace("miplib") << " -      by " << removals << " conjuncts" << endl;
           d_statistics.d_numMiplibAssertionsRemoved += removals;
         }
       }
-      Debug("miplib") << "had: " << assertion[i] << endl;
-      assertionsToPreprocess->replace(
-          i, rewrite(top_level_substs.apply(assertion)));
-      Debug("miplib") << "now: " << assertion << endl;
+      Trace("miplib") << "had: " << assertion << endl;
+      assertionsToPreprocess->replace(i,
+                                      top_level_substs.apply(assertion),
+                                      nullptr,
+                                      TrustId::PREPROCESS_MIPLIB_TRICK);
+      assertionsToPreprocess->ensureRewritten(i);
+      Trace("miplib") << "now: " << assertion << endl;
+      if (assertionsToPreprocess->isInConflict())
+      {
+        return PreprocessingPassResult::CONFLICT;
+      }
     }
   }
   else
   {
-    Debug("miplib") << " miplib pass found nothing." << endl;
+    Trace("miplib") << " miplib pass found nothing." << endl;
   }
-  assertionsToPreprocess->updateRealAssertionsEnd();
   return PreprocessingPassResult::NO_CONFLICT;
 }
 
 MipLibTrick::Statistics::Statistics(StatisticsRegistry& reg)
     : d_numMiplibAssertionsRemoved(reg.registerInt(
-        "preprocessing::passes::MipLibTrick::numMiplibAssertionsRemoved"))
+          "preprocessing::passes::MipLibTrick::numMiplibAssertionsRemoved"))
 {
 }
 
-
 }  // namespace passes
 }  // namespace preprocessing
-}  // namespace cvc5
+}  // namespace cvc5::internal

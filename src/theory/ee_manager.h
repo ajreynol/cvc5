@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -26,7 +23,7 @@
 #include "theory/theory.h"
 #include "theory/uf/equality_engine.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 
 class TheoryEngine;
 
@@ -55,11 +52,11 @@ struct EeTheoryInfo
 class EqEngineManager : protected EnvObj
 {
  public:
-   /**
+  /**
    * @param te Reference to the theory engine
    * @param sharedSolver The shared solver that is being used in combination
    * with this equality engine manager
-    */
+   */
   EqEngineManager(Env& env, TheoryEngine& te, SharedSolver& shs);
   virtual ~EqEngineManager() {}
   /**
@@ -85,7 +82,7 @@ class EqEngineManager : protected EnvObj
    *
    * @param incomplete Whether we are answering "unknown" instead of "sat".
    */
-  virtual void notifyModel(bool incomplete) {}
+  virtual void notifyModel(CVC5_UNUSED bool incomplete) {}
 
  protected:
   /** Reference to the theory engine */
@@ -97,6 +94,6 @@ class EqEngineManager : protected EnvObj
 };
 
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__THEORY__EE_MANAGER__H */

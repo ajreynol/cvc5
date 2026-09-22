@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Aina Niemetz, Martin Brain, Andres Noetzli
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -33,7 +30,7 @@
 
 /* -------------------------------------------------------------------------- */
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace symfpuLiteral {
 
 /**
@@ -45,8 +42,8 @@ class wrappedBitVector;
 
 using Cvc5BitWidth = uint32_t;
 using Cvc5Prop = bool;
-using Cvc5RM = ::cvc5::RoundingMode;
-using Cvc5FPSize = ::cvc5::FloatingPointSize;
+using Cvc5RM = cvc5::internal::RoundingMode;
+using Cvc5FPSize = cvc5::internal::FloatingPointSize;
 using Cvc5UnsignedBitVector = wrappedBitVector<false>;
 using Cvc5SignedBitVector = wrappedBitVector<true>;
 
@@ -95,9 +92,9 @@ struct signedToLiteralType<false>
 };
 
 /**
- * This extends the interface for cvc5::BitVector for compatibility with symFPU.
- * The template parameter distinguishes signed and unsigned bit-vectors, a
- * distinction symfpu uses.
+ * This extends the interface for cvc5::internal::BitVector for compatibility
+ * with symFPU. The template parameter distinguishes signed and unsigned
+ * bit-vectors, a distinction symfpu uses.
  */
 template <bool isSigned>
 class wrappedBitVector : public BitVector
@@ -112,7 +109,6 @@ class wrappedBitVector : public BitVector
   /** Constructors. */
   wrappedBitVector(const Cvc5BitWidth w, const uint32_t v) : BitVector(w, v) {}
   wrappedBitVector(const Cvc5Prop& p) : BitVector(1, p ? 1U : 0U) {}
-  wrappedBitVector(const wrappedBitVector<isSigned>& old) : BitVector(old) {}
   wrappedBitVector(const BitVector& old) : BitVector(old) {}
 
   /** Get the bit-width of this wrapped bit-vector. */
@@ -144,7 +140,7 @@ class wrappedBitVector : public BitVector
   /**
    * Inherited but ...
    * *sigh* if we use the inherited version then it will return a
-   * cvc5::BitVector which can be converted back to a
+   * cvc5::internal::BitVector which can be converted back to a
    * wrappedBitVector<isSigned> but isn't done automatically when working
    * out types for templates instantiation.  ITE is a particular
    * problem as expressions and constants no longer derive the
@@ -202,6 +198,8 @@ class wrappedBitVector : public BitVector
   wrappedBitVector<isSigned> modularDecrement() const;
   wrappedBitVector<isSigned> modularAdd(
       const wrappedBitVector<isSigned>& op) const;
+  wrappedBitVector<isSigned> modularSubtract(
+      const wrappedBitVector<isSigned>& op) const;
   wrappedBitVector<isSigned> modularNegate() const;
 
   /** Bit-vector equality. */
@@ -254,6 +252,6 @@ class wrappedBitVector : public BitVector
                                      Cvc5BitWidth lower) const;
 };
 }  // namespace symfpuLiteral
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif

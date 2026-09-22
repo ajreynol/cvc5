@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Makai Mann, Gereon Kremer
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -23,12 +20,12 @@
 #include "expr/node.h"
 #include "smt/env_obj.h"
 #include "theory/arith/nl/iand_utils.h"
+#include "theory/theory_state.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace arith {
 
-class ArithState;
 class InferenceManager;
 
 namespace nl {
@@ -43,20 +40,16 @@ class IAndSolver : protected EnvObj
   typedef context::CDHashSet<Node> NodeSet;
 
  public:
-  IAndSolver(Env& env, InferenceManager& im, ArithState& state, NlModel& model);
+  IAndSolver(Env& env, InferenceManager& im, NlModel& model);
   ~IAndSolver();
 
   /** init last call
    *
    * This is called at the beginning of last call effort check, where
-   * assertions are the set of assertions belonging to arithmetic,
-   * false_asserts is the subset of assertions that are false in the current
-   * model, and xts is the set of extended function terms that are active in
+   * xts is the set of extended function terms that are active in
    * the current context.
    */
-  void initLastCall(const std::vector<Node>& assertions,
-                    const std::vector<Node>& false_asserts,
-                    const std::vector<Node>& xts);
+  void initLastCall(const std::vector<Node>& xts);
   //-------------------------------------------- lemma schemas
   /** check initial refine
    *
@@ -86,8 +79,6 @@ class IAndSolver : protected EnvObj
   InferenceManager& d_im;
   /** Reference to the non-linear model object */
   NlModel& d_model;
-  /** Reference to the arithmetic state */
-  ArithState& d_astate;
   /** commonly used terms */
   Node d_false;
   Node d_true;
@@ -103,7 +94,7 @@ class IAndSolver : protected EnvObj
 
   /**
    * convert integer value to bitvector value of bitwidth k,
-   * equivalent to Rewriter::rewrite( ((_ intToBv k) n) ).
+   * equivalent to rewrite( ((_ intToBv k) n) ).
    */
   Node convertToBvK(unsigned k, Node n) const;
   /** make iand */
@@ -115,7 +106,7 @@ class IAndSolver : protected EnvObj
   /**
    * Value-based refinement lemma for i of the form ((_ iand k) x y). Returns:
    *   x = M(x) ^ y = M(y) =>
-   *     ((_ iand k) x y) = Rewriter::rewrite(((_ iand k) M(x) M(y)))
+   *     ((_ iand k) x y) = rewrite(((_ iand k) M(x) M(y)))
    */
   Node valueBasedLemma(Node i);
   /**
@@ -136,6 +127,6 @@ class IAndSolver : protected EnvObj
 }  // namespace nl
 }  // namespace arith
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__THEORY__ARITH__IAND_SOLVER_H */

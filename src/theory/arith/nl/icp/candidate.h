@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Gereon Kremer
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -24,7 +21,7 @@
 #include "expr/node.h"
 #include "theory/arith/nl/icp/intersection.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace arith {
 namespace nl {
@@ -50,6 +47,8 @@ namespace icp {
  */
 struct Candidate
 {
+  /** The libpoly context */
+  const poly::Context& polyCtx;
   /** The target variable */
   poly::Variable lhs;
   /** The relation symbol */
@@ -79,7 +78,7 @@ std::ostream& operator<<(std::ostream& os, const Candidate& c);
 }  // namespace nl
 }  // namespace arith
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif
 

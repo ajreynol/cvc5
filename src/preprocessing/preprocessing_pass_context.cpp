@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Aina Niemetz, Andrew Reynolds, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -16,23 +13,25 @@
 #include "preprocessing/preprocessing_pass_context.h"
 
 #include "expr/node_algorithm.h"
+#include "options/base_options.h"
+#include "prop/prop_engine.h"
 #include "smt/env.h"
-#include "smt/solver_engine.h"
 #include "theory/theory_engine.h"
 #include "theory/theory_model.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace preprocessing {
 
 PreprocessingPassContext::PreprocessingPassContext(
-    SolverEngine* slv,
     Env& env,
+    TheoryEngine* te,
+    prop::PropEngine* pe,
     theory::booleans::CircuitPropagator* circuitPropagator)
     : EnvObj(env),
-      d_slv(slv),
+      d_theoryEngine(te),
+      d_propEngine(pe),
       d_circuitPropagator(circuitPropagator),
-      d_llm(
-          env.getTopLevelSubstitutions(), userContext(), getProofNodeManager()),
+      d_llm(env),
       d_symsInAssertions(userContext())
 {
 }
@@ -45,11 +44,11 @@ PreprocessingPassContext::getTopLevelSubstitutions() const
 
 TheoryEngine* PreprocessingPassContext::getTheoryEngine() const
 {
-  return d_slv->getTheoryEngine();
+  return d_theoryEngine;
 }
 prop::PropEngine* PreprocessingPassContext::getPropEngine() const
 {
-  return d_slv->getPropEngine();
+  return d_propEngine;
 }
 
 void PreprocessingPassContext::spendResource(Resource r)
@@ -85,21 +84,29 @@ void PreprocessingPassContext::addSubstitution(const Node& lhs,
                                                const Node& rhs,
                                                ProofGenerator* pg)
 {
-  getTopLevelSubstitutions().addSubstitution(lhs, rhs, pg);
+  d_propEngine->notifyTopLevelSubstitution(lhs, rhs);
+  d_env.getTopLevelSubstitutions().addSubstitution(lhs, rhs, pg);
 }
 
 void PreprocessingPassContext::addSubstitution(const Node& lhs,
                                                const Node& rhs,
-                                               PfRule id,
+                                               ProofRule id,
                                                const std::vector<Node>& args)
 {
-  getTopLevelSubstitutions().addSubstitution(lhs, rhs, id, {}, args);
+  d_propEngine->notifyTopLevelSubstitution(lhs, rhs);
+  d_env.getTopLevelSubstitutions().addSubstitution(lhs, rhs, id, {}, args);
 }
 
-ProofNodeManager* PreprocessingPassContext::getProofNodeManager() const
+void PreprocessingPassContext::addSubstitutions(
+    theory::TrustSubstitutionMap& tm)
 {
-  return d_env.getProofNodeManager();
+  std::unordered_map<Node, Node> subs = tm.get().getSubstitutions();
+  for (const std::pair<const Node, Node>& s : subs)
+  {
+    d_propEngine->notifyTopLevelSubstitution(s.first, s.second);
+  }
+  d_env.getTopLevelSubstitutions().addSubstitutions(tm);
 }
 
 }  // namespace preprocessing
-}  // namespace cvc5
+}  // namespace cvc5::internal

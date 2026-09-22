@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Gereon Kremer, Morgan Deters
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -27,17 +24,17 @@
 #include "smt/env_obj.h"
 #include "theory/quantifiers/quant_util.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 
 class TheoryEngine;
 
 namespace theory {
 
-class QuantifiersModule;
 class RepSetIterator;
 
 namespace quantifiers {
 
+class QuantifiersModule;
 class FirstOrderModel;
 class Instantiate;
 class QModelBuilder;
@@ -50,14 +47,14 @@ class TermDb;
 class TermDbSygus;
 class TermEnumeration;
 class TermRegistry;
-}
+}  // namespace quantifiers
 
 /**
  * The main class that manages techniques for quantified formulas.
  */
 class QuantifiersEngine : protected EnvObj
 {
-  friend class ::cvc5::TheoryEngine;
+  friend class internal::TheoryEngine;
   typedef context::CDHashMap<Node, bool> BoolMap;
   typedef context::CDHashSet<Node> NodeSet;
 
@@ -77,7 +74,98 @@ class QuantifiersEngine : protected EnvObj
   /** get term database sygus */
   quantifiers::TermDbSygus* getTermDatabaseSygus() const;
   //---------------------- end utilities
+  /** presolve */
+  void presolve();
+  /** notify preprocessed assertion */
+  void ppNotifyAssertions(const std::vector<Node>& assertions);
+  /** check at level */
+  void check(Theory::Effort e);
+  /** notify that theories were combined */
+  void notifyCombineTheories();
+  /** preRegister quantifier
+   *
+   * This function is called after registerQuantifier for quantified formulas
+   * that are pre-registered to the quantifiers theory.
+   */
+  void preRegisterQuantifier(Node q);
+  /** assert universal quantifier */
+  void assertQuantifier(Node q, bool pol);
+  /** notification when master equality engine is updated */
+  void eqNotifyNewClass(TNode t);
+  /** notification when master equality engine merges two classes*/
+  void eqNotifyMerge(TNode t1, TNode t2);
+  /** mark relevant quantified formula, this will indicate it should be checked
+   * before the others */
+  void markRelevant(Node q);
+  /**
+   * Get quantifiers name, which returns a variable corresponding to the name of
+   * quantified formula q if q has a name, or otherwise returns q itself.
+   */
+  Node getNameForQuant(Node q) const;
+  /**
+   * Get name for quantified formula. Returns true if q has a name or if req
+   * is false. Sets name to the result of the above method.
+   */
+  bool getNameForQuant(Node q, Node& name, bool req = true) const;
+  //----------user interface for instantiations (see quantifiers/instantiate.h)
+  /** get list of quantified formulas that were instantiated */
+  void getInstantiatedQuantifiedFormulas(std::vector<Node>& qs);
+  /** get instantiation term vectors */
+  void getInstantiationTermVectors(Node q,
+                                   std::vector<std::vector<Node> >& tvecs);
+  void getInstantiationTermVectors(
+      std::map<Node, std::vector<std::vector<Node> > >& insts);
+  /**
+   * Get instantiations for quantified formula q. If q is (forall ((x T)) (P
+   * x)), this is a list of the form (P t1) ... (P tn) for ground terms ti.
+   */
+  void getInstantiations(Node q, std::vector<Node>& insts);
+  /**
+   * Get skolemization vectors, where for each quantified formula that was
+   * skolemized, this is the list of skolems that were used to witness the
+   * negation of that quantified formula.
+   */
+  void getSkolemTermVectors(std::map<Node, std::vector<Node> >& sks) const;
+
+  /** get synth solutions
+   *
+   * This method returns true if there is a synthesis solution available. This
+   * is the case if the last call to check satisfiability originated in a
+   * check-synth call, and the synthesis engine module of this class
+   * successfully found a solution for all active synthesis conjectures.
+   *
+   * This method adds entries to sol_map that map functions-to-synthesize with
+   * their solutions, for all active conjectures. This should be called
+   * immediately after the solver answers unsat for sygus input.
+   *
+   * For details on what is added to sol_map, see
+   * SynthConjecture::getSynthSolutions.
+   */
+  bool getSynthSolutions(std::map<Node, std::map<Node, Node> >& sol_map);
+  /** Declare pool */
+  void declarePool(Node p, const std::vector<Node>& initValue);
+  /** Declare oracle fun */
+  void declareOracleFun(Node f);
+  /** Get the list of all declared oracle functions */
+  std::vector<Node> getOracleFuns() const;
+  //----------end user interface for instantiations
  private:
+  /**
+   * Check at level, setting setModelUnsoundId to an IncompleteId if we are
+   * "unknown" instead of "unsat".
+   * @param e the effort level
+   * @param setModelUnsoundId the incomplete id if e is last call and we should
+   * answer "unknown" instead of "sat".
+   */
+  void checkInternal(Theory::Effort e, IncompleteId& setModelUnsoundId);
+  /**
+   * Return true if we should recheck
+   * @param e the effort level
+   * @param setModelUnsoundId the incomplete id indicating why we are currently
+   * answering "unknown".
+   */
+  bool shouldRecheck(CVC5_UNUSED Theory::Effort e,
+                     IncompleteId setModelUnsoundId);
   //---------------------- private initialization
   /**
    * Finish initialize, which passes pointers to the objects that quantifiers
@@ -90,94 +178,17 @@ class QuantifiersEngine : protected EnvObj
    */
   void finishInit(TheoryEngine* te);
   //---------------------- end private initialization
-
- public:
-  /** presolve */
-  void presolve();
-  /** notify preprocessed assertion */
-  void ppNotifyAssertions(const std::vector<Node>& assertions);
-  /** check at level */
-  void check( Theory::Effort e );
-  /** notify that theories were combined */
-  void notifyCombineTheories();
-  /** preRegister quantifier
+  /** (context-indepentent) register quantifier internal
    *
-   * This function is called after registerQuantifier for quantified formulas
-   * that are pre-registered to the quantifiers theory.
+   * This is called when a quantified formula q is pre-registered to the
+   * quantifiers theory, and updates the modules in this class with
+   * context-independent information about how to handle q. This includes basic
+   * information such as which module owns q.
    */
-  void preRegisterQuantifier(Node q);
-  /** assert universal quantifier */
-  void assertQuantifier( Node q, bool pol );
-private:
- /** (context-indepentent) register quantifier internal
-  *
-  * This is called when a quantified formula q is pre-registered to the
-  * quantifiers theory, and updates the modules in this class with
-  * context-independent information about how to handle q. This includes basic
-  * information such as which module owns q.
-  */
- void registerQuantifierInternal(Node q);
- /** reduceQuantifier, return true if reduced */
- bool reduceQuantifier(Node q);
+  void registerQuantifierInternal(Node q);
+  /** reduceQuantifier, return true if reduced */
+  bool reduceQuantifier(Node q);
 
-public:
- /** notification when master equality engine is updated */
- void eqNotifyNewClass(TNode t);
- /** mark relevant quantified formula, this will indicate it should be checked
-  * before the others */
- void markRelevant(Node q);
- /**
-  * Get quantifiers name, which returns a variable corresponding to the name of
-  * quantified formula q if q has a name, or otherwise returns q itself.
-  */
- Node getNameForQuant(Node q) const;
- /**
-  * Get name for quantified formula. Returns true if q has a name or if req
-  * is false. Sets name to the result of the above method.
-  */
- bool getNameForQuant(Node q, Node& name, bool req = true) const;
-
-public:
- //----------user interface for instantiations (see quantifiers/instantiate.h)
- /** get list of quantified formulas that were instantiated */
- void getInstantiatedQuantifiedFormulas(std::vector<Node>& qs);
- /** get instantiation term vectors */
- void getInstantiationTermVectors(Node q,
-                                  std::vector<std::vector<Node> >& tvecs);
- void getInstantiationTermVectors(
-     std::map<Node, std::vector<std::vector<Node> > >& insts);
- /**
-  * Get instantiations for quantified formula q. If q is (forall ((x T)) (P x)),
-  * this is a list of the form (P t1) ... (P tn) for ground terms ti.
-  */
- void getInstantiations(Node q, std::vector<Node>& insts);
- /**
-  * Get skolemization vectors, where for each quantified formula that was
-  * skolemized, this is the list of skolems that were used to witness the
-  * negation of that quantified formula.
-  */
- void getSkolemTermVectors(std::map<Node, std::vector<Node> >& sks) const;
-
- /** get synth solutions
-  *
-  * This method returns true if there is a synthesis solution available. This
-  * is the case if the last call to check satisfiability originated in a
-  * check-synth call, and the synthesis engine module of this class
-  * successfully found a solution for all active synthesis conjectures.
-  *
-  * This method adds entries to sol_map that map functions-to-synthesize with
-  * their solutions, for all active conjectures. This should be called
-  * immediately after the solver answers unsat for sygus input.
-  *
-  * For details on what is added to sol_map, see
-  * SynthConjecture::getSynthSolutions.
-  */
- bool getSynthSolutions(std::map<Node, std::map<Node, Node> >& sol_map);
- /** Declare pool */
- void declarePool(Node p, const std::vector<Node>& initValue);
- //----------end user interface for instantiations
-
- private:
   /** The quantifiers state object */
   quantifiers::QuantifiersState& d_qstate;
   /** The quantifiers inference manager */
@@ -189,7 +200,7 @@ public:
   /** vector of utilities for quantifiers */
   std::vector<QuantifiersUtil*> d_util;
   /** vector of modules for quantifiers */
-  std::vector<QuantifiersModule*> d_modules;
+  std::vector<quantifiers::QuantifiersModule*> d_modules;
   //------------- quantifiers utilities
   /** The quantifiers registry */
   quantifiers::QuantifiersRegistry& d_qreg;
@@ -215,6 +226,6 @@ public:
 }; /* class QuantifiersEngine */
 
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__THEORY__QUANTIFIERS_ENGINE_H */

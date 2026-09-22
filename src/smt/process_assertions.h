@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Gereon Kremer, Morgan Deters
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -22,22 +19,20 @@
 
 #include "context/cdlist.h"
 #include "expr/node.h"
+#include "preprocessing/preprocessing_pass.h"
+#include "smt/env_obj.h"
 #include "util/resource_manager.h"
 
-namespace cvc5 {
-
-class SolverEngine;
+namespace cvc5::internal {
 
 namespace preprocessing {
 class AssertionPipeline;
-class PreprocessingPass;
-class PreprocessingPassContext;
 }
 
 namespace smt {
 
 class Assertions;
-struct SmtEngineStatistics;
+struct SolverEngineStatistics;
 
 /**
  * Module in charge of processing assertions for an SMT engine.
@@ -53,16 +48,14 @@ struct SmtEngineStatistics;
  * it processes assertions in a way that assumes that apply(...) could be
  * applied multiple times to different sets of assertions.
  */
-class ProcessAssertions
+class ProcessAssertions : protected EnvObj
 {
   /** The types for the recursive function definitions */
   typedef context::CDList<Node> NodeList;
   typedef std::unordered_map<Node, bool> NodeToBoolHashMap;
 
  public:
-  ProcessAssertions(SolverEngine& smt,
-                    ResourceManager& rm,
-                    SmtEngineStatistics& stats);
+  ProcessAssertions(Env& env, SolverEngineStatistics& stats);
   ~ProcessAssertions();
   /** Finish initialize
    *
@@ -75,18 +68,16 @@ class ProcessAssertions
    */
   void cleanup();
   /**
-   * Process the formulas in as. Returns true if there was no conflict when
+   * Process the formulas in ap. Returns true if there was no conflict when
    * processing the assertions.
+   *
+   * @param ap The assertions to preprocess.
    */
-  bool apply(Assertions& as);
+  bool apply(preprocessing::AssertionPipeline& ap);
 
  private:
-  /** Reference to the SMT engine */
-  SolverEngine& d_slv;
-  /** Reference to resource manager */
-  ResourceManager& d_resourceManager;
   /** Reference to the SMT stats */
-  SmtEngineStatistics& d_smtStats;
+  SolverEngineStatistics& d_slvStats;
   /** The preprocess context */
   preprocessing::PreprocessingPassContext* d_preprocessingPassContext;
   /** True node */
@@ -111,16 +102,25 @@ class ProcessAssertions
    *
    * Returns false if the formula simplifies to "false"
    */
-  bool simplifyAssertions(preprocessing::AssertionPipeline& assertions);
+  bool simplifyAssertions(preprocessing::AssertionPipeline& ap);
   /**
    * Dump assertions. Print the current assertion list to the dump
    * assertions:`key` if it is enabled.
    */
-  void dumpAssertions(const char* key,
-                      const preprocessing::AssertionPipeline& assertionList);
+  void dumpAssertions(const std::string& key,
+                      const preprocessing::AssertionPipeline& ap);
+  /**
+   * Dump assertions to stream os using the print benchmark utility.
+   */
+  void dumpAssertionsToStream(std::ostream& os,
+                              const preprocessing::AssertionPipeline& ap,
+                              bool printDefs = true);
+  /** apply pass */
+  preprocessing::PreprocessingPassResult applyPass(
+      const std::string& pass, preprocessing::AssertionPipeline& ap);
 };
 
 }  // namespace smt
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif

@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -15,13 +12,15 @@
 
 #include "theory/ee_manager_central.h"
 
+#include "options/arith_options.h"
+#include "options/theory_options.h"
 #include "smt/env.h"
 #include "theory/quantifiers_engine.h"
 #include "theory/shared_solver.h"
 #include "theory/theory_engine.h"
 #include "theory/theory_state.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 
 EqEngineManagerCentral::EqEngineManagerCentral(Env& env,
@@ -31,7 +30,8 @@ EqEngineManagerCentral::EqEngineManagerCentral(Env& env,
       d_masterEENotify(nullptr),
       d_masterEqualityEngine(nullptr),
       d_centralEENotify(*this),
-      d_centralEqualityEngine(d_centralEENotify, context(), "central::ee", true)
+      d_centralEqualityEngine(
+          env, context(), d_centralEENotify, "central::ee", true)
 {
   for (TheoryId theoryId = theory::THEORY_FIRST;
        theoryId != theory::THEORY_LAST;
@@ -41,10 +41,8 @@ EqEngineManagerCentral::EqEngineManagerCentral(Env& env,
   }
   if (env.isTheoryProofProducing())
   {
-    d_centralPfee.reset(new eq::ProofEqEngine(context(),
-                                              userContext(),
-                                              d_centralEqualityEngine,
-                                              env.getProofNodeManager()));
+    d_centralPfee =
+        std::make_unique<eq::ProofEqEngine>(env, d_centralEqualityEngine);
     d_centralEqualityEngine.setProofEqualityEngine(d_centralPfee.get());
   }
 }
@@ -71,7 +69,7 @@ void EqEngineManagerCentral::initializeTheories()
   std::map<TheoryId, EeSetupInfo> esiMap;
   // set of theories that need equality engines
   std::unordered_set<TheoryId> eeTheories;
-  const LogicInfo& logicInfo = d_te.getLogicInfo();
+  const LogicInfo& linfo = logicInfo();
   for (TheoryId theoryId = theory::THEORY_FIRST;
        theoryId != theory::THEORY_LAST;
        ++theoryId)
@@ -92,8 +90,8 @@ void EqEngineManagerCentral::initializeTheories()
     // if the logic has a theory that does not use central equality engine,
     // we can't use the central equality engine for the master equality
     // engine
-    if (theoryId != THEORY_QUANTIFIERS && logicInfo.isTheoryEnabled(theoryId)
-        && !Theory::usesCentralEqualityEngine(theoryId))
+    if (theoryId != THEORY_QUANTIFIERS && linfo.isTheoryEnabled(theoryId)
+        && !usesCentralEqualityEngine(options(), theoryId))
     {
       Trace("ee-central") << "Must use separate master equality engine due to "
                           << theoryId << std::endl;
@@ -103,7 +101,7 @@ void EqEngineManagerCentral::initializeTheories()
 
   // initialize the master equality engine, which may be the central equality
   // engine
-  if (logicInfo.isQuantified())
+  if (linfo.isQuantified())
   {
     // construct the master equality engine
     Assert(d_masterEqualityEngine == nullptr);
@@ -112,8 +110,8 @@ void EqEngineManagerCentral::initializeTheories()
     d_masterEENotify.reset(new quantifiers::MasterNotifyClass(qe));
     if (!masterEqToCentral)
     {
-      d_masterEqualityEngineAlloc.reset(new eq::EqualityEngine(
-          *d_masterEENotify.get(), c, "master::ee", false));
+      d_masterEqualityEngineAlloc = std::make_unique<eq::EqualityEngine>(
+          d_env, c, *d_masterEENotify.get(), "master::ee", false);
       d_masterEqualityEngine = d_masterEqualityEngineAlloc.get();
     }
     else
@@ -156,12 +154,12 @@ void EqEngineManagerCentral::initializeTheories()
     eq::EqualityEngineNotify* notify = esi.d_notify;
     d_theoryNotify[theoryId] = notify;
     // split on whether integrated, or whether asked for master
-    if (t->usesCentralEqualityEngine())
+    if (usesCentralEqualityEngine(options(), t->getId()))
     {
       Trace("ee-central") << "...uses central" << std::endl;
       // the theory uses the central equality engine
       eet.d_usedEe = &d_centralEqualityEngine;
-      if (logicInfo.isTheoryEnabled(theoryId))
+      if (linfo.isTheoryEnabled(theoryId))
       {
         // add to vectors for the kinds of notifications
         if (esi.needsNotifyNewClass())
@@ -197,7 +195,23 @@ void EqEngineManagerCentral::initializeTheories()
   }
 }
 
-void EqEngineManagerCentral::notifyBuildingModel() {}
+bool EqEngineManagerCentral::usesCentralEqualityEngine(const Options& opts,
+                                                       TheoryId id)
+{
+  Assert(opts.theory.eeMode == options::EqEngineMode::CENTRAL);
+  if (id == THEORY_BUILTIN)
+  {
+    return true;
+  }
+  if (id == THEORY_ARITH)
+  {
+    // conditional on whether we are using the equality solver
+    return opts.arith.arithEqSolver;
+  }
+  return id == THEORY_UF || id == THEORY_DATATYPES || id == THEORY_BAGS
+         || id == THEORY_FP || id == THEORY_SETS || id == THEORY_STRINGS
+         || id == THEORY_SEP || id == THEORY_ARRAYS || id == THEORY_BV;
+}
 
 EqEngineManagerCentral::CentralNotifyClass::CentralNotifyClass(
     EqEngineManagerCentral& eemc)
@@ -295,13 +309,21 @@ bool EqEngineManagerCentral::eqNotifyTriggerTermEquality(TheoryId tag,
 void EqEngineManagerCentral::eqNotifyConstantTermMerge(TNode t1, TNode t2)
 {
   Node lit = t1.eqNode(t2);
-  Node conflict = d_centralEqualityEngine.mkExplainLit(lit);
+  TrustNode conflict;
+  if (d_centralPfee != nullptr)
+  {
+    conflict = d_centralPfee->assertConflict(lit);
+  }
+  else
+  {
+    Node conf = d_centralEqualityEngine.mkExplainLit(lit);
+    conflict = TrustNode::mkTrustConflict(conf);
+  }
   Trace("eem-central") << "...explained conflict of " << lit << " ... "
                        << conflict << std::endl;
-  d_sharedSolver.sendConflict(TrustNode::mkTrustConflict(conflict),
-                              InferenceId::EQ_CONSTANT_MERGE);
+  d_sharedSolver.sendConflict(conflict, InferenceId::EQ_CONSTANT_MERGE);
   return;
 }
 
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal

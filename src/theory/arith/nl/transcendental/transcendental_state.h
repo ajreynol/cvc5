@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Gereon Kremer, Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -16,14 +13,18 @@
 #ifndef CVC5__THEORY__ARITH__NL__TRANSCENDENTAL__TRANSCENDENTAL_STATE_H
 #define CVC5__THEORY__ARITH__NL__TRANSCENDENTAL__TRANSCENDENTAL_STATE_H
 
+#include <iosfwd>
+
+#include "context/cdhashmap.h"
+#include "context/cdhashset.h"
 #include "expr/node.h"
 #include "proof/proof_set.h"
 #include "smt/env.h"
+#include "smt/env_obj.h"
 #include "theory/arith/nl/nl_lemma_utils.h"
-#include "theory/arith/nl/transcendental/proof_checker.h"
 #include "theory/arith/nl/transcendental/taylor_generator.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 class CDProof;
 namespace theory {
 namespace arith {
@@ -46,10 +47,66 @@ enum class Convexity
   CONCAVE,
   UNKNOWN
 };
-inline std::ostream& operator<<(std::ostream& os, Convexity c) {
-  switch (c) {
+inline std::ostream& operator<<(std::ostream& os, Convexity c)
+{
+  switch (c)
+  {
     case Convexity::CONVEX: return os << "CONVEX";
     case Convexity::CONCAVE: return os << "CONCAVE";
+    default: return os << "UNKNOWN";
+  }
+}
+
+/**
+ * The region of a transcendental-function argument with respect to the
+ * monotonicity / concavity partitioning used by the nonlinear arithmetic
+ * solver.
+ */
+enum class TranscendentalRegion
+{
+  INVALID,
+  EXPONENTIAL,
+  SINE_PI_OVER_TWO_TO_PI,
+  SINE_ZERO_TO_PI_OVER_TWO,
+  SINE_NEG_PI_OVER_TWO_TO_ZERO,
+  SINE_NEG_PI_TO_NEG_PI_OVER_TWO
+};
+inline std::ostream& operator<<(std::ostream& os, TranscendentalRegion r)
+{
+  switch (r)
+  {
+    case TranscendentalRegion::INVALID: return os << "INVALID";
+    case TranscendentalRegion::EXPONENTIAL: return os << "EXPONENTIAL";
+    case TranscendentalRegion::SINE_PI_OVER_TWO_TO_PI:
+      return os << "SINE_PI_OVER_TWO_TO_PI";
+    case TranscendentalRegion::SINE_ZERO_TO_PI_OVER_TWO:
+      return os << "SINE_ZERO_TO_PI_OVER_TWO";
+    case TranscendentalRegion::SINE_NEG_PI_OVER_TWO_TO_ZERO:
+      return os << "SINE_NEG_PI_OVER_TWO_TO_ZERO";
+    case TranscendentalRegion::SINE_NEG_PI_TO_NEG_PI_OVER_TWO:
+      return os << "SINE_NEG_PI_TO_NEG_PI_OVER_TWO";
+    default: return os << "UNKNOWN";
+  }
+}
+inline bool isValidRegion(TranscendentalRegion region)
+{
+  return region != TranscendentalRegion::INVALID;
+}
+
+/** Monotonicity direction for a transcendental region. */
+enum class MonotonicityDirection
+{
+  NONE,
+  INCREASING,
+  DECREASING
+};
+inline std::ostream& operator<<(std::ostream& os, MonotonicityDirection d)
+{
+  switch (d)
+  {
+    case MonotonicityDirection::NONE: return os << "NONE";
+    case MonotonicityDirection::INCREASING: return os << "INCREASING";
+    case MonotonicityDirection::DECREASING: return os << "DECREASING";
     default: return os << "UNKNOWN";
   }
 }
@@ -60,9 +117,13 @@ inline std::ostream& operator<<(std::ostream& os, Convexity c) {
  * This includes common lookups and caches as well as generic utilities for
  * secant plane lemmas and taylor approximations.
  */
-struct TranscendentalState
+class TranscendentalState : protected EnvObj
 {
-  TranscendentalState(InferenceManager& im, NlModel& model, Env& env);
+  using NodeMap = context::CDHashMap<Node, Node>;
+  using NodeSet = context::CDHashSet<Node>;
+
+ public:
+  TranscendentalState(Env& env, InferenceManager& im, NlModel& model);
 
   /**
    * Checks whether proofs are enabled.
@@ -80,10 +141,10 @@ struct TranscendentalState
    *
    * This call may add lemmas to lems based on registering term
    * information (for example to ensure congruence of terms).
-   * It puts terms that need to be treated further as a master term on their own
-   * (for example purification of sine terms) into needsMaster.
+   * It puts terms that need to be treated further as a purified term on their
+   * own (for example purification of sine terms) into needsPurify.
    */
-  void init(const std::vector<Node>& xts, std::vector<Node>& needsMaster);
+  void init(const std::vector<Node>& xts, std::vector<Node>& needsPurify);
 
   /**
    * Checks for terms that are congruent but disequal to a.
@@ -157,6 +218,28 @@ struct TranscendentalState
                       Convexity convexity,
                       unsigned d,
                       unsigned actual_d);
+  /**
+   * Is term t purified? (See d_trPurify below).
+   */
+  bool isPurified(TNode n) const;
+  /** get the purified form of node n */
+  Node getPurifiedForm(TNode n);
+  /**
+   * Can we do "simple" purification for n? If this is the case, then
+   * f(x) is purified by f(k) where k is the purification variable for x.
+   *
+   * This is true for sin(x) where x is guaranteed to be a constant in the
+   * bound [-pi, pi] (note that there may be some x in [-pi, pi] for which
+   * this function returns false, because the check is not precise).
+   */
+  static bool isSimplePurify(TNode n);
+  /**
+   * Add bound for n, and for what (if anything) it purifies
+   */
+  bool addModelBoundForPurifyTerm(TNode n, TNode l, TNode u);
+  /** initial lower and upper bounds for PI */
+  static Rational getPiInitialLowerBound();
+  static Rational getPiInitialUpperBound();
 
   Node d_true;
   Node d_false;
@@ -168,8 +251,6 @@ struct TranscendentalState
   InferenceManager& d_im;
   /** Reference to the non-linear model object */
   NlModel& d_model;
-  /** Reference to the environment */
-  Env& d_env;
   /** Utility to compute taylor approximations */
   TaylorGenerator d_taylor;
   /**
@@ -177,46 +258,43 @@ struct TranscendentalState
    */
   std::unique_ptr<CDProofSet<CDProof>> d_proof;
 
-  /** The proof checker for transcendental proofs */
-  std::unique_ptr<TranscendentalProofRuleChecker> d_proofChecker;
-
   /**
    * Some transcendental functions f(t) are "purified", e.g. we add
    * t = y ^ f(t) = f(y) where y is a fresh variable. Those that are not
-   * purified we call "master terms".
+   * purified we call "purified terms".
    *
-   * The maps below maintain a master/slave relationship over
-   * transcendental functions (SINE, EXPONENTIAL, PI), where above
-   * f(y) is the master of itself and of f(t).
+   * The maps below maps transcendental function applications (SINE,
+   * EXPONENTIAL, PI) to their purified version, where above
+   * f(y) is the purified version of itself and of f(t).
    *
    * This is used for ensuring that the argument y of SINE we process is on
    * the interval [-pi .. pi], and that exponentials are not applied to
    * arguments that contain transcendental functions.
    */
-  std::map<Node, Node> d_trMaster;
-  std::map<Node, std::unordered_set<Node>> d_trSlaves;
+  NodeMap d_trPurify;
+  /** inverse mapping of above, which is injective */
+  NodeMap d_trPurifies;
+  /** The set of purification variables we have introduced */
+  NodeSet d_trPurifyVars;
 
   /** concavity region for transcendental functions
    *
-   * This stores an integer that identifies an interval in
+   * This stores the interval in
    * which the current model value for an argument of an
    * application of a transcendental function resides.
    *
    * For exp( x ):
-   *   region #1 is -infty < x < infty
+   *   region EXPONENTIAL is -infty < x < infty
    * For sin( x ):
-   *   region #0 is pi < x < infty (this is an invalid region)
-   *   region #1 is pi/2 < x <= pi
-   *   region #2 is 0 < x <= pi/2
-   *   region #3 is -pi/2 < x <= 0
-   *   region #4 is -pi < x <= -pi/2
-   *   region #5 is -infty < x <= -pi (this is an invalid region)
-   * All regions not listed above, as well as regions 0 and 5
-   * for SINE are "invalid". We only process applications
+   *   region SINE_PI_OVER_TWO_TO_PI is pi/2 < x <= pi
+   *   region SINE_ZERO_TO_PI_OVER_TWO is 0 < x <= pi/2
+   *   region SINE_NEG_PI_OVER_TWO_TO_ZERO is -pi/2 < x <= 0
+   *   region SINE_NEG_PI_TO_NEG_PI_OVER_TWO is -pi < x <= -pi/2
+   * All regions not listed above are invalid. We only process applications
    * of transcendental functions whose arguments have model
    * values that reside in valid regions.
    */
-  std::unordered_map<Node, int> d_tf_region;
+  std::unordered_map<Node, TranscendentalRegion> d_tf_region;
   /**
    * Maps representives of a congruence class to the members of that class.
    *
@@ -246,7 +324,7 @@ struct TranscendentalState
    * each transcendental function application. We store this set for each
    * Taylor degree.
    */
-  std::unordered_map<Node, std::map<unsigned, std::vector<Node>>>
+  std::unordered_map<Node, std::map<uint64_t, context::CDList<Node>>>
       d_secant_points;
 
   /** PI
@@ -256,12 +334,6 @@ struct TranscendentalState
    * concrete lower and upper bounds stored in d_pi_bound below.
    */
   Node d_pi;
-  /** PI/2 */
-  Node d_pi_2;
-  /** -PI/2 */
-  Node d_pi_neg_2;
-  /** -PI */
-  Node d_pi_neg;
   /** the concrete lower and upper bounds for PI */
   Node d_pi_bound[2];
 };
@@ -270,6 +342,6 @@ struct TranscendentalState
 }  // namespace nl
 }  // namespace arith
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__THEORY__ARITH__NL__TRANSCENDENTAL__TRANSCENDENTAL_STATE_H */

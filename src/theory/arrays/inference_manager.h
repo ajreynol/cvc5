@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Gereon Kremer
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -18,12 +15,12 @@
 #ifndef CVC5__THEORY__ARRAYS__INFERENCE_MANAGER_H
 #define CVC5__THEORY__ARRAYS__INFERENCE_MANAGER_H
 
+#include "cvc5/cvc5_proof_rule.h"
 #include "expr/node.h"
 #include "proof/eager_proof_generator.h"
-#include "proof/proof_rule.h"
 #include "theory/theory_inference_manager.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace arrays {
 
@@ -33,10 +30,7 @@ namespace arrays {
 class InferenceManager : public TheoryInferenceManager
 {
  public:
-  InferenceManager(Env& env,
-                   Theory& t,
-                   TheoryState& state,
-                   ProofNodeManager* pnm);
+  InferenceManager(Env& env, Theory& t, TheoryState& state);
   ~InferenceManager() {}
 
   /**
@@ -49,14 +43,15 @@ class InferenceManager : public TheoryInferenceManager
    * @return true if the fact was successfully asserted, and false if the
    * fact was redundant.
    */
-  bool assertInference(TNode atom, bool polarity, InferenceId id, TNode reason, PfRule pfr);
+  bool assertInference(
+      TNode atom, bool polarity, InferenceId id, TNode reason, ProofRule pfr);
   /**
    * Send lemma (exp => conc) based on proof rule id with properties p.
    */
   bool arrayLemma(Node conc,
                   InferenceId id,
                   Node exp,
-                  PfRule pfr,
+                  ProofRule pfr,
                   LemmaProperty p = LemmaProperty::NONE);
 
  private:
@@ -64,7 +59,7 @@ class InferenceManager : public TheoryInferenceManager
    * Converts a conclusion, explanation and proof rule id used by the array
    * theory to the set of arguments required for a proof rule application.
    */
-  void convert(PfRule& id,
+  void convert(ProofRule& id,
                Node conc,
                Node exp,
                std::vector<Node>& children,
@@ -75,6 +70,6 @@ class InferenceManager : public TheoryInferenceManager
 
 }  // namespace arrays
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif

@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Mathias Preiner, Tim King
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -18,12 +15,14 @@
 #ifndef CVC5__THEORY__BV__THEORY_BV_H
 #define CVC5__THEORY__BV__THEORY_BV_H
 
+#include "theory/bv/bv_pp_assert.h"
+#include "theory/bv/proof_checker.h"
 #include "theory/bv/theory_bv_rewriter.h"
 #include "theory/theory.h"
 #include "theory/theory_eq_notify.h"
 #include "theory/theory_state.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 
 class ProofRuleChecker;
 
@@ -34,10 +33,6 @@ class BVSolver;
 
 class TheoryBV : public Theory
 {
-  /* BVSolverLayered accesses methods from theory in a way that is deprecated
-   * and will be removed in the future. For now we allow direct access. */
-  friend class BVSolverLayered;
-
  public:
   TheoryBV(Env& env,
            OutputChannel& out,
@@ -88,28 +83,45 @@ class TheoryBV : public Theory
 
   std::string identify() const override { return std::string("TheoryBV"); }
 
-  PPAssertStatus ppAssert(TrustNode in,
-                          TrustSubstitutionMap& outSubstitutions) override;
+  bool ppAssert(TrustNode in, TrustSubstitutionMap& outSubstitutions) override;
 
   TrustNode ppRewrite(TNode t, std::vector<SkolemLemma>& lems) override;
 
-  void ppStaticLearn(TNode in, NodeBuilder& learned) override;
+  TrustNode ppStaticRewrite(TNode atom) override;
+
+  void ppStaticLearn(TNode in, std::vector<TrustNode>& learned) override;
 
   void presolve() override;
 
   EqualityStatus getEqualityStatus(TNode a, TNode b) override;
 
-  /** Called by abstraction preprocessing pass. */
-  bool applyAbstraction(const std::vector<Node>& assertions,
-                        std::vector<Node>& new_assertions);
+  /**
+   * Get the model value of given `node`.
+   *
+   * Recursively evaluates `node` from its leaves using the model of the
+   * internal bit-vector solver (leaves that have not been bit-blasted are
+   * value-initialized to 0).
+   *
+   * @param node The Node to evaluate under the current model.
+   * @return A node representing the value of the given node.
+   */
+  Node getValue(TNode node);
+
+  /**
+   * Mark the model value cache used by getValue() as stale. Must be called
+   * whenever the underlying model may have changed (e.g. between solve calls of
+   * the abstraction refinement loop).
+   */
+  void invalidateModelCache() { d_invalidateModelCache = true; }
 
  private:
   void notifySharedTerm(TNode t) override;
 
-  Node getValue(TNode node);
-
   /** Internal BV solver. */
   std::unique_ptr<BVSolver> d_internal;
+
+  /** The preprocess assertion utility */
+  BvPpAssert d_ppAssert;
 
   /** The theory rewriter for this theory. */
   TheoryBVRewriter d_rewriter;
@@ -126,6 +138,8 @@ class TheoryBV : public Theory
   /** Flag indicating whether `d_modelCache` should be invalidated. */
   context::CDO<bool> d_invalidateModelCache;
 
+  bool d_inPostCheck;
+
   /**
    * Cache for getValue() calls.
    *
@@ -141,10 +155,12 @@ class TheoryBV : public Theory
     IntStat d_solveSubstitutions;
   } d_stats;
 
+  /** Proof rule checker */
+  BVProofRuleChecker d_checker;
 }; /* class TheoryBV */
 
 }  // namespace bv
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__THEORY__BV__THEORY_BV_H */

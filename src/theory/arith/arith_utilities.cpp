@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Alex Ozdemir, Tim King
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -13,13 +10,16 @@
  * Implementation of common functions for dealing with nodes.
  */
 
-#include "arith_utilities.h"
+#include "theory/arith/arith_utilities.h"
 
 #include <cmath>
 
-using namespace cvc5::kind;
+#include "theory/bv/theory_bv_utils.h"
+#include "util/bitvector.h"
 
-namespace cvc5 {
+using namespace cvc5::internal::kind;
+
+namespace cvc5::internal {
 namespace theory {
 namespace arith {
 
@@ -35,35 +35,35 @@ Kind joinKinds(Kind k1, Kind k2)
   }
   Assert(isRelationOperator(k1));
   Assert(isRelationOperator(k2));
-  if (k1 == EQUAL)
+  if (k1 == Kind::EQUAL)
   {
-    if (k2 == LEQ || k2 == GEQ)
+    if (k2 == Kind::LEQ || k2 == Kind::GEQ)
     {
       return k1;
     }
   }
-  else if (k1 == LT)
+  else if (k1 == Kind::LT)
   {
-    if (k2 == LEQ)
+    if (k2 == Kind::LEQ)
     {
       return k1;
     }
   }
-  else if (k1 == LEQ)
+  else if (k1 == Kind::LEQ)
   {
-    if (k2 == GEQ)
+    if (k2 == Kind::GEQ)
     {
-      return EQUAL;
+      return Kind::EQUAL;
     }
   }
-  else if (k1 == GT)
+  else if (k1 == Kind::GT)
   {
-    if (k2 == GEQ)
+    if (k2 == Kind::GEQ)
     {
       return k1;
     }
   }
-  return UNDEFINED_KIND;
+  return Kind::UNDEFINED_KIND;
 }
 
 Kind transKinds(Kind k1, Kind k2)
@@ -78,40 +78,81 @@ Kind transKinds(Kind k1, Kind k2)
   }
   Assert(isRelationOperator(k1));
   Assert(isRelationOperator(k2));
-  if (k1 == EQUAL)
+  if (k1 == Kind::EQUAL)
   {
     return k2;
   }
-  else if (k1 == LT)
+  else if (k1 == Kind::LT)
   {
-    if (k2 == LEQ)
+    if (k2 == Kind::LEQ)
     {
       return k1;
     }
   }
-  else if (k1 == GT)
+  else if (k1 == Kind::GT)
   {
-    if (k2 == GEQ)
+    if (k2 == Kind::GEQ)
     {
       return k1;
     }
   }
-  return UNDEFINED_KIND;
+  return Kind::UNDEFINED_KIND;
+}
+
+Node mkZero(const TypeNode& tn) { return NodeManager::mkConstRealOrInt(tn, 0); }
+
+bool isZero(const Node& n)
+{
+  Assert(n.getType().isRealOrInt());
+  return n.isConst() && n.getConst<Rational>().sgn() == 0;
+}
+
+Node mkOne(const TypeNode& tn, bool isNeg)
+{
+  return NodeManager::mkConstRealOrInt(tn, isNeg ? -1 : 1);
 }
 
 bool isTranscendentalKind(Kind k)
 {
-  // many operators are eliminated during rewriting
-  Assert(k != TANGENT && k != COSINE && k != COSECANT
-         && k != SECANT && k != COTANGENT);
-  return k == EXPONENTIAL || k == SINE || k == PI;
+  switch (k)
+  {
+    case Kind::PI:
+    case Kind::EXPONENTIAL:
+    case Kind::SINE:
+    case Kind::COSINE:
+    case Kind::TANGENT:
+    case Kind::COSECANT:
+    case Kind::SECANT:
+    case Kind::COTANGENT:
+    case Kind::ARCSINE:
+    case Kind::ARCCOSINE:
+    case Kind::ARCTANGENT:
+    case Kind::ARCCOSECANT:
+    case Kind::ARCSECANT:
+    case Kind::ARCCOTANGENT:
+    case Kind::SQRT: return true;
+    default: break;
+  }
+  return false;
+}
+
+bool isExtendedNonLinearKind(Kind k)
+{
+  switch (k)
+  {
+    case Kind::IAND:
+    case Kind::POW2:
+    case Kind::POW: return true;
+    default: break;
+  }
+  return false;
 }
 
 Node getApproximateConstant(Node c, bool isLower, unsigned prec)
 {
   if (!c.isConst())
   {
-    Assert(false) << "getApproximateConstant: non-constant input " << c;
+    DebugUnhandled() << "getApproximateConstant: non-constant input " << c;
     return Node::null();
   }
   Rational cr = c.getConst<Rational>();
@@ -145,7 +186,7 @@ Node getApproximateConstant(Node c, bool isLower, unsigned prec)
 
   // now do binary search
   Rational two = Rational(2);
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = c.getNodeManager();
   Node cret;
   do
   {
@@ -164,7 +205,7 @@ Node getApproximateConstant(Node c, bool isLower, unsigned prec)
         curr_r = Rational(curr - 1) / den;
       }
       curr_r = curr_r * pow_ten;
-      cret = nm->mkConst(csign == 1 ? curr_r : -curr_r);
+      cret = nm->mkConst(Kind::CONST_RATIONAL, csign == 1 ? curr_r : -curr_r);
     }
     else
     {
@@ -183,11 +224,11 @@ Node getApproximateConstant(Node c, bool isLower, unsigned prec)
   return cret;
 }
 
-void printRationalApprox(const char* c, Node cr, unsigned prec)
+void printRationalApprox(CVC5_UNUSED const char* c, Node cr, unsigned prec)
 {
   if (!cr.isConst())
   {
-    Assert(false) << "printRationalApprox: non-constant input " << cr;
+    DebugUnhandled() << "printRationalApprox: non-constant input " << cr;
     Trace(c) << cr;
     return;
   }
@@ -203,86 +244,11 @@ void printRationalApprox(const char* c, Node cr, unsigned prec)
   }
 }
 
-Node arithSubstitute(Node n, const Subs& sub)
-{
-  NodeManager* nm = NodeManager::currentNM();
-  std::unordered_map<TNode, Node> visited;
-  std::vector<TNode> visit;
-  visit.push_back(n);
-  do
-  {
-    TNode cur = visit.back();
-    visit.pop_back();
-    auto it = visited.find(cur);
-
-    if (it == visited.end())
-    {
-      visited[cur] = Node::null();
-      Kind ck = cur.getKind();
-      auto s = sub.find(cur);
-      if (s)
-      {
-        visited[cur] = *s;
-      }
-      else if (cur.getNumChildren() == 0)
-      {
-        visited[cur] = cur;
-      }
-      else
-      {
-        TheoryId ctid = theory::kindToTheoryId(ck);
-        if ((ctid != THEORY_ARITH && ctid != THEORY_BOOL
-             && ctid != THEORY_BUILTIN)
-            || isTranscendentalKind(ck))
-        {
-          // Do not traverse beneath applications that belong to another theory
-          // besides (core) arithmetic. Notice that transcendental function
-          // applications are also not traversed here.
-          visited[cur] = cur;
-        }
-        else
-        {
-          visit.push_back(cur);
-          for (const Node& cn : cur)
-          {
-            visit.push_back(cn);
-          }
-        }
-      }
-    }
-    else if (it->second.isNull())
-    {
-      Node ret = cur;
-      bool childChanged = false;
-      std::vector<Node> children;
-      if (cur.getMetaKind() == kind::metakind::PARAMETERIZED)
-      {
-        children.push_back(cur.getOperator());
-      }
-      for (const Node& cn : cur)
-      {
-        it = visited.find(cn);
-        Assert(it != visited.end());
-        Assert(!it->second.isNull());
-        childChanged = childChanged || cn != it->second;
-        children.push_back(it->second);
-      }
-      if (childChanged)
-      {
-        ret = nm->mkNode(cur.getKind(), children);
-      }
-      visited[cur] = ret;
-    }
-  } while (!visit.empty());
-  Assert(visited.find(n) != visited.end());
-  Assert(!visited.find(n)->second.isNull());
-  return visited[n];
-}
-
 Node mkBounded(Node l, Node a, Node u)
 {
-  NodeManager* nm = NodeManager::currentNM();
-  return nm->mkNode(AND, nm->mkNode(GEQ, a, l), nm->mkNode(LEQ, a, u));
+  return NodeManager::mkNode(Kind::AND,
+                             {NodeManager::mkNode(Kind::GEQ, a, l),
+                              NodeManager::mkNode(Kind::LEQ, a, u)});
 }
 
 Rational leastIntGreaterThan(const Rational& q) { return q.floor() + 1; }
@@ -291,24 +257,23 @@ Rational greatestIntLessThan(const Rational& q) { return q.ceiling() - 1; }
 
 Node negateProofLiteral(TNode n)
 {
-  auto nm = NodeManager::currentNM();
   switch (n.getKind())
   {
     case Kind::GT:
     {
-      return nm->mkNode(Kind::LEQ, n[0], n[1]);
+      return NodeManager::mkNode(Kind::LEQ, n[0], n[1]);
     }
     case Kind::LT:
     {
-      return nm->mkNode(Kind::GEQ, n[0], n[1]);
+      return NodeManager::mkNode(Kind::GEQ, n[0], n[1]);
     }
     case Kind::LEQ:
     {
-      return nm->mkNode(Kind::GT, n[0], n[1]);
+      return NodeManager::mkNode(Kind::GT, n[0], n[1]);
     }
     case Kind::GEQ:
     {
-      return nm->mkNode(Kind::LT, n[0], n[1]);
+      return NodeManager::mkNode(Kind::LT, n[0], n[1]);
     }
     case Kind::EQUAL:
     case Kind::NOT:
@@ -319,6 +284,110 @@ Node negateProofLiteral(TNode n)
   }
 }
 
+Node multConstants(const Node& c1, const Node& c2)
+{
+  Assert(!c1.isNull() && c1.isConst());
+  Assert(!c2.isNull() && c2.isConst());
+  NodeManager* nm = c1.getNodeManager();
+  // real type if either has type real
+  TypeNode tn = c1.getType();
+  if (tn.isInteger())
+  {
+    tn = c2.getType();
+  }
+  Assert(tn.isRealOrInt());
+  return nm->mkConstRealOrInt(
+      tn, Rational(c1.getConst<Rational>() * c2.getConst<Rational>()));
+}
+
+Node mkEquality(const Node& a, const Node& b)
+{
+  Assert(a.getType().isRealOrInt());
+  Assert(b.getType().isRealOrInt());
+  // if they have the same type, just make them equal
+  if (CVC5_EQUAL(a.getType(), b.getType()))
+  {
+    return NodeManager::mkNode(Kind::EQUAL, a, b);
+  }
+  // otherwise subtract and set equal to zero
+  Node diff = NodeManager::mkNode(Kind::SUB, a, b);
+  return NodeManager::mkNode(Kind::EQUAL, diff, mkZero(diff.getType()));
+}
+
+Node castToReal(NodeManager* nm, const Node& n)
+{
+  return n.isConst() ? nm->mkConstReal(n.getConst<Rational>())
+                     : nm->mkNode(Kind::TO_REAL, n);
+}
+
+std::pair<Node, Node> mkSameType(const Node& a, const Node& b)
+{
+  TypeNode at = a.getType();
+  TypeNode bt = b.getType();
+  if (at == bt)
+  {
+    return {a, b};
+  }
+  if (at.isInteger() && bt.isReal())
+  {
+    return {NodeManager::mkNode(Kind::TO_REAL, a), b};
+  }
+  Assert(at.isReal() && bt.isInteger());
+  return {a, NodeManager::mkNode(Kind::TO_REAL, b)};
+}
+
+/* ------------------------------------------------------------------------- */
+
+Node eliminateBv2Nat(TNode node)
+{
+  const unsigned size = bv::utils::getSize(node[0]);
+  NodeManager* const nm = node.getNodeManager();
+  const Node z = nm->mkConstInt(Rational(0));
+  const Node bvone = bv::utils::mkOne(nm, 1);
+
+  Integer i = 1;
+  std::vector<Node> children;
+  for (unsigned bit = 0; bit < size; ++bit, i *= 2)
+  {
+    Node cond =
+        nm->mkNode(Kind::EQUAL,
+                   nm->mkNode(nm->mkConst(BitVectorExtract(bit, bit)), node[0]),
+                   bvone);
+    children.push_back(
+        nm->mkNode(Kind::ITE, cond, nm->mkConstInt(Rational(i)), z));
+  }
+  // avoid plus with one child
+  return children.size() == 1 ? children[0] : nm->mkNode(Kind::ADD, children);
+}
+
+Node eliminateInt2Bv(TNode node)
+{
+  const uint32_t size = node.getOperator().getConst<IntToBitVector>().d_size;
+  NodeManager* const nm = node.getNodeManager();
+  const Node bvzero = bv::utils::mkZero(nm, 1);
+  const Node bvone = bv::utils::mkOne(nm, 1);
+
+  std::vector<Node> v;
+  Integer i = 2;
+  while (v.size() < size)
+  {
+    Node cond = nm->mkNode(
+        Kind::GEQ,
+        {nm->mkNode(
+             Kind::INTS_MODULUS_TOTAL, node[0], nm->mkConstInt(Rational(i))),
+         nm->mkConstInt(Rational(i, 2))});
+    v.push_back(nm->mkNode(Kind::ITE, cond, bvone, bvzero));
+    i *= 2;
+  }
+  if (v.size() == 1)
+  {
+    return v[0];
+  }
+  NodeBuilder result(nm, Kind::BITVECTOR_CONCAT);
+  result.append(v.rbegin(), v.rend());
+  return Node(result);
+}
+
 }  // namespace arith
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal

@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Gereon Kremer
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -18,9 +15,11 @@
 #ifndef CVC5__PROOF__LAZY_PROOF_H
 #define CVC5__PROOF__LAZY_PROOF_H
 
+#include "context/cdhashset.h"
 #include "proof/proof.h"
+#include "proof/trust_id.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 
 class ProofGenerator;
 class ProofNodeManager;
@@ -41,11 +40,21 @@ class LazyCDProof : public CDProof
    * for facts that have no explicitly provided generator.
    * @param c The context that this class depends on. If none is provided,
    * this class is context-independent.
+   * @param name The name of this proof generator (for debugging)
+   * @param autoSym Whether symmetry steps are automatically added when adding
+   * steps to this proof
+   * @param doCache Whether the proofs we process in getProofFor are cached
+   * based on the context of this class. In other words, we assume that the
+   * subproofs returned by getProofFor are not re-processed on repeated calls
+   * to getProofFor, even if new steps are provided to this class in the
+   * meantime.
    */
-  LazyCDProof(ProofNodeManager* pnm,
+  LazyCDProof(Env& env,
               ProofGenerator* dpg = nullptr,
               context::Context* c = nullptr,
-              const std::string& name = "LazyCDProof");
+              const std::string& name = "LazyCDProof",
+              bool autoSym = true,
+              bool doCache = true);
   ~LazyCDProof();
   /**
    * Get lazy proof for fact, or nullptr if it does not exist. This may
@@ -68,7 +77,7 @@ class LazyCDProof : public CDProof
    * @param pg The generator that can proof expected.
    * @param trustId If a null proof generator is provided, we add a step to
    * the proof that has trustId as the rule and expected as the sole argument.
-   * We do this only if trustId is not PfRule::ASSUME. This is primarily used
+   * We do this only if trustId is not ProofRule::ASSUME. This is primarily used
    * for identifying the kind of hole when a proof generator is not given.
    * @param isClosed Whether to expect that pg can provide a closed proof for
    * this fact.
@@ -79,7 +88,7 @@ class LazyCDProof : public CDProof
    */
   void addLazyStep(Node expected,
                    ProofGenerator* pg,
-                   PfRule trustId = PfRule::ASSUME,
+                   TrustId trustId = TrustId::NONE,
                    bool isClosed = false,
                    const char* ctx = "LazyCDProof::addLazyStep",
                    bool forceOverwrite = false);
@@ -93,6 +102,7 @@ class LazyCDProof : public CDProof
 
  protected:
   typedef context::CDHashMap<Node, ProofGenerator*> NodeProofGeneratorMap;
+  typedef context::CDHashSet<ProofNode*> ProofNodeSet;
   /** Maps facts that can be proven to generators */
   NodeProofGeneratorMap d_gens;
   /** The default proof generator */
@@ -103,8 +113,12 @@ class LazyCDProof : public CDProof
    * proof generator for the symmetric form of fact was provided.
    */
   ProofGenerator* getGeneratorFor(Node fact, bool& isSym);
+  /** whether d_allVisited is maintained */
+  bool d_doCache;
+  /** The set of proof nodes we have processed in getProofFor */
+  ProofNodeSet d_allVisited;
 };
 
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__PROOF__LAZY_PROOF_H */

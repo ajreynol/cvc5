@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Gereon Kremer
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -38,14 +35,14 @@
 
 #include "util/safe_print.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 
 class StatisticsRegistry;
 
 using StatExportData =
     std::variant<int64_t, double, std::string, std::map<std::string, uint64_t>>;
 namespace detail {
-  std::ostream& print(std::ostream& out, const StatExportData& sed);
+std::ostream& print(std::ostream& out, const StatExportData& sed);
 }
 
 /**
@@ -67,7 +64,7 @@ struct StatisticBaseValue
    */
   virtual void printSafe(int fd) const = 0;
 
-  bool d_expert = true;
+  bool d_internal = true;
 };
 /** Writes the data to an output stream */
 std::ostream& operator<<(std::ostream& out, const StatisticBaseValue& sbv);
@@ -184,10 +181,21 @@ struct StatisticHistogramValue : StatisticBaseValue
     }
     d_hist[v - d_offset]++;
   }
+  /** Get the value stored for key val */
+  uint64_t getValue(Integral val)
+  {
+    int64_t index = static_cast<int64_t>(val);
+    if (index < d_offset)
+    {
+      return 0;
+    }
+    index = index - d_offset;
+    return static_cast<size_t>(index) < d_hist.size() ? d_hist[index] : 0;
+  }
 
   /** Actual data */
   std::vector<uint64_t> d_hist;
-  /** Offset of the entries. d_hist[i] corresponds to Interval(d_offset + i) */
+  /** Offset of the entries. d_hist[i] corresponds to Integral(d_offset + i) */
   int64_t d_offset;
 };
 
@@ -356,7 +364,7 @@ struct StatisticTimerValue : StatisticBaseValue
   uint64_t get() const;
 
   /**
-   * The cumulative duration of the timer so far. 
+   * The cumulative duration of the timer so far.
    * Does not include a currently running timer, but `get()` takes care of this.
    */
   duration d_duration;
@@ -369,6 +377,6 @@ struct StatisticTimerValue : StatisticBaseValue
   bool d_running;
 };
 
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif
