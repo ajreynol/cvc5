@@ -12,10 +12,12 @@
 
 #include <limits>
 #include <sstream>
+#include <unordered_set>
 
 #include "base/exception.h"
 #include "test.h"
 #include "util/integer.h"
+#include "util/random.h"
 
 namespace cvc5::internal {
 namespace test {
@@ -302,6 +304,20 @@ TEST_F(TestUtilBlackInteger, base_inference)
   ASSERT_EQ(Integer("0b1010", 0), 10);
   ASSERT_EQ(Integer("-1", 0), -1);
   ASSERT_EQ(Integer("42", 0), 42);
+  ASSERT_EQ(Integer("0", 0), 0);
+  ASSERT_EQ(Integer("-0", 0), 0);
+}
+
+TEST_F(TestUtilBlackInteger, fits_signed_int)
+{
+  Integer imin(std::numeric_limits<int>::min());
+  Integer imax(std::numeric_limits<int>::max());
+  Integer too_small(std::numeric_limits<int64_t>::min());
+  ASSERT_TRUE(imin.fitsSignedInt());
+  ASSERT_TRUE(imax.fitsSignedInt());
+  ASSERT_FALSE(too_small.fitsSignedInt());
+  ASSERT_EQ(imin.getSignedInt(), std::numeric_limits<int>::min());
+  ASSERT_EQ(imax.getSignedInt(), std::numeric_limits<int>::max());
 }
 
 TEST_F(TestUtilBlackInteger, parse_errors)
@@ -604,5 +620,56 @@ TEST_F(TestUtilBlackInteger, modInverse)
     }
   }
 }
+
+TEST_F(TestUtilBlackInteger, mkRandom_bound)
+{
+  // Result must be in [0, 2^nbits) for various bit widths
+  uint32_t sizes[] = {1, 2, 7, 8, 16, 32, 63, 64, 65, 100, 128, 256};
+  for (uint32_t nbits : sizes)
+  {
+    Integer bound = Integer(1).multiplyByPow2(nbits);
+    std::unordered_set<Integer> values;
+    for (size_t i = 0; i < 20; ++i)
+    {
+      Integer v = Integer::mkRandom(nbits);
+      values.insert(v);
+      ASSERT_TRUE(v >= 0);
+      ASSERT_TRUE(v < bound);
+    }
+    ASSERT_GT(values.size(), 1);
+  }
+}
+
+TEST_F(TestUtilBlackInteger, mkRandom_deterministic)
+{
+  // Same seed should produce the same sequence
+  Random::getRandom().setSeed(42);
+  Integer a1 = Integer::mkRandom(128);
+  Integer a2 = Integer::mkRandom(128);
+
+  Random::getRandom().setSeed(42);
+  Integer b1 = Integer::mkRandom(128);
+  Integer b2 = Integer::mkRandom(128);
+
+  ASSERT_EQ(a1, b1);
+  ASSERT_EQ(a2, b2);
+}
+
+TEST_F(TestUtilBlackInteger, mkRandom_not_always_zero)
+{
+  // With 128 bits, getting all zeros 10 times in a row is unlikely.
+  Random::getRandom().setSeed(0);
+  bool nonZero = false;
+  for (int i = 0; i < 10; ++i)
+  {
+    if (!Integer::mkRandom(128).isZero())
+    {
+      nonZero = true;
+      break;
+    }
+  }
+  ASSERT_TRUE(nonZero);
+}
+
 }  // namespace test
 }  // namespace cvc5::internal
