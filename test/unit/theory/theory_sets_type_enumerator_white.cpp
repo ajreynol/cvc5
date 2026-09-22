@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Aina Niemetz, Andrew Reynolds, Mudathir Mohamed
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -41,7 +38,7 @@ class TestTheoryWhiteSetsTypeEnumerator : public TestSmt
 
 TEST_F(TestTheoryWhiteSetsTypeEnumerator, set_of_booleans)
 {
-  Rewriter* rr = d_slvEngine->getRewriter();
+  Rewriter* rr = d_slvEngine->getEnv().getRewriter();
   TypeNode boolType = d_nodeManager->booleanType();
   SetEnumerator setEnumerator(d_nodeManager->mkSetType(boolType));
   ASSERT_FALSE(setEnumerator.isFinished());
@@ -104,14 +101,14 @@ TEST_F(TestTheoryWhiteSetsTypeEnumerator, set_of_finite_dataype)
       datatype.getDType().getConstructors();
   SetEnumerator setEnumerator(d_nodeManager->mkSetType(datatype));
 
-  Node red =
-      d_nodeManager->mkNode(APPLY_CONSTRUCTOR, dtcons[0]->getConstructor());
+  Node red = d_nodeManager->mkNode(Kind::APPLY_CONSTRUCTOR,
+                                   dtcons[0]->getConstructor());
 
-  Node green =
-      d_nodeManager->mkNode(APPLY_CONSTRUCTOR, dtcons[1]->getConstructor());
+  Node green = d_nodeManager->mkNode(Kind::APPLY_CONSTRUCTOR,
+                                     dtcons[1]->getConstructor());
 
-  Node blue =
-      d_nodeManager->mkNode(APPLY_CONSTRUCTOR, dtcons[2]->getConstructor());
+  Node blue = d_nodeManager->mkNode(Kind::APPLY_CONSTRUCTOR,
+                                    dtcons[2]->getConstructor());
 
   std::vector<Node> elems;
   for (unsigned i = 0; i < 8; i++)

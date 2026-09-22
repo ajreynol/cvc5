@@ -1,4 +1,4 @@
-; COMMAND-LINE: --strings-exp -q
+; COMMAND-LINE:
 ; EXPECT: sat
 (set-logic ALL)
 (declare-fun a () String)

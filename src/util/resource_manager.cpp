@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Gereon Kremer, Liana Hadarean, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -87,7 +84,10 @@ const char* toString(Resource r)
     case Resource::RestartStep: return "RestartStep";
     case Resource::RewriteStep: return "RewriteStep";
     case Resource::SatConflictStep: return "SatConflictStep";
+    case Resource::SygusCheckStep: return "SygusCheckStep";
     case Resource::TheoryCheckStep: return "TheoryCheckStep";
+    case Resource::TheoryFullCheckStep: return "TheoryFullCheckStep";
+    case Resource::FindSynthStep: return "FindSynthStep";
     default: return "?Resource?";
   }
 }
@@ -107,7 +107,7 @@ struct ResourceManager::Statistics
 
 ResourceManager::Statistics::Statistics(StatisticsRegistry& stats)
     : d_resourceUnitsUsed(
-        stats.registerReference<uint64_t>("resource::resourceUnitsUsed")),
+          stats.registerReference<uint64_t>("resource::resourceUnitsUsed")),
       d_spendResourceCalls(stats.registerInt("resource::spendResourceCalls")),
       d_inferenceIdSteps(stats.registerHistogram<theory::InferenceId>(
           "resource::steps::inference-id")),
@@ -151,6 +151,7 @@ bool setWeight(const std::string& name, uint64_t weight, Weights& weights)
 ResourceManager::ResourceManager(StatisticsRegistry& stats,
                                  const Options& options)
     : d_options(options),
+      d_enabled(true),
       d_perCallTimer(),
       d_cumulativeTimeUsed(0),
       d_cumulativeResourceUsed(0),
@@ -187,7 +188,9 @@ uint64_t ResourceManager::getTimeUsage() const { return d_cumulativeTimeUsed; }
 
 uint64_t ResourceManager::getRemainingTime() const
 {
-  return d_options.base.perCallMillisecondLimit - d_perCallTimer.elapsed();
+  const uint64_t elapsed = d_perCallTimer.elapsed();
+  if (d_options.base.perCallMillisecondLimit <= elapsed) return 0;
+  return d_options.base.perCallMillisecondLimit - elapsed;
 }
 
 uint64_t ResourceManager::getResourceRemaining() const
@@ -230,6 +233,11 @@ void ResourceManager::spendResource(Resource r)
   spendResource(d_resourceWeights[i]);
 }
 
+uint64_t ResourceManager::getResource(Resource r) const
+{
+  return d_statistics->d_resourceSteps.getValue(r);
+}
+
 void ResourceManager::spendResource(theory::InferenceId iid)
 {
   std::size_t i = static_cast<std::size_t>(iid);
@@ -240,6 +248,9 @@ void ResourceManager::spendResource(theory::InferenceId iid)
 
 void ResourceManager::beginCall()
 {
+  // refresh here if not already done so
+  refresh();
+  // begin call
   d_perCallTimer.set(d_options.base.perCallMillisecondLimit);
   d_thisCallResourceUsed = 0;
 
@@ -259,7 +270,7 @@ void ResourceManager::beginCall()
   }
 }
 
-void ResourceManager::endCall()
+void ResourceManager::refresh()
 {
   d_cumulativeTimeUsed += d_perCallTimer.elapsed();
   d_perCallTimer.set(0);
@@ -275,6 +286,10 @@ bool ResourceManager::limitOn() const
 
 bool ResourceManager::outOfResources() const
 {
+  if (!d_enabled)
+  {
+    return false;
+  }
   if (d_options.base.perCallResourceLimit > 0)
   {
     // Check if per-call resources are exhausted
@@ -296,6 +311,10 @@ bool ResourceManager::outOfResources() const
 
 bool ResourceManager::outOfTime() const
 {
+  if (!d_enabled)
+  {
+    return false;
+  }
   if (d_options.base.perCallMillisecondLimit == 0) return false;
   return d_perCallTimer.expired();
 }

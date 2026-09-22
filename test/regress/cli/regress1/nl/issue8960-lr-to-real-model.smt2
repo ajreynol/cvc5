@@ -1,4 +1,5 @@
-; COMMAND-LINE: --learned-rewrite -q
+; REQUIRES: no-safe-mode
+; COMMAND-LINE: --learned-rewrite
 ; EXPECT: sat
 (set-logic ALL)
 (declare-const a Int)

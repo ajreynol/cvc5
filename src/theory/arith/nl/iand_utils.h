@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Yoni Zohar, Makai Mann, Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -32,7 +29,7 @@ namespace nl {
 class IAndUtils
 {
  public:
-  IAndUtils();
+  IAndUtils(NodeManager* nm);
 
   /**
    * A generic function that creates a node that represents a bvand
@@ -83,7 +80,7 @@ class IAndUtils
    *        pass.
    * @return A node that represents the operation, as described above.
    */
-  Node createSumNode(Node x, Node y, uint64_t bvsize, uint64_t granularity);
+  Node createSumNode(Node x, Node y, uint32_t bvsize, uint32_t granularity);
 
   /** Create a bitwise integer And node for two integers x and y for bits
    *  between hgih and low Example for high = 0, low = 0 (e.g. granularity 1)
@@ -100,12 +97,12 @@ class IAndUtils
    *  @return an integer node corresponding to a bitwise AND applied to
    *          integers for the bits between high and low
    */
-  Node createBitwiseIAndNode(Node x, Node y, uint64_t high, uint64_t low);
+  Node createBitwiseIAndNode(Node x, Node y, uint32_t high, uint32_t low);
 
   /** extract from integer
    *  ((_ extract i j) n) is n / 2^j mod 2^{i-j+1}
    */
-  Node iextract(unsigned i, unsigned j, Node n) const;
+  Node iextract(uint32_t i, uint32_t j, Node n) const;
 
   // Helpers
 
@@ -126,13 +123,13 @@ class IAndUtils
   Node createITEFromTable(
       Node x,
       Node y,
-      uint64_t granularity,
+      uint32_t granularity,
       const std::map<std::pair<int64_t, int64_t>, uint64_t>& table);
 
   /**
    * updates  d_bvandTable[granularity] if it wasn't already computed.
    */
-  void computeAndTable(uint64_t granularity);
+  void computeAndTable(uint32_t granularity);
 
   /**
    * @param table a table that represents integer conjunction
@@ -160,6 +157,8 @@ class IAndUtils
       d_bvandTable;
 
  private:
+  /** the associated node manager */
+  NodeManager* d_nm;
   /** commonly used terms */
   Node d_zero;
   Node d_one;

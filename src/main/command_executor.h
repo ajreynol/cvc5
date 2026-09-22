@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Gereon Kremer, Aina Niemetz
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -16,15 +13,17 @@
 #ifndef CVC5__MAIN__COMMAND_EXECUTOR_H
 #define CVC5__MAIN__COMMAND_EXECUTOR_H
 
+#include <cvc5/cvc5.h>
+#include <cvc5/cvc5_parser.h>
+
 #include <iosfwd>
 #include <string>
 
-#include "api/cpp/cvc5.h"
-#include "parser/api/cpp/symbol_manager.h"
-
 namespace cvc5 {
 
+namespace parser {
 class Command;
+}
 
 namespace main {
 
@@ -50,6 +49,9 @@ class CommandExecutor
 
   cvc5::Result d_result;
 
+  /** Cache option value of parse-only option. */
+  bool d_parseOnly;
+
  public:
   CommandExecutor(std::unique_ptr<cvc5::Solver>& solver);
 
@@ -60,9 +62,9 @@ class CommandExecutor
    * sequence.  Eventually uses doCommandSingleton (which can be
    * overridden by a derived class).
    */
-  bool doCommand(cvc5::Command* cmd);
+  bool doCommand(cvc5::parser::Command* cmd);
 
-  bool doCommand(std::unique_ptr<cvc5::Command>& cmd)
+  bool doCommand(std::unique_ptr<cvc5::parser::Command>& cmd)
   {
     return doCommand(cmd.get());
   }
@@ -78,6 +80,16 @@ class CommandExecutor
 
   /** Store the current options as the original options */
   void storeOptionsAsOriginal();
+
+  /**
+   * Set option internal. This method should be used to set options on the
+   * underlying solver that do not originate from the user. We do this to
+   * set expert or undocumented options that should not throw an exception
+   * e.g. when using --safe-options.
+   * @param key The option to set
+   * @param value The value to set
+   */
+  void setOptionInternal(const std::string& key, const std::string& value);
 
   /**
    * Prints statistics to an output stream.
@@ -96,19 +108,17 @@ class CommandExecutor
 
   void flushOutputStreams();
 
-protected:
+ protected:
   /** Executes treating cmd as a singleton */
- virtual bool doCommandSingleton(cvc5::Command* cmd);
+  virtual bool doCommandSingleton(parser::Cmd* cmd);
 
-private:
+ private:
   CommandExecutor();
 
+  bool solverInvoke(cvc5::Solver* solver,
+                    parser::SymManager* sm,
+                    parser::Cmd* cmd);
 }; /* class CommandExecutor */
-
-bool solverInvoke(cvc5::Solver* solver,
-                  parser::SymbolManager* sm,
-                  Command* cmd,
-                  std::ostream& out);
 
 }  // namespace main
 }  // namespace cvc5

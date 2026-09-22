@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Aina Niemetz, Andres Noetzli, Tim King
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -18,7 +15,9 @@
 
 #include "context/context.h"
 #include "expr/node.h"
+#include "smt/smt_solver.h"
 #include "test_smt.h"
+#include "theory/arith/nl/piand_solver.h"
 #include "theory/arith/theory_arith.h"
 #include "theory/quantifiers_engine.h"
 #include "theory/theory.h"
@@ -31,7 +30,6 @@ using namespace theory;
 using namespace theory::arith;
 using namespace expr;
 using namespace context;
-using namespace kind;
 using namespace smt;
 
 namespace test {
@@ -44,8 +42,8 @@ class TestTheoryWhiteArith : public TestSmtNoFinishInit
     TestSmtNoFinishInit::SetUp();
     d_slvEngine->setOption("incremental", "false");
     d_slvEngine->finishInit();
-    d_arith = static_cast<TheoryArith*>(
-        d_slvEngine->getTheoryEngine()->d_theoryTable[THEORY_ARITH]);
+    TheoryEngine* te = d_slvEngine->d_smtSolver->getTheoryEngine();
+    d_arith = static_cast<TheoryArith*>(te->d_theoryTable[THEORY_ARITH]);
 
     d_realType.reset(new TypeNode(d_nodeManager->realType()));
     d_intType.reset(new TypeNode(d_nodeManager->integerType()));
@@ -53,9 +51,10 @@ class TestTheoryWhiteArith : public TestSmtNoFinishInit
 
   void fakeTheoryEnginePreprocess(TNode input)
   {
-    Rewriter* rr = d_slvEngine->getRewriter();
+    Rewriter* rr = d_slvEngine->getEnv().getRewriter();
     Assert(input == rr->rewrite(input));
-    d_slvEngine->getTheoryEngine()->preRegister(input);
+    TheoryEngine* te = d_slvEngine->d_smtSolver->getTheoryEngine();
+    te->preRegister(input);
   }
 
   Theory::Effort d_level = Theory::EFFORT_FULL;
@@ -68,11 +67,11 @@ class TestTheoryWhiteArith : public TestSmtNoFinishInit
 
 TEST_F(TestTheoryWhiteArith, assert)
 {
-  Rewriter* rr = d_slvEngine->getRewriter();
+  Rewriter* rr = d_slvEngine->getEnv().getRewriter();
   Node x = d_nodeManager->mkVar(*d_realType);
   Node c = d_nodeManager->mkConstReal(d_zero);
 
-  Node gt = d_nodeManager->mkNode(GT, x, c);
+  Node gt = d_nodeManager->mkNode(Kind::GT, x, c);
   Node leq = rr->rewrite(gt.notNode());
   fakeTheoryEnginePreprocess(leq);
 
@@ -83,46 +82,47 @@ TEST_F(TestTheoryWhiteArith, assert)
 
 TEST_F(TestTheoryWhiteArith, int_normal_form)
 {
-  Rewriter* rr = d_slvEngine->getRewriter();
+  Rewriter* rr = d_slvEngine->getEnv().getRewriter();
   Node x = d_nodeManager->mkVar(*d_intType);
   Node xr = d_nodeManager->mkVar(*d_realType);
   Node c0 = d_nodeManager->mkConstInt(d_zero);
   Node c1 = d_nodeManager->mkConstInt(d_one);
   Node c2 = d_nodeManager->mkConstInt(Rational(2));
 
-  Node geq0 = d_nodeManager->mkNode(GEQ, x, c0);
-  Node geq1 = d_nodeManager->mkNode(GEQ, x, c1);
-  Node geq2 = d_nodeManager->mkNode(GEQ, x, c2);
+  Node geq0 = d_nodeManager->mkNode(Kind::GEQ, x, c0);
+  Node geq1 = d_nodeManager->mkNode(Kind::GEQ, x, c1);
+  Node geq2 = d_nodeManager->mkNode(Kind::GEQ, x, c2);
 
   ASSERT_EQ(rr->rewrite(geq0), geq0);
   ASSERT_EQ(rr->rewrite(geq1), geq1);
 
-  Node gt0 = d_nodeManager->mkNode(GT, x, c0);
-  Node gt1 = d_nodeManager->mkNode(GT, x, c1);
+  Node gt0 = d_nodeManager->mkNode(Kind::GT, x, c0);
+  Node gt1 = d_nodeManager->mkNode(Kind::GT, x, c1);
 
   ASSERT_EQ(rr->rewrite(gt0), rr->rewrite(geq1));
   ASSERT_EQ(rr->rewrite(gt1), rr->rewrite(geq2));
 
-  Node lt0 = d_nodeManager->mkNode(LT, x, c0);
-  Node lt1 = d_nodeManager->mkNode(LT, x, c1);
+  Node lt0 = d_nodeManager->mkNode(Kind::LT, x, c0);
+  Node lt1 = d_nodeManager->mkNode(Kind::LT, x, c1);
 
   ASSERT_EQ(rr->rewrite(lt0), rr->rewrite(geq0.notNode()));
   ASSERT_EQ(rr->rewrite(lt1), rr->rewrite(geq1.notNode()));
 
-  Node leq0 = d_nodeManager->mkNode(LEQ, x, c0);
-  Node leq1 = d_nodeManager->mkNode(LEQ, x, c1);
+  Node leq0 = d_nodeManager->mkNode(Kind::LEQ, x, c0);
+  Node leq1 = d_nodeManager->mkNode(Kind::LEQ, x, c1);
 
   ASSERT_EQ(rr->rewrite(leq0), rr->rewrite(geq1.notNode()));
   ASSERT_EQ(rr->rewrite(leq1), rr->rewrite(geq2.notNode()));
 
   // (abs x) --> (abs x)
-  Node absX = d_nodeManager->mkNode(ABS, x);
+  Node absX = d_nodeManager->mkNode(Kind::ABS, x);
   ASSERT_EQ(rr->rewrite(absX), absX);
 
   // (exp (+ 2 + x)) --> (* (exp x) (exp 1) (exp 1))
   Node cr0 = d_nodeManager->mkConstReal(d_zero);
   Node t =
-      d_nodeManager->mkNode(EXPONENTIAL, d_nodeManager->mkNode(ADD, c2, xr))
+      d_nodeManager
+          ->mkNode(Kind::EXPONENTIAL, d_nodeManager->mkNode(Kind::ADD, c2, xr))
           .eqNode(cr0);
   ASSERT_EQ(rr->rewrite(rr->rewrite(t)), rr->rewrite(t));
 }

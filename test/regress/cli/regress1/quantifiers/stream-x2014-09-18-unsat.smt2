@@ -1,4 +1,6 @@
+; REQUIRES: unrestricted-mode
 ; EXPECT: unsat
+; DISABLE-TESTER: cpc
 (set-logic ALL)
 (set-info :status unsat)
 (declare-sort A$ 0)

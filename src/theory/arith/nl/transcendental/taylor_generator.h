@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Gereon Kremer, Andrew Reynolds, Aina Niemetz
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -15,6 +12,8 @@
 
 #ifndef CVC5__THEORY__ARITH__NL__TRANSCENDENTAL__TAYLOR_GENERATOR_H
 #define CVC5__THEORY__ARITH__NL__TRANSCENDENTAL__TAYLOR_GENERATOR_H
+
+#include <cstdint>
 
 #include "expr/node.h"
 
@@ -41,7 +40,7 @@ class TaylorGenerator
     Node d_upperPos;
   };
 
-  TaylorGenerator();
+  TaylorGenerator(NodeManager* nm);
 
   /**
    * Return the variable used as x in getTaylor().
@@ -105,6 +104,9 @@ class TaylorGenerator
 
  private:
   const Node d_taylor_real_fv;
+
+  /** the associated node manager */
+  NodeManager* d_nm;
 
   /**
    * For every kind (EXP or SINE) and every degree we store the taylor series up

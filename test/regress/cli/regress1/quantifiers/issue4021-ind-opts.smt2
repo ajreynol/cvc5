@@ -1,10 +1,13 @@
+; REQUIRES: unrestricted-mode
+; COMMAND-LINE: -q
+; EXPECT: unsat
 ; DISABLE-TESTER: unsat-core
 ; DISABLE-TESTER: proof
 (set-logic HO_ALL)
 (set-option :miniscope-quant agg)
 (set-option :conjecture-gen true)
 (set-option :int-wf-ind true)
-(set-option :sygus-inference true)
+(set-option :sygus-inference try)
 (set-info :status unsat)
 (declare-fun a () Real)
 (declare-fun b () Real)

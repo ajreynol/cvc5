@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Aina Niemetz, Morgan Deters
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -20,6 +17,8 @@
 
 #include <vector>
 
+#include "context/cdhashmap.h"
+#include "context/cdlist.h"
 #include "expr/node.h"
 #include "smt/assertions.h"
 #include "smt/env_obj.h"
@@ -45,7 +44,6 @@ class QuantifiersEngine;
 
 namespace smt {
 
-class SolverEngineState;
 struct SolverEngineStatistics;
 
 /**
@@ -64,11 +62,10 @@ struct SolverEngineStatistics;
  */
 class SmtSolver : protected EnvObj
 {
+  using NodeList = context::CDList<Node>;
+
  public:
-  SmtSolver(Env& env,
-            AbstractValues& abs,
-            Assertions& asserts,
-            SolverEngineStatistics& stats);
+  SmtSolver(Env& env, SolverEngineStatistics& stats);
   ~SmtSolver();
   /**
    * Create theory engine, prop engine based on the environment.
@@ -83,64 +80,24 @@ class SmtSolver : protected EnvObj
    */
   void interrupt();
   /**
-   * Check satisfiability for the given assumptions and the current assertions.
-   *
-   * @param assumptions The assumptions for this check-sat call, which are
-   * temporary assertions.
-   */
-  Result checkSatisfiability(const std::vector<Node>& assumptions);
-  /**
-   * Process the assertions that have been asserted in as. This moves the set of
-   * assertions that have been buffered into as, preprocesses them, pushes them
-   * into the SMT solver, and clears the buffer.
-   */
-  void processAssertions(Assertions& as);
-  /**
    * Get the list of preprocessed assertions. Only valid if
    * trackPreprocessedAssertions is true.
    */
-  const std::vector<Node>& getPreprocessedAssertions() const;
+  const context::CDList<Node>& getPreprocessedAssertions() const;
   /**
    * Get the skolem map corresponding to the preprocessed assertions. Only valid
    * if trackPreprocessedAssertions is true.
    */
-  const std::unordered_map<size_t, Node>& getPreprocessedSkolemMap() const;
+  const context::CDHashMap<size_t, Node>& getPreprocessedSkolemMap() const;
+  /** Performs a push on the underlying prop engine. */
+  void pushPropContext();
+  /** Performs a pop on the underlying prop engine. */
+  void popPropContext();
   /**
-   * Perform a deep restart.
-   *
-   * This constructs a fresh copy of the theory engine and prop engine, and
-   * populates the given assertions for the next call to checkSatisfiability.
-   * In particular, we add the preprocessed assertions from the previous
-   * call to checkSatisfiability, as well as those in zll.
-   *
-   * @param as The assertions to populate
-   * @param zll The zero-level literals we learned on the previous call to
-   * checkSatisfiability.
+   * Reset the prop engine trail and call the postsolve method of the
+   * underlying TheoryEngine.
    */
-  void deepRestart(Assertions& as, const std::vector<Node>& zll);
-  // --------------------------------------- callbacks from the context manager
-  /**
-   * Notify push pre, which is called just before the user context of the state
-   * pushes. This processes all pending assertions.
-   */
-  void notifyPushPre();
-  /**
-   * Notify push post, which is called just after the user context of the state
-   * pushes. This performs a push on the underlying prop engine.
-   */
-  void notifyPushPost();
-  /**
-   * Notify pop pre, which is called just before the user context of the state
-   * pops. This performs a pop on the underlying prop engine.
-   */
-  void notifyPopPre();
-  /**
-   * Notify post solve, which is called once per check-sat query. It is
-   * triggered when the first d_state.doPendingPops() is issued after the
-   * check-sat. This calls the postsolve method of the underlying TheoryEngine.
-   */
-  void notifyPostSolve();
-  // ----------------------------------- end callbacks from the context manager
+  void resetTrail();
   //------------------------------------------ access methods
   /** Get a pointer to the TheoryEngine owned by this solver. */
   TheoryEngine* getTheoryEngine();
@@ -150,37 +107,36 @@ class SmtSolver : protected EnvObj
   theory::QuantifiersEngine* getQuantifiersEngine();
   /** Get a pointer to the preprocessor */
   Preprocessor* getPreprocessor();
+  /** Get the assertions maintained by this SMT solver */
+  Assertions& getAssertions();
   //------------------------------------------ end access methods
-
- private:
-  /**
-   * Check satisfiability for the given assertions object and assumptions.
-   */
-  Result checkSatisfiability(Assertions& as,
-                             const std::vector<Node>& assumptions);
   /**
    * Preprocess the assertions. This calls the preprocessor on the assertions
-   * and sets d_ppAssertions / d_ppSkolemMap if necessary.
+   * d_asserts and records d_ppAssertions / d_ppSkolemMap if necessary.
    */
-  void preprocess(Assertions& as);
+  void preprocess(preprocessing::AssertionPipeline& ap);
   /**
-   * Push the assertions to the prop engine. Assumes that as has been
-   * preprocessed. This pushes the assertions in as into the prop engine of
-   * this solver and subsequently clears as.
+   * Push the assertions to the prop engine. Assumes that the assertions
+   * (d_asserts) have been preprocessed. This pushes the assertions
+   * into the prop engine of this solver and subsequently clears d_asserts.
    */
-  void assertToInternal(Assertions& as);
+  void assertToInternal(preprocessing::AssertionPipeline& ap);
   /**
    * Check satisfiability based on the current state of the prop engine.
    * This assumes we have pushed the necessary assertions to it. It post
    * processes the results based on the options.
    */
   Result checkSatInternal();
+
+ private:
   /** Whether we track information necessary for deep restarts */
   bool trackPreprocessedAssertions() const;
+  /** Finish initialization of preprocessor */
+  void finishInitPreprocessor();
   /** The preprocessor of this SMT solver */
   Preprocessor d_pp;
-  /** The assertions of the parent solver engine */
-  Assertions& d_asserts;
+  /** Assertions manager */
+  Assertions d_asserts;
   /** Reference to the statistics of SolverEngine */
   SolverEngineStatistics& d_stats;
   /** The theory engine */
@@ -189,11 +145,9 @@ class SmtSolver : protected EnvObj
   std::unique_ptr<prop::PropEngine> d_propEngine;
   //------------------------------------------ Bookkeeping for deep restarts
   /** The exact list of preprocessed assertions we sent to the PropEngine */
-  std::vector<Node> d_ppAssertions;
+  NodeList d_ppAssertions;
   /** The skolem map associated with d_ppAssertions */
-  std::unordered_map<size_t, Node> d_ppSkolemMap;
-  /** All learned literals, used for debugging */
-  std::unordered_set<Node> d_allLearnedLits;
+  context::CDHashMap<size_t, Node> d_ppSkolemMap;
 };
 
 }  // namespace smt

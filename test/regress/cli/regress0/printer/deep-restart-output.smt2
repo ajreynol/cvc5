@@ -1,7 +1,9 @@
+; REQUIRES: unrestricted-mode
 ; COMMAND-LINE: --deep-restart=input -o deep-restart
 ; EXPECT: (deep-restart ((= f k)))
 ; EXPECT: sat
 (set-logic ALL)
+(set-option :deep-restart input)
 (declare-const x Bool)
 (declare-fun b () Int)
 (declare-fun f () String)

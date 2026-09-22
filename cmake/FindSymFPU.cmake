@@ -1,10 +1,7 @@
 ###############################################################################
-# Top contributors (to current version):
-#   Gereon Kremer, Mathias Preiner, Aina Niemetz
-#
 # This file is part of the cvc5 project.
 #
-# Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+# Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
 # in the top-level source directory and their institutional affiliations.
 # All rights reserved.  See the file COPYING in the top-level source
 # directory for licensing information.
@@ -32,15 +29,14 @@ if(NOT SymFPU_FOUND_SYSTEM)
   include(ExternalProject)
   include(deps-helper)
 
-  set(SymFPU_COMMIT "8fbe139bf0071cbe0758d2f6690a546c69ff0053")
+  set(SymFPU_COMMIT "40bdec00e99f8ea1b96c3dac0a05eed11c541639")
+  set(SymFPU_CHECKSUM "ba17877fbf0c851e113fddaab225152f1c0b2044429396b56b2f113832e36ce5")
 
   ExternalProject_Add(
     SymFPU-EP
     ${COMMON_EP_CONFIG}
     URL https://github.com/martin-cs/symfpu/archive/${SymFPU_COMMIT}.tar.gz
-    URL_HASH SHA1=9e00045130b93e3c2a46ce73a1b5b6451340dc46
-    PATCH_COMMAND patch -p1 -d <SOURCE_DIR>
-          -i ${CMAKE_CURRENT_LIST_DIR}/deps-utils/SymFPU-patch-20201114.patch
+    URL_HASH SHA256=${SymFPU_CHECKSUM}
     CONFIGURE_COMMAND ""
     BUILD_COMMAND ""
     INSTALL_COMMAND ${CMAKE_COMMAND} -E copy_directory <SOURCE_DIR>/core
@@ -56,7 +52,7 @@ set(SymFPU_FOUND TRUE)
 
 add_library(SymFPU INTERFACE IMPORTED GLOBAL)
 set_target_properties(
-  SymFPU PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "${SymFPU_INCLUDE_DIR}"
+  SymFPU PROPERTIES INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${SymFPU_INCLUDE_DIR}"
 )
 
 mark_as_advanced(SymFPU_FOUND)

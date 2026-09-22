@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Aina Niemetz, Andres Noetzli
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -40,13 +37,17 @@ class TermPoolDomain
   void initialize();
   /** add node to this pool */
   void add(Node n);
-  /** The list in this pool */
-  std::vector<Node> d_terms;
+  /** Get the terms in this pool */
+  std::vector<Node>& getTerms();
   /**
    * The list of terms on this round. This is cleared at the beginning of an
    * instantiation round. The members are unique modulo equality.
    */
   std::vector<Node> d_currTerms;
+
+ private:
+  /** The list in this pool */
+  std::vector<Node> d_terms;
 };
 
 /**
@@ -91,6 +92,7 @@ class TermPools : public QuantifiersUtil
   void processInstantiation(Node q, const std::vector<Node>& terms);
   /** Same as above, for SKOLEM_ADD_TO_POOL. */
   void processSkolemization(Node q, const std::vector<Node>& skolems);
+
  private:
   void processInternal(Node q, const std::vector<Node>& ts, bool isInst);
   /** reference to the quantifiers state */

@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Morgan Deters, Tim King, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -155,16 +152,14 @@ class Cardinality
   bool isCountable() const { return isFinite() || d_card == s_intCard; }
 
   /**
-   * In the case that this cardinality is finite, return its
-   * cardinality.  (If this cardinality is infinite, this function
-   * throws an IllegalArgumentException.)
+   * Return a finite cardinality as an integer. This method can only be called
+   * on finite cardinalities.
    */
   Integer getFiniteCardinality() const;
 
   /**
-   * In the case that this cardinality is infinite, return its Beth
-   * number.  (If this cardinality is finite, this function throws an
-   * IllegalArgumentException.)
+   * Return the Beth number of an infinite cardinality. This method can only be
+   * called on infinite cardinalities.
    */
   Integer getBethNumber() const;
 
@@ -178,14 +173,16 @@ class Cardinality
   Cardinality& operator^=(const Cardinality& c);
 
   /** Add two cardinalities. */
-  Cardinality operator+(const Cardinality& c) const {
+  Cardinality operator+(const Cardinality& c) const
+  {
     Cardinality card(*this);
     card += c;
     return card;
   }
 
   /** Multiply two cardinalities. */
-  Cardinality operator*(const Cardinality& c) const {
+  Cardinality operator*(const Cardinality& c) const
+  {
     Cardinality card(*this);
     card *= c;
     return card;
@@ -194,7 +191,8 @@ class Cardinality
   /**
    * Exponentiation of two cardinalities.
    */
-  Cardinality operator^(const Cardinality& c) const {
+  Cardinality operator^(const Cardinality& c) const
+  {
     Cardinality card(*this);
     card ^= c;
     return card;

@@ -1,4 +1,5 @@
-; COMMAND-LINE: --finite-model-find
+; REQUIRES: unrestricted-mode
+; COMMAND-LINE: --finite-model-find --ieval=use-learn
 ; EXPECT: sat
 ; Preamble  --------------
 (set-logic AUFDTLIA)

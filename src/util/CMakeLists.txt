@@ -1,10 +1,7 @@
 ###############################################################################
-# Top contributors (to current version):
-#   Mathias Preiner, Gereon Kremer, Andrew Reynolds
-#
 # This file is part of the cvc5 project.
 #
-# Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+# Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
 # in the top-level source directory and their institutional affiliations.
 # All rights reserved.  See the file COPYING in the top-level source
 # directory for licensing information.
@@ -21,22 +18,27 @@ libcvc5_add_sources(
   bin_heap.h
   bitvector.cpp
   bitvector.h
-  finite_field.cpp
-  finite_field.h
+  cocoa_globals.cpp
+  cocoa_globals.h
   bool.h
   cardinality.cpp
   cardinality.h
   cardinality_class.cpp
   cardinality_class.h
+  cocoa_globals.cpp
+  cocoa_globals.h
   dense_map.h
   didyoumean.cpp
   didyoumean.h
   divisible.cpp
   divisible.h
+  finite_field_value.cpp
+  finite_field_value.h
   floatingpoint.cpp
   floatingpoint.h
   floatingpoint_size.cpp
   floatingpoint_size.h
+  floatingpoint_literal.cpp
   floatingpoint_literal_symfpu.cpp
   floatingpoint_literal_symfpu_traits.cpp
   gmp_util.h
@@ -44,6 +46,8 @@ libcvc5_add_sources(
   iand.h
   index.cpp
   index.h
+  omt_result.cpp
+  omt_result.h 
   ostream_util.cpp
   ostream_util.h
   poly_util.cpp
@@ -85,6 +89,10 @@ libcvc5_add_sources(
   utility.cpp
   utility.h
 )
+
+if(CVC5_USE_MPFR)
+  libcvc5_add_sources(floatingpoint_literal_mpfr.cpp)
+endif()
 
 if(CVC5_USE_CLN_IMP)
   libcvc5_add_sources(rational_cln_imp.cpp integer_cln_imp.cpp)
