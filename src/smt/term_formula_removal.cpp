@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Dejan Jovanovic, Hans-Joerg Schurr
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -130,7 +127,7 @@ TrustNode RemoveTermFormulas::runLemma(
 Node RemoveTermFormulas::runInternal(TNode assertion,
                                      std::vector<theory::SkolemLemma>& output)
 {
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   TCtxStack ctx(&d_rtfc);
   std::vector<bool> processedChildren;
   ctx.pushInitial(assertion);
@@ -270,9 +267,9 @@ Node RemoveTermFormulas::runCurrentInternal(TNode node,
                                             uint32_t cval,
                                             TConvProofGenerator* pg)
 {
-  AlwaysAssert (node.getKind()!=Kind::WITNESS) << "WITNESS should never appear in asserted terms";
-  NodeManager *nodeManager = NodeManager::currentNM();
-  SkolemManager* sm = nodeManager->getSkolemManager();
+  AlwaysAssert(node.getKind() != Kind::WITNESS)
+      << "WITNESS should never appear in asserted terms";
+  SkolemManager* sm = nodeManager()->getSkolemManager();
 
   TypeNode nodeType = node.getType();
   Node skolem;
@@ -283,7 +280,7 @@ Node RemoveTermFormulas::runCurrentInternal(TNode node,
   // in the "non-variable Boolean term within term" case below.
   if (node.getKind() == Kind::ITE && !nodeType.isBoolean())
   {
-    if (!nodeType.isFirstClass())
+    if (!d_env.isFirstClassType(nodeType))
     {
       std::stringstream ss;
       ss << "ITE branches of type " << nodeType
@@ -310,8 +307,8 @@ Node RemoveTermFormulas::runCurrentInternal(TNode node,
       // of the lemma is used.
 
       // The new assertion
-      newAssertion = nodeManager->mkNode(
-          Kind::ITE, node[0], skolem.eqNode(node[1]), skolem.eqNode(node[2]));
+      newAssertion = nodeManager()->mkNode(
+          Kind::ITE, {node[0], skolem.eqNode(node[1]), skolem.eqNode(node[2])});
 
       // we justify it internally
       if (isProofEnabled())
@@ -373,7 +370,8 @@ Node RemoveTermFormulas::runCurrentInternal(TNode node,
   }
 
   // if the term should be replaced by a skolem
-  if( !skolem.isNull() ){
+  if (!skolem.isNull())
+  {
     // this must be done regardless of whether the assertion was new below,
     // since a formula-term may rewrite to the same skolem in multiple contexts.
     if (isProofEnabled())
@@ -444,11 +442,11 @@ Node RemoveTermFormulas::getSkolemForNode(Node k) const
 
 Node RemoveTermFormulas::getAxiomFor(Node n)
 {
-  NodeManager* nm = NodeManager::currentNM();
   Kind k = n.getKind();
   if (k == Kind::ITE)
   {
-    return nm->mkNode(Kind::ITE, n[0], n.eqNode(n[1]), n.eqNode(n[2]));
+    return NodeManager::mkNode(Kind::ITE,
+                               {n[0], n.eqNode(n[1]), n.eqNode(n[2])});
   }
   return Node::null();
 }

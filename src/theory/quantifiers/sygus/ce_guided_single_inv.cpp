@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Aina Niemetz, Abdalrhman Mohamed
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -126,7 +123,9 @@ void CegSingleInv::finishInit(bool syntaxRestricted)
       && d_single_invocation && syntaxRestricted)
   {
     d_single_invocation = false;
-    Trace("sygus-si") << "...grammar is restricted, do not use single invocation techniques." << std::endl;
+    Trace("sygus-si")
+        << "...grammar is restricted, do not use single invocation techniques."
+        << std::endl;
   }
 
   // we now have determined whether we will do single invocation techniques
@@ -143,7 +142,6 @@ void CegSingleInv::finishInit(bool syntaxRestricted)
     return;
   }
   NodeManager* nm = nodeManager();
-  SkolemManager* sm = nm->getSkolemManager();
   d_single_inv = d_sip->getSingleInvocation();
   d_single_inv = TermUtil::simpleNegate(d_single_inv);
   std::vector<Node> func_vars;
@@ -159,8 +157,7 @@ void CegSingleInv::finishInit(bool syntaxRestricted)
   d_sip->getSingleInvocationVariables(sivars);
   for (unsigned i = 0, size = sivars.size(); i < size; i++)
   {
-    Node v =
-        sm->mkDummySkolem("a", sivars[i].getType(), "single invocation arg");
+    Node v = NodeManager::mkDummySkolem("a", sivars[i].getType());
     d_single_inv_arg_sk.push_back(v);
   }
   d_single_inv = d_single_inv.substitute(sivars.begin(),
@@ -217,7 +214,7 @@ Result CegSingleInv::solve()
   if (siq.getKind() == Kind::FORALL)
   {
     // get the INST_ATTRIBUTE term marking quantifier elimination
-    n_attr = QuantAttributes::mkAttrQuantifierElimination();
+    n_attr = QuantAttributes::mkAttrQuantifierElimination(nm);
     n_attr = nm->mkNode(Kind::INST_PATTERN_LIST, n_attr);
     siq = nm->mkNode(Kind::FORALL, siq[0], siq[1], n_attr);
   }
@@ -298,14 +295,19 @@ Result CegSingleInv::solve()
   return res;
 }
 
-//TODO: use term size?
-struct sortSiInstanceIndices {
+// TODO: use term size?
+struct sortSiInstanceIndices
+{
   CegSingleInv* d_ccsi;
   int d_i;
-  bool operator() (unsigned i, unsigned j) {
-    if( d_ccsi->d_inst[i][d_i].isConst() && !d_ccsi->d_inst[j][d_i].isConst() ){
+  bool operator()(unsigned i, unsigned j)
+  {
+    if (d_ccsi->d_inst[i][d_i].isConst() && !d_ccsi->d_inst[j][d_i].isConst())
+    {
       return true;
-    }else{
+    }
+    else
+    {
       return false;
     }
   }
@@ -365,7 +367,8 @@ Node CegSingleInv::getSolutionFromInst(size_t index)
     {
       ptn = ptn.getRangeType();
     }
-    Trace("csi-sol") << "Get solution for (unconstrained) " << prog << std::endl;
+    Trace("csi-sol") << "Get solution for (unconstrained) " << prog
+                     << std::endl;
     s = d_treg.getTermEnumeration()->getEnumerateTerm(ptn, 0);
   }
   else
@@ -373,9 +376,10 @@ Node CegSingleInv::getSolutionFromInst(size_t index)
     Trace("csi-sol") << "Get solution for " << prog << ", with skolems : ";
     size_t sol_index = d_prog_to_sol_index[prog];
 
-    //construct the solution
-    Trace("csi-sol") << "Sort solution return values " << sol_index << std::endl;
-    std::vector< unsigned > indices;
+    // construct the solution
+    Trace("csi-sol") << "Sort solution return values " << sol_index
+                     << std::endl;
+    std::vector<unsigned> indices;
     for (unsigned i = 0, ninst = d_inst.size(); i < ninst; i++)
     {
       indices.push_back(i);
@@ -410,7 +414,7 @@ Node CegSingleInv::getSolutionFromInst(size_t index)
       s = nm->mkNode(Kind::ITE, cond, d_inst[uindex][sol_index], s);
     }
   }
-  //simplify the solution using the extended rewriter
+  // simplify the solution using the extended rewriter
   Trace("csi-sol") << "Solution (pre-simplification): " << s << std::endl;
   s = extendedRewrite(s);
   Trace("csi-sol") << "Solution (post-simplification): " << s << std::endl;
@@ -520,8 +524,9 @@ bool CegSingleInv::solveTrivial(Node q)
 
     std::vector<Node> varsTmp;
     std::vector<Node> subsTmp;
+    std::vector<Node> litTmp;
     QuantifiersRewriter qrew(nodeManager(), d_env.getRewriter(), options());
-    qrew.getVarElim(body, args, varsTmp, subsTmp);
+    qrew.getVarElim(body, args, varsTmp, subsTmp, litTmp);
     // if we eliminated a variable, update body and reprocess
     if (!varsTmp.empty())
     {

@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Abdalrhman Mohamed, Andrew Reynolds, Aina Niemetz
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -46,7 +43,6 @@ SygusGrammar::SygusGrammar(const std::vector<Node>& sygusVars,
   // ensure that sdt is first
   tnlist.push_back(sdt);
   std::map<TypeNode, Node> ntsyms;
-  NodeManager* nm = NodeManager::currentNM();
   for (size_t i = 0; i < tnlist.size(); i++)
   {
     TypeNode tn = tnlist[i];
@@ -54,7 +50,7 @@ SygusGrammar::SygusGrammar(const std::vector<Node>& sygusVars,
     const DType& dt = tn.getDType();
     std::stringstream ss;
     ss << dt.getName();
-    Node v = nm->mkBoundVar(ss.str(), dt.getSygusType());
+    Node v = NodeManager::mkBoundVar(ss.str(), dt.getSygusType());
     ntsyms[tn] = v;
     d_ntSyms.push_back(v);
     d_rules.emplace(v, std::vector<Node>{});
@@ -125,7 +121,7 @@ void SygusGrammar::addAnyConstant(const Node& ntSym, const TypeNode& tn)
 {
   Assert(d_rules.find(ntSym) != d_rules.cend());
   Assert(tn.isInstanceOf(ntSym.getType()));
-  SkolemManager* sm = NodeManager::currentNM()->getSkolemManager();
+  SkolemManager* sm = tn.getNodeManager()->getSkolemManager();
   Node anyConst =
       sm->mkInternalSkolemFunction(InternalSkolemId::SYGUS_ANY_CONSTANT, tn);
   addRule(ntSym, anyConst);
@@ -179,11 +175,11 @@ Node purifySygusGNode(const Node& n,
                       std::map<Node, Node>& ntSymMap,
                       const std::vector<Node>& nts)
 {
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = n.getNodeManager();
   // if n is non-terminal
   if (std::find(nts.begin(), nts.end(), n) != nts.end())
   {
-    Node ret = nm->mkBoundVar(n.getType());
+    Node ret = NodeManager::mkBoundVar(n.getType());
     ntSymMap[ret] = n;
     args.push_back(ret);
     return ret;
@@ -204,7 +200,7 @@ Node purifySygusGNode(const Node& n,
   if (n.getMetaKind() == kind::metakind::PARAMETERIZED)
   {
     // it's an indexed operator so we should provide the op
-    internal::NodeBuilder nb(n.getKind());
+    internal::NodeBuilder nb(n.getNodeManager(), n.getKind());
     nb << n.getOperator();
     nb.append(pchildren);
     nret = nb.constructNode();
@@ -234,11 +230,10 @@ void addSygusConstructor(DType& dt,
                          const std::vector<Node>& nts,
                          const std::unordered_map<Node, TypeNode>& ntsToUnres)
 {
-  NodeManager* nm = NodeManager::currentNM();
-  SkolemManager* sm = nm->getSkolemManager();
+  NodeManager* nm = rule.getNodeManager();
   std::stringstream ss;
   if (rule.getKind() == Kind::SKOLEM
-      && sm->getInternalId(rule) == InternalSkolemId::SYGUS_ANY_CONSTANT)
+      && rule.getInternalSkolemId() == InternalSkolemId::SYGUS_ANY_CONSTANT)
   {
     ss << dt.getName() << "_any_constant";
     dt.addSygusConstructor(rule, ss.str(), {rule.getType()}, 0);
@@ -276,7 +271,7 @@ Node SygusGrammar::getLambdaForRule(const Node& r,
   Node rp = purifySygusGNode(r, args, ntSymMap, d_ntSyms);
   if (!args.empty())
   {
-    NodeManager* nm = NodeManager::currentNM();
+    NodeManager* nm = r.getNodeManager();
     return nm->mkNode(Kind::LAMBDA, nm->mkNode(Kind::BOUND_VAR_LIST, args), rp);
   }
   return r;
@@ -298,8 +293,8 @@ TypeNode SygusGrammar::resolve(bool allowAny)
 {
   if (!isResolved())
   {
-    NodeManager* nm = NodeManager::currentNM();
-    SkolemManager* sm = nm->getSkolemManager();
+    Assert(!d_ntSyms.empty());
+    NodeManager* nm = d_ntSyms[0].getNodeManager();
     Node bvl;
     if (!d_sygusVars.empty())
     {
@@ -324,7 +319,8 @@ TypeNode SygusGrammar::resolve(bool allowAny)
       for (const Node& rule : d_rules[ntSym])
       {
         if (rule.getKind() == Kind::SKOLEM
-            && sm->getInternalId(rule) == InternalSkolemId::SYGUS_ANY_CONSTANT)
+            && rule.getInternalSkolemId()
+                   == InternalSkolemId::SYGUS_ANY_CONSTANT)
         {
           allowConsts.insert(ntSym);
         }

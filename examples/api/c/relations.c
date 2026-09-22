@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Aina Niemetz
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -30,7 +27,7 @@ int main()
   // quantified formulas
   cvc5_set_option(slv, "finite-model-find", "true");
   // we need sets extension to support set.universe operator
-  cvc5_set_option(slv, "sets-ext", "true");
+  cvc5_set_option(slv, "sets-exp", "true");
 
   // (declare-sort Person 0)
   Cvc5Sort person_sort = cvc5_mk_uninterpreted_sort(tm, "Person");
@@ -198,5 +195,6 @@ int main()
          cvc5_term_to_string(cvc5_get_value(slv, ancestor)));
 
   cvc5_delete(slv);
+  cvc5_term_manager_release(tm);
   cvc5_term_manager_delete(tm);
 }

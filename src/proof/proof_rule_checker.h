@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Hans-Joerg Schurr, Gereon Kremer
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -20,8 +17,8 @@
 
 #include <vector>
 
-#include "expr/node.h"
 #include "cvc5/cvc5_proof_rule.h"
+#include "expr/node.h"
 
 namespace cvc5::internal {
 
@@ -63,10 +60,10 @@ class ProofRuleChecker
   /** get a Kind from a node, return false if we fail */
   static bool getKind(TNode n, Kind& k);
   /** Make a Kind into a node */
-  static Node mkKindNode(Kind k);
+  static Node mkKindNode(NodeManager* nm, Kind k);
 
   /** Register all rules owned by this rule checker into pc. */
-  virtual void registerTo(ProofChecker* pc) {}
+  virtual void registerTo(CVC5_UNUSED ProofChecker* pc) {}
 
  protected:
   /**

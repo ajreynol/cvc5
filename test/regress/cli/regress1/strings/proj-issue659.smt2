@@ -1,8 +1,9 @@
+; REQUIRES: unrestricted-mode
 ; COMMAND-LINE: -q
 ; EXPECT: sat
 (set-logic ALL)
 (set-info :status sat)
-(set-option :sets-ext true)
+(set-option :sets-exp true)
 (set-option :strings-eager-reg false)
 (declare-const x String)
 (declare-const x3 String)
