@@ -96,19 +96,8 @@ void CandidateGeneratorQE::resetForOperator(Node eqc, Node op)
           {
             // create an equivalence class iterator in eq class eqc
             Node rep = ee->getRepresentative(eqc);
-            d_rep = rep;
             d_eqc_iter = eq::EqClassIterator(rep, ee);
             d_mode = cand_term_eqc;
-            s_eqcCount[rep]++;
-            if (s_eqcSize.find(rep) == s_eqcSize.end())
-            {
-              eq::EqClassIterator tmp(rep, ee);
-              while (!tmp.isFinished())
-              {
-                ++tmp;
-                s_eqcSize[rep]++;
-              }
-            }
           }
         }
         else
