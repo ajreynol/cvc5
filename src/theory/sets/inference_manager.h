@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Gereon Kremer, Aina Niemetz
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -53,10 +50,7 @@ class InferenceManager : public InferenceManagerBuffered
    * set as a lemma, and inferType=-1 forces fact to be processed as a fact
    * (if possible).
    */
-  void assertInference(Node fact,
-                       InferenceId id,
-                       Node exp,
-                       int inferType = 0);
+  void assertInference(Node fact, InferenceId id, Node exp, int inferType = 0);
   /** same as above, where exp is interpreted as a conjunction */
   void assertInference(Node fact,
                        InferenceId id,
@@ -92,8 +86,6 @@ class InferenceManager : public InferenceManagerBuffered
   /** constants */
   Node d_true;
   Node d_false;
-  Node d_tid;
-  Node d_tsid;
   /**
    * Reference to the state object for the theory of sets. We store the
    * (derived) state here, since it has additional methods required in this

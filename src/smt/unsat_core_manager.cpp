@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Haniel Barbosa, Andres Noetzli
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -68,12 +65,14 @@ std::vector<Node> UnsatCoreManager::getUnsatCoreLemmas(bool isInternal)
       coreAsserts.insert(
           coreAsserts.end(), coreLemmas.begin(), coreLemmas.end());
       std::stringstream ss;
-      smt::PrintBenchmark pb(Printer::getPrinter(ss));
+      smt::PrintBenchmark pb(nodeManager(), Printer::getPrinter(ss));
       pb.printBenchmark(
           ss, logicInfo().getLogicString(), coreDefs, coreAsserts);
-      output(OutputTag::UNSAT_CORE_LEMMAS_BENCHMARK) << ";; unsat core + lemmas" << std::endl;
+      output(OutputTag::UNSAT_CORE_LEMMAS_BENCHMARK)
+          << ";; unsat core + lemmas" << std::endl;
       output(OutputTag::UNSAT_CORE_LEMMAS_BENCHMARK) << ss.str();
-      output(OutputTag::UNSAT_CORE_LEMMAS_BENCHMARK) << ";; end unsat core + lemmas" << std::endl;
+      output(OutputTag::UNSAT_CORE_LEMMAS_BENCHMARK)
+          << ";; end unsat core + lemmas" << std::endl;
     }
   }
   return coreLemmas;
@@ -128,7 +127,7 @@ void UnsatCoreManager::getUnsatCoreInternal(std::shared_ptr<ProofNode> pfn,
     std::vector<Node> coreDefs;
     partitionUnsatCore(core, coreDefs, coreAsserts);
     std::stringstream ss;
-    smt::PrintBenchmark pb(Printer::getPrinter(ss));
+    smt::PrintBenchmark pb(nodeManager(), Printer::getPrinter(ss));
     pb.printBenchmark(ss, logicInfo().getLogicString(), coreDefs, coreAsserts);
     output(OutputTag::UNSAT_CORE_BENCHMARK) << ";; unsat core" << std::endl;
     output(OutputTag::UNSAT_CORE_BENCHMARK) << ss.str();
@@ -309,8 +308,8 @@ std::vector<Node> UnsatCoreManager::convertPreprocessedToInput(
   cdp.addStep(fnode, ProofRule::SAT_REFUTATION, ppa, {});
   std::shared_ptr<ProofNode> pepf = cdp.getProofFor(fnode);
   Assert(pepf != nullptr);
-  std::shared_ptr<ProofNode> pfn =
-      d_pfm.connectProofToAssertions(pepf, d_slv, ProofScopeMode::UNIFIED);
+  std::shared_ptr<ProofNode> pfn = d_pfm.connectProofToAssertions(
+      pepf, d_slv.getAssertions(), ProofScopeMode::UNIFIED);
   getUnsatCoreInternal(pfn, core, isInternal);
   return core;
 }

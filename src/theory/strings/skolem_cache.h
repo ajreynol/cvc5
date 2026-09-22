@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Andres Noetzli, Aina Niemetz
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -47,7 +44,7 @@ class SkolemCache
    * return the constants they are entailed to be equal to. This argument is
    * optional.
    */
-  SkolemCache(Rewriter* rr);
+  SkolemCache(NodeManager* nm, Rewriter* rr);
   /** Identifiers for skolem types
    *
    * The comments below document the properties of each skolem introduced by
@@ -118,7 +115,49 @@ class SkolemCache
     // For integer b,
     // b > 0 =>
     //    exists k. a = a' ++ k ^ len( k ) = ite( len(a)>b, len(a)-b, 0 )
-    SK_SUFFIX_REM
+    SK_SUFFIX_REM,
+    /**
+     * The next three skolems are used to reason about the match of a regular
+     * expression in string.
+     *
+     * For string a and regular expression ``R``, this skolem is the prefix of
+     * string a before the first, shortest match of ``R`` in ``a``. Formally, if
+     * ``(str.in_re a (re.++ (re.* re.allchar) R (re.* re.allchar)))``, then
+     * there exists strings k_pre, k_match, k_post such that:
+     *       ``(= a (str.++ k_pre k_match k_post))`` and
+     *       ``(= (len k_pre) (indexof_re a R 0))`` and
+     *       ``(forall ((l Int)) (=> (< 0 l (len k_match))
+     *         (not (str.in_re (substr k_match 0 l) R))))`` and
+     *       ``(str.in_re k_match R)``
+     * This skolem is k_pre, and the proceeding two skolems are k_match and
+     * k_post.
+     *
+     * - Number of skolem indices: ``2``
+     *   - ``1:`` The string.
+     *   - ``2:`` The regular expression to match.
+     * - Sort: ``String``
+     */
+    RE_FIRST_MATCH_PRE,
+    /**
+     * For string a and regular expression ``R``, this skolem is the string that
+     * the first, shortest match of ``R`` was matched to in ``a``.
+     *
+     * - Number of skolem indices: ``2``
+     *   - ``1:`` The string.
+     *   - ``2:`` The regular expression to match.
+     * - Sort: ``String``
+     */
+    RE_FIRST_MATCH,
+    /**
+     * For string a and regular expression ``R``, this skolem is the remainder
+     * of ``a`` after the first, shortest match of ``R`` in ``a``.
+     *
+     * - Number of skolem indices: ``2``
+     *   - ``1:`` The string.
+     *   - ``2:`` The regular expression to match.
+     * - Sort: ``String``
+     */
+    RE_FIRST_MATCH_POST,
   };
   /**
    * Returns a skolem of type string that is cached for (a,b,id) and has
@@ -151,7 +190,7 @@ class SkolemCache
    * reduction of t. For example, the index variable for the term str.to_int(s)
    * is used to quantify over the positions in string term s.
    */
-  static Node mkIndexVar(Node t);
+  static Node mkIndexVar(NodeManager* nm, Node t);
 
   /** Make length variable
    *
@@ -161,7 +200,14 @@ class SkolemCache
    * term str.indexof(s, r, n) is used to quantify over the lengths of strings
    * that could be matched by r.
    */
-  static Node mkLengthVar(Node t);
+  static Node mkLengthVar(NodeManager* nm, Node t);
+
+  /** Make RE equality variable
+   *
+   * This returns a string variable that is used for reducing regular
+   * expression equality.
+   */
+  static Node mkRegExpEqVar(NodeManager* nm, Node eq);
   /**
    * Make skolem function, possibly normalizing based on the rewriter of this
    * class. This method should be used whenever it is not possible to define
@@ -171,7 +217,11 @@ class SkolemCache
    * Skolem we construct (in d_allSkolems), which is used for finite model
    * finding.
    */
-  Node mkSkolemFun(SkolemId id, Node a = Node::null(), Node b = Node::null());
+  Node mkSkolemFun(NodeManager* nm,
+                   SkolemId id,
+                   Node a = Node::null(),
+                   Node b = Node::null(),
+                   Node c = Node::null());
 
  private:
   /**
@@ -190,6 +240,8 @@ class SkolemCache
    */
   std::tuple<StringSkolemId, Node, Node> normalizeStringSkolem(
       StringSkolemId id, Node a, Node b);
+  /** the associated node manager */
+  NodeManager* d_nm;
   /** the optional rewriter */
   Rewriter* d_rr;
   /** string type */
@@ -202,9 +254,11 @@ class SkolemCache
   std::unordered_set<Node> d_allSkolems;
   /**
    * Get cache vals, which returns the vector of terms from (possibly null)
-   * a and b that should be passed to the skolem manager.
+   * a, b, and c that should be passed to the skolem manager.
    */
-  std::vector<Node> getSkolemCacheVals(const Node& a, const Node& b) const;
+  std::vector<Node> getSkolemCacheVals(const Node& a,
+                                       const Node& b,
+                                       const Node& c) const;
 };
 
 }  // namespace strings

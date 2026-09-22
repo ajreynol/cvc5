@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Aina Niemetz
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -20,6 +17,7 @@ extern "C" {
 #include <sstream>
 
 #include "gtest/gtest.h"
+#include "test_capi.h"
 
 namespace cvc5::internal::test {
 
@@ -34,23 +32,29 @@ class TestCApiBlackSymbolManager : public ::testing::Test
   }
   void TearDown() override
   {
-    cvc5_delete(d_solver);
-    cvc5_term_manager_delete(d_tm);
     cvc5_symbol_manager_delete(d_sm);
+    cvc5_delete(d_solver);
+    cvc5_term_manager_release(d_tm);
+    cvc5_term_manager_delete(d_tm);
   }
 
   void parse_and_set_logic(const char* logic)
   {
-    const char* error_msg;
     std::stringstream ss;
     ss << "(set-logic " << logic << ")" << std::endl;
-    std::string str = ss.str();
+    parse_command(ss.str().c_str());
+  }
+  void parse_command(const char* cmds)
+  {
+    const char* error_msg;
+    std::string str(cmds);
     Cvc5InputParser* parser = cvc5_parser_new(d_solver, d_sm);
     cvc5_parser_set_str_input(
         parser, CVC5_INPUT_LANGUAGE_SMT_LIB_2_6, str.c_str(), "parser_black");
     Cvc5Command cmd = cvc5_parser_next_command(parser, &error_msg);
     ASSERT_NE(cmd, nullptr);
     (void)cvc5_cmd_invoke(cmd, d_solver, d_sm);
+    cvc5_parser_release(parser);
     cvc5_parser_delete(parser);
   }
 
@@ -61,7 +65,7 @@ class TestCApiBlackSymbolManager : public ::testing::Test
 
 TEST_F(TestCApiBlackSymbolManager, is_logic_set)
 {
-  ASSERT_DEATH(cvc5_sm_is_logic_set(nullptr), "unexpected NULL argument");
+  ASSERT_CVC5_ERROR(cvc5_sm_is_logic_set(nullptr), "unexpected NULL argument");
   ASSERT_EQ(cvc5_sm_is_logic_set(d_sm), false);
   parse_and_set_logic("QF_LIA");
   ASSERT_EQ(cvc5_sm_is_logic_set(d_sm), true);
@@ -69,10 +73,10 @@ TEST_F(TestCApiBlackSymbolManager, is_logic_set)
 
 TEST_F(TestCApiBlackSymbolManager, get_logic)
 {
-  ASSERT_DEATH(cvc5_sm_get_logic(d_sm), "logic has not yet been set");
+  ASSERT_CVC5_ERROR(cvc5_sm_get_logic(d_sm), "logic has not yet been set");
   parse_and_set_logic("QF_LIA");
   ASSERT_EQ(cvc5_sm_get_logic(d_sm), std::string("QF_LIA"));
-  ASSERT_DEATH(cvc5_sm_get_logic(nullptr), "unexpected NULL argument");
+  ASSERT_CVC5_ERROR(cvc5_sm_get_logic(nullptr), "unexpected NULL argument");
 }
 
 TEST_F(TestCApiBlackSymbolManager, get_declared_sorts)
@@ -80,9 +84,9 @@ TEST_F(TestCApiBlackSymbolManager, get_declared_sorts)
   size_t size;
   (void)cvc5_sm_get_declared_sorts(d_sm, &size);
   ASSERT_EQ(size, 0);
-  ASSERT_DEATH(cvc5_sm_get_declared_sorts(nullptr, &size),
-               "unexpected NULL argument");
-  ASSERT_DEATH(cvc5_sm_get_declared_sorts(d_sm, nullptr), "NULL argument");
+  ASSERT_CVC5_ERROR(cvc5_sm_get_declared_sorts(nullptr, &size),
+                    "unexpected NULL argument");
+  ASSERT_CVC5_ERROR(cvc5_sm_get_declared_sorts(d_sm, nullptr), "NULL argument");
 }
 
 TEST_F(TestCApiBlackSymbolManager, get_declared_terms)
@@ -90,8 +94,22 @@ TEST_F(TestCApiBlackSymbolManager, get_declared_terms)
   size_t size;
   (void)cvc5_sm_get_declared_terms(d_sm, &size);
   ASSERT_EQ(size, 0);
-  ASSERT_DEATH(cvc5_sm_get_declared_terms(nullptr, &size),
-               "unexpected NULL argument");
-  ASSERT_DEATH(cvc5_sm_get_declared_terms(d_sm, nullptr), "NULL argument");
+  ASSERT_CVC5_ERROR(cvc5_sm_get_declared_terms(nullptr, &size),
+                    "unexpected NULL argument");
+  ASSERT_CVC5_ERROR(cvc5_sm_get_declared_terms(d_sm, nullptr), "NULL argument");
 }
+
+TEST_F(TestCApiBlackSymbolManager, getNamedTerms)
+{
+  parse_and_set_logic("QF_LIA");
+  size_t size;
+  Cvc5Term* terms;
+  const char** names;
+  (void)cvc5_sm_get_named_terms(d_sm, &size, &terms, &names);
+  ASSERT_EQ(size, 0);
+  parse_command("(assert (! false :named a0))");
+  (void)cvc5_sm_get_named_terms(d_sm, &size, &terms, &names);
+  ASSERT_EQ(size, 1);
+}
+
 }  // namespace cvc5::internal::test

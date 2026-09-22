@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Mudathir Mohamed, Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -15,6 +12,21 @@
 
 package io.github.cvc5;
 
+import java.util.*;
+
+/**
+ * Symbol manager. Internally, this class manages a symbol table and other
+ * meta-information pertaining to SMT2 file inputs (e.g. named assertions,
+ * declared functions, etc.).
+ *
+ * A symbol manager can be modified by invoking commands, see
+ * {@link Command#invoke(Solver, SymbolManager)}.
+ *
+ * A symbol manager can be provided when constructing an InputParser, in which
+ * case that InputParser has symbols of this symbol manager preloaded.
+ *
+ * The symbol manager's interface is otherwise not publicly available.
+ */
 public class SymbolManager extends AbstractPointer
 {
   /**
@@ -79,6 +91,23 @@ public class SymbolManager extends AbstractPointer
   }
 
   /**
+   * Return a hash code value for this symbol manager.
+   *
+   * The hash code is derived from the underlying native pointer, which is what
+   * {@link #equals(Object)} compares, so that instances that are equal have the
+   * same hash code.
+   *
+   * @return a hash code value for this symbol manager
+   */
+  @Override
+  public int hashCode()
+  {
+    return Long.hashCode(pointer);
+  }
+
+  /**
+   * Determine if the logic of this symbol manager has been set.
+   *
    * @return True if the logic of this symbol manager has been set.
    */
   public boolean isLogicSet()
@@ -89,8 +118,9 @@ public class SymbolManager extends AbstractPointer
   private native boolean isLogicSet(long pointer);
 
   /**
-   * @api.note Asserts isLogicSet().
+   * Get the logic used by this symbol manager.
    *
+   * @api.note Asserts isLogicSet().
    * @return The logic used by this symbol manager.
    */
   public String getLogic()
@@ -129,4 +159,25 @@ public class SymbolManager extends AbstractPointer
   }
 
   private native long[] getDeclaredTerms(long pointer);
+
+  /**
+   * Get a mapping from terms to names that have been given to them via the
+   * :named attribute.
+   *
+   * @return A map of the named terms to their names.
+   */
+  public Map<Term, String> getNamedTerms()
+  {
+    Map<Long, String> map = getNamedTerms(pointer);
+    Map<Term, String> ret = new HashMap<>();
+    for (Map.Entry<Long, String> entry : map.entrySet())
+    {
+      Term key = new Term(entry.getKey());
+      String value = entry.getValue();
+      ret.put(key, value);
+    }
+    return ret;
+  }
+
+  private native Map<Long, String> getNamedTerms(long pointer);
 }

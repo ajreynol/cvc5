@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Gereon Kremer, Liana Hadarean, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -89,6 +86,7 @@ const char* toString(Resource r)
     case Resource::SatConflictStep: return "SatConflictStep";
     case Resource::SygusCheckStep: return "SygusCheckStep";
     case Resource::TheoryCheckStep: return "TheoryCheckStep";
+    case Resource::TheoryFullCheckStep: return "TheoryFullCheckStep";
     case Resource::FindSynthStep: return "FindSynthStep";
     default: return "?Resource?";
   }
@@ -109,7 +107,7 @@ struct ResourceManager::Statistics
 
 ResourceManager::Statistics::Statistics(StatisticsRegistry& stats)
     : d_resourceUnitsUsed(
-        stats.registerReference<uint64_t>("resource::resourceUnitsUsed")),
+          stats.registerReference<uint64_t>("resource::resourceUnitsUsed")),
       d_spendResourceCalls(stats.registerInt("resource::spendResourceCalls")),
       d_inferenceIdSteps(stats.registerHistogram<theory::InferenceId>(
           "resource::steps::inference-id")),
@@ -190,7 +188,9 @@ uint64_t ResourceManager::getTimeUsage() const { return d_cumulativeTimeUsed; }
 
 uint64_t ResourceManager::getRemainingTime() const
 {
-  return d_options.base.perCallMillisecondLimit - d_perCallTimer.elapsed();
+  const uint64_t elapsed = d_perCallTimer.elapsed();
+  if (d_options.base.perCallMillisecondLimit <= elapsed) return 0;
+  return d_options.base.perCallMillisecondLimit - elapsed;
 }
 
 uint64_t ResourceManager::getResourceRemaining() const
@@ -231,6 +231,11 @@ void ResourceManager::spendResource(Resource r)
   Assert(d_resourceWeights.size() > i);
   d_statistics->d_resourceSteps << r;
   spendResource(d_resourceWeights[i]);
+}
+
+uint64_t ResourceManager::getResource(Resource r) const
+{
+  return d_statistics->d_resourceSteps.getValue(r);
 }
 
 void ResourceManager::spendResource(theory::InferenceId iid)

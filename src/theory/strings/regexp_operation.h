@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Tianyi Liang, Andres Noetzli
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -57,8 +54,8 @@ enum RegExpConstType
 class RegExpOpr : protected EnvObj
 {
   typedef std::pair<Node, cvc5::internal::String> PairNodeStr;
-  typedef std::set< Node > SetNodes;
-  typedef std::pair< Node, Node > PairNodes;
+  typedef std::set<Node> SetNodes;
+  typedef std::pair<Node, Node> PairNodes;
 
  private:
   /** the code point of the last character in the alphabet we are using */
@@ -91,11 +88,11 @@ class RegExpOpr : protected EnvObj
    */
   static std::string niceChar(Node r);
   Node mkAllExceptOne(unsigned c);
-  bool isPairNodesInSet(std::set<PairNodes> &s, Node n1, Node n2);
+  bool isPairNodesInSet(std::set<PairNodes>& s, Node n1, Node n2);
 
   bool containC2(unsigned cnt, Node n);
   Node convert1(unsigned cnt, Node n);
-  void convert2(unsigned cnt, Node n, Node &r1, Node &r2);
+  void convert2(unsigned cnt, Node n, Node& r1, Node& r2);
   Node intersectInternal(Node r1,
                          Node r2,
                          std::map<PairNodes, Node> cache,
@@ -105,7 +102,7 @@ class RegExpOpr : protected EnvObj
    * that contains no applications of intersection.
    */
   Node removeIntersection(Node r);
-  void firstChars(Node r, std::set<unsigned> &pcset, SetNodes &pvset);
+  void firstChars(Node r, std::set<unsigned>& pcset, SetNodes& pvset);
 
  public:
   RegExpOpr(Env& env, SkolemCache* sc);
@@ -116,7 +113,7 @@ class RegExpOpr : protected EnvObj
    * of regular expression operators whose subterms of the form (str.to.re t)
    * are such that t is a constant (or rewrites to one).
    */
-  bool checkConstRegExp( Node r );
+  bool checkConstRegExp(Node r);
   /** get the constant type for regular expression r */
   RegExpConstType getRegExpConstType(Node r);
   /** Simplify
@@ -139,13 +136,14 @@ class RegExpOpr : protected EnvObj
   /**
    * Return the unfolded form of mem of the form (str.in_re s r).
    */
-  static Node reduceRegExpPos(Node mem,
+  static Node reduceRegExpPos(NodeManager* nm,
+                              Node mem,
                               SkolemCache* sc,
                               std::vector<Node>& newSkolems);
   /**
    * Return the unfolded form of mem of the form (not (str.in_re s r)).
    */
-  static Node reduceRegExpNeg(Node mem);
+  static Node reduceRegExpNeg(NodeManager* nm, Node mem);
   /**
    * Return the unfolded form of mem of the form
    *   (not (str.in_re s (re.++ r_0 ... r_{n-1})))
@@ -155,7 +153,10 @@ class RegExpOpr : protected EnvObj
    * This uses reLen as an optimization to improve the reduction. If reLen
    * is null, then this optimization is not applied.
    */
-  static Node reduceRegExpNegConcatFixed(Node mem, Node reLen, bool isRev);
+  static Node reduceRegExpNegConcatFixed(NodeManager* nm,
+                                         Node mem,
+                                         Node reLen,
+                                         bool isRev);
   //------------------------ end trusted reductions
   /**
    * This method returns 1 if the empty string is in r, 2 if the empty string
@@ -171,7 +172,7 @@ class RegExpOpr : protected EnvObj
    * - delta( (re.++ (str.to.re "A") R) ) returns 2,
    * - delta( (re.union (re.* "A") R) ) returns 1.
    */
-  int delta( Node r, Node &exp );
+  int delta(Node r, Node& exp);
   int derivativeS(Node r, cvc5::internal::String c, Node& retNode);
   Node derivativeSingle(Node r, cvc5::internal::String c);
   /**

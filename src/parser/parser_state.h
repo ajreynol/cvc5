@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Morgan Deters, Christopher L. Conway
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -20,13 +17,13 @@
 
 #include <cvc5/cvc5.h>
 #include <cvc5/cvc5_export.h>
+#include <cvc5/cvc5_parser.h>
 
 #include <list>
 #include <memory>
 #include <string>
 
 #include "parser/parse_op.h"
-#include <cvc5/cvc5_parser.h>
 #include "parser/parser_utils.h"
 #include "parser/sym_manager.h"
 #include "parser/symbol_table.h"
@@ -35,6 +32,17 @@ namespace cvc5 {
 namespace parser {
 
 class Command;
+
+/**
+ * The parsing mode, defines how strict we are on accepting non-conforming
+ * inputs.
+ */
+enum class ParsingMode
+{
+  DEFAULT,  // reasonably strict
+  STRICT,   // more strict
+  LENIENT,  // less strict
+};
 
 /**
  * Callback from the parser state to the parser, for command preemption
@@ -67,16 +75,16 @@ class CVC5_EXPORT ParserState
    * @attention The parser takes "ownership" of the given
    * input and will delete it on destruction.
    *
-   * @param psc The callback for implementing parser-specific methods
-   * @param solver solver API object
-   * @param symm reference to the symbol manager
-   * @param input the parser input
-   * @param strictMode whether to incorporate strict(er) compliance checks
+   * @param psc The callback for implementing parser-specific methods.
+   * @param solver The solver API object.
+   * @param symm The symbol manager.
+   * @param input The parser input.
+   * @param parsingMode The parsing mode.
    */
   ParserState(ParserStateCallback* psc,
               Solver* solver,
               SymManager* sm,
-              bool strictMode = false);
+              ParsingMode parsingMode = ParsingMode::DEFAULT);
 
   virtual ~ParserState();
 
@@ -91,13 +99,15 @@ class CVC5_EXPORT ParserState
   void disableChecks() { d_checksEnabled = false; }
 
   /** Enable strict parsing, according to the language standards. */
-  void enableStrictMode() { d_strictMode = true; }
+  void enableStrictMode() { d_parsingMode = ParsingMode::STRICT; }
 
   /** Disable strict parsing. Allows certain syntactic infelicities to
       pass without comment. */
-  void disableStrictMode() { d_strictMode = false; }
+  void disableStrictMode() { d_parsingMode = ParsingMode::DEFAULT; }
 
-  bool strictModeEnabled() { return d_strictMode; }
+  bool strictModeEnabled() { return d_parsingMode == ParsingMode::STRICT; }
+
+  bool lenientModeEnabled() { return d_parsingMode == ParsingMode::LENIENT; }
 
   const std::string& getForcedLogic() const;
   bool logicIsForced() const;
@@ -230,7 +240,7 @@ class CVC5_EXPORT ParserState
    * each variable in the cache.
    */
   std::vector<Term> bindBoundVars(
-      std::vector<std::pair<std::string, Sort> >& sortedVarNames,
+      std::vector<std::pair<std::string, Sort>>& sortedVarNames,
       bool fresh = true);
   /**
    * Same as above, but ensure that the shadowing is compatible with current
@@ -273,13 +283,9 @@ class CVC5_EXPORT ParserState
    *
    * @param name The name of the type
    * @param type The type that should be associated with the name
-   * @param skipExisting If true, the type definition is ignored if the same
-   *                     symbol has already been defined. It is assumed that
-   *                     the definition is the exact same as the existing one.
+   * @param isUser does this correspond to a user sort
    */
-  void defineType(const std::string& name,
-                  const Sort& type,
-                  bool skipExisting = false);
+  void defineType(const std::string& name, const Sort& type, bool isUser);
 
   /**
    * Create a new (parameterized) type definition.
@@ -287,16 +293,12 @@ class CVC5_EXPORT ParserState
    * @param name The name of the type
    * @param params The type parameters
    * @param type The type that should be associated with the name
+   * @param isUser does this correspond to a user sort
    */
   void defineType(const std::string& name,
                   const std::vector<Sort>& params,
-                  const Sort& type);
-
-  /** Create a new type definition (e.g., from an SMT-LIBv2 define-sort). */
-  void defineParameterizedType(const std::string& name,
-                               const std::vector<Sort>& params,
-                               const Sort& type);
-
+                  const Sort& type,
+                  bool isUser);
   /**
    * Creates a new sort with the given name.
    */
@@ -553,6 +555,14 @@ class CVC5_EXPORT ParserState
    */
   std::string stripQuotes(const std::string& s);
 
+  /**
+   * Parse a non-negative numeral that must fit in uint32_t.
+   * Otherwise an exception is thrown.
+   * @param str The string to parse.
+   * @return the corresponding uint32_t if successful.
+   */
+  uint32_t parseStringToUnsigned(const std::string& str);
+
  protected:
   /** The API Solver object. */
   Solver* d_solver;
@@ -577,7 +587,7 @@ class CVC5_EXPORT ParserState
   bool d_checksEnabled;
 
   /** Are we parsing in strict mode? */
-  bool d_strictMode;
+  ParsingMode d_parsingMode;
 
   /** Are we in parse-only mode? */
   bool d_parseOnly;
@@ -600,8 +610,16 @@ class CVC5_EXPORT ParserState
   std::map<std::pair<std::string, Sort>, Term> d_varCache;
 }; /* class Parser */
 
-/** Compute the unsigned integer for a token. */
-uint32_t stringToUnsigned(const std::string& str);
+/**
+ * Parse a non-negative numeral that must fit in uint32_t.
+ * @param str The string to parse.
+ * @param result The result of parsing str to a uint32_t if successful.
+ * @param os If provided, errors are written on this stream.
+ * @return true if the parsing was successful.
+ */
+bool stringToUnsigned(const std::string& str,
+                      uint32_t& result,
+                      std::ostream* os = nullptr);
 
 }  // namespace parser
 }  // namespace cvc5
