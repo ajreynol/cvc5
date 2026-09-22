@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -13,10 +10,12 @@
  * The printer for LFSC proofs
  */
 
+#include <functional>
+
 #include "cvc5_private.h"
 
-#ifndef CVC4__PROOF__LFSC__LFSC_PRINTER_H
-#define CVC4__PROOF__LFSC__LFSC_PRINTER_H
+#ifndef CVC5__PROOF__LFSC__LFSC_PRINTER_H
+#define CVC5__PROOF__LFSC__LFSC_PRINTER_H
 
 #include <iosfwd>
 #include <map>
@@ -27,6 +26,7 @@
 #include "proof/lfsc/lfsc_util.h"
 #include "proof/print_expr.h"
 #include "proof/proof_node.h"
+#include "rewriter/rewrite_db.h"
 #include "smt/env_obj.h"
 
 namespace cvc5::internal {
@@ -45,7 +45,7 @@ class LfscPrintChannel;
 class LfscPrinter : protected EnvObj
 {
  public:
-  LfscPrinter(Env& env, LfscNodeConverter& ltp);
+  LfscPrinter(Env& env, LfscNodeConverter& ltp, rewriter::RewriteDb* rdb);
   ~LfscPrinter() {}
 
   /**
@@ -169,6 +169,10 @@ class LfscPrinter : protected EnvObj
   void computeProofLetification(const ProofNode* pn,
                                 std::vector<const ProofNode*>& pletList,
                                 std::map<const ProofNode*, size_t>& pletMap);
+  /** Print DSL rule */
+  void printDslRule(std::ostream& out,
+                    ProofRewriteRule id,
+                    std::vector<Node>& format);
   //------------------------------ end printing proofs
   /** The term processor */
   LfscNodeConverter& d_tproc;
@@ -191,8 +195,18 @@ class LfscPrinter : protected EnvObj
   std::string d_pletPrefix;
   /** proof letified trust child prefix */
   std::string d_pletTrustChildPrefix;
-  /** for debugging the open rules, the set of PfRule we have warned about */
-  std::unordered_set<PfRule, PfRuleHashFunction> d_trustWarned;
+  /** for debugging the open rules, the set of ProofRule we have warned about */
+  std::unordered_set<ProofRule, std::hash<ProofRule>> d_trustWarned;
+  /** Pointer to the rewrite database */
+  rewriter::RewriteDb* d_rdb;
+  /**
+   * Mapping rewrite rules to format for conditions.
+   * The output of a DslRule is thus listing the term arguments, then
+   * a list of ( holes | child proofs ) based on this list.
+   * Each rule is mapped to a list of terms, where Node::null signifies
+   * positions of holes, non-null nodes are child proofs to print.
+   */
+  std::map<ProofRewriteRule, std::vector<Node>> d_dslFormat;
 };
 
 }  // namespace proof

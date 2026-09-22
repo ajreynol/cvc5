@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -24,6 +21,7 @@
 #include "preprocessing/assertion_pipeline.h"
 #include "smt/assertions.h"
 #include "smt/env_obj.h"
+#include "smt/illegal_checker.h"
 #include "util/result.h"
 
 namespace cvc5::internal {
@@ -44,7 +42,7 @@ class SmtDriver : protected EnvObj
 {
  public:
   SmtDriver(Env& env, SmtSolver& smt, ContextManager* ctx);
-  virtual ~SmtDriver(){}
+  virtual ~SmtDriver() {}
   /**
    * Check satisfiability. This invokes the algorithm given by this driver
    * for checking satisfiability.
@@ -120,19 +118,24 @@ class SmtDriver : protected EnvObj
   ContextManager* d_ctx;
   /** assertions pipeline */
   preprocessing::AssertionPipeline d_ap;
+  /**
+   * The utility used for checking for illegal inputs
+   */
+  IllegalChecker d_illegalChecker;
 };
 
 /**
  * The default SMT driver, which makes a single call to the underlying
  * SMT solver.
  *
- * Notice this class does not require ContextManager.
+ * Notice this class does not require ContextManager if we are not doing
+ * incremental solving with this driver.
  */
 class SmtDriverSingleCall : public SmtDriver
 {
  public:
-  SmtDriverSingleCall(Env& env, SmtSolver& smt);
-  virtual ~SmtDriverSingleCall(){}
+  SmtDriverSingleCall(Env& env, SmtSolver& smt, ContextManager* ctx = nullptr);
+  virtual ~SmtDriverSingleCall() {}
 
  protected:
   /** Check sat next, takes result of underlying SMT solver only */

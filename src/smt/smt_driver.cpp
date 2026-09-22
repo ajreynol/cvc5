@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -28,7 +25,7 @@ namespace cvc5::internal {
 namespace smt {
 
 SmtDriver::SmtDriver(Env& env, SmtSolver& smt, ContextManager* ctx)
-    : EnvObj(env), d_smt(smt), d_ctx(ctx), d_ap(env)
+    : EnvObj(env), d_smt(smt), d_ctx(ctx), d_ap(env), d_illegalChecker(env)
 {
   // set up proofs, this is done after options are finalized, so the
   // preprocess proof has been setup
@@ -42,6 +39,11 @@ SmtDriver::SmtDriver(Env& env, SmtSolver& smt, ContextManager* ctx)
 
 Result SmtDriver::checkSat(const std::vector<Node>& assumptions)
 {
+  bool hasAssumptions = !assumptions.empty();
+  if (d_ctx)
+  {
+    d_ctx->notifyCheckSat(hasAssumptions);
+  }
   Assertions& as = d_smt.getAssertions();
   Result result;
   try
@@ -49,11 +51,16 @@ Result SmtDriver::checkSat(const std::vector<Node>& assumptions)
     // then, initialize the assertions
     as.setAssumptions(assumptions);
 
+    // the assertions are now finalized, we call the illegal checker to
+    // verify that any new assertions are legal
+    d_illegalChecker.checkAssertions(as);
+
     // make the check, where notice smt engine should be fully inited by now
 
     Trace("smt") << "SmtSolver::check()" << std::endl;
 
     ResourceManager* rm = d_env.getResourceManager();
+    // if we are already out of (cumulative) resources
     if (rm->out())
     {
       UnknownExplanation why = rm->outOfResources()
@@ -63,8 +70,6 @@ Result SmtDriver::checkSat(const std::vector<Node>& assumptions)
     }
     else
     {
-      rm->beginCall();
-
       bool checkAgain = true;
       do
       {
@@ -74,7 +79,8 @@ Result SmtDriver::checkSat(const std::vector<Node>& assumptions)
         result = checkSatNext(d_ap);
         // if we were asked to check again
         if (result.getStatus() == Result::UNKNOWN
-            && result.getUnknownExplanation() == REQUIRES_CHECK_AGAIN)
+            && result.getUnknownExplanation()
+                   == UnknownExplanation::REQUIRES_CHECK_AGAIN)
         {
           // finish init to construct new theory/prop engine
           d_smt.finishInit();
@@ -84,11 +90,6 @@ Result SmtDriver::checkSat(const std::vector<Node>& assumptions)
           checkAgain = false;
         }
       } while (checkAgain);
-
-      rm->endCall();
-      Trace("limit") << "SmtSolver::check(): cumulative millis "
-                     << rm->getTimeUsage() << ", resources "
-                     << rm->getResourceUsage() << std::endl;
     }
   }
   catch (const LogicException& e)
@@ -108,7 +109,10 @@ Result SmtDriver::checkSat(const std::vector<Node>& assumptions)
     d_smt.getPropEngine()->resetTrail();
     throw;
   }
-
+  if (d_ctx)
+  {
+    d_ctx->notifyCheckSatResult(hasAssumptions);
+  }
   return result;
 }
 
@@ -142,18 +146,59 @@ void SmtDriver::notifyPushPost() { d_smt.pushPropContext(); }
 
 void SmtDriver::notifyPopPre() { d_smt.popPropContext(); }
 
-void SmtDriver::notifyPostSolve() { d_smt.postsolve(); }
+void SmtDriver::notifyPostSolve() { d_smt.resetTrail(); }
 
-SmtDriverSingleCall::SmtDriverSingleCall(Env& env, SmtSolver& smt)
-    : SmtDriver(env, smt, nullptr), d_assertionListIndex(userContext(), 0)
+SmtDriverSingleCall::SmtDriverSingleCall(Env& env,
+                                         SmtSolver& smt,
+                                         ContextManager* ctx)
+    : SmtDriver(env, smt, ctx), d_assertionListIndex(userContext(), 0)
 {
 }
 
 Result SmtDriverSingleCall::checkSatNext(preprocessing::AssertionPipeline& ap)
 {
+  // preprocess
   d_smt.preprocess(ap);
+
+  if (options().base.preprocessOnly)
+  {
+    return Result(Result::UNKNOWN, UnknownExplanation::REQUIRES_FULL_CHECK);
+  }
+
+  // assert to internal
   d_smt.assertToInternal(ap);
-  return d_smt.checkSatInternal();
+  // get result
+  Result result = d_smt.checkSatInternal();
+  // handle preprocessing-specific modifications to result
+  if (ap.isNegated())
+  {
+    Trace("smt") << "SmtSolver::process global negate " << result << std::endl;
+    if (result.getStatus() == Result::UNSAT)
+    {
+      result = Result(Result::SAT);
+    }
+    else if (result.getStatus() == Result::SAT)
+    {
+      // Only can answer unsat if the theory is satisfaction complete. In
+      // other words, a "sat" result for a closed formula indicates that the
+      // formula is true in *all* models.
+      // This includes linear arithmetic and bitvectors, which are the primary
+      // targets for the global negate option. Other logics are possible
+      // here but not considered.
+      LogicInfo logic = logicInfo();
+      if ((logic.isPure(theory::THEORY_ARITH) && logic.isLinear())
+          || logic.isPure(theory::THEORY_BV))
+      {
+        result = Result(Result::UNSAT);
+      }
+      else
+      {
+        result = Result(Result::UNKNOWN, UnknownExplanation::UNKNOWN_REASON);
+      }
+    }
+    Trace("smt") << "SmtSolver::global negate returned " << result << std::endl;
+  }
+  return result;
 }
 
 void SmtDriverSingleCall::getNextAssertions(

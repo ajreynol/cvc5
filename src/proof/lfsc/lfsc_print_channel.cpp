@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Gereon Kremer
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -18,6 +15,9 @@
 #include <sstream>
 
 #include "proof/lfsc/lfsc_util.h"
+#include "rewriter/rewrite_proof_rule.h"
+
+using namespace cvc5::internal::rewriter;
 
 namespace cvc5::internal {
 namespace proof {
@@ -36,7 +36,7 @@ void LfscPrintChannelOut::printTypeNode(TypeNode tn)
 }
 
 void LfscPrintChannelOut::printHole() { d_out << " _ "; }
-void LfscPrintChannelOut::printTrust(TNode res, PfRule src)
+void LfscPrintChannelOut::printTrust(TNode res, ProofRule src)
 {
   d_out << std::endl << "(trust ";
   printNodeInternal(d_out, res);
@@ -94,10 +94,24 @@ void LfscPrintChannelOut::printTypeNodeInternal(std::ostream& out, TypeNode tn)
 
 void LfscPrintChannelOut::printRule(std::ostream& out, const ProofNode* pn)
 {
-  if (pn->getRule() == PfRule::LFSC_RULE)
+  if (pn->getRule() == ProofRule::LFSC_RULE)
   {
     const std::vector<Node>& args = pn->getArguments();
     out << getLfscRule(args[0]);
+    return;
+  }
+  else if (pn->getRule() == ProofRule::DSL_REWRITE)
+  {
+    const std::vector<Node>& args = pn->getArguments();
+    ProofRewriteRule di;
+    if (rewriter::getRewriteRule(args[0], di))
+    {
+      printProofRewriteRule(out, di);
+    }
+    else
+    {
+      Unreachable();
+    }
     return;
   }
   // Otherwise, convert to lower case
@@ -118,6 +132,12 @@ void LfscPrintChannelOut::printId(std::ostream& out,
   out << prefix << id;
 }
 
+void LfscPrintChannelOut::printProofRewriteRule(std::ostream& out,
+                                                ProofRewriteRule id)
+{
+  out << "dsl." << id;
+}
+
 void LfscPrintChannelOut::cleanSymbols(std::string& s)
 {
   size_t start_pos = 0;
@@ -136,14 +156,33 @@ void LfscPrintChannelOut::cleanSymbols(std::string& s)
 LfscPrintChannelPre::LfscPrintChannelPre(LetBinding& lbind) : d_lbind(lbind) {}
 
 void LfscPrintChannelPre::printNode(TNode n) { d_lbind.process(n); }
-void LfscPrintChannelPre::printTrust(TNode res, PfRule src)
+void LfscPrintChannelPre::printTrust(TNode res, CVC5_UNUSED ProofRule src)
 {
   d_lbind.process(res);
 }
 
 void LfscPrintChannelPre::printOpenRule(const ProofNode* pn)
 {
+  // if its a DSL rule, remember it
+  if (pn->getRule() == ProofRule::DSL_REWRITE)
+  {
+    Node idn = pn->getArguments()[0];
+    ProofRewriteRule di;
+    if (rewriter::getRewriteRule(idn, di))
+    {
+      d_dprs.insert(di);
+    }
+    else
+    {
+      Unhandled();
+    }
+  }
+}
 
+const std::unordered_set<ProofRewriteRule>&
+LfscPrintChannelPre::getDslRewrites() const
+{
+  return d_dprs;
 }
 
 }  // namespace proof

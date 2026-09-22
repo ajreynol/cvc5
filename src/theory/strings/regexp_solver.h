@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Andres Noetzli, Tianyi Liang
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -66,6 +63,12 @@ class RegExpSolver : protected EnvObj
    * FroCoS 2015.
    */
   void checkMemberships(Theory::Effort e);
+  /**
+   * Check regular expression memberships eagerly, before running the CAV 14
+   * procedure for word equations. Adds lemmas based on our strategy involving
+   * reductions or simplifications.
+   */
+  void checkMembershipsEager();
 
  private:
   /** compute asserted memberships, store in d_assertedMems */
@@ -75,8 +78,10 @@ class RegExpSolver : protected EnvObj
   /**
    * Check inclusions,
    * Assumes d_assertedMems has been computed.
+   *
+   * @param e The current effort.
    */
-  void checkInclusions();
+  void checkInclusions(Theory::Effort e);
   /**
    * Check evaluations, which applies substitutions for normal forms to
    * regular expression memberships and evaluates them, and also calls
@@ -99,13 +104,14 @@ class RegExpSolver : protected EnvObj
    * assertions, and true otherwise. It discovers a conflict e.g. if mems
    * contains str.in.re(xi, Ri) and ~str.in.re(xj, Rj) and Rj includes Ri.
    *
+   * @param e The current effort.
    * @param mems Vector of memberships of the form: (~)str.in.re(x1, R1)
    *             ... (~)str.in.re(xn, Rn) where x1 = ... = xn in the
    *             current context. The function removes elements from this
    *             vector that were marked as reduced.
    * @return False if a conflict was detected, true otherwise
    */
-  bool checkEqcInclusion(std::vector<Node>& mems);
+  bool checkEqcInclusion(Theory::Effort e, std::vector<Node>& mems);
 
   /**
    * Check memberships for equivalence class.

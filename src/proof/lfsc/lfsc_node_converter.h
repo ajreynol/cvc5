@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -14,8 +11,8 @@
  */
 #include "cvc5_private.h"
 
-#ifndef CVC4__PROOF__LFSC__LFSC_NODE_CONVERTER_H
-#define CVC4__PROOF__LFSC__LFSC_NODE_CONVERTER_H
+#ifndef CVC5__PROOF__LFSC__LFSC_NODE_CONVERTER_H
+#define CVC5__PROOF__LFSC__LFSC_NODE_CONVERTER_H
 
 #include <iostream>
 #include <map>
@@ -34,8 +31,7 @@ namespace proof {
 class LfscNodeConverter : public NodeConverter
 {
  public:
-  LfscNodeConverter();
-  ~LfscNodeConverter() {}
+  LfscNodeConverter(NodeManager* nm);
   /** convert at pre-order traversal */
   Node preConvert(Node n) override;
   /** convert at post-order traversal */
@@ -50,9 +46,11 @@ class LfscNodeConverter : public NodeConverter
    *
    * The returned null terminator is *not* converted to internal form.
    *
-   * For examples of null terminators, see nary_term_utils.h.
+   * For examples of null terminators, see aci_norm.h.
    */
-  Node getNullTerminator(Kind k, TypeNode tn = TypeNode::null());
+  Node getNullTerminator(NodeManager* nm,
+                         Kind k,
+                         TypeNode tn = TypeNode::null());
   /**
    * Return the properly named operator for n of the form (f t1 ... tn), where
    * f could be interpreted or uninterpreted.  This method is used for cases
@@ -134,11 +132,18 @@ class LfscNodeConverter : public NodeConverter
   /** Should we traverse n? */
   bool shouldTraverse(Node n) override;
   /**
+   * Make APPLY_UF, which ensures the operator op is a variable. If it is not,
+   * we create a dummy variable whose name is the result of printing op. This
+   * is to ensure proper smt2 printing, which does not permit operators to
+   * be higher-order terms.
+   */
+  Node mkApplyUf(Node op, const std::vector<Node>& args) const;
+  /**
    * Make skolem function, if k was constructed by a skolem function identifier
    * (in SkolemManager::mkSkolemFunction) that is supported in the LFSC
    * signature.
    */
-  Node maybeMkSkolemFun(Node k, bool macroApply = false);
+  Node maybeMkSkolemFun(Node k);
   /**
    * Type as node, returns a node that prints in the form that LFSC will
    * interpret as the type tni. This method is required since types can be

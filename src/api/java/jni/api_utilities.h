@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Mudathir Mohamed, Andres Noetzli
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -15,12 +12,12 @@
 
 #ifndef CVC5__API_UTILITIES_H
 #define CVC5__API_UTILITIES_H
+#include <cvc5/cvc5.h>
+#include <cvc5/cvc5_parser.h>
 #include <jni.h>
 
 #include <string>
 #include <vector>
-
-#include "api/cpp/cvc5.h"
 
 #define CVC5_JAVA_API_TRY_CATCH_BEGIN \
   try                                 \
@@ -37,6 +34,12 @@
   {                                                                            \
     jclass exceptionClass =                                                    \
         env->FindClass("io/github/cvc5/CVC5ApiRecoverableException");          \
+    env->ThrowNew(exceptionClass, e.what());                                   \
+  }                                                                            \
+  catch (const parser::ParserException& e)                                     \
+  {                                                                            \
+    jclass exceptionClass =                                                    \
+        env->FindClass("io/github/cvc5/CVC5ParserException");                  \
     env->ThrowNew(exceptionClass, e.what());                                   \
   }                                                                            \
   catch (const CVC5ApiException& e)                                            \
@@ -138,12 +141,6 @@ jobject getDoubleObject(JNIEnv* env, double value);
  * @return a Boolean object
  */
 jobject getBooleanObject(JNIEnv* env, bool value);
-
-/**
- * a map from solver pointers to global references that need to be freed when
- * the java Solver.close method is called
- */
-inline std::map<jlong, std::vector<jobject> > globalReferences;
 
 /**
  * @param env jni environment
