@@ -98,6 +98,21 @@ public class Solver extends AbstractPointer
   }
 
   /**
+   * Return a hash code value for this solver.
+   *
+   * The hash code is derived from the underlying native pointer, which is what
+   * {@link #equals(Object)} compares, so that instances that are equal have the
+   * same hash code.
+   *
+   * @return a hash code value for this solver
+   */
+  @Override
+  public int hashCode()
+  {
+    return Long.hashCode(pointer);
+  }
+
+  /**
    * Get the associated term manager instance
    * @return The term manager.
    */
@@ -3120,7 +3135,7 @@ public class Solver extends AbstractPointer
    *
    * <p>
    * Given that {@code A->B} is valid,
-   * this function determines a term {@code I} 
+   * this function determines a term {@code I}
    * over the shared variables of {@code A} and
    * {@code B},
    * such that {@code A->I} and {@code I->B}
@@ -3156,7 +3171,7 @@ public class Solver extends AbstractPointer
    *
    * <p>
    * Given that {@code A->B} is valid,
-   * this function determines a term {@code I}, 
+   * this function determines a term {@code I},
    * over the shared variables of {@code A} and
    * {@code B},
    * with respect to a given grammar, such

@@ -1008,9 +1008,8 @@ JNIEXPORT jint JNICALL Java_io_github_cvc5_Sort_getBitVectorSize(JNIEnv* env,
  * Method:    getFiniteFieldSize
  * Signature: (J)I
  */
-JNIEXPORT jstring JNICALL Java_io_github_cvc5_Sort_getFiniteFieldSize(JNIEnv* env,
-                                                                      jobject,
-                                                                      jlong pointer)
+JNIEXPORT jstring JNICALL
+Java_io_github_cvc5_Sort_getFiniteFieldSize(JNIEnv* env, jobject, jlong pointer)
 {
   CVC5_JAVA_API_TRY_CATCH_BEGIN;
   Sort* current = reinterpret_cast<Sort*>(pointer);
@@ -1116,14 +1115,14 @@ JNIEXPORT jlong JNICALL Java_io_github_cvc5_Sort_getNullableElementSort(
 /*
  * Class:     io_github_cvc5_Sort
  * Method:    hashCode
- * Signature: (J)I
+ * Signature: (J)J
  */
-JNIEXPORT jint JNICALL Java_io_github_cvc5_Sort_hashCode(JNIEnv* env,
-                                                         jobject,
-                                                         jlong pointer)
+JNIEXPORT jlong JNICALL Java_io_github_cvc5_Sort_hashCode(JNIEnv* env,
+                                                          jobject,
+                                                          jlong pointer)
 {
   CVC5_JAVA_API_TRY_CATCH_BEGIN;
   Sort* result = reinterpret_cast<Sort*>(pointer);
-  return static_cast<jint>(std::hash<cvc5::Sort>()(*result));
+  return static_cast<jlong>(std::hash<cvc5::Sort>()(*result));
   CVC5_JAVA_API_TRY_CATCH_END_RETURN(env, 0);
 }

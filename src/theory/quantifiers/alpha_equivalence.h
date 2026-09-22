@@ -31,7 +31,8 @@ namespace quantifiers {
  * type T1 and 3 free variables of type T2, then it is stored at
  * d_children[T1][2].d_children[T2][3].
  */
-class AlphaEquivalenceTypeNode {
+class AlphaEquivalenceTypeNode
+{
   using NodeMap = context::CDHashMap<Node, Node>;
 
  public:
@@ -102,7 +103,7 @@ class AlphaEquivalenceDb
    * in addTermWithSubstitution. The range in d_bvmap[q] contains the mapping
    * from canonical free variables to variables in q.
    */
-  std::map<Node, std::map<Node, TNode> > d_bvmap;
+  std::map<Node, std::map<Node, TNode>> d_bvmap;
 };
 
 /**
@@ -113,13 +114,22 @@ class AlphaEquivalence : protected EnvObj
 {
  public:
   AlphaEquivalence(Env& env);
-  ~AlphaEquivalence(){}
+  ~AlphaEquivalence() {}
   /** reduce quantifier
    *
    * If non-null, its return value is a trust node containing the lemma
-   * justifying why q is reducible.  This lemma is of the form ( q = q' ) where
+   * justifying why q is reducible. This lemma is of the form ( q' = q ) where
    * q' is a quantified formula that was previously registered to this class via
-   * a call to reduceQuantifier, and q and q' are alpha-equivalent.
+   * a call to reduceQuantifier. Their equivalence may involve renaming bound
+   * variables, reordering the universally quantified variable list, and
+   * reordering arguments of commutative operators in their bodies. Annotations
+   * such as patterns and names are ignored when comparing the formulas.
+   *
+   * When proofs are enabled, we attempt to justify the equality by removing
+   * annotations, renaming variables, reordering the variable list, and then
+   * recursively applying normalization and congruence to the bodies, with
+   * extended rewriting as a fallback. If no matching formula was previously
+   * registered, this method registers q and returns a null trust node.
    */
   TrustNode reduceQuantifier(Node q);
 
@@ -142,8 +152,8 @@ class AlphaEquivalence : protected EnvObj
   bool isProofEnabled() const;
 };
 
-}
-}
+}  // namespace quantifiers
+}  // namespace theory
 }  // namespace cvc5::internal
 
 #endif
