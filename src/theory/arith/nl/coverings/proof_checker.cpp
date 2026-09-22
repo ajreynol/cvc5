@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Gereon Kremer, Hans-Jörg Schurr, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -31,32 +28,13 @@ CoveringsProofRuleChecker::CoveringsProofRuleChecker(NodeManager* nm)
 {
 }
 
-void CoveringsProofRuleChecker::registerTo(ProofChecker* pc)
-{
-  // trusted rules
-  pc->registerTrustedChecker(ProofRule::ARITH_NL_COVERING_DIRECT, this, 2);
-  pc->registerTrustedChecker(ProofRule::ARITH_NL_COVERING_RECURSIVE, this, 2);
-}
+void CoveringsProofRuleChecker::registerTo(CVC5_UNUSED ProofChecker* pc) {}
 
-Node CoveringsProofRuleChecker::checkInternal(ProofRule id,
-                                              const std::vector<Node>& children,
-                                              const std::vector<Node>& args)
+Node CoveringsProofRuleChecker::checkInternal(
+    CVC5_UNUSED ProofRule id,
+    CVC5_UNUSED const std::vector<Node>& children,
+    CVC5_UNUSED const std::vector<Node>& args)
 {
-  Trace("nl-cov-checker") << "Checking " << id << std::endl;
-  for (const auto& c : children)
-  {
-    Trace("nl-cov-checker") << "\t" << c << std::endl;
-  }
-  if (id == ProofRule::ARITH_NL_COVERING_DIRECT)
-  {
-    Assert(args.size() == 1);
-    return args[0];
-  }
-  if (id == ProofRule::ARITH_NL_COVERING_RECURSIVE)
-  {
-    Assert(args.size() == 1);
-    return args[0];
-  }
   return Node::null();
 }
 

@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Alex Ozdemir
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -18,13 +15,10 @@
 #ifndef CVC5__THEORY__FF__UTIL_H
 #define CVC5__THEORY__FF__UTIL_H
 
-// external includes
-#ifdef CVC5_USE_COCOA
-#include <CoCoA/ring.H>
-#endif /* CVC5_USE_COCOA */
-
 // std includes
 #include <unordered_map>
+#include <variant>
+#include <vector>
 
 // internal includes
 #include "expr/node.h"
@@ -36,6 +30,12 @@ namespace ff {
 
 /** A finite field model */
 using FfModel = std::unordered_map<Node, FiniteFieldValue>;
+/** A finite field conflict core */
+using FfCore = std::vector<Node>;
+/** Indicates an unknown result in FfResult. */
+using FfUnknown = std::monostate;
+/** The result of a subprocedure: either unknown, a model, or a conflict core */
+using FfResult = std::variant<FfUnknown, FfModel, FfCore>;
 
 /**
  * A class associated with a specific field (for inheritting).
@@ -46,7 +46,7 @@ using FfModel = std::unordered_map<Node, FiniteFieldValue>;
 class FieldObj
 {
  public:
-  FieldObj(const FfSize& size);
+  FieldObj(NodeManager* nm, FfSize size);
   /** create a sum (with as few as 0 elements); accepts Nodes or TNodes */
   template <bool ref_count>
   Node mkAdd(const std::vector<NodeTemplate<ref_count>>& summands);
@@ -59,19 +59,12 @@ class FieldObj
   const Node& zero() const { return d_zero; }
   /** the size of this field */
   const FfSize& size() const { return d_size; }
-#ifdef CVC5_USE_COCOA
-  /** the CoCoA ring of integers modulo this field's size */
-  const CoCoA::ring& coeffRing() const { return d_coeffRing; }
-#endif /* CVC5_USE_COCOA */
 
  private:
   FfSize d_size;
   NodeManager* d_nm;
   Node d_zero;
   Node d_one;
-#ifdef CVC5_USE_COCOA
-  CoCoA::ring d_coeffRing;
-#endif /* CVC5_USE_COCOA */
 };
 
 /** Testing whether something is related to (any) FF */
@@ -83,6 +76,13 @@ bool isFfTerm(const Node& n);
 /** Is this a field fact (equality of disequality)? */
 bool isFfFact(const Node& n);
 
+/** Used to signal check timeouts */
+class FfTimeoutException : public Exception
+{
+ public:
+  explicit FfTimeoutException(const std::string& where);
+  ~FfTimeoutException() override;
+};
 /** Testing whether something is related to (this specific) FF */
 
 /** Is this a (this) field term with non-field kind? */

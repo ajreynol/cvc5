@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Alex Ozdemir
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -30,8 +27,10 @@
 #include <vector>
 
 // internal includes
+#include "theory/ff/util.h"
 #include "util/finite_field_value.h"
 #include "util/integer.h"
+#include "util/resource_manager.h"
 
 namespace cvc5::internal {
 namespace theory {
@@ -75,6 +74,13 @@ std::string extractStr(const T& t)
   o << t;
   return o.str();
 }
+
+/**
+ * Compute a GB, with timeout given by `rm`.
+ * Throws an FfTimeoutException if the timeout is exceeded.
+ */
+const std::vector<Poly>& GBasisTimeout(const CoCoA::ideal& ideal,
+                                       const ResourceManager* rm);
 
 }  // namespace ff
 }  // namespace theory

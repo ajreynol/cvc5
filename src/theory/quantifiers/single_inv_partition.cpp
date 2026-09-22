@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Mathias Preiner, Aina Niemetz
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -185,7 +182,6 @@ bool SingleInvocationPartition::init(std::vector<Node>& funcs,
   Assert(d_input_funcs.empty());
   Assert(d_si_vars.empty());
   NodeManager* nm = nodeManager();
-  SkolemManager* sm = nm->getSkolemManager();
   d_has_input_funcs = has_funcs;
   d_arg_types.insert(d_arg_types.end(), typs.begin(), typs.end());
   d_input_funcs.insert(d_input_funcs.end(), funcs.begin(), funcs.end());
@@ -194,13 +190,13 @@ bool SingleInvocationPartition::init(std::vector<Node>& funcs,
   {
     std::stringstream ss;
     ss << "s_" << j;
-    Node si_v = nm->mkBoundVar(ss.str(), d_arg_types[j]);
+    Node si_v = NodeManager::mkBoundVar(ss.str(), d_arg_types[j]);
     d_si_vars.push_back(si_v);
   }
   Assert(d_si_vars.size() == d_arg_types.size());
   for (const Node& inf : d_input_funcs)
   {
-    Node sk = sm->mkDummySkolem("_sik", inf.getType());
+    Node sk = NodeManager::mkDummySkolem("_sik", inf.getType());
     d_input_func_sks.push_back(sk);
   }
   Trace("si-prt") << "SingleInvocationPartition::process " << n << std::endl;
@@ -278,8 +274,8 @@ bool SingleInvocationPartition::init(std::vector<Node>& funcs,
         Trace("si-prt") << std::endl;
         cr = nm->mkOr(children);
         cr = sb.apply(cr);
-        Trace("si-prt-debug") << "...normalized invocations to " << cr
-                              << std::endl;
+        Trace("si-prt-debug")
+            << "...normalized invocations to " << cr << std::endl;
         // now must check if it has other bound variables
         std::unordered_set<Node> fvs;
         expr::getFreeVariables(cr, fvs);
@@ -330,8 +326,8 @@ bool SingleInvocationPartition::init(std::vector<Node>& funcs,
               {
                 termsNs.push_back(v);
                 subsNs.push_back(d_si_vars[k]);
-                Trace("si-prt-debug") << "  ...use " << d_si_vars[k]
-                                      << std::endl;
+                Trace("si-prt-debug")
+                    << "  ...use " << d_si_vars[k] << std::endl;
                 break;
               }
             }
@@ -499,8 +495,8 @@ bool SingleInvocationPartition::processConjunct(Node n,
           }
           else
           {
-            Trace("si-prt-debug") << "... " << f << " is a bad operator."
-                                  << std::endl;
+            Trace("si-prt-debug")
+                << "... " << f << " is a bad operator." << std::endl;
             ret = false;
           }
         }
@@ -582,7 +578,7 @@ Node SingleInvocationPartition::getConjunct(int index)
                     : nodeManager()->mkNode(Kind::AND, d_conjuncts[index]));
 }
 
-void SingleInvocationPartition::debugPrint(const char* c)
+void SingleInvocationPartition::debugPrint(CVC5_UNUSED const char* c)
 {
   Trace(c) << "Single invocation variables : ";
   for (unsigned i = 0; i < d_si_vars.size(); i++)

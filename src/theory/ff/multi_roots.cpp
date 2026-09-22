@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Alex Ozdemir
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -24,27 +21,30 @@
 #include <CoCoA/SparsePolyOps-MinPoly.H>
 #include <CoCoA/SparsePolyOps-RingElem.H>
 #include <CoCoA/SparsePolyOps-ideal.H>
+#include <CoCoA/ring.H>
 
 #include <algorithm>
 #include <memory>
 #include <sstream>
 
-#include "smt/assertions.h"
+#include "theory/ff/cocoa_util.h"
 #include "theory/ff/uni_roots.h"
+#include "theory/ff/util.h"
+#include "util/resource_manager.h"
 
 namespace cvc5::internal {
 namespace theory {
 namespace ff {
 
-AssignmentEnumerator::~AssignmentEnumerator(){};
+AssignmentEnumerator::~AssignmentEnumerator() = default;
 
-ListEnumerator::ListEnumerator(const std::vector<CoCoA::RingElem>&& options)
+ListEnumerator::ListEnumerator(std::vector<CoCoA::RingElem>&& options)
     : d_remainingOptions(std::move(options))
 {
   std::reverse(d_remainingOptions.begin(), d_remainingOptions.end());
 }
 
-ListEnumerator::~ListEnumerator(){};
+ListEnumerator::~ListEnumerator() {};
 
 std::optional<CoCoA::RingElem> ListEnumerator::next()
 {
@@ -64,7 +64,7 @@ std::string ListEnumerator::name() { return "list"; }
 
 std::unique_ptr<ListEnumerator> factorEnumerator(CoCoA::RingElem univariatePoly)
 {
-  int varIdx = CoCoA::UnivariateIndetIndex(univariatePoly);
+  long varIdx = CoCoA::UnivariateIndetIndex(univariatePoly);
   Assert(varIdx >= 0);
   Trace("ff::model::factor") << "roots for: " << univariatePoly << std::endl;
   std::vector<CoCoA::RingElem> theRoots = roots(univariatePoly);
@@ -110,7 +110,19 @@ std::string RoundRobinEnumerator::name() { return "round-robin"; }
 bool isUnsat(const CoCoA::ideal& ideal)
 {
   const auto& gens = CoCoA::GBasis(ideal);
-  return !(gens.size() > 1 || CoCoA::deg(gens[0]) > 0);
+  return gens.size() == 1 && !CoCoA::IsZero(gens[0])
+         && CoCoA::deg(gens[0]) <= 0;
+}
+
+// True if a Groebner basis for `ideal` is available without (re)computation.
+//
+// Since CoCoALib 0.99850, computing the GBasis of the zero ideal no longer
+// marks it as stored (CoCoA::GBasis returns the trivially empty basis but
+// CoCoA::HasGBasis stays false); 0.99800 did mark it. The empty basis is always
+// available for the zero ideal, so treat that case as "has GBasis" too.
+bool hasGBasis(const CoCoA::ideal& ideal)
+{
+  return CoCoA::HasGBasis(ideal) || CoCoA::IsZero(ideal);
 }
 
 template <typename T>
@@ -126,8 +138,8 @@ std::pair<size_t, CoCoA::RingElem> extractAssignment(
 {
   Assert(CoCoA::deg(elem) == 1);
   Assert(CoCoA::NumTerms(elem) <= 2);
-  CoCoA::RingElem m = CoCoA::monic(elem);
-  int varNumber = CoCoA::UnivariateIndetIndex(elem);
+  const CoCoA::RingElem m = CoCoA::monic(elem);
+  long varNumber = CoCoA::UnivariateIndetIndex(elem);
   Assert(varNumber >= 0);
   return {varNumber, -CoCoA::ConstantCoeff(m)};
 }
@@ -135,11 +147,12 @@ std::pair<size_t, CoCoA::RingElem> extractAssignment(
 std::unordered_set<std::string> assignedVars(const CoCoA::ideal& ideal)
 {
   std::unordered_set<std::string> ret{};
+  Assert(hasGBasis(ideal));
   for (const auto& g : CoCoA::GBasis(ideal))
   {
     if (CoCoA::deg(g) == 1)
     {
-      int varNumber = CoCoA::UnivariateIndetIndex(g);
+      long varNumber = CoCoA::UnivariateIndetIndex(g);
       if (varNumber >= 0)
       {
         ret.insert(ostring(CoCoA::indet(ideal->myRing(), varNumber)));
@@ -155,15 +168,17 @@ bool allVarsAssigned(const CoCoA::ideal& ideal)
          == (size_t)CoCoA::NumIndets(ideal->myRing());
 }
 
-std::unique_ptr<AssignmentEnumerator> applyRule(const CoCoA::ideal& ideal)
+std::unique_ptr<AssignmentEnumerator> applyRule(const CoCoA::ideal& ideal,
+                                                FfStatistics* stats = nullptr)
 {
-  CoCoA::ring polyRing = ideal->myRing();
+  CoCoA::PolyRing polyRing(ideal->myRing());
   Assert(!isUnsat(ideal));
   // first, we look for super-linear univariate polynomials.
+  Assert(hasGBasis(ideal));
   const auto& gens = CoCoA::GBasis(ideal);
   for (const auto& p : gens)
   {
-    int varNumber = CoCoA::UnivariateIndetIndex(p);
+    long varNumber = CoCoA::UnivariateIndetIndex(p);
     if (varNumber >= 0 && CoCoA::deg(p) > 1)
     {
       return factorEnumerator(p);
@@ -172,6 +187,7 @@ std::unique_ptr<AssignmentEnumerator> applyRule(const CoCoA::ideal& ideal)
   // now, we check the dimension
   if (CoCoA::IsZeroDim(ideal))
   {
+    if (stats) ++stats->d_idealMinPoly;
     // If zero-dimensional, we compute a minimal polynomial in some unset
     // variable.
     std::unordered_set<std::string> alreadySet = assignedVars(ideal);
@@ -189,6 +205,7 @@ std::unique_ptr<AssignmentEnumerator> applyRule(const CoCoA::ideal& ideal)
   }
   else
   {
+    if (stats) ++stats->d_idealPosDim;
     // If positive dimensional, we make a list of unset variables and
     // round-robin guess.
     //
@@ -208,7 +225,9 @@ std::unique_ptr<AssignmentEnumerator> applyRule(const CoCoA::ideal& ideal)
   }
 }
 
-std::vector<CoCoA::RingElem> findZero(const CoCoA::ideal& initialIdeal)
+std::vector<CoCoA::RingElem> findZero(const CoCoA::ideal& initialIdeal,
+                                      const Env& env,
+                                      FfStatistics* stats)
 {
   CoCoA::ring polyRing = initialIdeal->myRing();
   // We maintain two stacks:
@@ -242,8 +261,16 @@ std::vector<CoCoA::RingElem> findZero(const CoCoA::ideal& initialIdeal)
   // while some ideal might have a zero.
   while (!ideals.empty())
   {
-    // choose one
+    // check for timeout
+    if (env.getResourceManager()->outOfTime())
+    {
+      throw FfTimeoutException("findZero");
+    }
+    // choose one ideal
     const auto& ideal = ideals.back();
+    // make sure we have a GBasis:
+    GBasisTimeout(ideal, env.getResourceManager());
+    Assert(hasGBasis(ideal));
     // If the ideal is UNSAT, drop it.
     if (isUnsat(ideal))
     {
@@ -254,6 +281,7 @@ std::vector<CoCoA::RingElem> findZero(const CoCoA::ideal& initialIdeal)
     else if (allVarsAssigned(ideal))
     {
       std::unordered_map<size_t, CoCoA::RingElem> varNumToValue{};
+      Assert(hasGBasis(ideal));
       const auto& gens = CoCoA::GBasis(ideal);
       size_t numIndets = CoCoA::NumIndets(polyRing);
       Assert(gens.size() == numIndets);
@@ -272,7 +300,7 @@ std::vector<CoCoA::RingElem> findZero(const CoCoA::ideal& initialIdeal)
     else if (ideals.size() > branchers.size())
     {
       Assert(ideals.size() == branchers.size() + 1);
-      branchers.push_back(applyRule(ideal));
+      branchers.push_back(applyRule(ideal, stats));
       Trace("ff::model::branch")
           << "brancher: " << branchers.back()->name() << std::endl;
       if (TraceIsOn("ff::model::branch"))
@@ -296,6 +324,7 @@ std::vector<CoCoA::RingElem> findZero(const CoCoA::ideal& initialIdeal)
             << "level: " << branchers.size()
             << ", brancher: " << branchers.back()->name()
             << ", branch: " << choicePoly.value() << std::endl;
+        Assert(hasGBasis(ideal));
         std::vector<CoCoA::RingElem> newGens = CoCoA::GBasis(ideal);
         newGens.push_back(choicePoly.value());
         ideals.push_back(CoCoA::ideal(newGens));

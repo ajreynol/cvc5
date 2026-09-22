@@ -1,14 +1,27 @@
+###############################################################################
+# This file is part of the cvc5 project.
+#
+# Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+# in the top-level source directory and their institutional affiliations.
+# All rights reserved.  See the file COPYING in the top-level source
+# directory for licensing information.
+# #############################################################################
+#
+# The base Python API definitions.
+##
+cimport cpython.ref as cpy_ref
 # import dereference and increment operators
 from cython.operator cimport dereference as deref, preincrement as inc
+from cython import Py_UCS4
 from libc.stdint cimport int32_t, int64_t, uint32_t, uint64_t
-from libc.stddef cimport wchar_t
 from libcpp.set cimport set
 from libcpp.string cimport string
 from libcpp.vector cimport vector
 from libcpp.map cimport map
+from libcpp.optional cimport optional
 from libcpp.pair cimport pair
 from cvc5kinds cimport Kind, SortKind
-from cvc5types cimport BlockModelsMode, LearnedLitType, ProofComponent, ProofFormat, RoundingMode, UnknownExplanation, FindSynthTarget, InputLanguage
+from cvc5types cimport BlockModelsMode, LearnedLitType, ProofComponent, ProofFormat, RoundingMode, UnknownExplanation, FindSynthTarget, InputLanguage, OptionCategory
 from cvc5proofrules cimport ProofRewriteRule, ProofRule
 from cvc5skolemids cimport SkolemId
 
@@ -35,19 +48,11 @@ cdef extern from "<functional>" namespace "std" nogil:
         hash()
         size_t operator()(T t)
 
-cdef extern from "<optional>" namespace "std" nogil:
-    # The std::optional wrapper would be available as cpplib.optional with
-    # cython 3.0.0a10 (Jan 2022). Until this version is widely available, we
-    # wrap it manually.
-    cdef cppclass optional[T]:
-        bint has_value()
-        T& value()
-
 cdef extern from "<string>" namespace "std":
-    cdef cppclass wstring:
-        wstring() except +
-        wstring(const wchar_t*, size_t) except +
-        const wchar_t* data() except +
+    cdef cppclass u32string:
+        u32string() except +
+        void resize (size_t n) except +
+        Py_UCS4& operator[](size_t)
         size_t size() except +
 
 cdef extern from "<tuple>" namespace "std" nogil:
@@ -62,6 +67,18 @@ cdef extern from "<tuple>" namespace "std":
 cdef extern from "<cvc5/cvc5.h>" namespace "cvc5":
     cdef cppclass Options:
         pass
+
+
+cdef extern from "py_plugin.h" namespace "cvc5":
+    cdef cppclass PyPlugin:
+        PyPlugin(cpy_ref.PyObject *obj, TermManager& tm) except +
+        vector[Term] check() except +
+        vector[Term] plugin_check() except +
+        void notifySatClause(const Term& cl) except +
+        void plugin_notifySatClause(const Term& cl) except +
+        void notifyTheoryLemma(const Term& lem) except +
+        void plugin_notifyTheoryLemma(const Term& lem) except +
+        string getName() except +
 
 
 cdef extern from "<cvc5/cvc5.h>" namespace "cvc5":
@@ -161,6 +178,7 @@ cdef extern from "<cvc5/cvc5.h>" namespace "cvc5":
         string name
         vector[string] aliases
         bint setByUser
+        OptionCategory category
         bint boolValue() except +
         string stringValue() except +
         int intValue() except +
@@ -212,6 +230,8 @@ cdef extern from "<cvc5/cvc5.h>" namespace "cvc5":
         bint hasSolution() except +
         bint hasNoSolution() except +
         bint isUnknown() except +
+        bint operator==(const SynthResult& r) except +
+        bint operator!=(const SynthResult& r) except +
         string toString() except +
 
     cdef cppclass TermManager:
@@ -232,6 +252,8 @@ cdef extern from "<cvc5/cvc5.h>" namespace "cvc5":
         Sort mkFunctionSort(const vector[Sort]& sorts, Sort codomain) except +
         Sort mkParamSort() except +
         Sort mkParamSort(const string& symbol) except +
+        Term mkSkolem(SkolemId id, const vector[Term]& indices) except +
+        size_t getNumIndicesForSkolemId(SkolemId id) except +
         Sort mkPredicateSort(const vector[Sort]& sorts) except +
         Sort mkRecordSort(const vector[pair[string, Sort]]& fields) except +
         Sort mkSetSort(Sort elemSort) except +
@@ -272,7 +294,7 @@ cdef extern from "<cvc5/cvc5.h>" namespace "cvc5":
         Term mkSepEmp() except +
         Term mkSepNil(Sort sort) except +
         Term mkString(const string& s) except +
-        Term mkString(const wstring& s) except +
+        Term mkString(const u32string& s) except +
         Term mkString(const string& s, bint useEscSequences) except +
         Term mkEmptySequence(Sort sort) except +
         Term mkUniverseSet(Sort sort) except +
@@ -304,6 +326,13 @@ cdef extern from "<cvc5/cvc5.h>" namespace "cvc5":
         # default value for symbol defined in cpp/cvc5.h
         Term mkVar(Sort sort) except +
 
+    cdef cppclass Plugin:
+        Plugin(TermManager& tm) except +
+        vector[Term] check() except +
+        void notifySatClause(const Term& cl) except +
+        void notifyTheoryLemma(const Term& lem) except +
+        string getName() except +
+
     cdef cppclass Solver:
         Solver(TermManager& tm) except +
         TermManager getTermManager() except +
@@ -322,6 +351,8 @@ cdef extern from "<cvc5/cvc5.h>" namespace "cvc5":
         Sort mkFunctionSort(const vector[Sort]& sorts, Sort codomain) except +
         Sort mkParamSort() except +
         Sort mkParamSort(const string& symbol) except +
+        Term mkSkolem(SkolemId id, const vector[Term]& indices) except +
+        size_t getNumIndicesForSkolemId(SkolemId id) except +
         Sort mkPredicateSort(const vector[Sort]& sorts) except +
         Sort mkRecordSort(const vector[pair[string, Sort]]& fields) except +
         Sort mkSetSort(Sort elemSort) except +
@@ -381,7 +412,7 @@ cdef extern from "<cvc5/cvc5.h>" namespace "cvc5":
         Term mkSepEmp() except +
         Term mkSepNil(Sort sort) except +
         Term mkString(const string& s) except +
-        Term mkString(const wstring& s) except +
+        Term mkString(const u32string& s) except +
         Term mkString(const string& s, bint useEscSequences) except +
         Term mkEmptySequence(Sort sort) except +
         Term mkUniverseSet(Sort sort) except +
@@ -412,7 +443,7 @@ cdef extern from "<cvc5/cvc5.h>" namespace "cvc5":
         DatatypeDecl mkDatatypeDecl(const string& name, vector[Sort]& params, bint isCoDatatype) except +
         # default value for symbol defined in cpp/cvc5.h
         Term mkVar(Sort sort) except +
-        Term simplify(const Term& t) except +
+        Term simplify(const Term& t, bint applySubs) except +
         void assertFormula(Term term) except +
         Result checkSat() except +
         Result checkSatAssuming(const vector[Term]& assumptions) except +
@@ -428,7 +459,7 @@ cdef extern from "<cvc5/cvc5.h>" namespace "cvc5":
         Term defineFunsRec(vector[Term]& funs, vector[vector[Term]]& bound_vars,
                            vector[Term]& terms, bint glbl) except +
         vector[Proof] getProof(ProofComponent c) except +
-        string proofToString(Proof proof, ProofFormat format) except +
+        string proofToString(Proof proof, ProofFormat format, const map[Term, string]& assertionNames) except +
         vector[Term] getLearnedLiterals(LearnedLitType type) except +
         vector[Term] getAssertions() except +
         string getInfo(const string& flag) except +
@@ -453,6 +484,7 @@ cdef extern from "<cvc5/cvc5.h>" namespace "cvc5":
         Term getValueSepHeap() except +
         Term getValueSepNil() except +
         Term declarePool(const string& name, Sort sort, vector[Term]& initValue) except +
+        void addPlugin(Plugin& p) except +
         void pop(uint32_t nscopes) except +
         void push(uint32_t nscopes) except +
         void reset() except +
@@ -478,6 +510,7 @@ cdef extern from "<cvc5/cvc5.h>" namespace "cvc5":
     cdef cppclass Grammar:
         Grammar() except +
         Grammar(Solver* solver, vector[Term] boundVars, vector[Term] ntSymbols) except +
+        bint isNull() except +
         void addRule(Term ntSymbol, Term rule) except +
         void addAnyConstant(Term ntSymbol) except +
         void addAnyVariable(Term ntSymbol) except +
@@ -634,7 +667,7 @@ cdef extern from "<cvc5/cvc5.h>" namespace "cvc5":
         bint isBooleanValue() except +
         bint getBooleanValue() except +
         bint isStringValue() except +
-        wstring getStringValue() except +
+        u32string getU32StringValue() except +
         int32_t getRealOrIntegerValueSign() except +
         bint isIntegerValue() except +
         string getIntegerValue() except +
@@ -670,20 +703,27 @@ cdef extern from "<cvc5/cvc5.h>" namespace "cvc5":
         size_t operator()(const Term & t) except +
 
     cdef cppclass Proof:
+        bint operator==(const Proof&) except +
+        bint operator!=(const Proof&) except +
         ProofRule getRule() except +
         ProofRewriteRule getRewriteRule() except +
         Term getResult() except +
         vector[Proof] getChildren() except +
         vector[Term] getArguments() except +
 
+    cdef cppclass ProofHashFunction:
+        ProofHashFunction() except +
+        size_t operator()(const Proof&) except +
+
 
 cdef extern from "<cvc5/cvc5_parser.h>" namespace "cvc5::parser":
     cdef cppclass SymbolManager:
-        SymbolManager(Solver* solver) except +
+        SymbolManager(TermManager& tm) except +
         bint isLogicSet() except +
         string getLogic() except +
         vector[Sort] getDeclaredSorts() except +
         vector[Term] getDeclaredTerms() except +
+        map[Term, string] getNamedTerms() except +
 
     cdef cppclass Command:
         Command() except +

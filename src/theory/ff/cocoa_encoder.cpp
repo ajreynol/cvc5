@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Alex Ozdemir
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -76,7 +73,10 @@ CoCoA::symbol cocoaSym(const std::string& varName, std::optional<size_t> index)
   return index.has_value() ? CoCoA::symbol(s, *index) : CoCoA::symbol(s);
 }
 
-CocoaEncoder::CocoaEncoder(const FfSize& size) : FieldObj(size) {}
+CocoaEncoder::CocoaEncoder(NodeManager* nm, const FfSize& size)
+    : FieldObj(nm, size)
+{
+}
 
 CoCoA::symbol CocoaEncoder::freshSym(const std::string& varName,
                                      std::optional<size_t> index)
@@ -116,7 +116,8 @@ void CocoaEncoder::endScan()
 {
   Assert(d_stage == Stage::Scan);
   d_stage = Stage::Encode;
-  d_polyRing = CoCoA::NewPolyRing(coeffRing(), d_syms);
+  d_coeffRing = CoCoA::NewZZmod(intToCocoa(size()));
+  d_polyRing = CoCoA::NewPolyRing(*d_coeffRing, d_syms);
   for (size_t i = 0, n = d_syms.size(); i < n; ++i)
   {
     d_symPolys.insert({extractStr(d_syms[i]), CoCoA::indet(*d_polyRing, i)});
@@ -208,10 +209,21 @@ std::vector<std::pair<size_t, Node>> CocoaEncoder::nodeIndets() const
   return out;
 }
 
-FiniteFieldValue CocoaEncoder::cocoaFfToFfVal(const Scalar& elem)
+FiniteFieldValue CocoaEncoder::cocoaFfToFfVal(const Scalar& elem) const
 {
-  Assert(CoCoA::owner(elem) == coeffRing());
+  Assert(d_coeffRing.has_value());
+  Assert(CoCoA::owner(elem) == d_coeffRing);
   return ff::cocoaFfToFfVal(elem, size());
+}
+
+const Node& CocoaEncoder::polyFact(const Poly& poly) const
+{
+  return d_polyFacts.at(extractStr(poly));
+}
+
+bool CocoaEncoder::polyHasFact(const Poly& poly) const
+{
+  return d_polyFacts.count(extractStr(poly));
 }
 
 const Poly& CocoaEncoder::symPoly(CoCoA::symbol s) const
@@ -293,12 +305,13 @@ void CocoaEncoder::encodeFact(const Node& f)
 {
   Assert(d_stage == Stage::Encode);
   Assert(isFfFact(f, size()));
+  Poly p;
   // ==
   if (f.getKind() == Kind::EQUAL)
   {
     encodeTerm(f[0]);
     encodeTerm(f[1]);
-    d_cache.insert({f, d_cache.at(f[0]) - d_cache.at(f[1])});
+    p = d_cache.at(f[0]) - d_cache.at(f[1]);
   }
   // !=
   else
@@ -306,8 +319,16 @@ void CocoaEncoder::encodeFact(const Node& f)
     encodeTerm(f[0][0]);
     encodeTerm(f[0][1]);
     Poly diff = d_cache.at(f[0][0]) - d_cache.at(f[0][1]);
-    d_cache.insert({f, diff * symPoly(d_diseqSyms.at(f)) - 1});
+    p = diff * symPoly(d_diseqSyms.at(f)) - 1;
   }
+  if (!CoCoA::IsZero(p))
+  {
+    // normalize; if we don't do it, CoCoA will in GB input, confusing our
+    // tracer.
+    p = p / CoCoA::LC(p);
+  }
+  d_cache.insert({f, p});
+  d_polyFacts.insert({extractStr(p), f});
 }
 
 }  // namespace ff

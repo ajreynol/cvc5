@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Aina Niemetz
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -61,7 +58,8 @@ OracleEngine::OracleEngine(Env& env,
   Assert(d_ochecker != nullptr);
 }
 
-void OracleEngine::presolve() {
+void OracleEngine::presolve()
+{
   // Ensure all oracle functions in top-level substitutions occur in
   // lemmas. Otherwise the oracles will not be invoked for those values
   // and the model will be inaccurate.
@@ -83,8 +81,7 @@ void OracleEngine::presolve() {
       visited.insert(cur);
       if (OracleCaller::isOracleFunctionApp(cur))
       {
-        SkolemManager* sm = NodeManager::currentNM()->getSkolemManager();
-        Node k = sm->mkPurifySkolem(cur);
+        Node k = SkolemManager::mkPurifySkolem(cur);
         Node eq = k.eqNode(cur);
         d_qim.lemma(eq, InferenceId::QUANTIFIERS_ORACLE_PURIFY_SUBS);
       }
@@ -108,35 +105,28 @@ bool OracleEngine::needsCheck(Theory::Effort e)
 }
 
 // the model is built at this effort level
-OracleEngine::QEffort OracleEngine::needsModel(Theory::Effort e)
+OracleEngine::QEffort OracleEngine::needsModel(CVC5_UNUSED Theory::Effort e)
 {
   return QEFFORT_MODEL;
 }
 
-void OracleEngine::reset_round(Theory::Effort e)
+void OracleEngine::reset_round(CVC5_UNUSED Theory::Effort e)
 {
   d_consistencyCheckPassed = false;
 }
 
-void OracleEngine::registerQuantifier(Node q) {}
+void OracleEngine::registerQuantifier(CVC5_UNUSED Node q) {}
 
-void OracleEngine::check(Theory::Effort e, QEffort quant_e)
+void OracleEngine::check(CVC5_UNUSED Theory::Effort e, QEffort quant_e)
 {
   if (quant_e != QEFFORT_MODEL)
   {
     return;
   }
 
-  double clSet = 0;
-  if (TraceIsOn("oracle-engine"))
-  {
-    clSet = double(clock()) / double(CLOCKS_PER_SEC);
-    Trace("oracle-engine") << "---Oracle Engine Round, effort = " << e << "---"
-                           << std::endl;
-  }
   FirstOrderModel* fm = d_treg.getModel();
   TermDb* termDatabase = d_treg.getTermDatabase();
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   unsigned nquant = fm->getNumAssertedQuantifiers();
   std::vector<Node> currInterfaces;
   for (unsigned i = 0; i < nquant; i++)
@@ -148,6 +138,11 @@ void OracleEngine::check(Theory::Effort e, QEffort quant_e)
     }
     currInterfaces.push_back(q);
   }
+  if (d_oracleFuns.empty() && currInterfaces.empty())
+  {
+    return;
+  }
+  beginCallDebug();
   // Note that we currently ignore oracle interface quantified formulas, and
   // look directly at the oracle functions. Note that:
   // (1) The lemmas with InferenceId QUANTIFIERS_ORACLE_INTERFACE are not
@@ -199,7 +194,9 @@ void OracleEngine::check(Theory::Effort e, QEffort quant_e)
         // instead of (= (f values) result) here. The latter may be more
         // compact, but we require introducing literals for (= args values)
         // so that they can be preferred by the decision strategy.
-        std::vector<Node> ant;
+        std::vector<Node> disj;
+        Node conc = nm->mkNode(Kind::EQUAL, fapp, result);
+        disj.push_back(conc);
         for (size_t i = 0, nchild = fapp.getNumChildren(); i < nchild; i++)
         {
           Node eqa = fapp[i].eqNode(arguments[i + 1]);
@@ -208,11 +205,9 @@ void OracleEngine::check(Theory::Effort e, QEffort quant_e)
           // true first. This is to ensure that the value of the oracle can be
           // used.
           d_dstrat.addLiteral(eqa);
-          ant.push_back(eqa);
+          disj.push_back(eqa.notNode());
         }
-        Node antn = nm->mkAnd(ant);
-        Node conc = nm->mkNode(Kind::EQUAL, fapp, result);
-        Node lem = nm->mkNode(Kind::OR, conc, antn.notNode());
+        Node lem = nm->mkOr(disj);
         learnedLemmas.push_back(lem);
         allFappsConsistent = false;
       }
@@ -235,12 +230,7 @@ void OracleEngine::check(Theory::Effort e, QEffort quant_e)
   }
   // general SMTO: call constraint generators and assumption generators here
 
-  if (TraceIsOn("oracle-engine"))
-  {
-    double clSet2 = double(clock()) / double(CLOCKS_PER_SEC);
-    Trace("oracle-engine") << "Finished oracle engine, time = "
-                           << (clSet2 - clSet) << std::endl;
-  }
+  endCallDebug();
 }
 
 bool OracleEngine::checkCompleteFor(Node q)
@@ -272,7 +262,7 @@ void OracleEngine::checkOwnership(Node q)
     Node assume, constraint, oracle;
     if (!getOracleInterface(q, inputs, outputs, assume, constraint, oracle))
     {
-      Assert(false) << "Not an oracle interface " << q;
+      DebugUnhandled() << "Not an oracle interface " << q;
     }
     else
     {
@@ -323,7 +313,7 @@ Node OracleEngine::mkOracleInterface(const std::vector<Node>& inputs,
   Assert(!assume.isNull());
   Assert(!constraint.isNull());
   Assert(oracleNode.getKind() == Kind::ORACLE);
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = oracleNode.getNodeManager();
   Node ipl = nm->mkNode(Kind::INST_PATTERN_LIST,
                         nm->mkNode(Kind::INST_ATTRIBUTE, oracleNode));
   std::vector<Node> vars;

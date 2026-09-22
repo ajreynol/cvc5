@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -20,10 +17,9 @@ namespace cvc5::internal {
 
 TNode FreeVarCache::getFreeVar(const TypeNode& tn, size_t i)
 {
-  NodeManager* nm = NodeManager::currentNM();
   while (i >= d_fv[tn].size())
   {
-    Node v = nm->mkBoundVar(tn);
+    Node v = NodeManager::mkBoundVar(tn);
     d_allVars.push_back(v);
     // store its id
     d_fvId[v] = d_fv[tn].size();
@@ -52,8 +48,8 @@ size_t FreeVarCache::getFreeVarId(const Node& n) const
   std::map<Node, size_t>::const_iterator it = d_fvId.find(n);
   if (it == d_fvId.end())
   {
-    Assert(false) << "FreeVarCache::isFreeVar: " << n
-                  << " is not a cached free variable.";
+    DebugUnhandled() << "FreeVarCache::isFreeVar: " << n
+                     << " is not a cached free variable.";
     return 0;
   }
   return it->second;

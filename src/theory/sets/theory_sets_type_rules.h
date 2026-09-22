@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Mudathir Mohamed, Andrew Reynolds, Tim King
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -165,9 +162,10 @@ struct ChooseTypeRule
 };
 
 /**
- * Type rule for (set.is_singleton A) to check the argument A is a set.
+ * Type rule for (set.is_empty A) and (set.is_singleton A) to check the argument
+ * A is a set.
  */
-struct IsSingletonTypeRule
+struct IsSetTypeRule
 {
   static TypeNode preComputeType(NodeManager* nm, TNode n);
 
@@ -218,6 +216,21 @@ struct SetFilterTypeRule
                               bool check,
                               std::ostream* errOut);
 }; /* struct SetFilterTypeRule */
+
+/**
+ * Type rule for (set.all p A) and (set.some p A) to make sure p is
+ * a unary predicate of type
+ * (-> T Bool) where A is a set of type (Set T)
+ */
+struct SetAllSomeTypeRule
+{
+  static TypeNode preComputeType(NodeManager* nm, TNode n);
+
+  static TypeNode computeType(NodeManager* nodeManager,
+                              TNode n,
+                              bool check,
+                              std::ostream* errOut);
+}; /* struct SetAllSomeTypeRule */
 
 /**
  * Type rule for (set.fold f t A) to make sure f is a binary operation of type
@@ -379,6 +392,19 @@ struct RelationAggregateTypeRule
                               bool check,
                               std::ostream* errOut);
 }; /* struct RelationAggregateTypeRule */
+
+/**
+ * Type rule for set.empty_of_type
+ */
+struct SetEmptyOfTypeTypeRule
+{
+  static TypeNode preComputeType(NodeManager* nm, TNode n);
+
+  static TypeNode computeType(NodeManager* nodeManager,
+                              TNode n,
+                              bool check,
+                              std::ostream* errOut);
+};
 
 struct SetsProperties
 {

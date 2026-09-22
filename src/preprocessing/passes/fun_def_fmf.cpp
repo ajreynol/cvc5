@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Aina Niemetz, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -93,7 +90,6 @@ void FunDefFmf::process(AssertionPipeline* assertionsToPreprocess)
   std::map<int, Node> subs_head;
   // first pass : find defined functions, transform quantifiers
   NodeManager* nm = nodeManager();
-  SkolemManager* sm = nm->getSkolemManager();
   for (size_t i = 0, asize = assertions.size(); i < asize; i++)
   {
     Node n = QuantAttributes::getFunDefHead(assertions[i]);
@@ -125,7 +121,7 @@ void FunDefFmf::process(AssertionPipeline* assertionsToPreprocess)
         // We then make the sort constructor applied to that type. For example,
         // this is (@fmf-fun-sort f), where here f is an uninterpreted sort.
         // This is done to have a clear name for this sort, and to support
-        // proof printing in ALF where @fmf-fun-sort is a type constructor
+        // proof printing in Eunoia where @fmf-fun-sort is a type constructor
         // parameterized by a function.
         iType = nm->mkSort(d_fmfFunSc, {iType});
         AbsTypeFunDefAttribute atfda;
@@ -139,13 +135,13 @@ void FunDefFmf::process(AssertionPipeline* assertionsToPreprocess)
           TypeNode typ = nm->mkFunctionType(iType, n[j].getType());
           std::stringstream ssf;
           ssf << f << "_arg_" << j;
-          d_input_arg_inj[f].push_back(sm->mkDummySkolem(
-              ssf.str(), typ, "op created during fun def fmf"));
+          d_input_arg_inj[f].push_back(
+              NodeManager::mkDummySkolem(ssf.str(), typ));
         }
 
         // construct new quantifier forall S. F[f1(S)/x1....fn(S)/xn]
         std::vector<Node> children;
-        Node bv = nm->mkBoundVar("?i", iType);
+        Node bv = NodeManager::mkBoundVar("?i", iType);
         Node bvl = nm->mkNode(Kind::BOUND_VAR_LIST, bv);
         std::vector<Node> subs;
         std::vector<Node> vars;
@@ -162,8 +158,9 @@ void FunDefFmf::process(AssertionPipeline* assertionsToPreprocess)
             << "FMF fun def: FUNCTION : rewrite " << assertions[i] << std::endl;
         Trace("fmf-fun-def") << "  to " << std::endl;
         Node new_q = nm->mkNode(Kind::FORALL, bvl, bd);
-        new_q = rewrite(new_q);
-        assertionsToPreprocess->replace(i, new_q);
+        assertionsToPreprocess->replace(
+            i, new_q, nullptr, TrustId::PREPROCESS_FUN_DEF_FMF);
+        assertionsToPreprocess->ensureRewritten(i);
         Trace("fmf-fun-def") << "  " << assertions[i] << std::endl;
         fd_assertions.push_back(i);
       }
@@ -201,7 +198,8 @@ void FunDefFmf::process(AssertionPipeline* assertionsToPreprocess)
           << "FMF fun def : rewrite " << assertions[i] << std::endl;
       Trace("fmf-fun-def-rewrite") << "  to " << std::endl;
       Trace("fmf-fun-def-rewrite") << "  " << n << std::endl;
-      assertionsToPreprocess->replace(i, n);
+      assertionsToPreprocess->replace(
+          i, n, nullptr, TrustId::PREPROCESS_FUN_DEF_FMF);
     }
   }
 }
@@ -444,7 +442,7 @@ void FunDefFmf::getConstraints(Node n,
       if (it != d_sorts.end())
       {
         // create existential
-        Node z = nm->mkBoundVar("?z", it->second);
+        Node z = NodeManager::mkBoundVar("?z", it->second);
         Node bvl = nm->mkNode(Kind::BOUND_VAR_LIST, z);
         std::vector<Node> children;
         for (unsigned j = 0, size = n.getNumChildren(); j < size; j++)

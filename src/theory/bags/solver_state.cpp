@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Mudathir Mohamed, Aina Niemetz, Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -45,7 +42,7 @@ void SolverState::registerBag(TNode n)
 void SolverState::registerCountTerm(Node bag, Node element, Node skolem)
 {
   Assert(bag.getType().isBag() && bag == getRepresentative(bag));
-  Assert(element.getType() == bag.getType().getBagElementType()
+  Assert(CVC5_EQUAL(element.getType(), bag.getType().getBagElementType())
          && element == getRepresentative(element));
   Assert(skolem.isVar() && skolem.getType().isInteger());
   std::pair<Node, Node> pair = std::make_pair(element, skolem);
@@ -139,7 +136,7 @@ const std::map<Node, Node>& SolverState::getDisequalBagTerms() { return d_deq; }
 void SolverState::registerPartElementSkolem(Node group, Node skolemElement)
 {
   Assert(group.getKind() == Kind::TABLE_GROUP);
-  Assert(skolemElement.getType() == group[0].getType().getBagElementType());
+  AssertEqual(skolemElement.getType(), group[0].getType().getBagElementType());
   d_partElementSkolems[group].get()->insert(skolemElement);
 }
 
@@ -176,8 +173,8 @@ void SolverState::checkInjectivity(Node n)
   }
 
   TypeNode domainType = f.getType().getArgTypes()[0];
-  Node x = sm->mkDummySkolem("x", domainType);
-  Node y = sm->mkDummySkolem("y", domainType);
+  Node x = NodeManager::mkDummySkolem("x", domainType);
+  Node y = NodeManager::mkDummySkolem("y", domainType);
   Node f_x = d_nm->mkNode(Kind::APPLY_UF, f, x);
   Node f_y = d_nm->mkNode(Kind::APPLY_UF, f, y);
   Node f_x_equals_f_y = f_x.eqNode(f_y);

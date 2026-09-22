@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Alex Ozdemir, Aina Niemetz
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -70,7 +67,7 @@ Node TheoryFiniteFieldsRewriter::preRewriteFfNeg(TNode t)
 Node TheoryFiniteFieldsRewriter::preRewriteFfAdd(TNode t)
 {
   Assert(t.getKind() == Kind::FINITE_FIELD_ADD);
-  return expr::algorithm::flatten(t);
+  return expr::algorithm::flatten(d_nm, t);
 }
 
 Node TheoryFiniteFieldsRewriter::postRewriteFfAdd(TNode t)
@@ -131,7 +128,7 @@ Node TheoryFiniteFieldsRewriter::postRewriteFfAdd(TNode t)
     {
       Node c = nm->mkConst(summand.second);
       summands.push_back(expr::algorithm::flatten(
-          nm->mkNode(Kind::FINITE_FIELD_MULT, c, summand.first)));
+          nm, nm->mkNode(Kind::FINITE_FIELD_MULT, c, summand.first)));
     }
   }
   if (summands.size() == 0)
@@ -145,7 +142,7 @@ Node TheoryFiniteFieldsRewriter::postRewriteFfAdd(TNode t)
 Node TheoryFiniteFieldsRewriter::preRewriteFfMult(TNode t)
 {
   Assert(t.getKind() == Kind::FINITE_FIELD_MULT);
-  return expr::algorithm::flatten(t);
+  return expr::algorithm::flatten(d_nm, t);
 }
 
 Node TheoryFiniteFieldsRewriter::postRewriteFfMult(TNode t)
@@ -184,6 +181,31 @@ Node TheoryFiniteFieldsRewriter::postRewriteFfMult(TNode t)
   return mkNary(Kind::FINITE_FIELD_MULT, std::move(factors));
 }
 
+Node TheoryFiniteFieldsRewriter::postRewriteFfBitsum(TNode t)
+{
+  const TypeNode field = t.getType();
+  Assert(field.isFiniteField());
+
+  FiniteFieldValue one = FiniteFieldValue::mkOne(field.getFfSize());
+  FiniteFieldValue two = one + one;
+  FiniteFieldValue multiplier = one;
+  FiniteFieldValue acc = FiniteFieldValue::mkZero(field.getFfSize());
+
+  for (const auto& child : t)
+  {
+    if (child.isConst())
+    {
+      acc = acc + multiplier * child.getConst<FiniteFieldValue>();
+    }
+    else
+    {
+      return t;
+    }
+    multiplier *= two;
+  }
+  return nodeManager()->mkConst(acc);
+}
+
 Node TheoryFiniteFieldsRewriter::postRewriteFfEq(TNode t)
 {
   Assert(t.getKind() == Kind::EQUAL);
@@ -220,6 +242,8 @@ RewriteResponse TheoryFiniteFieldsRewriter::postRewrite(TNode t)
     }
     case Kind::FINITE_FIELD_MULT:
       return RewriteResponse(REWRITE_DONE, postRewriteFfMult(t));
+    case Kind::FINITE_FIELD_BITSUM:
+      return RewriteResponse(REWRITE_DONE, postRewriteFfBitsum(t));
     case Kind::EQUAL: return RewriteResponse(REWRITE_DONE, postRewriteFfEq(t));
     default: return RewriteResponse(REWRITE_DONE, t);
   }

@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Haniel Barbosa, Andrew Reynolds, Hans-Jörg Schurr
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -31,13 +28,13 @@ void UfProofRuleChecker::registerTo(ProofChecker* pc)
   pc->registerChecker(ProofRule::TRANS, this);
   pc->registerChecker(ProofRule::CONG, this);
   pc->registerChecker(ProofRule::NARY_CONG, this);
+  pc->registerChecker(ProofRule::PAIRWISE_CONG, this);
   pc->registerChecker(ProofRule::TRUE_INTRO, this);
   pc->registerChecker(ProofRule::TRUE_ELIM, this);
   pc->registerChecker(ProofRule::FALSE_INTRO, this);
   pc->registerChecker(ProofRule::FALSE_ELIM, this);
   pc->registerChecker(ProofRule::HO_CONG, this);
   pc->registerChecker(ProofRule::HO_APP_ENCODE, this);
-  pc->registerChecker(ProofRule::BETA_REDUCE, this);
 }
 
 Node UfProofRuleChecker::checkInternal(ProofRule id,
@@ -90,35 +87,32 @@ Node UfProofRuleChecker::checkInternal(ProofRule id,
     }
     return first.eqNode(curr);
   }
-  else if (id == ProofRule::CONG || id == ProofRule::NARY_CONG)
+  else if (id == ProofRule::CONG || id == ProofRule::NARY_CONG
+           || id == ProofRule::PAIRWISE_CONG)
   {
     Assert(children.size() > 0);
-    Assert(args.size() >= 1 && args.size() <= 2);
+    if (args.size() != 1)
+    {
+      return Node::null();
+    }
+    Node t = args[0];
+    Trace("uf-pfcheck") << "congruence " << id << " for " << args[0]
+                        << std::endl;
     // We do congruence over builtin kinds using operatorToKind
     std::vector<Node> lchildren;
     std::vector<Node> rchildren;
-    // get the kind encoded as args[0]
-    Kind k;
-    if (!getKind(args[0], k))
-    {
-      return Node::null();
-    }
-    // cannot use HO_APPLY
-    if (k == Kind::UNDEFINED_KIND || k == Kind::HO_APPLY)
-    {
-      return Node::null();
-    }
-    Trace("uf-pfcheck") << "congruence for " << args[0] << " uses kind " << k
-                        << ", metakind=" << kind::metaKindOf(k) << std::endl;
-    if (args.size() == 2)
+    Kind k = args[0].getKind();
+    if (t.getMetaKind() == metakind::PARAMETERIZED)
     {
       // parameterized kinds require the operator
-      lchildren.push_back(args[1]);
-      rchildren.push_back(args[1]);
+      lchildren.push_back(t.getOperator());
+      rchildren.push_back(t.getOperator());
     }
-    else if (args.size() > 2)
+    // congruence automatically adds variable lists
+    if (t.isClosure())
     {
-      return Node::null();
+      lchildren.push_back(t[0]);
+      rchildren.push_back(t[0]);
     }
     for (size_t i = 0, nchild = children.size(); i < nchild; i++)
     {
@@ -177,10 +171,14 @@ Node UfProofRuleChecker::checkInternal(ProofRule id,
   }
   if (id == ProofRule::HO_CONG)
   {
-    Kind k;
-    if (!getKind(args[0], k))
+    Kind k = Kind::HO_APPLY;
+    // kind argument is optional, defaults to HO_APPLY
+    if (args.size() == 1)
     {
-      return Node::null();
+      if (!getKind(args[0], k))
+      {
+        return Node::null();
+      }
     }
     std::vector<Node> lchildren;
     std::vector<Node> rchildren;
@@ -204,29 +202,6 @@ Node UfProofRuleChecker::checkInternal(ProofRule id,
     Assert(args.size() == 1);
     Node ret = TheoryUfRewriter::getHoApplyForApplyUf(args[0]);
     return args[0].eqNode(ret);
-  }
-  else if (id == ProofRule::BETA_REDUCE)
-  {
-    Assert(args.size() >= 2);
-    Node lambda = args[0];
-    if (lambda.getKind() != Kind::LAMBDA)
-    {
-      return Node::null();
-    }
-    std::vector<TNode> vars(lambda[0].begin(), lambda[0].end());
-    std::vector<TNode> subs(args.begin() + 1, args.end());
-    if (vars.size() != subs.size())
-    {
-      return Node::null();
-    }
-    NodeManager* nm = nodeManager();
-    std::vector<Node> appArgs;
-    appArgs.push_back(lambda);
-    appArgs.insert(appArgs.end(), subs.begin(), subs.end());
-    Node app = nm->mkNode(Kind::APPLY_UF, appArgs);
-    Node ret = lambda[1].substitute(
-        vars.begin(), vars.end(), subs.begin(), subs.end());
-    return app.eqNode(ret);
   }
   // no rule
   return Node::null();

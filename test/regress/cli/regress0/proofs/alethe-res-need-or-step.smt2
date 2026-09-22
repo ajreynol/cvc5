@@ -1,4 +1,5 @@
-; COMMAND-LINE: --dump-proofs --proof-format-mode=alethe --dag-thresh=0 --simplification=none --proof-granularity=theory-rewrite --no-proof-alethe-res-pivots --proof-alethe-experimental
+; REQUIRES: unrestricted-mode
+; COMMAND-LINE: --dump-proofs --proof-format-mode=alethe --dag-thresh=0 --simplification=none --proof-granularity=theory-rewrite --no-proof-alethe-res-pivots
 ; EXIT: 0
 ; SCRUBBER: grep -v -E '.*'
 (set-logic QF_UF)

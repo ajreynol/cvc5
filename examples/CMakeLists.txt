@@ -1,10 +1,7 @@
 ###############################################################################
-# Top contributors (to current version):
-#   Aina Niemetz, Mathias Preiner, Mudathir Mohamed
-#
 # This file is part of the cvc5 project.
 #
-# Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+# Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
 # in the top-level source directory and their institutional affiliations.
 # All rights reserved.  See the file COPYING in the top-level source
 # directory for licensing information.
@@ -26,7 +23,7 @@ enable_testing()
 # of cvc5Config.cmake.
 find_package(cvc5)
 
-set(EXAMPLES_BIN_DIR ${CMAKE_BINARY_DIR}/bin)
+set(EXAMPLES_BIN_DIR ${PROJECT_BINARY_DIR}/bin)
 
 # Add example target and create test to run example with ctest.
 #
@@ -71,6 +68,7 @@ cvc5_add_example(simple_vc_cxx "" "")
 cvc5_add_example(simple_vc_quant_cxx "" "")
 
 add_subdirectory(api/cpp)
+add_subdirectory(api/c)
 
 if(TARGET cvc5::cvc5jar)
   find_package(Java REQUIRED)
@@ -85,12 +83,18 @@ if(TARGET cvc5::cvc5jar)
   get_target_property(CVC5_JAR cvc5::cvc5jar JAR_FILE)
   message(STATUS "cvc5jar: ${CVC5_JAR}")
 
+  if(WIN32)
+    set(PATH_SEP ";")
+  else()
+    set(PATH_SEP ":")
+  endif()
+
   add_jar(SimpleVC SimpleVC.java INCLUDE_JARS "${CVC5_JAR}")
   add_test(
     NAME java/SimpleVC
     COMMAND
       ${Java_JAVA_EXECUTABLE}
-        -cp "${CVC5_JAR}:${CMAKE_BINARY_DIR}/SimpleVC.jar"
+        -cp "${CVC5_JAR}${PATH_SEP}${PROJECT_BINARY_DIR}/SimpleVC.jar"
         -Djava.library.path=${CVC5_JNI_PATH}
         SimpleVC
   )

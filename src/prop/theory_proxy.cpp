@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Aina Niemetz, Haniel Barbosa
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -51,6 +48,7 @@ TheoryProxy::TheoryProxy(Env& env,
       d_decisionEngine(nullptr),
       d_trackActiveSkDefs(false),
       d_dmTrackActiveSkDefs(false),
+      d_inSolve(false),
       d_theoryEngine(theoryEngine),
       d_queue(context()),
       d_tpp(env, *theoryEngine),
@@ -72,9 +70,7 @@ TheoryProxy::TheoryProxy(Env& env,
   }
 }
 
-TheoryProxy::~TheoryProxy() {
-  /* nothing to do for now */
-}
+TheoryProxy::~TheoryProxy() { /* nothing to do for now */ }
 
 void TheoryProxy::finishInit(CDCLTSatSolver* ss, CnfStream* cs)
 {
@@ -112,14 +108,18 @@ void TheoryProxy::finishInit(CDCLTSatSolver* ss, CnfStream* cs)
 
 void TheoryProxy::presolve()
 {
+  Trace("theory-proxy") << "TheoryProxy::presolve: begin" << std::endl;
   d_decisionEngine->presolve();
   d_theoryEngine->presolve();
   d_stopSearch = false;
+  Trace("theory-proxy") << "TheoryProxy::presolve: end" << std::endl;
+  d_inSolve = true;
 }
 
 void TheoryProxy::postsolve(SatValue result)
 {
   d_theoryEngine->postsolve(result);
+  d_inSolve = false;
 }
 
 void TheoryProxy::notifyTopLevelSubstitution(const Node& lhs,
@@ -202,7 +202,8 @@ void TheoryProxy::notifyAssertion(Node a,
   d_prr->addAssertion(a, skolem, isLemma);
 }
 
-void TheoryProxy::theoryCheck(theory::Theory::Effort effort) {
+void TheoryProxy::theoryCheck(theory::Theory::Effort effort)
+{
   Trace("theory-proxy") << "TheoryProxy: check " << effort << std::endl;
   d_activatedSkDefs = false;
   // check with the preregistrar
@@ -271,31 +272,31 @@ void TheoryProxy::theoryCheck(theory::Theory::Effort effort) {
   }
 }
 
-void TheoryProxy::theoryPropagate(std::vector<SatLiteral>& output) {
+void TheoryProxy::theoryPropagate(std::vector<SatLiteral>& output)
+{
   // Get the propagated literals
   std::vector<TNode> outputNodes;
   d_theoryEngine->getPropagatedLiterals(outputNodes);
-  for (unsigned i = 0, i_end = outputNodes.size(); i < i_end; ++ i) {
-    Trace("prop-explain") << "theoryPropagate() => " << outputNodes[i] << std::endl;
+  for (unsigned i = 0, i_end = outputNodes.size(); i < i_end; ++i)
+  {
+    Trace("prop-explain") << "theoryPropagate() => " << outputNodes[i]
+                          << std::endl;
     output.push_back(d_cnfStream->getLiteral(outputNodes[i]));
   }
 }
 
-void TheoryProxy::explainPropagation(SatLiteral l, SatClause& explanation) {
+void TheoryProxy::explainPropagation(SatLiteral l, SatClause& explanation)
+{
   TNode lNode = d_cnfStream->getNode(l);
   Trace("prop-explain") << "explainPropagation(" << lNode << ")" << std::endl;
 
   TrustNode tte = d_theoryEngine->getExplanation(lNode);
   Node theoryExplanation = tte.getNode();
-  if (d_env.isSatProofProducing())
-  {
-    Assert(options().smt.proofMode != options::ProofMode::FULL
-           || tte.getGenerator());
-    // notify the prop engine of the explanation, which is only relevant if
-    // we are proof producing for the purposes of storing the CNF of the
-    // explanation.
-    d_propEngine->notifyExplainedPropagation(tte);
-  }
+  Assert(!d_env.isTheoryProofProducing() || tte.getGenerator());
+  // notify the prop engine of the explanation, which is only relevant if
+  // we are proof producing for the purposes of storing the CNF of the
+  // explanation.
+  d_propEngine->notifyExplainedPropagation(tte);
   Trace("prop-explain") << "explainPropagation() => " << theoryExplanation
                         << std::endl;
   explanation.push_back(l);
@@ -331,18 +332,33 @@ void TheoryProxy::notifySatClause(const SatClause& clause)
     // nothing to do if no plugins
     return;
   }
+  if (!d_inSolve && options().base.pluginNotifySatClauseInSolve)
+  {
+    // We are not in solving mode. We do not inform plugins of SAT clauses
+    // if pluginNotifySatClauseInSolve is true (default).
+    return;
+  }
   // convert to node
+  const auto& nodeCache = d_cnfStream->getNodeCache();
   std::vector<Node> clauseNodes;
   for (const SatLiteral& l : clause)
   {
-    clauseNodes.push_back(d_cnfStream->getNode(l));
+    auto it = nodeCache.find(l);
+    // This should only return null nodes with CaDiCaL when clauses contain
+    // activation literals, i.e., clauses learned at user level > 0.
+    if (it != nodeCache.end())
+    {
+      clauseNodes.push_back(it->second);
+    }
   }
-  Node cln = NodeManager::currentNM()->mkOr(clauseNodes);
-  // getSharableFormula is independent of specific plugin, just use first
-  Node clns = plugins[0]->getSharableFormula(cln);
+  Node cln = nodeManager()->mkOr(clauseNodes);
+  // get the sharable form of cln
+  Node clns = d_env.getSharableFormula(cln);
   if (!clns.isNull())
   {
-    Trace("prop") << "Clause from SAT solver: " << clns << std::endl;
+    Trace("theory-proxy")
+        << "TheoryProxy::notifySatClause: Clause from SAT solver: " << clns
+        << std::endl;
     // notify the plugins
     for (Plugin* p : plugins)
     {
@@ -351,9 +367,11 @@ void TheoryProxy::notifySatClause(const SatClause& clause)
   }
 }
 
-void TheoryProxy::enqueueTheoryLiteral(const SatLiteral& l) {
+void TheoryProxy::enqueueTheoryLiteral(const SatLiteral& l)
+{
   Node literalNode = d_cnfStream->getNode(l);
-  Trace("prop") << "enqueueing theory literal " << l << " " << literalNode << std::endl;
+  Trace("theory-proxy") << "enqueueing theory literal " << l << " "
+                        << literalNode << std::endl;
   Assert(!literalNode.isNull());
   // Decision level = SAT context level - 1 due to global push().
   d_queue.push(std::make_pair(literalNode, context()->getLevel() - 1));
@@ -443,11 +461,10 @@ theory::IncompleteId TheoryProxy::getRefutationUnsoundId() const
   return d_theoryEngine->getRefutationUnsoundId();
 }
 
-TNode TheoryProxy::getNode(SatLiteral lit) {
-  return d_cnfStream->getNode(lit);
-}
+TNode TheoryProxy::getNode(SatLiteral lit) { return d_cnfStream->getNode(lit); }
 
-void TheoryProxy::notifyRestart() {
+void TheoryProxy::notifyRestart()
+{
   d_propEngine->spendResource(Resource::RestartStep);
   d_theoryEngine->notifyRestart();
 }

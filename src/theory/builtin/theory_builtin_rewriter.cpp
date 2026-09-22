@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Aina Niemetz, Morgan Deters
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -30,39 +27,6 @@ using namespace std;
 namespace cvc5::internal {
 namespace theory {
 namespace builtin {
-
-Node TheoryBuiltinRewriter::blastDistinct(TNode in)
-{
-  Assert(in.getKind() == Kind::DISTINCT);
-
-  NodeManager* nm = nodeManager();
-
-  if (in[0].getType().isCardinalityLessThan(in.getNumChildren()))
-  {
-    // Cardinality of type does not allow to find distinct values for all
-    // children of this node.
-    return nm->mkConst<bool>(false);
-  }
-
-  if (in.getNumChildren() == 2)
-  {
-    // if this is the case exactly 1 != pair will be generated so the
-    // AND is not required
-    return nm->mkNode(Kind::NOT, nm->mkNode(Kind::EQUAL, in[0], in[1]));
-  }
-
-  // assume that in.getNumChildren() > 2 => diseqs.size() > 1
-  vector<Node> diseqs;
-  for(TNode::iterator i = in.begin(); i != in.end(); ++i) {
-    TNode::iterator j = i;
-    while(++j != in.end()) {
-      Node eq = nm->mkNode(Kind::EQUAL, *i, *j);
-      Node neq = nm->mkNode(Kind::NOT, eq);
-      diseqs.push_back(neq);
-    }
-  }
-  return nm->mkNode(Kind::AND, diseqs);
-}
 
 TheoryBuiltinRewriter::TheoryBuiltinRewriter(NodeManager* nm)
     : TheoryRewriter(nm)
@@ -92,8 +56,6 @@ RewriteResponse TheoryBuiltinRewriter::doRewrite(TNode node)
       Node rnode = rewriteWitness(node);
       return RewriteResponse(REWRITE_DONE, rnode);
     }
-    case Kind::DISTINCT:
-      return RewriteResponse(REWRITE_DONE, blastDistinct(node));
     case Kind::APPLY_INDEXED_SYMBOLIC:
     {
       Node rnode = rewriteApplyIndexedSymbolic(node);
@@ -124,7 +86,7 @@ Node TheoryBuiltinRewriter::rewriteWitness(TNode node)
         // cannot contain the variable, and it must be the same type as the
         // variable
         if (!expr::hasSubterm(node[1][1 - i], node[0][0])
-            && node[1][i].getType() == node[0][0].getType())
+            && CVC5_EQUAL(node[1][i].getType(), node[0][0].getType()))
         {
           return node[1][1 - i];
         }

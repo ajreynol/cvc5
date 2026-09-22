@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Aina Niemetz, Andres Noetzli
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -42,8 +39,7 @@ void HoTermDb::addTermInternal(Node n)
     // nothing special to do with functions
     return;
   }
-  NodeManager* nm = NodeManager::currentNM();
-  SkolemManager* sm = nm->getSkolemManager();
+  NodeManager* nm = n.getNodeManager();
   Node curr = n;
   std::vector<Node> args;
   while (curr.getKind() == Kind::HO_APPLY)
@@ -59,7 +55,7 @@ void HoTermDb::addTermInternal(Node n)
         continue;
       }
       d_hoFunOpPurify.insert(curr);
-      Node psk = sm->mkPurifySkolem(curr);
+      Node psk = SkolemManager::mkPurifySkolem(curr);
       // we do not add it to d_ops since it is an internal operator
       Node eq = psk.eqNode(curr);
       std::vector<Node> children;
@@ -95,7 +91,7 @@ Node HoTermDb::getOperatorRepresentative(TNode op) const
   }
   return op;
 }
-bool HoTermDb::finishResetInternal(Theory::Effort effort)
+bool HoTermDb::finishResetInternal(CVC5_UNUSED Theory::Effort effort)
 {
   if (!options().quantifiers.hoMergeTermDb)
   {
@@ -156,7 +152,6 @@ bool HoTermDb::checkCongruentDisequal(TNode a, TNode b, std::vector<Node>& exp)
   {
     return false;
   }
-  exp.push_back(a.eqNode(b));
   // operators might be disequal
   Node af = getMatchOperator(a);
   Node bf = getMatchOperator(b);
@@ -164,13 +159,13 @@ bool HoTermDb::checkCongruentDisequal(TNode a, TNode b, std::vector<Node>& exp)
   {
     if (a.getKind() == Kind::APPLY_UF && b.getKind() == Kind::APPLY_UF)
     {
-      exp.push_back(af.eqNode(bf).negate());
+      exp.push_back(af.eqNode(bf));
       Assert(d_qstate.areEqual(af, bf))
           << af << " and " << bf << " are not equal";
     }
     else
     {
-      Assert(false);
+      DebugUnhandled();
       return false;
     }
   }
@@ -179,7 +174,7 @@ bool HoTermDb::checkCongruentDisequal(TNode a, TNode b, std::vector<Node>& exp)
 
 Node HoTermDb::getHoTypeMatchPredicate(TypeNode tn)
 {
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = tn.getNodeManager();
   SkolemManager* sm = nm->getSkolemManager();
   TypeNode ptn = nm->mkFunctionType(tn, nm->booleanType());
   return sm->mkInternalSkolemFunction(InternalSkolemId::HO_TYPE_MATCH_PRED,

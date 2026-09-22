@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Mudathir Mohamed, Andres Noetzli
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -45,6 +42,15 @@ class DatatypesRewriter : public TheoryRewriter
   RewriteResponse postRewrite(TNode in) override;
   RewriteResponse preRewrite(TNode in) override;
 
+  /**
+   * Rewrite n based on the proof rewrite rule id.
+   * @param id The rewrite rule.
+   * @param n The node to rewrite.
+   * @return The rewritten version of n based on id, or Node::null() if n
+   * cannot be rewritten.
+   */
+  Node rewriteViaRule(ProofRewriteRule id, const Node& n) override;
+
   /** normalize codatatype constant
    *
    * This returns the normal form of the codatatype constant n. This runs a
@@ -76,6 +82,12 @@ class DatatypesRewriter : public TheoryRewriter
    */
   static Node expandApplySelector(Node n, bool sharedSel);
   /**
+   * Expand updater term. Given n = (APPLY_UPDATER{SELECTOR_k} t s), this method
+   * returns (ITE (APPLY_TESTER{C} t) (C (APPLY_SELECTOR SELECTOR_1
+   * t)...s...(APPLY_SELECTOR SELECTOR_m t)) t). where 1 <= k <= m.
+   */
+  Node expandUpdater(const Node& n);
+  /**
    * Expand a match term into its definition.
    * For example
    *   (MATCH x (((APPLY_CONSTRUCTOR CONS y z) z) (APPLY_CONSTRUCTOR NIL x)))
@@ -84,7 +96,7 @@ class DatatypesRewriter : public TheoryRewriter
    */
   static Node expandMatch(Node n);
   /** expand defintions */
-  TrustNode expandDefinition(Node n) override;
+  Node expandDefinition(Node n) override;
   /**
    * Expand a nullable lift term with an ite expression.
    * Example:

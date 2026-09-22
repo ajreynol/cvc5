@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Gereon Kremer, Hans-Jörg Schurr
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -16,11 +13,9 @@
 #include "theory/theory_inference_manager.h"
 
 #include "options/proof_options.h"
-#include "proof/annotation_proof_generator.h"
 #include "proof/eager_proof_generator.h"
 #include "proof/trust_id.h"
 #include "theory/builtin/proof_checker.h"
-#include "theory/inference_id_proof_annotator.h"
 #include "theory/output_channel.h"
 #include "theory/rewriter.h"
 #include "theory/theory.h"
@@ -65,21 +60,12 @@ TheoryInferenceManager::TheoryInferenceManager(Env& env,
   if (isProofEnabled())
   {
     context::UserContext* u = userContext();
-    ProofNodeManager* pnm = env.getProofNodeManager();
     d_defaultPg.reset(
         new EagerProofGenerator(env, u, statsName + "EagerProofGenerator"));
-    if (options().proof.proofAnnotate)
-    {
-      d_iipa.reset(new InferenceIdProofAnnotator(pnm, u));
-      d_apg.reset(new AnnotationProofGenerator(
-          pnm, u, statsName + "AnnotationProofGenerator"));
-    }
   }
 }
 
-TheoryInferenceManager::~TheoryInferenceManager()
-{
-}
+TheoryInferenceManager::~TheoryInferenceManager() {}
 
 void TheoryInferenceManager::setEqualityEngine(eq::EqualityEngine* ee)
 {
@@ -148,11 +134,6 @@ void TheoryInferenceManager::trustedConflict(TrustNode tconf, InferenceId id)
   resourceManager()->spendResource(id);
   Trace("im") << "(conflict " << id << " " << tconf.getProven() << ")"
               << std::endl;
-  // annotate if the annotation proof generator is active
-  if (d_apg != nullptr)
-  {
-    tconf = annotateId(tconf, id, true);
-  }
   d_out.trustedConflict(tconf, id);
   ++d_numConflicts;
 }
@@ -274,7 +255,7 @@ bool TheoryInferenceManager::trustedLemma(const TrustNode& tlem,
 {
   // if the policy says to cache lemmas, check the cache and return false if
   // we are a duplicate
-  if (d_cacheLemmas)
+  if (d_cacheLemmas && !isLemmaPropertyLocal(p))
   {
     if (!cacheLemma(tlem.getNode(), p))
     {
@@ -289,16 +270,7 @@ bool TheoryInferenceManager::trustedLemma(const TrustNode& tlem,
   // shouldn't send trivially true or false lemmas
   Assert(!rewrite(tlem.getProven()).isConst());
   d_numCurrentLemmas++;
-  // annotate if the annotation proof generator is active
-  if (d_apg != nullptr)
-  {
-    TrustNode tlema = annotateId(tlem, id);
-    d_out.trustedLemma(tlema, id, p);
-  }
-  else
-  {
-    d_out.trustedLemma(tlem, id, p);
-  }
+  d_out.trustedLemma(tlem, id, p);
   return true;
 }
 
@@ -362,7 +334,8 @@ TrustNode TheoryInferenceManager::mkLemmaExp(Node conc,
   return TrustNode::mkTrustLemma(lem, nullptr);
 }
 
-bool TheoryInferenceManager::hasCachedLemma(TNode lem, LemmaProperty p)
+bool TheoryInferenceManager::hasCachedLemma(TNode lem,
+                                            CVC5_UNUSED LemmaProperty p)
 {
   Node rewritten = rewrite(lem);
   return d_lemmasSent.find(rewritten) != d_lemmasSent.end();
@@ -572,7 +545,7 @@ bool TheoryInferenceManager::hasSentFact() const
   return d_numCurrentFacts != 0;
 }
 
-bool TheoryInferenceManager::cacheLemma(TNode lem, LemmaProperty p)
+bool TheoryInferenceManager::cacheLemma(TNode lem, CVC5_UNUSED LemmaProperty p)
 {
   Node rewritten = rewrite(lem);
   if (d_lemmasSent.find(rewritten) != d_lemmasSent.end())
@@ -581,26 +554,6 @@ bool TheoryInferenceManager::cacheLemma(TNode lem, LemmaProperty p)
   }
   d_lemmasSent.insert(rewritten);
   return true;
-}
-
-TrustNode TheoryInferenceManager::annotateId(const TrustNode& trn,
-                                             InferenceId id,
-                                             bool isConflict)
-{
-  Assert(d_iipa != nullptr && d_apg != nullptr);
-  Node lemma = trn.getProven();
-  TrustNode trna = trn;
-  // ensure we have a proof generator, make trusted theory lemma if not
-  if (trn.getGenerator() == nullptr)
-  {
-    Node tid = mkTrustId(TrustId::THEORY_LEMMA);
-    Node tidn =
-        builtin::BuiltinProofRuleChecker::mkTheoryIdNode(d_theory.getId());
-    trna = d_defaultPg->mkTrustNode(
-        trn.getNode(), ProofRule::TRUST, {}, {tid, lemma, tidn}, isConflict);
-  }
-  d_iipa->setAnnotation(lemma, id);
-  return d_apg->transform(trna, d_iipa.get());
 }
 
 DecisionManager* TheoryInferenceManager::getDecisionManager()
@@ -619,10 +572,9 @@ void TheoryInferenceManager::spendResource(Resource r)
   d_out.spendResource(r);
 }
 
-void TheoryInferenceManager::safePoint(Resource r)
-{
-  d_out.safePoint(r);
-}
+void TheoryInferenceManager::safePoint(Resource r) { d_out.safePoint(r); }
+
+void TheoryInferenceManager::markUsed() { d_out.markUsed(); }
 
 void TheoryInferenceManager::setModelUnsound(IncompleteId id)
 {

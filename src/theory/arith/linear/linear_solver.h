@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Tim King, Gereon Kremer
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -47,8 +44,8 @@ class LinearSolver : protected EnvObj
    * Does non-context dependent setup for a node connected to a theory.
    */
   void preRegisterTerm(TNode n);
-  /** Propagate at the given effort level */
-  void propagate(Theory::Effort e);
+  /** Propagate */
+  void propagate();
   /** Explain propagated literal n */
   TrustNode explain(TNode n);
   /**
@@ -73,10 +70,9 @@ class LinearSolver : protected EnvObj
   /** Notify restart */
   void notifyRestart();
   /** Preprocess assert */
-  Theory::PPAssertStatus ppAssert(TrustNode tin,
-                                  TrustSubstitutionMap& outSubstitutions);
+  bool ppAssert(TrustNode tin, TrustSubstitutionMap& outSubstitutions);
   /** Preprocess static learn */
-  void ppStaticLearn(TNode in, NodeBuilder& learned);
+  void ppStaticLearn(TNode in, std::vector<TrustNode>& learned);
 
   EqualityStatus getEqualityStatus(TNode a, TNode b);
 
@@ -88,7 +84,7 @@ class LinearSolver : protected EnvObj
   std::pair<bool, Node> entailmentCheck(TNode lit);
   //--------------------------------- standard check
   /** Pre-check, called before the fact queue of the theory is processed. */
-  bool preCheck(Theory::Effort level, bool newFacts);
+  bool preCheck(bool newFacts);
   /** Pre-notify fact. */
   void preNotifyFact(TNode fact);
   /**
