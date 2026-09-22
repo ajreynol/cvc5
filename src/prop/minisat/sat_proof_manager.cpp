@@ -340,7 +340,7 @@ void SatProofManager::processRedundantLit(
     toProcess.push_back(MinisatSatSolver::toSatLiteral(reason[i]));
   }
   Node clauseNode = getClauseNode(reason);
-    // check if redundant literals in the reason. The first literal is the one we
+  // check if redundant literals in the reason. The first literal is the one we
   // will be eliminating, so we check the others
   for (unsigned i = 0, size = toProcess.size(); i < size; ++i)
   {
@@ -479,7 +479,7 @@ void SatProofManager::explainLit(SatLiteral lit,
       Trace("sat-proof") << "SatProofManager::explainLit:   " << children[i];
       if (i > 0)
       {
-        Trace("sat-proof") << " [" << lits[i] << ", " << pols[i] << "]";
+        Trace("sat-proof") << " [" << lits[i - 1] << ", " << pols[i - 1] << "]";
       }
       Trace("sat-proof") << "\n";
     }
@@ -641,7 +641,7 @@ void SatProofManager::finalizeProof(Node inConflictNode,
       Trace("sat-proof") << "SatProofManager::finalizeProof:   " << children[i];
       if (i > 0)
       {
-        Trace("sat-proof") << " [" << args[i - 1] << "]";
+        Trace("sat-proof") << " [" << lits[i - 1] << ", " << pols[i - 1] << "]";
       }
       Trace("sat-proof") << "\n";
     }

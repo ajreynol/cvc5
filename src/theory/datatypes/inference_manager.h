@@ -26,6 +26,8 @@ class EagerProofGenerator;
 namespace theory {
 namespace datatypes {
 
+class TheoryDatatypes;
+
 /**
  * The datatypes inference manager, which uses the above class for
  * inferences.
@@ -35,7 +37,7 @@ class InferenceManager : public InferenceManagerBuffered
   friend class DatatypesInference;
 
  public:
-  InferenceManager(Env& env, Theory& t, TheoryState& state);
+  InferenceManager(Env& env, TheoryDatatypes& t, TheoryState& state);
   ~InferenceManager();
   /**
    * Add pending inference, which may be processed as either a fact or
@@ -92,7 +94,12 @@ class InferenceManager : public InferenceManagerBuffered
    * status for proof generation. If this is not done, then it is possible
    * to have proofs with missing connections and hence free assumptions.
    */
-  Node prepareDtInference(Node conc, Node exp, InferenceId id, InferProofCons* ipc);
+  Node prepareDtInference(Node conc,
+                          Node exp,
+                          InferenceId id,
+                          InferProofCons* ipc);
+  /** The theory of datatypes, which owns this inference manager */
+  TheoryDatatypes& d_dt;
   /** The false node */
   Node d_false;
   /** The inference to proof converter */

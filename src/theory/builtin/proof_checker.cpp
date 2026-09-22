@@ -21,7 +21,6 @@
 #include "smt/env.h"
 #include "smt/term_formula_removal.h"
 #include "theory/evaluator.h"
-#include "theory/quantifiers/extended_rewrite.h"
 #include "theory/rewriter.h"
 #include "theory/substitutions.h"
 #include "theory/theory.h"
@@ -113,8 +112,8 @@ bool BuiltinProofRuleChecker::getSubstitutionForLit(Node exp,
   else
   {
     DebugUnhandled() << "BuiltinProofRuleChecker::applySubstitution: no "
-                     "substitution for "
-                  << ids << std::endl;
+                        "substitution for "
+                     << ids << std::endl;
     return false;
   }
   return true;
@@ -363,8 +362,9 @@ Node BuiltinProofRuleChecker::checkInternal(ProofRule id,
       return Node::null();
     }
     Trace("builtin-pfcheck") << "Result is " << res << std::endl;
-    Trace("builtin-pfcheck") << "Witness form is "
-                             << SkolemManager::getOriginalForm(res) << std::endl;
+    Trace("builtin-pfcheck")
+        << "Witness form is " << SkolemManager::getOriginalForm(res)
+        << std::endl;
     // **** NOTE: can rewrite the witness form here. This enables certain lemmas
     // to be provable, e.g. (= k t) where k is a purification Skolem for t.
     res = d_rewriter->rewrite(SkolemManager::getOriginalForm(res));

@@ -16,6 +16,7 @@
 #include <cln/numtheory.h>
 
 #include <iostream>
+#include <limits>
 #include <sstream>
 #include <string>
 
@@ -27,6 +28,7 @@
 #endif /* CVC5_CLN_IMP */
 
 #include "base/check.h"
+#include "util/random.h"
 
 using namespace std;
 
@@ -384,7 +386,8 @@ void Integer::parseInt(const std::string& s, unsigned base)
   if (base == 0)
   {
     // infer base in a manner consistent with GMP
-    if (s[0] == '0')
+    // A lone "0" is decimal zero. Rewriting it to "#o" is not a valid integer.
+    if (s[0] == '0' && s.size() > 1)
     {
       flags.lsyntax = cln::lsyntax_commonlisp;
       std::string st = s;
@@ -452,7 +455,7 @@ bool Integer::fitsSignedInt() const
   Assert(s_fastSignedIntMax <= s_slowSignedIntMax);
 
   return (d_value <= s_fastSignedIntMax || d_value <= s_slowSignedIntMax)
-         && (d_value >= s_fastSignedIntMin || d_value >= s_slowSignedIntMax);
+         && (d_value >= s_fastSignedIntMin || d_value >= s_slowSignedIntMin);
 }
 
 bool Integer::fitsUnsignedInt() const
@@ -592,6 +595,16 @@ const Integer& Integer::min(const Integer& a, const Integer& b)
 const Integer& Integer::max(const Integer& a, const Integer& b)
 {
   return (a >= b) ? a : b;
+}
+
+Integer Integer::mkRandom(uint32_t nbits)
+{
+  Assert(nbits > 0);
+  Random& rnd = Random::getRandom();
+  cln::cl_I max(2);
+  max = cln::expt_pos(max, nbits);
+  cln::cl_I res = cln::random_I(*rnd.getCLNRandstate(), max);
+  return Integer(res);
 }
 
 std::ostream& operator<<(std::ostream& os, const Integer& n)

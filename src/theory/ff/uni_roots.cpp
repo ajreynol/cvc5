@@ -26,7 +26,6 @@
 #include <CoCoA/RingZZ.H>
 #include <CoCoA/SmallFpImpl.H>
 #include <CoCoA/SparsePolyOps-RingElem.H>
-#include <CoCoA/SparsePolyOps-vector.H>
 #include <CoCoA/factor.H>
 #include <CoCoA/factorization.H>
 #include <CoCoA/random.H>
@@ -36,8 +35,8 @@
 #include <unordered_map>
 #include <vector>
 
-#include "smt/assertions.h"
 #include "base/output.h"
+#include "smt/assertions.h"
 
 namespace cvc5::internal {
 namespace theory {

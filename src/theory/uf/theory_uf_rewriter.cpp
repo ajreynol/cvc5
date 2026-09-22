@@ -587,7 +587,7 @@ RewriteResponse TheoryUfRewriter::rewriteIntToBV(TNode node)
     {
       // ((_ int2bv w) (bv2nat x)) ---> ((_ extract w-1 0) x)
       Assert(osize < isize);
-      Node extract = bv::utils::mkExtract(node[0][0], osize-1, 0);
+      Node extract = bv::utils::mkExtract(node[0][0], osize - 1, 0);
       return RewriteResponse(REWRITE_AGAIN_FULL, extract);
     }
   }
@@ -662,7 +662,7 @@ RewriteResponse TheoryUfRewriter::rewriteDistinct(TNode node)
   {
     return RewriteResponse(REWRITE_DONE, nodeManager()->mkConst<bool>(true));
   }
-  if (node.getNumChildren() <= 5)
+  if (node.getNumChildren() <= 10)
   {
     return RewriteResponse(REWRITE_DONE, blastDistinct(nodeManager(), node));
   }
