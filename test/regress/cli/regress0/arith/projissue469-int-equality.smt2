@@ -1,3 +1,5 @@
+; REQUIRES: unrestricted-mode
+; COMMAND-LINE:
 ; EXPECT: sat
 (set-logic ALL)
 (set-option :nl-ext-ent-conf true)

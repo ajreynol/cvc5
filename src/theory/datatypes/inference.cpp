@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Gereon Kremer, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -39,20 +36,13 @@ DatatypesInference::DatatypesInference(InferenceManager* im,
 bool DatatypesInference::mustCommunicateFact(Node n, Node exp)
 {
   Trace("dt-lemma-debug") << "Compute for " << exp << " => " << n << std::endl;
-  // Force lemmas if option is set
-  if (options::dtInferAsLemmas())
-  {
-    Trace("dt-lemma-debug")
-        << "Communicate " << n << " due to option" << std::endl;
-    return true;
-  }
   // Note that equalities due to instantiate are forced as lemmas if
   // necessary as they are created. This ensures that terms are shared with
   // external theories when necessary. We send the lemma here only if the
   // conclusion has kind LEQ (for datatypes size) or OR. Notice that
   // all equalities are kept internal, apart from those forced as lemmas
   // via instantiate.
-  else if (n.getKind() == LEQ || n.getKind() == OR)
+  if (n.getKind() == Kind::LEQ || n.getKind() == Kind::OR)
   {
     Trace("dt-lemma-debug")
         << "Communicate " << n << " due to kind" << std::endl;
@@ -62,7 +52,7 @@ bool DatatypesInference::mustCommunicateFact(Node n, Node exp)
   return false;
 }
 
-TrustNode DatatypesInference::processLemma(LemmaProperty& p)
+TrustNode DatatypesInference::processLemma(CVC5_UNUSED LemmaProperty& p)
 {
   // we don't pass lemma property p currently, as it is always default
   return d_im->processDtLemma(d_conc, d_exp, getId());

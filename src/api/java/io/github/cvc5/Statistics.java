@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Mudathir Mohamed, Gereon Kremer, Andres Noetzli
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -20,20 +17,18 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.NoSuchElementException;
 
+/**
+ * Represents a snapshot of the solver statistics.
+ */
 public class Statistics extends AbstractPointer implements Iterable<Map.Entry<String, Stat>>
 {
   // region construction and destruction
-  Statistics(Solver solver, long pointer)
+  Statistics(long pointer)
   {
-    super(solver, pointer);
+    super(pointer);
   }
 
   protected native void deletePointer(long pointer);
-
-  public long getPointer()
-  {
-    return pointer;
-  }
 
   // endregion
 
@@ -52,7 +47,7 @@ public class Statistics extends AbstractPointer implements Iterable<Map.Entry<St
   public Stat get(String name)
   {
     long statPointer = get(pointer, name);
-    return new Stat(solver, statPointer);
+    return new Stat(statPointer);
   }
 
   private native long get(long pointer, String name);
@@ -77,14 +72,29 @@ public class Statistics extends AbstractPointer implements Iterable<Map.Entry<St
 
   private native void deleteIteratorPointer(long iteratorPointer);
 
+  /**
+   * An iterator over the statistics entries maintained by the {@code Statistics} class.
+   * This is a constant (read-only) iterator that returns immutable key-value pairs,
+   * where the key is a {@code String} and the value is a {@code Stat}.
+   */
   public class ConstIterator implements Iterator<Map.Entry<String, Stat>>
   {
     private long iteratorPointer = 0;
 
+    /**
+     * Constructs a new iterator over the statistics with specific filtering options.
+     *
+     * @param internal If {@code true}, internal statistics are included in the iteration.
+     * @param defaulted If {@code true}, statistics that have default values are included.
+     */
     public ConstIterator(boolean internal, boolean defaulted)
     {
       iteratorPointer = getIteratorOpts(pointer, internal, defaulted);
     }
+    /**
+     * Constructs a new iterator over the statistics using default visibility options.
+     * By default, only public (non-internal) and explicitly set statistics are shown.
+     */
     public ConstIterator()
     {
       iteratorPointer = getIterator(pointer);
@@ -102,7 +112,7 @@ public class Statistics extends AbstractPointer implements Iterable<Map.Entry<St
       try
       {
         Pair<String, Long> pair = Statistics.this.getNext(pointer, iteratorPointer);
-        Stat stat = new Stat(solver, pair.second);
+        Stat stat = new Stat(pair.second);
         this.iteratorPointer = Statistics.this.increment(pointer, iteratorPointer);
         return new AbstractMap.SimpleImmutableEntry<>(pair.first, stat);
       }
@@ -113,6 +123,15 @@ public class Statistics extends AbstractPointer implements Iterable<Map.Entry<St
     }
   }
 
+  /**
+   * Begin iteration over the statistics values.
+   * By default, only entries that are public (non-internal) and have been set
+   * are visible while the others are skipped.
+   *
+   * @param internal If set to {@code true}, internal statistics are shown as well.
+   * @param defaulted If set to {@code true}, defaulted statistics are shown as well.
+   * @return A {@code ConstIterator} over the matching statistics entries.
+   */
   public ConstIterator iterator(boolean internal, boolean defaulted)
   {
     return new ConstIterator(internal, defaulted);

@@ -1,7 +1,7 @@
 (set-logic QF_ALL)
 (set-info :status unsat)
 (set-option :produce-models true)
-(set-option :sets-ext true)
+(set-option :sets-exp true)
 (declare-fun A () (Set Int))
 (declare-fun B () (Set Int))
 (declare-fun C () (Set Int))
@@ -25,7 +25,7 @@
 
 (assert (distinct x y z))
 
-(assert (= (set.card (union A (union B (union C D)))) 6))
+(assert (= (set.card (set.union A (set.union B (set.union C D)))) 6))
 
 (assert (= (set.card (as set.universe (Set Int))) 8))
 

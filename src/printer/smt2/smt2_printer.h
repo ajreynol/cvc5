@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Abdalrhman Mohamed, Andrew Reynolds, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -18,32 +15,38 @@
 #ifndef CVC5__PRINTER__SMT2_PRINTER_H
 #define CVC5__PRINTER__SMT2_PRINTER_H
 
+#include <cvc5/cvc5_skolem_id.h>
+
 #include "printer/printer.h"
 
 namespace cvc5::internal {
 
 class LetBinding;
+class DType;
 
 namespace printer {
 namespace smt2 {
 
-enum Variant
+enum class Variant
 {
   no_variant,
-  smt2_6_variant,  // new-style 2.6 syntax, when it makes a difference, with
-                   // support for the string standard
-};                 /* enum Variant */
+  // A variant used for printing commands in the preamble of Eunoia proofs.
+  // This is used by the Eunoia printer.
+  eo_variant
+};
 
 class Smt2Printer : public cvc5::internal::Printer
 {
  public:
-  Smt2Printer(Variant variant = no_variant) : d_variant(variant) {}
+  Smt2Printer(Variant variant = Variant::no_variant) : d_variant(variant) {}
   using cvc5::internal::Printer::toStream;
+  void toStream(std::ostream& out, TNode n) const override;
+  void toStream(std::ostream& out, TNode n, int toDepth, size_t dag) const;
   void toStream(std::ostream& out,
                 TNode n,
-                int toDepth,
-                size_t dag) const override;
-  void toStream(std::ostream& out, const cvc5::CommandStatus* s) const override;
+                const LetBinding* lbind,
+                bool lbindTop) const override;
+  void toStream(std::ostream& out, Kind k) const override;
   void toStream(std::ostream& out, const smt::Model& m) const override;
   /**
    * Writes the unsat core to the stream out.
@@ -51,6 +54,14 @@ class Smt2Printer : public cvc5::internal::Printer
    * (UnsatCore::getCoreNames) for printing named assertions.
    */
   void toStream(std::ostream& out, const UnsatCore& core) const override;
+
+  void toStreamCmdSuccess(std::ostream& out) const override;
+  void toStreamCmdInterrupted(std::ostream& out) const override;
+  void toStreamCmdUnsupported(std::ostream& out) const override;
+  void toStreamCmdFailure(std::ostream& out,
+                          const std::string& message) const override;
+  void toStreamCmdRecoverableFailure(std::ostream& out,
+                                     const std::string& message) const override;
 
   /** Print empty command */
   void toStreamCmdEmpty(std::ostream& out,
@@ -72,21 +83,27 @@ class Smt2Printer : public cvc5::internal::Printer
   /** Print declare-fun command */
   void toStreamCmdDeclareFunction(std::ostream& out,
                                   const std::string& id,
+                                  const std::vector<TypeNode>& argTypes,
                                   TypeNode type) const override;
 
   /** Print declare-oracle-fun command */
   void toStreamCmdDeclareOracleFun(std::ostream& out,
-                                   Node fun,
+                                   const std::string& id,
+                                   const std::vector<TypeNode>& argTypes,
+                                   TypeNode type,
                                    const std::string& binName) const override;
 
   /** Print declare-pool command */
-  void toStreamCmdDeclarePool(std::ostream& out,
-                                      const std::string& id,
-                                      TypeNode type,
-                                      const std::vector<Node>& initValue) const override;
+  void toStreamCmdDeclarePool(
+      std::ostream& out,
+      const std::string& id,
+      TypeNode type,
+      const std::vector<Node>& initValue) const override;
 
   /** Print declare-sort command */
-  void toStreamCmdDeclareType(std::ostream& out, TypeNode type) const override;
+  void toStreamCmdDeclareType(std::ostream& out,
+                              const std::string& id,
+                              size_t arity) const override;
 
   /** Print define-sort command */
   void toStreamCmdDefineType(std::ostream& out,
@@ -120,16 +137,15 @@ class Smt2Printer : public cvc5::internal::Printer
 
   /** Print declare-var command */
   void toStreamCmdDeclareVar(std::ostream& out,
-                             Node var,
+                             const std::string& id,
                              TypeNode type) const override;
 
   /** Print synth-fun command */
-  void toStreamCmdSynthFun(
-      std::ostream& out,
-      Node f,
-      const std::vector<Node>& vars,
-      bool isInv,
-      TypeNode sygusType = TypeNode::null()) const override;
+  void toStreamCmdSynthFun(std::ostream& out,
+                           const std::string& id,
+                           const std::vector<Node>& vars,
+                           TypeNode rangeType,
+                           TypeNode sygusType) const override;
 
   /** Print constraint command */
   void toStreamCmdConstraint(std::ostream& out, Node n) const override;
@@ -150,12 +166,24 @@ class Smt2Printer : public cvc5::internal::Printer
   /** Print check-synth-next command */
   void toStreamCmdCheckSynthNext(std::ostream& out) const override;
 
+  /** Print find-synth command */
+  void toStreamCmdFindSynth(std::ostream& out,
+                            modes::FindSynthTarget fst,
+                            TypeNode sygusType) const override;
+
+  /** Print find-synth-next command */
+  void toStreamCmdFindSynthNext(std::ostream& out) const override;
+
   /** Print simplify command */
   void toStreamCmdSimplify(std::ostream& out, Node nodes) const override;
 
   /** Print get-value command */
   void toStreamCmdGetValue(std::ostream& out,
                            const std::vector<Node>& n) const override;
+
+  /** Print get-model-domain-elements command */
+  void toStreamCmdGetModelDomainElements(std::ostream& out,
+                                         TypeNode type) const override;
 
   /** Print get-assignment command */
   void toStreamCmdGetAssignment(std::ostream& out) const override;
@@ -172,7 +200,8 @@ class Smt2Printer : public cvc5::internal::Printer
       std::ostream& out, const std::vector<Node>& nodes) const override;
 
   /** Print get-proof command */
-  void toStreamCmdGetProof(std::ostream& out) const override;
+  void toStreamCmdGetProof(std::ostream& out,
+                           modes::ProofComponent c) const override;
 
   /** Print get-interpolant command */
   void toStreamCmdGetInterpol(std::ostream& out,
@@ -206,8 +235,16 @@ class Smt2Printer : public cvc5::internal::Printer
   /** Print get-difficulty command */
   void toStreamCmdGetDifficulty(std::ostream& out) const override;
 
+  /** Print get-timeout-core command */
+  void toStreamCmdGetTimeoutCore(std::ostream& out) const override;
+
+  /** Print get-timeout-core-assuming command */
+  void toStreamCmdGetTimeoutCoreAssuming(
+      std::ostream& out, const std::vector<Node>& assumptions) const override;
+
   /** Print get-learned-literals command */
-  void toStreamCmdGetLearnedLiterals(std::ostream& out) const override;
+  void toStreamCmdGetLearnedLiterals(std::ostream& out,
+                                     modes::LearnedLitType t) const override;
 
   /** Print get-assertions command */
   void toStreamCmdGetAssertions(std::ostream& out) const override;
@@ -252,26 +289,29 @@ class Smt2Printer : public cvc5::internal::Printer
                               TypeNode locType,
                               TypeNode dataType) const override;
 
-  /** Print command sequence command */
-  void toStreamCmdCommandSequence(
-      std::ostream& out,
-      const std::vector<cvc5::Command*>& sequence) const override;
-
-  /** Print declaration sequence command */
-  void toStreamCmdDeclarationSequence(
-      std::ostream& out,
-      const std::vector<cvc5::Command*>& sequence) const override;
+  /** Print skolems.
+   * @param out The stream to print to
+   * @param cacheVal The cache value of the skolem
+   * @param id The skolem id
+   * @param isApplied Whether the skolem is applied as an APPLY_UF
+   */
+  void toStreamSkolem(std::ostream& out,
+                      Node cacheVal,
+                      SkolemId id,
+                      bool isApplied,
+                      int toDepth,
+                      const LetBinding* lbind) const;
 
   /**
    * Get the string for a kind k, which returns how the kind k is printed in
-   * the SMT-LIB format (with variant v).
+   * the SMT-LIB format.
    */
-  static std::string smtKindString(Kind k, Variant v = smt2_6_variant);
+  static std::string smtKindString(Kind k);
   /**
    * Same as above, but also takes into account the type of the node, which
    * makes a difference for printing sequences.
    */
-  static std::string smtKindStringOf(const Node& n, Variant v = smt2_6_variant);
+  static std::string smtKindStringOf(const Node& n);
   /**
    * Get the string corresponding to the sygus datatype t printed as a grammar.
    */
@@ -279,12 +319,28 @@ class Smt2Printer : public cvc5::internal::Printer
 
  private:
   /**
+   * Base print method.
+   *
+   * This prints n when n is atomic (metakind::CONSTANT or metakind::VARIABLE),
+   * or when we require a special method for printing n (i.e. for match terms
+   * or quantifiers).
+   *
+   * Otherwise, print the operator of n, followed by a space.
+   *
+   * Returns false if we need to print the children of n.
+   */
+  bool toStreamBase(std::ostream& out,
+                    TNode n,
+                    const LetBinding* lbind,
+                    int toDepth) const;
+  /**
    * The main printing method for nodes n.
    */
   void toStream(std::ostream& out,
                 TNode n,
+                const LetBinding* lbind,
                 int toDepth,
-                LetBinding* lbind = nullptr) const;
+                bool lbindTop = true) const;
   /**
    * Prints the vector as a sorted variable list
    */
@@ -295,7 +351,9 @@ class Smt2Printer : public cvc5::internal::Printer
    * `() T` if the type T is not a function, or `(T1 ... Tn) Tr` if T is
    * a function type with argument types T1 ... Tn and return Tr.
    */
-  void toStreamDeclareType(std::ostream& out, TypeNode tn) const;
+  void toStreamDeclareType(std::ostream& out,
+                           const std::vector<TypeNode>& argTypes,
+                           TypeNode tn) const;
   /** To stream type node, which ensures tn is printed in smt2 format */
   void toStreamType(std::ostream& out, TypeNode tn) const;
   /** To stream datatype */

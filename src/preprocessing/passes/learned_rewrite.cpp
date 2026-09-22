@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Gereon Kremer, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -18,10 +15,10 @@
 #include "expr/skolem_manager.h"
 #include "expr/term_context_stack.h"
 #include "preprocessing/assertion_pipeline.h"
-#include "smt/smt_statistics_registry.h"
 #include "theory/arith/arith_msum.h"
 #include "theory/rewriter.h"
 #include "util/rational.h"
+#include "util/statistics_registry.h"
 
 using namespace cvc5::internal::theory;
 using namespace cvc5::internal::kind;
@@ -60,7 +57,7 @@ LearnedRewrite::LearnedRewrite(PreprocessingPassContext* preprocContext)
 PreprocessingPassResult LearnedRewrite::applyInternal(
     AssertionPipeline* assertionsToPreprocess)
 {
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   arith::BoundInference binfer(d_env);
   std::vector<Node> learnedLits = d_preprocContext->getLearnedLiterals();
   std::unordered_set<Node> llrw;
@@ -77,17 +74,18 @@ PreprocessingPassResult LearnedRewrite::applyInternal(
     for (const Node& l : learnedLits)
     {
       // maybe use the literal for bound inference?
-      bool pol = l.getKind()!=NOT;
+      bool pol = l.getKind() != Kind::NOT;
       TNode atom = pol ? l : l[0];
       Kind ak = atom.getKind();
-      Assert(ak != LT && ak != GT && ak != LEQ);
-      if ((ak == EQUAL && pol && atom[0].getType().isRealOrInt()) || ak == GEQ)
+      Assert(ak != Kind::LT && ak != Kind::GT && ak != Kind::LEQ);
+      if ((ak == Kind::EQUAL && pol && atom[0].getType().isRealOrInt())
+          || ak == Kind::GEQ)
       {
         // provide as < if negated >=
         Node atomu;
         if (!pol)
         {
-          atomu = nm->mkNode(LT, atom[0], atom[1]);
+          atomu = nm->mkNode(Kind::LT, atom[0], atom[1]);
           atomu = rewrite(atomu);
           originLit[atomu] = l;
         }
@@ -113,7 +111,7 @@ PreprocessingPassResult LearnedRewrite::applyInternal(
         Node origin = i == 0 ? b.second.lower_origin : b.second.upper_origin;
         if (!origin.isNull())
         {
-          Assert (originLit.find(origin)!=originLit.end());
+          Assert(originLit.find(origin) != originLit.end());
           llrw.insert(originLit[origin]);
         }
       }
@@ -125,7 +123,7 @@ PreprocessingPassResult LearnedRewrite::applyInternal(
       {
         continue;
       }
-      Node e = rewriteLearnedRec(l, binfer, llrw, visited);
+      Node e = rewriteLearnedRec(l, binfer, learnedLits, llrw, visited);
       if (e.isConst())
       {
         // ignore true
@@ -134,7 +132,8 @@ PreprocessingPassResult LearnedRewrite::applyInternal(
           continue;
         }
         // conflict, we are done
-        assertionsToPreprocess->push_back(e);
+        assertionsToPreprocess->push_back(
+            e, false, nullptr, TrustId::PREPROCESS_LEARNED_REWRITE_LEMMA);
         return PreprocessingPassResult::CONFLICT;
       }
       llrw.insert(e);
@@ -147,12 +146,18 @@ PreprocessingPassResult LearnedRewrite::applyInternal(
     Node prev = (*assertionsToPreprocess)[i];
     Trace("learned-rewrite-assert")
         << "LearnedRewrite: assert: " << prev << std::endl;
-    Node e = rewriteLearnedRec(prev, binfer, llrw, visited);
+    Node e = rewriteLearnedRec(prev, binfer, learnedLits, llrw, visited);
     if (e != prev)
     {
+      e = rewrite(e);
       Trace("learned-rewrite-assert")
           << ".......................: " << e << std::endl;
-      assertionsToPreprocess->replace(i, e);
+      assertionsToPreprocess->replace(
+          i, e, nullptr, TrustId::PREPROCESS_LEARNED_REWRITE);
+      if (assertionsToPreprocess->isInConflict())
+      {
+        return PreprocessingPassResult::CONFLICT;
+      }
     }
   }
   // Add the conjunction of learned literals back to assertions. Notice that
@@ -164,7 +169,9 @@ PreprocessingPassResult LearnedRewrite::applyInternal(
     Node llc = nm->mkAnd(llrvec);
     Trace("learned-rewrite-assert")
         << "Re-add rewritten learned conjunction: " << llc << std::endl;
-    assertionsToPreprocess->push_back(llc);
+    llc = rewrite(llc);
+    assertionsToPreprocess->push_back(
+        llc, false, nullptr, TrustId::PREPROCESS_LEARNED_REWRITE_LEMMA);
   }
 
   return PreprocessingPassResult::NO_CONFLICT;
@@ -172,10 +179,11 @@ PreprocessingPassResult LearnedRewrite::applyInternal(
 
 Node LearnedRewrite::rewriteLearnedRec(Node n,
                                        arith::BoundInference& binfer,
+                                       const std::vector<Node>& learnedLits,
                                        std::unordered_set<Node>& lems,
                                        std::unordered_map<TNode, Node>& visited)
 {
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   std::unordered_map<TNode, Node>::iterator it;
   std::vector<TNode> visit;
   TNode cur;
@@ -222,7 +230,8 @@ Node LearnedRewrite::rewriteLearnedRec(Node n,
         ret = nm->mkNode(cur.getKind(), children);
       }
       // rewrite here
-      ret = rewriteLearned(ret, binfer, lems);
+      ret = rewrite(ret);
+      ret = rewriteLearned(ret, binfer, learnedLits);
       visited[cur] = ret;
     }
   } while (!visit.empty());
@@ -231,19 +240,19 @@ Node LearnedRewrite::rewriteLearnedRec(Node n,
   return visited[n];
 }
 
-Node LearnedRewrite::rewriteLearned(Node n,
+Node LearnedRewrite::rewriteLearned(Node nr,
                                     arith::BoundInference& binfer,
-                                    std::unordered_set<Node>& lems)
+                                    const std::vector<Node>& learnedLits)
 {
-  NodeManager* nm = NodeManager::currentNM();
-  Trace("learned-rewrite-rr-debug") << "Rewrite " << n << std::endl;
-  Node nr = rewrite(n);
+  NodeManager* nm = nodeManager();
+  Trace("learned-rewrite-rr-debug") << "Rewrite " << nr << std::endl;
   Kind k = nr.getKind();
-  if (k == INTS_DIVISION || k == INTS_MODULUS || k == DIVISION)
+  if (k == Kind::INTS_DIVISION || k == Kind::INTS_MODULUS
+      || k == Kind::DIVISION)
   {
     // simpler if we know the divisor is non-zero
-    Node num = n[0];
-    Node den = n[1];
+    Node num = nr[0];
+    Node den = nr[1];
     bool isNonZeroDen = false;
     if (den.isConst())
     {
@@ -265,6 +274,32 @@ Node LearnedRewrite::rewriteLearned(Node n,
       {
         isNonZeroDen = true;
       }
+      else
+      {
+        // maybe the disequality is in the learned literal set?
+        Node deq =
+            nm->mkNode(Kind::EQUAL, den, nm->mkConstInt(Rational(0))).notNode();
+        deq = rewrite(deq);
+        if (std::find(learnedLits.begin(), learnedLits.end(), deq)
+            != learnedLits.end())
+        {
+          Trace("learned-rewrite-rr-debug")
+              << "...deq " << deq << " is in learned lit set" << std::endl;
+          isNonZeroDen = true;
+        }
+      }
+    }
+    Kind den_k = den.getKind();
+    // pow2(e) positive for e >= 0.
+    if (den_k == Kind::POW2)
+    {
+      Node exp = den[0];
+      arith::Bounds exp_db = binfer.get(exp);
+      if (!exp_db.lower_value.isNull()
+          && exp_db.lower_value.getConst<Rational>().sgn() == 1)
+      {
+        isNonZeroDen = true;
+      }
     }
     if (isNonZeroDen)
     {
@@ -273,13 +308,13 @@ Node LearnedRewrite::rewriteLearned(Node n,
       Kind nk = k;
       switch (k)
       {
-        case INTS_DIVISION: nk = INTS_DIVISION_TOTAL; break;
-        case INTS_MODULUS: nk = INTS_MODULUS_TOTAL; break;
-        case DIVISION: nk = DIVISION_TOTAL; break;
-        default: Assert(false); break;
+        case Kind::INTS_DIVISION: nk = Kind::INTS_DIVISION_TOTAL; break;
+        case Kind::INTS_MODULUS: nk = Kind::INTS_MODULUS_TOTAL; break;
+        case Kind::DIVISION: nk = Kind::DIVISION_TOTAL; break;
+        default: DebugUnhandled(); break;
       }
       std::vector<Node> children;
-      children.insert(children.end(), n.begin(), n.end());
+      children.insert(children.end(), nr.begin(), nr.end());
       Node ret = nm->mkNode(nk, children);
       nr = returnRewriteLearned(nr, ret, LearnedRewriteId::NON_ZERO_DEN);
       nr = rewrite(nr);
@@ -287,33 +322,46 @@ Node LearnedRewrite::rewriteLearned(Node n,
     }
   }
   // constant int mod elimination by bound inference
-  if (k == INTS_MODULUS_TOTAL)
+  if (k == Kind::INTS_MODULUS_TOTAL)
   {
-    Node num = n[0];
-    Node den = n[1];
+    Node num = nr[0];
+    Node den = nr[1];
     arith::Bounds db = binfer.get(den);
-    if ((!db.lower_value.isNull()
-         && db.lower_value.getConst<Rational>().sgn() == 1)
-        || (!db.upper_value.isNull()
-            && db.upper_value.getConst<Rational>().sgn() == -1))
+    if (!db.lower_value.isNull() && !db.upper_value.isNull())
     {
-      Rational bden = db.upper_value.isNull()
-                          ? db.lower_value.getConst<Rational>()
-                          : db.upper_value.getConst<Rational>().abs();
-      // if 0 <= UB(num) < LB(den) or 0 <= UB(num) < -UB(den)
-      arith::Bounds nb = binfer.get(num);
-      if (!nb.upper_value.isNull())
+      Rational bdenu = db.upper_value.getConst<Rational>();
+      Rational bdenl = db.lower_value.getConst<Rational>();
+      if (bdenl.sgn() == bdenu.sgn())
       {
-        Rational bnum = nb.upper_value.getConst<Rational>();
-        if (bnum.sgn() != -1 && bnum < bden)
+        // if the sign of LB(num) is the sign of UB(num),
+        // the sign of LB(den) is the sign of UB(den), and
+        // abs(LB(num)) and abs(UB(num)) is less than abs(LB(den)) and
+        // abs(UB(den)), then the mod can be eliminated.
+        arith::Bounds nb = binfer.get(num);
+        if (!nb.upper_value.isNull() && !nb.lower_value.isNull())
         {
-          nr = returnRewriteLearned(nr, nr[0], LearnedRewriteId::INT_MOD_RANGE);
+          Rational bnuml = nb.lower_value.getConst<Rational>();
+          Rational bnumu = nb.upper_value.getConst<Rational>();
+          Rational bnumMaxAbs =
+              bnumu.abs() > bnuml.abs() ? bnumu.abs() : bnuml.abs();
+          if (bnuml.sgn() == bnumu.sgn() && bnumMaxAbs < bdenl.abs()
+              && bnumMaxAbs < bdenu.abs())
+          {
+            // if the numerator is negative, then (mod x y) ---> (+ x (abs y))
+            // otherwise, (mod x y) ---> x
+            Node ret =
+                bnuml.sgn() == -1
+                    ? nm->mkNode(Kind::ADD, nr[0], nm->mkNode(Kind::ABS, nr[1]))
+                    : nr[0];
+            nr = returnRewriteLearned(nr, ret, LearnedRewriteId::INT_MOD_RANGE);
+          }
         }
       }
       // could also do num + k*den checks
     }
   }
-  else if (k == GEQ || (k == EQUAL && nr[0].getType().isRealOrInt()))
+  else if (k == Kind::GEQ
+           || (k == Kind::EQUAL && nr[0].getType().isRealOrInt()))
   {
     std::map<Node, Node> msum;
     if (ArithMSum::getMonomialSumLit(nr, msum))
@@ -382,11 +430,11 @@ Node LearnedRewrite::rewriteLearned(Node n,
         if (lb.sgn() == 1)
         {
           // if positive lower bound, then GEQ is true, EQUAL is false
-          Node ret = nm->mkConst(k == GEQ);
+          Node ret = nm->mkConst(k == Kind::GEQ);
           nr = returnRewriteLearned(nr, ret, LearnedRewriteId::PRED_POS_LB);
           return nr;
         }
-        else if (lb.sgn() == 0 && k == GEQ)
+        else if (lb.sgn() == 0 && k == Kind::GEQ)
         {
           // zero lower bound, GEQ is true
           Node ret = nm->mkConst(true);

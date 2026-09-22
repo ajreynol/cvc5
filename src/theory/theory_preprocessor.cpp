@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Mathias Preiner, Gereon Kremer
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -44,19 +41,19 @@ TheoryPreprocessor::TheoryPreprocessor(Env& env, TheoryEngine& engine)
   {
     context::Context* u = userContext();
     d_tpg.reset(
-        new TConvProofGenerator(pnm,
+        new TConvProofGenerator(env,
                                 u,
                                 TConvPolicy::FIXPOINT,
                                 TConvCachePolicy::NEVER,
                                 "TheoryPreprocessor::preprocess_rewrite",
                                 &d_rtfc));
-    d_tpgRew.reset(new TConvProofGenerator(pnm,
+    d_tpgRew.reset(new TConvProofGenerator(env,
                                            u,
                                            TConvPolicy::ONCE,
                                            TConvCachePolicy::NEVER,
                                            "TheoryPreprocessor::pprew"));
     d_lp.reset(
-        new LazyCDProof(pnm, nullptr, u, "TheoryPreprocessor::LazyCDProof"));
+        new LazyCDProof(env, nullptr, u, "TheoryPreprocessor::LazyCDProof"));
     // Make the main term conversion sequence generator, which tracks up to
     // three conversions made in succession:
     // (1) rewriting
@@ -147,7 +144,8 @@ TrustNode TheoryPreprocessor::preprocessInternal(
     // node -> irNode via rewriting
     // irNode -> ppNode via theory-preprocessing + rewriting + tf removal
     tret = d_tspg->mkTrustRewriteSequence(cterms);
-    tret.debugCheckClosed("tpp-debug", "TheoryPreprocessor::lemma_ret");
+    tret.debugCheckClosed(
+        options(), "tpp-debug", "TheoryPreprocessor::lemma_ret");
   }
   else
   {
@@ -188,14 +186,15 @@ TrustNode TheoryPreprocessor::preprocessLemmaInternal(
   {
     Assert(d_lp != nullptr);
     // add the original proof to the lazy proof
-    d_lp->addLazyStep(
-        node.getProven(), node.getGenerator(), PfRule::THEORY_PREPROCESS_LEMMA);
+    d_lp->addLazyStep(node.getProven(),
+                      node.getGenerator(),
+                      TrustId::THEORY_PREPROCESS_LEMMA);
     // only need to do anything if lemmap changed in a non-trivial way
     if (!CDProof::isSame(lemmap, lemma))
     {
       d_lp->addLazyStep(tplemma.getProven(),
                         tplemma.getGenerator(),
-                        PfRule::THEORY_PREPROCESS,
+                        TrustId::THEORY_PREPROCESS,
                         true,
                         "TheoryEngine::lemma_pp");
       // ---------- from node -------------- from theory preprocess
@@ -205,7 +204,7 @@ TrustNode TheoryPreprocessor::preprocessLemmaInternal(
       std::vector<Node> pfChildren;
       pfChildren.push_back(lemma);
       pfChildren.push_back(tplemma.getProven());
-      d_lp->addStep(lemmap, PfRule::EQ_RESOLVE, pfChildren, {});
+      d_lp->addStep(lemmap, ProofRule::EQ_RESOLVE, pfChildren, {});
     }
   }
   return TrustNode::mkTrustLemma(lemmap, d_lp.get());
@@ -231,7 +230,7 @@ TrustNode TheoryPreprocessor::theoryPreprocess(
       std::pair<Node, uint32_t>,
       Node,
       PairHashFunction<Node, uint32_t, std::hash<Node>>>::iterator itw;
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   TCtxStack ctx(&d_rtfc);
   std::vector<bool> processedChildren;
   ctx.pushInitial(assertion);
@@ -405,7 +404,8 @@ Node TheoryPreprocessor::rewriteWithProof(Node term,
     {
       Trace("tpp-debug") << "TheoryPreprocessor: addRewriteStep (rewriting) "
                          << term << " -> " << termr << std::endl;
-      pg->addRewriteStep(term, termr, PfRule::REWRITE, {}, {term}, isPre, tctx);
+      pg->addRewriteStep(
+          term, termr, ProofRule::MACRO_REWRITE, {}, {term}, isPre, tctx);
     }
   }
   return termr;
@@ -435,7 +435,7 @@ Node TheoryPreprocessor::preprocessWithProof(Node term,
   // preprocessing is applied to all formulas. This makes it so that e.g.
   // theory solvers do not need to specify whether they want their lemmas to
   // be theory-preprocessed or not.
-  if (term.getKind() == kind::EQUAL)
+  if (term.getKind() == Kind::EQUAL)
   {
     return term;
   }
@@ -475,29 +475,21 @@ void TheoryPreprocessor::registerTrustedRewrite(TrustNode trn,
   Node eq = trn.getProven();
   Node term = eq[0];
   Node termr = eq[1];
+  Trace("tpp-debug") << "TheoryPreprocessor: addRewriteStep (generator) "
+                     << term << " -> " << termr << std::endl;
   if (trn.getGenerator() != nullptr)
   {
-    Trace("tpp-debug") << "TheoryPreprocessor: addRewriteStep (generator) "
-                       << term << " -> " << termr << std::endl;
-    trn.debugCheckClosed("tpp-debug",
-                         "TheoryPreprocessor::preprocessWithProof");
-    // always use term context hash 0 (default)
-    pg->addRewriteStep(
-        term, termr, trn.getGenerator(), isPre, PfRule::ASSUME, true, tctx);
+    trn.debugCheckClosed(
+        options(), "tpp-debug", "TheoryPreprocessor::preprocessWithProof");
   }
-  else
-  {
-    Trace("tpp-debug") << "TheoryPreprocessor: addRewriteStep (trusted) "
-                       << term << " -> " << termr << std::endl;
-    // small step trust
-    pg->addRewriteStep(term,
-                       termr,
-                       PfRule::THEORY_PREPROCESS,
-                       {},
-                       {term.eqNode(termr)},
-                       isPre,
-                       tctx);
-  }
+  // always use term context hash 0 (default)
+  pg->addRewriteStep(term,
+                     termr,
+                     trn.getGenerator(),
+                     isPre,
+                     TrustId::THEORY_PREPROCESS,
+                     true,
+                     tctx);
 }
 
 }  // namespace theory

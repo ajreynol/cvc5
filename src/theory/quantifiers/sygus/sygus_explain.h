@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Aina Niemetz, Gereon Kremer
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -21,6 +18,7 @@
 #include <vector>
 
 #include "expr/node.h"
+#include "smt/env_obj.h"
 
 namespace cvc5::internal {
 namespace theory {
@@ -43,7 +41,7 @@ class TermDbSygus;
 class TermRecBuild
 {
  public:
-  TermRecBuild() {}
+  TermRecBuild(NodeManager* nm) : d_nm(nm) {}
   /** set the initial term to n
    *
    * The context initially empty, that is,
@@ -73,6 +71,8 @@ class TermRecBuild
   Node build(unsigned p = 0);
 
  private:
+  /** Pointer to the node manager */
+  NodeManager* d_nm;
   /** stack of active terms */
   std::vector<Node> d_term;
   /** stack of children of active terms
@@ -140,10 +140,10 @@ class TermRecBuild
  *   [[exp]]_n = (plus w y)
  * where w is a fresh variable.
  */
-class SygusExplain
+class SygusExplain : protected EnvObj
 {
  public:
-  SygusExplain(TermDbSygus* tdb) : d_tdb(tdb) {}
+  SygusExplain(Env& env, TermDbSygus* tdb);
   ~SygusExplain() {}
   /** get explanation for equality
    *
@@ -206,7 +206,7 @@ class SygusExplain
                          std::vector<Node>& exp,
                          SygusInvarianceTest& et,
                          Node vnr,
-                         std::map<TypeNode, int>& var_count,
+                         std::map<TypeNode, size_t>& var_count,
                          unsigned& sz);
   void getExplanationFor(Node n,
                          Node vn,
@@ -217,7 +217,7 @@ class SygusExplain
                          Node vn,
                          std::vector<Node>& exp,
                          SygusInvarianceTest& et,
-                         std::map<TypeNode, int>& var_count,
+                         std::map<TypeNode, size_t>& var_count,
                          bool strict = true);
 
  private:
@@ -233,7 +233,7 @@ class SygusExplain
                          Node n,
                          Node vn,
                          std::vector<Node>& exp,
-                         std::map<TypeNode, int>& var_count,
+                         std::map<TypeNode, size_t>& var_count,
                          SygusInvarianceTest& et,
                          Node vnr,
                          Node& vnr_exp,

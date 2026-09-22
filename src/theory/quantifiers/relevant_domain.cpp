@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Andres Noetzli, Aina Niemetz
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -19,6 +16,7 @@
 #include "expr/term_context_stack.h"
 #include "theory/arith/arith_msum.h"
 #include "theory/quantifiers/first_order_model.h"
+#include "theory/quantifiers/instantiate.h"
 #include "theory/quantifiers/quantifiers_registry.h"
 #include "theory/quantifiers/quantifiers_state.h"
 #include "theory/quantifiers/term_database.h"
@@ -32,27 +30,35 @@ namespace cvc5::internal {
 namespace theory {
 namespace quantifiers {
 
-void RelevantDomain::RDomain::merge( RDomain * r ) {
+void RelevantDomain::RDomain::merge(RDomain* r)
+{
   Assert(!d_parent);
   Assert(!r->d_parent);
   d_parent = r;
-  for( unsigned i=0; i<d_terms.size(); i++ ){
-    r->addTerm( d_terms[i] );
+  for (unsigned i = 0; i < d_terms.size(); i++)
+  {
+    r->addTerm(d_terms[i]);
   }
   d_terms.clear();
 }
 
-void RelevantDomain::RDomain::addTerm( Node t ) {
-  if( std::find( d_terms.begin(), d_terms.end(), t )==d_terms.end() ){
-    d_terms.push_back( t );
+void RelevantDomain::RDomain::addTerm(Node t)
+{
+  if (std::find(d_terms.begin(), d_terms.end(), t) == d_terms.end())
+  {
+    d_terms.push_back(t);
   }
 }
 
-RelevantDomain::RDomain * RelevantDomain::RDomain::getParent() {
-  if( !d_parent ){
+RelevantDomain::RDomain* RelevantDomain::RDomain::getParent()
+{
+  if (!d_parent)
+  {
     return this;
-  }else{
-    RDomain * p = d_parent->getParent();
+  }
+  else
+  {
+    RDomain* p = d_parent->getParent();
     d_parent = p;
     return p;
   }
@@ -60,19 +66,24 @@ RelevantDomain::RDomain * RelevantDomain::RDomain::getParent() {
 
 void RelevantDomain::RDomain::removeRedundantTerms(QuantifiersState& qs)
 {
-  std::map< Node, Node > rterms;
-  for( unsigned i=0; i<d_terms.size(); i++ ){
+  std::map<Node, Node> rterms;
+  for (unsigned i = 0; i < d_terms.size(); i++)
+  {
     Node r = d_terms[i];
-    if( !TermUtil::hasInstConstAttr( d_terms[i] ) ){
+    if (!TermUtil::hasInstConstAttr(d_terms[i]))
+    {
       r = qs.getRepresentative(d_terms[i]);
     }
-    if( rterms.find( r )==rterms.end() ){
+    if (rterms.find(r) == rterms.end())
+    {
       rterms[r] = d_terms[i];
     }
   }
   d_terms.clear();
-  for( std::map< Node, Node >::iterator it = rterms.begin(); it != rterms.end(); ++it ){
-    d_terms.push_back( it->second );
+  for (std::map<Node, Node>::iterator it = rterms.begin(); it != rterms.end();
+       ++it)
+  {
+    d_terms.push_back(it->second);
   }
 }
 
@@ -85,13 +96,14 @@ RelevantDomain::RelevantDomain(Env& env,
   d_is_computed = false;
 }
 
-RelevantDomain::~RelevantDomain() {
+RelevantDomain::~RelevantDomain()
+{
   for (auto& r : d_rel_doms)
   {
     for (auto& rr : r.second)
     {
       RDomain* current = rr.second;
-      Assert(current != NULL);
+      Assert(current != nullptr);
       delete current;
     }
   }
@@ -101,20 +113,25 @@ RelevantDomain::RDomain* RelevantDomain::getRDomain(Node n,
                                                     size_t i,
                                                     bool getParent)
 {
-  if( d_rel_doms.find( n )==d_rel_doms.end() || d_rel_doms[n].find( i )==d_rel_doms[n].end() ){
+  if (d_rel_doms.find(n) == d_rel_doms.end()
+      || d_rel_doms[n].find(i) == d_rel_doms[n].end())
+  {
     d_rel_doms[n][i] = new RDomain;
   }
   return getParent ? d_rel_doms[n][i]->getParent() : d_rel_doms[n][i];
 }
 
-bool RelevantDomain::reset( Theory::Effort e ) {
+bool RelevantDomain::reset(CVC5_UNUSED Theory::Effort e)
+{
   d_is_computed = false;
   return true;
 }
 
-void RelevantDomain::registerQuantifier(Node q) {}
-void RelevantDomain::compute(){
-  if( !d_is_computed ){
+void RelevantDomain::registerQuantifier(CVC5_UNUSED Node q) {}
+void RelevantDomain::compute()
+{
+  if (!d_is_computed)
+  {
     d_is_computed = true;
     for (auto& r : d_rel_doms)
     {
@@ -124,10 +141,12 @@ void RelevantDomain::compute(){
       }
     }
     FirstOrderModel* fm = d_treg.getModel();
-    for( unsigned i=0; i<fm->getNumAssertedQuantifiers(); i++ ){
-      Node q = fm->getAssertedQuantifier( i );
+    for (unsigned i = 0; i < fm->getNumAssertedQuantifiers(); i++)
+    {
+      Node q = fm->getAssertedQuantifier(i);
       Node icf = d_qreg.getInstConstantBody(q);
-      Trace("rel-dom-debug") << "compute relevant domain for " << icf << std::endl;
+      Trace("rel-dom-debug")
+          << "compute relevant domain for " << icf << std::endl;
       computeRelevantDomain(q);
     }
 
@@ -136,20 +155,27 @@ void RelevantDomain::compute(){
     for (unsigned k = 0; k < db->getNumOperators(); k++)
     {
       Node op = db->getOperator(k);
-      unsigned sz = db->getNumGroundTerms( op );
-      for( unsigned i=0; i<sz; i++ ){
+      unsigned sz = db->getNumGroundTerms(op);
+      for (unsigned i = 0; i < sz; i++)
+      {
         Node n = db->getGroundTerm(op, i);
-        //if it is a non-redundant term
-        if( db->isTermActive( n ) ){
-          for( unsigned j=0; j<n.getNumChildren(); j++ ){
-            RDomain * rf = getRDomain( op, j );
-            rf->addTerm( n[j] );
-            Trace("rel-dom-debug") << "...add ground term " << n[j] << " to rel dom " << op << "[" << j << "]" << std::endl;
+        Trace("rel-dom-debug") << "Consider " << n << std::endl;
+        // if it is a non-redundant term
+        if (db->isTermActive(n))
+        {
+          for (unsigned j = 0; j < n.getNumChildren(); j++)
+          {
+            RDomain* rf = getRDomain(op, j);
+            rf->addTerm(n[j]);
+            Trace("rel-dom-debug")
+                << "...add ground term " << n[j] << " to rel dom " << op << "["
+                << j << "]" << std::endl;
           }
         }
       }
     }
-    //print debug
+    // print debug and verify types are correct
+    NodeManager* nm = nodeManager();
     for (std::pair<const Node, std::map<size_t, RDomain*> >& d : d_rel_doms)
     {
       Trace("rel-dom") << "Relevant domain for " << d.first << " : "
@@ -158,25 +184,35 @@ void RelevantDomain::compute(){
       {
         Trace("rel-dom") << "   " << dd.first << " : ";
         RDomain* r = dd.second;
-        RDomain * rp = r->getParent();
-        if( r==rp ){
+        RDomain* rp = r->getParent();
+        if (r == rp)
+        {
           r->removeRedundantTerms(d_qs);
           Trace("rel-dom") << r->d_terms;
-        }else{
+        }
+        else
+        {
           Trace("rel-dom") << "Dom( " << d.first << ", " << dd.first << " ) ";
         }
         Trace("rel-dom") << std::endl;
-        if (Configuration::isAssertionBuild())
+        if (d.first.getKind() == Kind::FORALL)
         {
-          if (d.first.getKind() == FORALL)
+          TypeNode expectedType = d.first[0][dd.first].getType();
+          for (Node& t : r->d_terms)
           {
-            TypeNode expectedType = d.first[0][dd.first].getType();
-            for (const Node& t : r->d_terms)
+            TypeNode tt = t.getType();
+            if (tt != expectedType)
             {
-              if (!t.getType().isComparableTo(expectedType))
+              // Computation may merge Int with Real due to inequalities. We
+              // correct this here.
+              if (tt.isInteger() && expectedType.isReal())
               {
-                Unhandled() << "Relevant domain: bad type " << t.getType()
-                            << ", expected " << expectedType;
+                t = nm->mkNode(Kind::TO_REAL, t);
+              }
+              else
+              {
+                DebugUnhandled() << "Relevant domain: bad type " << t.getType()
+                                 << ", expected " << expectedType;
               }
             }
           }
@@ -188,7 +224,7 @@ void RelevantDomain::compute(){
 
 void RelevantDomain::computeRelevantDomain(Node q)
 {
-  Assert(q.getKind() == FORALL);
+  Assert(q.getKind() == Kind::FORALL);
   Node n = d_qreg.getInstConstantBody(q);
   // we care about polarity in the traversal, so we use a polarity term context
   PolarityTermContext tc;
@@ -232,7 +268,8 @@ void RelevantDomain::computeRelevantDomainNode(Node q,
                                                bool hasPol,
                                                bool pol)
 {
-  Trace("rel-dom-debug") << "Compute relevant domain " << n << "..." << std::endl;
+  Trace("rel-dom-debug") << "Compute relevant domain " << n << "..."
+                         << std::endl;
   Node op = d_treg.getTermDatabase()->getMatchOperator(n);
   // Relevant domain only makes sense for non-parametric operators, thus we
   // check op==n.getOperator() here. This otherwise would lead to bad types
@@ -241,28 +278,36 @@ void RelevantDomain::computeRelevantDomainNode(Node q,
   {
     for (size_t i = 0, nchild = n.getNumChildren(); i < nchild; i++)
     {
-      RDomain * rf = getRDomain( op, i );
-      if( n[i].getKind()==ITE ){
-        for( unsigned j=1; j<=2; j++ ){
-          computeRelevantDomainOpCh( rf, n[i][j] );
+      RDomain* rf = getRDomain(op, i);
+      if (n[i].getKind() == Kind::ITE)
+      {
+        for (unsigned j = 1; j <= 2; j++)
+        {
+          computeRelevantDomainOpCh(rf, n[i][j]);
         }
-      }else{
-        computeRelevantDomainOpCh( rf, n[i] );
+      }
+      else
+      {
+        computeRelevantDomainOpCh(rf, n[i]);
       }
     }
   }
 
-  if( ( ( n.getKind()==EQUAL && !n[0].getType().isBoolean() ) || n.getKind()==GEQ ) && TermUtil::hasInstConstAttr( n ) ){
-    //compute the information for what this literal does
-    computeRelevantDomainLit( q, hasPol, pol, n );
+  if (((n.getKind() == Kind::EQUAL && !n[0].getType().isBoolean())
+       || n.getKind() == Kind::GEQ)
+      && TermUtil::hasInstConstAttr(n))
+  {
+    // compute the information for what this literal does
+    computeRelevantDomainLit(q, hasPol, pol, n);
     RDomainLit& rdl = d_rel_dom_lit[hasPol][pol][n];
     if (rdl.d_merge)
     {
       Assert(rdl.d_rd[0] != nullptr && rdl.d_rd[1] != nullptr);
       RDomain* rd1 = rdl.d_rd[0]->getParent();
       RDomain* rd2 = rdl.d_rd[1]->getParent();
-      if( rd1!=rd2 ){
-        rd1->merge( rd2 );
+      if (rd1 != rd2)
+      {
+        rd1->merge(rd2);
       }
     }
     else
@@ -277,152 +322,203 @@ void RelevantDomain::computeRelevantDomainNode(Node q,
       }
     }
   }
-  Trace("rel-dom-debug") << "...finished Compute relevant domain " << n << std::endl;
+  Trace("rel-dom-debug") << "...finished Compute relevant domain " << n
+                         << std::endl;
 }
 
-void RelevantDomain::computeRelevantDomainOpCh( RDomain * rf, Node n ) {
-  if( n.getKind()==INST_CONSTANT ){
+void RelevantDomain::computeRelevantDomainOpCh(RDomain* rf, Node n)
+{
+  if (n.getKind() == Kind::INST_CONSTANT)
+  {
     Node q = TermUtil::getInstConstAttr(n);
-    //merge the RDomains
+    // merge the RDomains
     size_t id = n.getAttribute(InstVarNumAttribute());
-    Assert(q[0][id].getType() == n.getType());
+    AssertEqual(q[0][id].getType(), n.getType());
     Trace("rel-dom-debug") << n << " is variable # " << id << " for " << q;
     Trace("rel-dom-debug") << " with body : " << d_qreg.getInstConstantBody(q)
                            << std::endl;
-    RDomain * rq = getRDomain( q, id );
-    if( rf!=rq ){
-      rq->merge( rf );
+    RDomain* rq = getRDomain(q, id);
+    if (rf != rq)
+    {
+      rq->merge(rf);
     }
-  }else if( !TermUtil::hasInstConstAttr( n ) ){
-    Trace("rel-dom-debug") << "...add ground term to rel dom " << n << std::endl;
-    //term to add
-    rf->addTerm( n );
+  }
+  else if (!TermUtil::hasInstConstAttr(n))
+  {
+    Trace("rel-dom-debug") << "...add ground term to rel dom " << n
+                           << std::endl;
+    // term to add
+    rf->addTerm(n);
   }
 }
 
-void RelevantDomain::computeRelevantDomainLit( Node q, bool hasPol, bool pol, Node n ) {
-  if( d_rel_dom_lit[hasPol][pol].find( n )==d_rel_dom_lit[hasPol][pol].end() ){
-    NodeManager* nm = NodeManager::currentNM();
-    RDomainLit& rdl = d_rel_dom_lit[hasPol][pol][n];
-    rdl.d_merge = false;
-    int varCount = 0;
-    int varCh = -1;
-    for( unsigned i=0; i<n.getNumChildren(); i++ ){
-      if( n[i].getKind()==INST_CONSTANT ){
-        // must get the quantified formula this belongs to, which may be
-        // different from q
-        Node qi = TermUtil::getInstConstAttr(n[i]);
-        unsigned id = n[i].getAttribute(InstVarNumAttribute());
-        rdl.d_rd[i] = getRDomain(qi, id, false);
-        varCount++;
-        varCh = i;
-      }else{
-        rdl.d_rd[i] = nullptr;
-      }
-    }
-    
-    Node r_add;
-    bool varLhs = true;
-    if( varCount==2 ){
-      rdl.d_merge = true;
-    }else{
-      if( varCount==1 ){
-        r_add = n[1-varCh];
-        varLhs = (varCh==0);
-        rdl.d_rd[0] = rdl.d_rd[varCh];
-        rdl.d_rd[1] = nullptr;
-      }else{
-        //solve the inequality for one/two variables, if possible
-        if (n[0].getType().isRealOrInt())
-        {
-          std::map< Node, Node > msum;
-          if (ArithMSum::getMonomialSumLit(n, msum))
-          {
-            Node var;
-            Node var2;
-            bool hasNonVar = false;
-            for( std::map< Node, Node >::iterator it = msum.begin(); it != msum.end(); ++it ){
-              if (!it->first.isNull() && it->first.getKind() == INST_CONSTANT
-                  && TermUtil::getInstConstAttr(it->first) == q)
-              {
-                if( var.isNull() ){
-                  var = it->first;
-                }else if( var2.isNull() ){
-                  var2 = it->first;
-                }else{
-                  hasNonVar = true;
-                }
-              }else{
-                hasNonVar = true;
-              }
-            }
-            Trace("rel-dom") << "Process lit " << n << ", var/var2=" << var
-                             << "/" << var2 << std::endl;
-            if( !var.isNull() ){
-              Assert(var.hasAttribute(InstVarNumAttribute()));
-              if( var2.isNull() ){
-                //single variable solve
-                Node veq_c;
-                Node val;
-                int ires =
-                    ArithMSum::isolate(var, msum, veq_c, val, n.getKind());
-                if( ires!=0 ){
-                  if( veq_c.isNull() ){
-                    r_add = val;
-                    varLhs = (ires==1);
-                    rdl.d_rd[0] = getRDomain(
-                        q, var.getAttribute(InstVarNumAttribute()), false);
-                    rdl.d_rd[1] = nullptr;
-                  }
-                }
-              }else if( !hasNonVar ){
-                Assert(var2.hasAttribute(InstVarNumAttribute()));
-                //merge the domains
-                rdl.d_rd[0] = getRDomain(
-                    q, var.getAttribute(InstVarNumAttribute()), false);
-                rdl.d_rd[1] = getRDomain(
-                    q, var2.getAttribute(InstVarNumAttribute()), false);
-                rdl.d_merge = true;
-              }
-            }
-          }
-        }
-      }
-    }
-    if (rdl.d_merge)
+void RelevantDomain::computeRelevantDomainLit(Node q,
+                                              bool hasPol,
+                                              bool pol,
+                                              Node n)
+{
+  if (d_rel_dom_lit[hasPol][pol].find(n) != d_rel_dom_lit[hasPol][pol].end())
+  {
+    return;
+  }
+  NodeManager* nm = nodeManager();
+  RDomainLit& rdl = d_rel_dom_lit[hasPol][pol][n];
+  rdl.d_merge = false;
+  size_t varCount = 0;
+  size_t varCh = 0;
+  Assert(n.getNumChildren() == 2);
+  for (size_t i = 0; i < 2; i++)
+  {
+    if (n[i].getKind() == Kind::INST_CONSTANT)
     {
-      //do not merge if constant negative polarity
-      if( hasPol && !pol ){
-        rdl.d_merge = false;
-      }
-    }
-    else if (!r_add.isNull() && !TermUtil::hasInstConstAttr(r_add))
-    {
-      Trace("rel-dom-debug") << "...add term " << r_add << ", pol = " << pol << ", kind = " << n.getKind() << std::endl;
-      //the negative occurrence adds the term to the domain
-      if( !hasPol || !pol ){
-        rdl.d_val.push_back(r_add);
-      }
-      //the positive occurence adds other terms
-      if( ( !hasPol || pol ) && n[0].getType().isInteger() ){
-        if( n.getKind()==EQUAL ){
-          for( unsigned i=0; i<2; i++ ){
-            Node roff = nm->mkNode(
-                ADD, r_add, nm->mkConstInt(Rational(i == 0 ? 1 : -1)));
-            rdl.d_val.push_back(roff);
-          }
-        }else if( n.getKind()==GEQ ){
-          Node roff =
-              nm->mkNode(ADD, r_add, nm->mkConstInt(Rational(varLhs ? 1 : -1)));
-          rdl.d_val.push_back(roff);
-        }
-      }
+      // must get the quantified formula this belongs to, which may be
+      // different from q
+      Node qi = TermUtil::getInstConstAttr(n[i]);
+      unsigned id = n[i].getAttribute(InstVarNumAttribute());
+      rdl.d_rd[i] = getRDomain(qi, id, false);
+      varCount++;
+      varCh = i;
     }
     else
     {
-      rdl.d_rd[0] = nullptr;
-      rdl.d_rd[1] = nullptr;
+      rdl.d_rd[i] = nullptr;
     }
+  }
+
+  Node rAdd;
+  Node rVar;
+  bool varLhs = true;
+  if (varCount == 2)
+  {
+    // don't merge Int and Real
+    rdl.d_merge = (CVC5_EQUAL(n[0].getType(), n[1].getType()));
+  }
+  else if (varCount == 1)
+  {
+    rVar = n[varCh];
+    rAdd = n[1 - varCh];
+    varLhs = (varCh == 0);
+    rdl.d_rd[0] = rdl.d_rd[varCh];
+    rdl.d_rd[1] = nullptr;
+  }
+  else if (n[0].getType().isRealOrInt())
+  {
+    // solve the inequality for one/two variables, if possible
+    std::map<Node, Node> msum;
+    if (ArithMSum::getMonomialSumLit(n, msum))
+    {
+      Node var;
+      Node var2;
+      bool hasNonVar = false;
+      for (std::pair<const Node, Node>& m : msum)
+      {
+        if (!m.first.isNull() && m.first.getKind() == Kind::INST_CONSTANT
+            && TermUtil::getInstConstAttr(m.first) == q)
+        {
+          if (var.isNull())
+          {
+            var = m.first;
+          }
+          else if (var2.isNull())
+          {
+            var2 = m.first;
+          }
+          else
+          {
+            hasNonVar = true;
+          }
+        }
+        else
+        {
+          hasNonVar = true;
+        }
+      }
+      Trace("rel-dom") << "Process lit " << n << ", var/var2=" << var << "/"
+                       << var2 << std::endl;
+      if (!var.isNull())
+      {
+        Assert(var.hasAttribute(InstVarNumAttribute()));
+        if (var2.isNull())
+        {
+          // single variable solve
+          Node veq_c;
+          Node val;
+          int ires = ArithMSum::isolate(var, msum, veq_c, val, n.getKind());
+          if (ires != 0)
+          {
+            if (veq_c.isNull())
+            {
+              rVar = var;
+              rAdd = val;
+              varLhs = (ires == 1);
+              rdl.d_rd[0] =
+                  getRDomain(q, var.getAttribute(InstVarNumAttribute()), false);
+              rdl.d_rd[1] = nullptr;
+            }
+          }
+        }
+        else if (!hasNonVar && CVC5_EQUAL(var.getType(), var2.getType()))
+        {
+          Assert(var2.hasAttribute(InstVarNumAttribute()));
+          // merge the domains
+          rdl.d_rd[0] =
+              getRDomain(q, var.getAttribute(InstVarNumAttribute()), false);
+          rdl.d_rd[1] =
+              getRDomain(q, var2.getAttribute(InstVarNumAttribute()), false);
+          rdl.d_merge = true;
+        }
+      }
+    }
+  }
+  if (rdl.d_merge)
+  {
+    // do not merge if constant negative polarity
+    if (hasPol && !pol)
+    {
+      rdl.d_merge = false;
+    }
+    return;
+  }
+  if (!rAdd.isNull())
+  {
+    // Ensure that rAdd has the same type as the variable. This is necessary
+    // since GEQ may mix Int and Real, as well as the equality solving above
+    // may introduce mixed Int and Real.
+    rAdd = TermUtil::ensureType(rAdd, rVar.getType());
+  }
+  if (!rAdd.isNull() && !TermUtil::hasInstConstAttr(rAdd))
+  {
+    Trace("rel-dom-debug") << "...add term " << rAdd << ", pol = " << pol
+                           << ", kind = " << n.getKind() << std::endl;
+    // the negative occurrence adds the term to the domain
+    if (!hasPol || !pol)
+    {
+      rdl.d_val.push_back(rAdd);
+    }
+    // the positive occurrence adds other terms
+    if ((!hasPol || pol) && n[0].getType().isInteger())
+    {
+      if (n.getKind() == Kind::EQUAL)
+      {
+        for (size_t i = 0; i < 2; i++)
+        {
+          Node roff = nm->mkNode(
+              Kind::ADD, rAdd, nm->mkConstInt(Rational(i == 0 ? 1 : -1)));
+          rdl.d_val.push_back(roff);
+        }
+      }
+      else if (n.getKind() == Kind::GEQ)
+      {
+        Node roff = nm->mkNode(
+            Kind::ADD, rAdd, nm->mkConstInt(Rational(varLhs ? 1 : -1)));
+        rdl.d_val.push_back(roff);
+      }
+    }
+  }
+  else
+  {
+    rdl.d_rd[0] = nullptr;
+    rdl.d_rd[1] = nullptr;
   }
 }
 

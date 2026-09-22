@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -23,13 +20,13 @@ using namespace cvc5::internal::kind;
 
 namespace cvc5::internal {
 
-LazyCDProof::LazyCDProof(ProofNodeManager* pnm,
+LazyCDProof::LazyCDProof(Env& env,
                          ProofGenerator* dpg,
                          context::Context* c,
                          const std::string& name,
                          bool autoSym,
                          bool doCache)
-    : CDProof(pnm, c, name, autoSym),
+    : CDProof(env, c, name, autoSym),
       d_gens(c ? c : &d_context),
       d_defaultGen(dpg),
       d_doCache(doCache),
@@ -92,7 +89,7 @@ std::shared_ptr<ProofNode> LazyCDProof::getProofFor(Node fact)
         // we don't touch such proofs.
         Trace("lazy-cdproof") << "...skip unowned proof" << std::endl;
       }
-      else if (cur->getRule() == PfRule::ASSUME)
+      else if (cur->getRule() == ProofRule::ASSUME)
       {
         bool isSym = false;
         ProofGenerator* pg = getGeneratorFor(cfact, isSym);
@@ -120,18 +117,18 @@ std::shared_ptr<ProofNode> LazyCDProof::getProofFor(Node fact)
 
             if (isSym)
             {
-              if (pgc->getRule() == PfRule::SYMM)
+              if (pgc->getRule() == ProofRule::SYMM)
               {
-                d_manager->updateNode(cur, pgc->getChildren()[0].get());
+                getManager()->updateNode(cur, pgc->getChildren()[0].get());
               }
               else
               {
-                d_manager->updateNode(cur, PfRule::SYMM, {pgc}, {});
+                getManager()->updateNode(cur, ProofRule::SYMM, {pgc}, {});
               }
             }
             else
             {
-              d_manager->updateNode(cur, pgc.get());
+              getManager()->updateNode(cur, pgc.get());
             }
             Trace("lazy-cdproof") << "LazyCDProof: Successfully added fact for "
                                   << cfactGen << std::endl;
@@ -165,7 +162,7 @@ std::shared_ptr<ProofNode> LazyCDProof::getProofFor(Node fact)
 
 void LazyCDProof::addLazyStep(Node expected,
                               ProofGenerator* pg,
-                              PfRule idNull,
+                              TrustId idNull,
                               bool isClosed,
                               const char* ctx,
                               bool forceOverwrite)
@@ -173,7 +170,7 @@ void LazyCDProof::addLazyStep(Node expected,
   if (pg == nullptr)
   {
     // null generator, should have given a proof rule
-    if (idNull == PfRule::ASSUME)
+    if (idNull == TrustId::NONE)
     {
       Unreachable() << "LazyCDProof::addLazyStep: " << identify()
                     << ": failed to provide proof generator for " << expected;
@@ -181,7 +178,8 @@ void LazyCDProof::addLazyStep(Node expected,
     }
     Trace("lazy-cdproof") << "LazyCDProof::addLazyStep: " << expected
                           << " set (trusted) step " << idNull << "\n";
-    addStep(expected, idNull, {}, {expected});
+    Node tid = mkTrustId(nodeManager(), idNull);
+    addStep(expected, ProofRule::TRUST, {}, {tid, expected});
     return;
   }
   Trace("lazy-cdproof") << "LazyCDProof::addLazyStep: " << expected
@@ -201,7 +199,7 @@ void LazyCDProof::addLazyStep(Node expected,
   if (isClosed)
   {
     Trace("lazy-cdproof-debug") << "Checking closed..." << std::endl;
-    pfgEnsureClosed(expected, pg, "lazy-cdproof-debug", ctx);
+    pfgEnsureClosed(options(), expected, pg, "lazy-cdproof-debug", ctx);
   }
 }
 
@@ -213,18 +211,21 @@ ProofGenerator* LazyCDProof::getGeneratorFor(Node fact, bool& isSym)
   {
     return (*it).second;
   }
-  Node factSym = CDProof::getSymmFact(fact);
-  // could be symmetry
-  if (factSym.isNull())
+  if (d_autoSymm)
   {
-    // can't be symmetry, return the default generator
-    return d_defaultGen;
-  }
-  it = d_gens.find(factSym);
-  if (it != d_gens.end())
-  {
-    isSym = true;
-    return (*it).second;
+    Node factSym = CDProof::getSymmFact(fact);
+    // could be symmetry
+    if (factSym.isNull())
+    {
+      // can't be symmetry, return the default generator
+      return d_defaultGen;
+    }
+    it = d_gens.find(factSym);
+    if (it != d_gens.end())
+    {
+      isSym = true;
+      return (*it).second;
+    }
   }
   // return the default generator
   return d_defaultGen;

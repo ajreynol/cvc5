@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Haniel Barbosa, Andrew Reynolds, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -16,6 +13,7 @@
 #include "proof/theory_proof_step_buffer.h"
 
 #include "proof/proof.h"
+#include "proof/proof_node_algorithm.h"
 
 using namespace cvc5::internal::kind;
 
@@ -33,20 +31,25 @@ bool TheoryProofStepBuffer::applyEqIntro(Node src,
                                          const std::vector<Node>& exp,
                                          MethodId ids,
                                          MethodId ida,
-                                         MethodId idr)
+                                         MethodId idr,
+                                         bool useExpected)
 {
   std::vector<Node> args;
   args.push_back(src);
-  addMethodIds(args, ids, ida, idr);
+  addMethodIds(src.getNodeManager(), args, ids, ida, idr);
   bool added;
-  Node res = tryStep(added, PfRule::MACRO_SR_EQ_INTRO, exp, args);
+  Node expected = src.eqNode(tgt);
+  Node res = tryStep(added,
+                     ProofRule::MACRO_SR_EQ_INTRO,
+                     exp,
+                     args,
+                     useExpected ? expected : Node::null());
   if (res.isNull())
   {
     // failed to apply
     return false;
   }
   // should have concluded the expected equality
-  Node expected = src.eqNode(tgt);
   if (res != expected)
   {
     // did not provide the correct target
@@ -65,7 +68,8 @@ bool TheoryProofStepBuffer::applyPredTransform(Node src,
                                                const std::vector<Node>& exp,
                                                MethodId ids,
                                                MethodId ida,
-                                               MethodId idr)
+                                               MethodId idr,
+                                               bool useExpected)
 {
   // symmetric equalities
   if (d_autoSym && CDProof::isSame(src, tgt))
@@ -78,8 +82,11 @@ bool TheoryProofStepBuffer::applyPredTransform(Node src,
   // try to prove that tgt rewrites to src
   children.insert(children.end(), exp.begin(), exp.end());
   args.push_back(tgt);
-  addMethodIds(args, ids, ida, idr);
-  Node res = tryStep(PfRule::MACRO_SR_PRED_TRANSFORM, children, args);
+  addMethodIds(src.getNodeManager(), args, ids, ida, idr);
+  Node res = tryStep(ProofRule::MACRO_SR_PRED_TRANSFORM,
+                     children,
+                     args,
+                     useExpected ? tgt : Node::null());
   if (res.isNull())
   {
     // failed to apply
@@ -94,12 +101,16 @@ bool TheoryProofStepBuffer::applyPredIntro(Node tgt,
                                            const std::vector<Node>& exp,
                                            MethodId ids,
                                            MethodId ida,
-                                           MethodId idr)
+                                           MethodId idr,
+                                           bool useExpected)
 {
   std::vector<Node> args;
   args.push_back(tgt);
-  addMethodIds(args, ids, ida, idr);
-  Node res = tryStep(PfRule::MACRO_SR_PRED_INTRO, exp, args);
+  addMethodIds(tgt.getNodeManager(), args, ids, ida, idr);
+  Node res = tryStep(ProofRule::MACRO_SR_PRED_INTRO,
+                     exp,
+                     args,
+                     useExpected ? tgt : Node::null());
   if (res.isNull())
   {
     return false;
@@ -118,9 +129,9 @@ Node TheoryProofStepBuffer::applyPredElim(Node src,
   children.push_back(src);
   children.insert(children.end(), exp.begin(), exp.end());
   std::vector<Node> args;
-  addMethodIds(args, ids, ida, idr);
+  addMethodIds(src.getNodeManager(), args, ids, ida, idr);
   bool added;
-  Node srcRew = tryStep(added, PfRule::MACRO_SR_PRED_ELIM, children, args);
+  Node srcRew = tryStep(added, ProofRule::MACRO_SR_PRED_ELIM, children, args);
   if (d_autoSym && added && CDProof::isSame(src, srcRew))
   {
     popStep();
@@ -130,11 +141,11 @@ Node TheoryProofStepBuffer::applyPredElim(Node src,
 
 Node TheoryProofStepBuffer::factorReorderElimDoubleNeg(Node n)
 {
-  if (n.getKind() != kind::OR)
+  if (n.getKind() != Kind::OR)
   {
     return elimDoubleNegLit(n);
   }
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = n.getNodeManager();
   std::vector<Node> children{n.begin(), n.end()};
   std::vector<Node> childrenEqs;
   // eliminate double neg for each lit. Do it first because it may expose
@@ -142,12 +153,12 @@ Node TheoryProofStepBuffer::factorReorderElimDoubleNeg(Node n)
   bool hasDoubleNeg = false;
   for (unsigned i = 0; i < children.size(); ++i)
   {
-    if (children[i].getKind() == kind::NOT
-        && children[i][0].getKind() == kind::NOT)
+    if (children[i].getKind() == Kind::NOT
+        && children[i][0].getKind() == Kind::NOT)
     {
       hasDoubleNeg = true;
       childrenEqs.push_back(children[i].eqNode(children[i][0][0]));
-      addStep(PfRule::MACRO_SR_PRED_INTRO,
+      addStep(ProofRule::MACRO_SR_PRED_INTRO,
               {},
               {childrenEqs.back()},
               childrenEqs.back());
@@ -157,13 +168,13 @@ Node TheoryProofStepBuffer::factorReorderElimDoubleNeg(Node n)
     else
     {
       childrenEqs.push_back(children[i].eqNode(children[i]));
-      addStep(PfRule::REFL, {}, {children[i]}, childrenEqs.back());
+      addStep(ProofRule::REFL, {}, {children[i]}, childrenEqs.back());
     }
   }
   if (hasDoubleNeg)
   {
     Node oldn = n;
-    n = nm->mkNode(kind::OR, children);
+    n = nm->mkNode(Kind::OR, children);
     // Create a congruence step to justify replacement of each doubly negated
     // literal. This is done to avoid having to use MACRO_SR_PRED_TRANSFORM
     // from the old clause to the new one, which, under the standard rewriter,
@@ -182,13 +193,12 @@ Node TheoryProofStepBuffer::factorReorderElimDoubleNeg(Node n)
     // steps are added, which, since double negation is eliminated in a
     // pre-rewrite in the Boolean rewriter, will always hold under the
     // standard rewriter.
+    std::vector<Node> cargs;
+    ProofRule cr = expr::getCongRule(oldn, cargs);
     Node congEq = oldn.eqNode(n);
-    addStep(PfRule::CONG,
-            childrenEqs,
-            {ProofRuleChecker::mkKindNode(kind::OR)},
-            congEq);
+    addStep(cr, childrenEqs, cargs, congEq);
     // add an equality resolution step to derive normalize clause
-    addStep(PfRule::EQ_RESOLVE, {oldn, congEq}, {}, n);
+    addStep(ProofRule::EQ_RESOLVE, {oldn, congEq}, {}, n);
   }
   children.clear();
   // remove duplicates while keeping the order of children
@@ -206,12 +216,11 @@ Node TheoryProofStepBuffer::factorReorderElimDoubleNeg(Node n)
   // if factoring changed
   if (children.size() < size)
   {
-    Node factored = children.empty()
-                        ? nm->mkConst<bool>(false)
-                        : children.size() == 1 ? children[0]
-                                               : nm->mkNode(kind::OR, children);
+    Node factored = children.empty()       ? nm->mkConst<bool>(false)
+                    : children.size() == 1 ? children[0]
+                                           : nm->mkNode(Kind::OR, children);
     // don't overwrite what already has a proof step to avoid cycles
-    addStep(PfRule::FACTORING, {n}, {}, factored);
+    addStep(ProofRule::FACTORING, {n}, {}, factored);
     n = factored;
   }
   // nothing to order
@@ -221,12 +230,12 @@ Node TheoryProofStepBuffer::factorReorderElimDoubleNeg(Node n)
   }
   // order
   std::sort(children.begin(), children.end());
-  Node ordered = nm->mkNode(kind::OR, children);
+  Node ordered = nm->mkNode(Kind::OR, children);
   // if ordering changed
   if (ordered != n)
   {
     // don't overwrite what already has a proof step to avoid cycles
-    addStep(PfRule::REORDERING, {n}, {ordered}, ordered);
+    addStep(ProofRule::REORDERING, {n}, {ordered}, ordered);
   }
   return ordered;
 }
@@ -234,9 +243,9 @@ Node TheoryProofStepBuffer::factorReorderElimDoubleNeg(Node n)
 Node TheoryProofStepBuffer::elimDoubleNegLit(Node n)
 {
   // eliminate double neg
-  if (n.getKind() == kind::NOT && n[0].getKind() == kind::NOT)
+  if (n.getKind() == Kind::NOT && n[0].getKind() == Kind::NOT)
   {
-    addStep(PfRule::NOT_NOT_ELIM, {n}, {}, n[0][0]);
+    addStep(ProofRule::NOT_NOT_ELIM, {n}, {}, n[0][0]);
     return n[0][0];
   }
   return n;

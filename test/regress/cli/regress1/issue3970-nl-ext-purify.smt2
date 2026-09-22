@@ -1,11 +1,11 @@
+; REQUIRES: unrestricted-mode
 ; COMMAND-LINE: -q
 ; EXPECT: unsat
 ; DISABLE-TESTER: unsat-core
 ; DISABLE-TESTER: proof
-; DISABLE-TESTER: lfsc
 (set-logic QF_UFNRA)
 (set-option :nl-ext-purify true)
-(set-option :sygus-inference true)
+(set-option :sygus-inference try)
 (set-info :status unsat)
 (declare-const v0 Bool)
 (declare-const v1 Bool)

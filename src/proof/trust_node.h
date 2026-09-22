@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Gereon Kremer
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -22,6 +19,7 @@
 
 namespace cvc5::internal {
 
+class Options;
 class ProofGenerator;
 class ProofNode;
 
@@ -95,6 +93,10 @@ class TrustNode
   /** Make a trust node, replacing the original generator */
   static TrustNode mkReplaceGenTrustNode(const TrustNode& orig,
                                          ProofGenerator* g);
+  /** Make a trust node with the given explicit arguments. */
+  static TrustNode mkTrustNode(TrustNodeKind tnk,
+                               Node p,
+                               ProofGenerator* g = nullptr);
   /** The null proven node */
   static TrustNode null();
   ~TrustNode() {}
@@ -152,7 +154,10 @@ class TrustNode
    *
    * @param reqNullGen Whether we consider a null generator to be a failure.
    */
-  void debugCheckClosed(const char* c, const char* ctx, bool reqNullGen = true);
+  void debugCheckClosed(const Options& opts,
+                        const char* c,
+                        const char* ctx,
+                        bool reqNullGen = true);
 
  private:
   TrustNode(TrustNodeKind tnk, Node p, ProofGenerator* g = nullptr);

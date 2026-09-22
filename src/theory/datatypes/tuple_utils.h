@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Mudathir Mohamed
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -27,15 +24,12 @@ class TupleUtils
  public:
   /**
    *
-   * @param n a node to print in the message if TypeCheckingExceptionPrivate
-   * exception is thrown
    * @param tupleType the type of the tuple
    * @param indices a list of indices for projection
-   * @throw an exception if one of the indices in node n is greater than the
+   * @return false if one of the indices is greater than the
    * expected tuple's length
    */
-  static void checkTypeIndices(Node n,
-                               TypeNode tupleType,
+  static bool checkTypeIndices(const TypeNode& tupleType,
                                const std::vector<uint32_t> indices);
   /**
    * @param tupleType1 tuple type
@@ -80,6 +74,18 @@ class TupleUtils
    * @return the vector [a_1, ... a_n, b_1, ... b_n]
    */
   static std::vector<Node> getTupleElements(Node tuple1, Node tuple2);
+
+  /**
+   * @param indices a list of indices for projected elements n_1, ..., n_k
+   * @param tuple1 a constant tuple node
+   * @param tuple2 a constant tuple node
+   * @return a boolean representing the equality of
+   * ((_ tuple.projection n_1 ... n_k) tuple1) and
+   * ((_ tuple.projection n_1 ... n_k) tuple2).
+   */
+  static bool sameProjection(const std::vector<uint32_t>& indices,
+                             Node tuple1,
+                             Node tuple2);
 
   /**
    * construct a tuple from a list of elements

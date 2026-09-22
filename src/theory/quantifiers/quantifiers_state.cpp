@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Gereon Kremer, Morgan Deters
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -16,6 +13,7 @@
 #include "theory/quantifiers/quantifiers_state.h"
 
 #include "options/quantifiers_options.h"
+#include "theory/uf/equality_engine.h"
 #include "theory/uf/equality_engine_iterator.h"
 
 namespace cvc5::internal {
@@ -26,8 +24,10 @@ QuantifiersState::QuantifiersState(Env& env,
                                    Valuation val,
                                    const LogicInfo& logicInfo)
     : TheoryState(env, val),
-      d_ierCounterc(env.getContext()),
-      d_logicInfo(logicInfo)
+      d_ierCounterc(context()),
+      d_conflictInst(context()),
+      d_logicInfo(logicInfo),
+      d_statistics(statisticsRegistry())
 {
   // allow theory combination to go first, once initially
   d_ierCounter = 0;
@@ -120,39 +120,10 @@ void QuantifiersState::debugPrintEqualityEngine(const char* c) const
   std::map<TypeNode, uint64_t> tnum;
   while (!eqcs_i.isFinished())
   {
-    TNode r = (*eqcs_i);
-    TypeNode tr = r.getType();
-    if (tnum.find(tr) == tnum.end())
-    {
-      tnum[tr] = 0;
-    }
-    tnum[tr]++;
-    bool firstTime = true;
-    Trace(c) << "  " << r;
-    Trace(c) << " : { ";
-    eq::EqClassIterator eqc_i = eq::EqClassIterator(r, ee);
-    while (!eqc_i.isFinished())
-    {
-      TNode n = (*eqc_i);
-      if (r != n)
-      {
-        if (firstTime)
-        {
-          Trace(c) << std::endl;
-          firstTime = false;
-        }
-        Trace(c) << "    " << n << std::endl;
-      }
-      ++eqc_i;
-    }
-    if (!firstTime)
-    {
-      Trace(c) << "  ";
-    }
-    Trace(c) << "}" << std::endl;
+    tnum[(*eqcs_i).getType()]++;
     ++eqcs_i;
   }
-  Trace(c) << std::endl;
+  Trace(c) << ee->debugPrintEqc() << std::endl;
   for (const std::pair<const TypeNode, uint64_t>& t : tnum)
   {
     Trace(c) << "# eqc for " << t.first << " : " << t.second << std::endl;
@@ -162,6 +133,8 @@ void QuantifiersState::debugPrintEqualityEngine(const char* c) const
 const LogicInfo& QuantifiersState::getLogicInfo() const { return d_logicInfo; }
 
 QuantifiersStatistics& QuantifiersState::getStats() { return d_statistics; }
+
+void QuantifiersState::notifyConflictingInst() { d_conflictInst = true; }
 
 }  // namespace quantifiers
 }  // namespace theory

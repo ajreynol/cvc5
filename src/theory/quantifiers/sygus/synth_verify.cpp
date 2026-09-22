@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Abdalrhman Mohamed, Gereon Kremer
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -20,7 +17,7 @@
 #include "options/base_options.h"
 #include "options/datatypes_options.h"
 #include "options/quantifiers_options.h"
-#include "smt/smt_statistics_registry.h"
+#include "smt/set_defaults.h"
 #include "theory/quantifiers/first_order_model.h"
 #include "theory/quantifiers/sygus/term_database_sygus.h"
 #include "theory/rewriter.h"
@@ -40,24 +37,26 @@ SynthVerify::SynthVerify(Env& env, TermDbSygus* tds)
   // we start with the provided options
   d_subOptions.copyValues(options());
   // limit the number of instantiation rounds on subcalls
-  d_subOptions.writeQuantifiers().instMaxRounds =
+  d_subOptions.write_quantifiers().instMaxRounds =
       d_subOptions.quantifiers.sygusVerifyInstMaxRounds;
   // Disable sygus on the subsolver. This is particularly important since it
   // ensures that recursive function definitions have the standard ownership
   // instead of being claimed by sygus in the subsolver.
-  d_subOptions.writeBase().inputLanguage = Language::LANG_SMTLIB_V2_6;
-  d_subOptions.writeQuantifiers().sygus = false;
+  d_subOptions.write_base().inputLanguage = Language::LANG_SMTLIB_V2_6;
+  d_subOptions.write_quantifiers().sygus = false;
   // use tangent planes by default, since we want to put effort into
   // the verification step for sygus queries with non-linear arithmetic
   if (!d_subOptions.arith.nlExtTangentPlanesWasSetByUser)
   {
-    d_subOptions.writeArith().nlExtTangentPlanes = true;
+    d_subOptions.write_arith().nlExtTangentPlanes = true;
   }
   // we must use the same setting for datatype selectors, since shared selectors
   // can appear in solutions
-  d_subOptions.writeDatatypes().dtSharedSelectors =
+  d_subOptions.write_datatypes().dtSharedSelectors =
       options().datatypes.dtSharedSelectors;
-  d_subOptions.writeDatatypes().dtSharedSelectorsWasSetByUser = true;
+  d_subOptions.write_datatypes().dtSharedSelectorsWasSetByUser = true;
+  // disable checking
+  smt::SetDefaults::disableChecking(d_subOptions);
 }
 
 SynthVerify::~SynthVerify() {}
@@ -78,13 +77,20 @@ Result SynthVerify::verify(Node query,
       {
         return Result(Result::UNSAT);
       }
+      else if (vars.empty())
+      {
+        return Result(Result::SAT);
+      }
       // sat, but we need to get arbtirary model values below
     }
+    SubsolverSetupInfo ssi(d_subOptions,
+                           d_subLogicInfo,
+                           d_env.getSepLocType(),
+                           d_env.getSepDataType());
     r = checkWithSubsolver(queryp,
                            vars,
                            mvs,
-                           d_subOptions,
-                           d_subLogicInfo,
+                           ssi,
                            options().quantifiers.sygusVerifyTimeout != 0,
                            options().quantifiers.sygusVerifyTimeout);
     finished = true;
@@ -146,9 +152,16 @@ Result SynthVerify::verify(Node query,
   return r;
 }
 
+Result SynthVerify::verify(Node query)
+{
+  std::vector<Node> vars;
+  std::vector<Node> mvs;
+  return verify(query, vars, mvs);
+}
+
 Node SynthVerify::preprocessQueryInternal(Node query)
 {
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   Trace("cegqi-debug") << "pre-rewritten query : " << query << std::endl;
   // simplify the lemma based on the term database sygus utility
   query = d_tds->rewriteNode(query);
@@ -158,7 +171,7 @@ Node SynthVerify::preprocessQueryInternal(Node query)
   {
     // if non-constant, we may need to add recursive function definitions
     FunDefEvaluator* feval = d_tds->getFunDefEvaluator();
-    OracleChecker* ochecker = d_tds->getOracleChecker();
+    OracleChecker* ochecker = d_env.getOracleChecker();
     const std::vector<Node>& fdefs = feval->getDefinitions();
     if (!fdefs.empty() || (ochecker != nullptr && ochecker->hasOracles()))
     {

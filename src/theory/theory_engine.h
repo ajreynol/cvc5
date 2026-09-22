@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Dejan Jovanovic, Morgan Deters
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -26,14 +23,18 @@
 #include "expr/node.h"
 #include "options/theory_options.h"
 #include "proof/trust_node.h"
+#include "prop/sat_solver_types.h"
 #include "smt/env_obj.h"
 #include "theory/atom_requests.h"
-#include "theory/engine_output_channel.h"
+#include "theory/inference_id.h"
 #include "theory/interrupted.h"
+#include "theory/output_channel.h"
 #include "theory/partition_generator.h"
 #include "theory/rewriter.h"
 #include "theory/sort_inference.h"
 #include "theory/theory.h"
+#include "theory/theory_engine_module.h"
+#include "theory/theory_engine_statistics.h"
 #include "theory/theory_preprocessor.h"
 #include "theory/trust_substitutions.h"
 #include "theory/uf/equality_engine.h"
@@ -46,13 +47,15 @@ namespace cvc5::internal {
 class Env;
 class ResourceManager;
 class TheoryEngineProofGenerator;
+class Plugin;
 class ProofChecker;
 
 /**
  * A pair of a theory and a node. This is used to mark the flow of
  * propagations between theories.
  */
-struct NodeTheoryPair {
+struct NodeTheoryPair
+{
   Node d_node;
   theory::TheoryId d_theory;
   size_t d_timestamp;
@@ -62,30 +65,34 @@ struct NodeTheoryPair {
   }
   NodeTheoryPair() : d_theory(theory::THEORY_LAST), d_timestamp() {}
   // Comparison doesn't take into account the timestamp
-  bool operator == (const NodeTheoryPair& pair) const {
+  bool operator==(const NodeTheoryPair& pair) const
+  {
     return d_node == pair.d_node && d_theory == pair.d_theory;
   }
-};/* struct NodeTheoryPair */
+}; /* struct NodeTheoryPair */
 
-struct NodeTheoryPairHashFunction {
+struct NodeTheoryPairHashFunction
+{
   std::hash<Node> hashFunction;
   // Hash doesn't take into account the timestamp
-  size_t operator()(const NodeTheoryPair& pair) const {
+  size_t operator()(const NodeTheoryPair& pair) const
+  {
     uint64_t hash = fnv1a::fnv1a_64(std::hash<Node>()(pair.d_node));
     return static_cast<size_t>(fnv1a::fnv1a_64(pair.d_theory, hash));
   }
-};/* struct NodeTheoryPairHashFunction */
-
+}; /* struct NodeTheoryPairHashFunction */
 
 /* Forward declarations */
 namespace theory {
 
 class CombinationEngine;
 class DecisionManager;
+class PluginModule;
 class RelevanceManager;
 class Rewriter;
 class SharedSolver;
 class TheoryModel;
+class ConflictProcessor;
 
 }  // namespace theory
 
@@ -103,7 +110,7 @@ class TheoryEngine : protected EnvObj
 {
   /** Shared terms database can use the internals notify the theories */
   friend class SharedTermsDatabase;
-  friend class theory::EngineOutputChannel;
+  friend class theory::OutputChannel;
   friend class theory::CombinationEngine;
   friend class theory::SharedSolver;
 
@@ -126,8 +133,10 @@ class TheoryEngine : protected EnvObj
   template <class TheoryClass>
   void addTheory(theory::TheoryId theoryId)
   {
-    Assert(d_theoryTable[theoryId] == NULL && d_theoryOut[theoryId] == NULL);
-    d_theoryOut[theoryId] = new theory::EngineOutputChannel(this, theoryId);
+    Assert(d_theoryTable[theoryId] == nullptr
+           && d_theoryOut[theoryId] == nullptr);
+    d_theoryOut[theoryId] =
+        new theory::OutputChannel(statisticsRegistry(), this, theoryId);
     d_theoryTable[theoryId] =
         new TheoryClass(d_env, *d_theoryOut[theoryId], theory::Valuation(this));
     getRewriter()->registerTheoryRewriter(
@@ -181,11 +190,23 @@ class TheoryEngine : protected EnvObj
    * lemmas to lems, for details see Theory::ppRewrite.
    */
   TrustNode ppRewrite(TNode term, std::vector<theory::SkolemLemma>& lems);
+  /**
+   * Same as above, but applied only at preprocess time.
+   */
+  TrustNode ppStaticRewrite(TNode term);
   /** Notify (preprocessed) assertions. */
   void notifyPreprocessedAssertions(const std::vector<Node>& assertions);
 
-  /** Return whether or not we are incomplete (in the current context). */
-  bool isIncomplete() const { return d_incomplete; }
+  /**
+   * Return whether or not we are model unsound (in the current SAT context).
+   * For details, see theory_inference_manager.
+   */
+  bool isModelUnsound() const { return d_modelUnsound; }
+  /**
+   * Return whether or not we are refutation unsound (in the current user
+   * context). For details, see theory_inference_manager.
+   */
+  bool isRefutationUnsound() const { return d_refutationUnsound; }
 
   /**
    * Returns true if we need another round of checking.  If this
@@ -209,14 +230,47 @@ class TheoryEngine : protected EnvObj
    * or during LAST_CALL effort.
    */
   bool isRelevant(Node lit) const;
-
+  /** is legal elimination
+   *
+   * Returns true if x -> val is a legal elimination of variable x. This is
+   * useful for ppAssert, when x = val is an entailed equality. This function
+   * determines whether indeed x can be eliminated from the problem via the
+   * substitution x -> val.
+   *
+   * The following criteria imply that x -> val is *not* a legal elimination:
+   * (1) If x is contained in val,
+   * (2) If the type of val is not the same as the type of x,
+   * (3) If val contains an operator that cannot be evaluated, and
+   * produceModels is true. For example, x -> sqrt(2) is not a legal
+   * elimination if we are producing models. This is because we care about the
+   * value of x, and its value must be computed (approximated) by the
+   * non-linear solver.
+   */
+  bool isLegalElimination(TNode x, TNode val);
+  /**
+   * Returns true if the node has a current SAT assignment. If yes, the
+   * argument "value" is set to its value.
+   *
+   * @return true if the literal has a current assignment, and returns the
+   * value in the "value" argument; otherwise false and the "value"
+   * argument is unmodified.
+   */
+  bool hasSatValue(TNode n, bool& value) const;
+  /**
+   * Same as above, without setting the value.
+   */
+  bool hasSatValue(TNode n) const;
   /**
    * Solve the given literal with a theory that owns it. The proof of tliteral
    * is carried in the trust node. The proof added to substitutionOut should
    * take this proof into account (when proofs are enabled).
+   *
+   * @param tin The literal and its proof generator.
+   * @param outSubstitutions The substitution map to add to, if applicable.
+   * @return true iff the literal can be removed from the input, e.g. when
+   * the substitution it entails is added to outSubstitutions.
    */
-  theory::Theory::PPAssertStatus solve(
-      TrustNode tliteral, theory::TrustSubstitutionMap& substitutionOut);
+  bool solve(TrustNode tliteral, theory::TrustSubstitutionMap& substitutionOut);
 
   /**
    * Preregister a Theory atom with the responsible theory (or
@@ -237,10 +291,12 @@ class TheoryEngine : protected EnvObj
   void check(theory::Theory::Effort effort);
 
   /**
-   * Calls ppStaticLearn() on all theories, accumulating their
-   * combined contributions in the "learned" builder.
+   * Calls ppStaticLearn() on all theories.
+   * Adds any new lemmas learned to the learned vector.
+   * @param in The formula that holds.
+   * @param learned The vector storing the new lemmas learned.
    */
-  void ppStaticLearn(TNode in, NodeBuilder& learned);
+  void ppStaticLearn(TNode in, std::vector<TrustNode>& learned);
 
   /**
    * Calls presolve() on all theories and returns true
@@ -249,9 +305,9 @@ class TheoryEngine : protected EnvObj
   bool presolve();
 
   /**
-   * Calls postsolve() on all theories.
+   * Resets the internal state.
    */
-  void postsolve();
+  void postsolve(prop::SatValue result);
 
   /**
    * Calls notifyRestart() on all active theories.
@@ -291,14 +347,13 @@ class TheoryEngine : protected EnvObj
   theory::TheoryModel* getModel();
   /**
    * Get the current model for the current set of assertions. This method
-   * should only be called immediately after a satisfiable or unknown
-   * response to a check-sat call, and only if produceModels is true.
+   * should only be called immediately after a satisfiable response to a
+   * check-sat call, and only if produceModels is true.
    *
-   * If the model is not already built, this will cause this theory engine
-   * to build the model.
+   * If the model is not already built, this will cause this theory engine to
+   * build the model.
    *
-   * If the model is not available (for instance, if the last call to check-sat
-   * was interrupted), then this returns the null pointer.
+   * If the model cannot be built, then this returns the null pointer.
    */
   theory::TheoryModel* getBuiltModel();
   /**
@@ -333,12 +388,9 @@ class TheoryEngine : protected EnvObj
     return d_theoryTable[theoryId];
   }
 
-  bool isTheoryEnabled(theory::TheoryId theoryId) const
-  {
-    return d_logicInfo.isTheoryEnabled(theoryId);
-  }
-  /** get the logic info used by this theory engine */
-  const LogicInfo& getLogicInfo() const;
+  bool isTheoryEnabled(theory::TheoryId theoryId) const;
+  /** return the theory that should explain a propagation from TheoryId */
+  theory::TheoryId theoryExpPropagation(theory::TheoryId tid) const;
 
   /**
    * Returns the equality status of the two terms, from the theory
@@ -350,7 +402,7 @@ class TheoryEngine : protected EnvObj
    * Returns the value that a theory that owns the type of var currently
    * has (or null if none);
    */
-  Node getModelValue(TNode var);
+  Node getCandidateModelValue(TNode var);
 
   /**
    * Get relevant assertions. This returns a set of assertions that are
@@ -372,10 +424,12 @@ class TheoryEngine : protected EnvObj
    *
    * For details, see theory/difficuly_manager.h.
    */
-  void getDifficultyMap(std::map<Node, Node>& dmap);
+  void getDifficultyMap(std::map<Node, Node>& dmap, bool includeLemmas = false);
 
-  /** Get incomplete id, valid immediately after an `unknown` response. */
-  theory::IncompleteId getIncompleteId() const;
+  /** Get incomplete id, valid when isModelUnsound is true. */
+  theory::IncompleteId getModelUnsoundId() const;
+  /** Get unsound id, valid when isRefutationUnsound is true. */
+  theory::IncompleteId getRefutationUnsoundId() const;
 
   /**
    * Forwards an entailment check according to the given theoryOfMode.
@@ -394,6 +448,11 @@ class TheoryEngine : protected EnvObj
    */
   void checkTheoryAssertionsWithModel(bool hardFailure);
 
+  /** Called externally to notify that the current branch is incomplete. */
+  void setModelUnsound(theory::IncompleteId id);
+  /** Called externally that we are unsound (user-context). */
+  void setRefutationUnsound(theory::IncompleteId id);
+
  private:
   typedef context::
       CDHashMap<NodeTheoryPair, NodeTheoryPair, NodeTheoryPairHashFunction>
@@ -404,17 +463,20 @@ class TheoryEngine : protected EnvObj
    *
    * @param conflict The trust node containing the conflict and its proof
    * generator (if it exists),
+   * @param id The inference identifier for the conflict.
    * @param theoryId The theory that sent the conflict
    */
-  void conflict(TrustNode conflict, theory::TheoryId theoryId);
+  void conflict(TrustNode conflict,
+                theory::InferenceId id,
+                theory::TheoryId theoryId);
 
   /** set in conflict */
   void markInConflict();
 
-  /**
-   * Called by the theories to notify that the current branch is incomplete.
-   */
-  void setIncomplete(theory::TheoryId theory, theory::IncompleteId id);
+  /** Called by the theories to notify that the current branch is incomplete. */
+  void setModelUnsound(theory::TheoryId theory, theory::IncompleteId id);
+  /** Called by the theories to notify that we are unsound (user-context). */
+  void setRefutationUnsound(theory::TheoryId theory, theory::IncompleteId id);
 
   /**
    * Called by the output channel to propagate literals and facts
@@ -477,12 +539,14 @@ class TheoryEngine : protected EnvObj
 
   /**
    * Adds a new lemma, returning its status.
-   * @param node the lemma
-   * @param p the properties of the lemma.
-   * @param atomsTo the theory that atoms of the lemma should be sent to
-   * @param from the theory that sent the lemma
+   * @param node The lemma
+   * @param id The inference identifier for the lemma
+   * @param p The properties of the lemma.
+   * @param atomsTo The theory that atoms of the lemma should be sent to
+   * @param from The theory that sent the lemma.
    */
   void lemma(TrustNode node,
+             theory::InferenceId id,
              theory::LemmaProperty p,
              theory::TheoryId from = theory::THEORY_LAST);
 
@@ -501,18 +565,7 @@ class TheoryEngine : protected EnvObj
    */
   theory::Theory* d_theoryTable[theory::THEORY_LAST];
 
-  /**
-   * A collection of theories that are "active" for the current run.
-   * This set is provided by the user (as a logic string, say, in SMT-LIBv2
-   * format input), or else by default it's all-inclusive.  This is important
-   * because we can optimize for single-theory runs (no sharing), can reduce
-   * the cost of walking the DAG on registration, etc.
-   */
-  const LogicInfo& d_logicInfo;
-
-  //--------------------------------- new proofs
-  /** Proof node manager used by this theory engine, if proofs are enabled */
-  ProofNodeManager* d_pnm;
+  //--------------------------------- proofs
   /** The lazy proof object
    *
    * This stores instructions for how to construct proofs for all theory lemmas.
@@ -520,7 +573,7 @@ class TheoryEngine : protected EnvObj
   std::shared_ptr<LazyCDProof> d_lazyProof;
   /** The proof generator */
   std::shared_ptr<TheoryEngineProofGenerator> d_tepg;
-  //--------------------------------- end new proofs
+  //--------------------------------- end proofs
   /** The combination manager we are using */
   std::unique_ptr<theory::CombinationEngine> d_tc;
   /** The shared solver of the above combination engine. */
@@ -534,13 +587,10 @@ class TheoryEngine : protected EnvObj
   /** The relevance manager */
   std::unique_ptr<theory::RelevanceManager> d_relManager;
 
-  /** are we in eager model building mode? (see setEagerModelBuilding). */
-  bool d_eager_model_building;
-
   /**
    * Output channels for individual theories.
    */
-  theory::EngineOutputChannel* d_theoryOut[theory::THEORY_LAST];
+  theory::OutputChannel* d_theoryOut[theory::THEORY_LAST];
 
   /**
    * Are we in conflict.
@@ -548,20 +598,21 @@ class TheoryEngine : protected EnvObj
   context::CDO<bool> d_inConflict;
 
   /**
-   * Are we in "SAT mode"? In this state, the user can query for the model.
-   * This corresponds to the state in Figure 4.1, page 52 of the SMT-LIB
-   * standard, version 2.6.
+   * True if a theory has notified us of model unsoundness (at this SAT
+   * context level or below). For details, see theory_inference_manager.
    */
-  bool d_inSatMode;
-
+  context::CDO<bool> d_modelUnsound;
+  /** The theory and identifier that (most recently) set model unsound */
+  context::CDO<theory::TheoryId> d_modelUnsoundTheory;
+  context::CDO<theory::IncompleteId> d_modelUnsoundId;
   /**
-   * True if a theory has notified us of incompleteness (at this
+   * True if a theory has notified us of refutation unsoundness (at this user
    * context level or below).
    */
-  context::CDO<bool> d_incomplete;
+  context::CDO<bool> d_refutationUnsound;
   /** The theory and identifier that (most recently) set incomplete */
-  context::CDO<theory::TheoryId> d_incompleteTheory;
-  context::CDO<theory::IncompleteId> d_incompleteId;
+  context::CDO<theory::TheoryId> d_refutationUnsoundTheory;
+  context::CDO<theory::IncompleteId> d_refutationUnsoundId;
 
   /**
    * Mapping of propagations from recievers to senders.
@@ -605,8 +656,8 @@ class TheoryEngine : protected EnvObj
   /** sort inference module */
   std::unique_ptr<theory::SortInference> d_sortInfer;
 
-  /** Time spent in theory combination */
-  TimerStat d_combineTheoriesTime;
+  /** Statistics */
+  theory::TheoryEngineStatistics d_stats;
 
   Node d_true;
   Node d_false;
@@ -635,6 +686,12 @@ class TheoryEngine : protected EnvObj
    * used.
    */
   std::unique_ptr<theory::PartitionGenerator> d_partitionGen;
+  /** The list of modules */
+  std::vector<theory::TheoryEngineModule*> d_modules;
+  /** Conflict processor */
+  std::unique_ptr<theory::ConflictProcessor> d_cp;
+  /** User plugin modules */
+  std::vector<std::unique_ptr<theory::PluginModule>> d_userPlugins;
 
 }; /* class TheoryEngine */
 

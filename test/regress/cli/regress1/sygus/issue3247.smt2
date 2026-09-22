@@ -1,8 +1,8 @@
+; REQUIRES: unrestricted-mode
 ; EXPECT: unsat
-; COMMAND-LINE: --sygus-inference --strings-exp -q
+; COMMAND-LINE: --sygus-inference=try -q
 ; DISABLE-TESTER: unsat-core
 ; DISABLE-TESTER: proof
-; DISABLE-TESTER: lfsc
 (set-logic ALL)
 (declare-fun a () String) 
 (declare-fun b () String) 

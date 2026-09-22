@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Morgan Deters, Aina Niemetz, Dejan Jovanovic
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -67,7 +64,9 @@ class CircuitPropagator : protected EnvObj
   /**
    * Construct a new CircuitPropagator.
    */
-  CircuitPropagator(Env& env, bool enableForward = true, bool enableBackward = true);
+  CircuitPropagator(Env& env,
+                    bool enableForward = true,
+                    bool enableBackward = true);
 
   /** Get Node assignment in circuit.  Assert-fails if Node is unassigned. */
   bool getAssignment(TNode n) const
@@ -249,8 +248,6 @@ class CircuitPropagator : protected EnvObj
   /** Adds a new proof for f, or drops it if we already have a proof */
   void addProof(TNode f, std::shared_ptr<ProofNode> pf);
 
-  /** A pointer to the proof manager */
-  ProofNodeManager* d_pnm;
   /** Eager proof generator that actually stores the proofs */
   std::unique_ptr<EagerProofGenerator> d_epg;
   /** Connects the proofs to subproofs internally */

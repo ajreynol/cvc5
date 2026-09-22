@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Kshitij Bansal, Aina Niemetz
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -31,11 +28,8 @@ class DecisionEngine : protected EnvObj
 {
  public:
   /** Constructor */
-  DecisionEngine(Env& env);
+  DecisionEngine(Env& env, prop::CDCLTSatSolver* ss, prop::CnfStream* cs);
   virtual ~DecisionEngine() {}
-
-  /** Finish initialize */
-  void finishInit(prop::CDCLTSatSolverInterface* ss, prop::CnfStream* cs);
 
   /** Presolve, called at the beginning of each check-sat call */
   virtual void presolve() {}
@@ -49,39 +43,27 @@ class DecisionEngine : protected EnvObj
 
   /** Is the DecisionEngine in a state where it has solved everything? */
   virtual bool isDone() = 0;
-
   /**
-   * Notify this class that assertion is an (input) assertion, not corresponding
-   * to a skolem definition.
+   * Adds assertions lems to satisfy that persist in the user context.
+   * All input assertions and relevant lemmas are added via this call.
+   * @param lems The lemmas to add.
    */
-  virtual void addAssertion(TNode assertion, bool isLemma) = 0;
+  virtual void addAssertions(const std::vector<TNode>& lems) = 0;
   /**
-   * Notify this class that lem is the skolem definition for skolem, which is
-   * a part of the current assertions.
+   * Adds assertions lems to satisfy that persist in the SAT context.
+   * By default, only skolem definitions from input and lemmas are added via
+   * this call.
+   * @param lems The lemmas to add.
    */
-  virtual void addSkolemDefinition(TNode lem, TNode skolem, bool isLemma) = 0;
-  /**
-   * Notify this class that the list of lemmas defs are now active in the
-   * current SAT context.
-   */
-  virtual void notifyActiveSkolemDefs(std::vector<TNode>& defs) {}
-  /**
-   * Track active skolem defs, whether we need to call the above method
-   * when appropriate.
-   */
-  virtual bool needsActiveSkolemDefs() const { return false; }
+  virtual void addLocalAssertions(CVC5_UNUSED const std::vector<TNode>& lems) {}
 
  protected:
   /** Get next internal, the engine-specific implementation of getNext */
   virtual prop::SatLiteral getNextInternal(bool& stopSearch) = 0;
-  /** Pointer to the SAT context */
-  context::Context* d_context;
-  /** Pointer to resource manager for associated SolverEngine */
-  ResourceManager* d_resourceManager;
+  /** Pointer to the SAT solver */
+  prop::CDCLTSatSolver* d_satSolver;
   /** Pointer to the CNF stream */
   prop::CnfStream* d_cnfStream;
-  /** Pointer to the SAT solver */
-  prop::CDCLTSatSolverInterface* d_satSolver;
 };
 
 /**
@@ -93,8 +75,7 @@ class DecisionEngineEmpty : public DecisionEngine
  public:
   DecisionEngineEmpty(Env& env);
   bool isDone() override;
-  void addAssertion(TNode assertion, bool isLemma) override;
-  void addSkolemDefinition(TNode lem, TNode skolem, bool isLemma) override;
+  void addAssertions(const std::vector<TNode>& lems) override;
 
  protected:
   prop::SatLiteral getNextInternal(bool& stopSearch) override;

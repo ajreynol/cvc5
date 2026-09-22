@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Aina Niemetz, Alex Ozdemir
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -66,10 +63,18 @@ TEST_F(TestUtilBlackBitVector, string_constructor)
   ASSERT_EQ("26", b4.toString(10));
   ASSERT_EQ("1a", b4.toString(16));
 
-  ASSERT_THROW(BitVector("-4", 10), IllegalArgumentException);
-  ASSERT_THROW(BitVector("-0010", 2), IllegalArgumentException);
-  ASSERT_THROW(BitVector("-3210", 4), IllegalArgumentException);
+  ASSERT_DEATH(BitVector("-4", 10), "num\\[0\\] != '-'");
+  ASSERT_DEATH(BitVector("-0010", 2), "num\\[0\\] != '-'");
+  ASSERT_DEATH(BitVector("-3210", 4), "base == 2");
   ASSERT_EQ(3, BitVector("4", 10).getSize());
+}
+
+TEST_F(TestUtilBlackBitVector, other_constructors)
+{
+  BitVector b1(8, (uint32_t)255);
+  BitVector b2(4, b1);
+  BitVector b3(4, (uint32_t)255);
+  ASSERT_EQ(b2, b3);
 }
 
 TEST_F(TestUtilBlackBitVector, conversions)
@@ -116,8 +121,8 @@ TEST_F(TestUtilBlackBitVector, concat_extract)
   BitVector b = d_one.concat(d_zero);
   ASSERT_EQ(b.toString(), "00010000");
   ASSERT_EQ(b.extract(7, 4), d_one);
-  ASSERT_THROW(b.extract(4, 7), IllegalArgumentException);
-  ASSERT_THROW(b.extract(8, 3), IllegalArgumentException);
+  ASSERT_DEATH(b.extract(4, 7), "low <= high");
+  ASSERT_DEATH(b.extract(8, 3), "high < d_size");
   ASSERT_EQ(b.concat(BitVector()), b);
 }
 
@@ -139,10 +144,10 @@ TEST_F(TestUtilBlackBitVector, comparisons)
   ASSERT_TRUE(d_neg_one.signedLessThanEq(d_neg_one));
 
   BitVector b = d_neg_one.concat(d_neg_one);
-  ASSERT_THROW(b.unsignedLessThan(d_neg_one), IllegalArgumentException);
-  ASSERT_THROW(d_neg_one.unsignedLessThanEq(b), IllegalArgumentException);
-  ASSERT_THROW(b.signedLessThan(d_neg_one), IllegalArgumentException);
-  ASSERT_THROW(d_neg_one.signedLessThanEq(b), IllegalArgumentException);
+  ASSERT_DEATH(b.unsignedLessThan(d_neg_one), "d_size == y.d_size");
+  ASSERT_DEATH(d_neg_one.unsignedLessThanEq(b), "d_size == y.d_size");
+  ASSERT_DEATH(b.signedLessThan(d_neg_one), "d_size == y.d_size");
+  ASSERT_DEATH(d_neg_one.signedLessThanEq(b), "d_size == y.d_size");
 }
 
 TEST_F(TestUtilBlackBitVector, bitwise_operators)
@@ -168,10 +173,10 @@ TEST_F(TestUtilBlackBitVector, arithmetic)
   ASSERT_EQ(d_neg_one.unsignedRemTotal(d_two), d_one);
 
   BitVector b = d_neg_one.concat(d_neg_one);
-  ASSERT_THROW(b + d_neg_one, IllegalArgumentException);
-  ASSERT_THROW(d_neg_one * b, IllegalArgumentException);
-  ASSERT_THROW(b.unsignedDivTotal(d_neg_one), IllegalArgumentException);
-  ASSERT_THROW(d_neg_one.unsignedRemTotal(b), IllegalArgumentException);
+  ASSERT_DEATH(b + d_neg_one, "a.getSize\\(\\) == b.getSize\\(\\)");
+  ASSERT_DEATH(d_neg_one * b, "a.getSize\\(\\) == b.getSize\\(\\)");
+  ASSERT_DEATH(b.unsignedDivTotal(d_neg_one), "d_size == y\\.d_size");
+  ASSERT_DEATH(d_neg_one.unsignedRemTotal(b), "d_size == y\\.d_size");
 }
 
 TEST_F(TestUtilBlackBitVector, extend_operators)

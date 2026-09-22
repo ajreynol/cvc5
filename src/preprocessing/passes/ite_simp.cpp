@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Aina Niemetz, Andrew Reynolds, Tim King
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -21,7 +18,6 @@
 #include "options/smt_options.h"
 #include "preprocessing/assertion_pipeline.h"
 #include "preprocessing/preprocessing_pass_context.h"
-#include "smt/smt_statistics_registry.h"
 #include "theory/arith/arith_ite_utils.h"
 #include "theory/theory_engine.h"
 
@@ -33,9 +29,8 @@ namespace cvc5::internal {
 namespace preprocessing {
 namespace passes {
 
-Node mkAssocAnd(const std::vector<Node>& children)
+Node mkAssocAnd(NodeManager* nm, const std::vector<Node>& children)
 {
-  NodeManager* nm = NodeManager::currentNM();
   if (children.size() == 0)
   {
     return nm->mkConst(true);
@@ -46,15 +41,15 @@ Node mkAssocAnd(const std::vector<Node>& children)
   }
   else
   {
-    const uint32_t max = kind::metakind::getMaxArityForKind(kind::AND);
-    const uint32_t min = kind::metakind::getMinArityForKind(kind::AND);
+    const uint32_t max = kind::metakind::getMaxArityForKind(Kind::AND);
+    const uint32_t min = kind::metakind::getMinArityForKind(Kind::AND);
 
     Assert(min <= children.size());
 
     unsigned int numChildren = children.size();
     if (numChildren <= max)
     {
-      return nm->mkNode(kind::AND, children);
+      return nm->mkNode(Kind::AND, children);
     }
 
     typedef std::vector<Node>::const_iterator const_iterator;
@@ -72,7 +67,7 @@ Node mkAssocAnd(const std::vector<Node>& children)
       {
         subChildren.push_back(*it);
       }
-      Node subNode = nm->mkNode(kind::AND, subChildren);
+      Node subNode = nm->mkNode(Kind::AND, subChildren);
       newChildren.push_back(subNode);
       subChildren.clear();
     }
@@ -95,7 +90,7 @@ Node mkAssocAnd(const std::vector<Node>& children)
         {
           subChildren.push_back(*it);
         }
-        Node subNode = nm->mkNode(kind::AND, subChildren);
+        Node subNode = nm->mkNode(Kind::AND, subChildren);
         newChildren.push_back(subNode);
       }
     }
@@ -110,59 +105,15 @@ Node mkAssocAnd(const std::vector<Node>& children)
     AlwaysAssert(newChildren.size() >= min)
         << "Too few new children in mkAssociative";
 
-    return nm->mkNode(kind::AND, newChildren);
+    return nm->mkNode(Kind::AND, newChildren);
   }
 }
-
-/* -------------------------------------------------------------------------- */
-
-namespace {
-
-/**
- * Ensures the assertions asserted after index 'before' now effectively come
- * before 'real_assertions_end'.
- */
-void compressBeforeRealAssertions(AssertionPipeline* assertionsToPreprocess,
-                                  size_t before)
-{
-  size_t cur_size = assertionsToPreprocess->size();
-  if (before >= cur_size || assertionsToPreprocess->getRealAssertionsEnd() <= 0
-      || assertionsToPreprocess->getRealAssertionsEnd() >= cur_size)
-  {
-    return;
-  }
-
-  // assertions
-  // original: [0 ... assertionsToPreprocess.getRealAssertionsEnd())
-  //  can be modified
-  // ites skolems [assertionsToPreprocess.getRealAssertionsEnd(), before)
-  //  cannot be moved
-  // added [before, cur_size)
-  //  can be modified
-  Assert(0 < assertionsToPreprocess->getRealAssertionsEnd());
-  Assert(assertionsToPreprocess->getRealAssertionsEnd() <= before);
-  Assert(before < cur_size);
-
-  std::vector<Node> intoConjunction;
-  for (size_t i = before; i < cur_size; ++i)
-  {
-    intoConjunction.push_back((*assertionsToPreprocess)[i]);
-  }
-  assertionsToPreprocess->resize(before);
-  size_t lastBeforeItes = assertionsToPreprocess->getRealAssertionsEnd() - 1;
-  intoConjunction.push_back((*assertionsToPreprocess)[lastBeforeItes]);
-  Node newLast = mkAssocAnd(intoConjunction);
-  assertionsToPreprocess->replace(lastBeforeItes, newLast);
-  Assert(assertionsToPreprocess->size() == before);
-}
-
-}  // namespace
 
 /* -------------------------------------------------------------------------- */
 
 ITESimp::Statistics::Statistics(StatisticsRegistry& reg)
     : d_arithSubstitutionsAdded(reg.registerInt(
-        "preprocessing::passes::ITESimp::ArithSubstitutionsAdded"))
+          "preprocessing::passes::ITESimp::ArithSubstitutionsAdded"))
 {
 }
 
@@ -182,7 +133,8 @@ Node ITESimp::simpITE(util::ITEUtilities* ite_utils, TNode assertion)
       verbose(2) << "starting simplifyWithCare()" << endl;
       Node postSimpWithCare = ite_utils->simplifyWithCare(res_rewritten);
       verbose(2) << "ending simplifyWithCare()"
-             << " post simplifyWithCare()" << postSimpWithCare.getId() << endl;
+                 << " post simplifyWithCare()" << postSimpWithCare.getId()
+                 << endl;
       result = rewrite(postSimpWithCare);
     }
     else
@@ -230,7 +182,8 @@ bool ITESimp::doneSimpITE(AssertionPipeline* assertionsToPreprocess)
             Node more = aiteu.reduceConstantIteByGCD(res);
             Trace("arith::ite::red") << "  gcd->" << more << endl;
             Node morer = rewrite(more);
-            assertionsToPreprocess->replace(i, morer);
+            assertionsToPreprocess->replace(
+                i, morer, nullptr, TrustId::PREPROCESS_ITE_SIMP);
           }
         }
       }
@@ -270,7 +223,8 @@ bool ITESimp::doneSimpITE(AssertionPipeline* assertionsToPreprocess)
             Node more = aiteu.reduceConstantIteByGCD(res);
             Trace("arith::ite::red") << "  gcd->" << more << endl;
             Node morer = rewrite(more);
-            assertionsToPreprocess->replace(i, morer);
+            assertionsToPreprocess->replace(
+                i, morer, nullptr, TrustId::PREPROCESS_ITE_SIMP);
           }
         }
       }
@@ -298,21 +252,17 @@ PreprocessingPassResult ITESimp::applyInternal(
   {
     d_preprocContext->spendResource(Resource::PreprocessStep);
     Node simp = simpITE(&d_iteUtilities, (*assertionsToPreprocess)[i]);
-    assertionsToPreprocess->replace(i, simp);
-    if (simp.isConst() && !simp.getConst<bool>())
+    assertionsToPreprocess->replace(
+        i, simp, nullptr, TrustId::PREPROCESS_ITE_SIMP);
+    if (assertionsToPreprocess->isInConflict())
     {
       return PreprocessingPassResult::CONFLICT;
     }
   }
   bool done = doneSimpITE(assertionsToPreprocess);
-  if (nasserts < assertionsToPreprocess->size())
-  {
-    compressBeforeRealAssertions(assertionsToPreprocess, nasserts);
-  }
   return done ? PreprocessingPassResult::NO_CONFLICT
               : PreprocessingPassResult::CONFLICT;
 }
-
 
 /* -------------------------------------------------------------------------- */
 

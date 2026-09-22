@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Mudathir Mohamed, Andrew Reynolds, Aina Niemetz
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -35,14 +32,14 @@ class SolverState;
 class InferenceGenerator
 {
  public:
-  InferenceGenerator(SolverState* state, InferenceManager* im);
+  InferenceGenerator(NodeManager* nm, SolverState* state, InferenceManager* im);
 
   /**
    * @param n a node of the form (bag.count e A)
-   * @return a skolem that equals (bag.count repE repA) where
+   * this function generates a skolem that equals (bag.count repE repA) where
    * repE, repA are representatives of e, A respectively
    */
-  Node registerCountTerm(Node n);
+  void registerCountTerm(Node n);
 
   /**
    * @param n a node of the form (bag.card A)
@@ -180,7 +177,7 @@ class InferenceGenerator
    */
   InferInfo differenceRemove(Node n, Node e);
   /**
-   * @param n is (bag.duplicate_removal A) where A is a bag of type (Bag E)
+   * @param n is (bag.setof A) where A is a bag of type (Bag E)
    * @param e is a node of Type E
    * @return an inference that represents the following implication
    * (=>
@@ -188,9 +185,9 @@ class InferenceGenerator
    *   (=
    *    (bag.count e skolem)
    *    (ite (>= (bag.count e A) 1) 1 0))))
-   * where skolem is a fresh variable equals (bag.duplicate_removal A)
+   * where skolem is a fresh variable equals (bag.setof A)
    */
-  InferInfo duplicateRemoval(Node n, Node e);
+  InferInfo setof(Node n, Node e);
   /**
    * @param cardTerm a term of the form (bag.card A) where A has type (Bag E)
    * @param n is (as bag.empty (Bag E))
@@ -221,7 +218,7 @@ class InferenceGenerator
    */
   InferInfo cardUnionDisjoint(Node premise,
                               Node parent,
-                              const std::set<Node>& children);
+                              const std::vector<Node>& children);
 
   /**
    * @param n is (bag.map f A) where f is a function (-> E T), A a bag of type
@@ -230,26 +227,34 @@ class InferenceGenerator
    * @return an inference that represents the following implication
    * (and
    *   (= (sum 0) 0)
-   *   (= (sum preImageSize) (bag.count e skolem))
-   *   (>= preImageSize 0)
-   *   (forall ((i Int))
-   *          (let ((uf_i (uf i)))
-   *            (let ((bag.count_uf_i (bag.count uf_i A)))
-   *              (=>
-   *               (and (>= i 1) (<= i preImageSize))
-   *               (and
-   *                 (= (f uf_i) e)
-   *                 (>= count_uf_i 1)
-   *                 (= (sum i) (+ (sum (- i 1)) count_uf_i))
-   *                 (forall ((j Int))
-   *                   (or
-   *                     (not (and (< i j) (<= j preImageSize)))
-   *                     (not (= (uf i) (uf j)))) )
-   *                 ))))))
+   *   (= (sum size) (bag.count e skolem))
+   *   (>= size 0)
+   *   (forall
+   *    ((i Int))
+   *    (let ((u_i (u i)))
+   *      (let ((bag.count_u_i (bag.count u_i A)))
+   *        (=>
+   *         (and (>= i 1) (<= i size))
+   *         (and
+   *          (forall ((j Int))
+   *                  (or
+   *                   (not (and (< i j) (<= j size)))
+   *                   (not (= (u i) (u j)))))
+   *          (>= count_u_i 1)
+   *          (or
+   *           (and
+   *            (= (f u_i) e)
+   *            (= (sum i) (+ (sum (- i 1)) count_u_i))
+   *            (forall ((j Int))
+   *                    (or
+   *                     (not (and (< i j) (<= j size)))
+   *                     (not (= (u i) (u j))))))
+   *           (and
+   *            (distinct (f u_i) e)
+   *            (= (sum i) (sum (- i 1)))))))))))
    * where uf: Int -> E is an uninterpreted function from integers to the
-   * type of the elements of A
-   * preImageSize is the cardinality of the distinct elements in A that are
-   * mapped to e by function f (i.e., preimage of {e})
+   * type of the elements of A,
+   * size is the cardinality of the distinct elements in A,
    * sum: Int -> Int is a function that aggregates the multiplicities of the
    * preimage of e,
    * and skolem is a fresh variable equals (bag.map f A))
@@ -259,9 +264,35 @@ class InferenceGenerator
   /**
    * @param n is (bag.map f A) where f is a function (-> E T), A a bag of type
    * (Bag E)
+   * @param y is a node of Type T
+   * @return an inference that represents the following conjunction
+   * (=> (>= (bag.count y skolem) 1)
+   *   (and
+   *     (= (f x) y)
+   *     (= (bag.count x A) (bag.count y skolem))
+   *   )
+   * )
+   * where skolem is a fresh variable equals (bag.map f A))
+   * and x is a fresh variable unique per n, y.
+   */
+  InferInfo mapDownInjective(Node n, Node y);
+
+  /**
+   * @param n is (bag.map f A) where f is a function (-> E T), A a bag of type
+   * (Bag E)
+   * @param x is an element of type E
+   * @return an inference that represents the following implication
+   * (<=
+   *   (bag.count x A)
+   *   (bag.count (f x) skolem)
+   * where skolem is a fresh variable equals (bag.map f A))
+   */
+  InferInfo mapUp1(Node n, Node x);
+  /**
+   * @param n is (bag.map f A) where f is a function (-> E T), A a bag of type
+   * (Bag E)
    * @param uf is an uninterpreted function Int -> E
-   * @param preImageSize is the cardinality of the distinct elements in A that
-   * are mapped to y by function f (i.e., preimage of {y})
+   * @param size is the cardinality of the distinct elements in A.
    * @param y is an element of type T
    * @param e is an element of type E
    * @return an inference that represents the following implication
@@ -270,12 +301,12 @@ class InferenceGenerator
    *   (or
    *     (not (= (f x) y)
    *     (and
-   *       (>= skolem 1)
-   *       (<= skolem preImageSize)
-   *       (= (uf skolem) x)))))
-   * where skolem is a fresh variable
+   *       (>= k 1)
+   *       (<= k size)
+   *       (= (uf k) x)))))
+   * where k is a fresh variable
    */
-  InferInfo mapUp(Node n, Node uf, Node preImageSize, Node y, Node x);
+  InferInfo mapUp2(Node n, Node uf, Node size, Node y, Node x);
 
   /**
    * @param n is (bag.filter p A) where p is a function (-> E Bool),
@@ -289,7 +320,7 @@ class InferenceGenerator
    *     (= (bag.count e skolem) (bag.count e A)))
    * where skolem is a variable equals (bag.filter p A)
    */
-  InferInfo filterDownwards(Node n, Node e);
+  InferInfo filterDown(Node n, Node e);
 
   /**
    * @param n is (bag.filter p A) where p is a function (-> E Bool),
@@ -303,7 +334,7 @@ class InferenceGenerator
    *     (and (not (p e)) (= (bag.count e skolem) 0)))
    * where skolem is a variable equals (bag.filter p A)
    */
-  InferInfo filterUpwards(Node n, Node e);
+  InferInfo filterUp(Node n, Node e);
 
   /**
    * @param n is a (table.product A B) where A, B are tables
@@ -331,7 +362,7 @@ class InferenceGenerator
   InferInfo productDown(Node n, Node e);
 
   /**
-   * @param n is a ((_ table.join m1 n1 ... mk nk) A B) where A, B are tables
+   * @param n is ((_ table.join m1 n1 ... mk nk) A B) where A, B are tables
    * @param e1 an element of the form (tuple a1 ... am)
    * @param e2 an element of the form (tuple b1 ... bn)
    * @return  an inference that represents the following
@@ -347,7 +378,7 @@ class InferenceGenerator
   InferInfo joinUp(Node n, Node e1, Node e2);
 
   /**
-   * @param n is a (table.product A B) where A, B are tables
+   * @param n is a ((_ table.join m1 n1 ... mk nk) A B) where A, B are tables
    * @param e an element of the form (tuple a1 ... am b1 ... bn)
    * @return an inference that represents the following
    * (=> (bag.member e skolem)
@@ -367,11 +398,152 @@ class InferenceGenerator
    */
   Node getMultiplicityTerm(Node element, Node bag);
 
+  /**
+   * @param n has form ((_ table.group n1 ... nk) A) where A has type T
+   * @return an inference that represents:
+   * (=>
+   *  (= A (as bag.empty T))
+   *  (= skolem (bag (as bag.empty T) 1))
+   * )
+   * where skolem is a variable equals ((_ table.group n1 ... nk) A)
+   */
+  InferInfo groupNotEmpty(Node n);
+  /**
+   * @param n has form ((_ table.group n1 ... nk) A) where A has type (Table T)
+   * @param e an element of type T
+   * @param part a skolem function of type T -> (Table T) created uniquely for n
+   * by defineSkolemPartFunction function below
+   * @return an inference that represents:
+   * (=>
+   *   (bag.member x A)
+   *   (and
+   *     (= (bag.count (part x) skolem) 1)
+   *     (= (bag.count x (part x)) (bag.count x A))
+   *     (= (bag.count (as bag.empty (Table T)) skolem) 0)
+   *   )
+   * )
+   *
+   * where skolem is a variable equals ((_ table.group n1 ... nk) A)
+   */
+  InferInfo groupUp1(Node n, Node x, Node part);
+  /**
+   * @param n has form ((_ table.group n1 ... nk) A) where A has type (Table T)
+   * @param e an element of type T
+   * @param part a skolem function of type T -> (Table T) created uniquely for n
+   * by defineSkolemPartFunction function below
+   * @return an inference that represents:
+   * (=>
+   *   (= (bag.count x A) 0)
+   *   (= (part x) (as bag.empty (Table T)))
+   * )
+   * where skolem is a variable equals ((_ table.group n1 ... nk) A)
+   */
+  InferInfo groupUp2(Node n, Node x, Node part);
+  /**
+   * @param n has form ((_ table.group n1 ... nk) A) where A has type (Table T)
+   * @param B an element of type (Table T)
+   * @param x an element of type T
+   * @param part a skolem function of type T -> (Table T) created uniquely for n
+   * by defineSkolemPartFunction function below
+   * @return an inference that represents:
+   * (=>
+   *   (and
+   *     (bag.member B skolem)
+   *     (bag.member x B)
+   *   )
+   *   (and
+   *     (= (bag.count x B) (bag.count x A))
+   *     (= (part x) B)
+   *   )
+   * )
+   * where skolem is a variable equals ((_ table.group n1 ... nk) A).
+   */
+  InferInfo groupDown(Node n, Node B, Node x, Node part);
+  /**
+   * @param n has form ((_ table.group n1 ... nk) A) where A has type (Table T)
+   * @param B an element of type (Table T) and B is not of the form (part x)
+   * @param part a skolem function of type T -> (Table T) created uniquely for n
+   * by define SkolemPartFunction function below
+   * @return an inference that represents:
+   * (=>
+   *   (and
+   *     (bag.member B skolem)
+   *     (not (= A (as bag.empty (Table T)))
+   *   )
+   *   (and
+   *     (= (bag.count B skolem) 1)
+   *     (= B (part k_{n, B}))
+   *     (>= (bag.count k_{n,B} B) 1)
+   *     (= (bag.count k_{n,B} B) (bag.count k_{n,B} A))
+   *   )
+   * )
+   * where skolem is a variable equals ((_ table.group n1 ... nk) A), and
+   * k_{n, B} is a fresh skolem of type T.
+   */
+  InferInfo groupPartCount(Node n, Node B, Node part);
+  /**
+   * @param n has form ((_ table.group n1 ... nk) A) where A has type (Table T)
+   * @param B an element of type (Table T)
+   * @param x an element of type T
+   * @param y an element of type T
+   * @param part a skolem function of type T -> (Table T) created uniquely for n
+   * by defineSkolemPartFunction function below
+   * @return an inference that represents:
+   * (=>
+   *   (and
+   *     (bag.member B skolem)
+   *     (bag.member x B)
+   *     (bag.member y B)
+   *     (distinct x y)
+   *   )
+   *   (and
+   *     (= ((_ tuple.project n1 ... nk) x)
+   *        ((_ tuple.project n1 ... nk) y))
+   *     (= (part x) (part y))
+   *     (= (part x) B)
+   *   )
+   * )
+   * where skolem is a variable equals ((_ table.group n1 ... nk) A).
+   */
+  InferInfo groupSameProjection(Node n, Node B, Node x, Node y, Node part);
+  /**
+   * @param n has form ((_ table.group n1 ... nk) A) where A has type (Table T)
+   * @param B an element of type (Table T)
+   * @param x an element of type T
+   * @param y an element of type T
+   * @param part a skolem function of type T -> (Table T) created uniquely for n
+   * by defineSkolemPartFunction function below
+   * @return an inference that represents:
+   * (=>
+   *   (and
+   *     (bag.member B skolem)
+   *     (bag.member x B)
+   *     (bag.member y A)
+   *     (distinct x y)
+   *     (= ((_ tuple.project n1 ... nk) x)
+   *        ((_ tuple.project n1 ... nk) y))
+   *   )
+   *   (and
+   *     (= (bag.count y B) (bag.count y A))
+   *     (= (part x) (part y))
+   *     (= (part x) B)
+   *   )
+   * )
+   * where skolem is a variable equals ((_ table.group n1 ... nk) A).
+   */
+  InferInfo groupSamePart(Node n, Node B, Node x, Node y, Node part);
+  /**
+   * @param n has form ((_ table.group n1 ... nk) A) where A has type (Table T)
+   * @return a function of type T -> (Table T) that maps elements T to a part in
+   * the partition
+   */
+  Node defineSkolemPartFunction(Node n);
+
  private:
   /**
    * generate skolem variable for node n and add pending lemma for the equality
    */
-  Node registerAndAssertSkolemLemma(Node& n, const std::string& prefix);
+  Node registerAndAssertSkolemLemma(Node& n);
 
   NodeManager* d_nm;
   SkolemManager* d_sm;

@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Gereon Kremer
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -22,6 +19,7 @@
 
 #include "expr/node.h"
 #include "smt/env.h"
+#include "theory/arith/arith_subs.h"
 
 namespace cvc5::internal {
 namespace theory {
@@ -29,8 +27,8 @@ namespace arith {
 
 /**
  * Check if the expression `expr` is zero over the given model.
- * The model may contain real algebraic numbers in standard witness form.
- * The environment is used for rewriting.
+ * The model subs may contain real algebraic numbers in standard
+ * witness form. The environment is used for rewriting.
  *
  * The result is true or false, if the expression could be evaluated. If it
  * could not, possibly in the presence of a transcendental model, the result is
@@ -38,8 +36,9 @@ namespace arith {
  */
 std::optional<bool> isExpressionZero(Env& env,
                                      Node expr,
-                                     const std::map<Node, Node>& model);
-}
+                                     const ArithSubs& subs,
+                                     bool traverseNlMult);
+}  // namespace arith
 }  // namespace theory
 }  // namespace cvc5::internal
 

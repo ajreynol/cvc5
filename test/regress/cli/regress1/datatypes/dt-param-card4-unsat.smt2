@@ -1,4 +1,5 @@
-; DISABLE-TESTER: proof
+; Logos does not support parametric datatype declarations.
+; DISABLE-TESTER: cpc-logos
 ; EXPECT: unsat
 (set-logic QF_ALL)
 (set-info :status unsat)

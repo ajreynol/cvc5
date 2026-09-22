@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Abdalrhman Mohamed, Andrew Reynolds, Tim King
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -33,12 +30,17 @@ class AstPrinter : public cvc5::internal::Printer
 {
  public:
   using cvc5::internal::Printer::toStream;
-  void toStream(std::ostream& out,
-                TNode n,
-                int toDepth,
-                size_t dag) const override;
-  void toStream(std::ostream& out, const cvc5::CommandStatus* s) const override;
+  void toStream(std::ostream& out, TNode n) const override;
+  void toStream(std::ostream& out, Kind k) const override;
   void toStream(std::ostream& out, const smt::Model& m) const override;
+
+  void toStreamCmdSuccess(std::ostream& out) const override;
+  void toStreamCmdInterrupted(std::ostream& out) const override;
+  void toStreamCmdUnsupported(std::ostream& out) const override;
+  void toStreamCmdFailure(std::ostream& out,
+                          const std::string& message) const override;
+  void toStreamCmdRecoverableFailure(std::ostream& out,
+                                     const std::string& message) const override;
 
   /** Print empty command */
   void toStreamCmdEmpty(std::ostream& out,
@@ -60,11 +62,13 @@ class AstPrinter : public cvc5::internal::Printer
   /** Print declare-fun command */
   void toStreamCmdDeclareFunction(std::ostream& out,
                                   const std::string& id,
+                                  const std::vector<TypeNode>& argTypes,
                                   TypeNode type) const override;
 
   /** Print declare-sort command */
   void toStreamCmdDeclareType(std::ostream& out,
-                              TypeNode type) const override;
+                              const std::string& id,
+                              size_t arity) const override;
 
   /** Print define-sort command */
   void toStreamCmdDefineType(std::ostream& out,
@@ -103,7 +107,8 @@ class AstPrinter : public cvc5::internal::Printer
   void toStreamCmdGetModel(std::ostream& out) const override;
 
   /** Print get-proof command */
-  void toStreamCmdGetProof(std::ostream& out) const override;
+  void toStreamCmdGetProof(std::ostream& out,
+                           modes::ProofComponent c) const override;
 
   /** Print get-unsat-core command */
   void toStreamCmdGetUnsatCore(std::ostream& out) const override;
@@ -145,16 +150,6 @@ class AstPrinter : public cvc5::internal::Printer
 
   /** Print quit command */
   void toStreamCmdQuit(std::ostream& out) const override;
-
-  /** Print command sequence command */
-  void toStreamCmdCommandSequence(
-      std::ostream& out,
-      const std::vector<cvc5::Command*>& sequence) const override;
-
-  /** Print declaration sequence command */
-  void toStreamCmdDeclarationSequence(
-      std::ostream& out,
-      const std::vector<cvc5::Command*>& sequence) const override;
 
  private:
   void toStream(std::ostream& out,

@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Mudathir Mohamed, Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -64,6 +61,21 @@ class RelsUtils
    * @return  a tuple (tuple a b)
    */
   static Node constructPair(Node rel, Node a, Node b);
+
+  /**
+   * @param n of the form ((_ rel.group (n_1 ... n_k) ) A) where A is a
+   * constant relation
+   * @return a partition of A such that each part contains tuples with the same
+   * projection with indices n_1 ... n_k
+   */
+  static Node evaluateGroup(TNode n);
+
+  /**
+   * @param n has the form ((_ rel.aggr n1 ... n_k) f initial A)
+   * where initial and A are constants
+   * @return the aggregation result.
+   */
+  static Node evaluateRelationAggregate(TNode n);
 };
 }  // namespace sets
 }  // namespace theory

@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Aina Niemetz, Andres Noetzli
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -27,22 +24,53 @@ package io.github.cvc5;
  */
 public class SynthResult extends AbstractPointer
 {
-  // region construction and destruction
-  SynthResult(Solver solver, long pointer)
+  /**
+   * Null synthResult
+   */
+  public SynthResult()
   {
-    super(solver, pointer);
+    super(getNullSynthResult());
+  }
+
+  private static native long getNullSynthResult();
+
+  SynthResult(long pointer)
+  {
+    super(pointer);
   }
 
   protected native void deletePointer(long pointer);
 
-  public long getPointer()
+  /**
+   * Operator overloading for equality of two synthesis results.
+   * @param r The synthesis result to compare to for equality.
+   * @return True if the synthesis results are equal.
+   */
+  @Override
+  public boolean equals(Object r)
   {
-    return pointer;
+    if (this == r)
+    {
+      return true;
+    }
+    if (r == null || getClass() != r.getClass())
+    {
+      return false;
+    }
+    SynthResult result = (SynthResult) r;
+    if (this.pointer == result.pointer)
+    {
+      return true;
+    }
+    return equals(pointer, result.getPointer());
   }
 
-  // endregion
+  private native boolean equals(long pointer1, long pointer2);
 
   /**
+   * Determine if SynthResult is empty, i.e., a nullary SynthResult, and not
+   * an actual result returned from a synthesis query.
+   *
    * @return True if SynthResult is empty, i.e., a nullary SynthResult, and not
    * an actual result returned from a synthesis query.
    */
@@ -54,6 +82,8 @@ public class SynthResult extends AbstractPointer
   private native boolean isNull(long pointer);
 
   /**
+   * Determine if the synthesis query has a solution.
+   *
    * @return True if the synthesis query has a solution.
    */
   public boolean hasSolution()
@@ -64,6 +94,8 @@ public class SynthResult extends AbstractPointer
   private native boolean hasSolution(long pointer);
 
   /**
+   * Determine if the synthesis query has no solution.
+   *
    * @return True if the synthesis query has no solution. In this case, it was
    * determined there was no solution.
    */
@@ -75,6 +107,8 @@ public class SynthResult extends AbstractPointer
   private native boolean hasNoSolution(long pointer);
 
   /**
+   * Determine if the result of the synthesis query could not be determined.
+   *
    * @return True if the result of the synthesis query could not be determined.
    */
   public boolean isUnknown()
@@ -88,4 +122,16 @@ public class SynthResult extends AbstractPointer
    * @return A string representation of this result.
    */
   protected native String toString(long pointer);
+
+  /**
+   * Get the hash value of a synthesis result.
+   * @return The hash value.
+   */
+  @Override
+  public int hashCode()
+  {
+    return Long.hashCode(hashCode(pointer));
+  }
+
+  private native long hashCode(long pointer);
 }

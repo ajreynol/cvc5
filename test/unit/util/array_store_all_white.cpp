@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Aina Niemetz, Andres Noetzli, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -45,42 +42,42 @@ TEST_F(TestUtilWhiteArrayStoreAll, store_all)
 
 TEST_F(TestUtilWhiteArrayStoreAll, type_errors)
 {
-  ASSERT_THROW(ArrayStoreAll(d_nodeManager->integerType(),
+  ASSERT_DEATH(ArrayStoreAll(d_nodeManager->integerType(),
                              d_nodeManager->mkConst(UninterpretedSortValue(
                                  d_nodeManager->mkSort("U"), 0))),
-               IllegalArgumentException);
-  ASSERT_THROW(ArrayStoreAll(d_nodeManager->integerType(),
+               "can only be created for array types");
+  ASSERT_DEATH(ArrayStoreAll(d_nodeManager->integerType(),
                              d_nodeManager->mkConstReal(Rational(9, 2))),
-               IllegalArgumentException);
-  ASSERT_THROW(
+               "can only be created for array types");
+  ASSERT_DEATH(
       ArrayStoreAll(d_nodeManager->mkArrayType(d_nodeManager->integerType(),
                                                d_nodeManager->mkSort("U")),
                     d_nodeManager->mkConstReal(Rational(9, 2))),
-      IllegalArgumentException);
-  ASSERT_THROW(ArrayStoreAll(
-      d_nodeManager->mkArrayType(d_nodeManager->mkBitVectorType(8),
-                                 d_nodeManager->realType()),
-      d_nodeManager->mkConstInt(Rational(0))),
-      IllegalArgumentException);
+      "does not match constituent type of array type");
+  ASSERT_DEATH(ArrayStoreAll(
+                   d_nodeManager->mkArrayType(d_nodeManager->mkBitVectorType(8),
+                                              d_nodeManager->realType()),
+                   d_nodeManager->mkConstInt(Rational(0))),
+               "does not match constituent type of array type");
 }
 
 TEST_F(TestUtilWhiteArrayStoreAll, const_error)
 {
   TypeNode usort = d_nodeManager->mkSort("U");
-  ASSERT_THROW(ArrayStoreAll(d_nodeManager->mkArrayType(
+  ASSERT_DEATH(ArrayStoreAll(d_nodeManager->mkArrayType(
                                  d_nodeManager->mkSort("U"), usort),
                              d_nodeManager->mkVar(usort)),
-               IllegalArgumentException);
-  ASSERT_THROW(
+               "requires a constant expression");
+  ASSERT_DEATH(
       ArrayStoreAll(d_nodeManager->integerType(),
                     d_nodeManager->mkVar("x", d_nodeManager->integerType())),
-      IllegalArgumentException);
-  ASSERT_THROW(ArrayStoreAll(d_nodeManager->integerType(),
+      "array store-all constants can only be created for array types");
+  ASSERT_DEATH(ArrayStoreAll(d_nodeManager->integerType(),
                              d_nodeManager->mkNode(
-                                 kind::ADD,
+                                 Kind::ADD,
                                  d_nodeManager->mkConstInt(Rational(1)),
                                  d_nodeManager->mkConstInt(Rational(0)))),
-               IllegalArgumentException);
+               "array store-all constants can only be created for array types");
 }
 }  // namespace test
 }  // namespace cvc5::internal

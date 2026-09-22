@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Mudathir Mohamed, Aina Niemetz, Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -23,22 +20,27 @@ import java.util.Map;
  */
 public class Result extends AbstractPointer
 {
-  // region construction and destruction
-  Result(Solver solver, long pointer)
+  /**
+   * Null result
+   */
+  public Result()
   {
-    super(solver, pointer);
+    super(getNullResult());
+  }
+
+  private static native long getNullResult();
+
+  Result(long pointer)
+  {
+    super(pointer);
   }
 
   protected native void deletePointer(long pointer);
 
-  public long getPointer()
-  {
-    return pointer;
-  }
-
-  // endregion
-
   /**
+   * Determine if Result is empty, i.e., a nullary Result, and not an actual
+   * result returned from a checkSat() (and friends) query.
+   *
    * @return True if Result is empty, i.e., a nullary Result, and not an actual
    * result returned from a checkSat() (and friends) query.
    */
@@ -50,6 +52,9 @@ public class Result extends AbstractPointer
   private native boolean isNull(long pointer);
 
   /**
+   * Determine if query was a satisfiable checkSat() or checkSatAssuming()
+   * query.
+   *
    * @return True if query was a satisfiable checkSat() or checkSatAssuming()
    * query.
    */
@@ -61,6 +66,9 @@ public class Result extends AbstractPointer
   private native boolean isSat(long pointer);
 
   /**
+   * Determine if if query was an unsatisfiable checkSat() or
+   * checkSatAssuming() query.
+   *
    * @return True if query was an unsatisfiable checkSat() or
    * checkSatAssuming() query.
    */
@@ -72,6 +80,9 @@ public class Result extends AbstractPointer
   private native boolean isUnsat(long pointer);
 
   /**
+   * Determine if query was a checkSat() or checkSatAssuming() query and
+   * cvc5 was not able to determine (un)satisfiability.
+   *
    * @return True if query was a checkSat() or checkSatAssuming() query and
    * cvc5 was not able to determine (un)satisfiability.
    */
@@ -84,16 +95,20 @@ public class Result extends AbstractPointer
 
   /**
    * Operator overloading for equality of two results.
-   * @param r the result to compare to for equality
-   * @return True if the results are equal
+   * @param r The result to compare to for equality.
+   * @return True if the results are equal.
    */
   @Override
   public boolean equals(Object r)
   {
     if (this == r)
+    {
       return true;
+    }
     if (r == null || getClass() != r.getClass())
+    {
       return false;
+    }
     Result result = (Result) r;
     if (this.pointer == result.pointer)
     {
@@ -105,7 +120,8 @@ public class Result extends AbstractPointer
   private native boolean equals(long pointer1, long pointer2);
 
   /**
-   * @return An explanation for an unknown query result.
+   * Get an explanation for an unknown query result.
+   * @return The explanation.
    */
   public UnknownExplanation getUnknownExplanation()
   {
@@ -127,4 +143,16 @@ public class Result extends AbstractPointer
    * @return A string representation of this result.
    */
   protected native String toString(long pointer);
+
+  /**
+   * Get the hash value of a result.
+   * @return The hash value.
+   */
+  @Override
+  public int hashCode()
+  {
+    return Long.hashCode(hashCode(pointer));
+  }
+
+  private native long hashCode(long pointer);
 }

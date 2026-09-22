@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Aina Niemetz, Gereon Kremer, Tim King
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -21,6 +18,7 @@
 #include "base/check.h"
 #include "base/cvc5config.h"
 #include "util/integer.h"
+#include "util/random.h"
 #include "util/rational.h"
 
 #ifndef CVC5_GMP_IMP
@@ -31,47 +29,14 @@ using namespace std;
 
 namespace cvc5::internal {
 
-Integer::Integer(const char* s, unsigned base)
-  : d_value(s, base)
-{}
+Integer::Integer(const char* s, unsigned base) : d_value(s, base) {}
 
-Integer::Integer(const std::string& s, unsigned base)
-  : d_value(s, base)
-{}
+Integer::Integer(const std::string& s, unsigned base) : d_value(s, base) {}
 
 #ifdef CVC5_NEED_INT64_T_OVERLOADS
-Integer::Integer(int64_t z)
-{
-  if (std::numeric_limits<signed long int>::min() <= z
-      && z <= std::numeric_limits<signed long int>::max())
-  {
-    d_value = static_cast<signed long int>(z);
-  }
-  else
-  {
-    d_value = std::to_string(z);
-  }
-}
-Integer::Integer(uint64_t z)
-{
-  if (std::numeric_limits<unsigned long int>::min() <= z
-      && z <= std::numeric_limits<unsigned long int>::max())
-  {
-    d_value = static_cast<unsigned long int>(z);
-  }
-  else
-  {
-    d_value = std::to_string(z);
-  }
-}
+Integer::Integer(int64_t z) : d_value(construct_mpz(z)) {}
+Integer::Integer(uint64_t z) : d_value(construct_mpz(z)) {}
 #endif /* CVC5_NEED_INT64_T_OVERLOADS */
-
-Integer& Integer::operator=(const Integer& x)
-{
-  if (this == &x) return *this;
-  d_value = x.d_value;
-  return *this;
-}
 
 bool Integer::operator==(const Integer& y) const
 {
@@ -187,7 +152,7 @@ bool Integer::isBitSet(uint32_t i) const
 Integer Integer::oneExtend(uint32_t size, uint32_t amount) const
 {
   // check that the size is accurate
-  DebugCheckArgument((*this) < Integer(1).multiplyByPow2(size), size);
+  Assert((*this) < Integer(1).multiplyByPow2(size));
   mpz_class res = d_value;
 
   for (unsigned i = size; i < size + amount; ++i)
@@ -304,7 +269,7 @@ Integer Integer::euclidianDivideRemainder(const Integer& y) const
 
 Integer Integer::exactQuotient(const Integer& y) const
 {
-  DebugCheckArgument(y.divides(*this), y);
+  Assert(y.divides(*this));
   mpz_class q;
   mpz_divexact(q.get_mpz_t(), d_value.get_mpz_t(), y.d_value.get_mpz_t());
   return Integer(q);
@@ -339,7 +304,7 @@ bool Integer::isNegativeOne() const
   return mpz_cmp_si(d_value.get_mpz_t(), -1) == 0;
 }
 
-Integer Integer::pow(unsigned long int exp) const
+Integer Integer::pow(uint32_t exp) const
 {
   mpz_class result;
   mpz_pow_ui(result.get_mpz_t(), d_value.get_mpz_t(), exp);
@@ -378,7 +343,7 @@ Integer Integer::modMultiply(const Integer& y, const Integer& m) const
 
 Integer Integer::modInverse(const Integer& m) const
 {
-  PrettyCheckArgument(m > 0, m, "m must be greater than zero");
+  Assert(m > 0) << "m must be greater than zero";
   mpz_class res;
   if (mpz_invert(res.get_mpz_t(), d_value.get_mpz_t(), m.d_value.get_mpz_t())
       == 0)
@@ -405,46 +370,38 @@ bool Integer::fitsUnsignedInt() const { return d_value.fits_uint_p(); }
 signed int Integer::getSignedInt() const
 {
   // ensure there isn't overflow
-  CheckArgument(d_value <= std::numeric_limits<int>::max(),
-                this,
-                "Overflow detected in Integer::getSignedInt().");
-  CheckArgument(d_value >= std::numeric_limits<int>::min(),
-                this,
-                "Overflow detected in Integer::getSignedInt().");
-  CheckArgument(
-      fitsSignedInt(), this, "Overflow detected in Integer::getSignedInt().");
+  Assert(d_value <= std::numeric_limits<int>::max())
+      << "Overflow detected in Integer::getSignedInt().";
+  Assert(d_value >= std::numeric_limits<int>::min())
+      << "Overflow detected in Integer::getSignedInt().";
+  Assert(fitsSignedInt()) << "Overflow detected in Integer::getSignedInt().";
   return (signed int)d_value.get_si();
 }
 
 unsigned int Integer::getUnsignedInt() const
 {
   // ensure there isn't overflow
-  CheckArgument(d_value <= std::numeric_limits<unsigned int>::max(),
-                this,
-                "Overflow detected in Integer::getUnsignedInt()");
-  CheckArgument(d_value >= std::numeric_limits<unsigned int>::min(),
-                this,
-                "Overflow detected in Integer::getUnsignedInt()");
-  CheckArgument(
-      fitsUnsignedInt(), this, "Overflow detected in Integer::getUnsignedInt()");
+  Assert(d_value <= std::numeric_limits<unsigned int>::max())
+      << "Overflow detected in Integer::getUnsignedInt()";
+  Assert(d_value >= std::numeric_limits<unsigned int>::min())
+      << "Overflow detected in Integer::getUnsignedInt()";
+  Assert(fitsUnsignedInt()) << "Overflow detected in Integer::getUnsignedInt()";
   return (unsigned int)d_value.get_ui();
 }
 
 long Integer::getLong() const
 {
   // ensure there it fits
-  CheckArgument(mpz_fits_slong_p(d_value.get_mpz_t()) != 0,
-                this,
-                "Overflow detected in Integer::getLong().");
+  Assert(mpz_fits_slong_p(d_value.get_mpz_t()) != 0)
+      << "Overflow detected in Integer::getLong().";
   return d_value.get_si();
 }
 
 unsigned long Integer::getUnsignedLong() const
 {
   // ensure that it fits
-  CheckArgument(mpz_fits_ulong_p(d_value.get_mpz_t()) != 0,
-                this,
-                "Overflow detected in Integer::getUnsignedLong().");
+  Assert(mpz_fits_ulong_p(d_value.get_mpz_t()) != 0)
+      << "Overflow detected in Integer::getUnsignedLong().";
   return d_value.get_ui();
 }
 
@@ -466,8 +423,7 @@ int64_t Integer::getSigned64() const
     }
     catch (const std::exception& e)
     {
-      CheckArgument(
-          false, this, "Overflow detected in Integer::getSigned64().");
+      DebugUnhandled() << "Overflow detected in Integer::getSigned64().";
     }
   }
   return 0;
@@ -486,14 +442,12 @@ uint64_t Integer::getUnsigned64() const
     }
     try
     {
-      CheckArgument(
-          sgn() >= 0, this, "Overflow detected in Integer::getUnsigned64().");
+      Assert(sgn() >= 0) << "Overflow detected in Integer::getUnsigned64().";
       return std::stoull(toString());
     }
     catch (const std::exception& e)
     {
-      CheckArgument(
-          false, this, "Overflow detected in Integer::getUnsigned64().");
+      DebugUnhandled() << "Overflow detected in Integer::getUnsigned64().";
     }
   }
   return 0;
@@ -530,6 +484,11 @@ size_t Integer::length() const
   }
 }
 
+bool Integer::isProbablePrime() const
+{
+  return mpz_probab_prime_p(d_value.get_mpz_t(), 30) > 0;
+}
+
 void Integer::extendedGcd(
     Integer& g, Integer& s, Integer& t, const Integer& a, const Integer& b)
 {
@@ -551,6 +510,15 @@ const Integer& Integer::min(const Integer& a, const Integer& b)
 const Integer& Integer::max(const Integer& a, const Integer& b)
 {
   return (a >= b) ? a : b;
+}
+
+Integer Integer::mkRandom(uint32_t nbits)
+{
+  Assert(nbits > 0);
+  mpz_class res;
+  Random& rnd = Random::getRandom();
+  mpz_urandomb(res.get_mpz_t(), *rnd.getGMPRandstate(), nbits);
+  return Integer(res);
 }
 
 }  // namespace cvc5::internal

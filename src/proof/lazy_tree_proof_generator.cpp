@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Gereon Kremer
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -22,12 +19,13 @@
 #include "proof/proof_generator.h"
 #include "proof/proof_node.h"
 #include "proof/proof_node_manager.h"
+#include "smt/env.h"
 
 namespace cvc5::internal {
 
-LazyTreeProofGenerator::LazyTreeProofGenerator(ProofNodeManager* pnm,
+LazyTreeProofGenerator::LazyTreeProofGenerator(Env& env,
                                                const std::string& name)
-    : d_pnm(pnm), d_name(name)
+    : EnvObj(env), d_name(name)
 {
   d_stack.emplace_back(&d_proof);
 }
@@ -43,7 +41,7 @@ void LazyTreeProofGenerator::closeChild()
 {
   Trace("proof-ltpg") << "closeChild() start" << std::endl
                       << *this << std::endl;
-  Assert(getCurrent().d_rule != PfRule::UNKNOWN);
+  Assert(getCurrent().d_rule != ProofRule::UNKNOWN);
   d_stack.pop_back();
   Trace("proof-ltpg") << "closeChild() end" << std::endl << *this << std::endl;
 }
@@ -53,7 +51,7 @@ detail::TreeProofNode& LazyTreeProofGenerator::getCurrent()
   return *d_stack.back();
 }
 void LazyTreeProofGenerator::setCurrent(size_t objectId,
-                                        PfRule rule,
+                                        ProofRule rule,
                                         const std::vector<Node>& premise,
                                         std::vector<Node> args,
                                         Node proven)
@@ -65,6 +63,19 @@ void LazyTreeProofGenerator::setCurrent(size_t objectId,
   pn.d_args = args;
   pn.d_proven = proven;
 }
+
+void LazyTreeProofGenerator::setCurrentTrust(size_t objectId,
+                                             TrustId tid,
+                                             const std::vector<Node>& premise,
+                                             std::vector<Node> args,
+                                             Node proven)
+{
+  std::vector<Node> newArgs;
+  newArgs.push_back(mkTrustId(nodeManager(), tid));
+  newArgs.push_back(proven);
+  newArgs.insert(newArgs.end(), args.begin(), args.end());
+  setCurrent(objectId, ProofRule::TRUST, premise, newArgs, proven);
+}
 std::shared_ptr<ProofNode> LazyTreeProofGenerator::getProof() const
 {
   // Check cache
@@ -75,7 +86,8 @@ std::shared_ptr<ProofNode> LazyTreeProofGenerator::getProof() const
   return d_cached;
 }
 
-std::shared_ptr<ProofNode> LazyTreeProofGenerator::getProofFor(Node f)
+std::shared_ptr<ProofNode> LazyTreeProofGenerator::getProofFor(
+    CVC5_UNUSED Node f)
 {
   Assert(hasProofFor(f));
   return getProof();
@@ -90,17 +102,18 @@ std::shared_ptr<ProofNode> LazyTreeProofGenerator::getProof(
     std::vector<std::shared_ptr<ProofNode>>& scope,
     const detail::TreeProofNode& pn) const
 {
+  ProofNodeManager* pnm = d_env.getProofNodeManager();
   // Store scope size to reset scope afterwards
   std::size_t before = scope.size();
   std::vector<std::shared_ptr<ProofNode>> children;
-  if (pn.d_rule == PfRule::SCOPE)
+  if (pn.d_rule == ProofRule::SCOPE)
   {
     // Extend scope for all but the root node
     if (&pn != &d_proof)
     {
       for (const auto& a : pn.d_args)
       {
-        scope.emplace_back(d_pnm->mkAssume(a));
+        scope.emplace_back(pnm->mkAssume(a));
       }
     }
   }
@@ -117,11 +130,11 @@ std::shared_ptr<ProofNode> LazyTreeProofGenerator::getProof(
   for (const auto& p : pn.d_premise)
   {
     // Add premises as assumptions
-    children.emplace_back(d_pnm->mkAssume(p));
+    children.emplace_back(pnm->mkAssume(p));
   }
   // Reset scope
   scope.resize(before);
-  return d_pnm->mkNode(pn.d_rule, children, pn.d_args);
+  return pnm->mkNode(pn.d_rule, children, pn.d_args);
 }
 
 void LazyTreeProofGenerator::print(std::ostream& os,
@@ -135,7 +148,7 @@ void LazyTreeProofGenerator::print(std::ostream& os,
   {
     os << prefix << ":args ";
     container_to_stream(os, pn.d_args);
-    std::cout << std::endl;
+    os << std::endl;
   }
   for (const auto& c : pn.d_children)
   {

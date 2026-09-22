@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Gereon Kremer, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -18,7 +15,7 @@
 #include "expr/dtype.h"
 #include "options/datatypes_options.h"
 #include "proof/eager_proof_generator.h"
-#include "smt/smt_statistics_registry.h"
+#include "theory/datatypes/theory_datatypes.h"
 #include "theory/rewriter.h"
 #include "theory/theory.h"
 #include "theory/theory_state.h"
@@ -30,33 +27,33 @@ namespace cvc5::internal {
 namespace theory {
 namespace datatypes {
 
-InferenceManager::InferenceManager(Env& env, Theory& t, TheoryState& state)
+InferenceManager::InferenceManager(Env& env,
+                                   TheoryDatatypes& t,
+                                   TheoryState& state)
     : InferenceManagerBuffered(env, t, state, "theory::datatypes::"),
-      d_ipc(isProofEnabled()
-                ? new InferProofCons(context(), env.getProofNodeManager())
-                : nullptr),
-      d_lemPg(isProofEnabled()
-                  ? new EagerProofGenerator(env.getProofNodeManager(),
-                                            userContext(),
-                                            "datatypes::lemPg")
-                  : nullptr)
+      d_dt(t),
+      d_ipc(isProofEnabled() ? new InferProofCons(env, context()) : nullptr),
+      d_lemPg(isProofEnabled() ? new EagerProofGenerator(
+                                     env, userContext(), "datatypes::lemPg")
+                               : nullptr)
 {
-  d_false = NodeManager::currentNM()->mkConst(false);
+  d_false = nodeManager()->mkConst(false);
 }
 
-InferenceManager::~InferenceManager()
-{
-}
+InferenceManager::~InferenceManager() {}
 
 void InferenceManager::addPendingInference(Node conc,
                                            InferenceId id,
                                            Node exp,
                                            bool forceLemma)
 {
-  // if we are forcing the inference to be processed as a lemma, or if the
-  // inference must be sent as a lemma based on the policy in
-  // mustCommunicateFact.
-  if (forceLemma || DatatypesInference::mustCommunicateFact(conc, exp))
+  Trace("dt-im") << "Pending inference: " << conc << " / " << exp << " / " << id
+                 << std::endl;
+  // if we are forcing the inference to be processed as a lemma, if the
+  // dtInferAsLemmas option is set, or if the inference must be sent as a lemma
+  // based on the policy in mustCommunicateFact.
+  if (forceLemma || options().datatypes.dtInferAsLemmas
+      || DatatypesInference::mustCommunicateFact(conc, exp))
   {
     d_pendingLem.emplace_back(new DatatypesInference(this, conc, exp, id));
   }
@@ -81,23 +78,23 @@ void InferenceManager::process()
   doPendingFacts();
 }
 
-void InferenceManager::sendDtLemma(Node lem, InferenceId id, LemmaProperty p)
+bool InferenceManager::sendDtLemma(Node lem, InferenceId id, LemmaProperty p)
 {
   if (isProofEnabled())
   {
     TrustNode trn = processDtLemma(lem, Node::null(), id);
-    trustedLemma(trn, id);
-    return;
+    return trustedLemma(trn, id);
   }
   // otherwise send as a normal lemma directly
-  lemma(lem, id, p);
+  return lemma(lem, id, p);
 }
 
-void InferenceManager::sendDtConflict(const std::vector<Node>& conf, InferenceId id)
+void InferenceManager::sendDtConflict(const std::vector<Node>& conf,
+                                      InferenceId id)
 {
   if (isProofEnabled())
   {
-    Node exp = NodeManager::currentNM()->mkAnd(conf);
+    Node exp = nodeManager()->mkAnd(conf);
     prepareDtInference(d_false, exp, id, d_ipc.get());
   }
   conflictExp(id, conf, d_ipc.get());
@@ -109,15 +106,14 @@ TrustNode InferenceManager::processDtLemma(Node conc, Node exp, InferenceId id)
   std::shared_ptr<InferProofCons> ipcl;
   if (isProofEnabled())
   {
-    ipcl =
-        std::make_shared<InferProofCons>(nullptr, d_env.getProofNodeManager());
+    ipcl = std::make_shared<InferProofCons>(d_env, nullptr);
   }
   conc = prepareDtInference(conc, exp, id, ipcl.get());
   // send it as a lemma
   Node lem;
   if (!exp.isNull() && !exp.isConst())
   {
-    lem = NodeManager::currentNM()->mkNode(kind::IMPLIES, exp, conc);
+    lem = nodeManager()->mkNode(Kind::IMPLIES, exp, conc);
   }
   else
   {
@@ -155,10 +151,19 @@ Node InferenceManager::prepareDtInference(Node conc,
 {
   Trace("dt-lemma-debug") << "prepareDtInference : " << conc << " via " << exp
                           << " by " << id << std::endl;
-  if (conc.getKind() == EQUAL && conc[0].getType().isBoolean())
+  if (id == InferenceId::DATATYPES_INST)
   {
-    // must turn (= conc false) into (not conc)
-    conc = rewrite(conc);
+    // Mark the equivalence class as instantiated. Note this method is the
+    // single point through which all datatypes inferences pass when they are
+    // sent, either as a lemma (processDtLemma) or as an internal fact
+    // (processDtFact). Marking the equivalence class here, and not when the
+    // inference was computed, guarantees that it is marked as instantiated if
+    // and only if the inference of the instantiate rule was sent. In
+    // particular, if the inference is discarded while still pending, e.g. when
+    // a conflict is raised, then the equivalence class is left unmarked and we
+    // will apply the instantiate rule to it again. See issue #12794.
+    Assert(conc.getKind() == Kind::EQUAL);
+    d_dt.notifyInstantiate(conc[0]);
   }
   if (isProofEnabled())
   {

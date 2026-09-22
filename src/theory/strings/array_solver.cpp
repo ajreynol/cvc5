@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Andres Noetzli, Aina Niemetz
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -20,6 +17,7 @@
 #include "theory/strings/theory_strings_utils.h"
 #include "theory/strings/word.h"
 #include "util/rational.h"
+#include "util/string.h"
 
 using namespace cvc5::context;
 using namespace cvc5::internal::kind;
@@ -32,6 +30,7 @@ ArraySolver::ArraySolver(Env& env,
                          SolverState& s,
                          InferenceManager& im,
                          TermRegistry& tr,
+                         BaseSolver& bs,
                          CoreSolver& cs,
                          ExtfSolver& es,
                          ExtTheory& extt)
@@ -39,12 +38,13 @@ ArraySolver::ArraySolver(Env& env,
       d_state(s),
       d_im(im),
       d_termReg(tr),
+      d_bsolver(bs),
       d_csolver(cs),
       d_esolver(es),
-      d_coreSolver(env, s, im, tr, cs, es, extt),
+      d_coreSolver(env, s, im, tr, es, extt),
       d_eqProc(context())
 {
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   d_zero = nm->mkConstInt(Rational(0));
 }
 
@@ -62,9 +62,8 @@ void ArraySolver::checkArrayConcat()
   Trace("seq-array") << "ArraySolver::checkArrayConcat..." << std::endl;
   // Get the set of relevant terms. The core array solver requires knowing this
   // set to ensure its write model is only over relevant terms.
-  std::set<Node> termSet;
-  d_termReg.getRelevantTermSet(termSet);
-  checkTerms(termSet);
+  std::vector<Node> terms = d_esolver.getRelevantActive();
+  checkTerms(terms);
 }
 
 void ArraySolver::checkArray()
@@ -76,7 +75,8 @@ void ArraySolver::checkArray()
     return;
   }
   Trace("seq-array") << "ArraySolver::checkArray..." << std::endl;
-  d_coreSolver.check(d_currTerms[SEQ_NTH], d_currTerms[STRING_UPDATE]);
+  d_coreSolver.check(d_currTerms[Kind::SEQ_NTH],
+                     d_currTerms[Kind::STRING_UPDATE]);
 }
 
 void ArraySolver::checkArrayEager()
@@ -89,18 +89,17 @@ void ArraySolver::checkArrayEager()
   }
   Trace("seq-array") << "ArraySolver::checkArray..." << std::endl;
   // get the set of relevant terms, for reasons described above
-  std::set<Node> termSet;
-  d_termReg.getRelevantTermSet(termSet);
+  std::vector<Node> terms = d_esolver.getRelevantActive();
   std::vector<Node> nthTerms;
   std::vector<Node> updateTerms;
-  for (const Node& n : termSet)
+  for (const Node& n : terms)
   {
     Kind k = n.getKind();
-    if (k == STRING_UPDATE)
+    if (k == Kind::STRING_UPDATE)
     {
       updateTerms.push_back(n);
     }
-    else if (k == SEQ_NTH)
+    else if (k == Kind::SEQ_NTH)
     {
       nthTerms.push_back(n);
     }
@@ -108,37 +107,49 @@ void ArraySolver::checkArrayEager()
   d_coreSolver.check(nthTerms, updateTerms);
 }
 
-void ArraySolver::checkTerms(const std::set<Node>& termSet)
+void ArraySolver::checkTerms(const std::vector<Node>& terms)
 {
   // get all the active update terms that have not been reduced in the
   // current context by context-dependent simplification
-  for (const Node& t : termSet)
+  std::unordered_set<Node> processed;
+  for (const Node& t : terms)
   {
+    bool checkInv = false;
     Kind k = t.getKind();
     Trace("seq-array-debug") << "check term " << t << "..." << std::endl;
-    if (k == STRING_UPDATE)
+    if (k == Kind::STRING_UPDATE)
     {
-      if (!d_termReg.isHandledUpdate(t))
+      if (!d_termReg.isHandledUpdateOrSubstr(t))
       {
         // not handled by procedure
         Trace("seq-array-debug") << "...unhandled" << std::endl;
         continue;
       }
       // for update terms, also check the inverse inference
-      checkTerm(t, true);
+      checkInv = true;
     }
-    else if (k != SEQ_NTH)
+    else if (k != Kind::SEQ_NTH)
     {
       continue;
     }
+
+    if (d_bsolver.isCongruent(t))
+    {
+      continue;
+    }
+
     // check the normal inference
     checkTerm(t, false);
+    if (checkInv)
+    {
+      checkTerm(t, true);
+    }
   }
 }
 
 void ArraySolver::checkTerm(Node t, bool checkInv)
 {
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   Kind k = t.getKind();
   Node r = d_state.getRepresentative(t[0]);
   Node rself;
@@ -146,15 +157,15 @@ void ArraySolver::checkTerm(Node t, bool checkInv)
   Trace("seq-array-debug") << "...normal form " << nf.d_nf << std::endl;
   std::vector<Node> nfChildren;
 
-  if (k == SEQ_NTH)
+  if (k == Kind::SEQ_NTH)
   {
     // The core solver must process all `nth` terms
-    d_currTerms[SEQ_NTH].push_back(t);
+    d_currTerms[Kind::SEQ_NTH].push_back(t);
   }
 
   if (checkInv)
   {
-    if (k != STRING_UPDATE)
+    if (k != Kind::STRING_UPDATE)
     {
       return;
     }
@@ -178,7 +189,7 @@ void ArraySolver::checkTerm(Node t, bool checkInv)
     if (nf.d_nf.empty())
     {
       // updates should have been reduced (UPD_EMPTYSTR)
-      Assert(k != STRING_UPDATE);
+      Assert(k != Kind::STRING_UPDATE);
       Trace("seq-array-debug") << "...empty" << std::endl;
       return;
     }
@@ -187,13 +198,14 @@ void ArraySolver::checkTerm(Node t, bool checkInv)
       Trace("seq-array-debug") << "...norm form size 1" << std::endl;
       // NOTE: could split on n=0 if needed, do not introduce ITE
       Kind ck = nf.d_nf[0].getKind();
+      bool cIsConst = nf.d_nf[0].isConst();
       // Note that (seq.unit c) is rewritten to CONST_SEQUENCE{c}, hence we
       // check two cases here. It is important for completeness of this schema
       // to handle this differently from STRINGS_ARRAY_UPDATE_CONCAT /
       // STRINGS_ARRAY_NTH_CONCAT. Otherwise we would conclude a trivial
       // equality when update/nth is applied to a constant of length one.
-      if (ck == SEQ_UNIT
-          || (ck == CONST_SEQUENCE && Word::getLength(nf.d_nf[0]) == 1))
+      if (ck == Kind::SEQ_UNIT || ck == Kind::STRING_UNIT
+          || (cIsConst && Word::getLength(nf.d_nf[0]) == 1))
       {
         Trace("seq-array-debug") << "...unit case" << std::endl;
         // do we know whether n = 0 ?
@@ -205,20 +217,25 @@ void ArraySolver::checkTerm(Node t, bool checkInv)
         std::vector<Node> nexp;
         d_im.addToExplanation(t[0], nf.d_nf[0], exp);
         d_im.addToExplanation(r, t[0], exp);
-        if (k == STRING_UPDATE)
+        if (k == Kind::STRING_UPDATE)
         {
           iid = InferenceId::STRINGS_ARRAY_UPDATE_UNIT;
           eq = nm->mkNode(
-              ITE, t[1].eqNode(d_zero), t.eqNode(t[2]), t.eqNode(nf.d_nf[0]));
+              Kind::ITE,
+              {t[1].eqNode(d_zero), t.eqNode(t[2]), t.eqNode(nf.d_nf[0])});
         }
         else
         {
-          Assert(k == SEQ_NTH);
-          Node val;
-          if (ck == CONST_SEQUENCE)
+          if (d_state.areDisequal(t[1], d_zero))
           {
-            const Sequence& seq = nf.d_nf[0].getConst<Sequence>();
-            val = seq.getVec()[0];
+            // n is known to be disequal from zero, skip
+            return;
+          }
+          Assert(k == Kind::SEQ_NTH);
+          Node val;
+          if (cIsConst)
+          {
+            val = Word::getNth(nf.d_nf[0], 0);
           }
           else
           {
@@ -239,9 +256,9 @@ void ArraySolver::checkTerm(Node t, bool checkInv)
         }
         return;
       }
-      else if (ck != CONST_SEQUENCE)
+      else if (!cIsConst)
       {
-        if (k == STRING_UPDATE)
+        if (k == Kind::STRING_UPDATE)
         {
           // If the term we are updating is atomic, but the update itself
           // not atomic, then we will apply the inverse version of the update
@@ -250,7 +267,7 @@ void ArraySolver::checkTerm(Node t, bool checkInv)
           NormalForm& nfSelf = d_csolver.getNormalForm(rself);
           if (nfSelf.d_nf.size() == 1)
           {
-            // otherwise, if the normal form is not a constant sequence, and we
+            // otherwise, if the normal form is not a constant word, and we
             // are an atomic update term, then this term will be given to the
             // core array solver.
             d_currTerms[k].push_back(t);
@@ -260,7 +277,7 @@ void ArraySolver::checkTerm(Node t, bool checkInv)
       }
       else
       {
-        // if the normal form is a constant sequence, it is treated as a
+        // if the normal form is a constant word, it is treated as a
         // concatenation. We split per character and case split on whether the
         // nth/update falls on each character below, which must have a size
         // greater than one.
@@ -283,69 +300,69 @@ void ArraySolver::checkTerm(Node t, bool checkInv)
   for (const Node& c : nfChildren)
   {
     Trace("seq-array-debug") << "...process " << c << std::endl;
-    Node clen = nm->mkNode(STRING_LENGTH, c);
+    Node clen = nm->mkNode(Kind::STRING_LENGTH, c);
     Node currIndex = t[1];
     Node currSum = d_zero;
     if (!lacc.empty())
     {
-      currSum = lacc.size() == 1 ? lacc[0] : nm->mkNode(ADD, lacc);
-      currIndex = nm->mkNode(SUB, currIndex, currSum);
+      currSum = lacc.size() == 1 ? lacc[0] : nm->mkNode(Kind::ADD, lacc);
+      currIndex = nm->mkNode(Kind::SUB, currIndex, currSum);
     }
     Node cc;
-    if (k == STRING_UPDATE && checkInv)
+    if (k == Kind::STRING_UPDATE && checkInv)
     {
       // component for the reverse form of the update inference is a fresh
       // variable, in particular, the purification variable for the substring
       // of the term we are updating.
-      Node sstr = nm->mkNode(STRING_SUBSTR, t[0], currSum, clen);
-      cc = skc->mkSkolemCached(sstr, SkolemCache::SkolemId::SK_PURIFY, "z");
+      Node sstr = nm->mkNode(Kind::STRING_SUBSTR, t[0], currSum, clen);
+      cc = skc->mkSkolemCached(sstr, SkolemCache::SK_PURIFY, "z");
     }
     // If it is a constant of length one, then the update/nth is determined
     // in this interval. Notice this is done here as
     // an optimization to short cut introducing terms like
     // (seq.nth (seq.unit c) i), which by construction is only relevant in
     // the context where i = 0, hence we replace by c here.
-    else if (c.getKind() == CONST_SEQUENCE)
+    else if (c.isConst())
     {
-      const Sequence& seq = c.getConst<Sequence>();
-      if (seq.size() == 1)
+      if (Word::getLength(c) == 1)
       {
-        if (k == STRING_UPDATE)
+        if (k == Kind::STRING_UPDATE)
         {
-          cc = nm->mkNode(ITE, t[1].eqNode(d_zero), t[2], c);
+          cc = nm->mkNode(Kind::ITE, t[1].eqNode(d_zero), t[2], c);
         }
         else
         {
-          cc = seq.getVec()[0];
+          cc = Word::getNth(c, 0);
         }
       }
     }
     // if we did not process as a constant of length one
     if (cc.isNull())
     {
-      if (k == STRING_UPDATE)
+      if (k == Kind::STRING_UPDATE)
       {
-        cc = nm->mkNode(STRING_UPDATE, c, currIndex, t[2]);
+        cc = nm->mkNode(Kind::STRING_UPDATE, c, currIndex, t[2]);
       }
       else
       {
-        Assert(k == SEQ_NTH);
-        cc = nm->mkNode(SEQ_NTH, c, currIndex);
+        Assert(k == Kind::SEQ_NTH);
+        cc = nm->mkNode(Kind::SEQ_NTH, c, currIndex);
       }
     }
     Trace("seq-array-debug") << "......component " << cc << std::endl;
     cchildren.push_back(cc);
     lacc.push_back(clen);
-    if (k == SEQ_NTH)
+    if (k == Kind::SEQ_NTH)
     {
-      Node currSumPost = lacc.size() == 1 ? lacc[0] : nm->mkNode(ADD, lacc);
-      Node cf = nm->mkNode(LT, t[1], currSumPost);
+      Node currSumPost =
+          lacc.size() == 1 ? lacc[0] : nm->mkNode(Kind::ADD, lacc);
+      Node cf = nm->mkNode(Kind::LT, t[1], currSumPost);
       Trace("seq-array-debug") << "......condition " << cf << std::endl;
       cond.push_back(cf);
     }
-    else if (k == STRING_UPDATE && checkInv)
+    else if (k == Kind::STRING_UPDATE && checkInv)
     {
-      Node ccu = nm->mkNode(STRING_UPDATE, cc, currIndex, t[2]);
+      Node ccu = nm->mkNode(Kind::STRING_UPDATE, cc, currIndex, t[2]);
       Node eq = c.eqNode(ccu);
       Trace("seq-array-debug") << "......condition " << eq << std::endl;
       cond.push_back(eq);
@@ -362,7 +379,7 @@ void ArraySolver::checkTerm(Node t, bool checkInv)
   std::vector<Node> exp;
   std::vector<Node> nexp;
   Node eq;
-  if (k == STRING_UPDATE)
+  if (k == Kind::STRING_UPDATE)
   {
     Node finalc = utils::mkConcat(cchildren, t.getType());
     if (checkInv)
@@ -375,6 +392,9 @@ void ArraySolver::checkTerm(Node t, bool checkInv)
     {
       eq = t.eqNode(finalc);
     }
+    // Must rewrite the equality to ensure terms are in rewritten form. This
+    // is important since this inference may be processed as a fact.
+    eq = rewrite(eq);
     iid = checkInv ? InferenceId::STRINGS_ARRAY_UPDATE_CONCAT_INVERSE
                    : InferenceId::STRINGS_ARRAY_UPDATE_CONCAT;
   }
@@ -385,9 +405,10 @@ void ArraySolver::checkTerm(Node t, bool checkInv)
     eq = t.eqNode(cchildren[0]);
     for (size_t i = 1, ncond = cond.size(); i < ncond; i++)
     {
-      eq = nm->mkNode(ITE, cond[i], t.eqNode(cchildren[i]), eq);
+      eq = nm->mkNode(Kind::ITE, cond[i], t.eqNode(cchildren[i]), eq);
     }
-    Node inBoundsCond = nm->mkNode(AND, nm->mkNode(GEQ, t[1], d_zero), cond[0]);
+    Node inBoundsCond =
+        nm->mkNode(Kind::AND, nm->mkNode(Kind::GEQ, t[1], d_zero), cond[0]);
     exp.push_back(inBoundsCond);
     nexp.push_back(inBoundsCond);
     iid = InferenceId::STRINGS_ARRAY_NTH_CONCAT;

@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Andres Noetzli, Aina Niemetz
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -32,7 +29,9 @@ namespace strings {
 class StringsRewriter : public SequencesRewriter
 {
  public:
-  StringsRewriter(Rewriter* r,
+  StringsRewriter(NodeManager* nm,
+                  ArithEntail& ae,
+                  StringsEntail& se,
                   HistogramStat<Rewrite>* statistics,
                   uint32_t alphaCard = 196608);
 
@@ -101,6 +100,14 @@ class StringsRewriter : public SequencesRewriter
    * Returns the rewritten form of n.
    */
   Node rewriteStringIsDigit(Node n);
+
+  /** rewrite string unit
+   *
+   * This is the entry point for post-rewriting terms n of the form
+   *   str.unit( t )
+   * Returns the rewritten form of n.
+   */
+  Node rewriteStringUnit(Node n);
 
  private:
   /** The cardinality of the alphabet */

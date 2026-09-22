@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Aina Niemetz, Gereon Kremer, Morgan Deters
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -23,7 +20,6 @@
 #include "expr/node_manager_attributes.h"
 #include "expr/node_value.h"
 #include "smt/solver_engine.h"
-#include "smt/solver_engine_scope.h"
 #include "test_node.h"
 #include "theory/theory.h"
 #include "theory/theory_engine.h"

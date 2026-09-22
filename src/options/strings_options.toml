@@ -18,19 +18,12 @@ name   = "Strings Theory"
   help       = "the finite model finding used by the theory of strings"
 
 [[option]]
-  name       = "stringEager"
-  category   = "expert"
-  long       = "strings-eager"
-  type       = "bool"
-  default    = "false"
-  help       = "strings eager check"
-
-[[option]]
   name       = "stringLazyPreproc"
   category   = "regular"
   long       = "strings-lazy-pp"
   type       = "bool"
   default    = "true"
+  no_support = ["proofs"]
   help       = "perform string preprocessing lazily"
 
 [[option]]
@@ -50,12 +43,12 @@ name   = "Strings Theory"
   help       = "generalized inferences in strings based on proxy symbols"
 
 [[option]]
-  name       = "stringEagerLen"
+  name       = "stringEagerReg"
   category   = "expert"
-  long       = "strings-eager-len"
+  long       = "strings-eager-reg"
   type       = "bool"
   default    = "true"
-  help       = "strings eager length lemmas"
+  help       = "do registration lemmas for terms during preregistration. If false, do registration lemmas for terms when they appear in asserted literals"
 
 [[option]]
   name       = "stringCheckEntailLen"
@@ -106,14 +99,6 @@ name   = "Strings Theory"
   help       = "regression explanations for string lemmas"
 
 [[option]]
-  name       = "stringMinPrefixExplain"
-  category   = "expert"
-  long       = "strings-min-prefix-explain"
-  type       = "bool"
-  default    = "true"
-  help       = "minimize explanations for prefix of normal forms in strings"
-
-[[option]]
   name       = "stringModelBasedReduction"
   category   = "regular"
   long       = "strings-mbr"
@@ -127,6 +112,7 @@ name   = "Strings Theory"
   long       = "re-elim=MODE"
   type       = "RegExpElimMode"
   default    = "OFF"
+  no_support = ["proofs"]
   help       = "regular expression elimination mode"
   help_mode  = "Regular expression elimination modes."
 [[option.mode.OFF]]
@@ -149,10 +135,10 @@ name   = "Strings Theory"
 
 [[option]]
   name       = "stringRegExpInterMode"
-  category   = "regular"
+  category   = "expert"
   long       = "re-inter-mode=MODE"
   type       = "RegExpInterMode"
-  default    = "CONSTANT"
+  default    = "NONE"
   help       = "determines which regular expressions intersections to compute"
   help_mode  = "Regular expression intersection modes."
 [[option.mode.ALL]]
@@ -169,20 +155,12 @@ name   = "Strings Theory"
   help = "Do not compute intersections for regular expressions."
 
 [[option]]
-  name       = "stringUnifiedVSpt"
-  category   = "expert"
-  long       = "strings-unified-vspt"
-  type       = "bool"
-  default    = "true"
-  help       = "use a single skolem for the variable splitting rule"
-
-[[option]]
   name       = "stringEagerEval"
   category   = "regular"
   long       = "strings-eager-eval"
   type       = "bool"
   default    = "true"
-  help       = "perform eager context-dependent evaluation for applications of string kinds"
+  help       = "perform eager context-dependent evaluation for applications of string kinds in the equality engine"
 
 [[option]]
   name       = "stringsAlphaCard"
@@ -208,6 +186,7 @@ name   = "Strings Theory"
   type       = "bool"
   default    = "false"
   help       = "use regular expressions for eager length conflicts"
+  no_support = ["proofs"]
 
 [[option]]
   name       = "stringEagerSolver"
@@ -249,4 +228,37 @@ name   = "Strings Theory"
   long       = "strings-model-max-len=N"
   type       = "uint64_t"
   default    = "65536"
+  maximum    = "2147483647"
   help       = "The maximum size of string values in models"
+
+[[option]]
+  name       = "stringRegexpPosConcatEager"
+  category   = "expert"
+  long       = "strings-re-posc-eager"
+  type       = "bool"
+  default    = "false"
+  help       = "eager reduction of positive membership into concatenation"
+
+[[option]]
+  name       = "stringRegexpDeriveConflicts"
+  category   = "expert"
+  long       = "strings-re-derive-conf"
+  type       = "bool"
+  default    = "false"
+  help       = "use regular expression derive for conflict finding"
+
+[[option]]
+  name       = "stringRecArithApprox"
+  category   = "expert"
+  long       = "strings-rec-arith-approx"
+  type       = "bool"
+  default    = "false"
+  help       = "use possibly recursive reasoning when finding approximations for arithmetic string terms"
+
+[[option]]
+  name       = "regExpFirstClass"
+  category   = "expert"
+  long       = "re-first-class"
+  type       = "bool"
+  default    = "false"
+  help       = "allow regular expressions as first class terms"

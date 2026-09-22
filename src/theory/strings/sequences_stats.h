@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Andres Noetzli, Gereon Kremer
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -21,6 +18,7 @@
 #include "expr/kind.h"
 #include "theory/strings/infer_info.h"
 #include "theory/strings/rewrites.h"
+#include "util/statistics_registry.h"
 #include "util/statistics_stats.h"
 
 namespace cvc5::internal {
@@ -51,7 +49,7 @@ namespace strings {
 class SequencesStatistics
 {
  public:
-  SequencesStatistics();
+  SequencesStatistics(StatisticsRegistry& sr);
   /** Number of calls to run a check where strategy is present */
   IntStat d_checkRuns;
   /** Number of calls to run the strategy */
@@ -89,8 +87,8 @@ class SequencesStatistics
   //--------------- end of conflicts
 };
 
-}
-}
+}  // namespace strings
+}  // namespace theory
 }  // namespace cvc5::internal
 
 #endif /* CVC5__THEORY__STRINGS__SEQUENCES_STATS_H */

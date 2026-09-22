@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Mathias Preiner, Aina Niemetz
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -32,10 +29,8 @@ namespace bv {
 class BitblastProofGenerator : public ProofGenerator, protected EnvObj
 {
  public:
-  BitblastProofGenerator(Env& env,
-                         ProofNodeManager* pnm,
-                         TConvProofGenerator* tcpg);
-  ~BitblastProofGenerator(){};
+  BitblastProofGenerator(Env& env, TConvProofGenerator* tcpg);
+  ~BitblastProofGenerator() {};
 
   /**
    * Get proof for, which expects an equality of the form t = bb(t).
@@ -57,8 +52,6 @@ class BitblastProofGenerator : public ProofGenerator, protected EnvObj
   void addBitblastStep(TNode t, TNode bbt, TNode eq);
 
  private:
-  /** The associated proof node manager. */
-  ProofNodeManager* d_pnm;
   /**
    * The associated term conversion proof generator, which tracks the
    * individual bit-blast steps.

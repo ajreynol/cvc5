@@ -1,10 +1,7 @@
 ###############################################################################
-# Top contributors (to current version):
-#   Gereon Kremer, Mathias Preiner, Aina Niemetz
-#
 # This file is part of the cvc5 project.
 #
-# Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+# Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
 # in the top-level source directory and their institutional affiliations.
 # All rights reserved.  See the file COPYING in the top-level source
 # directory for licensing information.
@@ -48,15 +45,15 @@ if(NOT Kissat_FOUND_SYSTEM)
 
   fail_if_include_missing("sys/resource.h" "Kissat")
 
-  # TODO(mpreiner): use the version from github?
-  set(Kissat_VERSION "sc2020-039805f2")
+  set(Kissat_VERSION "sc2021")
+  set(Kissat_CHECKSUM "ad1945cc6980cc6d8b7049cf0a298f9f806ac3c9ca1ccb51f1bc533253d285cc")
 
   ExternalProject_Add(
     Kissat-EP
     ${COMMON_EP_CONFIG}
     BUILD_IN_SOURCE ON
-    URL http://fmv.jku.at/kissat/kissat-${Kissat_VERSION}.tar.xz
-    URL_HASH SHA1=5125efa17d383c7e7c1e6d803e3422b17cebcedb
+    URL https://github.com/arminbiere/kissat/archive/${Kissat_VERSION}.tar.gz
+    URL_HASH SHA256=${Kissat_CHECKSUM}
     CONFIGURE_COMMAND <SOURCE_DIR>/configure -fPIC --quiet
                       CC=${CMAKE_C_COMPILER}
     INSTALL_COMMAND ${CMAKE_COMMAND} -E copy <SOURCE_DIR>/build/libkissat.a
@@ -75,7 +72,7 @@ set(Kissat_FOUND TRUE)
 add_library(Kissat STATIC IMPORTED GLOBAL)
 set_target_properties(Kissat PROPERTIES IMPORTED_LOCATION "${Kissat_LIBRARIES}")
 set_target_properties(
-  Kissat PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "${Kissat_INCLUDE_DIR}"
+  Kissat PROPERTIES INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${Kissat_INCLUDE_DIR}"
 )
 
 mark_as_advanced(Kissat_FOUND)
@@ -88,4 +85,8 @@ if(Kissat_FOUND_SYSTEM)
 else()
   message(STATUS "Building Kissat ${Kissat_VERSION}: ${Kissat_LIBRARIES}")
   add_dependencies(Kissat Kissat-EP)
+  # Install static library only if it is a static build.
+  if(NOT BUILD_SHARED_LIBS)
+    install(FILES ${Kissat_LIBRARIES} TYPE ${LIB_BUILD_TYPE})
+  endif()
 endif()

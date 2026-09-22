@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Morgan Deters, Gereon Kremer
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -38,36 +35,13 @@ InstStrategyUserPatterns::InstStrategyUserPatterns(
 }
 InstStrategyUserPatterns::~InstStrategyUserPatterns() {}
 
-size_t InstStrategyUserPatterns::getNumUserGenerators(Node q) const
-{
-  std::map<Node, std::vector<Trigger*> >::const_iterator it =
-      d_user_gen.find(q);
-  if (it == d_user_gen.end())
-  {
-    return 0;
-  }
-  return it->second.size();
-}
-
-Trigger* InstStrategyUserPatterns::getUserGenerator(Node q, size_t i) const
-{
-  std::map<Node, std::vector<Trigger*> >::const_iterator it =
-      d_user_gen.find(q);
-  if (it == d_user_gen.end())
-  {
-    return nullptr;
-  }
-  Assert(i < it->second.size());
-  return it->second[i];
-}
-
 std::string InstStrategyUserPatterns::identify() const
 {
   return std::string("UserPatterns");
 }
 
 void InstStrategyUserPatterns::processResetInstantiationRound(
-    Theory::Effort effort)
+    CVC5_UNUSED Theory::Effort effort)
 {
   Trace("inst-alg-debug") << "reset user triggers" << std::endl;
   // reset triggers
@@ -82,9 +56,8 @@ void InstStrategyUserPatterns::processResetInstantiationRound(
   Trace("inst-alg-debug") << "done reset user triggers" << std::endl;
 }
 
-InstStrategyStatus InstStrategyUserPatterns::process(Node q,
-                                                     Theory::Effort effort,
-                                                     int e)
+InstStrategyStatus InstStrategyUserPatterns::process(
+    Node q, CVC5_UNUSED Theory::Effort effort, int e)
 {
   if (e == 0)
   {
@@ -109,8 +82,8 @@ InstStrategyStatus InstStrategyUserPatterns::process(Node q,
     std::vector<std::vector<Node> >& ugw = d_user_gen_wait[q];
     for (size_t i = 0, usize = ugw.size(); i < usize; i++)
     {
-      Trigger* t =
-          d_td.mkTrigger(q, ugw[i], true, TriggerDatabase::TR_RETURN_NULL);
+      Trigger* t = d_td.mkTrigger(
+          q, ugw[i], true, TriggerDatabase::TR_RETURN_NULL, 0, true);
       if (t)
       {
         d_user_gen[q].push_back(t);
@@ -142,9 +115,11 @@ InstStrategyStatus InstStrategyUserPatterns::process(Node q,
 
 void InstStrategyUserPatterns::addUserPattern(Node q, Node pat)
 {
-  Assert(pat.getKind() == INST_PATTERN);
+  Assert(pat.getKind() == Kind::INST_PATTERN);
   // add to generators
   std::vector<Node> nodes;
+  PatternTermSelector pts(options(), q, options::TriggerSelMode::ALL);
+  // for each pattern in the list
   for (const Node& p : pat)
   {
     if (std::find(nodes.begin(), nodes.end(), p) != nodes.end())
@@ -152,11 +127,13 @@ void InstStrategyUserPatterns::addUserPattern(Node q, Node pat)
       // skip duplicate pattern term
       continue;
     }
-    Node pat_use = PatternTermSelector::getIsUsableTrigger(p, q);
+    // check if usable
+    Node pat_use = pts.getIsUsableTrigger(p, q);
     if (pat_use.isNull())
     {
       Trace("trigger-warn") << "User-provided trigger is not usable : " << pat
                             << " because of " << p << std::endl;
+      // this may be part of a multi-pattern, where we terminate now
       return;
     }
     nodes.push_back(pat_use);
@@ -168,7 +145,8 @@ void InstStrategyUserPatterns::addUserPattern(Node q, Node pat)
     d_user_gen_wait[q].push_back(nodes);
     return;
   }
-  Trigger* t = d_td.mkTrigger(q, nodes, true, TriggerDatabase::TR_MAKE_NEW);
+  Trigger* t =
+      d_td.mkTrigger(q, nodes, true, TriggerDatabase::TR_MAKE_NEW, 0, true);
   if (t)
   {
     d_user_gen[q].push_back(t);

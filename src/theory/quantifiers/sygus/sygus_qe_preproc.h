@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Aina Niemetz
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -42,7 +39,7 @@ class SygusQePreproc : protected EnvObj
   SygusQePreproc(Env& env);
   ~SygusQePreproc() {}
   /**
-   * Preprocess. Returns a lemma of the form q = nq where nq is obtained
+   * Preprocess. Returns a quantified formula nq where nq is obtained
    * by the quantifier elimination technique outlined above.
    */
   Node preprocess(Node q);

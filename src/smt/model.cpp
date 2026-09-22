@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Gereon Kremer, Morgan Deters
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -27,11 +24,11 @@ Model::Model(bool isKnownSat, const std::string& inputName)
 {
 }
 
-std::ostream& operator<<(std::ostream& out, const Model& m) {
+std::ostream& operator<<(std::ostream& out, const Model& m)
+{
   options::ioutils::Scope scope(out);
   options::ioutils::applyDagThresh(out, 0);
-  auto language = options::ioutils::getOutputLang(out);
-  Printer::getPrinter(language)->toStream(out, m);
+  Printer::getPrinter(out)->toStream(out, m);
   return out;
 }
 

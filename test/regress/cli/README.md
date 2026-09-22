@@ -29,6 +29,15 @@ TEST_TIMEOUT=0.5 ctest -L regress0
 
 This runs regression tests from level 0 with a 0.5 second timeout.
 
+In order to run regressions with an option turned on, set the
+`CVC5_REGRESSION_ARGS` environment variable:
+
+```
+CVC5_REGRESSION_ARGS="--ackermann" ctest -L regress0
+```
+
+This runs regression tests from level 0 with the `--ackermann` option.
+
 ## Adding New Regressions
 
 To add a new regression file, add the file to git, for example:
@@ -123,11 +132,45 @@ as a requirement, refer to cvc5's `--show-config` output. Features can also be
 excluded by adding the `no-` prefix, e.g. `no-cryptominisat` means that the
 test is not valid for builds that include CryptoMiniSat support.
 
+Two features are of special note. Builds configured with `--safe-mode=safe` or
+`--safe-mode=stable` restrict the options and the logics that cvc5 accepts.
+The regression runner does *not* infer these restrictions from cvc5's output,
+so a benchmark that such a build rejects must say so explicitly. Apart from the
+`safe-mode` and `stable-mode` features reported by `--show-config`, the
+regression runner synthesizes the feature `unrestricted-mode`, which is
+supported exactly when neither of the former two is. Thus, use:
+
+```
+; REQUIRES: unrestricted-mode
+```
+
+if the benchmark is admissible in neither safe nor stable mode, e.g. it sets an
+expert option, sets more than one regular option, or uses a logic that both
+modes restrict, and:
+
+```
+; REQUIRES: no-safe-mode
+```
+
+if it is admissible in stable mode but not in safe mode, e.g. it sets a regular
+option that does not support proofs.
+
+Note that `REQUIRES` applies to the entire file, i.e. it is evaluated before the
+individual `COMMAND-LINE` configurations are considered. Annotating a benchmark
+thus disables all of its configurations, so it should be annotated based on the
+strictest requirement of any of its configurations.
+
 To disable a specific type of test, the `DISABLE-TESTER` directive can be used.
-The following example disables the proof tester for a regression:
+The following example disables the abduct tester for a regression:
 
 ```
-; DISABLE-TESTER: proof
+; DISABLE-TESTER: abduct
 ```
 
-Multiple testers can be disabled using multiple `DISABLE-TESTER` directives.
+Multiple testers can be disabled using multiple `DISABLE-TESTER` directives. In
+general, each `DISABLE-TESTER` directive disables only the specified tester. The
+exceptions are the `proof` and `cpc` testers. Disabling `proof`, which directs
+cvc5 to check generated proofs internally, also disables testers that check the
+printed versions of those proofs (e.g., `lfsc`, `cpc`, and `cpc-logos`). Disabling
+`cpc` also disables `cpc-logos`, since both check the CPC proof format. Disabling
+`cpc-logos` alone leaves `cpc` enabled.

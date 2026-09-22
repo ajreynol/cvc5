@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Haniel Barbosa, Gereon Kremer
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -21,9 +18,12 @@
 #include <vector>
 
 #include "context/cdhashmap.h"
+#include "cvc5/cvc5_proof_rule.h"
 #include "expr/node.h"
 #include "proof/proof_generator.h"
 #include "proof/proof_step_buffer.h"
+#include "proof/trust_id.h"
+#include "smt/env_obj.h"
 
 namespace cvc5::internal {
 
@@ -132,17 +132,17 @@ class ProofNodeManager;
  * of ID_2. More generally, CDProof::isSame(F,G) returns true if F and G are
  * essentially the same formula according to this class.
  */
-class CDProof : public ProofGenerator
+class CDProof : protected EnvObj, public ProofGenerator
 {
  public:
   /**
-   * @param pnm The proof node manager responsible for constructor ProofNode
+   * @param env Reference to the environment
    * @param c The context this proof depends on
    * @param name The name of this proof (for debugging)
    * @param autoSymm Whether this proof automatically adds symmetry steps based
    * on policy documented above.
    */
-  CDProof(ProofNodeManager* pnm,
+  CDProof(Env& env,
           context::Context* c = nullptr,
           const std::string& name = "CDProof",
           bool autoSymm = true);
@@ -192,11 +192,30 @@ class CDProof : public ProofGenerator
    * is CDPOverwrite::ALWAYS (resp. CDPOverwrite::NEVER).
    */
   bool addStep(Node expected,
-               PfRule id,
+               ProofRule id,
                const std::vector<Node>& children,
                const std::vector<Node>& args,
                bool ensureChildren = false,
                CDPOverwrite opolicy = CDPOverwrite::ASSUME_ONLY);
+  /**
+   * Version with trusted id. The arguments are optional additional arguments
+   * to the required arguments of ProofRule::TRUST. If none are provided, the
+   * trust id and the conclusion will be the arguments of the step.
+   */
+  bool addTrustedStep(Node expected,
+                      TrustId id,
+                      const std::vector<Node>& children,
+                      const std::vector<Node>& args,
+                      bool ensureChildren = false,
+                      CDPOverwrite opolicy = CDPOverwrite::ASSUME_ONLY);
+  /**
+   * Version with ProofRewriteRule. This adds a THEORY_REWRITE step with the
+   * expected arguments.
+   */
+  bool addTheoryRewriteStep(Node expected,
+                            ProofRewriteRule id,
+                            bool ensureChildren = false,
+                            CDPOverwrite opolicy = CDPOverwrite::ASSUME_ONLY);
   /** Version with ProofStep */
   bool addStep(Node expected,
                const ProofStep& step,
@@ -227,6 +246,8 @@ class CDProof : public ProofGenerator
                 bool doCopy = false);
   /** Return true if fact already has a proof step */
   bool hasStep(Node fact);
+  /** Return true if fact already has any proof node, including assumptions. */
+  bool hasFact(Node fact) const;
   /** Return how many proof nodes currently in proof */
   size_t getNumProofNodes() const;
   /** Get the proof manager for this proof */
@@ -249,8 +270,6 @@ class CDProof : public ProofGenerator
 
  protected:
   typedef context::CDHashMap<Node, std::shared_ptr<ProofNode>> NodeProofNodeMap;
-  /** The proof manager, used for allocating new ProofNode objects */
-  ProofNodeManager* d_manager;
   /** A dummy context used by this class if none is provided */
   context::Context d_context;
   /** The nodes of the proof */
@@ -265,7 +284,9 @@ class CDProof : public ProofGenerator
    * Returns true if we should overwrite proof node pn with a step having id
    * newId, based on policy opol.
    */
-  static bool shouldOverwrite(ProofNode* pn, PfRule newId, CDPOverwrite opol);
+  static bool shouldOverwrite(ProofNode* pn,
+                              ProofRule newId,
+                              CDPOverwrite opol);
   /** Returns true if pn is an assumption. */
   static bool isAssumption(ProofNode* pn);
   /**

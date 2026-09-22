@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Tim King, Gereon Kremer, Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -36,7 +33,7 @@
  * (Bruno says that Leonardo invented this first.)
  * After this, Bland's pivot rule is invoked.
  *
- * During this proccess, we periodically inspect the queue of variables to
+ * During this process, we periodically inspect the queue of variables to
  * 1) remove now extraneous extries,
  * 2) detect conflicts that are "waiting" on the queue but may not be detected
  *    by the current queue heuristics, and
@@ -62,21 +59,21 @@ namespace cvc5::internal {
 namespace theory {
 namespace arith::linear {
 
-class DualSimplexDecisionProcedure : public SimplexDecisionProcedure{
-public:
- DualSimplexDecisionProcedure(Env& env,
-                              LinearEqualityModule& linEq,
-                              ErrorSet& errors,
-                              RaiseConflict conflictChannel,
-                              TempVarMalloc tvmalloc);
+class DualSimplexDecisionProcedure : public SimplexDecisionProcedure
+{
+ public:
+  DualSimplexDecisionProcedure(Env& env,
+                               LinearEqualityModule& linEq,
+                               ErrorSet& errors,
+                               RaiseConflict conflictChannel,
+                               TempVarMalloc tvmalloc);
 
- Result::Status findModel(bool exactResult) override
- {
-   return dualFindModel(exactResult);
+  Result::Status findModel(bool exactResult) override
+  {
+    return dualFindModel(exactResult);
   }
 
-private:
-
+ private:
   /**
    * Maps a variable to how many times they have been used as a pivot in the
    * simplex search.
@@ -93,16 +90,17 @@ private:
    * d_conflictVariable will be set and the conflict for this row is reported.
    */
   bool searchForFeasibleSolution(uint32_t maxIterations);
-  
 
-  bool processSignals(){
-    TimerStat &timer = d_statistics.d_processSignalsTime;
-    IntStat& conflictStat  = d_statistics.d_recentViolationCatches;
+  bool processSignals()
+  {
+    TimerStat& timer = d_statistics.d_processSignalsTime;
+    IntStat& conflictStat = d_statistics.d_recentViolationCatches;
     return standardProcessSignals(timer, conflictStat);
   }
   /** These fields are designed to be accessible to TheoryArith methods. */
-  class Statistics {
-  public:
+  class Statistics
+  {
+   public:
     IntStat d_statUpdateConflicts;
     TimerStat d_processSignalsTime;
     IntStat d_simplexConflicts;
@@ -111,10 +109,10 @@ private:
 
     ReferenceStat<uint32_t> d_finalCheckPivotCounter;
 
-    Statistics(uint32_t& pivots);
+    Statistics(StatisticsRegistry& sr, uint32_t& pivots);
   } d_statistics;
-};/* class DualSimplexDecisionProcedure */
+}; /* class DualSimplexDecisionProcedure */
 
-}  // namespace arith
+}  // namespace arith::linear
 }  // namespace theory
 }  // namespace cvc5::internal

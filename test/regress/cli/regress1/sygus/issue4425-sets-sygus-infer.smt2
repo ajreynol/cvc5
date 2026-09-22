@@ -1,8 +1,8 @@
-; COMMAND-LINE: --sygus-inference -q
+; REQUIRES: unrestricted-mode
+; COMMAND-LINE: --sygus-inference=try -q
 ; EXPECT: unsat
 ; DISABLE-TESTER: unsat-core
 ; DISABLE-TESTER: proof
-; DISABLE-TESTER: lfsc
 (set-logic ALL)
 (declare-fun a () Int)
 (declare-fun d () Int)

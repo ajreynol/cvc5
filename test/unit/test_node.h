@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Aina Niemetz, Andres Noetzli, Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -19,7 +16,6 @@
 #include "expr/node_manager.h"
 #include "expr/skolem_manager.h"
 #include "smt/solver_engine.h"
-#include "smt/solver_engine_scope.h"
 #include "test.h"
 
 namespace cvc5::internal {
@@ -30,8 +26,7 @@ class TestNode : public TestInternal
  protected:
   void SetUp() override
   {
-    d_nodeManager = NodeManager::currentNM();
-    d_nodeManager->init();
+    d_nodeManager = std::make_unique<NodeManager>();
     d_skolemManager = d_nodeManager->getSkolemManager();
     d_boolTypeNode.reset(new TypeNode(d_nodeManager->booleanType()));
     d_bvTypeNode.reset(new TypeNode(d_nodeManager->mkBitVectorType(2)));
@@ -39,7 +34,7 @@ class TestNode : public TestInternal
     d_realTypeNode.reset(new TypeNode(d_nodeManager->realType()));
   }
 
-  NodeManager* d_nodeManager;
+  std::unique_ptr<NodeManager> d_nodeManager;
   SkolemManager* d_skolemManager;
   std::unique_ptr<TypeNode> d_boolTypeNode;
   std::unique_ptr<TypeNode> d_bvTypeNode;

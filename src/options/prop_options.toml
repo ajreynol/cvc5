@@ -2,6 +2,19 @@ id     = "PROP"
 name   = "SAT Layer"
 
 [[option]]
+  name       = "satSolver"
+  category   = "common"
+  long       = "sat-solver=MODE"
+  type       = "SatSolverMode"
+  default    = "CADICAL"
+  help       = "choose which sat solver to use, see --sat-solver=help"
+  help_mode  = "CDCL(T) SAT solver backend."
+[[option.mode.MINISAT]]
+  name = "minisat"
+[[option.mode.CADICAL]]
+  name = "cadical"
+
+[[option]]
   name       = "satRandomFreq"
   alias      = ["random-frequency"]
   category   = "expert"
@@ -80,3 +93,18 @@ name   = "SAT Layer"
   type       = "bool"
   default    = "false"
   help       = "instead of solving minisat dumps the asserted clauses in Dimacs format"
+
+[[option]]
+  name       = "preRegisterMode"
+  category   = "regular"
+  long       = "preregister-mode=MODE"
+  type       = "PreRegisterMode"
+  default    = "EAGER"
+  help       = "Modes for when to preregister literals."
+  help_mode  = "Modes for when to preregister literals."
+[[option.mode.EAGER]]
+  name = "eager"
+  help = "Preregister literals when they are registered as literals in the SAT solver."
+[[option.mode.LAZY]]
+  name = "lazy"
+  help = "Preregister literals when they are asserted by the SAT solver."

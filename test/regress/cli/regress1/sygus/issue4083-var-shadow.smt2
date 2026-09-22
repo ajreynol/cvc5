@@ -1,11 +1,11 @@
+; REQUIRES: unrestricted-mode
 ; COMMAND-LINE: -q
 ; EXPECT: unsat
 ; DISABLE-TESTER: unsat-core
 ; DISABLE-TESTER: proof
-; DISABLE-TESTER: lfsc
 (set-logic ALL)
 (set-option :miniscope-quant conj-and-fv)
-(set-option :sygus-inference true)
+(set-option :sygus-inference try)
 (set-option :var-ineq-elim-quant false)
 (set-info :status unsat)
 (declare-fun b ( Int ) Bool)

@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -57,7 +54,7 @@ NodeTemplate<ref_count> NodeTemplateTrie<ref_count>::addOrGetTerm(
   }
   if (tnt->d_data.empty())
   {
-    // Store n in d_data. This should be interpretted as the "data" and not as a
+    // Store n in d_data. This should be interpreted as the "data" and not as a
     // reference to a child.
     tnt->d_data[n].clear();
     return n;
@@ -90,7 +87,6 @@ template void NodeTemplateTrie<false>::debugPrint(const char* c,
                                                   unsigned depth) const;
 template void NodeTemplateTrie<true>::debugPrint(const char* c,
                                                  unsigned depth) const;
-
 
 template <bool ref_count>
 std::vector<Node> NodeTemplateTrie<ref_count>::getLeaves(size_t depth) const

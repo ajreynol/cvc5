@@ -1,5 +1,4 @@
-; DISABLE-TESTER: lfsc
-; COMMAND-LINE: --strings-exp
+; COMMAND-LINE:
 ;EXPECT: unsat
 (set-logic ALL)
 (declare-fun s () (Seq Int))

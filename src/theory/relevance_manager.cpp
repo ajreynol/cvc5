@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Mathias Preiner, Gereon Kremer
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -28,9 +25,9 @@ using namespace cvc5::internal::kind;
 namespace cvc5::internal {
 namespace theory {
 
-RelevanceManager::RelevanceManager(Env& env, Valuation val)
-    : EnvObj(env),
-      d_val(val),
+RelevanceManager::RelevanceManager(Env& env, TheoryEngine* engine)
+    : TheoryEngineModule(env, engine, "RelevanceManager"),
+      d_val(engine),
       d_input(userContext()),
       d_atomMap(userContext()),
       d_rset(context()),
@@ -44,7 +41,7 @@ RelevanceManager::RelevanceManager(Env& env, Valuation val)
 {
   if (options().smt.produceDifficulty)
   {
-    d_dman = std::make_unique<DifficultyManager>(this, userContext(), val);
+    d_dman = std::make_unique<DifficultyManager>(env, this, d_val);
     d_trackRSetExp = true;
     // we cannot miniscope AND at the top level, since we need to
     // preserve the exact form of preprocessed assertions so the dependencies
@@ -60,7 +57,7 @@ void RelevanceManager::notifyPreprocessedAssertions(
   std::vector<Node> toProcess;
   for (const Node& a : assertions)
   {
-    if (d_miniscopeTopLevel && a.getKind() == AND)
+    if (d_miniscopeTopLevel && a.getKind() == Kind::AND)
     {
       // split top-level AND
       for (const Node& ac : a)
@@ -96,7 +93,7 @@ void RelevanceManager::addAssertionsInternal(std::vector<Node>& toProcess)
   while (i < toProcess.size())
   {
     Node a = toProcess[i];
-    if (d_miniscopeTopLevel && a.getKind() == AND)
+    if (d_miniscopeTopLevel && a.getKind() == Kind::AND)
     {
       // difficulty tracking disables miniscoping of AND
       Assert(d_dman == nullptr);
@@ -142,13 +139,19 @@ void RelevanceManager::addInputToAtomsMap(TNode input)
   } while (!visit.empty());
 }
 
-void RelevanceManager::beginRound()
+void RelevanceManager::check(Theory::Effort effort)
 {
-  d_inFullEffortCheck = true;
-  d_fullEffortCheckFail = false;
+  if (Theory::fullEffort(effort))
+  {
+    d_inFullEffortCheck = true;
+    d_fullEffortCheckFail = false;
+  }
 }
 
-void RelevanceManager::endRound() { d_inFullEffortCheck = false; }
+void RelevanceManager::postCheck(CVC5_UNUSED Theory::Effort effort)
+{
+  d_inFullEffortCheck = false;
+}
 
 void RelevanceManager::computeRelevance()
 {
@@ -163,7 +166,7 @@ void RelevanceManager::computeRelevance()
     d_success = false;
     return;
   }
-  for (const Node& node: d_input)
+  for (const Node& node : d_input)
   {
     if (!computeRelevanceFor(node))
     {
@@ -203,7 +206,7 @@ bool RelevanceManager::computeRelevanceFor(TNode input)
       serr << "RelevanceManager::computeRelevance: WARNING: failed to justify "
            << input;
       Trace("rel-manager") << serr.str() << std::endl;
-      Assert(false) << serr.str();
+      DebugUnhandled() << serr.str();
       d_fullEffortCheckFail = true;
       return false;
     }
@@ -211,8 +214,8 @@ bool RelevanceManager::computeRelevanceFor(TNode input)
   return true;
 }
 
-bool RelevanceManager::updateJustifyLastChild(const RlvPair& cur,
-                                              std::vector<int32_t>& childrenJustify)
+bool RelevanceManager::updateJustifyLastChild(
+    const RlvPair& cur, std::vector<int32_t>& childrenJustify)
 {
   // This method is run when we are informed that child index of cur
   // has justify status lastChildJustify. We return true if we would like to
@@ -229,27 +232,29 @@ bool RelevanceManager::updateJustifyLastChild(const RlvPair& cur,
              d_ptctx.computeValue(cur.first, cur.second, index));
   Assert(d_jcache.find(cp) != d_jcache.end());
   int32_t lastChildJustify = d_jcache[cp];
-  if (k == NOT)
+  if (k == Kind::NOT)
   {
     d_jcache[cur] = -lastChildJustify;
   }
-  else if (k == IMPLIES || k == AND || k == OR)
+  else if (k == Kind::IMPLIES || k == Kind::AND || k == Kind::OR)
   {
     if (lastChildJustify != 0)
     {
       // See if we short circuited? The value for short circuiting is false if
       // we are AND or the first child of IMPLIES.
       if (lastChildJustify
-          == ((k == AND || (k == IMPLIES && index == 0)) ? -1 : 1))
+          == ((k == Kind::AND || (k == Kind::IMPLIES && index == 0)) ? -1 : 1))
       {
-        d_jcache[cur] = k == AND ? -1 : 1;
+        d_jcache[cur] = k == Kind::AND ? -1 : 1;
         return false;
       }
     }
+    // add current child to list first before (possibly) computing result
+    childrenJustify.push_back(lastChildJustify);
     if (index + 1 == nchildren)
     {
       // finished all children, compute the overall value
-      int ret = k == AND ? 1 : -1;
+      int ret = k == Kind::AND ? 1 : -1;
       for (int cv : childrenJustify)
       {
         if (cv == 0)
@@ -263,7 +268,6 @@ bool RelevanceManager::updateJustifyLastChild(const RlvPair& cur,
     else
     {
       // continue
-      childrenJustify.push_back(lastChildJustify);
       return true;
     }
   }
@@ -272,7 +276,7 @@ bool RelevanceManager::updateJustifyLastChild(const RlvPair& cur,
     // all other cases, an unknown child implies we are unknown
     d_jcache[cur] = 0;
   }
-  else if (k == ITE)
+  else if (k == Kind::ITE)
   {
     if (index == 0)
     {
@@ -296,7 +300,7 @@ bool RelevanceManager::updateJustifyLastChild(const RlvPair& cur,
   }
   else
   {
-    Assert(k == XOR || k == EQUAL);
+    Assert(k == Kind::XOR || k == Kind::EQUAL);
     Assert(nchildren == 2);
     Assert(lastChildJustify != 0);
     if (index == 0)
@@ -310,8 +314,9 @@ bool RelevanceManager::updateJustifyLastChild(const RlvPair& cur,
       // both children known, compute value
       Assert(childrenJustify.size() == 1 && childrenJustify[0] != 0);
       d_jcache[cur] =
-          ((k == XOR ? -1 : 1) * lastChildJustify == childrenJustify[0]) ? 1
-                                                                         : -1;
+          ((k == Kind::XOR ? -1 : 1) * lastChildJustify == childrenJustify[0])
+              ? 1
+              : -1;
     }
   }
   return false;
@@ -327,8 +332,8 @@ int32_t RelevanceManager::justify(TNode n)
   std::unordered_map<RlvPair, std::vector<int32_t>, RlvPairHashFunction>
       childJustify;
   RlvPairIntMap::iterator it;
-  std::unordered_map<RlvPair, std::vector<int32_t>, RlvPairHashFunction>::iterator
-      itc;
+  std::unordered_map<RlvPair, std::vector<int32_t>, RlvPairHashFunction>::
+      iterator itc;
   RlvPair cur;
   TCtxStack visit(&d_ptctx);
   visit.pushInitial(n);
@@ -429,7 +434,7 @@ bool RelevanceManager::isRelevant(TNode lit)
     return true;
   }
   // agnostic to negation
-  while (lit.getKind() == NOT)
+  while (lit.getKind() == Kind::NOT)
   {
     lit = lit[0];
   }
@@ -439,7 +444,7 @@ bool RelevanceManager::isRelevant(TNode lit)
 TNode RelevanceManager::getExplanationForRelevant(TNode lit)
 {
   // agnostic to negation
-  while (lit.getKind() == NOT)
+  while (lit.getKind() == Kind::NOT)
   {
     lit = lit[0];
   }
@@ -512,6 +517,9 @@ RelevanceManager::NodeList* RelevanceManager::getInputListFor(TNode atom,
 
 std::unordered_set<TNode> RelevanceManager::getRelevantAssertions(bool& success)
 {
+  // set in full effort check temporarily
+  d_inFullEffortCheck = true;
+  d_fullEffortCheckFail = false;
   computeRelevance();
   // update success flag
   success = d_success;
@@ -523,11 +531,23 @@ std::unordered_set<TNode> RelevanceManager::getRelevantAssertions(bool& success)
       rset.insert(a);
     }
   }
+  // reset in full effort check
+  d_inFullEffortCheck = false;
   return rset;
 }
 
-void RelevanceManager::notifyLemma(TNode n)
+void RelevanceManager::notifyLemma(TNode n,
+                                   CVC5_UNUSED InferenceId id,
+                                   LemmaProperty p,
+                                   const std::vector<Node>& skAsserts,
+                                   CVC5_UNUSED const std::vector<Node>& sks)
 {
+  // add to assertions
+  if (options().theory.relevanceFilter && isLemmaPropertyNeedsJustify(p))
+  {
+    notifyPreprocessedAssertion(n, false);
+    notifyPreprocessedAssertions(skAsserts, false);
+  }
   // notice that we may be in FULL or STANDARD effort here.
   if (d_dman != nullptr)
   {
@@ -537,6 +557,14 @@ void RelevanceManager::notifyLemma(TNode n)
   }
 }
 
+bool RelevanceManager::needsCandidateModel()
+{
+  if (d_dman != nullptr)
+  {
+    return d_dman->needsCandidateModel();
+  }
+  return false;
+}
 void RelevanceManager::notifyCandidateModel(TheoryModel* m)
 {
   if (d_dman != nullptr)
@@ -545,11 +573,12 @@ void RelevanceManager::notifyCandidateModel(TheoryModel* m)
   }
 }
 
-void RelevanceManager::getDifficultyMap(std::map<Node, Node>& dmap)
+void RelevanceManager::getDifficultyMap(std::map<Node, Node>& dmap,
+                                        bool includeLemmas)
 {
   if (d_dman != nullptr)
   {
-    d_dman->getDifficultyMap(dmap);
+    d_dman->getDifficultyMap(dmap, includeLemmas);
   }
 }
 

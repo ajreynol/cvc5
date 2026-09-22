@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Mathias Preiner, Andres Noetzli
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -18,6 +15,7 @@
 #include "expr/dtype.h"
 #include "expr/dtype_cons.h"
 #include "expr/node_algorithm.h"
+#include "options/datatypes_options.h"
 #include "theory/datatypes/theory_datatypes_utils.h"
 
 using namespace std;
@@ -27,17 +25,17 @@ namespace cvc5::internal {
 namespace theory {
 namespace quantifiers {
 
-void DtInstantiator::reset(CegInstantiator* ci,
-                           SolvedForm& sf,
-                           Node pv,
-                           CegInstEffort effort)
+void DtInstantiator::reset(CVC5_UNUSED CegInstantiator* ci,
+                           CVC5_UNUSED SolvedForm& sf,
+                           CVC5_UNUSED Node pv,
+                           CVC5_UNUSED CegInstEffort effort)
 {
 }
 
-bool DtInstantiator::hasProcessEqualTerm(CegInstantiator* ci,
-                                         SolvedForm& sf,
-                                         Node pv,
-                                         CegInstEffort effort)
+bool DtInstantiator::hasProcessEqualTerm(CVC5_UNUSED CegInstantiator* ci,
+                                         CVC5_UNUSED SolvedForm& sf,
+                                         CVC5_UNUSED Node pv,
+                                         CVC5_UNUSED CegInstEffort effort)
 {
   return true;
 }
@@ -46,16 +44,15 @@ bool DtInstantiator::processEqualTerms(CegInstantiator* ci,
                                        SolvedForm& sf,
                                        Node pv,
                                        std::vector<Node>& eqc,
-                                       CegInstEffort effort)
+                                       CVC5_UNUSED CegInstEffort effort)
 {
   Trace("cegqi-dt-debug") << "try based on constructors in equivalence class."
                           << std::endl;
   // look in equivalence class for a constructor
-  NodeManager* nm = NodeManager::currentNM();
   for (unsigned k = 0, size = eqc.size(); k < size; k++)
   {
     Node n = eqc[k];
-    if (n.getKind() == APPLY_CONSTRUCTOR)
+    if (n.getKind() == Kind::APPLY_CONSTRUCTOR)
     {
       Trace("cegqi-dt-debug")
           << "...try based on constructor term " << n << std::endl;
@@ -64,14 +61,12 @@ bool DtInstantiator::processEqualTerms(CegInstantiator* ci,
       const DType& dt = d_type.getDType();
       unsigned cindex = datatypes::utils::indexOf(n.getOperator());
       // now must solve for selectors applied to pv
-      for (unsigned j = 0, nargs = dt[cindex].getNumArgs(); j < nargs; j++)
+      Node val = datatypes::utils::getInstCons(
+          pv, dt, cindex, options().datatypes.dtSharedSelectors);
+      for (const Node& c : val)
       {
-        Node c = nm->mkNode(
-            APPLY_SELECTOR, dt[cindex].getSelectorInternal(d_type, j), pv);
         ci->pushStackVariable(c);
-        children.push_back(c);
       }
-      Node val = nm->mkNode(kind::APPLY_CONSTRUCTOR, children);
       TermProperties pv_prop_dt;
       if (ci->constructInstantiationInc(pv, val, pv_prop_dt, sf))
       {
@@ -88,20 +83,21 @@ bool DtInstantiator::processEqualTerms(CegInstantiator* ci,
   return false;
 }
 
-bool DtInstantiator::hasProcessEquality(CegInstantiator* ci,
-                                        SolvedForm& sf,
-                                        Node pv,
-                                        CegInstEffort effort)
+bool DtInstantiator::hasProcessEquality(CVC5_UNUSED CegInstantiator* ci,
+                                        CVC5_UNUSED SolvedForm& sf,
+                                        CVC5_UNUSED Node pv,
+                                        CVC5_UNUSED CegInstEffort effort)
 {
   return true;
 }
 
-bool DtInstantiator::processEquality(CegInstantiator* ci,
-                                     SolvedForm& sf,
-                                     Node pv,
-                                     std::vector<TermProperties>& term_props,
-                                     std::vector<Node>& terms,
-                                     CegInstEffort effort)
+bool DtInstantiator::processEquality(
+    CegInstantiator* ci,
+    SolvedForm& sf,
+    Node pv,
+    CVC5_UNUSED std::vector<TermProperties>& term_props,
+    std::vector<Node>& terms,
+    CVC5_UNUSED CegInstEffort effort)
 {
   Node val = solve_dt(pv, terms[0], terms[1], terms[0], terms[1]);
   if (!val.isNull())
@@ -128,9 +124,9 @@ Node DtInstantiator::solve_dt(Node v, Node a, Node b, Node sa, Node sb)
   {
     ret = sa;
   }
-  else if (!a.isNull() && a.getKind() == APPLY_CONSTRUCTOR)
+  else if (!a.isNull() && a.getKind() == Kind::APPLY_CONSTRUCTOR)
   {
-    if (!b.isNull() && b.getKind() == APPLY_CONSTRUCTOR)
+    if (!b.isNull() && b.getKind() == Kind::APPLY_CONSTRUCTOR)
     {
       if (a.getOperator() == b.getOperator())
       {
@@ -146,15 +142,14 @@ Node DtInstantiator::solve_dt(Node v, Node a, Node b, Node sa, Node sb)
     }
     else
     {
-      NodeManager* nm = NodeManager::currentNM();
       unsigned cindex = DType::indexOf(a.getOperator());
       TypeNode tn = a.getType();
       const DType& dt = tn.getDType();
-      for (unsigned i = 0, nchild = a.getNumChildren(); i < nchild; i++)
+      Node val = datatypes::utils::getInstCons(
+          sb, dt, cindex, options().datatypes.dtSharedSelectors);
+      for (size_t i = 0, nchild = val.getNumChildren(); i < nchild; i++)
       {
-        Node nn = nm->mkNode(
-            APPLY_SELECTOR, dt[cindex].getSelectorInternal(tn, i), sb);
-        Node s = solve_dt(v, a[i], Node::null(), sa[i], nn);
+        Node s = solve_dt(v, a[i], Node::null(), sa[i], val[i]);
         if (!s.isNull())
         {
           return s;
@@ -162,7 +157,7 @@ Node DtInstantiator::solve_dt(Node v, Node a, Node b, Node sa, Node sb)
       }
     }
   }
-  else if (!b.isNull() && b.getKind() == APPLY_CONSTRUCTOR)
+  else if (!b.isNull() && b.getKind() == Kind::APPLY_CONSTRUCTOR)
   {
     // flip sides
     return solve_dt(v, b, a, sb, sa);

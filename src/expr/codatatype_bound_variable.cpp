@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Andres Noetzli, Tim King
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -31,16 +28,13 @@ CodatatypeBoundVariable::CodatatypeBoundVariable(const TypeNode& type,
                                                  Integer index)
     : d_type(new TypeNode(type)), d_index(index)
 {
-  PrettyCheckArgument(type.isCodatatype(),
-                      type,
-                      "codatatype bound variables can only be created for "
-                      "codatatype sorts, not `%s'",
-                      type.toString().c_str());
-  PrettyCheckArgument(
-      index >= 0,
-      index,
-      "index >= 0 required for codatatype bound variable index, not `%s'",
-      index.toString().c_str());
+  Assert(type.isCodatatype())
+      << "codatatype bound variables can only be created for "
+         "codatatype sorts, not `"
+      << type.toString().c_str() << "'";
+  Assert(index >= 0)
+      << "index >= 0 required for codatatype bound variable index, not `"
+      << index.toString().c_str() << "'";
 }
 
 CodatatypeBoundVariable::~CodatatypeBoundVariable() {}
@@ -107,7 +101,7 @@ size_t CodatatypeBoundVariableHashFunction::operator()(
     const CodatatypeBoundVariable& cbv) const
 {
   return std::hash<TypeNode>()(cbv.getType())
-         * IntegerHashFunction()(cbv.getIndex());
+         * std::hash<Integer>()(cbv.getIndex());
 }
 
 }  // namespace cvc5::internal

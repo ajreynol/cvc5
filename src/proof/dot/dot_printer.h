@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Diego Della Rocca de Camargos, Haniel Barbosa, Vinícius Braga Freire
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -23,6 +20,7 @@
 
 #include "printer/let_binding.h"
 #include "proof/proof_node.h"
+#include "smt/env_obj.h"
 
 namespace cvc5::internal {
 namespace proof {
@@ -39,14 +37,14 @@ enum class ProofNodeClusterType : uint8_t
   FIRST_SCOPE = 0,
   // ======== SAT
   // Type of proof node cluster that is between FIRST_SCOPE and CNF.
-  // The rules are: CHAIN_RESOLUTION, FACTORING, REORDERING, MACRO_RESOLUTION
-  // and MACRO_RESOLUTION_TRUST.
+  // The rules are: CHAIN_RESOLUTION, FACTORING, REORDERING and
+  // CHAIN_M_RESOLUTION.
   SAT,
   // ======== CNF
   // Type of proof node cluster that is below SAT and above THEORY_LEMMA or
   // PRE_PROCESSING.
-  // The rules, that are described by the PfRule enumeration, are in the range
-  // between NOT_NOT_ELIM and CNF_ITE_NEG3.
+  // The rules, that are described by the ProofRule enumeration, are in the
+  // range between NOT_NOT_ELIM and CNF_ITE_NEG3.
   CNF,
   // ======== THEORY_LEMMA
   // Proof nodes contained in a SCOPE which starts just after a SAT or CNF proof
@@ -68,10 +66,10 @@ enum class ProofNodeClusterType : uint8_t
   NOT_DEFINED
 };
 
-class DotPrinter
+class DotPrinter : protected EnvObj
 {
  public:
-  DotPrinter();
+  DotPrinter(Env& env);
   ~DotPrinter();
 
   /**
@@ -95,6 +93,8 @@ class DotPrinter
    * @param pfLetOpen the map, local to the current scope, of proof node hashs
    * to their printed ids
    * @param cfaMap the map from proof nodes to whether they contain assumptions
+   * @param ancestorHashs a vector containing the hashs of all the proof nodes
+   * ancestors traversed to get to pn
    * @param parentType the type of the parent node
    * @return the id of the proof node printed
    */
@@ -103,6 +103,7 @@ class DotPrinter
                          std::map<size_t, uint64_t>& pfLetClosed,
                          std::map<size_t, uint64_t>& pfLetOpen,
                          std::unordered_map<const ProofNode*, bool>& cfaMap,
+                         std::vector<size_t>& ancestorHashs,
                          ProofNodeClusterType parentType);
 
   /**
@@ -163,32 +164,39 @@ class DotPrinter
    */
   inline bool isInput(const ProofNode* pn);
 
-  /** Verify if the rule is in the SAT range (i.e. a PfRule that is
-   * CHAIN_RESOLUTION, FACTORING, REORDERING, MACRO_RESOLUTION or
-   * MACRO_RESOLUTION_TRUST).
-   * @param pn The rule to be verified.
+  /** Verify if the rule is in the SAT range (i.e. a ProofRule that is
+   * CHAIN_RESOLUTION, FACTORING, REORDERING or CHAIN_M_RESOLUTION).
+   * @param rule The rule to be verified.
    * @return The bool indicating if the rule is or not in the SAT range.
    */
-  inline bool isSat(const PfRule& rule);
+  inline bool isSat(const ProofRule& rule);
 
   /** Verify if the rule is in the CNF range (between NOT_NOT_ELIM and
-   * CNF_ITE_NEG3) in the PfRule enumeration.
-   * @param pn The rule to be verified.
+   * CNF_ITE_NEG3) in the ProofRule enumeration.
+   * @param rule The rule to be verified.
    * @return The bool indicating if the rule is or not in the CNF range.
    */
-  inline bool isCNF(const PfRule& rule);
+  inline bool isCNF(const ProofRule& rule);
 
   /** Verify if the rule is a SCOPE
-   * @param pn The rule to be verified.
+   * @param rule The rule to be verified.
    * @return The bool indicating if the rule is or not a SCOPE.
    */
-  inline bool isSCOPE(const PfRule& rule);
+  inline bool isSCOPE(const ProofRule& rule);
+
+  /** Verify if the rule is in the theory lemma range (open interval between
+   * CNF_ITE_NEG3 and LFSC_RULE) or if the rule is a SCOPE or THEORY_LEMMA.
+   * @param rule The rule to be verified.
+   * @return The bool indicating whether the rule is for a theory lemma
+   * range.
+   */
+  inline bool isTheoryLemma(const ProofNode* pn);
 
   /** Verify if the rule is an ASSUME
-   * @param pn The rule to be verified.
+   * @param rule The rule to be verified.
    * @return The bool indicating if the rule is or not an ASSUME.
    */
-  inline bool isASSUME(const PfRule& rule);
+  inline bool isASSUME(const ProofRule& rule);
 
   /** All unique subproofs of a given proof node (counting itself). */
   std::map<const ProofNode*, size_t> d_subpfCounter;

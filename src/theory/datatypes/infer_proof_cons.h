@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Aina Niemetz, Gereon Kremer
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -20,33 +17,32 @@
 
 #include "context/cdhashmap.h"
 #include "expr/node.h"
+#include "proof/proof.h"
 #include "proof/proof_generator.h"
+#include "smt/env_obj.h"
 #include "theory/datatypes/inference.h"
 
 namespace cvc5::internal {
-
-class ProofNodeManager;
-
 namespace theory {
 namespace datatypes {
 
 /**
  * Converts between the datatype-specific (untrustworthy) DatatypesInference
  * class and information about how to construct a trustworthy proof step
- * (PfRule, children, args). It acts as a (lazy) proof generator where the
+ * (ProofRule, children, args). It acts as a (lazy) proof generator where the
  * former is registered via notifyFact and the latter is asked for in
  * getProofFor, typically by the proof equality engine.
  *
  * The main (private) method of this class is convert below, which is
  * called when we need to construct a proof node from an InferInfo.
  */
-class InferProofCons : public ProofGenerator
+class InferProofCons : protected EnvObj, public ProofGenerator
 {
   typedef context::CDHashMap<Node, std::shared_ptr<DatatypesInference>>
       NodeDatatypesInferenceMap;
 
  public:
-  InferProofCons(context::Context* c, ProofNodeManager* pnm);
+  InferProofCons(Env& env, context::Context* c);
   ~InferProofCons() {}
   /**
    * This is called to notify that di is an inference that may need a proof
@@ -85,10 +81,21 @@ class InferProofCons : public ProofGenerator
    * information is stored in cdp.
    */
   void convert(InferenceId infer, TNode conc, TNode exp, CDProof* cdp);
+  /**
+   * Add a step a=b to cdp using ProofRewriteRule rule r if possible, or a
+   * trust step otherwise.
+   */
+  void tryRewriteRule(TNode a, TNode b, ProofRewriteRule r, CDProof* cdp);
+  /**
+   * Adds a step concluding t_i = s_i from C(t_1 ... t_n) = C(s_1 ... s_n),
+   * where i is stored in the node narg.
+   */
+  void addDtUnif(CDProof* cdp,
+                 const Node& conc,
+                 const Node& exp,
+                 const Node& narg);
   /** A dummy context used by this class if none is provided */
   context::Context d_context;
-  /** the proof node manager */
-  ProofNodeManager* d_pnm;
   /** The lazy fact map */
   NodeDatatypesInferenceMap d_lazyFactMap;
 };

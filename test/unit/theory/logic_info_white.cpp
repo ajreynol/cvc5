@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Morgan Deters, Aina Niemetz, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -610,18 +607,19 @@ TEST_F(TestTheoryWhiteLogicInfo, default_logic)
   info.arithOnlyLinear();
   info.disableIntegers();
   info.lock();
-  ASSERT_EQ(info.getLogicString(), "SEP_AUFBVFPDTLRA");
+  ASSERT_EQ(info.getLogicString(), "SEP_AUFBVFFFPDTLRA");
 
   info = info.getUnlockedCopy();
   ASSERT_FALSE(info.isLocked());
   info.disableQuantifiers();
   info.disableTheory(THEORY_BAGS);
   info.lock();
-  ASSERT_EQ(info.getLogicString(), "QF_SEP_AUFBVFPDTLRA");
+  ASSERT_EQ(info.getLogicString(), "QF_SEP_AUFBVFFFPDTLRA");
 
   info = info.getUnlockedCopy();
   ASSERT_FALSE(info.isLocked());
   info.disableTheory(THEORY_BV);
+  info.disableTheory(THEORY_FF);
   info.disableTheory(THEORY_DATATYPES);
   info.disableTheory(THEORY_BAGS);
   info.enableIntegers();

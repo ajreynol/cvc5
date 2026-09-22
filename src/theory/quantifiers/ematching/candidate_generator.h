@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Tim King, Morgan Deters
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -18,6 +15,7 @@
 #ifndef CVC5__THEORY__QUANTIFIERS__CANDIDATE_GENERATOR_H
 #define CVC5__THEORY__QUANTIFIERS__CANDIDATE_GENERATOR_H
 
+#include "smt/env_obj.h"
 #include "theory/theory.h"
 #include "theory/uf/equality_engine.h"
 
@@ -54,10 +52,11 @@ namespace inst {
  *  }while( !cand.isNull() );
  *
  */
-class CandidateGenerator {
+class CandidateGenerator : protected EnvObj
+{
  public:
-  CandidateGenerator(QuantifiersState& qs, TermRegistry& tr);
-  virtual ~CandidateGenerator(){}
+  CandidateGenerator(Env& env, QuantifiersState& qs, TermRegistry& tr);
+  virtual ~CandidateGenerator() {}
   /** reset instantiation round
    *
    * This is called at the beginning of each instantiation round.
@@ -69,11 +68,11 @@ class CandidateGenerator {
    * based on its criteria that occur in the equivalence class of eqc, or
    * any equivalence class if eqc is null.
    */
-  virtual void reset( Node eqc ) = 0;
+  virtual void reset(Node eqc) = 0;
   /** get the next candidate */
   virtual Node getNextCandidate() = 0;
   /** is n a legal candidate? */
-  bool isLegalCandidate(Node n);
+  bool isLegalCandidate(const Node& n);
   /** Identify this generator (for debugging, etc..) */
   virtual std::string identify() const = 0;
 
@@ -97,7 +96,10 @@ class CandidateGeneratorQE : public CandidateGenerator
   friend class CandidateGeneratorQEDisequal;
 
  public:
-  CandidateGeneratorQE(QuantifiersState& qs, TermRegistry& tr, Node pat);
+  CandidateGeneratorQE(Env& env,
+                       QuantifiersState& qs,
+                       TermRegistry& tr,
+                       Node pat);
   /** reset */
   void reset(Node eqc) override;
   /** get next candidate */
@@ -128,7 +130,8 @@ class CandidateGeneratorQE : public CandidateGenerator
   /** the current equivalence class */
   Node d_eqc;
   /** candidate generation modes */
-  enum {
+  enum
+  {
     cand_term_db,
     cand_term_ident,
     cand_term_eqc,
@@ -137,10 +140,9 @@ class CandidateGeneratorQE : public CandidateGenerator
   /** the current mode of this candidate generator */
   short d_mode;
   /** is n a legal candidate of the required operator? */
-  virtual bool isLegalOpCandidate(Node n);
+  virtual bool isLegalOpCandidate(const Node& n);
   /** the equivalence classes that we have excluded from candidate generation */
-  std::map< Node, bool > d_exclude_eqc;
-
+  std::map<Node, bool> d_exclude_eqc;
 };
 
 /**
@@ -154,7 +156,10 @@ class CandidateGeneratorQELitDeq : public CandidateGenerator
    * mpat is an equality that we are matching to equalities in the equivalence
    * class of false
    */
-  CandidateGeneratorQELitDeq(QuantifiersState& qs, TermRegistry& tr, Node mpat);
+  CandidateGeneratorQELitDeq(Env& env,
+                             QuantifiersState& qs,
+                             TermRegistry& tr,
+                             Node mpat);
   /** reset */
   void reset(Node eqc) override;
   /** get next candidate */
@@ -180,21 +185,24 @@ class CandidateGeneratorQELitDeq : public CandidateGenerator
 class CandidateGeneratorQEAll : public CandidateGenerator
 {
  private:
-  //the equality classes iterator
+  // the equality classes iterator
   eq::EqClassesIterator d_eq;
-  //equality you are trying to match equalities for
+  // equality you are trying to match equalities for
   Node d_match_pattern;
   TypeNode d_match_pattern_type;
   // quantifier/index for the variable we are matching
   Node d_f;
   unsigned d_index;
-  //first time
+  // first time
   bool d_firstTime;
   /** Identify this generator (for debugging, etc..) */
   std::string identify() const override { return "CandidateGeneratorQEAll"; }
 
  public:
-  CandidateGeneratorQEAll(QuantifiersState& qs, TermRegistry& tr, Node mpat);
+  CandidateGeneratorQEAll(Env& env,
+                          QuantifiersState& qs,
+                          TermRegistry& tr,
+                          Node mpat);
   /** reset */
   void reset(Node eqc) override;
   /** get next candidate */
@@ -212,7 +220,8 @@ class CandidateGeneratorQEAll : public CandidateGenerator
 class CandidateGeneratorConsExpand : public CandidateGeneratorQE
 {
  public:
-  CandidateGeneratorConsExpand(QuantifiersState& qs,
+  CandidateGeneratorConsExpand(Env& env,
+                               QuantifiersState& qs,
                                TermRegistry& tr,
                                Node mpat);
   /** reset */
@@ -229,7 +238,7 @@ class CandidateGeneratorConsExpand : public CandidateGeneratorQE
   /** the (datatype) type of the input match pattern */
   TypeNode d_mpat_type;
   /** we don't care about the operator of n */
-  bool isLegalOpCandidate(Node n) override;
+  bool isLegalOpCandidate(const Node& n) override;
 };
 
 /**
@@ -239,7 +248,10 @@ class CandidateGeneratorConsExpand : public CandidateGeneratorQE
 class CandidateGeneratorSelector : public CandidateGeneratorQE
 {
  public:
-  CandidateGeneratorSelector(QuantifiersState& qs, TermRegistry& tr, Node mpat);
+  CandidateGeneratorSelector(Env& env,
+                             QuantifiersState& qs,
+                             TermRegistry& tr,
+                             Node mpat);
   /** reset */
   void reset(Node eqc) override;
   /**

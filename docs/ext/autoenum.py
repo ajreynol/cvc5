@@ -1,3 +1,15 @@
+###############################################################################
+# This file is part of the cvc5 project.
+#
+# Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+# in the top-level source directory and their institutional affiliations.
+# All rights reserved.  See the file COPYING in the top-level source
+# directory for licensing information.
+# #############################################################################
+#
+# Sphinx extension, implements custom documenter for the enum.Enum base class.
+##
+
 import enum
 from typing import Any, Optional
 
@@ -26,13 +38,12 @@ class EnumDocumenter(ClassDocumenter):
         return isinstance(member, enum.Enum)
 
     def add_content(self,
-                    more_content: Optional[StringList],
-                    no_docstring: bool = False) -> None:
+                    more_content: Optional[StringList]) -> None:
         """Add the docstring for this object."""
 
         # overriding this flag prints __doc__ just as we want to.
         self.doc_as_attr = False
-        super().add_content(more_content, no_docstring)
+        super().add_content(more_content)
         self.doc_as_attr = True
 
 

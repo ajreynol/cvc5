@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Morgan Deters, Gereon Kremer
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -24,7 +21,7 @@ namespace theory {
 namespace quantifiers {
 
 InstMatch::InstMatch(Env& env, QuantifiersState& qs, TermRegistry& tr, TNode q)
-    : EnvObj(env), d_qs(qs), d_tr(tr), d_quant(q)
+    : EnvObj(env), d_qs(qs), d_tr(tr), d_quant(q), d_ieval(nullptr)
 {
   d_vals.resize(q[0].getNumChildren());
   Assert(!d_vals.empty());
@@ -32,11 +29,25 @@ InstMatch::InstMatch(Env& env, QuantifiersState& qs, TermRegistry& tr, TNode q)
   Assert(d_vals[0].isNull());
 }
 
-void InstMatch::debugPrint( const char* c ){
+void InstMatch::setEvaluatorMode(ieval::TermEvaluatorMode tev)
+{
+  // should only do this if we are empty
+  Assert(empty());
+  // get the instantiation evaluator and reset it
+  d_ieval = d_tr.getEvaluator(d_quant, tev);
+  if (d_ieval != nullptr)
+  {
+    d_ieval->resetAll();
+  }
+}
+
+void InstMatch::debugPrint(CVC5_UNUSED const char* c)
+{
   for (unsigned i = 0, size = d_vals.size(); i < size; i++)
   {
-    if( !d_vals[i].isNull() ){
-      Trace( c ) << "   " << i << " -> " << d_vals[i] << std::endl;
+    if (!d_vals[i].isNull())
+    {
+      Trace(c) << "   " << i << " -> " << d_vals[i] << std::endl;
     }
   }
 }
@@ -90,6 +101,11 @@ void InstMatch::resetAll()
   {
     d_vals[i] = Node::null();
   }
+  // clear information from the evaluator
+  if (d_ieval != nullptr)
+  {
+    d_ieval->resetAll();
+  }
 }
 
 Node InstMatch::get(size_t i) const
@@ -106,6 +122,20 @@ bool InstMatch::set(size_t i, TNode n)
     // if they are equal, we do nothing
     return d_qs.areEqual(d_vals[i], n);
   }
+  if (d_ieval != nullptr)
+  {
+    // if applicable, check if the instantiation evaluator is ok
+    if (!d_ieval->push(d_quant[0][i], n))
+    {
+      return false;
+    }
+    // The above checks may also have triggered a conflict due to term
+    // indexing, we fail in this case as well.
+    if (d_qs.isInConflict())
+    {
+      return false;
+    }
+  }
   // otherwise, we update the value
   d_vals[i] = n;
   return true;
@@ -114,6 +144,10 @@ bool InstMatch::set(size_t i, TNode n)
 void InstMatch::reset(size_t i)
 {
   Assert(!d_vals[i].isNull());
+  if (d_ieval != nullptr)
+  {
+    d_ieval->pop();
+  }
   d_vals[i] = Node::null();
 }
 

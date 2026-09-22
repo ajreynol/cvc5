@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Gereon Kremer, Morgan Deters, Dejan Jovanovic
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -34,7 +31,9 @@ namespace cvc5::internal {
 namespace theory {
 namespace booleans {
 
-CircuitPropagator::CircuitPropagator(Env& env, bool enableForward, bool enableBackward)
+CircuitPropagator::CircuitPropagator(Env& env,
+                                     bool enableForward,
+                                     bool enableBackward)
     : EnvObj(env),
       d_context(),
       d_propagationQueue(),
@@ -49,7 +48,6 @@ CircuitPropagator::CircuitPropagator(Env& env, bool enableForward, bool enableBa
       d_forwardPropagation(enableForward),
       d_backwardPropagation(enableBackward),
       d_needsFinish(false),
-      d_pnm(nullptr),
       d_epg(nullptr),
       d_proofInternal(nullptr),
       d_proofExternal(nullptr)
@@ -69,13 +67,14 @@ void CircuitPropagator::initialize()
 void CircuitPropagator::assertTrue(TNode assertion)
 {
   Trace("circuit-prop") << "TRUE: " << assertion << std::endl;
-  if (assertion.getKind() == kind::CONST_BOOLEAN && !assertion.getConst<bool>())
+  if (assertion.getKind() == Kind::CONST_BOOLEAN && !assertion.getConst<bool>())
   {
     makeConflict(assertion);
   }
-  else if (assertion.getKind() == kind::AND)
+  else if (assertion.getKind() == Kind::AND)
   {
-    ProofCircuitPropagatorBackward prover{d_pnm, assertion, true};
+    ProofCircuitPropagatorBackward prover{
+        d_env.getNodeManager(), d_env.getProofNodeManager(), assertion, true};
     if (isProofEnabled())
     {
       addProof(assertion, prover.assume(assertion));
@@ -93,7 +92,9 @@ void CircuitPropagator::assertTrue(TNode assertion)
     // Assign the given assertion to true
     assignAndEnqueue(assertion,
                      true,
-                     isProofEnabled() ? d_pnm->mkAssume(assertion) : nullptr);
+                     isProofEnabled()
+                         ? d_env.getProofNodeManager()->mkAssume(assertion)
+                         : nullptr);
   }
 }
 
@@ -104,7 +105,7 @@ void CircuitPropagator::assignAndEnqueue(TNode n,
   Trace("circuit-prop") << "CircuitPropagator::assign(" << n << ", "
                         << (value ? "true" : "false") << ")" << std::endl;
 
-  if (n.getKind() == kind::CONST_BOOLEAN)
+  if (n.getKind() == Kind::CONST_BOOLEAN)
   {
     // Assigning a constant to the opposite value is dumb
     if (value != n.getConst<bool>())
@@ -119,7 +120,7 @@ void CircuitPropagator::assignAndEnqueue(TNode n,
     if (proof == nullptr)
     {
       warning() << "CircuitPropagator: Proof is missing for " << n << std::endl;
-      Assert(false);
+      DebugUnhandled();
     }
     else
     {
@@ -157,7 +158,7 @@ void CircuitPropagator::assignAndEnqueue(TNode n,
 
 void CircuitPropagator::makeConflict(Node n)
 {
-  auto bfalse = NodeManager::currentNM()->mkConst(false);
+  auto bfalse = nodeManager()->mkConst(false);
   ProofGenerator* g = nullptr;
   if (isProofEnabled())
   {
@@ -165,15 +166,17 @@ void CircuitPropagator::makeConflict(Node n)
     {
       return;
     }
-    ProofCircuitPropagator pcp(d_pnm);
+    ProofCircuitPropagator pcp(d_env.getNodeManager(),
+                               d_env.getProofNodeManager());
     if (n == bfalse)
     {
       d_epg->setProofFor(bfalse, pcp.assume(bfalse));
     }
     else
     {
-      d_epg->setProofFor(bfalse,
-                         pcp.conflict(pcp.assume(n), pcp.assume(n.negate())));
+      // Use nPf to ensure deterministic node ID assignments
+      Pf nPf = pcp.assume(n);
+      d_epg->setProofFor(bfalse, pcp.conflict(nPf, pcp.assume(n.negate())));
     }
     g = d_proofInternal.get();
     Trace("circuit-prop") << "Added conflict " << *d_epg->getProofFor(bfalse)
@@ -237,12 +240,15 @@ void CircuitPropagator::propagateBackward(TNode parent, bool parentAssignment)
 {
   Trace("circuit-prop") << "CircuitPropagator::propagateBackward(" << parent
                         << ", " << parentAssignment << ")" << endl;
-  ProofCircuitPropagatorBackward prover{d_pnm, parent, parentAssignment};
+  ProofCircuitPropagatorBackward prover{d_env.getNodeManager(),
+                                        d_env.getProofNodeManager(),
+                                        parent,
+                                        parentAssignment};
 
   // backward rules
   switch (parent.getKind())
   {
-    case kind::AND:
+    case Kind::AND:
       if (parentAssignment)
       {
         // AND = TRUE: forall children c, assign(c = TRUE)
@@ -266,7 +272,7 @@ void CircuitPropagator::propagateBackward(TNode parent, bool parentAssignment)
         }
       }
       break;
-    case kind::OR:
+    case Kind::OR:
       if (parentAssignment)
       {
         // OR = TRUE: if all children BUT ONE == FALSE, assign(c = TRUE)
@@ -290,12 +296,12 @@ void CircuitPropagator::propagateBackward(TNode parent, bool parentAssignment)
         }
       }
       break;
-    case kind::NOT:
+    case Kind::NOT:
       // NOT = b: assign(c = !b)
       assignAndEnqueue(
           parent[0], !parentAssignment, prover.Not(!parentAssignment, parent));
       break;
-    case kind::ITE:
+    case Kind::ITE:
       if (isAssignedTo(parent[0], true))
       {
         // ITE c x y = v: if c is assigned and TRUE, assign(x = v)
@@ -324,7 +330,7 @@ void CircuitPropagator::propagateBackward(TNode parent, bool parentAssignment)
         }
       }
       break;
-    case kind::EQUAL:
+    case Kind::EQUAL:
       Assert(parent[0].getType().isBoolean());
       if (parentAssignment)
       {
@@ -361,7 +367,7 @@ void CircuitPropagator::propagateBackward(TNode parent, bool parentAssignment)
         }
       }
       break;
-    case kind::IMPLIES:
+    case Kind::IMPLIES:
       if (parentAssignment)
       {
         if (isAssignedTo(parent[0], true))
@@ -382,7 +388,7 @@ void CircuitPropagator::propagateBackward(TNode parent, bool parentAssignment)
         assignAndEnqueue(parent[1], false, prover.impliesNegY());
       }
       break;
-    case kind::XOR:
+    case Kind::XOR:
       if (parentAssignment)
       {
         if (isAssigned(parent[0]))
@@ -449,12 +455,13 @@ void CircuitPropagator::propagateForward(TNode child, bool childAssignment)
     Trace("circuit-prop") << "Parent: " << parent << endl;
     Assert(expr::hasSubterm(parent, child));
 
-    ProofCircuitPropagatorForward prover{d_pnm, child, childAssignment, parent};
+    ProofCircuitPropagatorForward prover{
+        d_env.getNodeManager(), d_env.getProofNodeManager(), child, parent};
 
     // Forward rules
     switch (parent.getKind())
     {
-      case kind::AND:
+      case Kind::AND:
         if (childAssignment)
         {
           TNode::iterator holdout;
@@ -490,7 +497,7 @@ void CircuitPropagator::propagateForward(TNode child, bool childAssignment)
           assignAndEnqueue(parent, false, prover.andOneFalse());
         }
         break;
-      case kind::OR:
+      case Kind::OR:
         if (childAssignment)
         {
           // OR ...(x=TRUE)...: assign(OR = TRUE)
@@ -525,13 +532,13 @@ void CircuitPropagator::propagateForward(TNode child, bool childAssignment)
         }
         break;
 
-      case kind::NOT:
+      case Kind::NOT:
         // NOT (x=b): assign(NOT = !b)
         assignAndEnqueue(
             parent, !childAssignment, prover.Not(childAssignment, parent));
         break;
 
-      case kind::ITE:
+      case Kind::ITE:
         if (child == parent[0])
         {
           if (childAssignment)
@@ -575,7 +582,7 @@ void CircuitPropagator::propagateForward(TNode child, bool childAssignment)
           }
         }
         break;
-      case kind::EQUAL:
+      case Kind::EQUAL:
         Assert(parent[0].getType().isBoolean());
         if (isAssigned(parent[0]) && isAssigned(parent[1]))
         {
@@ -628,7 +635,7 @@ void CircuitPropagator::propagateForward(TNode child, bool childAssignment)
           }
         }
         break;
-      case kind::IMPLIES:
+      case Kind::IMPLIES:
         if (isAssigned(parent[0]) && isAssigned(parent[1]))
         {
           // IMPLIES (x=v1) (y=v2): assign(IMPLIES = (!v1 || v2))
@@ -657,7 +664,7 @@ void CircuitPropagator::propagateForward(TNode child, bool childAssignment)
           // propagated all the children (in back-propagation).
         }
         break;
-      case kind::XOR:
+      case Kind::XOR:
         if (isAssigned(parent))
         {
           if (child == parent[0])
@@ -711,12 +718,12 @@ TrustNode CircuitPropagator::propagate()
 
     // Is this an atom
     bool atom = Theory::theoryOf(current) != THEORY_BOOL || current.isVar()
-                || (current.getKind() == kind::EQUAL
+                || (current.getKind() == Kind::EQUAL
                     && (current[0].isVar() && current[1].isVar()));
 
     // If an atom, add to the list for simplification
     if (atom
-        || (current.getKind() == kind::EQUAL
+        || (current.getKind() == Kind::EQUAL
             && (current[0].isVar() || current[1].isVar())))
     {
       Trace("circuit-prop")
@@ -774,18 +781,16 @@ TrustNode CircuitPropagator::propagate()
 void CircuitPropagator::enableProofs(context::Context* ctx,
                                      ProofGenerator* defParent)
 {
-  d_pnm = d_env.getProofNodeManager();
-  Assert(d_pnm != nullptr);
-  d_epg.reset(new EagerProofGenerator(d_pnm, ctx));
+  d_epg.reset(new EagerProofGenerator(d_env, ctx));
   d_proofInternal.reset(new LazyCDProofChain(
-      d_pnm, true, ctx, d_epg.get(), true, "CircuitPropInternalLazyChain"));
+      d_env, true, ctx, d_epg.get(), true, "CircuitPropInternalLazyChain"));
   if (defParent != nullptr)
   {
     // If we provide a parent proof generator (defParent), we want the ASSUME
     // leafs of proofs provided by this class to call the getProofFor method on
     // the parent. To do this, we use a LazyCDProofChain.
     d_proofExternal.reset(new LazyCDProofChain(
-        d_pnm, true, ctx, defParent, false, "CircuitPropExternalLazyChain"));
+        d_env, true, ctx, defParent, false, "CircuitPropExternalLazyChain"));
   }
 }
 

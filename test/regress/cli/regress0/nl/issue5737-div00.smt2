@@ -1,4 +1,5 @@
-; COMMAND-LINE: --ext-rew-prep=use -q
+; REQUIRES: unrestricted-mode
+; COMMAND-LINE: --ext-rew-prep=use
 ; EXPECT: sat
 (set-logic ALL)
 (set-info :status sat)

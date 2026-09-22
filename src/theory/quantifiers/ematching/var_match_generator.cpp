@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -57,7 +54,6 @@ int VarMatchGeneratorTermSubs::getNextMatch(InstMatch& m)
     Trace("var-trigger-matching")
         << "...got " << s << ", " << s.getKind() << std::endl;
     d_eq_class = Node::null();
-    // if( s.getType().isSubtypeOf( d_var_type ) ){
     d_rm_prev = m.get(index).isNull();
     if (!m.set(index, s))
     {
@@ -65,8 +61,7 @@ int VarMatchGeneratorTermSubs::getNextMatch(InstMatch& m)
     }
     else
     {
-      ret_val = continueNextMatch(
-          m, InferenceId::QUANTIFIERS_INST_E_MATCHING_VAR_GEN);
+      ret_val = continueNextMatch(m);
       if (ret_val > 0)
       {
         return ret_val;
@@ -79,6 +74,11 @@ int VarMatchGeneratorTermSubs::getNextMatch(InstMatch& m)
     d_rm_prev = false;
   }
   return -1;
+}
+
+InferenceId VarMatchGeneratorTermSubs::getInferenceId()
+{
+  return InferenceId::QUANTIFIERS_INST_E_MATCHING_VAR_GEN;
 }
 
 }  // namespace inst

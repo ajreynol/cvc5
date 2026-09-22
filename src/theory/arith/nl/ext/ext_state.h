@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Gereon Kremer, Andrew Reynolds, Tim King
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -21,6 +18,7 @@
 #include "expr/node.h"
 #include "proof/proof_set.h"
 #include "smt/env.h"
+#include "smt/env_obj.h"
 #include "theory/arith/nl/ext/monomial.h"
 
 namespace cvc5::internal {
@@ -36,9 +34,10 @@ namespace nl {
 
 class NlModel;
 
-struct ExtState
+class ExtState : protected EnvObj
 {
-  ExtState(InferenceManager& im, NlModel& model, Env& env);
+ public:
+  ExtState(Env& env, InferenceManager& im, NlModel& model);
 
   void init(const std::vector<Node>& xts);
 
@@ -61,8 +60,6 @@ struct ExtState
   InferenceManager& d_im;
   /** Reference to the non-linear model object */
   NlModel& d_model;
-  /** Reference to the environment */
-  Env& d_env;
   /**
    * A CDProofSet that hands out CDProof objects for lemmas.
    */
@@ -77,7 +74,7 @@ struct ExtState
   MonomialDb d_mdb;
 
   // ( x*y, x*z, y ) for each pair of monomials ( x*y, x*z ) with common factors
-  std::map<Node, std::map<Node, Node> > d_mono_diff;
+  std::map<Node, std::map<Node, Node>> d_mono_diff;
   /** the set of monomials we should apply tangent planes to */
   std::unordered_set<Node> d_tplane_refine;
 };
