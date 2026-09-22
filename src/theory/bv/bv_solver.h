@@ -28,7 +28,7 @@ class BVSolver : protected EnvObj
 {
  public:
   BVSolver(Env& env, TheoryState& state, TheoryInferenceManager& inferMgr)
-      : EnvObj(env), d_state(state), d_im(inferMgr){};
+      : EnvObj(env), d_state(state), d_im(inferMgr) {};
 
   virtual ~BVSolver() {}
 
@@ -42,7 +42,7 @@ class BVSolver : protected EnvObj
     return false;
   }
 
-  virtual void finishInit(){};
+  virtual void finishInit() {};
 
   virtual void preRegisterTerm(TNode n) = 0;
 
@@ -127,6 +127,12 @@ class BVSolver : protected EnvObj
   {
     return Node::null();
   }
+
+  /**
+   * @return True if current model is consistent.
+   * @note Can only ever be inconsistent in the case of abstraction.
+   */
+  virtual bool isModelConsistent() const { return true; }
 
  protected:
   TheoryState& d_state;

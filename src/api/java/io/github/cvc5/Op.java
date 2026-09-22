@@ -94,7 +94,7 @@ public class Op extends AbstractPointer
 
   /**
    * Determine if this operator is indexed.
-   * 
+   *
    * @return True iff this operator is indexed.
    */
   public boolean isIndexed()
@@ -143,8 +143,8 @@ public class Op extends AbstractPointer
   @Override
   public int hashCode()
   {
-    return hashCode(pointer);
+    return Long.hashCode(hashCode(pointer));
   }
 
-  private native int hashCode(long pointer);
+  private native long hashCode(long pointer);
 }
