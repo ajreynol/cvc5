@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -59,7 +56,7 @@ void SygusEvalUnfold::registerEvalTerm(Node n)
   if (n[0].getKind() == Kind::APPLY_CONSTRUCTOR)
   {
     // constructors should be unfolded and reduced already
-    Assert(false);
+    DebugUnhandled();
     return;
   }
   // register this evaluation term with its head
@@ -85,7 +82,7 @@ void SygusEvalUnfold::registerModelValue(Node a,
   {
     return;
   }
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   SygusExplain* sy_exp = d_tds->getExplain();
   Trace("sygus-eval-unfold")
       << "SygusEvalUnfold: " << a << ", has " << its->second.size()
@@ -245,7 +242,7 @@ Node SygusEvalUnfold::unfold(Node en,
     {
       ev = itv->second;
     }
-    Assert(en[0].getType() == ev.getType());
+    AssertEqual(en[0].getType(), ev.getType());
     Assert(ev.isConst());
   }
   Trace("sygus-eval-unfold-debug")
@@ -258,7 +255,7 @@ Node SygusEvalUnfold::unfold(Node en,
   }
 
   TypeNode headType = en[0].getType();
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   const DType& dt = headType.getDType();
   unsigned i = datatypes::utils::indexOf(ev.getOperator());
   if (track_exp)

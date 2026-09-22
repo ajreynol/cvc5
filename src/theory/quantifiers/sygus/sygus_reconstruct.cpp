@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Abdalrhman Mohamed, Andrew Reynolds, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -31,7 +28,7 @@ namespace quantifiers {
 SygusReconstruct::SygusReconstruct(Env& env,
                                    TermDbSygus* tds,
                                    SygusStatistics& s)
-    : EnvObj(env), d_tds(tds), d_stats(s)
+    : NodeConverter(env.getNodeManager()), EnvObj(env), d_tds(tds), d_stats(s)
 {
 }
 
@@ -61,11 +58,11 @@ Node SygusReconstruct::reconstructSolution(Node sol,
   if (options().quantifiers.cegqiSingleInvReconstruct
       == cvc5::internal::options::CegqiSingleInvRconsMode::TRY)
   {
-    fast(sol, stn, reconstructed);
+    fast(sol, stn);
   }
   else
   {
-    main(sol, stn, reconstructed, enumLimit);
+    main(sol, stn, enumLimit);
   }
 
   if (Trace("sygus-rcons").isConnected())
@@ -92,10 +89,7 @@ Node SygusReconstruct::reconstructSolution(Node sol,
   return Node::null();
 }
 
-void SygusReconstruct::main(Node sol,
-                            TypeNode stn,
-                            int8_t& reconstructed,
-                            uint64_t enumLimit)
+void SygusReconstruct::main(Node sol, TypeNode stn, uint64_t enumLimit)
 {
   bool noLimit = options().quantifiers.cegqiSingleInvReconstruct
                  == cvc5::internal::options::CegqiSingleInvRconsMode::ALL;
@@ -215,9 +209,9 @@ void SygusReconstruct::main(Node sol,
   }
 }
 
-void SygusReconstruct::fast(Node sol, TypeNode stn, int8_t& reconstructed)
+void SygusReconstruct::fast(Node sol, TypeNode stn)
 {
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
 
   Assert(stn.isDatatype());
   Assert(stn.getDType().isSygus());
@@ -225,7 +219,7 @@ void SygusReconstruct::fast(Node sol, TypeNode stn, int8_t& reconstructed)
   sti.initialize(d_tds, stn);
   std::vector<TypeNode> stns;
   sti.getSubfieldTypes(stns);
-  std::map<cvc5::internal::TypeNode, int> varCount;
+  std::map<TypeNode, size_t> varCount;
 
   // add the constructors for each sygus datatype to the pool
   for (const TypeNode& cstn : stns)
@@ -259,7 +253,8 @@ void SygusReconstruct::fast(Node sol, TypeNode stn, int8_t& reconstructed)
         args.push_back(cons->getConstructor());
         // populate each constructor argument with a free variable of the
         // corresponding type
-        for (const std::shared_ptr<cvc5::internal::DTypeSelector>& arg : cons->getArgs())
+        for (const std::shared_ptr<cvc5::internal::DTypeSelector>& arg :
+             cons->getArgs())
         {
           args.push_back(d_tds->getFreeVarInc(arg->getRangeType(), varCount));
         }
@@ -430,7 +425,9 @@ bool SygusReconstruct::match(Node t, Node tz, NodePairMap& subs)
 {
   // rewrite pattern and replace n-ary ops with binary ones before performing
   // simple pattern-matching.
-  return expr::match(convert(rewrite(tz)), convert(t), subs);
+  // Use convertedTz to ensure deterministic node ID assignments
+  Node convertedTz = convert(rewrite(tz));
+  return expr::match(convertedTz, convert(t), subs);
 }
 
 void SygusReconstruct::markSolved(RConsObligation* ob, Node s)
@@ -507,9 +504,10 @@ void SygusReconstruct::initialize(TypeNode stn)
   // variables).
   for (Node sv : stn.getDType().getSygusVarList())
   {
-    builtinVars.push_back(datatypes::utils::sygusToBuiltin(sv));
-    d_sygusVars.emplace(datatypes::utils::sygusToBuiltin(sv),
-                        datatypes::utils::sygusToBuiltin(sv));
+    // Use builtinSv to ensure deterministic node ID assignments
+    Node builtinSv = datatypes::utils::sygusToBuiltin(sv);
+    builtinVars.push_back(builtinSv);
+    d_sygusVars.emplace(builtinSv, builtinSv);
   }
 
   SygusTypeInfo stnInfo;
@@ -553,26 +551,25 @@ void SygusReconstruct::removeReconstructedTerms(
 Node SygusReconstruct::mkGround(Node n) const
 {
   // get the set of bound variables in n
-  std::unordered_set<TNode> vars;
+  std::unordered_set<Node> vars;
   expr::getVariables(n, vars);
 
   std::unordered_map<TNode, TNode> subs;
 
   // generate a ground value for each one of those variables
-  NodeManager* nm = NodeManager::currentNM();
-  for (const TNode& var : vars)
+  for (const Node& var : vars)
   {
-    subs.emplace(var, nm->mkGroundValue(var.getType()));
+    subs.emplace(var, NodeManager::mkGroundValue(var.getType()));
   }
 
   // substitute the variables with ground values
   return n.substitute(subs);
 }
 
-bool SygusReconstruct::notify(Node s,
-                              Node n,
-                              std::vector<Node>& vars,
-                              std::vector<Node>& subs)
+bool SygusReconstruct::notify(CVC5_UNUSED Node s,
+                              CVC5_UNUSED Node n,
+                              CVC5_UNUSED std::vector<Node>& vars,
+                              CVC5_UNUSED std::vector<Node>& subs)
 {
   // If we are too aggressive in filtering enumerated shapes, we may miss some
   // that speedup reconstruction time. So, for now, we disable filtering.
@@ -586,7 +583,7 @@ Node SygusReconstruct::postConvert(Node n)
   {
     if (n.getNumChildren() > 2)
     {
-      NodeManager* nm = NodeManager::currentNM();
+      NodeManager* nm = nodeManager();
       Node np = n[0];
       for (size_t i = 1, num = n.getNumChildren(); i < num; ++i)
       {

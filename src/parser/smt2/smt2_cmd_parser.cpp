@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -38,6 +35,7 @@ Smt2CmdParser::Smt2CmdParser(Smt2Lexer& lex,
   d_table["declare-datatype"] = Token::DECLARE_DATATYPE_TOK;
   d_table["declare-fun"] = Token::DECLARE_FUN_TOK;
   d_table["declare-sort"] = Token::DECLARE_SORT_TOK;
+  d_table["declare-sort-parameter"] = Token::DECLARE_SORT_PARAMETER_TOK;
   d_table["define-const"] = Token::DEFINE_CONST_TOK;
   d_table["define-funs-rec"] = Token::DEFINE_FUNS_REC_TOK;
   d_table["define-fun-rec"] = Token::DEFINE_FUN_REC_TOK;
@@ -57,6 +55,7 @@ Smt2CmdParser::Smt2CmdParser(Smt2Lexer& lex,
   d_table["get-unsat-core"] = Token::GET_UNSAT_CORE_TOK;
   d_table["get-unsat-core-lemmas"] = Token::GET_UNSAT_CORE_LEMMAS_TOK;
   d_table["get-value"] = Token::GET_VALUE_TOK;
+  d_table["get-model-domain-elements"] = Token::GET_MODEL_DOMAIN_ELEMENTS_TOK;
   d_table["pop"] = Token::POP_TOK;
   d_table["push"] = Token::PUSH_TOK;
   d_table["reset-assertions"] = Token::RESET_ASSERTIONS_TOK;
@@ -215,6 +214,7 @@ std::unique_ptr<Cmd> Smt2CmdParser::parseNextCommand()
       std::vector<std::string> dnames;
       std::vector<size_t> arities;
       std::string name = d_tparser.parseSymbol(CHECK_UNDECLARED, SYM_SORT);
+      d_state.checkReservedSymbol(name);
       dnames.push_back(name);
       bool isCo = (tok == Token::DECLARE_CODATATYPE_TOK);
       // parse <datatype_dec>
@@ -239,6 +239,7 @@ std::unique_ptr<Cmd> Smt2CmdParser::parseNextCommand()
       while (d_lex.eatTokenChoice(Token::LPAREN_TOK, Token::RPAREN_TOK))
       {
         std::string name = d_tparser.parseSymbol(CHECK_UNDECLARED, SYM_SORT);
+        d_state.checkReservedSymbol(name);
         size_t arity = d_tparser.parseIntegerNumeral();
         dnames.push_back(name);
         arities.push_back(arity);
@@ -281,15 +282,9 @@ std::unique_ptr<Cmd> Smt2CmdParser::parseNextCommand()
       {
         d_state.checkLogicAllowsFunctions();
       }
+      // Note that we previously disallowed declare-fun in sygus here.
       // we allow overloading for function declarations
-      if (d_state.sygus())
-      {
-        d_lex.parseError("declare-fun are not allowed in sygus version 2.0");
-      }
-      else
-      {
-        cmd.reset(new DeclareFunctionCommand(name, sorts, t));
-      }
+      cmd.reset(new DeclareFunctionCommand(name, sorts, t));
     }
     break;
     // (declare-heap (<sort> <sort>))
@@ -322,7 +317,8 @@ std::unique_ptr<Cmd> Smt2CmdParser::parseNextCommand()
         binName = d_tparser.parseSymbol(CHECK_NONE, SYM_VARIABLE);
       }
       // not supported
-      d_state.warning("Oracles not supported via the text interface in this version");
+      d_state.warning(
+          "Oracles not supported via the text interface in this version");
       cmd.reset(new EmptyCommand());
     }
     break;
@@ -349,6 +345,17 @@ std::unique_ptr<Cmd> Smt2CmdParser::parseNextCommand()
       Trace("parser") << "declare sort: '" << name << "' arity=" << arity
                       << std::endl;
       cmd.reset(new DeclareSortCommand(name, arity));
+    }
+    break;
+    // (declare-sort-parameter <symbol>)
+    case Token::DECLARE_SORT_PARAMETER_TOK:
+    {
+      d_state.checkThatLogicIsSet();
+      std::string name = d_tparser.parseSymbol(CHECK_NONE, SYM_VARIABLE);
+      d_state.checkUserSymbol(name);
+      // not supported
+      d_state.warning("Sort parameters not supported in this version");
+      cmd.reset(new EmptyCommand());
     }
     break;
     // (declare-var <symbol> <sort>)
@@ -402,7 +409,12 @@ std::unique_ptr<Cmd> Smt2CmdParser::parseNextCommand()
       {
         d_state.pushScope();
       }
-      std::vector<Term> terms = d_state.bindBoundVars(sortedVarNames);
+      bool freshBinders = d_state.usingFreshBinders();
+      // If freshBinders is false, we use fresh=false here to ensure that
+      // variables introduced by define-fun are accurate with respect to proofs,
+      // i.e. variables of the same name and type are indeed the same variable.
+      std::vector<Term> terms =
+          d_state.bindBoundVars(sortedVarNames, freshBinders);
       Term expr = d_tparser.parseTerm();
       if (!flattenVars.empty())
       {
@@ -422,6 +434,8 @@ std::unique_ptr<Cmd> Smt2CmdParser::parseNextCommand()
     case Token::DEFINE_FUN_REC_TOK:
     {
       d_state.checkThatLogicIsSet();
+      // outermost scope to handle the definition of the function
+      d_state.pushScope();
       std::string fname = d_tparser.parseSymbol(CHECK_NONE, SYM_VARIABLE);
       d_state.checkUserSymbol(fname);
       std::vector<std::pair<std::string, Sort>> sortedVarNames =
@@ -430,8 +444,8 @@ std::unique_ptr<Cmd> Smt2CmdParser::parseNextCommand()
       std::vector<Term> flattenVars;
       std::vector<Term> bvs;
       Term func =
-          d_state.bindDefineFunRec(fname, sortedVarNames, t, flattenVars);
-      d_state.pushDefineFunRecScope(sortedVarNames, func, flattenVars, bvs);
+          d_state.setupDefineFunRecScope(fname, sortedVarNames, t, flattenVars);
+      d_state.pushDefineFunRecScope(sortedVarNames, flattenVars, bvs);
       Term expr = d_tparser.parseTerm();
       d_state.popScope();
       if (!flattenVars.empty())
@@ -439,6 +453,8 @@ std::unique_ptr<Cmd> Smt2CmdParser::parseNextCommand()
         expr = d_state.mkHoApply(expr, flattenVars);
       }
       cmd.reset(new DefineFunctionRecCommand(func, bvs, expr));
+      // pop the scope
+      d_state.popScope();
     }
     break;
     // (define-funs-rec (<function_dec>^{n+1}) (<term>^{n+1}))
@@ -447,6 +463,8 @@ std::unique_ptr<Cmd> Smt2CmdParser::parseNextCommand()
     case Token::DEFINE_FUNS_REC_TOK:
     {
       d_state.checkThatLogicIsSet();
+      // outermost scope to handle the definition of the functions
+      d_state.pushScope();
       d_lex.eatToken(Token::LPAREN_TOK);
       std::vector<Term> funcs;
       std::vector<std::vector<std::pair<std::string, Sort>>> sortedVarNamesList;
@@ -462,8 +480,8 @@ std::unique_ptr<Cmd> Smt2CmdParser::parseNextCommand()
             d_tparser.parseSortedVarList();
         Sort t = d_tparser.parseSort();
         std::vector<Term> flattenVars;
-        Term func =
-            d_state.bindDefineFunRec(fname, sortedVarNames, t, flattenVars);
+        Term func = d_state.setupDefineFunRecScope(
+            fname, sortedVarNames, t, flattenVars);
         funcs.push_back(func);
 
         // add to lists (need to remember for when parsing the bodies)
@@ -481,7 +499,7 @@ std::unique_ptr<Cmd> Smt2CmdParser::parseNextCommand()
       {
         std::vector<Term> bvs;
         d_state.pushDefineFunRecScope(
-            sortedVarNamesList[j], funcs[j], flattenVarsList[j], bvs);
+            sortedVarNamesList[j], flattenVarsList[j], bvs);
         Term expr = d_tparser.parseTerm();
         d_state.popScope();
         funcDefs.push_back(expr);
@@ -490,6 +508,8 @@ std::unique_ptr<Cmd> Smt2CmdParser::parseNextCommand()
       d_lex.eatToken(Token::RPAREN_TOK);
       Assert(funcs.size() == funcDefs.size());
       cmd.reset(new DefineFunctionRecCommand(funcs, formals, funcDefs));
+      // pop the scope
+      d_state.popScope();
     }
     break;
     // (define-sort <symbol> (<symbol>*) <sort>)
@@ -539,7 +559,7 @@ std::unique_ptr<Cmd> Smt2CmdParser::parseNextCommand()
       std::string key = d_tparser.parseKeyword();
       modes::FindSynthTarget fst = d_state.getFindSynthTarget(key);
       std::vector<Term> emptyVarList;
-      Grammar* g = d_tparser.parseGrammarOrNull(emptyVarList, "g_find-synth");
+      Grammar* g = d_tparser.parseGrammarOrNull(emptyVarList);
       cmd.reset(new FindSynthCommand(fst, g));
     }
     break;
@@ -557,7 +577,7 @@ std::unique_ptr<Cmd> Smt2CmdParser::parseNextCommand()
       Term t = d_tparser.parseTerm();
       // parse optional grammar
       std::vector<Term> emptyVarList;
-      Grammar* g = d_tparser.parseGrammarOrNull(emptyVarList, name);
+      Grammar* g = d_tparser.parseGrammarOrNull(emptyVarList);
       cmd.reset(new GetAbductCommand(name, t, g));
     }
     break;
@@ -603,7 +623,7 @@ std::unique_ptr<Cmd> Smt2CmdParser::parseNextCommand()
       std::string name = d_tparser.parseSymbol(CHECK_UNDECLARED, SYM_VARIABLE);
       Term t = d_tparser.parseTerm();
       std::vector<Term> emptyVarList;
-      Grammar* g = d_tparser.parseGrammarOrNull(emptyVarList, name);
+      Grammar* g = d_tparser.parseGrammarOrNull(emptyVarList);
       cmd.reset(new GetInterpolantCommand(name, t, g));
     }
     break;
@@ -744,6 +764,14 @@ std::unique_ptr<Cmd> Smt2CmdParser::parseNextCommand()
       d_state.popScope();
     }
     break;
+    // (get-model-domain-elements <sort>)
+    case Token::GET_MODEL_DOMAIN_ELEMENTS_TOK:
+    {
+      d_state.checkThatLogicIsSet();
+      cvc5::Sort sort = d_tparser.parseSort();
+      cmd.reset(new GetModelDomainElementsCommand(sort));
+    }
+    break;
     // (inv-constraint <symbol> <symbol> <symbol> <symbol>)
     case Token::INV_CONSTRAINT_TOK:
     {
@@ -809,10 +837,9 @@ std::unique_ptr<Cmd> Smt2CmdParser::parseNextCommand()
     {
       std::string key = d_tparser.parseKeyword();
       Term s = d_tparser.parseSymbolicExpr();
-      d_state.checkThatLogicIsSet();
-      // ":grammars" is defined in the SyGuS version 2.1 standard and is by
-      // default supported, all other features are not.
-      if (key != "grammars")
+      // ":grammars" and "fwd-decls" are defined in the SyGuS version 2.1
+      // standard and are supported by default, all other features are not.
+      if (key != "grammars" && key != "fwd-decls")
       {
         std::stringstream ss;
         ss << "SyGuS feature " << key << " not currently supported";
@@ -862,6 +889,11 @@ std::unique_ptr<Cmd> Smt2CmdParser::parseNextCommand()
       {
         ss = d_state.stripQuotes(ss);
       }
+      else if (key == "use-portfolio")
+      {
+        // we don't allow setting portfolio via the command line
+        d_lex.parseError("Can only enable use-portfolio via the command line");
+      }
       cmd.reset(new SetOptionCommand(key, ss));
       // Ugly that this changes the state of the parser; but
       // global-declarations affects parsing, so we can't hold off
@@ -873,6 +905,10 @@ std::unique_ptr<Cmd> Smt2CmdParser::parseNextCommand()
       else if (key == "fresh-declarations")
       {
         d_state.getSymbolManager()->setFreshDeclarations(ss == "true");
+      }
+      else if (key == "term-sort-overload")
+      {
+        d_state.getSymbolManager()->setTermSortOverload(ss == "true");
       }
     }
     break;
@@ -897,7 +933,7 @@ std::unique_ptr<Cmd> Smt2CmdParser::parseNextCommand()
       bool isInv = (tok == Token::SYNTH_INV_TOK);
       if (isInv)
       {
-        range = d_state.getSolver()->getBooleanSort();
+        range = d_state.getSolver()->getTermManager().getBooleanSort();
       }
       else
       {
@@ -905,7 +941,7 @@ std::unique_ptr<Cmd> Smt2CmdParser::parseNextCommand()
       }
       d_state.pushScope();
       std::vector<cvc5::Term> sygusVars = d_state.bindBoundVars(sortedVarNames);
-      Grammar* g = d_tparser.parseGrammarOrNull(sygusVars, name);
+      Grammar* g = d_tparser.parseGrammarOrNull(sygusVars);
 
       Trace("parser-sygus") << "Define synth fun : " << name << std::endl;
       d_state.popScope();

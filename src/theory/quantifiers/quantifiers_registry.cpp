@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Gereon Kremer, Morgan Deters
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -25,7 +22,7 @@ namespace quantifiers {
 
 QuantifiersRegistry::QuantifiersRegistry(Env& env)
     : QuantifiersUtil(env),
-      d_quantAttr(),
+      d_quantAttr(userContext()),
       d_quantBoundInf(options().quantifiers.fmfTypeCompletionThresh,
                       options().quantifiers.finiteModelFind),
       d_quantPreproc(env)
@@ -39,7 +36,7 @@ void QuantifiersRegistry::registerQuantifier(Node q)
     return;
   }
   Assert(q.getKind() == Kind::FORALL);
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   Trace("quantifiers-engine")
       << "Instantiation constants for " << q << " : " << std::endl;
   for (size_t i = 0, nvars = q[0].getNumChildren(); i < nvars; i++)
@@ -60,7 +57,7 @@ void QuantifiersRegistry::registerQuantifier(Node q)
   d_quantAttr.computeAttributes(q);
 }
 
-bool QuantifiersRegistry::reset(Theory::Effort e) { return true; }
+bool QuantifiersRegistry::reset(CVC5_UNUSED Theory::Effort e) { return true; }
 
 std::string QuantifiersRegistry::identify() const
 {

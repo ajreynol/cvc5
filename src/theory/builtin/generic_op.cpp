@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Aina Niemetz, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -21,7 +18,9 @@
 #include "expr/dtype_cons.h"
 #include "theory/datatypes/project_op.h"
 #include "theory/datatypes/theory_datatypes_utils.h"
+#include "theory/evaluator.h"
 #include "util/bitvector.h"
+#include "util/divisible.h"
 #include "util/floatingpoint.h"
 #include "util/iand.h"
 #include "util/rational.h"
@@ -54,19 +53,24 @@ bool GenericOp::operator==(const GenericOp& op) const
 
 bool GenericOp::isNumeralIndexedOperatorKind(Kind k)
 {
-  return k == Kind::REGEXP_LOOP || k == Kind::BITVECTOR_EXTRACT
+  return k == Kind::DIVISIBLE || k == Kind::REGEXP_LOOP
+         || k == Kind::REGEXP_REPEAT || k == Kind::BITVECTOR_EXTRACT
          || k == Kind::BITVECTOR_REPEAT || k == Kind::BITVECTOR_ZERO_EXTEND
          || k == Kind::BITVECTOR_SIGN_EXTEND || k == Kind::BITVECTOR_ROTATE_LEFT
-         || k == Kind::BITVECTOR_ROTATE_RIGHT || k == Kind::INT_TO_BITVECTOR || k==Kind::BITVECTOR_BITOF
-         || k == Kind::IAND || k == Kind::FLOATINGPOINT_TO_FP_FROM_FP
+         || k == Kind::BITVECTOR_ROTATE_RIGHT || k == Kind::INT_TO_BITVECTOR
+         || k == Kind::BITVECTOR_BIT || k == Kind::IAND
+         || k == Kind::FLOATINGPOINT_TO_FP_FROM_FP
          || k == Kind::FLOATINGPOINT_TO_FP_FROM_IEEE_BV
          || k == Kind::FLOATINGPOINT_TO_FP_FROM_SBV
-         || k == Kind::FLOATINGPOINT_TO_FP_FROM_REAL 
-         || k == Kind::FLOATINGPOINT_TO_FP_FROM_UBV || k == Kind::FLOATINGPOINT_TO_SBV || k == Kind::FLOATINGPOINT_TO_UBV
+         || k == Kind::FLOATINGPOINT_TO_FP_FROM_REAL
+         || k == Kind::FLOATINGPOINT_TO_FP_FROM_UBV
+         || k == Kind::FLOATINGPOINT_TO_SBV || k == Kind::FLOATINGPOINT_TO_UBV
          || k == Kind::FLOATINGPOINT_TO_SBV_TOTAL
-         || k == Kind::FLOATINGPOINT_TO_UBV_TOTAL || k == Kind::RELATION_AGGREGATE
-         || k == Kind::RELATION_PROJECT || k == Kind::RELATION_GROUP || k == Kind::TABLE_PROJECT
-         || k == Kind::TABLE_AGGREGATE || k == Kind::TABLE_JOIN || k == Kind::TABLE_GROUP;
+         || k == Kind::FLOATINGPOINT_TO_UBV_TOTAL
+         || k == Kind::RELATION_AGGREGATE || k == Kind::RELATION_PROJECT
+         || k == Kind::RELATION_GROUP || k == Kind::TABLE_PROJECT
+         || k == Kind::RELATION_TABLE_JOIN || k == Kind::TABLE_AGGREGATE
+         || k == Kind::TABLE_JOIN || k == Kind::TABLE_GROUP;
 }
 
 bool GenericOp::isIndexedOperatorKind(Kind k)
@@ -77,10 +81,22 @@ bool GenericOp::isIndexedOperatorKind(Kind k)
 
 std::vector<Node> GenericOp::getIndicesForOperator(Kind k, Node n)
 {
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = n.getNodeManager();
   std::vector<Node> indices;
   switch (k)
   {
+    case Kind::DIVISIBLE:
+    {
+      const Divisible& op = n.getConst<Divisible>();
+      indices.push_back(nm->mkConstInt(Rational(op.k)));
+      break;
+    }
+    case Kind::REGEXP_REPEAT:
+    {
+      const RegExpRepeat& op = n.getConst<RegExpRepeat>();
+      indices.push_back(nm->mkConstInt(Rational(op.d_repeatAmount)));
+      break;
+    }
     case Kind::REGEXP_LOOP:
     {
       const RegExpLoop& op = n.getConst<RegExpLoop>();
@@ -115,9 +131,9 @@ std::vector<Node> GenericOp::getIndicesForOperator(Kind k, Node n)
       indices.push_back(nm->mkConstInt(
           Rational(n.getConst<BitVectorRotateRight>().d_rotateRightAmount)));
       break;
-    case Kind::BITVECTOR_BITOF:
+    case Kind::BITVECTOR_BIT:
       indices.push_back(
-          nm->mkConstInt(Rational(n.getConst<BitVectorBitOf>().d_bitIndex)));
+          nm->mkConstInt(Rational(n.getConst<BitVectorBit>().d_bitIndex)));
       break;
     case Kind::INT_TO_BITVECTOR:
       indices.push_back(
@@ -193,6 +209,7 @@ std::vector<Node> GenericOp::getIndicesForOperator(Kind k, Node n)
     break;
     case Kind::RELATION_AGGREGATE:
     case Kind::RELATION_PROJECT:
+    case Kind::RELATION_TABLE_JOIN:
     case Kind::RELATION_GROUP:
     case Kind::TABLE_PROJECT:
     case Kind::TABLE_AGGREGATE:
@@ -235,11 +252,23 @@ bool convertToNumeralList(const std::vector<Node>& indices,
 {
   for (const Node& i : indices)
   {
-    if (i.getKind() != Kind::CONST_INTEGER)
+    Node in = i;
+    if (in.getKind() != Kind::CONST_INTEGER)
     {
-      return false;
+      // If trivially evaluatable, take that as the numeral.
+      // This implies that we can concretize applications of
+      // APPLY_INDEXED_SYMBOLIC whose indices can evaluate. This in turn
+      // implies that e.g. (extract (+ 2 2) 2 x) concretizes via getConcreteApp
+      // to ((_ extract 4 2) x), which implies it has type (BitVec 3) based
+      // on the type rule for APPLY_INDEXED_SYMBOLIC.
+      theory::Evaluator e(nullptr);
+      in = e.eval(in, {}, {});
+      if (in.isNull() || in.getKind() != Kind::CONST_INTEGER)
+      {
+        return false;
+      }
     }
-    const Integer& ii = i.getConst<Rational>().getNumerator();
+    const Integer& ii = in.getConst<Rational>().getNumerator();
     if (!ii.fitsUnsignedInt())
     {
       return false;
@@ -249,11 +278,12 @@ bool convertToNumeralList(const std::vector<Node>& indices,
   return true;
 }
 
-Node GenericOp::getOperatorForIndices(Kind k, const std::vector<Node>& indices)
+Node GenericOp::getOperatorForIndices(NodeManager* nm,
+                                      Kind k,
+                                      const std::vector<Node>& indices)
 {
   // all indices should be constant!
   Assert(isIndexedOperatorKind(k));
-  NodeManager* nm = NodeManager::currentNM();
   if (isNumeralIndexedOperatorKind(k))
   {
     std::vector<uint32_t> numerals;
@@ -264,6 +294,12 @@ Node GenericOp::getOperatorForIndices(Kind k, const std::vector<Node>& indices)
     }
     switch (k)
     {
+      case Kind::DIVISIBLE:
+        Assert(numerals.size() == 1);
+        return nm->mkConst(Divisible(numerals[0]));
+      case Kind::REGEXP_REPEAT:
+        Assert(numerals.size() == 1);
+        return nm->mkConst(RegExpRepeat(numerals[0]));
       case Kind::REGEXP_LOOP:
         Assert(numerals.size() == 2);
         return nm->mkConst(RegExpLoop(numerals[0], numerals[1]));
@@ -285,6 +321,9 @@ Node GenericOp::getOperatorForIndices(Kind k, const std::vector<Node>& indices)
       case Kind::BITVECTOR_ROTATE_RIGHT:
         Assert(numerals.size() == 1);
         return nm->mkConst(BitVectorRotateRight(numerals[0]));
+      case Kind::BITVECTOR_BIT:
+        Assert(numerals.size() == 1);
+        return nm->mkConst(BitVectorBit(numerals[0]));
       case Kind::INT_TO_BITVECTOR:
         Assert(numerals.size() == 1);
         return nm->mkConst(IntToBitVector(numerals[0]));
@@ -303,6 +342,10 @@ Node GenericOp::getOperatorForIndices(Kind k, const std::vector<Node>& indices)
         Assert(numerals.size() == 2);
         return nm->mkConst(
             FloatingPointToFPSignedBitVector(numerals[0], numerals[1]));
+      case Kind::FLOATINGPOINT_TO_FP_FROM_UBV:
+        Assert(numerals.size() == 2);
+        return nm->mkConst(
+            FloatingPointToFPUnsignedBitVector(numerals[0], numerals[1]));
       case Kind::FLOATINGPOINT_TO_FP_FROM_REAL:
         Assert(numerals.size() == 2);
         return nm->mkConst(FloatingPointToFPReal(numerals[0], numerals[1]));
@@ -322,14 +365,18 @@ Node GenericOp::getOperatorForIndices(Kind k, const std::vector<Node>& indices)
         return nm->mkConst(Kind::RELATION_AGGREGATE_OP, ProjectOp(numerals));
       case Kind::RELATION_PROJECT:
         return nm->mkConst(Kind::RELATION_PROJECT_OP, ProjectOp(numerals));
+      case Kind::RELATION_TABLE_JOIN:
+        return nm->mkConst(Kind::RELATION_TABLE_JOIN_OP, ProjectOp(numerals));
       case Kind::RELATION_GROUP:
         return nm->mkConst(Kind::RELATION_GROUP_OP, ProjectOp(numerals));
       case Kind::TABLE_PROJECT:
         return nm->mkConst(Kind::TABLE_PROJECT_OP, ProjectOp(numerals));
       case Kind::TABLE_AGGREGATE:
         return nm->mkConst(Kind::TABLE_AGGREGATE_OP, ProjectOp(numerals));
-      case Kind::TABLE_JOIN: return nm->mkConst(Kind::TABLE_JOIN_OP, ProjectOp(numerals));
-      case Kind::TABLE_GROUP: return nm->mkConst(Kind::TABLE_GROUP_OP, ProjectOp(numerals));
+      case Kind::TABLE_JOIN:
+        return nm->mkConst(Kind::TABLE_JOIN_OP, ProjectOp(numerals));
+      case Kind::TABLE_GROUP:
+        return nm->mkConst(Kind::TABLE_GROUP_OP, ProjectOp(numerals));
       default:
         Unhandled() << "GenericOp::getOperatorForIndices: unhandled kind " << k;
         break;
@@ -373,7 +420,8 @@ Node GenericOp::getConcreteApp(const Node& app)
   // usually one, but we handle cases where it is >1.
   size_t nargs = metakind::getMinArityForKind(okind);
   std::vector<Node> indices(app.begin(), app.end() - nargs);
-  Node op = getOperatorForIndices(okind, indices);
+  NodeManager* nm = app.getNodeManager();
+  Node op = getOperatorForIndices(nm, okind, indices);
   // could have a bad index, in which case we don't rewrite
   if (op.isNull())
   {
@@ -382,7 +430,7 @@ Node GenericOp::getConcreteApp(const Node& app)
   std::vector<Node> args;
   args.push_back(op);
   args.insert(args.end(), app.end() - nargs, app.end());
-  Node ret = NodeManager::currentNM()->mkNode(okind, args);
+  Node ret = nm->mkNode(okind, args);
   // could be ill typed, in which case we don't rewrite
   if (ret.getTypeOrNull(true).isNull())
   {

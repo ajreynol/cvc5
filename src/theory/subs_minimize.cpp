@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Mathias Preiner, Andres Noetzli
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -59,7 +56,7 @@ bool SubstitutionMinimize::findWithImplied(Node t,
                                            std::vector<Node>& reqVars,
                                            std::vector<Node>& impliedVars)
 {
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   Node truen = nm->mkConst(true);
   if (!findInternal(t, truen, vars, subs, reqVars))
   {
@@ -225,7 +222,7 @@ bool SubstitutionMinimize::findInternal(Node n,
       if (cur.getNumChildren() > 0)
       {
         std::vector<Node> children;
-        NodeBuilder nb(cur.getKind());
+        NodeBuilder nb(nodeManager(), cur.getKind());
         if (cur.getMetaKind() == kind::metakind::PARAMETERIZED)
         {
           if (cur.getKind() == Kind::APPLY_UF)

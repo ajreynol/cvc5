@@ -1,10 +1,7 @@
 ###############################################################################
-# Top contributors (to current version):
-#   Gereon Kremer, Mathias Preiner, Aina Niemetz
-#
 # This file is part of the cvc5 project.
 #
-# Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+# Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
 # in the top-level source directory and their institutional affiliations.
 # All rights reserved.  See the file COPYING in the top-level source
 # directory for licensing information.
@@ -32,14 +29,14 @@ if(NOT SymFPU_FOUND_SYSTEM)
   include(ExternalProject)
   include(deps-helper)
 
-  set(SymFPU_COMMIT "e6ac3af9c2c574498ea171c957425b407625448b")
-  set(SymFPU_CHECKSUM "6ffc9009d2d665e0908edee634aa03bbbfc11482")
+  set(SymFPU_COMMIT "40bdec00e99f8ea1b96c3dac0a05eed11c541639")
+  set(SymFPU_CHECKSUM "ba17877fbf0c851e113fddaab225152f1c0b2044429396b56b2f113832e36ce5")
 
   ExternalProject_Add(
     SymFPU-EP
     ${COMMON_EP_CONFIG}
-    URL https://github.com/cvc5/symfpu/archive/${SymFPU_COMMIT}.tar.gz
-    URL_HASH SHA1=${SymFPU_CHECKSUM}
+    URL https://github.com/martin-cs/symfpu/archive/${SymFPU_COMMIT}.tar.gz
+    URL_HASH SHA256=${SymFPU_CHECKSUM}
     CONFIGURE_COMMAND ""
     BUILD_COMMAND ""
     INSTALL_COMMAND ${CMAKE_COMMAND} -E copy_directory <SOURCE_DIR>/core

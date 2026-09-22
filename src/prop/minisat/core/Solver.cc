@@ -20,7 +20,7 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 
 #include "prop/minisat/core/Solver.h"
 
-#include <math.h>
+#include <cmath>
 
 #include <iostream>
 #include <unordered_set>
@@ -134,8 +134,6 @@ class ScopedBool
 Solver::Solver(Env& env,
                cvc5::internal::prop::TheoryProxy* proxy,
                context::Context* context,
-               context::UserContext* userContext,
-               ProofNodeManager* pnm,
                bool enableIncremental)
     : EnvObj(env),
       d_proxy(proxy),
@@ -208,11 +206,6 @@ Solver::Solver(Env& env,
       propagation_budget(-1),
       asynch_interrupt(false)
 {
-  if (pnm)
-  {
-    d_pfManager.reset(new SatProofManager(env, this, proxy->getCnfStream()));
-  }
-
   // Create the constant variables
   varTrue = newVar(true, false, false);
   varFalse = newVar(false, false, false);
@@ -222,11 +215,12 @@ Solver::Solver(Env& env,
   uncheckedEnqueue(mkLit(varFalse, true));
 }
 
-
-Solver::~Solver()
+void Solver::attachProofManager(prop::PropPfManager* ppm)
 {
+  Assert(d_pfManager == nullptr);
+  d_pfManager.reset(
+      new SatProofManager(d_env, this, d_proxy->getCnfStream(), ppm));
 }
-
 
 //=================================================================================================
 // Minor methods:
@@ -235,7 +229,7 @@ Solver::~Solver()
 // Creates a new SAT variable in the solver. If 'decision_var' is cleared, variable will not be
 // used as a decision variable (NOTE! This has effects on the meaning of a SATISFIABLE result).
 //
-Var Solver::newVar(bool sign, bool dvar, bool isTheoryAtom, bool canErase)
+Var Solver::newVar(bool sign, bool dvar, bool isTheoryAtom)
 {
     int v = nVars();
 
@@ -387,7 +381,7 @@ CRef Solver::reason(Var x) {
     Trace("pf::sat") << "..user level is " << userContext()->getLevel() << "\n";
     Assert(userContext()->getLevel()
            == static_cast<uint32_t>(assertionLevel + 1));
-    d_proxy->notifyCurrPropagationInsertedAtLevel(explLevel);
+    d_pfManager->notifyCurrPropagationInsertedAtLevel(explLevel);
   }
   // Construct the reason
   CRef real_reason = ca.alloc(explLevel, explanation, true);
@@ -517,7 +511,7 @@ bool Solver::addClause_(vec<Lit>& ps, bool removable, ClauseId& id)
           }
           SatClause satClause;
           MinisatSatSolver::toSatClause(ca[cr], satClause);
-          d_proxy->notifyClauseInsertedAtLevel(satClause, clauseLevel);
+          d_pfManager->notifyClauseInsertedAtLevel(satClause, clauseLevel);
         }
         if (options().smt.produceUnsatCores || needProof())
         {
@@ -556,6 +550,11 @@ bool Solver::addClause_(vec<Lit>& ps, bool removable, ClauseId& id)
           {
             d_pfManager->registerSatLitAssumption(ps[0]);
           }
+          // Call notifySatClause. This call site handles unit clauses not
+          // learned in the standard way.
+          SatClause satClause;
+          satClause.push_back(MinisatSatSolver::toSatLiteral(ps[0]));
+          d_proxy->notifySatClause(satClause);
         }
         CRef confl = propagate(CHECK_WITHOUT_THEORY);
         if (!(ok = (confl == CRef_Undef)))
@@ -1526,12 +1525,20 @@ lbool Solver::search(int nof_conflicts)
         {
           d_pfManager->endResChain(learnt_clause[0]);
         }
+        // Call notifySatClause here.
+        SatClause satClause;
+        satClause.push_back(MinisatSatSolver::toSatLiteral(learnt_clause[0]));
+        d_proxy->notifySatClause(satClause);
       }
       else
       {
         CRef cr = ca.alloc(assertionLevelOnly() ? assertionLevel : max_level,
                            learnt_clause,
                            true);
+        // Call notifySatClause here.
+        SatClause satClause;
+        MinisatSatSolver::toSatClause(ca[cr], satClause);
+        d_proxy->notifySatClause(satClause);
         clauses_removable.push(cr);
         attachClause(cr);
         claBumpActivity(ca[cr]);
@@ -1780,6 +1787,7 @@ lbool Solver::solve_()
 
 static Var mapVar(Var x, vec<Var>& map, Var& max)
 {
+    Assert(x >= 0);
     if (map.size() <= x || map[x] == -1){
         map.growTo(x+1, -1);
         map[x] = max++;
@@ -1798,18 +1806,16 @@ void Solver::toDimacs(FILE* f, Clause& c, vec<Var>& map, Var& max)
     fprintf(f, "0\n");
 }
 
-
-void Solver::toDimacs(const char *file, const vec<Lit>& assumps)
+void Solver::toDimacs(const char* file)
 {
     FILE* f = fopen(file, "wr");
-    if (f == NULL)
-        fprintf(stderr, "could not open file %s\n", file), exit(1);
-    toDimacs(f, assumps);
+    if (f == nullptr)
+      fprintf(stderr, "could not open file %s\n", file), exit(1);
+    toDimacs(f);
     fclose(f);
 }
 
-
-void Solver::toDimacs(FILE* f, const vec<Lit>& assumps)
+void Solver::toDimacs(FILE* f)
 {
     // Handle case when solver is in contradictory state:
     if (!ok){
@@ -2080,7 +2086,7 @@ CRef Solver::updateLemmas() {
         }
         SatClause satClause;
         MinisatSatSolver::toSatClause(ca[lemma_ref], satClause);
-        d_proxy->notifyClauseInsertedAtLevel(satClause, clauseLevel);
+        d_pfManager->notifyClauseInsertedAtLevel(satClause, clauseLevel);
       }
       if (removable) {
         clauses_removable.push(lemma_ref);
@@ -2189,7 +2195,7 @@ const std::vector<Node> Solver::getMiniSatOrderHeap()
   std::vector<Node> heapList;
   for (size_t i = 0, hsize = order_heap.size(); i < hsize; ++i)
   {
-    Node n = d_proxy->getNode(order_heap[i]);
+    Node n = d_proxy->getNode(SatLiteral(order_heap[i]));
     heapList.push_back(n);
   }
   return heapList;

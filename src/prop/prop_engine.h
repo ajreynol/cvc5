@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Morgan Deters, Dejan Jovanovic
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -29,6 +26,7 @@
 #include "prop/learned_db.h"
 #include "prop/skolem_def_manager.h"
 #include "smt/env_obj.h"
+#include "theory/inference_id.h"
 #include "theory/output_channel.h"
 #include "theory/skolem_lemma.h"
 #include "util/result.h"
@@ -129,10 +127,23 @@ class PropEngine : protected EnvObj
    * The formula can be removed by the SAT solver after backtracking lower
    * than the (SAT and SMT) level at which it was asserted.
    *
-   * @param trn the trust node storing the formula to assert
-   * @param p the properties of the lemma
+   * @param id The inference identifier.
+   * @param trn The trust node storing the formula to assert.
+   * @param p The properties of the lemma.
    */
-  void assertLemma(TrustNode tlemma, theory::LemmaProperty p);
+  void assertLemma(theory::InferenceId id,
+                   TrustNode tlemma,
+                   theory::LemmaProperty p);
+
+  /**
+   * This is called when a theory propagation was explained with texp.
+   * In other words, texp corresponds to a formula that was added to the SAT
+   * solver. This method is only used for proofs. It stores the proof of the
+   * clause corresponding to texp in the proof CNF stream.
+   *
+   * @param texp The explained propagation.
+   */
+  void notifyExplainedPropagation(TrustNode texp);
 
   /**
    * Configure the preferred phase of a decision variable. This occurs
@@ -296,9 +307,6 @@ class PropEngine : protected EnvObj
    */
   bool properExplanation(TNode node, TNode expl) const;
 
-  /** Retrieve this modules proof CNF stream. */
-  ProofCnfStream* getProofCnfStream();
-
   /** Checks that the proof is closed w.r.t. asserted formulas to this engine as
    * well as to the given assertions. */
   void checkProof(const context::CDList<Node>& assertions);
@@ -363,21 +371,30 @@ class PropEngine : protected EnvObj
    * The formula can be removed by the SAT solver after backtracking lower
    * than the (SAT and SMT) level at which it was asserted.
    *
-   * @param trn the trust node storing the formula to assert
-   * @param removable whether this lemma can be quietly removed based
-   * on an activity heuristic
+   * @param id The inference identifier.
+   * @param trn The trust node storing the formula to assert.
+   * @param removable Whether this lemma can be quietly removed based
+   * on an activity heuristic.
+   * @param local Whether this lemma is considered local to the SAT context.
+   * In this case, we must cache whether it has been added to the SAT solver
+   * already.
    */
-  void assertTrustedLemmaInternal(TrustNode trn, bool removable);
+  void assertTrustedLemmaInternal(theory::InferenceId id,
+                                  TrustNode trn,
+                                  bool removable,
+                                  bool local);
   /**
    * Assert node as a formula to the CNF stream
-   * @param node The formula to assert
-   * @param negated Whether to assert the negation of node
-   * @param removable Whether the formula is removable
-   * @param input Whether the formula came from the input
+   * @param id The inference identifier.
+   * @param node The formula to assert.
+   * @param negated Whether to assert the negation of node.
+   * @param removable Whether the formula is removable.
+   * @param input Whether the formula came from the input.
    * @param pg Pointer to a proof generator that can provide a proof of node
    * (or its negation if negated is true).
    */
-  void assertInternal(TNode node,
+  void assertInternal(theory::InferenceId id,
+                      TNode node,
                       bool negated,
                       bool removable,
                       bool input,
@@ -388,9 +405,12 @@ class PropEngine : protected EnvObj
    * obtained from preprocessing it, and removable is whether the lemma is
    * removable.
    */
-  void assertLemmasInternal(TrustNode trn,
+  void assertLemmasInternal(theory::InferenceId id,
+                            TrustNode trn,
                             const std::vector<theory::SkolemLemma>& ppLemmas,
-                            bool removable);
+                            bool removable,
+                            bool inprocess,
+                            bool local);
 
   /**
    * Indicates that the SAT solver is currently solving something and we should
@@ -415,8 +435,6 @@ class PropEngine : protected EnvObj
 
   /** The CNF converter in use */
   CnfStream* d_cnfStream;
-  /** Proof-producing CNF converter */
-  std::unique_ptr<ProofCnfStream> d_pfCnfStream;
   /** A default proof generator for theory lemmas */
   CDProof d_theoryLemmaPg;
 
@@ -431,6 +449,10 @@ class PropEngine : protected EnvObj
    * cores are enabled.
    */
   context::CDList<Node> d_assumptions;
+  /**
+   * Local lemmas
+   */
+  context::CDHashSet<Node> d_localLemmas;
   /** Statistics */
   struct Statistics
   {
