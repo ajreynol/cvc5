@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Andres Noetzli, Aina Niemetz
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -158,7 +155,6 @@ Node CandidateRewriteDatabase::addOrGetTerm(Node sol,
         if (r.getStatus() == Result::SAT)
         {
           Trace("rr-check") << "...rewrite does not hold for: " << std::endl;
-          NodeManager* nm = NodeManager::currentNM();
           is_unique_term = true;
           std::vector<Node> vars;
           d_sampler->getVariables(vars);
@@ -175,7 +171,7 @@ Node CandidateRewriteDatabase::addOrGetTerm(Node sol,
               if (itf == d_fv_to_skolem.end())
               {
                 // not in conjecture, can use arbitrary value
-                val = nm->mkGroundTerm(v.getType());
+                val = NodeManager::mkGroundTerm(v.getType());
               }
               else
               {
@@ -231,8 +227,8 @@ Node CandidateRewriteDatabase::addOrGetTerm(Node sol,
         // debugging information
         if (TraceIsOn("sygus-rr-debug"))
         {
-          Trace("sygus-rr-debug") << "; candidate #1 ext-rewrites to: " << solbr
-                                  << std::endl;
+          Trace("sygus-rr-debug")
+              << "; candidate #1 ext-rewrites to: " << solbr << std::endl;
           Trace("sygus-rr-debug")
               << "; candidate #2 ext-rewrites to: " << eq_solr << std::endl;
         }
@@ -255,8 +251,8 @@ Node CandidateRewriteDatabase::addOrGetTerm(Node sol,
           Node x = d_tds->getFreeVar(ptn, 0);
           Node lem = d_tds->getExplain()->getExplanationForEquality(x, exc_sol);
           lem = lem.negate();
-          Trace("sygus-rr-sb") << "Symmetry breaking lemma : " << lem
-                               << std::endl;
+          Trace("sygus-rr-sb")
+              << "Symmetry breaking lemma : " << lem << std::endl;
           d_tds->registerSymBreakLemma(d_candidate, lem, ptn, sz);
         }
       }

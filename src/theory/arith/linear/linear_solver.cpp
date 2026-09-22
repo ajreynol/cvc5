@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -35,7 +32,7 @@ void LinearSolver::finishInit(eq::EqualityEngine* ee)
   d_internal.finishInit(ee);
 }
 void LinearSolver::preRegisterTerm(TNode n) { d_internal.preRegisterTerm(n); }
-void LinearSolver::propagate(Theory::Effort e) { d_internal.propagate(e); }
+void LinearSolver::propagate() { d_internal.propagate(); }
 
 TrustNode LinearSolver::explain(TNode n) { return d_internal.explain(n); }
 
@@ -50,12 +47,12 @@ void LinearSolver::presolve() { d_internal.presolve(); }
 
 void LinearSolver::notifyRestart() { d_internal.notifyRestart(); }
 
-Theory::PPAssertStatus LinearSolver::ppAssert(
-    TrustNode tin, TrustSubstitutionMap& outSubstitutions)
+bool LinearSolver::ppAssert(TrustNode tin,
+                            TrustSubstitutionMap& outSubstitutions)
 {
   return d_internal.ppAssert(tin, outSubstitutions);
 }
-void LinearSolver::ppStaticLearn(TNode in, NodeBuilder& learned)
+void LinearSolver::ppStaticLearn(TNode in, std::vector<TrustNode>& learned)
 {
   d_internal.ppStaticLearn(in, learned);
 }
@@ -72,9 +69,9 @@ std::pair<bool, Node> LinearSolver::entailmentCheck(TNode lit)
 {
   return d_internal.entailmentCheck(lit);
 }
-bool LinearSolver::preCheck(Theory::Effort level, bool newFacts)
+bool LinearSolver::preCheck(bool newFacts)
 {
-  return d_internal.preCheck(level, newFacts);
+  return d_internal.preCheck(newFacts);
 }
 void LinearSolver::preNotifyFact(TNode fact) { d_internal.preNotifyFact(fact); }
 bool LinearSolver::postCheck(Theory::Effort level)

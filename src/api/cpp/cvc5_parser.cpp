@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Mudathir Mohamed, Aina Niemetz
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -107,6 +104,15 @@ std::vector<Term> SymbolManager::getDeclaredTerms() const
   CVC5_API_TRY_CATCH_BEGIN;
   //////// all checks before this line
   return d_sm->getDeclaredTerms();
+  ////////
+  CVC5_API_TRY_CATCH_END;
+}
+
+std::map<Term, std::string> SymbolManager::getNamedTerms() const
+{
+  CVC5_API_TRY_CATCH_BEGIN;
+  //////// all checks before this line
+  return d_sm->getExpressionNames();
   ////////
   CVC5_API_TRY_CATCH_END;
 }
@@ -220,6 +226,11 @@ void InputParser::initialize()
   if (info.setByUser)
   {
     sm->setFreshDeclarations(info.boolValue());
+  }
+  info = d_solver->getOptionInfo("term-sort-overload");
+  if (info.setByUser)
+  {
+    sm->setTermSortOverload(info.boolValue());
   }
   // notice that we don't create the parser object until the input is set.
 }

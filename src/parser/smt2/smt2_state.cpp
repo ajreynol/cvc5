@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Aina Niemetz, Andres Noetzli
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -27,12 +24,11 @@ namespace parser {
 Smt2State::Smt2State(ParserStateCallback* psc,
                      Solver* solver,
                      SymManager* sm,
-                     bool strictMode,
+                     ParsingMode parsingMode,
                      bool isSygus)
-    : ParserState(psc, solver, sm, strictMode),
+    : ParserState(psc, solver, sm, parsingMode),
       d_isSygus(isSygus),
-      d_logicSet(false),
-      d_seenSetLogic(false)
+      d_logicSet(false)
 {
   d_freshBinders = (d_solver->getOption("fresh-binders") == "true");
 }
@@ -123,7 +119,6 @@ void Smt2State::addBitvectorOperators()
   {
     addOperator(Kind::BITVECTOR_ITE, "bvite");
   }
-
 
   addIndexedOperator(Kind::BITVECTOR_EXTRACT, "extract");
   addIndexedOperator(Kind::BITVECTOR_REPEAT, "repeat");
@@ -296,10 +291,10 @@ void Smt2State::addSepOperators()
 
 void Smt2State::addCoreSymbols()
 {
-  defineType("Bool", d_tm.getBooleanSort(), true);
+  defineType("Bool", d_tm.getBooleanSort(), false);
   Sort tupleSort = d_tm.mkTupleSort({});
-  defineType("Relation", d_tm.mkSetSort(tupleSort), true);
-  defineType("Table", d_tm.mkBagSort(tupleSort), true);
+  defineType("Relation", d_tm.mkSetSort(tupleSort), false);
+  defineType("Table", d_tm.mkBagSort(tupleSort), false);
   defineVar("true", d_tm.mkTrue(), true);
   defineVar("false", d_tm.mkFalse(), true);
   addOperator(Kind::AND, "and");
@@ -587,7 +582,7 @@ Term Smt2State::mkIndexedConstant(const std::string& name,
       }
       Sort t = getSort(symbols[0]);
       // convert second symbol back to a numeral
-      uint32_t ubound = stringToUnsigned(symbols[1]);
+      uint32_t ubound = parseStringToUnsigned(symbols[1]);
       return d_tm.mkCardinalityConstraint(t, ubound);
     }
   }
@@ -699,7 +694,6 @@ Term Smt2State::setupDefineFunRecScope(
 
 void Smt2State::pushDefineFunRecScope(
     const std::vector<std::pair<std::string, Sort>>& sortedVarNames,
-    Term func,
     const std::vector<Term>& flattenVars,
     std::vector<Term>& bvs)
 {
@@ -708,7 +702,7 @@ void Smt2State::pushDefineFunRecScope(
   // of the define-fun(s)-rec command, we define them here
   for (const std::pair<std::string, Sort>& svn : sortedVarNames)
   {
-    Term v = bindBoundVar(svn.first, svn.second);
+    Term v = bindBoundVar(svn.first, svn.second, d_freshBinders);
     bvs.push_back(v);
   }
 
@@ -799,7 +793,7 @@ void Smt2State::setLogic(std::string name)
   {
     if (d_logic.areIntegersUsed())
     {
-      defineType("Int", d_tm.getIntegerSort(), true);
+      defineType("Int", d_tm.getIntegerSort(), false);
       addArithmeticOperators();
       if (!strictModeEnabled() || !d_logic.isLinear())
       {
@@ -817,7 +811,7 @@ void Smt2State::setLogic(std::string name)
 
     if (d_logic.areRealsUsed())
     {
-      defineType("Real", d_tm.getRealSort(), true);
+      defineType("Real", d_tm.getRealSort(), false);
       addArithmeticOperators();
       addOperator(Kind::DIVISION, "/");
       if (!strictModeEnabled())
@@ -843,8 +837,12 @@ void Smt2State::setLogic(std::string name)
     {
       // integer version of AND
       addIndexedOperator(Kind::IAND, "iand");
+      // parametric integer version of AND
+      addOperator(Kind::PIAND, "piand");
       // pow2
       addOperator(Kind::POW2, "int.pow2");
+      // log2
+      addOperator(Kind::LOG2, "int.log2");
     }
   }
 
@@ -859,20 +857,28 @@ void Smt2State::setLogic(std::string name)
   {
     addBitvectorOperators();
 
-    if (!strictModeEnabled()
-        && d_logic.isTheoryEnabled(internal::theory::THEORY_ARITH)
+    if (d_logic.isTheoryEnabled(internal::theory::THEORY_ARITH)
         && d_logic.areIntegersUsed())
     {
       // Conversions between bit-vectors and integers
-      addOperator(Kind::BITVECTOR_TO_NAT, "bv2nat");
-      addIndexedOperator(Kind::INT_TO_BITVECTOR, "int2bv");
+      if (!strictModeEnabled())
+      {
+        // For the sake of backwards compatability at the moment we support
+        // the old syntax, which in the case of bv2nat maps directly to
+        // Kind::BITVECTOR_UBV_TO_INT.
+        addOperator(Kind::BITVECTOR_UBV_TO_INT, "bv2nat");
+        addIndexedOperator(Kind::INT_TO_BITVECTOR, "int2bv");
+      }
+      addIndexedOperator(Kind::INT_TO_BITVECTOR, "int_to_bv");
+      addOperator(Kind::BITVECTOR_UBV_TO_INT, "ubv_to_int");
+      addOperator(Kind::BITVECTOR_SBV_TO_INT, "sbv_to_int");
     }
   }
 
   if (d_logic.isTheoryEnabled(internal::theory::THEORY_DATATYPES))
   {
     const std::vector<Sort> types;
-    defineType("UnitTuple", d_tm.mkTupleSort(types), true);
+    defineType("UnitTuple", d_tm.mkTupleSort(types), false);
     addDatatypesOperators();
   }
 
@@ -940,6 +946,8 @@ void Smt2State::setLogic(std::string name)
     addOperator(Kind::BAG_CHOOSE, "bag.choose");
     addOperator(Kind::BAG_MAP, "bag.map");
     addOperator(Kind::BAG_FILTER, "bag.filter");
+    addOperator(Kind::BAG_ALL, "bag.all");
+    addOperator(Kind::BAG_SOME, "bag.some");
     addOperator(Kind::BAG_FOLD, "bag.fold");
     addOperator(Kind::BAG_PARTITION, "bag.partition");
     addOperator(Kind::TABLE_PRODUCT, "table.product");
@@ -956,9 +964,9 @@ void Smt2State::setLogic(std::string name)
   }
   if (d_logic.isTheoryEnabled(internal::theory::THEORY_STRINGS))
   {
-    defineType("String", d_tm.getStringSort(), true);
-    defineType("RegLan", d_tm.getRegExpSort(), true);
-    defineType("Int", d_tm.getIntegerSort(), true);
+    defineType("String", d_tm.getStringSort(), false);
+    defineType("RegLan", d_tm.getRegExpSort(), false);
+    defineType("Int", d_tm.getIntegerSort(), false);
 
     defineVar("re.none", d_tm.mkRegexpNone());
     defineVar("re.allchar", d_tm.mkRegexpAllchar());
@@ -976,11 +984,11 @@ void Smt2State::setLogic(std::string name)
 
   if (d_logic.isTheoryEnabled(internal::theory::THEORY_FP))
   {
-    defineType("RoundingMode", d_tm.getRoundingModeSort(), true);
-    defineType("Float16", d_tm.mkFloatingPointSort(5, 11), true);
-    defineType("Float32", d_tm.mkFloatingPointSort(8, 24), true);
-    defineType("Float64", d_tm.mkFloatingPointSort(11, 53), true);
-    defineType("Float128", d_tm.mkFloatingPointSort(15, 113), true);
+    defineType("RoundingMode", d_tm.getRoundingModeSort(), false);
+    defineType("Float16", d_tm.mkFloatingPointSort(5, 11), false);
+    defineType("Float32", d_tm.mkFloatingPointSort(8, 24), false);
+    defineType("Float64", d_tm.mkFloatingPointSort(11, 53), false);
+    defineType("Float128", d_tm.mkFloatingPointSort(15, 113), false);
 
     defineVar("RNE",
               d_tm.mkRoundingMode(RoundingMode::ROUND_NEAREST_TIES_TO_EVEN));
@@ -1015,11 +1023,11 @@ void Smt2State::setLogic(std::string name)
 
   // Builtin symbols of the logic are declared at context level zero, hence
   // we push the outermost scope in the symbol manager here.
-  // We only do this if the logic has not already been set, in which case we have already
-  // pushed the outermost context (and this method redeclares the symbols which does
-  // not impact the symbol manager).
-  // TODO (cvc5-projects #693): refactor this so that this method is moved to the
-  // symbol manager and only called once per symbol manager.
+  // We only do this if the logic has not already been set, in which case we
+  // have already pushed the outermost context (and this method redeclares the
+  // symbols which does not impact the symbol manager).
+  // TODO (cvc5-projects #693): refactor this so that this method is moved to
+  // the symbol manager and only called once per symbol manager.
   if (!smLogicAlreadySet)
   {
     pushScope(true);
@@ -1330,7 +1338,7 @@ Term Smt2State::applyParseOp(const ParseOp& p, std::vector<Term>& args)
       }
       else
       {
-        Assert(false) << "Failed to resolve indexed operator " << p.d_name;
+        DebugUnhandled() << "Failed to resolve indexed operator " << p.d_name;
       }
     }
     else
@@ -1387,7 +1395,11 @@ Term Smt2State::applyParseOp(const ParseOp& p, std::vector<Term>& args)
         }
         else if (p.d_name == "nullable.some")
         {
-          return d_tm.mkNullableSome(args[0]);
+          if (args.size() == 1)
+          {
+            return d_tm.mkNullableSome(args[0]);
+          }
+          parseError("nullable.some requires exactly one argument.");
         }
         else
         {
@@ -1400,7 +1412,11 @@ Term Smt2State::applyParseOp(const ParseOp& p, std::vector<Term>& args)
       {
         if (p.d_name == "nullable.val")
         {
-          return d_tm.mkNullableVal(args[0]);
+          if (args.size() == 1)
+          {
+            return d_tm.mkNullableVal(args[0]);
+          }
+          parseError("nullable.val requires exactly one argument.");
         }
         else
         {
@@ -1413,11 +1429,19 @@ Term Smt2State::applyParseOp(const ParseOp& p, std::vector<Term>& args)
       {
         if (p.d_name == "nullable.is_null")
         {
-          return d_tm.mkNullableIsNull(args[0]);
+          if (args.size() == 1)
+          {
+            return d_tm.mkNullableIsNull(args[0]);
+          }
+          parseError("nullable.is_null requires exactly one argument.");
         }
         else if (p.d_name == "nullable.is_some")
         {
-          return d_tm.mkNullableIsSome(args[0]);
+          if (args.size() == 1)
+          {
+            return d_tm.mkNullableIsSome(args[0]);
+          }
+          parseError("nullable.is_some requires exactly one argument.");
         }
         else
         {
@@ -1567,6 +1591,55 @@ Term Smt2State::applyParseOp(const ParseOp& p, std::vector<Term>& args)
         }
       }
     }
+    if (strictModeEnabled())
+    {
+      // Catch cases of mixed arithmetic, which our internal type checker is
+      // lenient for. In particular, any case that is ill-typed according to
+      // the SMT standard but not in our internal type checker are handled
+      // here.
+      Sort sreq;  // if applicable, the sort which all arguments must be.
+      bool sameType = false;
+      if (kind == Kind::ADD || kind == Kind::MULT || kind == Kind::SUB
+          || kind == Kind::GEQ || kind == Kind::GT || kind == Kind::LEQ
+          || kind == Kind::LT)
+      {
+        // no mixed arithmetic
+        sreq = args[0].getSort();
+        sameType = true;
+      }
+      else if (kind == Kind::DIVISION || kind == Kind::TO_INTEGER
+               || kind == Kind::IS_INTEGER)
+      {
+        // must apply division, to_int, is_int to real only
+        sreq = d_tm.getRealSort();
+      }
+      else if (kind == Kind::TO_REAL || kind == Kind::ABS)
+      {
+        // must apply to_real, abs to integer only
+        sreq = d_tm.getIntegerSort();
+      }
+      if (!sreq.isNull())
+      {
+        for (Term& i : args)
+        {
+          Sort s = i.getSort();
+          if (s != sreq)
+          {
+            std::stringstream ss;
+            ss << "Due to strict parsing, we require the arguments of " << kind;
+            if (sameType)
+            {
+              ss << " to have the same type";
+            }
+            else
+            {
+              ss << " to have type " << sreq;
+            }
+            parseError(ss.str());
+          }
+        }
+      }
+    }
     if (!strictModeEnabled() && (kind == Kind::AND || kind == Kind::OR)
         && args.size() == 1)
     {
@@ -1605,7 +1678,7 @@ Term Smt2State::applyParseOp(const ParseOp& p, std::vector<Term>& args)
       {
         ret = d_tm.mkSkolem(skolemId, args);
       }
-      else
+      else if (numSkolemIndices < args.size())
       {
         std::vector<Term> skolemArgs(args.begin(),
                                      args.begin() + numSkolemIndices);
@@ -1614,6 +1687,14 @@ Term Smt2State::applyParseOp(const ParseOp& p, std::vector<Term>& args)
         finalArgs.insert(
             finalArgs.end(), args.begin() + numSkolemIndices, args.end());
         ret = d_tm.mkTerm(Kind::APPLY_UF, finalArgs);
+      }
+      else
+      {
+        std::stringstream ss;
+        ss << "Not enough indices for skolem operator " << skolemId
+           << ". Expects " << numSkolemIndices << ", received " << args.size()
+           << ".";
+        parseError(ss.str());
       }
       Trace("parser") << "applyParseOp: return skolem " << ret << std::endl;
       return ret;
@@ -1756,7 +1837,7 @@ Sort Smt2State::getIndexedSort(const std::string& name,
     {
       parseError("Illegal bitvector type.");
     }
-    uint32_t n0 = stringToUnsigned(numerals[0]);
+    uint32_t n0 = parseStringToUnsigned(numerals[0]);
     if (n0 == 0)
     {
       parseError("Illegal bitvector size: 0");
@@ -1777,8 +1858,8 @@ Sort Smt2State::getIndexedSort(const std::string& name,
     {
       parseError("Illegal floating-point type.");
     }
-    uint32_t n0 = stringToUnsigned(numerals[0]);
-    uint32_t n1 = stringToUnsigned(numerals[1]);
+    uint32_t n0 = parseStringToUnsigned(numerals[0]);
+    uint32_t n1 = parseStringToUnsigned(numerals[1]);
     if (!internal::validExponentSize(n0))
     {
       parseError("Illegal floating-point exponent size");

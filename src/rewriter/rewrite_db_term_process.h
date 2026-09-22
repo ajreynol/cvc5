@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -22,6 +19,7 @@
 
 #include "expr/node.h"
 #include "expr/node_converter.h"
+#include "expr/term_context.h"
 #include "proof/conv_proof_generator.h"
 #include "proof/proof.h"
 
@@ -37,6 +35,10 @@ namespace rewriter {
  * (2) Constant bitvectors are lifted to CONST_BITVECTOR_SYMBOLIC.
  * (3) Indexed operators are lifted to APPLY_INDEXED_SYMBOLIC.
  * (4) Quantifier patterns are dropped.
+ * (5) APPLY_UF is converted to HO_APPLY chains.
+ * (6) Function constants are converted to lambdas.
+ * (7) Annotations are applied to parametric datatype constructors.
+ * (8) NONLINEAR_MULT is reverted to MULT.
  *
  * This node converter converts from the default representation of cvc5 terms
  * to the representation of terms required by the DSL proof reconstruction
@@ -88,6 +90,8 @@ class ProofRewriteDbNodeConverter : protected EnvObj
   std::shared_ptr<ProofNode> convert(const Node& n);
 
  private:
+  /** Term context matching the policy for the converter above */
+  WithinKindTermContext d_wktc;
   /** A pointer to a TConvProofGenerator, if proof producing */
   TConvProofGenerator d_tpg;
   /** A CDProof */

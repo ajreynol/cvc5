@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Mathias Preiner, Aina Niemetz, Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -73,7 +70,6 @@ BVSolverBitblastInternal::BVSolverBitblastInternal(
     Env& env, TheoryState* s, TheoryInferenceManager& inferMgr)
     : BVSolver(env, *s, inferMgr),
       d_bitblaster(new BBProof(env, s, false)),
-      d_checker(nodeManager()),
       d_epg(new EagerProofGenerator(d_env))
 {
 }
@@ -101,14 +97,17 @@ void BVSolverBitblastInternal::addBBLemma(TNode fact)
   }
 }
 
-bool BVSolverBitblastInternal::needsEqualityEngine(EeSetupInfo& esi)
+bool BVSolverBitblastInternal::needsEqualityEngine(CVC5_UNUSED EeSetupInfo& esi)
 {
   // Disable equality engine if --bitblast=eager is enabled.
   return options().bv.bitblastMode != options::BitblastMode::EAGER;
 }
 
-bool BVSolverBitblastInternal::preNotifyFact(
-    TNode atom, bool pol, TNode fact, bool isPrereg, bool isInternal)
+bool BVSolverBitblastInternal::preNotifyFact(CVC5_UNUSED TNode atom,
+                                             CVC5_UNUSED bool pol,
+                                             CVC5_UNUSED TNode fact,
+                                             CVC5_UNUSED bool isPrereg,
+                                             CVC5_UNUSED bool isInternal)
 {
   if (fact.getKind() == Kind::NOT)
   {
@@ -169,9 +168,10 @@ Node BVSolverBitblastInternal::getValue(TNode node, bool initialize)
     return node;
   }
 
+  NodeManager* nm = node.getNodeManager();
   if (!d_bitblaster->hasBBTerm(node))
   {
-    return initialize ? utils::mkConst(utils::getSize(node), 0u) : Node();
+    return initialize ? utils::mkConst(nm, utils::getSize(node), 0u) : Node();
   }
 
   Valuation& val = d_state.getValuation();
@@ -193,12 +193,7 @@ Node BVSolverBitblastInternal::getValue(TNode node, bool initialize)
     }
     value = value * 2 + bit;
   }
-  return utils::mkConst(bits.size(), value);
-}
-
-BVProofRuleChecker* BVSolverBitblastInternal::getProofChecker()
-{
-  return &d_checker;
+  return utils::mkConst(nm, bits.size(), value);
 }
 
 }  // namespace bv

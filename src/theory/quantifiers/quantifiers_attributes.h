@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Aina Niemetz
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -18,6 +15,7 @@
 #ifndef CVC5__THEORY__QUANTIFIERS__QUANTIFIERS_ATTRIBUTES_H
 #define CVC5__THEORY__QUANTIFIERS__QUANTIFIERS_ATTRIBUTES_H
 
+#include "context/cdhashset.h"
 #include "expr/attribute.h"
 #include "expr/node.h"
 
@@ -25,16 +23,24 @@ namespace cvc5::internal {
 namespace theory {
 
 /** Attribute true for function definition quantifiers */
-struct FunDefAttributeId {};
-typedef expr::Attribute< FunDefAttributeId, bool > FunDefAttribute;
+struct FunDefAttributeId
+{
+};
+typedef expr::Attribute<FunDefAttributeId, bool> FunDefAttribute;
 
-/** Attribute true for quantifiers that we are doing partial quantifier elimination on */
-struct QuantElimPartialAttributeId {};
-typedef expr::Attribute< QuantElimPartialAttributeId, bool > QuantElimPartialAttribute;
+/** Attribute true for quantifiers that we are doing partial quantifier
+ * elimination on */
+struct QuantElimPartialAttributeId
+{
+};
+typedef expr::Attribute<QuantElimPartialAttributeId, bool>
+    QuantElimPartialAttribute;
 
 /** Attribute true for quantifiers that are SyGus conjectures */
-struct SygusAttributeId {};
-typedef expr::Attribute< SygusAttributeId, bool > SygusAttribute;
+struct SygusAttributeId
+{
+};
+typedef expr::Attribute<SygusAttributeId, bool> SygusAttribute;
 
 /**
  * Attribute set to the name of the binary for quantifiers that are oracle
@@ -62,11 +68,6 @@ struct QuantNameAttributeId
 {
 };
 typedef expr::Attribute<QuantNameAttributeId, bool> QuantNameAttribute;
-
-struct InstLevelAttributeId
-{
-};
-typedef expr::Attribute<InstLevelAttributeId, uint64_t> InstLevelAttribute;
 
 /** Attribute for setting printing information for sygus variables
  *
@@ -128,7 +129,7 @@ struct QAttributes
         d_isQuantBounded(false)
   {
   }
-  ~QAttributes(){}
+  ~QAttributes() {}
   /** does the quantified formula have a pattern? */
   bool d_hasPattern;
   /** does the quantified formula have a pool? */
@@ -187,16 +188,16 @@ struct QAttributes
 };
 
 /** This class caches information about attributes of quantified formulas
-*
-* It also has static utility functions used for determining attributes and
-* information about
-* quantified formulas.
-*/
+ *
+ * It also has static utility functions used for determining attributes and
+ * information about
+ * quantified formulas.
+ */
 class QuantAttributes
 {
  public:
-  QuantAttributes();
-  ~QuantAttributes(){}
+  QuantAttributes(context::Context* userContext);
+  ~QuantAttributes() {}
   /** set user attribute
    * This function applies an attribute
    * This can be called when we mark expressions with attributes, e.g. (! q
@@ -214,26 +215,31 @@ class QuantAttributes
   void computeAttributes(Node q);
 
   /** is sygus conjecture */
-  static bool checkSygusConjecture( Node q );
+  static bool checkSygusConjecture(Node q);
   /** is sygus conjecture */
-  static bool checkSygusConjectureAnnotation( Node ipl );
+  static bool checkSygusConjectureAnnotation(Node ipl);
   /** get fun def body */
-  static Node getFunDefHead( Node q );
+  static Node getFunDefHead(Node q);
   /** get fun def body */
   static Node getFunDefBody(Node q);
   /** does q have a user-provided pattern? */
   static bool hasPattern(Node q);
 
   /** is function definition */
-  bool isFunDef( Node q );
+  bool isFunDef(Node q);
   /** is sygus conjecture */
-  bool isSygus( Node q );
+  bool isSygus(Node q);
   /** is oracle interface */
   bool isOracleInterface(Node q);
   /** get instantiation level */
   int64_t getQuantInstLevel(Node q);
+  /**
+   * Is q a quantified formula we are performing quantifier elimination for?
+   * This also true if we are performing partial quantifier elimination on q.
+   */
+  bool isQuantElim(Node q) const;
   /** is quant elim partial */
-  bool isQuantElimPartial( Node q );
+  bool isQuantElimPartial(Node q) const;
   /** is internal quantifier */
   bool isQuantBounded(Node q) const;
   /** get quant name, which is used for :qid */
@@ -241,18 +247,31 @@ class QuantAttributes
   /** Print quantified formula q, possibly using its name, if it has one */
   std::string quantToString(Node q) const;
   /** get (internal) quant id num */
-  int getQuantIdNum( Node q );
+  int getQuantIdNum(Node q);
   /** get (internal)quant id num */
-  Node getQuantIdNumNode( Node q );
+  Node getQuantIdNumNode(Node q);
 
   /** Make the instantiation attribute that marks "quantifier elimination" */
-  static Node mkAttrQuantifierElimination();
+  static Node mkAttrQuantifierElimination(NodeManager* nm);
   /** Make the instantiation attribute that marks to perserve its structure */
-  static Node mkAttrPreserveStructure();
-  /** set instantiation level attr */
+  static Node mkAttrPreserveStructure(NodeManager* nm);
+  /**
+   * Set instantiation level attribute for all subterms without an instantiation
+   * level in n to level.
+   */
   static void setInstantiationLevelAttr(Node n, uint64_t level);
-  /** set instantiation level attr */
-  static void setInstantiationLevelAttr(Node n, Node qn, uint64_t level);
+  /**
+   * Get "instantiation level" for term n, if applicable. If n has an
+   * instantiation level, we return true and set level to its instantiation
+   * level.
+   *
+   * The instantiation level is an approximate measure of how many
+   * instantiations were required for generating term n. In particular,
+   * all new terms generated by an instantiation { x1 -> t1 ... xn -> tn } are
+   * assigned an instantiation level that is 1 + max(level(t1)...level(tn)),
+   * where all terms in the input formula have level 0.
+   */
+  static bool getInstantiationLevel(const Node& n, uint64_t& level);
 
  private:
   /** An identifier for the method below */
@@ -262,11 +281,11 @@ class QuantAttributes
     ATTR_QUANT_ELIM
   };
   /** Make attribute internal, helper for mkAttrX methods above. */
-  static Node mkAttrInternal(AttrType at);
+  static Node mkAttrInternal(NodeManager* nm, AttrType at);
   /** cache of attributes */
-  std::map< Node, QAttributes > d_qattr;
-  /** function definitions */
-  std::map< Node, bool > d_fun_defs;
+  std::map<Node, QAttributes> d_qattr;
+  /** Function definitions active in the current user context. */
+  context::CDHashSet<Node> d_fun_defs;
 };
 
 /**
@@ -275,8 +294,8 @@ class QuantAttributes
  *   (<k> <bvl> (! <body> :qid name))
  */
 Node mkNamedQuant(Kind k, Node bvl, Node body, const std::string& name);
-}
-}
+}  // namespace quantifiers
+}  // namespace theory
 }  // namespace cvc5::internal
 
 #endif
