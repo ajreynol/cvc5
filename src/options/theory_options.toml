@@ -1,32 +1,24 @@
 id     = "THEORY"
-name   = "Theory layer"
-header = "options/theory_options.h"
+name   = "Theory Layer"
 
 [[option]]
   name       = "theoryOfMode"
-  smt_name   = "theoryof-mode"
   category   = "expert"
   long       = "theoryof-mode=MODE"
-  type       = "CVC4::theory::TheoryOfMode"
-  default    = "CVC4::theory::THEORY_OF_TYPE_BASED"
-  handler    = "stringToTheoryOfMode"
-  includes   = ["options/theoryof_mode.h"]
+  type       = "TheoryOfMode"
+  default    = "THEORY_OF_TYPE_BASED"
   help       = "mode for Theory::theoryof()"
-
-[[option]]
-  name       = "useTheoryList"
-  smt_name   = "use-theory"
-  category   = "regular"
-  long       = "use-theory=NAME"
-  type       = "std::string"
-  handler    = "handleUseTheoryList"
-  notifies   = ["notifyUseTheoryList"]
-  read_only  = true
-  help       = "use alternate theory implementation NAME (--use-theory=help for a list). This option may be repeated or a comma separated list."
+  help_mode  = "Defines how we associate theories with terms."
+[[option.mode.THEORY_OF_TYPE_BASED]]
+  name = "type"
+  help = "Type variables, constants and equalities by type."
+[[option.mode.THEORY_OF_TERM_BASED]]
+  name = "term"
+  help = "Type variables as uninterpreted, type constants by theory, equalities by the parametric theory."
 
 [[option]]
   name       = "assignFunctionValues"
-  category   = "regular"
+  category   = "expert"
   long       = "assign-function-values"
   type       = "bool"
   default    = "true"
@@ -34,9 +26,120 @@ header = "options/theory_options.h"
 
 [[option]]
   name       = "condenseFunctionValues"
-  category   = "regular"
+  category   = "common"
   long       = "condense-function-values"
   type       = "bool"
   default    = "true"
-  read_only  = true
   help       = "condense values for functions in models rather than explicitly representing them"
+
+[[option]]
+  name       = "defaultFunctionValueMode"
+  category   = "common"
+  long       = "default-function-value-mode=MODE"
+  type       = "DefaultFunctionValueMode"
+  default    = "FIRST"
+  help       = "mode for choosing default values for functions"
+  help_mode  = "Defines mode for choosing default values for functions."
+[[option.mode.FIRST]]
+  name = "first"
+  help = "The default value is equal to the value of the first application found of that function when applicable, or the first enumerated term otherwise."
+[[option.mode.FIRST_ENUM]]
+  name = "first-enum"
+  help = "The default value is equal to the first enumerated value of its range type."
+[[option.mode.HOLE]]
+  name = "hole"
+  help = "The default value is equal to a distinguished variable."
+
+[[option]]
+  name       = "relevanceFilter"
+  category   = "expert"
+  long       = "relevance-filter"
+  type       = "bool"
+  default    = "false"
+  help       = "enable analysis of relevance of asserted literals with respect to the input formula"
+
+[[option]]
+  name       = "eeMode"
+  category   = "regular"
+  long       = "ee-mode=MODE"
+  type       = "EqEngineMode"
+  default    = "DISTRIBUTED"
+  help       = "mode for managing equalities across theory solvers"
+  help_mode  = "Defines mode for managing equalities across theory solvers."
+[[option.mode.DISTRIBUTED]]
+  name = "distributed"
+  help = "Each theory maintains its own equality engine."
+[[option.mode.CENTRAL]]
+  name = "central"
+  help = "All applicable theories use the central equality engine."
+
+[[option]]
+  name       = "tcMode"
+  category   = "expert"
+  long       = "tc-mode=MODE"
+  type       = "TcMode"
+  default    = "CARE_GRAPH"
+  help       = "mode for theory combination"
+  help_mode  = "Defines mode for theory combination."
+[[option.mode.CARE_GRAPH]]
+  name = "care-graph"
+  help = "Use care graphs for theory combination."
+
+[[option]]
+  name       = "conflictProcessMode"
+  category   = "expert"
+  long       = "conflict-process=MODE"
+  type       = "ConflictProcessMode"
+  default    = "NONE"
+  help       = "mode for processing theory conflicts"
+  help_mode  = "Defines mode for processing theory conflicts."
+[[option.mode.NONE]]
+  name = "none"
+  help = "Do not post-process conflicts from theory solvers."
+[[option.mode.MINIMIZE]]
+  name = "min"
+  help = "Do simple minimization for conflicts from theory solvers."
+[[option.mode.MINIMIZE_EXT]]
+  name = "min-ext"
+  help = "Do minimization for conflicts from theory solvers, relying on the extended rewriter."
+
+[[option]]
+  name       = "lemmaInprocess"
+  category   = "expert"
+  long       = "lemma-inprocess=MODE"
+  type       = "LemmaInprocessMode"
+  default    = "NONE"
+  help       = "Modes for inprocessing lemmas."
+  help_mode  = "Modes for inprocessing lemmas."
+[[option.mode.FULL]]
+  name = "full"
+  help = "Full inprocessing."
+[[option.mode.LIGHT]]
+  name = "light"
+  help = "Light inprocessing."
+[[option.mode.NONE]]
+  name = "none"
+  help = "No inprocessing."
+
+[[option]]
+  name       = "lemmaInprocessSubsMode"
+  category   = "expert"
+  long       = "lemma-inprocess-subs=MODE"
+  type       = "LemmaInprocessSubsMode"
+  default    = "SIMPLE"
+  help       = "Modes for substitutions for inprocessing lemmas."
+  help_mode  = "Modes for substitutions for inprocessing lemmas."
+[[option.mode.ALL]]
+  name = "all"
+  help = "All substitutions."
+[[option.mode.SIMPLE]]
+  name = "simple"
+  help = "Simple substitutions."
+
+[[option]]
+  name       = "lemmaInprocessInferEqLit"
+  category   = "expert"
+  long       = "lemma-inprocess-infer-eq-lit"
+  type       = "bool"
+  default    = "false"
+  help       = "Infer equivalent literals when using lemma inprocess"

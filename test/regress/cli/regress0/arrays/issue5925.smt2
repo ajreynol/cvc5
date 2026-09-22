@@ -1,0 +1,13 @@
+; REQUIRES: unrestricted-mode
+; COMMAND-LINE: --arrays-exp
+(set-logic QF_ABV)
+(set-info :status unsat)
+(declare-const a (Array Bool Bool))
+(declare-const b Bool)
+(declare-const c Bool)
+(declare-const d Bool)
+(assert (= (store (store ((as const (Array Bool Bool)) true) true false) false false) (store a b c)))
+(assert b)
+(assert (= d (select a c)))
+(assert d)
+(check-sat)

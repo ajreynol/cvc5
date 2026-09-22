@@ -1,552 +1,191 @@
-/*********************                                                        */
-/*! \file theory_fp.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Martin Brain, Andres Noetzli, Andrew Reynolds
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2019 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief [[ Add one-line brief description here ]]
- **
- ** [[ Add lengthier description here ]]
- ** \todo document this file
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Theory of floating-point arithmetic.
+ */
 
-
-#include "options/fp_options.h"
-#include "theory/rewriter.h"
-#include "theory/theory_model.h"
 #include "theory/fp/theory_fp.h"
 
-
 #include <set>
-#include <stack>
-#include <unordered_set>
+#include <unordered_map>
 #include <vector>
 
-using namespace std;
+#include "base/configuration.h"
+#include "expr/node_builder.h"
+#include "expr/skolem_manager.h"
+#include "options/fp_options.h"
+#include "smt/logic_exception.h"
+#include "theory/fp/fp_word_blaster.h"
+#include "theory/fp/theory_fp_rewriter.h"
+#include "theory/fp/theory_fp_utils.h"
+#include "theory/incomplete_id.h"
+#include "theory/output_channel.h"
+#include "theory/theory_model.h"
+#include "util/floatingpoint.h"
 
-namespace CVC4 {
+using namespace std;
+using namespace cvc5::internal::kind;
+
+namespace cvc5::internal {
 namespace theory {
 namespace fp {
 
-namespace removeToFPGeneric {
-
-Node removeToFPGeneric(TNode node) {
-  Assert(node.getKind() == kind::FLOATINGPOINT_TO_FP_GENERIC);
-
-  FloatingPointToFPGeneric info =
-      node.getOperator().getConst<FloatingPointToFPGeneric>();
-
-  size_t children = node.getNumChildren();
-
-  Node op;
-  NodeManager *nm = NodeManager::currentNM();
-
-  if (children == 1) {
-    op = nm->mkConst(FloatingPointToFPIEEEBitVector(info));
-    return nm->mkNode(op, node[0]);
-
-  } else {
-    Assert(children == 2);
-    Assert(node[0].getType().isRoundingMode());
-
-    TypeNode t = node[1].getType();
-
-    if (t.isFloatingPoint()) {
-      op = nm->mkConst(FloatingPointToFPFloatingPoint(info));
-    } else if (t.isReal()) {
-      op = nm->mkConst(FloatingPointToFPReal(info));
-    } else if (t.isBitVector()) {
-      op = nm->mkConst(FloatingPointToFPSignedBitVector(info));
-    } else {
-      throw TypeCheckingExceptionPrivate(
-          node,
-          "cannot rewrite to_fp generic due to incorrect type of second "
-          "argument");
-    }
-
-    return nm->mkNode(op, node[0], node[1]);
-  }
-
-  Unreachable() << "to_fp generic not rewritten";
-}
-}  // namespace removeToFPGeneric
-
-namespace helper {
-Node buildConjunct(const std::vector<TNode> &assumptions) {
-  if (assumptions.size() == 0) {
-    return NodeManager::currentNM()->mkConst<bool>(true);
-
-  } else if (assumptions.size() == 1) {
-    return assumptions[0];
-
-  } else {
-    // \todo see bv::utils::flattenAnd
-
-    NodeBuilder<> conjunction(kind::AND);
-    for (std::vector<TNode>::const_iterator it = assumptions.begin();
-         it != assumptions.end(); ++it) {
-      conjunction << *it;
-    }
-
-    return conjunction;
-  }
-}
-}  // namespace helper
-
 /** Constructs a new instance of TheoryFp w.r.t. the provided contexts. */
-TheoryFp::TheoryFp(context::Context *c,
-                   context::UserContext *u,
-                   OutputChannel &out,
-                   Valuation valuation,
-                   const LogicInfo &logicInfo)
-    : Theory(THEORY_FP, c, u, out, valuation, logicInfo),
-      d_notification(*this),
-      d_equalityEngine(d_notification, c, "theory::fp::ee", true),
-      d_registeredTerms(u),
-      d_conv(u),
-      d_expansionRequested(false),
-      d_conflict(c, false),
-      d_conflictNode(c, Node::null()),
-      d_minMap(u),
-      d_maxMap(u),
-      d_toUBVMap(u),
-      d_toSBVMap(u),
-      d_toRealMap(u),
-      realToFloatMap(u),
-      floatToRealMap(u),
-      abstractionMap(u)
+TheoryFp::TheoryFp(Env& env, OutputChannel& out, Valuation valuation)
+    : Theory(THEORY_FP, env, out, valuation),
+      d_wordBlaster(new FpWordBlaster(nodeManager(), userContext())),
+      d_registeredTerms(userContext()),
+      d_purifiedArgs(userContext()),
+      d_abstractionMap(userContext()),
+      d_rewriter(nodeManager(), options().fp.fpExp),
+      d_state(env, valuation),
+      d_im(env, *this, d_state, "theory::fp::", true),
+      d_notify(d_im),
+      d_wbFactsCache(userContext()),
+      d_invalidateModelCache(context(), true),
+      d_true(nodeManager()->mkConst(true)),
+      d_stats(statisticsRegistry(), "theory::fp::")
 {
+  // indicate we are using the default theory state and inference manager
+  d_theoryState = &d_state;
+  d_inferManager = &d_im;
+}
+
+TheoryRewriter* TheoryFp::getTheoryRewriter()
+{
+  if (!options().fp.fp)
+  {
+    return nullptr;
+  }
+  return &d_rewriter;
+}
+
+ProofRuleChecker* TheoryFp::getProofChecker() { return nullptr; }
+
+bool TheoryFp::needsEqualityEngine(EeSetupInfo& esi)
+{
+  esi.d_notify = &d_notify;
+  esi.d_name = "theory::fp::ee";
+  return true;
+}
+
+void TheoryFp::finishInit()
+{
+  Assert(d_equalityEngine != nullptr);
+
   // Kinds that are to be handled in the congruence closure
+  d_equalityEngine->addFunctionKind(Kind::FLOATINGPOINT_ABS);
+  d_equalityEngine->addFunctionKind(Kind::FLOATINGPOINT_NEG);
+  d_equalityEngine->addFunctionKind(Kind::FLOATINGPOINT_ADD);
+  d_equalityEngine->addFunctionKind(Kind::FLOATINGPOINT_MULT);
+  d_equalityEngine->addFunctionKind(Kind::FLOATINGPOINT_DIV);
+  d_equalityEngine->addFunctionKind(Kind::FLOATINGPOINT_FMA);
+  d_equalityEngine->addFunctionKind(Kind::FLOATINGPOINT_SQRT);
+  d_equalityEngine->addFunctionKind(Kind::FLOATINGPOINT_REM);
+  d_equalityEngine->addFunctionKind(Kind::FLOATINGPOINT_RTI);
+  d_equalityEngine->addFunctionKind(Kind::FLOATINGPOINT_MIN_TOTAL);
+  d_equalityEngine->addFunctionKind(Kind::FLOATINGPOINT_MAX_TOTAL);
 
-  d_equalityEngine.addFunctionKind(kind::FLOATINGPOINT_ABS);
-  d_equalityEngine.addFunctionKind(kind::FLOATINGPOINT_NEG);
-  d_equalityEngine.addFunctionKind(kind::FLOATINGPOINT_PLUS);
-  // d_equalityEngine.addFunctionKind(kind::FLOATINGPOINT_SUB); // Removed
-  d_equalityEngine.addFunctionKind(kind::FLOATINGPOINT_MULT);
-  d_equalityEngine.addFunctionKind(kind::FLOATINGPOINT_DIV);
-  d_equalityEngine.addFunctionKind(kind::FLOATINGPOINT_FMA);
-  d_equalityEngine.addFunctionKind(kind::FLOATINGPOINT_SQRT);
-  d_equalityEngine.addFunctionKind(kind::FLOATINGPOINT_REM);
-  d_equalityEngine.addFunctionKind(kind::FLOATINGPOINT_RTI);
-  // d_equalityEngine.addFunctionKind(kind::FLOATINGPOINT_MIN); // Removed
-  // d_equalityEngine.addFunctionKind(kind::FLOATINGPOINT_MAX); // Removed
-  d_equalityEngine.addFunctionKind(kind::FLOATINGPOINT_MIN_TOTAL);
-  d_equalityEngine.addFunctionKind(kind::FLOATINGPOINT_MAX_TOTAL);
+  d_equalityEngine->addFunctionKind(Kind::FLOATINGPOINT_LEQ);
+  d_equalityEngine->addFunctionKind(Kind::FLOATINGPOINT_LT);
+  d_equalityEngine->addFunctionKind(Kind::FLOATINGPOINT_IS_NORMAL);
+  d_equalityEngine->addFunctionKind(Kind::FLOATINGPOINT_IS_SUBNORMAL);
+  d_equalityEngine->addFunctionKind(Kind::FLOATINGPOINT_IS_ZERO);
+  d_equalityEngine->addFunctionKind(Kind::FLOATINGPOINT_IS_INF);
+  d_equalityEngine->addFunctionKind(Kind::FLOATINGPOINT_IS_NAN);
+  d_equalityEngine->addFunctionKind(Kind::FLOATINGPOINT_IS_NEG);
+  d_equalityEngine->addFunctionKind(Kind::FLOATINGPOINT_IS_POS);
 
-  // d_equalityEngine.addFunctionKind(kind::FLOATINGPOINT_EQ); // Removed
-  d_equalityEngine.addFunctionKind(kind::FLOATINGPOINT_LEQ);
-  d_equalityEngine.addFunctionKind(kind::FLOATINGPOINT_LT);
-  // d_equalityEngine.addFunctionKind(kind::FLOATINGPOINT_GEQ); // Removed
-  // d_equalityEngine.addFunctionKind(kind::FLOATINGPOINT_GT); // Removed
-  d_equalityEngine.addFunctionKind(kind::FLOATINGPOINT_ISN);
-  d_equalityEngine.addFunctionKind(kind::FLOATINGPOINT_ISSN);
-  d_equalityEngine.addFunctionKind(kind::FLOATINGPOINT_ISZ);
-  d_equalityEngine.addFunctionKind(kind::FLOATINGPOINT_ISINF);
-  d_equalityEngine.addFunctionKind(kind::FLOATINGPOINT_ISNAN);
-  d_equalityEngine.addFunctionKind(kind::FLOATINGPOINT_ISNEG);
-  d_equalityEngine.addFunctionKind(kind::FLOATINGPOINT_ISPOS);
+  d_equalityEngine->addFunctionKind(Kind::FLOATINGPOINT_TO_FP_FROM_IEEE_BV);
+  d_equalityEngine->addFunctionKind(Kind::FLOATINGPOINT_TO_FP_FROM_FP);
+  d_equalityEngine->addFunctionKind(Kind::FLOATINGPOINT_TO_FP_FROM_REAL);
+  d_equalityEngine->addFunctionKind(Kind::FLOATINGPOINT_TO_FP_FROM_SBV);
+  d_equalityEngine->addFunctionKind(Kind::FLOATINGPOINT_TO_FP_FROM_UBV);
 
-  d_equalityEngine.addFunctionKind(kind::FLOATINGPOINT_TO_FP_IEEE_BITVECTOR);
-  d_equalityEngine.addFunctionKind(kind::FLOATINGPOINT_TO_FP_FLOATINGPOINT);
-  d_equalityEngine.addFunctionKind(kind::FLOATINGPOINT_TO_FP_REAL);
-  d_equalityEngine.addFunctionKind(kind::FLOATINGPOINT_TO_FP_SIGNED_BITVECTOR);
-  d_equalityEngine.addFunctionKind(
-      kind::FLOATINGPOINT_TO_FP_UNSIGNED_BITVECTOR);
-  // d_equalityEngine.addFunctionKind(kind::FLOATINGPOINT_TO_FP_GENERIC); //
-  // Needed in parsing, should be rewritten away
+  d_equalityEngine->addFunctionKind(Kind::FLOATINGPOINT_TO_UBV_TOTAL);
+  d_equalityEngine->addFunctionKind(Kind::FLOATINGPOINT_TO_SBV_TOTAL);
+  d_equalityEngine->addFunctionKind(Kind::FLOATINGPOINT_TO_REAL_TOTAL);
 
-  // d_equalityEngine.addFunctionKind(kind::FLOATINGPOINT_TO_UBV); // Removed
-  // d_equalityEngine.addFunctionKind(kind::FLOATINGPOINT_TO_SBV); // Removed
-  // d_equalityEngine.addFunctionKind(kind::FLOATINGPOINT_TO_REAL); // Removed
-  d_equalityEngine.addFunctionKind(kind::FLOATINGPOINT_TO_UBV_TOTAL);
-  d_equalityEngine.addFunctionKind(kind::FLOATINGPOINT_TO_SBV_TOTAL);
-  d_equalityEngine.addFunctionKind(kind::FLOATINGPOINT_TO_REAL_TOTAL);
-
-  d_equalityEngine.addFunctionKind(kind::FLOATINGPOINT_COMPONENT_NAN);
-  d_equalityEngine.addFunctionKind(kind::FLOATINGPOINT_COMPONENT_INF);
-  d_equalityEngine.addFunctionKind(kind::FLOATINGPOINT_COMPONENT_ZERO);
-  d_equalityEngine.addFunctionKind(kind::FLOATINGPOINT_COMPONENT_SIGN);
-  d_equalityEngine.addFunctionKind(kind::FLOATINGPOINT_COMPONENT_EXPONENT);
-  d_equalityEngine.addFunctionKind(kind::FLOATINGPOINT_COMPONENT_SIGNIFICAND);
-  d_equalityEngine.addFunctionKind(kind::ROUNDINGMODE_BITBLAST);
-
-} /* TheoryFp::TheoryFp() */
-
-Node TheoryFp::minUF(Node node) {
-  Assert(node.getKind() == kind::FLOATINGPOINT_MIN);
-  TypeNode t(node.getType());
-  Assert(t.getKind() == kind::FLOATINGPOINT_TYPE);
-
-  NodeManager *nm = NodeManager::currentNM();
-  ComparisonUFMap::const_iterator i(d_minMap.find(t));
-
-  Node fun;
-  if (i == d_minMap.end()) {
-    std::vector<TypeNode> args(2);
-    args[0] = t;
-    args[1] = t;
-    fun = nm->mkSkolem("floatingpoint_min_zero_case",
-                       nm->mkFunctionType(args,
-#ifdef SYMFPUPROPISBOOL
-                                          nm->booleanType()
-#else
-                                          nm->mkBitVectorType(1U)
-#endif
-                                              ),
-                       "floatingpoint_min_zero_case",
-                       NodeManager::SKOLEM_EXACT_NAME);
-    d_minMap.insert(t, fun);
-  } else {
-    fun = (*i).second;
-  }
-  return nm->mkNode(kind::APPLY_UF, fun, node[1],
-                    node[0]);  // Application reverses the order or arguments
+  d_equalityEngine->addFunctionKind(Kind::FLOATINGPOINT_COMPONENT_NAN);
+  d_equalityEngine->addFunctionKind(Kind::FLOATINGPOINT_COMPONENT_INF);
+  d_equalityEngine->addFunctionKind(Kind::FLOATINGPOINT_COMPONENT_ZERO);
+  d_equalityEngine->addFunctionKind(Kind::FLOATINGPOINT_COMPONENT_SIGN);
+  d_equalityEngine->addFunctionKind(Kind::FLOATINGPOINT_COMPONENT_EXPONENT);
+  d_equalityEngine->addFunctionKind(Kind::FLOATINGPOINT_COMPONENT_SIGNIFICAND);
+  d_equalityEngine->addFunctionKind(Kind::ROUNDINGMODE_BITBLAST);
 }
 
-Node TheoryFp::maxUF(Node node) {
-  Assert(node.getKind() == kind::FLOATINGPOINT_MAX);
-  TypeNode t(node.getType());
-  Assert(t.getKind() == kind::FLOATINGPOINT_TYPE);
-
-  NodeManager *nm = NodeManager::currentNM();
-  ComparisonUFMap::const_iterator i(d_maxMap.find(t));
-
-  Node fun;
-  if (i == d_maxMap.end()) {
-    std::vector<TypeNode> args(2);
-    args[0] = t;
-    args[1] = t;
-    fun = nm->mkSkolem("floatingpoint_max_zero_case",
-                       nm->mkFunctionType(args,
-#ifdef SYMFPUPROPISBOOL
-                                          nm->booleanType()
-#else
-                                          nm->mkBitVectorType(1U)
-#endif
-                                              ),
-                       "floatingpoint_max_zero_case",
-                       NodeManager::SKOLEM_EXACT_NAME);
-    d_maxMap.insert(t, fun);
-  } else {
-    fun = (*i).second;
-  }
-  return nm->mkNode(kind::APPLY_UF, fun, node[1], node[0]);
-}
-
-Node TheoryFp::toUBVUF(Node node) {
-  Assert(node.getKind() == kind::FLOATINGPOINT_TO_UBV);
-
-  TypeNode target(node.getType());
-  Assert(target.getKind() == kind::BITVECTOR_TYPE);
-
-  TypeNode source(node[1].getType());
-  Assert(source.getKind() == kind::FLOATINGPOINT_TYPE);
-
-  std::pair<TypeNode, TypeNode> p(source, target);
-  NodeManager *nm = NodeManager::currentNM();
-  ConversionUFMap::const_iterator i(d_toUBVMap.find(p));
-
-  Node fun;
-  if (i == d_toUBVMap.end()) {
-    std::vector<TypeNode> args(2);
-    args[0] = nm->roundingModeType();
-    args[1] = source;
-    fun = nm->mkSkolem("floatingpoint_to_ubv_out_of_range_case",
-                       nm->mkFunctionType(args, target),
-                       "floatingpoint_to_ubv_out_of_range_case",
-                       NodeManager::SKOLEM_EXACT_NAME);
-    d_toUBVMap.insert(p, fun);
-  } else {
-    fun = (*i).second;
-  }
-  return nm->mkNode(kind::APPLY_UF, fun, node[0], node[1]);
-}
-
-Node TheoryFp::toSBVUF(Node node) {
-  Assert(node.getKind() == kind::FLOATINGPOINT_TO_SBV);
-
-  TypeNode target(node.getType());
-  Assert(target.getKind() == kind::BITVECTOR_TYPE);
-
-  TypeNode source(node[1].getType());
-  Assert(source.getKind() == kind::FLOATINGPOINT_TYPE);
-
-  std::pair<TypeNode, TypeNode> p(source, target);
-  NodeManager *nm = NodeManager::currentNM();
-  ConversionUFMap::const_iterator i(d_toSBVMap.find(p));
-
-  Node fun;
-  if (i == d_toSBVMap.end()) {
-    std::vector<TypeNode> args(2);
-    args[0] = nm->roundingModeType();
-    args[1] = source;
-    fun = nm->mkSkolem("floatingpoint_to_sbv_out_of_range_case",
-                       nm->mkFunctionType(args, target),
-                       "floatingpoint_to_sbv_out_of_range_case",
-                       NodeManager::SKOLEM_EXACT_NAME);
-    d_toSBVMap.insert(p, fun);
-  } else {
-    fun = (*i).second;
-  }
-  return nm->mkNode(kind::APPLY_UF, fun, node[0], node[1]);
-}
-
-Node TheoryFp::toRealUF(Node node) {
-  Assert(node.getKind() == kind::FLOATINGPOINT_TO_REAL);
-  TypeNode t(node[0].getType());
-  Assert(t.getKind() == kind::FLOATINGPOINT_TYPE);
-
-  NodeManager *nm = NodeManager::currentNM();
-  ComparisonUFMap::const_iterator i(d_toRealMap.find(t));
-
-  Node fun;
-  if (i == d_toRealMap.end()) {
-    std::vector<TypeNode> args(1);
-    args[0] = t;
-    fun = nm->mkSkolem("floatingpoint_to_real_infinity_and_NaN_case",
-                       nm->mkFunctionType(args, nm->realType()),
-                       "floatingpoint_to_real_infinity_and_NaN_case",
-                       NodeManager::SKOLEM_EXACT_NAME);
-    d_toRealMap.insert(t, fun);
-  } else {
-    fun = (*i).second;
-  }
-  return nm->mkNode(kind::APPLY_UF, fun, node[0]);
-}
-
-void TheoryFp::enableUF(LogicRequest &lr)
-{
-  if (!this->d_expansionRequested) {
-    // Needed for conversions to/from real and min/max
-    lr.widenLogic(THEORY_UF);
-    // THEORY_BV has to be enabled when the logic is set
-    this->d_expansionRequested = true;
-  }
-  return;
-}
-
-Node TheoryFp::abstractRealToFloat(Node node)
-{
-  Assert(node.getKind() == kind::FLOATINGPOINT_TO_FP_REAL);
-  TypeNode t(node.getType());
-  Assert(t.getKind() == kind::FLOATINGPOINT_TYPE);
-
-  NodeManager *nm = NodeManager::currentNM();
-  ComparisonUFMap::const_iterator i(realToFloatMap.find(t));
-
-  Node fun;
-  if (i == realToFloatMap.end())
-  {
-    std::vector<TypeNode> args(2);
-    args[0] = node[0].getType();
-    args[1] = node[1].getType();
-    fun = nm->mkSkolem("floatingpoint_abstract_real_to_float",
-                       nm->mkFunctionType(args, node.getType()),
-                       "floatingpoint_abstract_real_to_float",
-                       NodeManager::SKOLEM_EXACT_NAME);
-    realToFloatMap.insert(t, fun);
-  }
-  else
-  {
-    fun = (*i).second;
-  }
-  Node uf = nm->mkNode(kind::APPLY_UF, fun, node[0], node[1]);
-
-  abstractionMap.insert(uf, node);
-
-  return uf;
-}
-
-Node TheoryFp::abstractFloatToReal(Node node)
-{
-  Assert(node.getKind() == kind::FLOATINGPOINT_TO_REAL_TOTAL);
-  TypeNode t(node[0].getType());
-  Assert(t.getKind() == kind::FLOATINGPOINT_TYPE);
-
-  NodeManager *nm = NodeManager::currentNM();
-  ComparisonUFMap::const_iterator i(floatToRealMap.find(t));
-
-  Node fun;
-  if (i == floatToRealMap.end())
-  {
-    std::vector<TypeNode> args(2);
-    args[0] = t;
-    args[1] = nm->realType();
-    fun = nm->mkSkolem("floatingpoint_abstract_float_to_real",
-                       nm->mkFunctionType(args, nm->realType()),
-                       "floatingpoint_abstract_float_to_real",
-                       NodeManager::SKOLEM_EXACT_NAME);
-    floatToRealMap.insert(t, fun);
-  }
-  else
-  {
-    fun = (*i).second;
-  }
-  Node uf = nm->mkNode(kind::APPLY_UF, fun, node[0], node[1]);
-
-  abstractionMap.insert(uf, node);
-
-  return uf;
-}
-
-Node TheoryFp::expandDefinition(LogicRequest &lr, Node node)
-{
-  Trace("fp-expandDefinition") << "TheoryFp::expandDefinition(): " << node
-                               << std::endl;
-
-  Node res = node;
-
-  if (node.getKind() == kind::FLOATINGPOINT_TO_FP_GENERIC) {
-    res = removeToFPGeneric::removeToFPGeneric(node);
-
-  } else if (node.getKind() == kind::FLOATINGPOINT_MIN) {
-    enableUF(lr);
-    res = NodeManager::currentNM()->mkNode(kind::FLOATINGPOINT_MIN_TOTAL,
-                                           node[0], node[1], minUF(node));
-
-  } else if (node.getKind() == kind::FLOATINGPOINT_MAX) {
-    enableUF(lr);
-    res = NodeManager::currentNM()->mkNode(kind::FLOATINGPOINT_MAX_TOTAL,
-                                           node[0], node[1], maxUF(node));
-
-  } else if (node.getKind() == kind::FLOATINGPOINT_TO_UBV) {
-    enableUF(lr);
-    FloatingPointToUBV info = node.getOperator().getConst<FloatingPointToUBV>();
-    FloatingPointToUBVTotal newInfo(info);
-
-    res =
-        NodeManager::currentNM()->mkNode(  // kind::FLOATINGPOINT_TO_UBV_TOTAL,
-            NodeManager::currentNM()->mkConst(newInfo), node[0], node[1],
-            toUBVUF(node));
-
-  } else if (node.getKind() == kind::FLOATINGPOINT_TO_SBV) {
-    enableUF(lr);
-    FloatingPointToSBV info = node.getOperator().getConst<FloatingPointToSBV>();
-    FloatingPointToSBVTotal newInfo(info);
-
-    res =
-        NodeManager::currentNM()->mkNode(  // kind::FLOATINGPOINT_TO_SBV_TOTAL,
-            NodeManager::currentNM()->mkConst(newInfo), node[0], node[1],
-            toSBVUF(node));
-
-  } else if (node.getKind() == kind::FLOATINGPOINT_TO_REAL) {
-    enableUF(lr);
-    res = NodeManager::currentNM()->mkNode(kind::FLOATINGPOINT_TO_REAL_TOTAL,
-                                           node[0], toRealUF(node));
-
-  } else {
-    // Do nothing
-  }
-
-  // We will need to enable UF to abstract these in ppRewrite
-  if (res.getKind() == kind::FLOATINGPOINT_TO_REAL_TOTAL
-      || res.getKind() == kind::FLOATINGPOINT_TO_FP_REAL)
-  {
-    enableUF(lr);
-  }
-
-  if (res != node) {
-    Trace("fp-expandDefinition") << "TheoryFp::expandDefinition(): " << node
-                                 << " rewritten to " << res << std::endl;
-  }
-
-  return res;
-}
-
-Node TheoryFp::ppRewrite(TNode node)
+TrustNode TheoryFp::ppRewrite(TNode node,
+                              CVC5_UNUSED std::vector<SkolemLemma>& lems)
 {
   Trace("fp-ppRewrite") << "TheoryFp::ppRewrite(): " << node << std::endl;
 
-  Node res = node;
-
-  // Abstract conversion functions
-  if (node.getKind() == kind::FLOATINGPOINT_TO_REAL_TOTAL)
+  // first, see if we need to expand definitions
+  Node texp = d_rewriter.expandDefinition(node);
+  if (!texp.isNull())
   {
-    res = abstractFloatToReal(node);
-
-    // Generate some lemmas
-    NodeManager *nm = NodeManager::currentNM();
-
-    Node pd =
-        nm->mkNode(kind::IMPLIES,
-                   nm->mkNode(kind::OR,
-                              nm->mkNode(kind::FLOATINGPOINT_ISNAN, node[0]),
-                              nm->mkNode(kind::FLOATINGPOINT_ISINF, node[0])),
-                   nm->mkNode(kind::EQUAL, res, node[1]));
-    handleLemma(pd);
-
-    Node z =
-        nm->mkNode(kind::IMPLIES,
-                   nm->mkNode(kind::FLOATINGPOINT_ISZ, node[0]),
-                   nm->mkNode(kind::EQUAL, res, nm->mkConst(Rational(0U))));
-    handleLemma(z);
-
-    // TODO : bounds on the output from largest floats, #1914
-  }
-  else if (node.getKind() == kind::FLOATINGPOINT_TO_FP_REAL)
-  {
-    res = abstractRealToFloat(node);
-
-    // Generate some lemmas
-    NodeManager *nm = NodeManager::currentNM();
-
-    Node nnan =
-        nm->mkNode(kind::NOT, nm->mkNode(kind::FLOATINGPOINT_ISNAN, res));
-    handleLemma(nnan);
-
-    Node z = nm->mkNode(
-        kind::IMPLIES,
-        nm->mkNode(kind::EQUAL, node[1], nm->mkConst(Rational(0U))),
-        nm->mkNode(kind::EQUAL,
-                   res,
-                   nm->mkConst(FloatingPoint::makeZero(
-                       res.getType().getConst<FloatingPointSize>(), false))));
-    handleLemma(z);
-
-    // TODO : rounding-mode specific bounds on floats that don't give infinity
-    // BEWARE of directed rounding!   #1914
+    return TrustNode::mkTrustRewrite(node, texp, nullptr);
   }
 
-  if (res != node)
-  {
-    Trace("fp-ppRewrite") << "TheoryFp::ppRewrite(): node " << node
-                          << " rewritten to " << res << std::endl;
-  }
+  // The following kinds should have been removed by the
+  // rewriter/expandDefinition
+  Assert(node.getKind() != Kind::FLOATINGPOINT_SUB
+         && node.getKind() != Kind::FLOATINGPOINT_MIN
+         && node.getKind() != Kind::FLOATINGPOINT_MAX
+         && node.getKind() != Kind::FLOATINGPOINT_EQ
+         && node.getKind() != Kind::FLOATINGPOINT_GEQ
+         && node.getKind() != Kind::FLOATINGPOINT_GT
+         && node.getKind() != Kind::FLOATINGPOINT_TO_UBV
+         && node.getKind() != Kind::FLOATINGPOINT_TO_SBV
+         && node.getKind() != Kind::FLOATINGPOINT_TO_REAL)
+      << "Expected floating-point kind " << node.getKind() << " to be removed";
 
-  return res;
+  return TrustNode::null();
 }
 
-bool TheoryFp::refineAbstraction(TheoryModel *m, TNode abstract, TNode concrete)
+bool TheoryFp::refineAbstraction(TheoryModel* m, TNode abstract, TNode concrete)
 {
   Trace("fp-refineAbstraction") << "TheoryFp::refineAbstraction(): " << abstract
                                 << " vs. " << concrete << std::endl;
+  NodeManager* nm = nodeManager();
   Kind k = concrete.getKind();
-  if (k == kind::FLOATINGPOINT_TO_REAL_TOTAL)
+  if (k == Kind::FLOATINGPOINT_TO_REAL_TOTAL)
   {
     // Get the values
     Assert(m->hasTerm(abstract));
     Assert(m->hasTerm(concrete[0]));
-    Assert(m->hasTerm(concrete[1]));
+    // Note: while the value for concrete[1] that we get from the model has to
+    // be const, it is not necessarily the case that `m->hasTerm(concrete[1])`.
+    // The arithmetic solver computes values for the variables in shared terms
+    // but does not necessarily add the shared terms themselves.
 
     Node abstractValue = m->getValue(abstract);
     Node floatValue = m->getValue(concrete[0]);
     Node undefValue = m->getValue(concrete[1]);
 
-    Assert(abstractValue.isConst());
-    Assert(floatValue.isConst());
-    Assert(undefValue.isConst());
+    if (abstractValue.isNull() || floatValue.isNull() || undefValue.isNull()
+        || !abstractValue.isConst() || !floatValue.isConst()
+        || !undefValue.isConst())
+    {
+      // Without usable model values for the abstraction and its arguments we
+      // cannot refine. This can happen when model construction involving
+      // other theories fails to produce constants (see issue #12759). Give
+      // up on this model rather than refine with corrupted values.
+      ++d_stats.d_abstractionUnusableValues;
+      d_im.setModelUnsound(IncompleteId::FP_ABSTRACTION_REFINEMENT);
+      return false;
+    }
 
     // Work out the actual value for those args
-    NodeManager *nm = NodeManager::currentNM();
-
     Node evaluate =
-        nm->mkNode(kind::FLOATINGPOINT_TO_REAL_TOTAL, floatValue, undefValue);
-    Node concreteValue = Rewriter::rewrite(evaluate);
+        nm->mkNode(Kind::FLOATINGPOINT_TO_REAL_TOTAL, floatValue, undefValue);
+    Node concreteValue = rewrite(evaluate);
     Assert(concreteValue.isConst());
 
     Trace("fp-refineAbstraction")
@@ -561,73 +200,113 @@ bool TheoryFp::refineAbstraction(TheoryModel *m, TNode abstract, TNode concrete)
 
     if (abstractValue != concreteValue)
     {
-      // Need refinement lemmas
-      // only in the normal and subnormal case
-      Assert(floatValue.getConst<FloatingPoint>().isNormal()
-             || floatValue.getConst<FloatingPoint>().isSubnormal());
+      // Refinement lemmas are only sound in the normal and subnormal case;
+      // the registration lemmas (see registerTerm) fix the value of the
+      // abstraction for NaN, infinity and zero arguments. Reaching this
+      // point with such an argument value means the model is inconsistent
+      // with the registration lemmas, e.g. because argument values were
+      // corrupted by other reasoning (see issues #12340, #12759). The
+      // registration lemmas were already sent in this user context, so
+      // nothing new can be learned by re-sending them. Give up on this
+      // model rather than crash or refine with corrupted values.
+      const FloatingPoint& fv = floatValue.getConst<FloatingPoint>();
+      if (!fv.isNormal() && !fv.isSubnormal())
+      {
+        Assert(getValuation().isModelUnsound())
+            << "model value " << floatValue << " of " << concrete[0]
+            << " contradicts the registration lemmas of " << abstract;
+        ++d_stats.d_abstractionInconsistentValues;
+        d_im.setModelUnsound(IncompleteId::FP_ABSTRACTION_REFINEMENT);
+        return false;
+      }
 
       Node defined = nm->mkNode(
-          kind::AND,
-          nm->mkNode(kind::NOT,
-                     nm->mkNode(kind::FLOATINGPOINT_ISNAN, concrete[0])),
-          nm->mkNode(kind::NOT,
-                     nm->mkNode(kind::FLOATINGPOINT_ISINF, concrete[0])));
+          Kind::AND,
+          {nm->mkNode(Kind::NOT,
+                      nm->mkNode(Kind::FLOATINGPOINT_IS_NAN, concrete[0])),
+           nm->mkNode(Kind::NOT,
+                      nm->mkNode(Kind::FLOATINGPOINT_IS_INF, concrete[0]))});
+
+      // Unlike rounding (see the TO_FP_FROM_REAL case below, where the
+      // model-anchored equivalences had to be weakened to implications),
+      // fp.to_real is exact: on defined (non-NaN, non-infinity) arguments it
+      // is an order embedding, injective up to the zero class (-0 and +0 both
+      // map to 0, and fp.geq/fp.leq treat them as equal). Both directions of
+      // the equivalences below are therefore sound. The "backward"
+      // constraints compare against the floats obtained by rounding the
+      // abstraction's model value up resp. down, i.e., against the exact
+      // representable bounds enclosing it.
+
       // First the "forward" constraints
       Node fg = nm->mkNode(
-          kind::IMPLIES,
+          Kind::IMPLIES,
           defined,
           nm->mkNode(
-              kind::EQUAL,
-              nm->mkNode(kind::FLOATINGPOINT_GEQ, concrete[0], floatValue),
-              nm->mkNode(kind::GEQ, abstract, concreteValue)));
-      handleLemma(fg);
+              Kind::EQUAL,
+              {nm->mkNode(Kind::FLOATINGPOINT_GEQ, concrete[0], floatValue),
+               nm->mkNode(Kind::GEQ, abstract, concreteValue)}));
+      bool sent = handleLemma(fg, InferenceId::FP_PREPROCESS);
 
       Node fl = nm->mkNode(
-          kind::IMPLIES,
+          Kind::IMPLIES,
           defined,
           nm->mkNode(
-              kind::EQUAL,
-              nm->mkNode(kind::FLOATINGPOINT_LEQ, concrete[0], floatValue),
-              nm->mkNode(kind::LEQ, abstract, concreteValue)));
-      handleLemma(fl);
+              Kind::EQUAL,
+              {nm->mkNode(Kind::FLOATINGPOINT_LEQ, concrete[0], floatValue),
+               nm->mkNode(Kind::LEQ, abstract, concreteValue)}));
+      sent = handleLemma(fl, InferenceId::FP_PREPROCESS) || sent;
 
       // Then the backwards constraints
-      Node floatAboveAbstract = Rewriter::rewrite(
-          nm->mkNode(kind::FLOATINGPOINT_TO_FP_REAL,
-                     nm->mkConst(FloatingPointToFPReal(
-                         concrete[0].getType().getConst<FloatingPointSize>())),
-                     nm->mkConst(roundTowardPositive),
-                     abstractValue));
+      Node floatAboveAbstract = rewrite(
+          nm->mkNode(Kind::FLOATINGPOINT_TO_FP_FROM_REAL,
+                     {nm->mkConst(FloatingPointToFPReal(
+                          concrete[0].getType().getConst<FloatingPointSize>())),
+                      nm->mkConst(RoundingMode::ROUND_TOWARD_POSITIVE),
+                      abstractValue}));
 
       Node bg = nm->mkNode(
-          kind::IMPLIES,
+          Kind::IMPLIES,
           defined,
           nm->mkNode(
-              kind::EQUAL,
-              nm->mkNode(
-                  kind::FLOATINGPOINT_GEQ, concrete[0], floatAboveAbstract),
-              nm->mkNode(kind::GEQ, abstract, abstractValue)));
-      handleLemma(bg);
+              Kind::EQUAL,
+              {nm->mkNode(
+                   Kind::FLOATINGPOINT_GEQ, concrete[0], floatAboveAbstract),
+               nm->mkNode(Kind::GEQ, abstract, abstractValue)}));
+      sent = handleLemma(bg, InferenceId::FP_PREPROCESS) || sent;
 
-      Node floatBelowAbstract = Rewriter::rewrite(
-          nm->mkNode(kind::FLOATINGPOINT_TO_FP_REAL,
-                     nm->mkConst(FloatingPointToFPReal(
-                         concrete[0].getType().getConst<FloatingPointSize>())),
-                     nm->mkConst(roundTowardNegative),
-                     abstractValue));
+      Node floatBelowAbstract = rewrite(
+          nm->mkNode(Kind::FLOATINGPOINT_TO_FP_FROM_REAL,
+                     {nm->mkConst(FloatingPointToFPReal(
+                          concrete[0].getType().getConst<FloatingPointSize>())),
+                      nm->mkConst(RoundingMode::ROUND_TOWARD_NEGATIVE),
+                      abstractValue}));
 
       Node bl = nm->mkNode(
-          kind::IMPLIES,
+          Kind::IMPLIES,
           defined,
           nm->mkNode(
-              kind::EQUAL,
-              nm->mkNode(
-                  kind::FLOATINGPOINT_LEQ, concrete[0], floatBelowAbstract),
-              nm->mkNode(kind::LEQ, abstract, abstractValue)));
-      handleLemma(bl);
+              Kind::EQUAL,
+              {nm->mkNode(
+                   Kind::FLOATINGPOINT_LEQ, concrete[0], floatBelowAbstract),
+               nm->mkNode(Kind::LEQ, abstract, abstractValue)}));
+      sent = handleLemma(bl, InferenceId::FP_PREPROCESS) || sent;
       // TODO : see if the overflow conditions could be improved #1914
 
-      return true;
+      if (!sent)
+      {
+        // All refinement lemmas for these model values were already sent in a
+        // previous round, yet the model still violates them: the model is
+        // inconsistent with the current assertions (cf. the non-normal case
+        // above). Note that fg and fl above are equivalences and that their
+        // left-hand sides hold in the model (concrete[0] is floatValue), thus
+        // together they force abstract to be concreteValue and do exclude
+        // this model. Give up on it rather than accept it.
+        Assert(getValuation().isModelUnsound())
+            << "model of " << abstract << " violates its refinement lemmas";
+        ++d_stats.d_abstractionNoProgress;
+        d_im.setModelUnsound(IncompleteId::FP_ABSTRACTION_REFINEMENT);
+      }
+      return sent;
     }
     else
     {
@@ -635,31 +314,39 @@ bool TheoryFp::refineAbstraction(TheoryModel *m, TNode abstract, TNode concrete)
       return false;
     }
   }
-  else if (k == kind::FLOATINGPOINT_TO_FP_REAL)
+  else if (k == Kind::FLOATINGPOINT_TO_FP_FROM_REAL)
   {
     // Get the values
-    Assert(m->hasTerm(abstract));
-    Assert(m->hasTerm(concrete[0]));
-    Assert(m->hasTerm(concrete[1]));
+    Assert(m->hasTerm(abstract)) << "Term " << abstract << " not in model";
+    Assert(m->hasTerm(concrete[0]))
+        << "Term " << concrete[0] << " not in model";
+    // Note: while the value for concrete[1] that we get from the model has to
+    // be const, it is not necessarily the case that `m->hasTerm(concrete[1])`.
+    // The arithmetic solver computes values for the variables in shared terms
+    // but does not necessarily add the shared terms themselves.
 
     Node abstractValue = m->getValue(abstract);
     Node rmValue = m->getValue(concrete[0]);
     Node realValue = m->getValue(concrete[1]);
 
-    Assert(abstractValue.isConst());
-    Assert(rmValue.isConst());
-    Assert(realValue.isConst());
+    if (abstractValue.isNull() || rmValue.isNull() || realValue.isNull()
+        || !abstractValue.isConst() || !rmValue.isConst()
+        || !realValue.isConst())
+    {
+      // See the FLOATINGPOINT_TO_REAL_TOTAL case above.
+      ++d_stats.d_abstractionUnusableValues;
+      d_im.setModelUnsound(IncompleteId::FP_ABSTRACTION_REFINEMENT);
+      return false;
+    }
 
     // Work out the actual value for those args
-    NodeManager *nm = NodeManager::currentNM();
-
     Node evaluate =
-        nm->mkNode(kind::FLOATINGPOINT_TO_FP_REAL,
+        nm->mkNode(Kind::FLOATINGPOINT_TO_FP_FROM_REAL,
                    nm->mkConst(FloatingPointToFPReal(
                        concrete.getType().getConst<FloatingPointSize>())),
                    rmValue,
                    realValue);
-    Node concreteValue = Rewriter::rewrite(evaluate);
+    Node concreteValue = rewrite(evaluate);
     Assert(concreteValue.isConst());
 
     Trace("fp-refineAbstraction")
@@ -674,59 +361,147 @@ bool TheoryFp::refineAbstraction(TheoryModel *m, TNode abstract, TNode concrete)
 
     if (abstractValue != concreteValue)
     {
-      Assert(!abstractValue.getConst<FloatingPoint>().isNaN());
-      Assert(!concreteValue.getConst<FloatingPoint>().isNaN());
-
-      Node correctRoundingMode = nm->mkNode(kind::EQUAL, concrete[0], rmValue);
-      // TODO : Generalise to all rounding modes  #1914
-
-      // First the "forward" constraints
-      Node fg = nm->mkNode(
-          kind::IMPLIES,
-          correctRoundingMode,
-          nm->mkNode(
-              kind::EQUAL,
-              nm->mkNode(kind::GEQ, concrete[1], realValue),
-              nm->mkNode(kind::FLOATINGPOINT_GEQ, abstract, concreteValue)));
-      handleLemma(fg);
-
-      Node fl = nm->mkNode(
-          kind::IMPLIES,
-          correctRoundingMode,
-          nm->mkNode(
-              kind::EQUAL,
-              nm->mkNode(kind::LEQ, concrete[1], realValue),
-              nm->mkNode(kind::FLOATINGPOINT_LEQ, abstract, concreteValue)));
-      handleLemma(fl);
-
-      // Then the backwards constraints
-      if (!abstractValue.getConst<FloatingPoint>().isInfinite())
+      // A conversion from real never yields NaN (ensured by the rewriter for
+      // concreteValue) and registerTerm rules out NaN for the abstraction
+      // skolem. Reaching this point with a NaN value means the model is
+      // inconsistent with the registration lemmas (see issue #12354). The
+      // registration lemmas were already sent in this user context, so
+      // nothing new can be learned by re-sending them. Give up on this
+      // model rather than crash.
+      if (abstractValue.getConst<FloatingPoint>().isNaN()
+          || concreteValue.getConst<FloatingPoint>().isNaN())
       {
-        Node realValueOfAbstract =
-            Rewriter::rewrite(nm->mkNode(kind::FLOATINGPOINT_TO_REAL_TOTAL,
-                                         abstractValue,
-                                         nm->mkConst(Rational(0U))));
-
-        Node bg = nm->mkNode(
-            kind::IMPLIES,
-            correctRoundingMode,
-            nm->mkNode(
-                kind::EQUAL,
-                nm->mkNode(kind::GEQ, concrete[1], realValueOfAbstract),
-                nm->mkNode(kind::FLOATINGPOINT_GEQ, abstract, abstractValue)));
-        handleLemma(bg);
-
-        Node bl = nm->mkNode(
-            kind::IMPLIES,
-            correctRoundingMode,
-            nm->mkNode(
-                kind::EQUAL,
-                nm->mkNode(kind::LEQ, concrete[1], realValueOfAbstract),
-                nm->mkNode(kind::FLOATINGPOINT_LEQ, abstract, abstractValue)));
-        handleLemma(bl);
+        Assert(getValuation().isModelUnsound())
+            << "NaN model value of " << abstract
+            << " contradicts its registration lemmas";
+        ++d_stats.d_abstractionInconsistentValues;
+        d_im.setModelUnsound(IncompleteId::FP_ABSTRACTION_REFINEMENT);
+        return false;
       }
 
-      return true;
+      Node correctRoundingMode = nm->mkNode(Kind::EQUAL, concrete[0], rmValue);
+      // TODO : Generalise to all rounding modes  #1914
+
+      RoundingMode rm = rmValue.getConst<RoundingMode>();
+      bool sent = false;
+
+      // For a float constant c and a fixed rounding mode, to_fp(rm, x) >=_fp c
+      // holds iff x is (strictly) above the exact real lower boundary of c's
+      // rounding cell, and dually to_fp(rm, x) <=_fp c holds iff x is
+      // (strictly) below the lower boundary of the cell of nextUp(c). These
+      // cell-boundary equivalences are sound and exclude the whole spurious
+      // rounding cell in one step, which is required for the refinement loop
+      // to converge (the model value of x could otherwise slide from cell to
+      // cell indefinitely).
+      //
+      // Where the boundary is not available, i.e., if c is an infinity or if
+      // the cell of c is unbounded (c is the largest resp. smallest finite
+      // value of its format), fall back to the monotonicity implication
+      // anchored at a real v that converts to c:
+      //   x >= v  -->  to_fp(rm, x) >=_fp c
+      // and dually for <=. Note that only this direction is valid: rounding
+      // is monotone but not injective, thus to_fp(rm, x) >=_fp to_fp(rm, v)
+      // does not imply x >= v (x slightly below v may round to the same
+      // float). Asserting the equivalence excludes satisfiable regions around
+      // v and makes the solver refutation unsound (see issues #12370,
+      // #12780). Since v is in the cell of c, this implication is the weaker,
+      // model-anchored variant of the cell-boundary equivalence above.
+      //
+      // Note that the equivalences also imply the monotonicity implications
+      // for every real in the cell of c, thus no additional lemmas anchored
+      // at the model values are required.
+      //
+      // @param c The float to anchor the lemmas at, must not be NaN.
+      // @param v A real that converts to c, null if there is none.
+      auto sendCellLemmas = [&](const FloatingPoint& c, TNode v) {
+        Assert(!c.isNaN());
+        Node cn = nm->mkConst(c);
+        Node geq = nm->mkNode(Kind::FLOATINGPOINT_GEQ, abstract, cn);
+        Node leq = nm->mkNode(Kind::FLOATINGPOINT_LEQ, abstract, cn);
+        Node lower, upper;
+        // The cell of c has a finite lower boundary unless c is an infinity or
+        // the smallest finite value of its format.
+        if (!c.isInfinite() && !FloatingPoint::nextDown(c).isInfinite())
+        {
+          auto [lb, lstrict] = utils::roundingCellLowerBound(c, rm);
+          lower = nm->mkNode(Kind::EQUAL,
+                             {geq,
+                              nm->mkNode(lstrict ? Kind::GT : Kind::GEQ,
+                                         concrete[1],
+                                         nm->mkConstReal(lb))});
+        }
+        else if (!v.isNull())
+        {
+          lower = nm->mkNode(Kind::IMPLIES,
+                             {nm->mkNode(Kind::GEQ, concrete[1], v), geq});
+        }
+        // The cell of c has a finite upper boundary, the lower boundary of the
+        // cell of nextUp(c), unless c is an infinity or the largest finite
+        // value of its format. Note that F <=_fp c iff not (F >=_fp nextUp(c))
+        // for non-NaN F.
+        FloatingPoint s = FloatingPoint::nextUp(c);
+        if (!c.isInfinite() && !s.isInfinite())
+        {
+          // nextDown(s) is c (up to the sign of zero) and thus finite, hence
+          // s being finite is all the preconditions require here
+          auto [ub, sstrict] = utils::roundingCellLowerBound(s, rm);
+          upper = nm->mkNode(Kind::EQUAL,
+                             {leq,
+                              nm->mkNode(sstrict ? Kind::LEQ : Kind::LT,
+                                         concrete[1],
+                                         nm->mkConstReal(ub))});
+        }
+        else if (!v.isNull())
+        {
+          upper = nm->mkNode(Kind::IMPLIES,
+                             {nm->mkNode(Kind::LEQ, concrete[1], v), leq});
+        }
+        for (const Node& l : {lower, upper})
+        {
+          if (!l.isNull())
+          {
+            sent =
+                handleLemma(nm->mkNode(Kind::IMPLIES, correctRoundingMode, l),
+                            InferenceId::FP_PREPROCESS)
+                || sent;
+          }
+        }
+      };
+
+      // Anchor the lemmas at the correct rounding of the model value of x,
+      // which the model value of the abstraction disagrees with, ...
+      sendCellLemmas(concreteValue.getConst<FloatingPoint>(), realValue);
+      // ... and at the model value of the abstraction, which converts to
+      // itself unless it is an infinity.
+      const FloatingPoint& av = abstractValue.getConst<FloatingPoint>();
+      Node realValueOfAbstract;
+      if (!av.isInfinite())
+      {
+        realValueOfAbstract =
+            rewrite(nm->mkNode(Kind::FLOATINGPOINT_TO_REAL_TOTAL,
+                               abstractValue,
+                               nm->mkConstReal(Rational(0U))));
+      }
+      sendCellLemmas(av, realValueOfAbstract);
+
+      if (!sent)
+      {
+        // All refinement lemmas for these model values were already sent in a
+        // previous round. Either the model is inconsistent with the current
+        // assertions (cf. the NaN case above), or the lemmas are too weak to
+        // exclude it: unlike in the FLOATINGPOINT_TO_REAL_TOTAL case above,
+        // they are implications rather than equivalences, and they are
+        // formulated in terms of fp.leq/fp.geq and of the rationals the
+        // results denote, all of which identify -zero and +zero (which is why
+        // registerTerm() constrains the sign of the abstraction separately).
+        // Give up on this model rather than accept it.
+        Assert(getValuation().isModelUnsound())
+            << "model of " << abstract
+            << " is not excluded by its refinement lemmas";
+        ++d_stats.d_abstractionNoProgress;
+        d_im.setModelUnsound(IncompleteId::FP_ABSTRACTION_REFINEMENT);
+      }
+      return sent;
     }
     else
     {
@@ -742,163 +517,264 @@ bool TheoryFp::refineAbstraction(TheoryModel *m, TNode abstract, TNode concrete)
   return false;
 }
 
-void TheoryFp::convertAndEquateTerm(TNode node) {
-  Trace("fp-convertTerm") << "TheoryFp::convertTerm(): " << node << std::endl;
-  size_t oldAdditionalAssertions = d_conv.d_additionalAssertions.size();
+void TheoryFp::wordBlastAndEquateTerm(TNode node)
+{
+  Trace("fp-wordBlastTerm")
+      << "TheoryFp::wordBlastTerm(): " << node << std::endl;
 
-  Node converted(d_conv.convert(node));
+  size_t oldSize = d_wordBlaster->d_additionalAssertions.size();
 
-  if (converted != node) {
-    Debug("fp-convertTerm")
-        << "TheoryFp::convertTerm(): before " << node << std::endl;
-    Debug("fp-convertTerm")
-        << "TheoryFp::convertTerm(): after  " << converted << std::endl;
+  Node wordBlasted(d_wordBlaster->wordBlast(node));
+
+  size_t newSize = d_wordBlaster->d_additionalAssertions.size();
+
+  if (TraceIsOn("fp-wordBlastTerm") && wordBlasted != node)
+  {
+    Trace("fp-wordBlastTerm")
+        << "TheoryFp::wordBlastTerm(): before " << node << std::endl;
+    Trace("fp-wordBlastTerm")
+        << "TheoryFp::wordBlastTerm(): after  " << wordBlasted << std::endl;
   }
 
-  size_t newAdditionalAssertions = d_conv.d_additionalAssertions.size();
-  Assert(oldAdditionalAssertions <= newAdditionalAssertions);
+  Assert(oldSize <= newSize);
 
-  while (oldAdditionalAssertions < newAdditionalAssertions) {
-    Node addA = d_conv.d_additionalAssertions[oldAdditionalAssertions];
-
-    Debug("fp-convertTerm") << "TheoryFp::convertTerm(): additional assertion  "
-                            << addA << std::endl;
-
-#ifdef SYMFPUPROPISBOOL
-    handleLemma(addA, false, true);
-#else
-    NodeManager *nm = NodeManager::currentNM();
-
+  NodeManager* nm = nodeManager();
+  while (oldSize < newSize)
+  {
+    Node addA = d_wordBlaster->d_additionalAssertions[oldSize];
+    Trace("fp-wordBlastTerm")
+        << "TheoryFp::wordBlastTerm(): additional assertion  " << addA
+        << std::endl;
     handleLemma(
-        nm->mkNode(kind::EQUAL, addA, nm->mkConst(::CVC4::BitVector(1U, 1U))));
-#endif
-
-    ++oldAdditionalAssertions;
+        nm->mkNode(
+            Kind::EQUAL, addA, nm->mkConst(cvc5::internal::BitVector(1U, 1U))),
+        InferenceId::FP_EQUATE_TERM);
+    ++oldSize;
   }
 
-  // Equate the floating-point atom and the converted one.
-  // Also adds the bit-vectors to the bit-vector solver.
-  if (node.getType().isBoolean()) {
-    if (converted != node) {
-      Assert(converted.getType().isBitVector());
-
-      NodeManager *nm = NodeManager::currentNM();
-
-#ifdef SYMFPUPROPISBOOL
-      handleLemma(nm->mkNode(kind::EQUAL, node, converted));
-#else
+  // Equate the floating-point atom and the wordBlasted one.
+  // Adds the bit-vectors to the bit-vector solver via sending the equality
+  // as lemma to the inference manager.
+  if (node.getType().isBoolean())
+  {
+    if (wordBlasted != node)
+    {
+      Assert(wordBlasted.getType().isBitVector());
       handleLemma(
-          nm->mkNode(kind::EQUAL, node,
-                     nm->mkNode(kind::EQUAL, converted,
-                                nm->mkConst(::CVC4::BitVector(1U, 1U)))));
-#endif
-
-    } else {
-      Assert((node.getKind() == kind::EQUAL));
+          nm->mkNode(
+              Kind::EQUAL,
+              node,
+              nm->mkNode(Kind::EQUAL,
+                         wordBlasted,
+                         nm->mkConst(cvc5::internal::BitVector(1U, 1U)))),
+          InferenceId::FP_EQUATE_TERM);
     }
-
-  } else if (node.getType().isBitVector()) {
-    if (converted != node) {
-      Assert(converted.getType().isBitVector());
-
-      handleLemma(
-          NodeManager::currentNM()->mkNode(kind::EQUAL, node, converted));
+    else
+    {
+      Assert((node.getKind() == Kind::EQUAL));
+    }
+  }
+  else if (node.getType().isBitVector())
+  {
+    if (wordBlasted != node)
+    {
+      Assert(wordBlasted.getType().isBitVector());
+      handleLemma(nm->mkNode(Kind::EQUAL, node, wordBlasted),
+                  InferenceId::FP_EQUATE_TERM);
     }
   }
 
   return;
 }
 
-void TheoryFp::registerTerm(TNode node) {
+void TheoryFp::registerTerm(TNode node)
+{
   Trace("fp-registerTerm") << "TheoryFp::registerTerm(): " << node << std::endl;
 
-  if (!isRegistered(node)) {
-    bool success = d_registeredTerms.insert(node);
-    (void)success;  // Only used for assertion
-    Assert(success);
+  Kind k = node.getKind();
+  Assert(k != Kind::FLOATINGPOINT_SUB && k != Kind::FLOATINGPOINT_EQ
+         && k != Kind::FLOATINGPOINT_GEQ && k != Kind::FLOATINGPOINT_GT);
 
-    // Add to the equality engine
-    if (node.getKind() == kind::EQUAL) {
-      d_equalityEngine.addTriggerEquality(node);
-    } else {
-      d_equalityEngine.addTerm(node);
-    }
-
-    // Give the expansion of classifications in terms of equalities
-    // This should make equality reasoning slightly more powerful.
-    if ((node.getKind() == kind::FLOATINGPOINT_ISNAN)
-        || (node.getKind() == kind::FLOATINGPOINT_ISZ)
-        || (node.getKind() == kind::FLOATINGPOINT_ISINF))
-    {
-      NodeManager *nm = NodeManager::currentNM();
-      FloatingPointSize s = node[0].getType().getConst<FloatingPointSize>();
-      Node equalityAlias = Node::null();
-
-      if (node.getKind() == kind::FLOATINGPOINT_ISNAN)
-      {
-        equalityAlias = nm->mkNode(
-            kind::EQUAL, node[0], nm->mkConst(FloatingPoint::makeNaN(s)));
-      }
-      else if (node.getKind() == kind::FLOATINGPOINT_ISZ)
-      {
-        equalityAlias = nm->mkNode(
-            kind::OR,
-            nm->mkNode(kind::EQUAL,
-                       node[0],
-                       nm->mkConst(FloatingPoint::makeZero(s, true))),
-            nm->mkNode(kind::EQUAL,
-                       node[0],
-                       nm->mkConst(FloatingPoint::makeZero(s, false))));
-      }
-      else if (node.getKind() == kind::FLOATINGPOINT_ISINF)
-      {
-        equalityAlias = nm->mkNode(
-            kind::OR,
-            nm->mkNode(kind::EQUAL,
-                       node[0],
-                       nm->mkConst(FloatingPoint::makeInf(s, true))),
-            nm->mkNode(kind::EQUAL,
-                       node[0],
-                       nm->mkConst(FloatingPoint::makeInf(s, false))));
-      }
-      else
-      {
-        Unreachable() << "Only isNaN, isInf and isZero have aliases";
-      }
-
-      handleLemma(nm->mkNode(kind::EQUAL, node, equalityAlias));
-    }
-
-    // Use symfpu to produce an equivalent bit-vector statement
-    convertAndEquateTerm(node);
+  // Add to the equality engine, always. This is required to ensure
+  // getEqualityStatus works as expected when theory combination is enabled.
+  if (k == Kind::EQUAL)
+  {
+    d_state.addEqualityEngineTriggerPredicate(node);
   }
-  return;
+  else
+  {
+    d_equalityEngine->addTerm(node);
+  }
+
+  // if not registered in this user context
+  if (isRegistered(node))
+  {
+    return;
+  }
+
+  CVC5_UNUSED bool success = d_registeredTerms.insert(node);
+  Assert(success);
+
+  // Give the expansion of classifications in terms of equalities
+  // This should make equality reasoning slightly more powerful.
+  NodeManager* nm = nodeManager();
+  if ((k == Kind::FLOATINGPOINT_IS_NAN) || (k == Kind::FLOATINGPOINT_IS_ZERO)
+      || (k == Kind::FLOATINGPOINT_IS_INF))
+  {
+    FloatingPointSize s = node[0].getType().getConst<FloatingPointSize>();
+    Node equalityAlias = Node::null();
+
+    if (k == Kind::FLOATINGPOINT_IS_NAN)
+    {
+      equalityAlias = nm->mkNode(
+          Kind::EQUAL, node[0], nm->mkConst(FloatingPoint::makeNaN(s)));
+    }
+    else if (k == Kind::FLOATINGPOINT_IS_ZERO)
+    {
+      equalityAlias = nm->mkNode(
+          Kind::OR,
+          {nm->mkNode(Kind::EQUAL,
+                      node[0],
+                      nm->mkConst(FloatingPoint::makeZero(s, true))),
+           nm->mkNode(Kind::EQUAL,
+                      node[0],
+                      nm->mkConst(FloatingPoint::makeZero(s, false)))});
+    }
+    else if (k == Kind::FLOATINGPOINT_IS_INF)
+    {
+      equalityAlias = nm->mkNode(
+          Kind::OR,
+          {nm->mkNode(Kind::EQUAL,
+                      node[0],
+                      nm->mkConst(FloatingPoint::makeInf(s, true))),
+           nm->mkNode(Kind::EQUAL,
+                      node[0],
+                      nm->mkConst(FloatingPoint::makeInf(s, false)))});
+    }
+    else
+    {
+      Unreachable() << "Only isNaN, isInf and isZero have aliases";
+    }
+
+    handleLemma(nm->mkNode(Kind::EQUAL, node, equalityAlias),
+                InferenceId::FP_REGISTER_TERM);
+  }
+  else if (k == Kind::FLOATINGPOINT_TO_REAL_TOTAL)
+  {
+    // Purify (fp.to_real x)
+    Node sk = nm->getSkolemManager()->mkPurifySkolem(node);
+    Assert(sk.getKind() == Kind::SKOLEM);
+    // Purify the arguments of this node and use them for the lemmas/refining
+    // the abstraction. This is required to properly process nested
+    // conversions and, more generally, arguments whose bottom-up model
+    // evaluation may disagree with the model's leaf assignments (e.g. terms
+    // containing unrefined conversions). The refinement lemmas then only
+    // reference leaf skolems whose model values are direct assignments.
+    Node pn = nm->mkNode(Kind::FLOATINGPOINT_TO_REAL_TOTAL,
+                         {purifyArgument(node[0]), purifyArgument(node[1])});
+    handleLemma(node.eqNode(sk), InferenceId::FP_REGISTER_TERM);
+    d_abstractionMap.insert(sk, pn);
+
+    // Constrain the abstraction skolem sk directly (rather than node or pn)
+    // so that the model value of the abstraction cannot violate these
+    // lemmas via a broken congruence chain.
+    Node pd =
+        nm->mkNode(Kind::IMPLIES,
+                   {nm->mkNode(Kind::OR,
+                               {nm->mkNode(Kind::FLOATINGPOINT_IS_NAN, pn[0]),
+                                nm->mkNode(Kind::FLOATINGPOINT_IS_INF, pn[0])}),
+                    nm->mkNode(Kind::EQUAL, sk, pn[1])});
+    handleLemma(pd, InferenceId::FP_REGISTER_TERM);
+
+    Node z = nm->mkNode(
+        Kind::IMPLIES,
+        {nm->mkNode(Kind::FLOATINGPOINT_IS_ZERO, pn[0]),
+         nm->mkNode(Kind::EQUAL, sk, nm->mkConstReal(Rational(0U)))});
+    handleLemma(z, InferenceId::FP_REGISTER_TERM);
+    return;
+
+    // TODO : bounds on the output from largest floats, #1914
+  }
+  else if (k == Kind::FLOATINGPOINT_TO_FP_FROM_REAL)
+  {
+    // Purify ((_ to_fp eb sb) rm x)
+    Node sk = nm->getSkolemManager()->mkPurifySkolem(node);
+    Assert(sk.getKind() == Kind::SKOLEM);
+    // Purify the arguments of this node and use them for the lemmas/refining
+    // the abstraction (see FLOATINGPOINT_TO_REAL_TOTAL above).
+    Node pn = nm->mkNode(
+        Kind::FLOATINGPOINT_TO_FP_FROM_REAL,
+        {node.getOperator(), purifyArgument(node[0]), purifyArgument(node[1])});
+    handleLemma(node.eqNode(sk), InferenceId::FP_REGISTER_TERM);
+    d_abstractionMap.insert(sk, pn);
+
+    // Constrain the abstraction skolem sk directly (see above).
+    Node nnan =
+        nm->mkNode(Kind::NOT, nm->mkNode(Kind::FLOATINGPOINT_IS_NAN, sk));
+    handleLemma(nnan, InferenceId::FP_REGISTER_TERM);
+
+    Node zero = nm->mkConstReal(Rational(0U));
+    Node z = nm->mkNode(
+        Kind::IMPLIES,
+        {nm->mkNode(Kind::EQUAL, pn[1], zero),
+         nm->mkNode(Kind::EQUAL,
+                    sk,
+                    nm->mkConst(FloatingPoint::makeZero(
+                        sk.getType().getConst<FloatingPointSize>(), false)))});
+    handleLemma(z, InferenceId::FP_REGISTER_TERM);
+
+    // The sign of the result is the sign of the argument, in every rounding
+    // mode and also when the conversion underflows to zero. Constraining the
+    // sign here is required: the refinement lemmas in refineAbstraction are
+    // formulated in terms of fp.leq/fp.geq and of the rationals the results
+    // denote, all of which identify -zero and +zero, and can therefore not
+    // rule out a model that assigns the abstraction a zero whose sign
+    // differs from the sign of the correct rounding.
+    Node sp = nm->mkNode(
+        Kind::IMPLIES,
+        {nm->mkNode(Kind::GT, pn[1], zero),
+         nm->mkNode(Kind::NOT, nm->mkNode(Kind::FLOATINGPOINT_IS_NEG, sk))});
+    handleLemma(sp, InferenceId::FP_REGISTER_TERM);
+
+    Node sn = nm->mkNode(
+        Kind::IMPLIES,
+        {nm->mkNode(Kind::LT, pn[1], zero),
+         nm->mkNode(Kind::NOT, nm->mkNode(Kind::FLOATINGPOINT_IS_POS, sk))});
+    handleLemma(sn, InferenceId::FP_REGISTER_TERM);
+    return;
+
+    // TODO : rounding-mode specific bounds on floats that don't give infinity
+    // BEWARE of directed rounding!   #1914
+  }
+
+  /* When not word-blasting lazier, we word-blast every term on
+   * registration. */
+  if (!options().fp.fpLazyWb)
+  {
+    wordBlastAndEquateTerm(node);
+  }
 }
 
-bool TheoryFp::isRegistered(TNode node) {
-  return !(d_registeredTerms.find(node) == d_registeredTerms.end());
+bool TheoryFp::isRegistered(TNode node)
+{
+  return d_registeredTerms.find(node) != d_registeredTerms.end();
 }
 
 void TheoryFp::preRegisterTerm(TNode node)
 {
-  if (Configuration::isBuiltWithSymFPU() && !options::fpExp())
+  if (!options().fp.fp)
   {
-    TypeNode tn = node.getType();
-    if (tn.isFloatingPoint())
-    {
-      unsigned exp_sz = tn.getFloatingPointExponentSize();
-      unsigned sig_sz = tn.getFloatingPointSignificandSize();
-      if (!((exp_sz == 8 && sig_sz == 24) || (exp_sz == 11 && sig_sz == 53)))
-      {
-        std::stringstream ss;
-        ss << "FP term " << node << " with type whose size is " << exp_sz << "/"
-           << sig_sz
-           << " is not supported, only Float32 (8/24) or Float64 (11/53) types "
-              "are supported in default mode. Try the experimental solver via "
-              "--fp-exp";
-        throw LogicException(ss.str());
-      }
-    }
+    std::stringstream ss;
+    ss << "Floating points not available in this configuration, try "
+          "--fp.";
+    throw SafeLogicException(ss.str());
+  }
+  if (!options().fp.fpExp)
+  {
+    // check whether it is using an experimental type. This should be
+    // (almost) fully subsumed by the check in the rewriter, but is required
+    // e.g. for terms with 0 children which are not rewritten.
+    utils::checkForExperimentalFloatingPointType(node);
   }
   Trace("fp-preRegisterTerm")
       << "TheoryFp::preRegisterTerm(): " << node << std::endl;
@@ -906,205 +782,301 @@ void TheoryFp::preRegisterTerm(TNode node)
   return;
 }
 
-void TheoryFp::addSharedTerm(TNode node) {
-  Trace("fp-addSharedTerm")
-      << "TheoryFp::addSharedTerm(): " << node << std::endl;
-  // A system-wide invariant; terms must be registered before they are shared
-  Assert(isRegistered(node));
-  return;
-}
-
-void TheoryFp::handleLemma(Node node) {
+bool TheoryFp::handleLemma(Node node, InferenceId id)
+{
   Trace("fp") << "TheoryFp::handleLemma(): asserting " << node << std::endl;
-
-  d_out->lemma(node, false,
-               true);  // Has to be true because it contains embedded ITEs
-  // Ignore the LemmaStatus structure for now...
-
-  return;
-}
-
-bool TheoryFp::handlePropagation(TNode node) {
-  Trace("fp") << "TheoryFp::handlePropagation(): propagate " << node
-              << std::endl;
-
-  bool stat = d_out->propagate(node);
-
-  if (!stat)
+  Node lemma = rewrite(node);
+  if (lemma != d_true)
   {
-    d_conflict = true;
+    /* We only send non-trivial lemmas. */
+    return d_im.lemma(lemma, id);
   }
-  return stat;
+  return false;
 }
 
-void TheoryFp::handleConflict(TNode node) {
-  Trace("fp") << "TheoryFp::handleConflict(): conflict detected " << node
-              << std::endl;
-
-  d_conflictNode = node;
-  d_conflict = true;
-  d_out->conflict(node);
-  return;
+bool TheoryFp::propagateLit(TNode node)
+{
+  Trace("fp") << "TheoryFp::propagateLit(): propagate " << node << std::endl;
+  return d_im.propagateLit(node);
 }
 
-void TheoryFp::check(Effort level) {
-  Trace("fp") << "TheoryFp::check(): started at effort level " << level
+void TheoryFp::conflictEqConstantMerge(TNode t1, TNode t2)
+{
+  Trace("fp") << "TheoryFp::conflictEqConstantMerge(): conflict detected"
               << std::endl;
+  d_im.conflictEqConstantMerge(t1, t2);
+}
 
-  while (!done() && !d_conflict) {
-    // Get all the assertions
-    Assertion assertion = get();
-    TNode fact = assertion.assertion;
+bool TheoryFp::needsCheckLastEffort()
+{
+  // only need to check if we have added to the abstraction map, otherwise
+  // postCheck below is a no-op.
+  return !d_abstractionMap.empty();
+}
 
-    Debug("fp") << "TheoryFp::check(): processing " << fact << std::endl;
+void TheoryFp::postCheck(Effort level)
+{
+  d_invalidateModelCache = true;
 
-    // Only handle equalities; the rest should be handled by
-    // the bit-vector theory
-
-    bool negated = fact.getKind() == kind::NOT;
-    TNode predicate = negated ? fact[0] : fact;
-
-    if (predicate.getKind() == kind::EQUAL) {
-      Assert(!(predicate[0].getType().isFloatingPoint()
-               || predicate[0].getType().isRoundingMode())
-             || isRegistered(predicate[0]));
-      Assert(!(predicate[1].getType().isFloatingPoint()
-               || predicate[1].getType().isRoundingMode())
-             || isRegistered(predicate[1]));
-      registerTerm(predicate);  // Needed for float equalities
-
-      if (negated) {
-        Debug("fp-eq") << "TheoryFp::check(): adding dis-equality " << fact[0]
-                       << std::endl;
-        d_equalityEngine.assertEquality(predicate, false, fact);
-
-      } else {
-        Debug("fp-eq") << "TheoryFp::check(): adding equality " << fact
-                       << std::endl;
-        d_equalityEngine.assertEquality(predicate, true, fact);
-      }
-    } else {
-      // A system-wide invariant; predicates are registered before they are
-      // asserted
-      Assert(isRegistered(predicate));
-
-      if (d_equalityEngine.isFunctionKind(predicate.getKind())) {
-        Debug("fp-eq") << "TheoryFp::check(): adding predicate " << predicate
-                       << " is " << !negated << std::endl;
-        d_equalityEngine.assertPredicate(predicate, !negated, fact);
-      }
-    }
-  }
-
-  // Resolve the abstractions for the conversion lemmas
-  //  if (level == EFFORT_COMBINATION) {
+  /* Resolve the abstractions for the conversion lemmas */
   if (level == EFFORT_LAST_CALL)
   {
-    Trace("fp") << "TheoryFp::check(): checking abstractions" << std::endl;
-    TheoryModel *m = getValuation().getModel();
-    bool lemmaAdded = false;
-
-    for (abstractionMapType::const_iterator i = abstractionMap.begin();
-         i != abstractionMap.end();
-         ++i)
+    Trace("fp-abstraction")
+        << "TheoryFp::check(): checking abstractions" << std::endl;
+    TheoryModel* m = getValuation().getModel();
+    for (const auto& [abstract, concrete] : d_abstractionMap)
     {
-      if (m->hasTerm((*i).first))
+      Trace("fp-abstraction")
+          << "TheoryFp::check(): Abstraction: " << abstract << std::endl;
+      if (m->hasTerm(abstract))
       {  // Is actually used in the model
-        lemmaAdded |= refineAbstraction(m, (*i).first, (*i).second);
+        Trace("fp-abstraction")
+            << "TheoryFp::check(): ... relevant" << std::endl;
+        refineAbstraction(m, abstract, concrete);
+      }
+      else
+      {
+        Trace("fp-abstraction")
+            << "TheoryFp::check(): ... not relevant" << std::endl;
       }
     }
   }
 
   Trace("fp") << "TheoryFp::check(): completed" << std::endl;
-
   /* Checking should be handled by the bit-vector engine */
-  return;
-
-} /* TheoryFp::check() */
-
-void TheoryFp::setMasterEqualityEngine(eq::EqualityEngine *eq) {
-  d_equalityEngine.setMasterEqualityEngine(eq);
 }
 
-Node TheoryFp::explain(TNode n) {
+bool TheoryFp::preNotifyFact(TNode atom,
+                             CVC5_UNUSED bool pol,
+                             CVC5_UNUSED TNode fact,
+                             CVC5_UNUSED bool isPrereg,
+                             CVC5_UNUSED bool isInternal)
+{
+  /* Word-blast lazier if configured. */
+  if (options().fp.fpLazyWb
+      && d_wbFactsCache.find(atom) == d_wbFactsCache.end())
+  {
+    d_wbFactsCache.insert(atom);
+    wordBlastAndEquateTerm(atom);
+  }
+
+  if (atom.getKind() == Kind::EQUAL)
+  {
+    Assert(!(atom[0].getType().isFloatingPoint()
+             || atom[0].getType().isRoundingMode())
+           || isRegistered(atom[0]));
+    Assert(!(atom[1].getType().isFloatingPoint()
+             || atom[1].getType().isRoundingMode())
+           || isRegistered(atom[1]));
+    registerTerm(atom);  // Needed for float equalities
+  }
+  else
+  {
+    // A system-wide invariant; predicates are registered before they are
+    // asserted
+    Assert(isRegistered(atom));
+
+    if (!d_equalityEngine->isFunctionKind(atom.getKind()))
+    {
+      return true;
+    }
+  }
+  return false;
+}
+
+void TheoryFp::notifySharedTerm(TNode n)
+{
+  /* Word-blast lazier if configured. */
+  if (options().fp.fpLazyWb && d_wbFactsCache.find(n) == d_wbFactsCache.end())
+  {
+    d_wbFactsCache.insert(n);
+    wordBlastAndEquateTerm(n);
+  }
+}
+
+Node TheoryFp::getCandidateModelValue(TNode node)
+{
+  if (d_invalidateModelCache.get())
+  {
+    d_modelCache.clear();
+  }
+  d_invalidateModelCache.set(false);
+
+  std::vector<TNode> visit;
+  std::unordered_map<TNode, bool> visited;
+
+  TNode cur;
+  visit.push_back(node);
+  do
+  {
+    cur = visit.back();
+    visit.pop_back();
+
+    auto it = d_modelCache.find(cur);
+    if (it != d_modelCache.end() && !it->second.isNull())
+    {
+      continue;
+    }
+
+    auto vit = visited.find(cur);
+    if (vit != visited.end() && vit->second)
+    {
+      continue;
+    }
+
+    if (cur.isConst())
+    {
+      d_modelCache[cur] = cur;
+      visited[cur] = true;
+      continue;
+    }
+
+    Node value;
+
+    Kind kind = cur.getKind();
+    if (kind == Kind::FLOATINGPOINT_TO_FP_FROM_SBV
+        || kind == Kind::FLOATINGPOINT_TO_FP_FROM_UBV
+        || kind == Kind::FLOATINGPOINT_TO_FP_FROM_REAL
+        || kind == Kind::FLOATINGPOINT_TO_FP_FROM_IEEE_BV
+        || Theory::isLeafOf(cur, theory::THEORY_FP))
+    {
+      if (cur.getType().isFloatingPoint() || cur.getType().isRoundingMode())
+      {
+        value = d_wordBlaster->getValue(cur);
+      }
+      else
+      {
+        value = d_valuation.getCandidateModelValue(cur);
+        if (value.isNull())
+        {
+          return value;
+        }
+      }
+      d_modelCache[cur] = value;
+      visited[cur] = true;
+      continue;
+    }
+
+    if (vit == visited.end())
+    {
+      visit.push_back(cur);
+      visited.emplace(cur, false);
+      visit.insert(visit.end(), cur.begin(), cur.end());
+    }
+    else if (!vit->second)
+    {
+      NodeBuilder nb(nodeManager(), kind);
+      if (cur.getMetaKind() == kind::metakind::PARAMETERIZED)
+      {
+        nb << cur.getOperator();
+      }
+
+      std::unordered_map<Node, Node>::iterator iit;
+      for (const TNode& child : cur)
+      {
+        iit = d_modelCache.find(child);
+        Assert(iit != d_modelCache.end());
+        Assert(!iit->second.isNull());
+        nb << iit->second;
+      }
+      d_modelCache[cur] = rewrite(nb.constructNode());
+      vit->second = true;
+    }
+  } while (!visit.empty());
+
+  auto it = d_modelCache.find(node);
+  Assert(it != d_modelCache.end());
+  return it->second;
+}
+
+TrustNode TheoryFp::explain(TNode n)
+{
   Trace("fp") << "TheoryFp::explain(): explain " << n << std::endl;
 
   // All things we assert directly (and not via bit-vector) should
   // come from the equality engine so this should be sufficient...
   std::vector<TNode> assumptions;
 
-  bool polarity = n.getKind() != kind::NOT;
+  bool polarity = n.getKind() != Kind::NOT;
   TNode atom = polarity ? n : n[0];
-  if (atom.getKind() == kind::EQUAL) {
-    d_equalityEngine.explainEquality(atom[0], atom[1], polarity, assumptions);
-  } else {
-    d_equalityEngine.explainPredicate(atom, polarity, assumptions);
+  if (atom.getKind() == Kind::EQUAL)
+  {
+    d_equalityEngine->explainEquality(atom[0], atom[1], polarity, assumptions);
+  }
+  else
+  {
+    d_equalityEngine->explainPredicate(atom, polarity, assumptions);
   }
 
-  return helper::buildConjunct(assumptions);
+  // build conjunct
+  NodeManager* nm = nodeManager();
+  Node exp = nm->mkAnd(assumptions);
+  return TrustNode::mkTrustPropExp(n, exp, nullptr);
 }
 
-Node TheoryFp::getModelValue(TNode var) {
-  return d_conv.getValue(d_valuation, var);
-}
-
-bool TheoryFp::collectModelInfo(TheoryModel *m)
+EqualityStatus TheoryFp::getEqualityStatus(TNode a, TNode b)
 {
-  std::set<Node> relevantTerms;
-
-  Trace("fp-collectModelInfo")
-      << "TheoryFp::collectModelInfo(): begin" << std::endl;
-
-  // Work out which variables are needed
-  computeRelevantTerms(relevantTerms);
-
-  if (Trace.isOn("fp-collectModelInfo")) {
-    for (std::set<Node>::const_iterator i(relevantTerms.begin());
-         i != relevantTerms.end(); ++i) {
-      Trace("fp-collectModelInfo")
-          << "TheoryFp::collectModelInfo(): relevantTerms " << *i << std::endl;
-    }
+  Node value_a = getCandidateModelValue(a);
+  Node value_b = getCandidateModelValue(b);
+  if (value_a.isNull() || value_b.isNull())
+  {
+    return EqualityStatus::EQUALITY_UNKNOWN;
   }
-
-  std::unordered_set<TNode, TNodeHashFunction> visited;
-  std::stack<TNode> working;
-  std::set<TNode> relevantVariables;
-  for (std::set<Node>::const_iterator i(relevantTerms.begin());
-       i != relevantTerms.end(); ++i) {
-    working.push(*i);
+  if (value_a == value_b)
+  {
+    Trace("theory-fp") << EqualityStatus::EQUALITY_TRUE_IN_MODEL << std::endl;
+    return EqualityStatus::EQUALITY_TRUE_IN_MODEL;
   }
-
-  while (!working.empty()) {
-    TNode current = working.top();
-    working.pop();
-
-    // Ignore things that have already been explored
-    if (visited.find(current) == visited.end()) {
-      visited.insert(current);
-
-      TypeNode t(current.getType());
-
-      if ((t.isRoundingMode() || t.isFloatingPoint()) &&
-          this->isLeaf(current)) {
-        relevantVariables.insert(current);
-      }
-
-      for (size_t i = 0; i < current.getNumChildren(); ++i) {
-        working.push(current[i]);
-      }
-    }
+  // We can get values that are not consts due to the fact that we word-blast
+  // to BV, value terms can be non-const bit-vector terms. We thus may only
+  // conclude false if the values are disequal consts.
+  if (value_a.isConst() && value_b.isConst())
+  {
+    Trace("theory-fp") << EqualityStatus::EQUALITY_FALSE_IN_MODEL << std::endl;
+    return EqualityStatus::EQUALITY_FALSE_IN_MODEL;
   }
+  return EqualityStatus::EQUALITY_UNKNOWN;
+}
 
-  for (std::set<TNode>::const_iterator i(relevantVariables.begin());
-       i != relevantVariables.end(); ++i) {
-    TNode node = *i;
+bool TheoryFp::collectModelInfo(TheoryModel* m,
+                                const std::set<Node>& relevantTerms)
+{
+  // this override behavior to not assert equality engine
+  return collectModelValues(m, relevantTerms);
+}
 
-    Trace("fp-collectModelInfo")
-        << "TheoryFp::collectModelInfo(): relevantVariable " << node
-        << std::endl;
-
-    if (!m->assertEquality(node, d_conv.getValue(d_valuation, node), true))
+bool TheoryFp::collectModelValues(TheoryModel* m, const std::set<Node>& termSet)
+{
+  Trace("fp-collectModelValues")
+      << "TheoryFp::collectModelValues(): begin" << std::endl;
+  if (TraceIsOn("fp-collectModelValues"))
+  {
+    for (std::set<Node>::const_iterator i(termSet.begin()); i != termSet.end();
+         ++i)
     {
+      Trace("fp-collectModelValues")
+          << "TheoryFp::collectModelValues(): termSet " << *i << std::endl;
+    }
+  }
+  NodeManager* nm = nodeManager();
+  for (const Node& node : termSet)
+  {
+    TypeNode t = node.getType();
+    if ((!t.isRoundingMode() && !t.isFloatingPoint()) || !this->isLeaf(node))
+    {
+      continue;
+    }
+
+    Trace("fp-collectModelValues")
+        << "TheoryFp::collectModelValues(): " << node << std::endl;
+
+    Node wordBlasted = d_wordBlaster->getValue(node);
+    // We only assign the value if the FpWordBlaster actually has one, that is,
+    // if FpWordBlaster::getValue() does not return a null node.
+    if (!wordBlasted.isNull() && !m->assertEquality(node, wordBlasted, true))
+    {
+      Trace("fp-collectModelValues")
+          << "TheoryFp::collectModelValues(): ... not converted" << std::endl;
       return false;
     }
 
@@ -1115,20 +1087,25 @@ bool TheoryFp::collectModelInfo(TheoryModel *m)
       // components of `node` except `(sign node)` (the sign component is
       // assignable, meaning that the model builder can pick an arbitrary value
       // for it if it hasn't been assigned in the equality engine).
-      NodeManager* nm = NodeManager::currentNM();
-      Node compNaN = nm->mkNode(kind::FLOATINGPOINT_COMPONENT_NAN, node);
-      Node compInf = nm->mkNode(kind::FLOATINGPOINT_COMPONENT_INF, node);
-      Node compZero = nm->mkNode(kind::FLOATINGPOINT_COMPONENT_ZERO, node);
+      Node compNaN = nm->mkNode(Kind::FLOATINGPOINT_COMPONENT_NAN, node);
+      Node compInf = nm->mkNode(Kind::FLOATINGPOINT_COMPONENT_INF, node);
+      Node compZero = nm->mkNode(Kind::FLOATINGPOINT_COMPONENT_ZERO, node);
       Node compExponent =
-          nm->mkNode(kind::FLOATINGPOINT_COMPONENT_EXPONENT, node);
+          nm->mkNode(Kind::FLOATINGPOINT_COMPONENT_EXPONENT, node);
       Node compSignificand =
-          nm->mkNode(kind::FLOATINGPOINT_COMPONENT_SIGNIFICAND, node);
+          nm->mkNode(Kind::FLOATINGPOINT_COMPONENT_SIGNIFICAND, node);
 
       eq::EqualityEngine* ee = m->getEqualityEngine();
-      Assert(ee->hasTerm(compNaN) && ee->getRepresentative(compNaN).isConst());
-      Assert(ee->hasTerm(compInf) && ee->getRepresentative(compInf).isConst());
-      Assert(ee->hasTerm(compZero)
-             && ee->getRepresentative(compZero).isConst());
+      Assert(ee->hasTerm(compNaN));
+      Assert(ee->hasTerm(compInf));
+      Assert(ee->hasTerm(compZero));
+      TNode rCompNaN = ee->getRepresentative(compNaN);
+      TNode rCompInf = ee->getRepresentative(compInf);
+      TNode rCompZero = ee->getRepresentative(compZero);
+      Assert(rCompNaN.isConst());
+      Assert(rCompInf.isConst());
+      Assert(rCompZero.isConst());
+
       Assert(ee->hasTerm(compExponent)
              && ee->getRepresentative(compExponent).isConst());
       Assert(ee->hasTerm(compSignificand));
@@ -1136,67 +1113,41 @@ bool TheoryFp::collectModelInfo(TheoryModel *m)
 
       // At most one of the flags (NaN, inf, zero) can be set
       Node one = nm->mkConst(BitVector(1U, 1U));
-      size_t numFlags = 0;
-      numFlags += ee->getRepresentative(compNaN) == one ? 1 : 0;
-      numFlags += ee->getRepresentative(compInf) == one ? 1 : 0;
-      numFlags += ee->getRepresentative(compZero) == one ? 1 : 0;
-      Assert(numFlags <= 1);
+      Assert((rCompNaN == one ? 1 : 0) + (rCompInf == one ? 1 : 0)
+                 + (rCompZero == one ? 1 : 0)
+             <= 1);
     }
   }
 
   return true;
 }
 
-bool TheoryFp::NotifyClass::eqNotifyTriggerEquality(TNode equality,
-                                                    bool value) {
-  Debug("fp-eq")
-      << "TheoryFp::eqNotifyTriggerEquality(): call back as equality "
-      << equality << " is " << value << std::endl;
-
-  if (value) {
-    return d_theorySolver.handlePropagation(equality);
-  } else {
-    return d_theorySolver.handlePropagation(equality.notNode());
+Node TheoryFp::purifyArgument(TNode n)
+{
+  if (n.getNumChildren() == 0)
+  {
+    return n;
   }
+  SkolemManager* sm = nodeManager()->getSkolemManager();
+  Node sk = sm->mkPurifySkolem(n);
+  if (d_purifiedArgs.insert(n))
+  {
+    handleLemma(n.eqNode(sk), InferenceId::FP_REGISTER_TERM);
+  }
+  return sk;
 }
 
-bool TheoryFp::NotifyClass::eqNotifyTriggerPredicate(TNode predicate,
-                                                     bool value) {
-  Debug("fp-eq")
-      << "TheoryFp::eqNotifyTriggerPredicate(): call back as predicate "
-      << predicate << " is " << value << std::endl;
-
-  if (value) {
-    return d_theorySolver.handlePropagation(predicate);
-  } else {
-    return d_theorySolver.handlePropagation(predicate.notNode());
-  }
-}
-
-bool TheoryFp::NotifyClass::eqNotifyTriggerTermEquality(TheoryId tag, TNode t1,
-                                                        TNode t2, bool value) {
-  Debug("fp-eq") << "TheoryFp::eqNotifyTriggerTermEquality(): call back as "
-                 << t1 << (value ? " = " : " != ") << t2 << std::endl;
-
-  if (value) {
-    return d_theorySolver.handlePropagation(t1.eqNode(t2));
-  } else {
-    return d_theorySolver.handlePropagation(t1.eqNode(t2).notNode());
-  }
-}
-
-void TheoryFp::NotifyClass::eqNotifyConstantTermMerge(TNode t1, TNode t2) {
-  Debug("fp-eq") << "TheoryFp::eqNotifyConstantTermMerge(): call back as " << t1
-                 << " = " << t2 << std::endl;
-
-  std::vector<TNode> assumptions;
-  d_theorySolver.d_equalityEngine.explainEquality(t1, t2, true, assumptions);
-
-  Node conflict = helper::buildConjunct(assumptions);
-
-  d_theorySolver.handleConflict(conflict);
+TheoryFp::Statistics::Statistics(StatisticsRegistry& reg,
+                                 const std::string& name)
+    : d_abstractionUnusableValues(
+          reg.registerInt(name + "NumAbstractionUnusableValues")),
+      d_abstractionInconsistentValues(
+          reg.registerInt(name + "NumAbstractionInconsistentValues")),
+      d_abstractionNoProgress(
+          reg.registerInt(name + "NumAbstractionNoProgress"))
+{
 }
 
 }  // namespace fp
 }  // namespace theory
-}  // namespace CVC4
+}  // namespace cvc5::internal

@@ -1,47 +1,49 @@
-/*********************                                                        */
-/*! \file unconstrained_simplifier.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Clark Barrett, Andres Noetzli, Tim King
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2019 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Simplifications based on unconstrained variables
- **
- ** This module implements a preprocessing phase which replaces certain
- ** "unconstrained" expressions by variables.  Based on Roberto
- ** Bruttomesso's PhD thesis.
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Simplifications based on unconstrained variables.
+ *
+ * This module implements a preprocessing phase which replaces certain
+ * "unconstrained" expressions by variables.  Based on Roberto
+ * Bruttomesso's PhD thesis.
+ */
 
 #include "preprocessing/passes/unconstrained_simplifier.h"
 
-#include "smt/smt_statistics_registry.h"
+#include "expr/dtype.h"
+#include "expr/skolem_manager.h"
+#include "options/quantifiers_options.h"
+#include "preprocessing/assertion_pipeline.h"
+#include "preprocessing/preprocessing_pass_context.h"
+#include "smt/logic_exception.h"
 #include "theory/logic_info.h"
 #include "theory/rewriter.h"
+#include "util/bitvector.h"
+#include "util/rational.h"
+#include "util/statistics_registry.h"
 
-namespace CVC4 {
+using namespace std;
+using namespace cvc5::internal::kind;
+using namespace cvc5::internal::theory;
+
+namespace cvc5::internal {
 namespace preprocessing {
 namespace passes {
-
-using namespace CVC4::theory;
 
 UnconstrainedSimplifier::UnconstrainedSimplifier(
     PreprocessingPassContext* preprocContext)
     : PreprocessingPass(preprocContext, "unconstrained-simplifier"),
-      d_numUnconstrainedElim("preprocessor::number of unconstrained elims", 0),
-      d_context(preprocContext->getDecisionContext()),
-      d_substitutions(preprocContext->getDecisionContext()),
-      d_logicInfo(preprocContext->getLogicInfo())
+      d_numUnconstrainedElim(statisticsRegistry().registerInt(
+          "preprocessor::number of unconstrained elims")),
+      d_context(context()),
+      d_substitutions(context())
 {
-  smtStatisticsRegistry()->registerStat(&d_numUnconstrainedElim);
-}
-
-UnconstrainedSimplifier::~UnconstrainedSimplifier()
-{
-  smtStatisticsRegistry()->unregisterStat(&d_numUnconstrainedElim);
 }
 
 struct unc_preprocess_stack_element
@@ -75,6 +77,16 @@ void UnconstrainedSimplifier::visitAll(TNode assertion)
         {
           d_unconstrained.erase(current);
         }
+        else
+        {
+          // Also erase the children from the visited-once set when we visit a
+          // node a second time, otherwise variables in this node are not
+          // erased from the set of unconstrained variables.
+          for (TNode childNode : current)
+          {
+            toVisit.push_back(unc_preprocess_stack_element(childNode, current));
+          }
+        }
       }
       ++find->second;
       continue;
@@ -85,11 +97,19 @@ void UnconstrainedSimplifier::visitAll(TNode assertion)
 
     if (current.getNumChildren() == 0)
     {
-      if (current.getKind() == kind::VARIABLE
-          || current.getKind() == kind::SKOLEM)
+      if (current.isVar())
       {
         d_unconstrained.insert(current);
       }
+    }
+    else if (current.isClosure())
+    {
+      // Throw an exception. This should never happen in practice unless the
+      // user specifically enabled unconstrained simplification in an illegal
+      // logic.
+      throw LogicException(
+          "Cannot use unconstrained simplification in this logic, due to "
+          "(possibly internally introduced) quantified formula.");
     }
     else
     {
@@ -101,19 +121,15 @@ void UnconstrainedSimplifier::visitAll(TNode assertion)
   }
 }
 
-Node UnconstrainedSimplifier::newUnconstrainedVar(TypeNode t, TNode var)
+Node UnconstrainedSimplifier::newUnconstrainedVar(TypeNode t)
 {
-  Node n = NodeManager::currentNM()->mkSkolem(
-      "unconstrained",
-      t,
-      "a new var introduced because of unconstrained variable "
-          + var.toString());
+  Node n = NodeManager::mkDummySkolem("unconstrained", t);
   return n;
 }
 
 void UnconstrainedSimplifier::processUnconstrained()
 {
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
 
   vector<TNode> workList(d_unconstrained.begin(), d_unconstrained.end());
   Node currentSub;
@@ -138,7 +154,7 @@ void UnconstrainedSimplifier::processUnconstrained()
       {
         // If-then-else operator - any two unconstrained children makes the
         // parent unconstrained
-        case kind::ITE:
+        case Kind::ITE:
         {
           Assert(parent[0] == current || parent[1] == current
                  || parent[2] == current);
@@ -208,7 +224,7 @@ void UnconstrainedSimplifier::processUnconstrained()
               // Special case: condition is unconstrained, then and else are
               // different, and total cardinality of the type is 2, then the
               // result is unconstrained
-              Node test = Rewriter::rewrite(parent[1].eqNode(parent[2]));
+              Node test = rewrite(parent[1].eqNode(parent[2]));
               if (test == nm->mkConst<bool>(false))
               {
                 ++d_numUnconstrainedElim;
@@ -216,7 +232,7 @@ void UnconstrainedSimplifier::processUnconstrained()
                 {
                   currentSub = current;
                 }
-                currentSub = newUnconstrainedVar(parent.getType(), currentSub);
+                currentSub = newUnconstrainedVar(parent.getType());
                 current = parent;
               }
             }
@@ -227,22 +243,22 @@ void UnconstrainedSimplifier::processUnconstrained()
         // Comparisons that return a different type - assuming domains are
         // larger than 1, any unconstrained child makes parent unconstrained as
         // well
-        case kind::EQUAL:
-          if (parent[0].getType() != parent[1].getType())
+        case Kind::EQUAL:
+        {
+          // equality uses strict type rule
+          AssertEqual(parent[0].getType(), parent[1].getType());
+          CardinalityClass c = parent[0].getType().getCardinalityClass();
+          if (c == CardinalityClass::ONE)
           {
-            TNode other = (parent[0] == current) ? parent[1] : parent[0];
-            if (current.getType().isSubtypeOf(other.getType()))
-            {
-              break;
-            }
+            break;
           }
-          if (parent[0].getType().isDatatype())
+          // Otherwise if the cardinality class is INTERPRETED_ONE, then
+          // the type may be one if finite model finding is enabled. We abort
+          // in this case.
+          if (c == CardinalityClass::INTERPRETED_ONE)
           {
-            TypeNode tn = parent[0].getType();
-            const Datatype& dt = ((DatatypeType)(tn).toType()).getDatatype();
-            if (dt.isRecursiveSingleton(tn.toType()))
+            if (options().quantifiers.finiteModelFind)
             {
-              // domain size may be 1
               break;
             }
           }
@@ -251,12 +267,13 @@ void UnconstrainedSimplifier::processUnconstrained()
             checkParent = true;
             break;
           }
-          CVC4_FALLTHROUGH;
-        case kind::BITVECTOR_COMP:
-        case kind::LT:
-        case kind::LEQ:
-        case kind::GT:
-        case kind::GEQ:
+          CVC5_FALLTHROUGH;
+        }
+        case Kind::BITVECTOR_COMP:
+        case Kind::LT:
+        case Kind::LEQ:
+        case Kind::GT:
+        case Kind::GEQ:
         {
           if (d_unconstrained.find(parent) == d_unconstrained.end()
               && !d_substitutions.hasSubstitution(parent))
@@ -268,7 +285,7 @@ void UnconstrainedSimplifier::processUnconstrained()
             {
               currentSub = current;
             }
-            currentSub = newUnconstrainedVar(parent.getType(), currentSub);
+            currentSub = newUnconstrainedVar(parent.getType());
             current = parent;
           }
           else
@@ -279,10 +296,10 @@ void UnconstrainedSimplifier::processUnconstrained()
         }
 
         // Unary operators that propagate unconstrainedness
-        case kind::NOT:
-        case kind::BITVECTOR_NOT:
-        case kind::BITVECTOR_NEG:
-        case kind::UMINUS:
+        case Kind::NOT:
+        case Kind::BITVECTOR_NOT:
+        case Kind::BITVECTOR_NEG:
+        case Kind::NEG:
           ++d_numUnconstrainedElim;
           Assert(parent[0] == current);
           if (currentSub.isNull())
@@ -294,26 +311,26 @@ void UnconstrainedSimplifier::processUnconstrained()
 
         // Unary operators that propagate unconstrainedness and return a
         // different type
-        case kind::BITVECTOR_EXTRACT:
+        case Kind::BITVECTOR_EXTRACT:
           ++d_numUnconstrainedElim;
           Assert(parent[0] == current);
           if (currentSub.isNull())
           {
             currentSub = current;
           }
-          currentSub = newUnconstrainedVar(parent.getType(), currentSub);
+          currentSub = newUnconstrainedVar(parent.getType());
           current = parent;
           break;
 
         // Operators returning same type requiring all children to be
         // unconstrained
-        case kind::AND:
-        case kind::OR:
-        case kind::IMPLIES:
-        case kind::BITVECTOR_AND:
-        case kind::BITVECTOR_OR:
-        case kind::BITVECTOR_NAND:
-        case kind::BITVECTOR_NOR:
+        case Kind::AND:
+        case Kind::OR:
+        case Kind::IMPLIES:
+        case Kind::BITVECTOR_AND:
+        case Kind::BITVECTOR_OR:
+        case Kind::BITVECTOR_NAND:
+        case Kind::BITVECTOR_NOR:
         {
           bool allUnconstrained = true;
           for (TNode child : parent)
@@ -332,14 +349,14 @@ void UnconstrainedSimplifier::processUnconstrained()
         break;
 
         // Require all children to be unconstrained and different
-        case kind::BITVECTOR_SHL:
-        case kind::BITVECTOR_LSHR:
-        case kind::BITVECTOR_ASHR:
-        case kind::BITVECTOR_UDIV_TOTAL:
-        case kind::BITVECTOR_UREM_TOTAL:
-        case kind::BITVECTOR_SDIV:
-        case kind::BITVECTOR_SREM:
-        case kind::BITVECTOR_SMOD:
+        case Kind::BITVECTOR_SHL:
+        case Kind::BITVECTOR_LSHR:
+        case Kind::BITVECTOR_ASHR:
+        case Kind::BITVECTOR_UDIV:
+        case Kind::BITVECTOR_UREM:
+        case Kind::BITVECTOR_SDIV:
+        case Kind::BITVECTOR_SREM:
+        case Kind::BITVECTOR_SMOD:
         {
           bool allUnconstrained = true;
           bool allDifferent = true;
@@ -372,7 +389,7 @@ void UnconstrainedSimplifier::processUnconstrained()
 
         // Requires all children to be unconstrained and different, and returns
         // a different type
-        case kind::BITVECTOR_CONCAT:
+        case Kind::BITVECTOR_CONCAT:
         {
           bool allUnconstrained = true;
           bool allDifferent = true;
@@ -406,7 +423,7 @@ void UnconstrainedSimplifier::processUnconstrained()
               {
                 currentSub = current;
               }
-              currentSub = newUnconstrainedVar(parent.getType(), currentSub);
+              currentSub = newUnconstrainedVar(parent.getType());
               current = parent;
             }
             else
@@ -419,23 +436,23 @@ void UnconstrainedSimplifier::processUnconstrained()
 
         // N-ary operators returning same type requiring at least one child to
         // be unconstrained
-        case kind::PLUS:
-        case kind::MINUS:
+        case Kind::ADD:
+        case Kind::SUB:
           if (current.getType().isInteger() && !parent.getType().isInteger())
           {
             break;
           }
-          CVC4_FALLTHROUGH;
-        case kind::XOR:
-        case kind::BITVECTOR_XOR:
-        case kind::BITVECTOR_XNOR:
-        case kind::BITVECTOR_PLUS:
-        case kind::BITVECTOR_SUB: checkParent = true; break;
+          CVC5_FALLTHROUGH;
+        case Kind::XOR:
+        case Kind::BITVECTOR_XOR:
+        case Kind::BITVECTOR_XNOR:
+        case Kind::BITVECTOR_ADD:
+        case Kind::BITVECTOR_SUB: checkParent = true; break;
 
         // Multiplication/division: must be non-integer and other operand must
         // be non-zero
-        case kind::MULT:
-        case kind::DIVISION:
+        case Kind::MULT:
+        case Kind::DIVISION:
         {
           Assert(parent.getNumChildren() == 2);
           TNode other;
@@ -455,9 +472,9 @@ void UnconstrainedSimplifier::processUnconstrained()
             {
               if (current.getType().isInteger() && other.getType().isInteger())
               {
-                Assert(parent.getKind() == kind::DIVISION
+                Assert(parent.getKind() == Kind::DIVISION
                        || parent.getType().isInteger());
-                if (parent.getKind() == kind::DIVISION)
+                if (parent.getKind() == Kind::DIVISION)
                 {
                   break;
                 }
@@ -478,7 +495,7 @@ void UnconstrainedSimplifier::processUnconstrained()
           {
             // if only the denominator of a division is unconstrained, can't
             // set it to 0 so the result is not unconstrained
-            if (parent.getKind() == kind::DIVISION && current == parent[1])
+            if (parent.getKind() == Kind::DIVISION && current == parent[1])
             {
               break;
             }
@@ -487,23 +504,24 @@ void UnconstrainedSimplifier::processUnconstrained()
             if (current.getType().isInteger())
             {
               // div/mult by 1 should have been simplified
-              Assert(other != nm->mkConst<Rational>(1));
+              Assert(other != nm->mkConstInt(Rational(1)));
               // div by -1 should have been simplified
-              if (other != nm->mkConst<Rational>(-1))
+              if (other != nm->mkConstInt(Rational(-1)))
               {
                 break;
               }
               else
               {
-                Assert(parent.getKind() == kind::MULT);
+                Assert(parent.getKind() == Kind::MULT);
                 Assert(parent.getType().isInteger());
               }
             }
             else
             {
               // TODO(#2377): could build ITE here
-              Node test = other.eqNode(nm->mkConst<Rational>(0));
-              if (Rewriter::rewrite(test) != nm->mkConst<bool>(false))
+              Node test = other.eqNode(
+                  nm->mkConstRealOrInt(other.getType(), Rational(0)));
+              if (!CVC5_EQUAL(rewrite(test), nm->mkConst<bool>(false)))
               {
                 break;
               }
@@ -520,7 +538,7 @@ void UnconstrainedSimplifier::processUnconstrained()
 
         // Bitvector MULT - current must only appear once in the children:
         // all other children must be unconstrained or odd
-        case kind::BITVECTOR_MULT:
+        case Kind::BITVECTOR_MULT:
         {
           bool found = false;
           bool done = false;
@@ -546,7 +564,7 @@ void UnconstrainedSimplifier::processUnconstrained()
               Node test = nm->mkNode(extractOp, children);
               BitVector one(1, unsigned(1));
               test = test.eqNode(nm->mkConst<BitVector>(one));
-              if (Rewriter::rewrite(test) != nm->mkConst<bool>(true))
+              if (!CVC5_EQUAL(rewrite(test), nm->mkConst<bool>(true)))
               {
                 done = true;
                 break;
@@ -563,8 +581,8 @@ void UnconstrainedSimplifier::processUnconstrained()
 
         // Uninterpreted function - if domain is infinite, no quantifiers are
         // used, and any child is unconstrained, result is unconstrained
-        case kind::APPLY_UF:
-          if (d_logicInfo.isQuantified()
+        case Kind::APPLY_UF:
+          if (logicInfo().isQuantified()
               || !current.getType().getCardinality().isInfinite())
           {
             break;
@@ -577,10 +595,9 @@ void UnconstrainedSimplifier::processUnconstrained()
             {
               currentSub = current;
             }
-            if (parent.getType() != current.getType())
-            {
-              currentSub = newUnconstrainedVar(parent.getType(), currentSub);
-            }
+            // always introduce a new variable; it is unsound to try to reuse
+            // currentSub as the variable, see issue #4469.
+            currentSub = newUnconstrainedVar(parent.getType());
             current = parent;
           }
           else
@@ -590,7 +607,7 @@ void UnconstrainedSimplifier::processUnconstrained()
           break;
 
         // Array select - if array is unconstrained, so is result
-        case kind::SELECT:
+        case Kind::SELECT:
           if (parent[0] == current)
           {
             ++d_numUnconstrainedElim;
@@ -600,14 +617,14 @@ void UnconstrainedSimplifier::processUnconstrained()
               currentSub = current;
             }
             currentSub = newUnconstrainedVar(
-                current.getType().getArrayConstituentType(), currentSub);
+                current.getType().getArrayConstituentType());
             current = parent;
           }
           break;
 
         // Array store - if both store and value are unconstrained, so is
         // resulting store
-        case kind::STORE:
+        case Kind::STORE:
           if (((parent[0] == current
                 && d_unconstrained.find(parent[2]) != d_unconstrained.end())
                || (parent[2] == current
@@ -646,35 +663,35 @@ void UnconstrainedSimplifier::processUnconstrained()
         // Bit-vector comparisons: replace with new Boolean variable, but have
         // to also conjoin with a side condition as there is always one case
         // when the comparison is forced to be false
-        case kind::BITVECTOR_ULT:
-        case kind::BITVECTOR_UGE:
-        case kind::BITVECTOR_UGT:
-        case kind::BITVECTOR_ULE:
-        case kind::BITVECTOR_SLT:
-        case kind::BITVECTOR_SGE:
-        case kind::BITVECTOR_SGT:
-        case kind::BITVECTOR_SLE:
+        case Kind::BITVECTOR_ULT:
+        case Kind::BITVECTOR_UGE:
+        case Kind::BITVECTOR_UGT:
+        case Kind::BITVECTOR_ULE:
+        case Kind::BITVECTOR_SLT:
+        case Kind::BITVECTOR_SGE:
+        case Kind::BITVECTOR_SGT:
+        case Kind::BITVECTOR_SLE:
         {
           // Tuples over (signed, swap, strict).
           switch (parent.getKind())
           {
-            case kind::BITVECTOR_UGE: break;
-            case kind::BITVECTOR_ULT: strict = true; break;
-            case kind::BITVECTOR_ULE: swap = true; break;
-            case kind::BITVECTOR_UGT:
+            case Kind::BITVECTOR_UGE: break;
+            case Kind::BITVECTOR_ULT: strict = true; break;
+            case Kind::BITVECTOR_ULE: swap = true; break;
+            case Kind::BITVECTOR_UGT:
               swap = true;
               strict = true;
               break;
-            case kind::BITVECTOR_SGE: isSigned = true; break;
-            case kind::BITVECTOR_SLT:
+            case Kind::BITVECTOR_SGE: isSigned = true; break;
+            case Kind::BITVECTOR_SLT:
               isSigned = true;
               strict = true;
               break;
-            case kind::BITVECTOR_SLE:
+            case Kind::BITVECTOR_SLE:
               isSigned = true;
               swap = true;
               break;
-            case kind::BITVECTOR_SGT:
+            case Kind::BITVECTOR_SGT:
               isSigned = true;
               swap = true;
               strict = true;
@@ -703,7 +720,7 @@ void UnconstrainedSimplifier::processUnconstrained()
               {
                 currentSub = current;
               }
-              currentSub = newUnconstrainedVar(parent.getType(), currentSub);
+              currentSub = newUnconstrainedVar(parent.getType());
               current = parent;
             }
             else
@@ -725,10 +742,9 @@ void UnconstrainedSimplifier::processUnconstrained()
             {
               currentSub = current;
             }
-            currentSub = newUnconstrainedVar(parent.getType(), currentSub);
+            currentSub = newUnconstrainedVar(parent.getType());
             current = parent;
-            Node test =
-                Rewriter::rewrite(other.eqNode(nm->mkConst<BitVector>(bv)));
+            Node test = rewrite(other.eqNode(nm->mkConst<BitVector>(bv)));
             if (test == nm->mkConst<bool>(false))
             {
               break;
@@ -745,11 +761,11 @@ void UnconstrainedSimplifier::processUnconstrained()
         }
 
         // Do nothing
-        case kind::BITVECTOR_SIGN_EXTEND:
-        case kind::BITVECTOR_ZERO_EXTEND:
-        case kind::BITVECTOR_REPEAT:
-        case kind::BITVECTOR_ROTATE_LEFT:
-        case kind::BITVECTOR_ROTATE_RIGHT:
+        case Kind::BITVECTOR_SIGN_EXTEND:
+        case Kind::BITVECTOR_ZERO_EXTEND:
+        case Kind::BITVECTOR_REPEAT:
+        case Kind::BITVECTOR_ROTATE_LEFT:
+        case Kind::BITVECTOR_ROTATE_RIGHT:
 
         default: break;
       }
@@ -779,6 +795,10 @@ void UnconstrainedSimplifier::processUnconstrained()
     }
     if (!currentSub.isNull())
     {
+      Trace("unc-simp")
+          << "UnconstrainedSimplifier::processUnconstrained: introduce "
+          << currentSub << " for " << current << ", parent " << parent
+          << std::endl;
       Assert(currentSub.isVar());
       d_substitutions.addSubstitution(current, currentSub, false);
     }
@@ -813,9 +833,9 @@ void UnconstrainedSimplifier::processUnconstrained()
 PreprocessingPassResult UnconstrainedSimplifier::applyInternal(
     AssertionPipeline* assertionsToPreprocess)
 {
-  d_preprocContext->spendResource(options::preprocessStep());
+  d_preprocContext->spendResource(Resource::PreprocessStep);
 
-  std::vector<Node>& assertions = assertionsToPreprocess->ref();
+  const std::vector<Node>& assertions = assertionsToPreprocess->ref();
 
   d_context->push();
 
@@ -827,10 +847,18 @@ PreprocessingPassResult UnconstrainedSimplifier::applyInternal(
   if (!d_unconstrained.empty())
   {
     processUnconstrained();
-    //    d_substitutions.print(Message.getStream());
-    for (Node& assertion : assertions)
+    for (size_t i = 0, asize = assertions.size(); i < asize; ++i)
     {
-      assertion = Rewriter::rewrite(d_substitutions.apply(assertion));
+      Node a = assertions[i];
+      Node as = d_substitutions.apply(a);
+      // nothing to do if substitutions has no effect, skip
+      if (as != a)
+      {
+        // replace the assertion
+        assertionsToPreprocess->replace(
+            i, as, nullptr, TrustId::PREPROCESS_UNCONSTRAINED_SIMP);
+        assertionsToPreprocess->ensureRewritten(i);
+      }
     }
   }
 
@@ -844,7 +872,6 @@ PreprocessingPassResult UnconstrainedSimplifier::applyInternal(
   return PreprocessingPassResult::NO_CONFLICT;
 }
 
-
 }  // namespace passes
 }  // namespace preprocessing
-}  // namespace CVC4
+}  // namespace cvc5::internal

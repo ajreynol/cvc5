@@ -1,36 +1,40 @@
-/*********************                                                        */
-/*! \file model_blocker.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2019 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Utility for blocking the current model
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Utility for blocking the current model.
+ */
 
-#include "cvc4_private.h"
+#include "cvc5_private.h"
 
-#ifndef __CVC4__THEORY__MODEL_BLOCKER_H
-#define __CVC4__THEORY__MODEL_BLOCKER_H
+#ifndef __CVC5__THEORY__MODEL_BLOCKER_H
+#define __CVC5__THEORY__MODEL_BLOCKER_H
+
+#include <cvc5/cvc5_types.h>
 
 #include <vector>
 
-#include "expr/expr.h"
-#include "options/smt_options.h"
-#include "theory/theory_model.h"
+#include "expr/node.h"
+#include "smt/env_obj.h"
 
-namespace CVC4 {
+namespace cvc5::internal {
+
+namespace theory {
+class TheoryModel;
+}
 
 /**
  * A utility for blocking the current model.
  */
-class ModelBlocker
+class ModelBlocker : protected EnvObj
 {
  public:
+  ModelBlocker(Env& e);
   /** get model blocker
    *
    * This returns a disjunction of literals ~L1 V ... V ~Ln with the following
@@ -46,7 +50,8 @@ class ModelBlocker
    * { t1 ... tn }; if exprToBlock is empty, then t1 ... tn are the free
    * variables of assertions.
    *
-   * We expect exprToBlock to be non-empty only if mode is BLOCK_MODELS_VALUES.
+   * We expect exprToBlock to be non-empty only if mode is
+   * BlockModelsMode::VALUES.
    *
    * For example, if our input is:
    *    x > 0 ^ ( y < 0 V z < 0 V w < 0 )
@@ -58,13 +63,13 @@ class ModelBlocker
    * our input. In other words, we do not return ~(x < 0) V ~(w < 0) since the
    * left disjunct is always false.
    */
-  static Expr getModelBlocker(
-      const std::vector<Expr>& assertions,
+  Node getModelBlocker(
+      const std::vector<Node>& assertions,
       theory::TheoryModel* m,
-      BlockModelsMode mode,
-      const std::vector<Expr>& exprToBlock = std::vector<Expr>());
+      modes::BlockModelsMode mode,
+      const std::vector<Node>& exprToBlock = std::vector<Node>());
 }; /* class TheoryModelCoreBuilder */
 
-}  // namespace CVC4
+}  // namespace cvc5::internal
 
-#endif /* __CVC4__THEORY__MODEL_BLOCKER_H */
+#endif /* __CVC5__THEORY__MODEL_BLOCKER_H */

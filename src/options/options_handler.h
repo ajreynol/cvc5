@@ -1,48 +1,36 @@
-/*********************                                                        */
-/*! \file options_handler.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Tim King, Andrew Reynolds, Aina Niemetz
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2019 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Interface for custom handlers and predicates options.
- **
- ** Interface for custom handlers and predicates options.
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Interface for custom handlers and predicates options.
+ */
 
-#include "cvc4_private.h"
+#include "cvc5_private.h"
 
-#ifndef CVC4__OPTIONS__OPTIONS_HANDLER_H
-#define CVC4__OPTIONS__OPTIONS_HANDLER_H
+#ifndef CVC5__OPTIONS__OPTIONS_HANDLER_H
+#define CVC5__OPTIONS__OPTIONS_HANDLER_H
 
 #include <ostream>
+#include <sstream>
 #include <string>
 
-#include "base/modal_exception.h"
-#include "options/arith_heuristic_pivot_rule.h"
-#include "options/arith_propagation_mode.h"
-#include "options/arith_unate_lemma_mode.h"
-#include "options/base_handlers.h"
-#include "options/bool_to_bv_mode.h"
-#include "options/bv_bitblast_mode.h"
-#include "options/datatypes_modes.h"
-#include "options/decision_mode.h"
+#include "options/base_options.h"
+#include "options/bv_options.h"
+#include "options/decision_options.h"
 #include "options/language.h"
+#include "options/managed_streams.h"
 #include "options/option_exception.h"
-#include "options/options.h"
-#include "options/printer_modes.h"
-#include "options/quantifiers_modes.h"
-#include "options/smt_modes.h"
-#include "options/strings_modes.h"
-#include "options/sygus_out_mode.h"
-#include "options/theoryof_mode.h"
-#include "options/ufss_mode.h"
+#include "options/quantifiers_options.h"
 
-namespace CVC4 {
+namespace cvc5::internal {
+
+class Options;
+
 namespace options {
 
 /**
@@ -50,252 +38,87 @@ namespace options {
  *
  * Most functions can throw an OptionException on failure.
  */
-class OptionsHandler {
-public:
-  OptionsHandler(Options* options);
+class OptionsHandler
+{
+ public:
+  explicit OptionsHandler(Options* options);
 
-  void unsignedGreater0(const std::string& option, unsigned value) {
-    options::greater(0)(option, value);
+  template <typename T>
+  static void checkMinimum(const std::string& flag, T value, T minimum)
+  {
+    if (value < minimum)
+    {
+      std::stringstream ss;
+      ss << flag << " = " << value
+         << " is not a legal setting, value should be at least " << minimum
+         << ".";
+      throw OptionException(ss.str());
+    }
+  }
+  template <typename T>
+  static void checkMaximum(const std::string& flag, T value, T maximum)
+  {
+    if (value > maximum)
+    {
+      std::stringstream ss;
+      ss << flag << " = " << value
+         << " is not a legal setting, value should be at most " << maximum
+         << ".";
+      throw OptionException(ss.str());
+    }
   }
 
-  void unsignedLessEqual2(const std::string& option, unsigned value) {
-    options::less_equal(2)(option, value);
-  }
+  /******************************* base options *******************************/
+  /** Apply the error output stream to the different output channels */
+  void setErrStream(const std::string& flag, const ManagedErr& me) const;
 
-  void doubleGreaterOrEqual0(const std::string& option, double value) {
-    options::greater_equal(0.0)(option, value);
-  }
+  /** Convert option value to Language enum */
+  Language stringToLanguage(const std::string& flag,
+                            const std::string& optarg) const;
+  /** Set the input language. Check that lang is not LANG_AST */
+  void setInputLanguage(const std::string& flag, Language lang) const;
+  /** Apply verbosity to the different output channels */
+  void setVerbosity(const std::string& flag, int value) const;
+  /** Decrease verbosity and call setVerbosity */
+  void decreaseVerbosity(const std::string& flag, bool value);
+  /** Increase verbosity and call setVerbosity */
+  void increaseVerbosity(const std::string& flag, bool value);
+  /** If statistics are disabled, disable statistics sub-options */
+  void setStats(const std::string& flag, bool value) const;
+  /** If statistics sub-option is disabled, enable statistics */
+  void setStatsDetail(const std::string& flag, bool value) const;
+  /** Enable a particular trace tag */
+  void enableTraceTag(const std::string& flag, const std::string& optarg) const;
+  /** Enable a particular output tag */
+  void enableOutputTag(const std::string& flag, OutputTag optarg) const;
+  /** Pass the resource weight specification to the resource manager */
+  void setResourceWeight(const std::string& flag,
+                         const std::string& optarg) const;
 
-  void doubleLessOrEqual1(const std::string& option, double value) {
-    options::less_equal(1.0)(option, value);
-  }
+  /******************************* bv options *******************************/
 
-  // theory/arith/options_handlers.h
-  ArithUnateLemmaMode stringToArithUnateLemmaMode(std::string option,
-                                                  std::string optarg);
-  ArithPropagationMode stringToArithPropagationMode(std::string option,
-                                                    std::string optarg);
-  ErrorSelectionRule stringToErrorSelectionRule(std::string option,
-                                                std::string optarg);
+  /** Check that the sat solver mode is compatible with other bv options */
+  void checkBvSatSolver(const std::string& flag, BvSatSolverMode m) const;
 
-  // theory/quantifiers/options_handlers.h
-  theory::quantifiers::InstWhenMode stringToInstWhenMode(std::string option,
-                                                         std::string optarg);
-  void checkInstWhenMode(std::string option,
-                         theory::quantifiers::InstWhenMode mode);
-  theory::quantifiers::LiteralMatchMode stringToLiteralMatchMode(
-      std::string option, std::string optarg);
-  void checkLiteralMatchMode(std::string option,
-                             theory::quantifiers::LiteralMatchMode mode);
-  theory::quantifiers::MbqiMode stringToMbqiMode(std::string option,
-                                                 std::string optarg);
-  void checkMbqiMode(std::string option, theory::quantifiers::MbqiMode mode);
-  theory::quantifiers::QcfWhenMode stringToQcfWhenMode(std::string option,
-                                                       std::string optarg);
-  theory::quantifiers::QcfMode stringToQcfMode(std::string option,
-                                               std::string optarg);
-  theory::quantifiers::UserPatMode stringToUserPatMode(std::string option,
-                                                       std::string optarg);
-  theory::quantifiers::TriggerSelMode stringToTriggerSelMode(
-      std::string option, std::string optarg);
-  theory::quantifiers::TriggerActiveSelMode stringToTriggerActiveSelMode(
-      std::string option, std::string optarg);
-  theory::quantifiers::PrenexQuantMode stringToPrenexQuantMode(
-      std::string option, std::string optarg);
-  theory::quantifiers::TermDbMode stringToTermDbMode(std::string option,
-                                                     std::string optarg);
-  theory::quantifiers::IteLiftQuantMode stringToIteLiftQuantMode(
-      std::string option, std::string optarg);
-  theory::quantifiers::CbqiBvIneqMode stringToCbqiBvIneqMode(
-      std::string option, std::string optarg);
-  theory::quantifiers::CegqiSingleInvMode stringToCegqiSingleInvMode(
-      std::string option, std::string optarg);
-  theory::quantifiers::CegqiSingleInvRconsMode stringToCegqiSingleInvRconsMode(
-      std::string option, std::string optarg);
-  theory::quantifiers::CegisSampleMode stringToCegisSampleMode(
-      std::string option, std::string optarg);
-  theory::quantifiers::SygusQueryDumpFilesMode stringToSygusQueryDumpFilesMode(
-      std::string option, std::string optarg);
-  theory::quantifiers::SygusFilterSolMode stringToSygusFilterSolMode(
-      std::string option, std::string optarg);
-  theory::quantifiers::SygusInvTemplMode stringToSygusInvTemplMode(
-      std::string option, std::string optarg);
-  theory::quantifiers::SygusActiveGenMode stringToSygusActiveGenMode(
-      std::string option, std::string optarg);
-  theory::quantifiers::SygusUnifPiMode stringToSygusUnifPiMode(
-      std::string option, std::string optarg);
-  theory::quantifiers::SygusGrammarConsMode stringToSygusGrammarConsMode(
-      std::string option, std::string optarg);
-  theory::quantifiers::MacrosQuantMode stringToMacrosQuantMode(
-      std::string option, std::string optarg);
-  theory::quantifiers::QuantDSplitMode stringToQuantDSplitMode(
-      std::string option, std::string optarg);
-  theory::quantifiers::QuantRepMode stringToQuantRepMode(std::string option,
-                                                         std::string optarg);
-  theory::SygusFairMode stringToSygusFairMode(std::string option,
-                                              std::string optarg);
+  /******************************* main options *******************************/
+  /** Show the solver build configuration and exit */
+  void showConfiguration(const std::string& flag, bool value) const;
+  /** Show copyright information and exit */
+  void showCopyright(const std::string& flag, bool value) const;
+  /** Show version information and exit */
+  void showVersion(const std::string& flag, bool value) const;
+  /** Show all trace tags and exit */
+  void showTraceTags(const std::string& flag, bool value) const;
 
-  // theory/bv/options_handlers.h
-  void abcEnabledBuild(std::string option, bool value);
-  void abcEnabledBuild(std::string option, std::string value);
-  void satSolverEnabledBuild(std::string option, bool value);
-  void satSolverEnabledBuild(std::string option, std::string optarg);
-
-  theory::bv::BitblastMode stringToBitblastMode(std::string option,
-                                                std::string optarg);
-  theory::bv::BvSlicerMode stringToBvSlicerMode(std::string option,
-                                                std::string optarg);
-  preprocessing::passes::BoolToBVMode stringToBoolToBVMode(std::string option,
-                                                           std::string optarg);
-  void setBitblastAig(std::string option, bool arg);
-
-  theory::bv::SatSolverMode stringToSatSolver(std::string option,
-                                              std::string optarg);
-
-  theory::bv::BvProofFormat stringToBvProofFormat(std::string option,
-                                                  std::string optarg);
-  theory::bv::BvOptimizeSatProof stringToBvOptimizeSatProof(std::string option,
-                                                            std::string optarg);
-
-  theory::strings::ProcessLoopMode stringToStringsProcessLoopMode(
-      std::string option, std::string optarg);
-  theory::strings::RegExpInterMode stringToRegExpInterMode(std::string option,
-                                                           std::string optarg);
-
-  // theory/uf/options_handlers.h
-  theory::uf::UfssMode stringToUfssMode(std::string option, std::string optarg);
-
-  // theory/options_handlers.h
-  theory::TheoryOfMode stringToTheoryOfMode(std::string option, std::string optarg);
-  void notifyUseTheoryList(std::string option);
-  std::string handleUseTheoryList(std::string option, std::string optarg);
-
-
-  // printer/options_handlers.h
-  ModelFormatMode stringToModelFormatMode(std::string option,
-                                          std::string optarg);
-  InstFormatMode stringToInstFormatMode(std::string option, std::string optarg);
-
-  // decision/options_handlers.h
-  decision::DecisionMode stringToDecisionMode(std::string option,
-                                              std::string optarg);
-  decision::DecisionWeightInternal stringToDecisionWeightInternal(
-      std::string option, std::string optarg);
-
-  /**
-   * Throws a ModalException if this option is being set after final
-   * initialization.
-   */
-  void notifyBeforeSearch(const std::string& option);
-  void notifyDumpMode(std::string option);
-  SimplificationMode stringToSimplificationMode(std::string option,
-                                                std::string optarg);
-  ModelCoresMode stringToModelCoresMode(std::string option, std::string optarg);
-  BlockModelsMode stringToBlockModelsMode(std::string option,
-                                          std::string optarg);
-  SygusSolutionOutMode stringToSygusSolutionOutMode(std::string option,
-                                                    std::string optarg);
-  void setProduceAssertions(std::string option, bool value);
-  void proofEnabledBuild(std::string option, bool value);
-  void LFSCEnabledBuild(std::string option, bool value);
-  void notifyDumpToFile(std::string option);
-  void notifySetRegularOutputChannel(std::string option);
-  void notifySetDiagnosticOutputChannel(std::string option);
-  std::string checkReplayFilename(std::string option, std::string optarg);
-  void notifySetReplayLogFilename(std::string option);
-
-  void statsEnabledBuild(std::string option, bool value);
-
-  unsigned long limitHandler(std::string option, std::string optarg);
-
-  void notifyTlimit(const std::string& option);
-  void notifyTlimitPer(const std::string& option);
-  void notifyRlimit(const std::string& option);
-  void notifyRlimitPer(const std::string& option);
-
-
-  /* expr/options_handlers.h */
-  void setDefaultExprDepthPredicate(std::string option, int depth);
-  void setDefaultDagThreshPredicate(std::string option, int dag);
-  void notifySetDefaultExprDepth(std::string option);
-  void notifySetDefaultDagThresh(std::string option);
-  void notifySetPrintExprTypes(std::string option);
-
-  /* main/options_handlers.h */
-  void copyright(std::string option);
-  void showConfiguration(std::string option);
-  void showDebugTags(std::string option);
-  void showTraceTags(std::string option);
-  void threadN(std::string option);
-
-  /* options/base_options_handlers.h */
-  void setVerbosity(std::string option, int value);
-  void increaseVerbosity(std::string option);
-  void decreaseVerbosity(std::string option);
-  OutputLanguage stringToOutputLanguage(std::string option, std::string optarg);
-  InputLanguage stringToInputLanguage(std::string option, std::string optarg);
-  void enableTraceTag(std::string option, std::string optarg);
-  void enableDebugTag(std::string option, std::string optarg);
-  void notifyPrintSuccess(std::string option);
+  /***************************** parser options *******************************/
+  void strictParsing(const std::string& flag, bool value) const;
 
  private:
-
   /** Pointer to the containing Options object.*/
-  Options* d_options;
-
-  /* Help strings */
-  static const std::string s_bitblastingModeHelp;
-  static const std::string s_bvSatSolverHelp;
-  static const std::string s_bvProofFormatHelp;
-  static const std::string s_bvOptimizeSatProofHelp;
-  static const std::string s_booleanTermConversionModeHelp;
-  static const std::string s_bvSlicerModeHelp;
-  static const std::string s_stringsProcessLoopModeHelp;
-  static const std::string s_regExpInterModeHelp;
-  static const std::string s_boolToBVModeHelp;
-  static const std::string s_cegqiFairModeHelp;
-  static const std::string s_decisionModeHelp;
-  static const std::string s_instFormatHelp ;
-  static const std::string s_instWhenHelp;
-  static const std::string s_iteLiftQuantHelp;
-  static const std::string s_literalMatchHelp;
-  static const std::string s_macrosQuantHelp;
-  static const std::string s_quantDSplitHelp;
-  static const std::string s_quantRepHelp;
-  static const std::string s_mbqiModeHelp;
-  static const std::string s_modelFormatHelp;
-  static const std::string s_prenexQuantModeHelp;
-  static const std::string s_qcfModeHelp;
-  static const std::string s_qcfWhenModeHelp;
-  static const std::string s_simplificationHelp;
-  static const std::string s_modelCoresHelp;
-  static const std::string s_blockModelsHelp;
-  static const std::string s_sygusSolutionOutModeHelp;
-  static const std::string s_cbqiBvIneqModeHelp;
-  static const std::string s_cegqiSingleInvHelp;
-  static const std::string s_cegqiSingleInvRconsHelp;
-  static const std::string s_cegisSampleHelp;
-  static const std::string s_sygusQueryDumpFileHelp;
-  static const std::string s_sygusFilterSolHelp;
-  static const std::string s_sygusInvTemplHelp;
-  static const std::string s_sygusActiveGenHelp;
-  static const std::string s_sygusUnifPiHelp;
-  static const std::string s_sygusGrammarConsHelp;
-  static const std::string s_termDbModeHelp;
-  static const std::string s_theoryOfModeHelp;
-  static const std::string s_triggerSelModeHelp;
-  static const std::string s_triggerActiveSelModeHelp;
-  static const std::string s_ufssModeHelp;
-  static const std::string s_userPatModeHelp;
-  static const std::string s_fmfBoundMinModeModeHelp;
-  static const std::string s_errorSelectionRulesHelp;
-  static const std::string s_arithPropagationModeHelp;
-  static const std::string s_arithUnateLemmasHelp;
-
+  Options* const d_options;
 }; /* class OptionHandler */
 
+}  // namespace options
+}  // namespace cvc5::internal
 
-}/* CVC4::options namespace */
-}/* CVC4 namespace */
-
-#endif /*  CVC4__OPTIONS__OPTIONS_HANDLER_H */
+#endif /*  CVC5__OPTIONS__OPTIONS_HANDLER_H */

@@ -1,0 +1,57 @@
+id     = "FF"
+name   = "Finite Field Theory"
+
+[[option]]
+  name       = "ffTraceGb"
+  category   = "expert"
+  long       = "ff-trace-gb"
+  type       = "bool"
+  default    = "true"
+  help       = "use a traced groebner basis engine"
+
+[[option]]
+  name       = "ffFieldPolys"
+  category   = "expert"
+  long       = "ff-field-polys"
+  type       = "bool"
+  default    = "false"
+  help       = "include field polynomials in Groebner basis computation; don't do this"
+
+[[option]]
+  name       = "ffElimDisjunctiveBit"
+  category   = "expert"
+  long       = "ff-elim-disjunctive-bit"
+  type       = "bool"
+  default    = "true"
+  help       = "rewrite disjunctive bit constraints (or (= x 1) (= x 0)) as (= (* x x) x)"
+
+[[option]]
+  name       = "ffBitsum"
+  category   = "expert"
+  long       = "ff-bitsum"
+  type       = "bool"
+  default    = "false"
+  help       = "parse bitsums"
+
+[[option]]
+  name       = "ffSolver"
+  category   = "expert"
+  long       = "ff-solver=MODE"
+  type       = "FfSolver"
+  default    = "GB"
+  help       = "which field solver (default: 'gb'; see --ff-solver=help)"
+  help_mode  = "Which field solver"
+[[option.mode.GB]]
+  name = "gb"
+  help = "use one Groebner basis for the whole system"
+[[option.mode.SPLIT_GB]]
+  name = "split"
+  help = "use multiple Groebner bases for partitions of the system"
+
+[[option]]
+  name       = "ff"
+  category   = "expert"
+  long       = "ff"
+  type       = "bool"
+  default    = "true"
+  help       = "enables the finite field solver in applicable logics"

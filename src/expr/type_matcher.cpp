@@ -1,20 +1,20 @@
-/*********************                                                        */
-/*! \file type_matcher.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds, Morgan Deters
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2019 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Implementation of a class representing a type matcher
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Implementation of a class representing a type matcher.
+ */
 
 #include "type_matcher.h"
 
-namespace CVC4 {
+#include "expr/dtype.h"
+
+namespace cvc5::internal {
 
 TypeMatcher::TypeMatcher(TypeNode dt)
 {
@@ -24,14 +24,22 @@ TypeMatcher::TypeMatcher(TypeNode dt)
 
 void TypeMatcher::addTypesFromDatatype(TypeNode dt)
 {
-  std::vector<TypeNode> argTypes = dt.getParamTypes();
+  std::vector<TypeNode> argTypes;
+  if (dt.isInstantiated())
+  {
+    argTypes = dt.getInstantiatedParamTypes();
+  }
+  else
+  {
+    argTypes = dt.getDType().getParameters();
+  }
   addTypes(argTypes);
-  Debug("typecheck-idt") << "instantiating matcher for " << dt << std::endl;
+  Trace("typecheck-idt") << "instantiating matcher for " << dt << std::endl;
   for (unsigned i = 0, narg = argTypes.size(); i < narg; ++i)
   {
     if (dt.isParameterInstantiatedDatatype(i))
     {
-      Debug("typecheck-idt")
+      Trace("typecheck-idt")
           << "++ instantiate param " << i << " : " << d_types[i] << std::endl;
       d_match[i] = d_types[i];
     }
@@ -54,7 +62,7 @@ void TypeMatcher::addTypes(const std::vector<TypeNode>& types)
 
 bool TypeMatcher::doMatching(TypeNode pattern, TypeNode tn)
 {
-  Debug("typecheck-idt") << "doMatching() : " << pattern << " : " << tn
+  Trace("typecheck-idt") << "doMatching() : " << pattern << " : " << tn
                          << std::endl;
   std::vector<TypeNode>::iterator i =
       std::find(d_types.begin(), d_types.end(), pattern);
@@ -63,16 +71,14 @@ bool TypeMatcher::doMatching(TypeNode pattern, TypeNode tn)
     size_t index = i - d_types.begin();
     if (!d_match[index].isNull())
     {
-      Debug("typecheck-idt")
-          << "check subtype " << tn << " " << d_match[index] << std::endl;
-      TypeNode tnn = TypeNode::leastCommonTypeNode(tn, d_match[index]);
-      // recognize subtype relation
-      if (!tnn.isNull())
+      Trace("typecheck-idt")
+          << "check types " << tn << " " << d_match[index] << std::endl;
+      if (tn != d_match[index])
       {
-        d_match[index] = tnn;
-        return true;
+        return false;
       }
-      return false;
+      d_match[index] = tn;
+      return true;
     }
     d_match[index] = tn;
     return true;
@@ -86,9 +92,14 @@ bool TypeMatcher::doMatching(TypeNode pattern, TypeNode tn)
   {
     return false;
   }
-  for (size_t i = 0, nchild = pattern.getNumChildren(); i < nchild; i++)
+  else if (pattern.getNumChildren() == 0)
   {
-    if (!doMatching(pattern[i], tn[i]))
+    // fail if the type parameter or type constructors are different
+    return pattern == tn;
+  }
+  for (size_t j = 0, nchild = pattern.getNumChildren(); j < nchild; j++)
+  {
+    if (!doMatching(pattern[j], tn[j]))
     {
       return false;
     }
@@ -120,4 +131,4 @@ void TypeMatcher::getMatches(std::vector<TypeNode>& types) const
   }
 }
 
-}  // namespace CVC4
+}  // namespace cvc5::internal

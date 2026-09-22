@@ -1,22 +1,18 @@
-/*********************                                                        */
-/*! \file ffs.c
- ** \verbatim
- ** Top contributors (to current version):
- **   Morgan Deters, Andres Noetzli
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2019 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Replacement for ffs() for systems without it (like Win32)
- **
- ** Replacement for ffs() for systems without it (like Win32).
- **/
-
-#include "cvc4_private.h"
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Replacement for ffs() for systems without it (like Win32).
+ */
 
 #include "lib/ffs.h"
+
+#include "cvc5_private.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -25,7 +21,7 @@ extern "C" {
 
 int ffs(int i) {
   long mask = 0x1;
-  int pos = 1;
+  size_t pos = 1;
   while(pos <= sizeof(int) * 8) {
     if((mask & i) != 0) {
       return pos;

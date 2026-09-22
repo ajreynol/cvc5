@@ -1,36 +1,47 @@
-cmake_minimum_required(VERSION 3.2)
+###############################################################################
+# This file is part of the cvc5 project.
+#
+# Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+# in the top-level source directory and their institutional affiliations.
+# All rights reserved.  See the file COPYING in the top-level source
+# directory for licensing information.
+# #############################################################################
+#
+# The build system configuration.
+##
+
+cmake_minimum_required(VERSION 3.16)
 
 #-----------------------------------------------------------------------------#
 # Project configuration
 
-project(cvc4)
+project(cvc5)
 
-set(CVC4_MAJOR   1) # Major component of the version of CVC4.
-set(CVC4_MINOR   8) # Minor component of the version of CVC4.
-set(CVC4_RELEASE 0) # Release component of the version of CVC4.
-
-# Extraversion component of the version of CVC4.
-set(CVC4_EXTRAVERSION "-prerelease")
-
-# Shared library versioning. Increment SOVERSION for every new CVC4 release.
-set(CVC4_SOVERSION 6)
-
-# Full release string for CVC4.
-if(CVC4_RELEASE)
-  set(CVC4_RELEASE_STRING
-      "${CVC4_MAJOR}.${CVC4_MINOR}.${CVC4_RELEASE}${CVC4_EXTRAVERSION}")
-else()
-  set(CVC4_RELEASE_STRING "${CVC4_MAJOR}.${CVC4_MINOR}${CVC4_EXTRAVERSION}")
-endif()
-
+include(CheckIPOSupported)
+include(GNUInstallDirs)
 set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
-set(CMAKE_C_STANDARD 99)
-set(CMAKE_CXX_STANDARD 11)
+
+include(version)
+
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+if (WASM STREQUAL "OFF")
+  set(CMAKE_C_EXTENSIONS OFF)
+else()
+  set(CMAKE_C_EXTENSIONS ON)
+endif()
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_VISIBILITY_PRESET hidden)
+set(CMAKE_VISIBILITY_INLINES_HIDDEN 1)
 
 # Generate compile_commands.json, which can be used for various code completion
 # plugins.
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+# Default component used in install() commands
+set(CMAKE_INSTALL_DEFAULT_COMPONENT_NAME cvc5)
 
 #-----------------------------------------------------------------------------#
 # Policies
@@ -40,61 +51,30 @@ if(POLICY CMP0075)
   cmake_policy(SET CMP0075 NEW)
 endif()
 
+if(POLICY CMP0135)
+  # For `ExternalProject_Add()`, set the timestamp of the files extracted from
+  # the downloaded archive to the time of the extraction. This behavior was
+  # introduced in CMake 3.23 and is the recommended to make sure that
+  # dependencies get rebuilt when the URL changes.
+  cmake_policy(SET CMP0135 NEW)
+endif()
+
+if(POLICY CMP0079)
+  # Allows target_link_libraries() to use targets from other directories.
+  # This will prevent issues with INTERFACE_LINK_LIBRARIES, which allows
+  # cvc5 to be properly linked as a static library on other CMake projects.
+  cmake_policy(SET CMP0079 NEW)
+endif()
+
 #-----------------------------------------------------------------------------#
 # Tell CMake where to find our dependencies
 
-if(ABC_DIR)
-  list(APPEND CMAKE_PREFIX_PATH "${ABC_DIR}")
-endif()
-if(ANTLR_DIR)
-  list(APPEND CMAKE_PREFIX_PATH "${ANTLR_DIR}")
-endif()
-if(CADICAL_DIR)
-  list(APPEND CMAKE_PREFIX_PATH "${CADICAL_DIR}")
-endif()
-if(CRYPTOMINISAT_DIR)
-  list(APPEND CMAKE_PREFIX_PATH "${CRYPTOMINISAT_DIR}")
-endif()
-if(CXXTEST_DIR)
-  list(APPEND CMAKE_PREFIX_PATH "${CXXTEST_DIR}")
-endif()
-if(DRAT2ER_DIR)
-  list(APPEND CMAKE_PREFIX_PATH "${DRAT2ER_DIR}")
-endif()
 if(GLPK_DIR)
   list(APPEND CMAKE_PREFIX_PATH "${GLPK_DIR}")
-endif()
-if(GMP_DIR)
-  list(APPEND CMAKE_PREFIX_PATH "${GMP_DIR}")
-endif()
-if(LFSC_DIR)
-  list(APPEND CMAKE_PREFIX_PATH "${LFSC_DIR}")
-endif()
-if(SYMFPU_DIR)
-  list(APPEND CMAKE_PREFIX_PATH "${SYMFPU_DIR}")
 endif()
 
 # By default the contrib/get-* scripts install dependencies to deps/install.
 list(APPEND CMAKE_PREFIX_PATH "${PROJECT_SOURCE_DIR}/deps/install")
-
-#-----------------------------------------------------------------------------#
-
-set(INCLUDE_INSTALL_DIR include)
-set(LIBRARY_INSTALL_DIR lib)
-set(RUNTIME_INSTALL_DIR bin)
-
-#-----------------------------------------------------------------------------#
-
-# Embed the installation prefix as an RPATH in the executable such that the
-# linker can find our libraries (such as libcvc4parser) when executing the cvc4
-# binary. This is for example useful when installing CVC4 with a custom prefix
-# on macOS (e.g. when using homebrew in a non-standard directory). If we do not
-# set this option, then the linker will not be able to find the required
-# libraries when trying to run CVC4.
-#
-# More information on RPATH in CMake:
-# https://gitlab.kitware.com/cmake/community/wikis/doc/cmake/RPATH-handling
-set(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/${LIBRARY_INSTALL_DIR}")
 
 #-----------------------------------------------------------------------------#
 
@@ -111,79 +91,136 @@ option(ENABLE_GPL "Enable GPL dependencies")
 # >> 3-valued: IGNORE ON OFF
 #    > allows to detect if set by user (default: IGNORE)
 #    > only necessary for options set for build types
-cvc4_option(ENABLE_ASAN           "Enable ASAN build")
-cvc4_option(ENABLE_UBSAN          "Enable UBSan build")
-cvc4_option(ENABLE_TSAN           "Enable TSan build")
-cvc4_option(ENABLE_ASSERTIONS     "Enable assertions")
-cvc4_option(ENABLE_COMP_INC_TRACK
-            "Enable optimizations for incremental SMT-COMP tracks")
-cvc4_option(ENABLE_DEBUG_SYMBOLS  "Enable debug symbols")
-cvc4_option(ENABLE_DUMPING        "Enable dumping")
-cvc4_option(ENABLE_MUZZLE         "Suppress ALL non-result output")
-cvc4_option(ENABLE_OPTIMIZED      "Enable optimization")
-cvc4_option(ENABLE_PROOFS         "Enable proof support")
-cvc4_option(ENABLE_REPLAY         "Enable the replay feature")
-cvc4_option(ENABLE_STATISTICS     "Enable statistics")
-cvc4_option(ENABLE_TRACING        "Enable tracing")
-cvc4_option(ENABLE_UNIT_TESTING   "Enable unit testing")
-cvc4_option(ENABLE_VALGRIND       "Enable valgrind instrumentation")
-cvc4_option(ENABLE_SHARED         "Build as shared library")
-cvc4_option(ENABLE_STATIC_BINARY
-            "Build static binaries with statically linked system libraries")
+option(BUILD_SHARED_LIBS          "Build shared libraries and binary")
+cvc5_option(ENABLE_ASAN           "Enable ASAN build")
+cvc5_option(ENABLE_UBSAN          "Enable UBSan build")
+cvc5_option(ENABLE_TSAN           "Enable TSan build")
+cvc5_option(ENABLE_ASSERTIONS     "Enable assertions")
+cvc5_option(ENABLE_DEBUG_SYMBOLS  "Enable debug symbols")
+cvc5_option(ENABLE_MUZZLE         "Suppress ALL non-result output")
+cvc5_option(ENABLE_SAFE_MODE      "Enable safe mode")
+cvc5_option(ENABLE_STABLE_MODE    "Enable stable mode")
+cvc5_option(ENABLE_STATISTICS     "Enable statistics")
+cvc5_option(ENABLE_TRACING        "Enable tracing")
+cvc5_option(ENABLE_UNIT_TESTING   "Enable unit testing")
+cvc5_option(ENABLE_VALGRIND       "Enable valgrind instrumentation")
+cvc5_option(ENABLE_AUTO_DOWNLOAD  "Enable automatic download of dependencies")
+cvc5_option(USE_PYTHON_VENV       "Install Python dependencies in virtual environment")
+cvc5_option(ENABLE_IPO            "Enable interprocedural optimization")
+
+cvc5_set_option(USE_PYTHON_VENV ON)
+
 # >> 2-valued: ON OFF
 #    > for options where we don't need to detect if set by user (default: OFF)
-option(ENABLE_BEST             "Enable dependencies known to give best performance")
+option(ENABLE_CLANG_TIDY       "Enable clang-tidy static analysis during build")
 option(ENABLE_COVERAGE         "Enable support for gcov coverage testing")
 option(ENABLE_DEBUG_CONTEXT_MM "Enable the debug context memory manager")
 option(ENABLE_PROFILING        "Enable support for gprof profiling")
 
+option(TREAT_WARNING_AS_ERROR  "Treat warnings on building as errors")
+
+# Ensure cvc5 does not use LibPoly's global context by stripping all related code
+option(NO_GLOBAL_POLY_CTX      "Remove global context from LibPoly source code")
+
 # Optional dependencies
 #
-# >> 3-valued: IGNORE ON OFF
-#    > allows to detect if set by user (default: IGNORE)
-#    > only necessary for options set for ENABLE_BEST
-cvc4_option(USE_ABC      "Use ABC for AIG bit-blasting")
-cvc4_option(USE_CLN      "Use CLN instead of GMP")
-cvc4_option(USE_GLPK     "Use GLPK simplex solver")
-cvc4_option(USE_READLINE "Use readline for better interactive support")
 # >> 2-valued: ON OFF
 #    > for options where we don't need to detect if set by user (default: OFF)
-option(USE_CADICAL       "Use CaDiCaL SAT solver")
+option(USE_CLN           "Use CLN instead of GMP")
+option(USE_COCOA         "Use CoCoALib for further polynomial operations")
 option(USE_CRYPTOMINISAT "Use CryptoMiniSat SAT solver")
-option(USE_DRAT2ER       "Include drat2er for making eager BV proofs")
-option(USE_LFSC          "Use LFSC proof checker")
-option(USE_SYMFPU        "Use SymFPU for floating point support")
-option(USE_PYTHON2       "Prefer using Python 2 (for Python bindings)")
-option(USE_PYTHON3       "Prefer using Python 3 (for Python bindings)")
+option(USE_EDITLINE      "Use Editline for better interactive support")
+option(USE_GLPK          "Use GLPK simplex solver")
+option(USE_KISSAT        "Use Kissat SAT solver")
+option(USE_MPFR          "Use MPFR for FP constant folding instead of SymFPU")
+option(USE_POLY          "Use LibPoly for polynomial arithmetic")
+option(USE_NORMALIZ      "Use Normaliz for liastar solver extension")
 
 # Custom install directories for dependencies
 # If no directory is provided by the user, we first check if the dependency was
 # installed via the corresponding contrib/get-* script and if not found, we
 # check the intalled system version. If the user provides a directory we
 # immediately fail if the dependency was not found at the specified location.
-set(ABC_DIR           "" CACHE STRING "Set ABC install directory")
-set(ANTLR_DIR         "" CACHE STRING "Set ANTLR3 install directory")
-set(CADICAL_DIR       "" CACHE STRING "Set CaDiCaL install directory")
-set(CRYPTOMINISAT_DIR "" CACHE STRING "Set CryptoMiniSat install directory")
-set(CXXTEST_DIR       "" CACHE STRING "Set CxxTest install directory")
-set(DRAT2ER_DIR       "" CACHE STRING "Set drat2er install directory")
 set(GLPK_DIR          "" CACHE STRING "Set GLPK install directory")
-set(GMP_DIR           "" CACHE STRING "Set GMP install directory")
-set(LFSC_DIR          "" CACHE STRING "Set LFSC install directory")
-set(SYMFPU_DIR        "" CACHE STRING "Set SymFPU install directory")
+set(PYTHONIC_PATH     "" CACHE STRING "Set Pythonic API repository path")
 
 # Prepend binaries with prefix on make install
 set(PROGRAM_PREFIX    "" CACHE STRING "Program prefix on make install")
 
-# Supported language bindings
-option(BUILD_BINDINGS_JAVA   "Build Java bindings")
-option(BUILD_BINDINGS_PYTHON "Build Python bindings")
+# Supported language bindings based on new C++ API
+option(BUILD_BINDINGS_PYTHON "Build Python bindings based on new C++ API ")
+option(ONLY_PYTHON_EXT_SRC "Create only Python bindings source files")
+option(BUILD_BINDINGS_JAVA "Build Java bindings based on new C++ API ")
+
+# Api documentation
+option(BUILD_DOCS "Build Api documentation")
+option(BUILD_DOCS_GA "Build API documentation with Google Analytics")
+
+option(BUILD_GMP "Build GMP from source")
+option(BUILD_CLN "Build CLN from source")
+
+# Link against static system libraries
+cvc5_option(STATIC_BINARY "Link against static system libraries \
+(enabled by default for static builds)")
+
+option(SKIP_COMPRESS_DEBUG "Skip compression of debug symbols")
+option(SKIP_SET_RPATH      "Skip setting of rpath")
+option(USE_DEFAULT_LINKER  "Use default linker")
+
+# Custom flags for WebAssembly compilation
+set(WASM_FLAGS "" CACHE STRING "Link flags for the WebAssembly binary generation")
+set(WASM "OFF" CACHE STRING "Use a specific extension for WebAssembly compilation")
+
+# Make sure no other available value will be assigned to this variable
+if(NOT(WASM STREQUAL "WASM" OR WASM STREQUAL "JS" OR WASM STREQUAL "HTML" OR WASM STREQUAL "OFF"))
+  message(FATAL_ERROR "${WASM} is not a valid wasm flag value.")
+endif()
+
+if(WASM STREQUAL "OFF")
+  set(WASM_FLAGS "")
+  set(CONFIGURE_CMD_WRAPPER "")
+# If it's a wasm compilation, but isn't using the right flags
+elseif(BUILD_SHARED_LIBS OR NOT(STATIC_BINARY) OR NOT(ENABLE_AUTO_DOWNLOAD))
+  message(FATAL_ERROR "Use --static, --static-binary and --auto-download flags for WebAssembly compilation. GMP will not compile with shared libraries.")
+else()
+  # Older SDKs miscompile cvc5: their getrusage() overruns the caller's
+  # buffer by 16 bytes, silently corrupting adjacent memory (a stack
+  # smash in Minisat::cpuTime and, via CoCoALib, a nulled
+  # GlobalManager pointer).
+  if(EMSCRIPTEN_VERSION VERSION_LESS "6.0.8")
+    message(FATAL_ERROR
+      "Emscripten >= 6.0.8 is required for WebAssembly builds "
+      "(found '${EMSCRIPTEN_VERSION}'). See INSTALL.rst.")
+  endif()
+  set(CONFIGURE_CMD_WRAPPER emconfigure)
+  set(TOOLCHAIN_PREFIX wasm64-unknown-emscripten)
+  string(TOLOWER ".${WASM}" WASM_EXTENSION)
+  set(CMAKE_EXECUTABLE_SUFFIX ${WASM_EXTENSION})
+  set(WASM_FLAGS_CONFIGURE "${WASM_FLAGS}")
+  set(WASM_EXPORTED_FUNCTIONS_FLAG "")
+  if(WASM_FLAGS MATCHES "(-s *EXPORTED_FUNCTIONS=[^ ]+)")
+    set(WASM_EXPORTED_FUNCTIONS_FLAG "${CMAKE_MATCH_1}")
+    string(REPLACE "${CMAKE_MATCH_1}" "" WASM_FLAGS_CONFIGURE "${WASM_FLAGS}")
+  endif()
+  string(APPEND CMAKE_EXE_LINKER_FLAGS " ${WASM_FLAGS_CONFIGURE}")
+endif()
 
 #-----------------------------------------------------------------------------#
 # Internal cmake variables
 
 set(OPTIMIZATION_LEVEL 3)
 set(GPL_LIBS "")
+
+if(ENABLE_CLANG_TIDY)
+  if(NOT ENABLE_ASSERTIONS)
+    message(FATAL_ERROR
+      "Use of clang-tidy requires building with assertions enabled.")
+  endif()
+  set(CMAKE_CXX_CLANG_TIDY "clang-tidy")
+  if(TREAT_WARNING_AS_ERROR)
+    set(CMAKE_CXX_CLANG_TIDY "${CMAKE_CXX_CLANG_TIDY};-warnings-as-errors=*")
+  endif()
+endif()
 
 #-----------------------------------------------------------------------------#
 # Determine number of threads available, used to configure (default) parallel
@@ -228,70 +265,152 @@ include(Config${CMAKE_BUILD_TYPE})
 #-----------------------------------------------------------------------------#
 # Compiler flags
 
+check_min_compiler_version("GNU" 10)
+check_min_compiler_version("Clang" 12)
+
 add_check_c_cxx_flag("-O${OPTIMIZATION_LEVEL}")
 add_check_c_cxx_flag("-Wall")
+add_check_c_cxx_flag("-Wextra")
 add_check_c_flag("-fexceptions")
-add_check_c_cxx_flag("-Wno-deprecated")
+if(EMSCRIPTEN)
+  # emcc compiles C++ with -fignore-exceptions by default, which discards
+  # every catch block. Enabling catching at link time alone (the wasm
+  # linker flags carry -fexceptions) is not enough: the flag must also be
+  # present at compile time, or exceptions unwind straight past main().
+  add_check_cxx_flag("-fexceptions")
+endif()
 add_check_cxx_flag("-Wsuggest-override")
 add_check_cxx_flag("-Wnon-virtual-dtor")
 add_check_c_cxx_flag("-Wimplicit-fallthrough")
+add_check_c_cxx_flag("-Wshadow")
+add_check_c_cxx_flag("-Wtype-limits")
+add_check_cxx_flag("-fno-operator-names")
 
-# Temporarily disable -Wclass-memaccess to suppress 'no trivial copy-assignment'
-# cdlist.h warnings. Remove when fixed.
-add_check_cxx_flag("-Wno-class-memaccess")
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU"
+   AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 13
+   AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 14)
+  # GCC 13 introduced -Wdangling-reference, but the
+  # [[gnu::no_dangling]] attribute to suppress it was only
+  # added in GCC 14, so disable the warning for GCC 13.
+  add_cxx_flag("-Wno-dangling-reference")
+endif()
 
-#-----------------------------------------------------------------------------#
-# Option defaults (three-valued options (cvc4_option(...)))
-#
-# These options are only set if their value is IGNORE. Otherwise, the user
-# already set the option, which we don't want to overwrite.
+# Assume no dynamic initialization of thread-local variables in non-defining
+# translation units. This option should result in better performance and works
+# around crashing issues with our Windows build.
+if(NOT ENABLE_CLANG_TIDY)
+  add_check_cxx_flag("-fno-extern-tls-init")
+endif()
 
-if(ENABLE_STATIC_BINARY)
-  cvc4_set_option(ENABLE_SHARED OFF)
-else()
-  cvc4_set_option(ENABLE_SHARED ON)
+if (WIN32)
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--stack,100000000")
+endif ()
+
+if (NOT USE_DEFAULT_LINKER)
+  #-----------------------------------------------------------------------------#
+  # Use ld.mold if available, otherwise use ld.lld if available, otherwise
+  # use ld.gold if available (unless ASan is enabled).
+
+  set(USE_EXPLICIT_LINKER_FLAG FALSE)
+  execute_process(COMMAND ${CMAKE_C_COMPILER}
+                  -fuse-ld=mold
+                  -Wl,--version ERROR_QUIET OUTPUT_VARIABLE LD_MOLD_VERSION)
+  if ("${LD_MOLD_VERSION}" MATCHES "mold")
+    set(USE_EXPLICIT_LINKER_FLAG TRUE)
+    set(EXPLICIT_LINKER_FLAG " -fuse-ld=mold")
+    message(STATUS "Using mold linker.")
+  else ()
+    execute_process(COMMAND ${CMAKE_C_COMPILER}
+                    -fuse-ld=lld
+                    -Wl,--version ERROR_QUIET OUTPUT_VARIABLE LD_LLD_VERSION)
+    if ("${LD_LLD_VERSION}" MATCHES "LLD")
+      set(USE_EXPLICIT_LINKER_FLAG TRUE)
+      set(EXPLICIT_LINKER_FLAG " -fuse-ld=lld")
+      message(STATUS "Using LLD linker.")
+    elseif (NOT CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64" AND NOT ENABLE_ASAN)
+      # On Linux ARM64, the gold linker has a bug that causes build failures. Additionally,
+      # using the gold linker with ASan triggers "cannot export local symbol" warnings.
+      execute_process(COMMAND ${CMAKE_C_COMPILER}
+                      -fuse-ld=gold
+                      -Wl,--version ERROR_QUIET OUTPUT_VARIABLE LD_GOLD_VERSION)
+      if ("${LD_GOLD_VERSION}" MATCHES "GNU gold")
+        set(USE_EXPLICIT_LINKER_FLAG TRUE)
+        set(EXPLICIT_LINKER_FLAG " -fuse-ld=gold")
+        message(STATUS "Using GNU gold linker.")
+      endif ()
+    endif ()
+  endif ()
+  if (USE_EXPLICIT_LINKER_FLAG)
+    string(APPEND CMAKE_EXE_LINKER_FLAGS ${EXPLICIT_LINKER_FLAG})
+    string(APPEND CMAKE_SHARED_LINKER_FLAGS ${EXPLICIT_LINKER_FLAG})
+    string(APPEND CMAKE_MODULE_LINKER_FLAGS ${EXPLICIT_LINKER_FLAG})
+  endif ()
 endif()
 
 #-----------------------------------------------------------------------------#
-# Set options for best configuration
+# Use interprocedural optimization if requested
 
-if(ENABLE_BEST)
-  cvc4_set_option(USE_ABC ON)
-  cvc4_set_option(USE_CADICAL ON)
-  cvc4_set_option(USE_CLN ON)
-  cvc4_set_option(USE_CRYPTOMINISAT ON)
-  cvc4_set_option(USE_GLPK ON)
-  cvc4_set_option(USE_READLINE ON)
+if(ENABLE_IPO)
+  check_ipo_supported(RESULT have_ipo_support)
+  if(have_ipo_support)
+    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
+  else()
+    message(STATUS "Interprocedural optimization not supported.")
+    set(ENABLE_IPO OFF)
+  endif()
 endif()
+
+#-----------------------------------------------------------------------------#
 
 # Only enable unit testing if assertions are enabled. Otherwise, unit tests
 # that expect AssertionException to be thrown will fail.
 if(NOT ENABLE_ASSERTIONS)
+  message(STATUS "Disabling unit tests since assertions are disabled.")
   set(ENABLE_UNIT_TESTING OFF)
 endif()
 
 #-----------------------------------------------------------------------------#
 # Shared/static libraries
+
+# Embed the installation prefix as an RPATH in the executable such that the
+# linker can find our libraries (such as libcvc5parser) when executing the
+# cvc5 binary. This is for example useful when installing cvc5 with a custom
+# prefix on macOS (e.g. when using homebrew in a non-standard directory). If
+# we do not set this option, then the linker will not be able to find the
+# required libraries when trying to run cvc5.
 #
-# This needs to be set before any find_package(...) command since we want to
-# search for static libraries with suffix .a.
-
-if(ENABLE_SHARED)
-  set(BUILD_SHARED_LIBS ON)
-  if(ENABLE_STATIC_BINARY)
-    set(ENABLE_STATIC_BINARY OFF)
-    message(WARNING "Disabling static binary since shared build is enabled.")
+# Also embed the installation prefix of the installed contrib libraries as an
+# RPATH. This allows to install a dynamically linked binary that depends on
+# dynamically linked libraries. This is dangerous, as the installed binary
+# breaks if the contrib library is removed or changes in other ways, we thus
+# print a big warning and only allow if installing to a custom installation
+# prefix.
+#
+# More information on RPATH in CMake:
+# https://gitlab.kitware.com/cmake/community/wikis/doc/cmake/RPATH-handling
+if(NOT SKIP_SET_RPATH)
+  if (APPLE)
+    SET(CMAKE_INSTALL_RPATH "@loader_path/../${CMAKE_INSTALL_LIBDIR}")
+  else()
+    SET(CMAKE_INSTALL_RPATH "\${ORIGIN}/../${CMAKE_INSTALL_LIBDIR}")
   endif()
-else()
-  set(CMAKE_FIND_LIBRARY_SUFFIXES .a ${CMAKE_FIND_LIBRARY_SUFFIXES})
-  set(BUILD_SHARED_LIBS OFF)
-  cvc4_set_option(ENABLE_STATIC_BINARY ON)
+endif()
 
-  # Never build unit tests as static binaries, otherwise we'll end up with
-  # ~300MB per unit test.
-  if(ENABLE_UNIT_TESTING)
-    message(WARNING "Disabling unit tests since static build is enabled.")
-    set(ENABLE_UNIT_TESTING OFF)
+# Set visibility to default if unit tests are enabled. If unit tests are
+# enabled, we also check if we can execute white box unit tests (some versions
+# of Clang have issues with the required flag).
+set(ENABLE_WHITEBOX_UNIT_TESTING OFF)
+if(ENABLE_UNIT_TESTING)
+  set(CMAKE_CXX_VISIBILITY_PRESET default)
+  set(CMAKE_VISIBILITY_INLINES_HIDDEN 0)
+
+  # Check if Clang version has the bug that was fixed in
+  # https://reviews.llvm.org/D93104
+  set(ENABLE_WHITEBOX_UNIT_TESTING ON)
+  check_cxx_compiler_flag("-faccess-control" HAVE_CXX_FLAGfaccess_control)
+  if(NOT HAVE_CXX_FLAGfaccess_control)
+    set(ENABLE_WHITEBOX_UNIT_TESTING OFF)
+    message(STATUS "Disabling white box unit tests")
   endif()
 endif()
 
@@ -303,35 +422,91 @@ endif()
 enable_testing()
 
 #-----------------------------------------------------------------------------#
-# Check GCC version.
-#
-# GCC version 4.5.1 builds MiniSat incorrectly with -O2, which results in
-# incorrect answers.
+# Check options, find packages and configure build.
 
-if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
-  execute_process(
-    COMMAND ${CMAKE_CXX_COMPILER} -dumpversion
-    OUTPUT_VARIABLE GCC_VERSION
-    OUTPUT_STRIP_TRAILING_WHITESPACE)
-  if(GCC_VERSION VERSION_EQUAL "4.5.1")
-    message(FATAL_ERROR
-      "GCC 4.5.1's optimizer is known to build MiniSat incorrectly "
-      "(and by extension CVC4).")
+if(BUILD_SHARED_LIBS)
+  if (WIN32)
+    set(CMAKE_FIND_LIBRARY_SUFFIXES .dll .lib .a)
+  else()
+    set(CMAKE_FIND_LIBRARY_SUFFIXES .so .dylib .a)
+  endif()
+else()
+  if (WIN32)
+    set(CMAKE_FIND_LIBRARY_SUFFIXES .lib .a)
+  else()
+    set(CMAKE_FIND_LIBRARY_SUFFIXES .a)
   endif()
 endif()
 
-#-----------------------------------------------------------------------------#
-# Check options, find packages and configure build.
-
-if(USE_PYTHON2)
-  find_package(PythonInterp 2.7 REQUIRED)
-elseif(USE_PYTHON3)
-  find_package(PythonInterp 3 REQUIRED)
+# Find a Python interpreter on the system. It serves two exclusive purposes:
+# either to be used when the '--auto-download' option is not specified, or
+# to create a virtual environment when the '--auto-download' option is given.
+# In the latter case, it is also used to install the Python bindings (if built).
+if(DEFINED BUILD_BINDINGS_PYTHON_VERSION)
+  find_package(Python ${BUILD_BINDINGS_PYTHON_VERSION}
+    EXACT COMPONENTS Interpreter REQUIRED
+  )
 else()
-  find_package(PythonInterp REQUIRED)
+  find_package(Python COMPONENTS Interpreter REQUIRED)
 endif()
 
-find_package(GMP REQUIRED)
+# Keep the PATH to the Python binary before setting venv.
+# Use a CACHE variable to remember the original value.
+# We use this path in the installation step of the Python bindings.
+set(Python_BASE_EXECUTABLE "${Python_EXECUTABLE}"
+    CACHE STRING "Base Python executable")
+
+macro(create_venv)
+  message(STATUS "Creating Python virtual environment")
+  # Use packages installed in the base installation if they're already present...
+  if(BUILD_BINDINGS_PYTHON AND NOT ONLY_PYTHON_EXT_SRC)
+    #... unless we are building the Python bindings.
+    # Building the Python bindings currently requires a recent version of
+    # setuptools. On old systems with Python 3.8 or 3.9, upgrading to the latest
+    # version of setuptools without manually upgrading its dependencies
+    # can cause problems (see https://github.com/pypa/setuptools/issues/4478).
+    # Therefore, we start with a clean virtual environment so that
+    # all the latest dependencies of setuptools are installed.
+    set(VENV_SYSTEM_PACKAGES_FLAG "")
+  else()
+    set(VENV_SYSTEM_PACKAGES_FLAG "--system-site-packages")
+  endif()
+  execute_process (
+    COMMAND
+      "${Python_EXECUTABLE}" -m venv ${VENV_SYSTEM_PACKAGES_FLAG} "${VENV_PATH}"
+    RESULT_VARIABLE VENV_CMD_EXIT_CODE
+  )
+  if(VENV_CMD_EXIT_CODE)
+    message(FATAL_ERROR "Could not create Python virtual environment")
+  endif()
+endmacro()
+
+if(ENABLE_AUTO_DOWNLOAD)
+  if(USE_PYTHON_VENV)
+    # Set up Python venv if one doesn't exist already
+    set(VENV_PATH "${PROJECT_BINARY_DIR}/venv-${Python_VERSION}")
+    if(NOT EXISTS ${VENV_PATH})
+      create_venv()
+    endif()
+
+    # Set up variables to find Python within the virtual environment
+    set(ENV{VIRTUAL_ENV} "${VENV_PATH}")
+    unset(Python_EXECUTABLE CACHE)
+    if(EXISTS ${VENV_PATH}/bin/python3)
+      set(Python_EXECUTABLE ${VENV_PATH}/bin/python3)
+    elseif(EXISTS ${VENV_PATH}/Scripts/python.exe)
+      set(Python_EXECUTABLE ${VENV_PATH}/Scripts/python.exe)
+    else()
+      message(FATAL_ERROR "Could not find Python interpreter in venv")
+    endif()
+
+    # Find the Python interpreter within the virtual environment
+    find_package(Python COMPONENTS Interpreter REQUIRED)
+  endif()
+  find_package(Pip REQUIRED)
+endif()
+
+find_package(GMP 6.3 REQUIRED)
 
 if(ENABLE_ASAN)
   # -fsanitize=address requires CMAKE_REQUIRED_FLAGS to be explicitely set,
@@ -345,7 +520,7 @@ endif()
 
 if(ENABLE_UBSAN)
   add_required_c_cxx_flag("-fsanitize=undefined")
-  add_definitions(-DCVC4_USE_UBSAN)
+  add_definitions(-DCVC5_USE_UBSAN)
 endif()
 
 if(ENABLE_TSAN)
@@ -357,335 +532,423 @@ if(ENABLE_TSAN)
 endif()
 
 if(ENABLE_ASSERTIONS)
-  add_definitions(-DCVC4_ASSERTIONS)
+  add_definitions(-DCVC5_ASSERTIONS)
 else()
   add_definitions(-DNDEBUG)
 endif()
 
 if(ENABLE_COVERAGE)
   include(CodeCoverage)
-  APPEND_COVERAGE_COMPILER_FLAGS()
-  add_definitions(-DCVC4_COVERAGE)
-  # Note: The ctest command returns a non-zero exit code if tests fail or run
-  # into a timeout. As a consequence, the coverage report is not generated. To
-  # prevent this we always return with exit code 0 after the ctest command has
-  # finished.
-  setup_target_for_coverage_gcovr_html(
+  append_coverage_compiler_flags()
+  add_definitions(-DCVC5_COVERAGE)
+  setup_code_coverage_fastcov(
     NAME coverage
-    EXECUTABLE
-      ctest -j${CTEST_NTHREADS} -LE "example"
-        --output-on-failure $$ARGS || exit 0
-    DEPENDS
-      build-tests)
+    PATH "${PROJECT_SOURCE_DIR}"
+    EXCLUDE "${PROJECT_BINARY_DIR}/deps/*"
+    DEPENDENCIES cvc5-bin
+  )
 endif()
 
 if(ENABLE_DEBUG_CONTEXT_MM)
-  add_definitions(-DCVC4_DEBUG_CONTEXT_MEMORY_MANAGER)
+  add_definitions(-DCVC5_DEBUG_CONTEXT_MEMORY_MANAGER)
 endif()
 
 if(ENABLE_DEBUG_SYMBOLS)
   add_check_c_cxx_flag("-ggdb3")
-endif()
-
-if(ENABLE_COMP_INC_TRACK)
-  add_definitions(-DCVC4_SMTCOMP_APPLICATION_TRACK)
+  if(NOT SKIP_COMPRESS_DEBUG)
+    add_check_c_cxx_flag("-gz")
+  endif()
 endif()
 
 if(ENABLE_MUZZLE)
-  add_definitions(-DCVC4_MUZZLE)
-endif()
-
-if(ENABLE_DUMPING)
-  add_definitions(-DCVC4_DUMPING)
+  add_definitions(-DCVC5_MUZZLE)
 endif()
 
 if(ENABLE_PROFILING)
-  add_definitions(-DCVC4_PROFILING)
+  add_definitions(-DCVC5_PROFILING)
   add_check_c_cxx_flag("-pg")
 endif()
 
-if(ENABLE_PROOFS)
-  set(RUN_REGRESSION_ARGS ${RUN_REGRESSION_ARGS} --enable-proof)
-  add_definitions(-DCVC4_PROOF)
-endif()
-
-if(ENABLE_REPLAY)
-  add_definitions(-DCVC4_REPLAY)
-endif()
-
 if(ENABLE_TRACING)
-  add_definitions(-DCVC4_TRACING)
+  add_definitions(-DCVC5_TRACING)
+endif()
+
+if(ENABLE_SAFE_MODE)
+  add_definitions(-DCVC5_SAFE_MODE)
+endif()
+
+if(ENABLE_STABLE_MODE)
+  add_definitions(-DCVC5_STABLE_MODE)
 endif()
 
 if(ENABLE_STATISTICS)
-  add_definitions(-DCVC4_STATISTICS_ON)
+  add_definitions(-DCVC5_STATISTICS_ON)
 endif()
 
 if(ENABLE_VALGRIND)
   find_package(Valgrind REQUIRED)
-  add_definitions(-DCVC4_VALGRIND)
+  add_definitions(-DCVC5_VALGRIND)
 endif()
 
-if(USE_ABC)
-  find_package(ABC REQUIRED)
-  add_definitions(-DCVC4_USE_ABC ${ABC_ARCH_FLAGS})
-endif()
-
-if(USE_CADICAL)
-  find_package(CaDiCaL REQUIRED)
-  add_definitions(-DCVC4_USE_CADICAL)
-endif()
+find_package(CaDiCaL REQUIRED)
 
 if(USE_CLN)
   set(GPL_LIBS "${GPL_LIBS} cln")
   find_package(CLN 1.2.2 REQUIRED)
-  set(CVC4_USE_CLN_IMP 1)
-  set(CVC4_USE_GMP_IMP 0)
+  set(CVC5_USE_CLN_IMP 1)
+  set(CVC5_USE_GMP_IMP 0)
 else()
-  set(CVC4_USE_CLN_IMP 0)
-  set(CVC4_USE_GMP_IMP 1)
+  set(CVC5_USE_CLN_IMP 0)
+  set(CVC5_USE_GMP_IMP 1)
 endif()
 
 if(USE_CRYPTOMINISAT)
   # CryptoMiniSat requires pthreads support
   set(THREADS_PREFER_PTHREAD_FLAG ON)
   find_package(Threads REQUIRED)
-  if(THREADS_HAVE_PTHREAD_ARG)
-    add_c_cxx_flag(-pthread)
-  endif()
-  find_package(CryptoMiniSat REQUIRED)
-  add_definitions(-DCVC4_USE_CRYPTOMINISAT)
-endif()
-
-if(USE_DRAT2ER)
-  find_package(Drat2Er REQUIRED)
-  add_definitions(-DCVC4_USE_DRAT2ER)
+  find_package(CryptoMiniSat 5.11.2 REQUIRED)
+  add_definitions(-DCVC5_USE_CRYPTOMINISAT)
 endif()
 
 if(USE_GLPK)
   set(GPL_LIBS "${GPL_LIBS} glpk")
   find_package(GLPK REQUIRED)
-  add_definitions(-DCVC4_USE_GLPK)
+  add_definitions(-DCVC5_USE_GLPK)
 endif()
 
-if(USE_LFSC)
-  set(RUN_REGRESSION_ARGS ${RUN_REGRESSION_ARGS} --with-lfsc)
-  find_package(LFSC REQUIRED)
-  add_definitions(-DCVC4_USE_LFSC)
+if(USE_KISSAT)
+  find_package(Kissat REQUIRED)
+  add_definitions(-DCVC5_USE_KISSAT)
 endif()
 
-if(USE_READLINE)
-  set(GPL_LIBS "${GPL_LIBS} readline")
-  find_package(Readline REQUIRED)
-  set(HAVE_LIBREADLINE 1)
-  if(Readline_COMPENTRY_FUNC_RETURNS_CHARPTR)
-    set(READLINE_COMPENTRY_FUNC_RETURNS_CHARP 1)
+# disable libraries that cannot be used in safe mode
+if(ENABLE_SAFE_MODE)
+  if(USE_POLY)
+    set(USE_POLY OFF)
+    message(WARNING
+      "LibPoly disabled due to safe mode")
+  endif()
+  if(USE_COCOA)
+    set(USE_COCOA OFF)
+    message(WARNING
+      "Cocoa disabled due to safe mode")
+  endif()
+  if(USE_NORMALIZ)
+    set(USE_NORMALIZ OFF)
+    message(WARNING
+      "Normaliz disabled due to safe mode")
   endif()
 endif()
 
-if(USE_SYMFPU)
-  find_package(SymFPU REQUIRED)
-  add_definitions(-DCVC4_USE_SYMFPU)
-  set(CVC4_USE_SYMFPU 1)
+if(USE_POLY)
+  find_package(Poly 0.2.1 REQUIRED)
+  add_definitions(-DCVC5_USE_POLY)
+  set(CVC5_USE_POLY_IMP 1)
 else()
-  set(CVC4_USE_SYMFPU 0)
+  set(CVC5_USE_POLY_IMP 0)
+endif()
+
+if(USE_COCOA)
+  set(GPL_LIBS "${GPL_LIBS} cocoa")
+  find_package(CoCoA REQUIRED 0.99711)
+  add_definitions(-DCVC5_USE_COCOA)
+endif()
+
+if(USE_NORMALIZ)
+  set(GPL_LIBS "${GPL_LIBS} normaliz")
+  find_package(Normaliz REQUIRED)
+  add_definitions(-DCVC5_USE_NORMALIZ)
+endif()
+
+if(USE_EDITLINE)
+  find_package(Editline REQUIRED)
+  set(HAVE_LIBEDITLINE 1)
+endif()
+
+# SymFPU is always needed for the symbolic FP word blaster in the theory solver.
+find_package(SymFPU REQUIRED)
+
+if(USE_MPFR)
+  find_package(MPFR REQUIRED)
+  add_definitions(-DCVC5_USE_MPFR)
+  set(CVC5_USE_MPFR TRUE)
+else()
+  set(CVC5_USE_MPFR FALSE)
 endif()
 
 if(GPL_LIBS)
   if(NOT ENABLE_GPL)
     message(FATAL_ERROR
       "Bad configuration detected: BSD-licensed code only, but also requested "
-      "GPLed libraries: ${GPL_LIBS}")
+      "GPLed libraries: ${GPL_LIBS}. (Configure with --gpl to allow GPLed "
+      "libraries.)")
   endif()
-  set(CVC4_GPL_DEPS 1)
+  set(CVC5_GPL_DEPS 1)
 endif()
 
 #-----------------------------------------------------------------------------#
-# Generate CVC4's cvc4autoconfig.h header
+# Provide targets to inspect iwyu suggestions
 
-include(ConfigureCVC4)
-configure_file(cvc4autoconfig.h.in cvc4autoconfig.h)
-include_directories(${CMAKE_CURRENT_BINARY_DIR})
+include(IWYU)
+include(fuzzing-murxla)
+
+#-----------------------------------------------------------------------------#
+
+include(ConfigureCvc5)
+if(BUILD_SHARED_LIBS)
+  set(CVC5_STATIC_BUILD OFF)
+else()
+  set(CVC5_STATIC_BUILD ON)
+  if(NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    cvc5_set_option(STATIC_BINARY ON)
+  endif()
+endif()
+
+# Re-apply EXPORTED_FUNCTIONS after configure checks complete
+if(NOT "${WASM_EXPORTED_FUNCTIONS_FLAG}" STREQUAL "")
+  string(APPEND CMAKE_EXE_LINKER_FLAGS " ${WASM_EXPORTED_FUNCTIONS_FLAG}")
+endif()
 
 #-----------------------------------------------------------------------------#
 # Add subdirectories
 
-# signatures needs to come before src since it adds source files to libcvc4.
-if(ENABLE_PROOFS)
-  add_subdirectory(proofs/signatures)
+# Include public headers
+include_directories(include)
+include_directories(${PROJECT_BINARY_DIR}/include)
+
+# Install public headers
+install(DIRECTORY include/cvc5 DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+
+add_subdirectory(src)
+
+if(BUILD_BINDINGS_PYTHON AND NOT BUILD_SHARED_LIBS)
+  message(STATUS "Python bindings can only be built in a shared build.")
+  set(BUILD_BINDINGS_PYTHON OFF)
+endif()
+if(BUILD_BINDINGS_PYTHON)
+  set(BUILD_BINDINGS_PYTHON_VERSION ${Python_VERSION})
+  add_subdirectory(src/api/python)
 endif()
 
-add_subdirectory(doc)
-add_subdirectory(src)
+if(BUILD_BINDINGS_JAVA)
+  add_subdirectory(src/api/java)
+endif()
+
+if(BUILD_DOCS)
+  add_subdirectory(docs)
+endif()
+
 add_subdirectory(test)
 
-if(BUILD_BINDINGS_JAVA OR BUILD_BINDINGS_PYTHON)
-  add_subdirectory(src/bindings)
-endif()
+include(target-graphs)
 
 #-----------------------------------------------------------------------------#
 # Package configuration
 #
-# Export CVC4 targets to support find_package(CVC4) in other cmake projects.
+# Export cvc5 targets to support find_package(cvc5) in other cmake projects.
 
 include(CMakePackageConfigHelpers)
 
-install(EXPORT cvc4-targets
-  FILE CVC4Targets.cmake
-  NAMESPACE CVC4::
-  DESTINATION ${LIBRARY_INSTALL_DIR}/cmake/CVC4)
+# If we install a dynamically linked binary that also uses dynamically used
+# libraries from deps/install/lib, we need to be cautious. Changing these
+# shared libraries from deps/install/lib most probably breaks the binary.
+# We only allow such an installation for custom installation prefixes
+# (in the assumption that only reasonably experienced users use this and
+# also that custom installation prefixes are not used for longer periods of
+# time anyway). Also, we print a big warning with further instructions.
+if(BUILD_SHARED_LIBS)
+  # Get the libraries that cvc5 links against
+  get_target_property(libs cvc5 INTERFACE_LINK_LIBRARIES)
+  set(LIBS_SHARED_FROM_DEPS "")
+  foreach(lib ${libs})
+    # Filter out those that are linked dynamically and come from deps/install
+    if(lib MATCHES ".*/deps/install/lib/.*\.so")
+      list(APPEND LIBS_SHARED_FROM_DEPS ${lib})
+    endif()
+  endforeach()
+  list(LENGTH LIBS_SHARED_FROM_DEPS list_len)
+  # Check if we actually use such "dangerous" libraries
+  if(list_len GREATER 0)
+    # Print a generic warning
+    install(CODE "message(WARNING \"You are installing a dynamically linked \
+    binary of cvc5 which may be a problem if you are using any dynamically \
+    linked third-party library that you obtained through one of the \
+    contrib/get-xxx scripts. The binary uses the rpath mechanism to find these \
+    locally, hence executing such a contrib script removing the \
+    \\\"deps/install\\\" folder most probably breaks the installed binary! \
+    Consider installing the dynamically linked dependencies on your system \
+    manually or link cvc5 statically.\")")
+    # Print the libraries in question
+    foreach(lib ${LIBS_SHARED_FROM_DEPS})
+      install(CODE "message(WARNING \"The following library is used by the cvc5 binary: ${lib}\")")
+    endforeach()
+    # Check if we use a custom installation prefix
+    if(CMAKE_INSTALL_PREFIX STREQUAL "/usr/local")
+      install(CODE "message(FATAL_ERROR \"To avoid installing a \
+      soon-to-be-broken binary, system-wide installation is disabled if the \
+      binary depends on locally-built shared libraries.\")")
+    else()
+      install(CODE "message(WARNING \"You have selected a custom install \
+      directory ${CMAKE_INSTALL_PREFIX}, so we expect you understood the \
+      previous warning and know what you are doing.\")")
+    endif()
+  endif()
+endif()
+
+install(EXPORT cvc5-targets
+  FILE cvc5Targets.cmake
+  NAMESPACE cvc5::
+  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/cvc5)
 
 configure_package_config_file(
-  ${CMAKE_SOURCE_DIR}/cmake/CVC4Config.cmake.in
-  ${CMAKE_BINARY_DIR}/cmake/CVC4Config.cmake
-  INSTALL_DESTINATION ${LIBRARY_INSTALL_DIR}/cmake/CVC4
-  PATH_VARS LIBRARY_INSTALL_DIR
+  ${PROJECT_SOURCE_DIR}/cmake/cvc5Config.cmake.in
+  ${PROJECT_BINARY_DIR}/cmake/cvc5Config.cmake
+  INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/cvc5
+  PATH_VARS CMAKE_INSTALL_LIBDIR
 )
 
 write_basic_package_version_file(
-  ${CMAKE_CURRENT_BINARY_DIR}/CVC4ConfigVersion.cmake
-  VERSION ${CVC4_RELEASE_STRING}
+  ${CMAKE_CURRENT_BINARY_DIR}/cvc5ConfigVersion.cmake
+  VERSION ${CVC5_VERSION}
   COMPATIBILITY ExactVersion
 )
 
 install(FILES
-  ${CMAKE_BINARY_DIR}/cmake/CVC4Config.cmake
-  ${CMAKE_BINARY_DIR}/CVC4ConfigVersion.cmake
-  DESTINATION ${LIBRARY_INSTALL_DIR}/cmake/CVC4
+  ${PROJECT_BINARY_DIR}/cmake/cvc5Config.cmake
+  ${PROJECT_BINARY_DIR}/cvc5ConfigVersion.cmake
+  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/cvc5
 )
 
 
 #-----------------------------------------------------------------------------#
 # Print build configuration
 
+# Set colors.
+if(NOT WIN32)
+  string(ASCII 27 Esc)
+  set(Green "${Esc}[32m")
+  set(Blue "${Esc}[1;34m")
+  set(ResetColor "${Esc}[m")
+endif()
+
 # Convert build type to lower case.
-string(TOLOWER ${CMAKE_BUILD_TYPE} CVC4_BUILD_PROFILE_STRING)
+string(TOLOWER ${CMAKE_BUILD_TYPE} CVC5_BUILD_PROFILE_STRING)
 
 # Get all definitions added via add_definitions.
-get_directory_property(CVC4_DEFINITIONS COMPILE_DEFINITIONS)
-string(REPLACE ";" " " CVC4_DEFINITIONS "${CVC4_DEFINITIONS}")
+get_directory_property(CVC5_DEFINITIONS COMPILE_DEFINITIONS)
+string(REPLACE ";" " " CVC5_DEFINITIONS "${CVC5_DEFINITIONS}")
 
-message("CVC4 ${CVC4_RELEASE_STRING}")
 message("")
-if(ENABLE_COMP_INC_TRACK)
-  message("Build profile        : ${CVC4_BUILD_PROFILE_STRING} (incremental)")
+print_info("cvc5 ${CVC5_VERSION}")
+message("")
+if (ENABLE_SAFE_MODE)
+  print_config("Build profile             " "safe")
+elseif (ENABLE_STABLE_MODE)
+  print_config("Build profile             " "stable")
+elseif (CVC5_BUILD_PROFILE_STRING STREQUAL "production")
+  print_config("Build profile             " "unrestricted")
 else()
-  message("Build profile        : ${CVC4_BUILD_PROFILE_STRING}")
+  print_config("Build profile             " "${CVC5_BUILD_PROFILE_STRING}")
 endif()
 message("")
-print_config("GPL                  :" ENABLE_GPL)
-print_config("Best configuration   :" ENABLE_BEST)
-print_config("Optimized            :" ENABLE_OPTIMIZED)
-print_config("Optimization level   :" OPTIMIZATION_LEVEL)
+print_config("Assertions                " ${ENABLE_ASSERTIONS})
+print_config("Debug symbols             " ${ENABLE_DEBUG_SYMBOLS})
+print_config("Debug context mem mgr     " ${ENABLE_DEBUG_CONTEXT_MM})
 message("")
-print_config("Assertions           :" ENABLE_ASSERTIONS)
-print_config("Debug symbols        :" ENABLE_DEBUG_SYMBOLS)
-print_config("Debug context mem mgr:" ENABLE_DEBUG_CONTEXT_MM)
+print_config("Muzzle                    " ${ENABLE_MUZZLE})
+print_config("Statistics                " ${ENABLE_STATISTICS})
+print_config("Tracing                   " ${ENABLE_TRACING})
 message("")
-print_config("Dumping              :" ENABLE_DUMPING)
-print_config("Muzzle               :" ENABLE_MUZZLE)
-print_config("Proofs               :" ENABLE_PROOFS)
-print_config("Replay               :" ENABLE_REPLAY)
-print_config("Statistics           :" ENABLE_STATISTICS)
-print_config("Tracing              :" ENABLE_TRACING)
+print_config("ASan                      " ${ENABLE_ASAN})
+print_config("UBSan                     " ${ENABLE_UBSAN})
+print_config("TSan                      " ${ENABLE_TSAN})
+print_config("Coverage (gcov)           " ${ENABLE_COVERAGE})
+print_config("Profiling (gprof)         " ${ENABLE_PROFILING})
+print_config("Unit tests                " ${ENABLE_UNIT_TESTING})
+print_config("Valgrind                  " ${ENABLE_VALGRIND})
 message("")
-print_config("ASan                 :" ENABLE_ASAN)
-print_config("UBSan                :" ENABLE_UBSAN)
-print_config("TSan                 :" ENABLE_TSAN)
-print_config("Coverage (gcov)      :" ENABLE_COVERAGE)
-print_config("Profiling (gprof)    :" ENABLE_PROFILING)
-print_config("Unit tests           :" ENABLE_UNIT_TESTING)
-print_config("Valgrind             :" ENABLE_VALGRIND)
+print_config("Shared build              " ${BUILD_SHARED_LIBS})
+print_config("Python bindings           " ${BUILD_BINDINGS_PYTHON})
+print_config("Java bindings             " ${BUILD_BINDINGS_JAVA})
+print_config("Interprocedural opt.      " ${ENABLE_IPO})
 message("")
-print_config("Shared libs          :" ENABLE_SHARED)
-print_config("Static binary        :" ENABLE_STATIC_BINARY)
-print_config("Java bindings        :" BUILD_BINDINGS_JAVA)
-print_config("Python bindings      :" BUILD_BINDINGS_PYTHON)
-print_config("Python2              :" USE_PYTHON2)
-print_config("Python3              :" USE_PYTHON3)
-message("")
-print_config("ABC                  :" USE_ABC)
-print_config("CaDiCaL              :" USE_CADICAL)
-print_config("CryptoMiniSat        :" USE_CRYPTOMINISAT)
-print_config("drat2er              :" USE_DRAT2ER)
-print_config("GLPK                 :" USE_GLPK)
-print_config("LFSC                 :" USE_LFSC)
+print_config("CryptoMiniSat             " ${USE_CRYPTOMINISAT} FOUND_SYSTEM ${CryptoMiniSat_FOUND_SYSTEM})
+print_config("GLPK                      " ${USE_GLPK})
+print_config("Kissat                    " ${USE_KISSAT} FOUND_SYSTEM ${Kissat_FOUND_SYSTEM})
+print_config("LibPoly                   " ${USE_POLY} FOUND_SYSTEM ${Poly_FOUND_SYSTEM})
+print_config("CoCoALib                  " ${USE_COCOA} FOUND_SYSTEM ${CoCoA_FOUND_SYSTEM})
+print_config("Normaliz                  " ${USE_NORMALIZ} FOUND_SYSTEM ${NORMALIZ_FOUND_SYSTEM})
 
-if(CVC4_USE_CLN_IMP)
-  message("MP library           : cln")
+if(CVC5_USE_CLN_IMP)
+  print_config("MP library                " "cln" FOUND_SYSTEM ${CLN_FOUND_SYSTEM})
 else()
-  message("MP library           : gmp")
+  print_config("MP library                " "gmp" FOUND_SYSTEM ${GMP_FOUND_SYSTEM})
 endif()
-print_config("Readline             :" ${USE_READLINE})
-print_config("SymFPU               :" ${USE_SYMFPU})
+if(CVC5_USE_MPFR)
+  print_config("FP literal backend        " "mpfr" FOUND_SYSTEM ${MPFR_FOUND_SYSTEM})
+else()
+  print_config("FP literal backend        " "symfpu" FOUND_SYSTEM ${SymFPU_FOUND_SYSTEM})
+endif()
+print_config("Editline                  " ${USE_EDITLINE})
 message("")
-if(ABC_DIR)
-  message("ABC dir              : ${ABC_DIR}")
-endif()
-if(ANTLR_DIR)
-  message("ANTLR dir            : ${ANTLR_DIR}")
-endif()
-if(CADICAL_DIR)
-  message("CADICAL dir          : ${CADICAL_DIR}")
-endif()
-if(CRYPTOMINISAT_DIR)
-  message("CRYPTOMINISAT dir    : ${CRYPTOMINISAT_DIR}")
-endif()
-if(DRAT2ER_DIR)
-  message("DRAT2ER dir          : ${DRAT2ER_DIR}")
-endif()
+print_config("Api docs                  " ${BUILD_DOCS})
+message("")
 if(GLPK_DIR)
-  message("GLPK dir             : ${GLPK_DIR}")
+  print_config("GLPK dir                  " ${GLPK_DIR})
 endif()
-if(GMP_DIR)
-  message("GMP dir              : ${GMP_DIR}")
-endif()
-if(LFSC_DIR)
-  message("LFSC dir             : ${LFSC_DIR}")
-endif()
-if(SYMFPU_DIR)
-  message("SYMFPU dir           : ${SYMFPU_DIR}")
+if(PYTHONIC_PATH)
+  print_config("Pythonic API path         " ${PYTHONIC_PATH})
 endif()
 message("")
-message("CPPLAGS (-D...)      : ${CVC4_DEFINITIONS}")
-message("CXXFLAGS             : ${CMAKE_CXX_FLAGS}")
-message("CFLAGS               : ${CMAKE_C_FLAGS}")
+print_config("CPPLAGS (-D...)" "${CVC5_DEFINITIONS}")
+print_config("CXXFLAGS       " "${CMAKE_CXX_FLAGS}")
+print_config("CFLAGS         " "${CMAKE_C_FLAGS}")
+print_config("Linker flags   " "${CMAKE_EXE_LINKER_FLAGS}")
 message("")
-message("Install prefix       : ${CMAKE_INSTALL_PREFIX}")
+print_config("Install prefix " "${CMAKE_INSTALL_PREFIX}")
 message("")
 
 if(GPL_LIBS)
   message(
-  "CVC4 license         : GPLv3 (due to optional libraries; see below)"
+  "${Blue}cvc5 license: "
+  "${Yellow}GPLv3 (due to optional libraries; see below)${ResetColor}"
   "\n"
   "\n"
-  "Please note that CVC4 will be built against the following GPLed libraries:"
+  "Please note that cvc5 will be built against the following GPLed libraries:"
   "\n"
   "${GPL_LIBS}"
   "\n"
-  "As these libraries are covered under the GPLv3, so is this build of CVC4."
+  "As these libraries are covered under the GPLv3, so is this build of cvc5."
   "\n"
-  "CVC4 is also available to you under the terms of the (modified) BSD license."
+  "cvc5 is also available to you under the terms of the (modified) BSD license."
   "\n"
-  "If you prefer to license CVC4 under those terms, please configure CVC4 to"
+  "If you prefer to license cvc5 under those terms, please configure cvc5 to"
   "\n"
-  "disable all optional GPLed library dependencies (-DENABLE_BSD_ONLY=ON)."
+  "disable all optional GPLed library dependencies."
   )
 else()
   message(
-  "CVC4 license         : modified BSD"
+  "${Blue}cvc5 license:${ResetColor} modified BSD"
   "\n"
   "\n"
   "Note that this configuration is NOT built against any GPL'ed libraries, so"
   "\n"
-  "it is covered by the (modified) BSD license.  This is, however, not the best"
+  "it is covered by the (modified) BSD license.  To build against GPL'ed"
   "\n"
-  "performing configuration of CVC4.  To build against GPL'ed libraries which"
+  "libraries which can improve cvc5's performance on arithmetic and bit-vector"
   "\n"
-  "improve CVC4's performance, re-configure with '-DENABLE_GPL -DENABLE_BEST'."
+  "logics, use the 'configure.sh' script to re-configure with '--best --gpl'."
   )
 endif()
 
+if("${CMAKE_GENERATOR}" STREQUAL "Ninja")
+  set(BUILD_COMMAND_NAME "ninja")
+else()
+  set(BUILD_COMMAND_NAME "make")
+endif()
+
 message("")
-message("Now just type make, followed by make check or make install.")
+message("Now just type '${BUILD_COMMAND_NAME}', "
+        "followed by '${BUILD_COMMAND_NAME} check' "
+        "or '${BUILD_COMMAND_NAME} install'.")
 message("")

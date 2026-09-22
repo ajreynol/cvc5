@@ -1,54 +1,52 @@
-/*********************                                                        */
-/*! \file UnsatCore.java
- ** \verbatim
- ** Top contributors (to current version):
- **   Andres Noetzli
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2019 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief An example of interacting with unsat cores using CVC4's Java API
- **
- ** An example of interacting with unsat cores using CVC4's Java API.
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * An example of interacting with unsat cores using cvc5's Java API.
+ */
 
-import edu.nyu.acsys.CVC4.*;
-import java.util.Iterator;
+import io.github.cvc5.*;
+import java.util.Arrays;
 
-public class UnsatCores {
-  public static void main(String[] args) {
-    System.loadLibrary("cvc4jni");
+public class UnsatCores
+{
+  public static void main(String[] args) throws CVC5ApiException
+  {
+    TermManager tm = new TermManager();
+    Solver solver = new Solver(tm);
+    {
+      // Enable the production of unsat cores
+      solver.setOption("produce-unsat-cores", "true");
 
-    ExprManager em = new ExprManager();
-    SmtEngine smt = new SmtEngine(em);
+      Sort boolSort = tm.getBooleanSort();
+      Term a = tm.mkConst(boolSort, "A");
+      Term b = tm.mkConst(boolSort, "B");
 
-    // Enable the production of unsat cores
-    smt.setOption("produce-unsat-cores", new SExpr(true));
+      // A ^ B
+      solver.assertFormula(tm.mkTerm(Kind.AND, a, b));
+      // ~(A v B)
+      solver.assertFormula(tm.mkTerm(Kind.NOT, tm.mkTerm(Kind.OR, a, b)));
 
-    Type boolType = em.booleanType();
-    Expr a = em.mkVar("A", boolType);
-    Expr b = em.mkVar("B", boolType);
+      Result res = solver.checkSat(); // result is unsat
 
-    // A ^ B
-    smt.assertFormula(em.mkExpr(Kind.AND, a, b));
-    // ~(A v B)
-    smt.assertFormula(em.mkExpr(Kind.NOT, em.mkExpr(Kind.OR, a, b)));
+      // Retrieve the unsat core
+      Term[] unsatCore = solver.getUnsatCore();
 
-    Result res = smt.checkSat(); // result is unsat
+      // Print the unsat core
+      System.out.println("Unsat Core: " + Arrays.asList(unsatCore));
 
-    // Retrieve the unsat core
-    UnsatCore unsatCore = smt.getUnsatCore();
-    
-    // Print the unsat core
-    System.out.println("Unsat Core: " + unsatCore);
-
-    // Iterate over expressions in the unsat core. The `UnsatCore` class
-    // implements the `Iterable<Expr>` interface.
-    System.out.println("--- Unsat Core ---");
-    for (Expr e : unsatCore) {
-      System.out.println(e);
+      // Iterate over expressions in the unsat core.
+      System.out.println("--- Unsat Core ---");
+      for (Term e : unsatCore)
+      {
+        System.out.println(e);
+      }
     }
+    Context.deletePointers();
   }
 }

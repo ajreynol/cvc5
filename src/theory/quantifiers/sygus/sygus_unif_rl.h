@@ -1,38 +1,37 @@
-/*********************                                                        */
-/*! \file sygus_unif_rl.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Haniel Barbosa, Andrew Reynolds
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2019 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief sygus_unif_rl
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * sygus_unif_rl
+ */
 
-#include "cvc4_private.h"
+#include "cvc5_private.h"
 
-#ifndef CVC4__THEORY__QUANTIFIERS__SYGUS_UNIF_RL_H
-#define CVC4__THEORY__QUANTIFIERS__SYGUS_UNIF_RL_H
+#ifndef CVC5__THEORY__QUANTIFIERS__SYGUS_UNIF_RL_H
+#define CVC5__THEORY__QUANTIFIERS__SYGUS_UNIF_RL_H
 
 #include <map>
+
 #include "options/main_options.h"
-#include "theory/quantifiers/sygus/sygus_unif.h"
-
 #include "theory/quantifiers/lazy_trie.h"
+#include "theory/quantifiers/sygus/sygus_unif.h"
+#include "util/bool.h"
 
-namespace CVC4 {
+namespace cvc5::internal {
 namespace theory {
 namespace quantifiers {
 
 using BoolNodePair = std::pair<bool, Node>;
 using BoolNodePairHashFunction =
-    PairHashFunction<bool, Node, BoolHashFunction, NodeHashFunction>;
+    PairHashFunction<bool, Node, BoolHashFunction, std::hash<Node>>;
 using BoolNodePairMap =
     std::unordered_map<BoolNodePair, Node, BoolNodePairHashFunction>;
-using NodePairMap = std::unordered_map<Node, Node, NodeHashFunction>;
+using NodePairMap = std::unordered_map<Node, Node>;
 using NodePair = std::pair<Node, Node>;
 
 class SynthConjecture;
@@ -46,12 +45,12 @@ class SynthConjecture;
 class SygusUnifRl : public SygusUnif
 {
  public:
-  SygusUnifRl(SynthConjecture* p);
+  SygusUnifRl(Env& env, SynthConjecture* p);
   ~SygusUnifRl();
 
   /** initialize */
   void initializeCandidate(
-      QuantifiersEngine* qe,
+      TermDbSygus* tds,
       Node f,
       std::vector<Node>& enums,
       std::map<Node, std::vector<Node>>& strategy_lemmas) override;
@@ -119,7 +118,7 @@ class SygusUnifRl : public SygusUnif
   /** Whether we are additionally using information gain heuristics */
   bool d_useCondPoolIGain;
   /* Functions-to-synthesize (a.k.a. candidates) with unification strategies */
-  std::unordered_set<Node, NodeHashFunction> d_unif_candidates;
+  std::unordered_set<Node> d_unif_candidates;
   /** construct sol */
   Node constructSol(Node f,
                     Node e,
@@ -206,12 +205,16 @@ class SygusUnifRl : public SygusUnif
   {
    public:
     DecisionTreeInfo()
-        : d_unif(nullptr), d_strategy(nullptr), d_strategy_index(0)
+        : d_unif(nullptr),
+          d_nm(nullptr),
+          d_strategy(nullptr),
+          d_strategy_index(0)
     {
     }
     ~DecisionTreeInfo() {}
     /** initializes this class */
-    void initialize(Node cond_enum,
+    void initialize(NodeManager* nm,
+                    Node cond_enum,
                     SygusUnifRl* unif,
                     SygusUnifStrategy* strategy,
                     unsigned strategy_index);
@@ -222,9 +225,12 @@ class SygusUnifRl : public SygusUnif
      * A solution is possible when all different valued heads can be separated,
      * i.e. the current set of conditions separates them in a decision tree
      */
-    Node buildSol(Node cons, std::vector<Node>& lemmas);
+    Node buildSol(Node cons,
+                  std::vector<Node>& lemmas,
+                  bool shuffleCond,
+                  bool condIndNoRepeatSol);
     /** bulids a solution by considering all condition values ever enumerated */
-    Node buildSolAllCond(Node cons, std::vector<Node>& lemmas);
+    Node buildSolAllCond(Node cons, bool shuffleCond, bool condIndNoRepeatSol);
     /** builds a solution by incrementally adding points and conditions to DT
      *
      * Differently from the above method, here a condition is only added to the
@@ -247,7 +253,7 @@ class SygusUnifRl : public SygusUnif
     /** gathered evaluation point heads */
     std::vector<Node> d_hds;
     /** all enumerated model values for conditions */
-    std::unordered_set<Node, NodeHashFunction> d_cond_mvs;
+    std::unordered_set<Node> d_cond_mvs;
     /** get condition enumerator */
     Node getConditionEnumerator() const { return d_cond_enum; }
     /** set conditions */
@@ -256,12 +262,14 @@ class SygusUnifRl : public SygusUnif
                        const std::vector<Node>& conds);
 
    private:
+    /** Pointer to node manager */
+    NodeManager* d_nm;
     /** true and false nodes */
     Node d_true;
     Node d_false;
     /** Accumulates solutions built when considering all enumerated condition
      * values (which may generate repeated solutions) */
-    std::unordered_set<Node, NodeHashFunction> d_sols;
+    std::unordered_set<Node> d_sols;
     /**
      * Conditional enumerator variables corresponding to the condition values in
      * d_conds. These are used for generating separation lemmas during
@@ -334,12 +342,9 @@ class SygusUnifRl : public SygusUnif
      * The entropy depends on how many positive and negative heads are in the
      * set and in their distribution. The polarity of the evaluation heads is
      * queried from their model values in hd_mv.
-     *
-     * ind is the current level of indentation (for debugging)
      */
     double getEntropy(const std::vector<Node>& hds,
-                      std::map<Node, Node>& hd_mv,
-                      int ind);
+                      std::map<Node, Node>& hd_mv);
     /** evaluates a condition on a set of points
      *
      * The result is two sets of points: those on which the condition holds
@@ -367,7 +372,7 @@ class SygusUnifRl : public SygusUnif
       /** the lazy trie for building the separation classes */
       LazyTrieMulti d_trie;
       /** extracts solution from decision tree built */
-      Node extractSol(Node cons, std::map<Node, Node>& hd_mv);
+      Node extractSol(NodeManager* nm, Node cons, std::map<Node, Node>& hd_mv);
       /** computes the result of applying cond on the respective point of hd
        *
        * If for example cond is (\lambda xy. x < y) and hd is an evaluation head
@@ -443,6 +448,6 @@ class SygusUnifRl : public SygusUnif
 
 }  // namespace quantifiers
 }  // namespace theory
-}  // namespace CVC4
+}  // namespace cvc5::internal
 
-#endif /* CVC4__THEORY__QUANTIFIERS__SYGUS_UNIF_RL_H */
+#endif /* CVC5__THEORY__QUANTIFIERS__SYGUS_UNIF_RL_H */

@@ -1,139 +1,217 @@
-/*********************                                                        */
-/*! \file normal_form.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Kshitij Bansal, Andrew Reynolds, Tim King
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2019 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Normal form for set constants.
- **
- ** Normal form for set constants.
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Normal form for set constants.
+ */
 
-#include "cvc4_private.h"
+#include "cvc5_private.h"
 
-#ifndef CVC4__THEORY__SETS__NORMAL_FORM_H
-#define CVC4__THEORY__SETS__NORMAL_FORM_H
+#ifndef CVC5__THEORY__SETS__NORMAL_FORM_H
+#define CVC5__THEORY__SETS__NORMAL_FORM_H
 
-namespace CVC4 {
+#include "expr/emptyset.h"
+
+namespace cvc5::internal {
 namespace theory {
 namespace sets {
 
-class NormalForm {
+class NormalForm
+{
  public:
+  /**
+   * Constructs a set of the form:
+   *   (union (singleton c1) ... (union (singleton c_{n-1}) (singleton c_n))))
+   * from the set { c1 ... cn }, also handles empty set case, which is why
+   * setType is passed to this method.
+   */
   template <bool ref_count>
   static Node elementsToSet(const std::set<NodeTemplate<ref_count> >& elements,
-                            TypeNode setType) {
+                            TypeNode setType)
+  {
     typedef typename std::set<NodeTemplate<ref_count> >::const_iterator
         ElementsIterator;
-    NodeManager* nm = NodeManager::currentNM();
-    if (elements.size() == 0) {
-      return nm->mkConst(EmptySet(nm->toType(setType)));
-    } else {
+    NodeManager* nm = setType.getNodeManager();
+    if (elements.size() == 0)
+    {
+      return nm->mkConst(EmptySet(setType));
+    }
+    else
+    {
       ElementsIterator it = elements.begin();
-      Node cur = nm->mkNode(kind::SINGLETON, *it);
-      while (++it != elements.end()) {
-        cur = nm->mkNode(kind::UNION, cur, nm->mkNode(kind::SINGLETON, *it));
+      Node cur = nm->mkNode(Kind::SET_SINGLETON, *it);
+      while (++it != elements.end())
+      {
+        Node singleton = nm->mkNode(Kind::SET_SINGLETON, *it);
+        cur = nm->mkNode(Kind::SET_UNION, singleton, cur);
       }
       return cur;
     }
   }
 
-  static bool checkNormalConstant(TNode n) {
-    Debug("sets-checknormal") << "[sets-checknormal] checkNormal " << n << " :"
-                              << std::endl;
-    if (n.getKind() == kind::EMPTYSET) {
+  /**
+   * Returns true if n is considered to be a (canonical) constant set value.
+   * A canonical set value is one whose AST is:
+   *   (union (singleton c1) ... (union (singleton c_{n-1}) (singleton c_n))))
+   * where c1 ... cn are constants and the node identifier of these constants
+   * are such that:
+   *   c1 > ... > cn.
+   * Also handles the corner cases of empty set and singleton set.
+   */
+  static bool checkNormalConstant(TNode n)
+  {
+    Trace("sets-checknormal")
+        << "[sets-checknormal] checkNormal " << n << " :" << std::endl;
+    if (n.getKind() == Kind::SET_EMPTY)
+    {
       return true;
-    } else if (n.getKind() == kind::SINGLETON) {
+    }
+    else if (n.getKind() == Kind::SET_SINGLETON)
+    {
       return n[0].isConst();
-    } else if (n.getKind() == kind::UNION) {
-      // assuming (union ... (union {SmallestNodeID} {BiggerNodeId}) ...
-      // {BiggestNodeId})
+    }
+    else if (n.getKind() == Kind::SET_UNION)
+    {
+      // assuming (union {SmallestNodeID} ... (union {BiggerNodeId} ...
 
-      // store BiggestNodeId in prvs
-      if (n[1].getKind() != kind::SINGLETON) return false;
-      if (!n[1][0].isConst()) return false;
-      Debug("sets-checknormal")
-          << "[sets-checknormal]              frst element = " << n[1][0] << " "
-          << n[1][0].getId() << std::endl;
-      TNode prvs = n[1][0];
-      n = n[0];
-
+      Node orig = n;
+      TNode prvs;
       // check intermediate nodes
-      while (n.getKind() == kind::UNION) {
-        if (n[1].getKind() != kind::SINGLETON) return false;
-        if (!n[1].isConst()) return false;
-        Debug("sets-checknormal")
-            << "[sets-checknormal]              element = " << n[1][0] << " "
-            << n[1][0].getId() << std::endl;
-        if (n[1][0] >= prvs) return false;
-        TNode prvs = n[1][0];
-        n = n[0];
+      while (n.getKind() == Kind::SET_UNION)
+      {
+        if (n[0].getKind() != Kind::SET_SINGLETON || !n[0][0].isConst())
+        {
+          // not a constant
+          Trace("sets-isconst") << "sets::isConst: " << orig << " not due to "
+                                << n[0] << std::endl;
+          return false;
+        }
+        Trace("sets-checknormal")
+            << "[sets-checknormal]              element = " << n[0][0] << " "
+            << n[0][0].getId() << std::endl;
+        if (!prvs.isNull() && n[0][0] >= prvs)
+        {
+          Trace("sets-isconst")
+              << "sets::isConst: " << orig << " not due to compare " << n[0][0]
+              << std::endl;
+          return false;
+        }
+        prvs = n[0][0];
+        n = n[1];
       }
 
       // check SmallestNodeID is smallest
-      if (n.getKind() != kind::SINGLETON) return false;
-      if (!n[0].isConst()) return false;
-      Debug("sets-checknormal")
+      if (n.getKind() != Kind::SET_SINGLETON || !n[0].isConst())
+      {
+        Trace("sets-isconst") << "sets::isConst: " << orig
+                              << " not due to final " << n << std::endl;
+        return false;
+      }
+      Trace("sets-checknormal")
           << "[sets-checknormal]              lst element = " << n[0] << " "
           << n[0].getId() << std::endl;
-      if (n[0] >= prvs) return false;
-
-      // we made it
-      return true;
-
-    } else {
-      return false;
+      // compare last ID
+      if (n[0] < prvs)
+      {
+        return true;
+      }
+      Trace("sets-isconst")
+          << "sets::isConst: " << orig << " not due to compare final " << n[0]
+          << std::endl;
     }
+    return false;
   }
 
-  static std::set<Node> getElementsFromNormalConstant(TNode n) {
+  /**
+   * Converts a set term to a std::set of its elements. This expects a set of
+   * the form:
+   *   (union (singleton c1) ... (union (singleton c_{n-1}) (singleton c_n))))
+   * Also handles the corner cases of empty set and singleton set.
+   */
+  static std::set<Node> getElementsFromNormalConstant(TNode n)
+  {
     Assert(n.isConst());
     std::set<Node> ret;
-    if (n.getKind() == kind::EMPTYSET) {
+    if (n.getKind() == Kind::SET_EMPTY)
+    {
       return ret;
     }
-    while (n.getKind() == kind::UNION) {
-      Assert(n[1].getKind() == kind::SINGLETON);
-      ret.insert(ret.begin(), n[1][0]);
-      n = n[0];
+    while (n.getKind() == Kind::SET_UNION)
+    {
+      Assert(n[0].getKind() == Kind::SET_SINGLETON);
+      ret.insert(ret.begin(), n[0][0]);
+      n = n[1];
     }
-    Assert(n.getKind() == kind::SINGLETON);
+    Assert(n.getKind() == Kind::SET_SINGLETON);
     ret.insert(n[0]);
     return ret;
   }
-  
-  
-  //AJR
-  
-  static void getElementsFromBop( Kind k, Node n, std::vector< Node >& els ){
-    if( n.getKind()==k ){
-      for( unsigned i=0; i<n.getNumChildren(); i++ ){
-        getElementsFromBop( k, n[i], els );
-      }
-    }else{
-      if( std::find( els.begin(), els.end(), n )==els.end() ){
-        els.push_back( n );
-      }
+
+  static Node mkBop(Kind k,
+                    std::vector<Node>& els,
+                    TypeNode tn,
+                    unsigned index = 0)
+  {
+    if (index >= els.size())
+    {
+      return tn.getNodeManager()->mkConst(EmptySet(tn));
     }
-  }
-  static Node mkBop( Kind k, std::vector< Node >& els, TypeNode tn, unsigned index = 0 ){
-    if( index>=els.size() ){
-      return NodeManager::currentNM()->mkConst(EmptySet(tn.toType()));
-    }else if( index==els.size()-1 ){
+    else if (index == els.size() - 1)
+    {
       return els[index];
-    }else{
-      return NodeManager::currentNM()->mkNode( k, els[index], mkBop( k, els, tn, index+1 ) );
+    }
+    else
+    {
+      return NodeManager::mkNode(k, els[index], mkBop(k, els, tn, index + 1));
     }
   }
 
+  /**
+   * Get the characeristic set for n of cardinality card.
+   *
+   * This is defined in terms of a union of singleton of choose:
+   *
+   * S0: (as set.empty T)
+   * S1: (set.singleton (set.choose n))
+   * ...
+   * Sk: (set.union (set.singleton (set.choose (set.minus n S{k-1}))) S{k-1})
+   *
+   * @param nm Pointer to the node manager
+   * @param n The base set
+   * @param card The cardinality we are considering.
+   * @return The set as described above.
+   */
+  static Node getCharacteristicSet(NodeManager* nm, const Node& n, size_t card)
+  {
+    if (card == 0)
+    {
+      return nm->mkConst(EmptySet(n.getType()));
+    }
+    Node nsr;
+    for (size_t i = 0; i < card; i++)
+    {
+      Node stgt = nsr.isNull() ? n : nm->mkNode(Kind::SET_MINUS, n, nsr);
+      Node choice_i = nm->mkNode(Kind::SET_CHOOSE, stgt);
+      Node sChoiceI = nm->mkNode(Kind::SET_SINGLETON, choice_i);
+      if (nsr.isNull())
+      {
+        nsr = sChoiceI;
+      }
+      else
+      {
+        nsr = nm->mkNode(Kind::SET_UNION, nsr, sChoiceI);
+      }
+    }
+    return nsr;
+  }
 };
-}
-}
-}
+}  // namespace sets
+}  // namespace theory
+}  // namespace cvc5::internal
 
 #endif

@@ -1,18 +1,14 @@
-/*********************                                                        */
-/*! \file type_enumerator_template.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Morgan Deters, Tim King, Andres Noetzli
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2019 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Enumerators for types
- **
- ** Enumerators for types.
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Enumerators for types.
+ */
 
 #include <sstream>
 
@@ -20,13 +16,13 @@
 #include "expr/kind.h"
 #include "theory/type_enumerator.h"
 
-
+// clang-format off
 ${type_enumerator_includes}
-#line 26 "${template}"
+// clang-format on
 
 using namespace std;
 
-namespace CVC4 {
+namespace cvc5::internal {
 namespace theory {
 
 TypeEnumeratorInterface* TypeEnumerator::mkTypeEnumerator(
@@ -34,19 +30,22 @@ TypeEnumeratorInterface* TypeEnumerator::mkTypeEnumerator(
 {
   switch (type.getKind())
   {
-    case kind::TYPE_CONSTANT:
+    case Kind::TYPE_CONSTANT:
       switch (type.getConst<TypeConstant>())
       {
-        ${mk_type_enumerator_type_constant_cases}
+        // clang-format off
+${mk_type_enumerator_type_constant_cases}
+          // clang-format on
         default: Unhandled() << "No type enumerator for type `" << type << "'";
       }
       Unreachable();
-      ${mk_type_enumerator_cases}
-#line 44 "${template}"
+      // clang-format off
+${mk_type_enumerator_cases}
+      // clang-format on
     default: Unhandled() << "No type enumerator for type `" << type << "'";
   }
   Unreachable();
 }
 
-}/* CVC4::theory namespace */
-}/* CVC4 namespace */
+}  // namespace theory
+}  // namespace cvc5::internal

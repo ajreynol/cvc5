@@ -1,36 +1,36 @@
-/*********************                                                        */
-/*! \file model_core_builder.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2019 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Utility for building model cores
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Utility for building model cores.
+ */
 
-#include "cvc4_private.h"
+#include "cvc5_private.h"
 
-#ifndef CVC4__THEORY__MODEL_CORE_BUILDER_H
-#define CVC4__THEORY__MODEL_CORE_BUILDER_H
+#ifndef CVC5__THEORY__MODEL_CORE_BUILDER_H
+#define CVC5__THEORY__MODEL_CORE_BUILDER_H
 
 #include <vector>
 
-#include "expr/expr.h"
+#include "expr/node.h"
 #include "options/smt_options.h"
-#include "smt/model.h"
+#include "smt/env_obj.h"
+#include "theory/theory_model.h"
 
-namespace CVC4 {
+namespace cvc5::internal {
 
 /**
  * A utility for building model cores.
  */
-class ModelCoreBuilder
+class ModelCoreBuilder : protected EnvObj
 {
  public:
+  ModelCoreBuilder(Env& env);
   /** set model core
    *
    * This function updates model m so that it has information regarding its
@@ -38,10 +38,10 @@ class ModelCoreBuilder
    *    { s1 -> m(s1), ..., sn -> m(sn) }
    *
    * The criteria for what consistutes a model core given by mode. For
-   * example, if mode is MODEL_CORES_SIMPLE, then a model core corresponds to a
-   * subset of assignments from the model that suffice to show that the set of
-   * assertions, interpreted conjunctively, evaluates to true under the
-   * substitution corresponding to the model core.
+   * example, if mode is ModelCoresMode::SIMPLE, then a model core
+   * corresponds to a subset of assignments from the model that suffice to show
+   * that the set of assertions, interpreted conjunctively, evaluates to true
+   * under the substitution corresponding to the model core.
    *
    * The model core is recorded on the model object m via calls to
    * m->setUsingModelCore, m->recordModelCoreSymbol, for details see
@@ -54,11 +54,11 @@ class ModelCoreBuilder
    * If m is not a model for assertions, this method returns false and m is
    * left unchanged.
    */
-  static bool setModelCore(const std::vector<Expr>& assertions,
-                           Model* m,
-                           ModelCoresMode mode);
+  bool setModelCore(const std::vector<Node>& assertions,
+                    theory::TheoryModel* m,
+                    options::ModelCoresMode mode);
 }; /* class TheoryModelCoreBuilder */
 
-}  // namespace CVC4
+}  // namespace cvc5::internal
 
-#endif /* CVC4__THEORY__MODEL_CORE_BUILDER_H */
+#endif /* CVC5__THEORY__MODEL_CORE_BUILDER_H */

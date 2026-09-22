@@ -1,52 +1,46 @@
-/*********************                                                        */
-/*! \file array_store_all.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Tim King, Morgan Deters
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2019 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Representation of a constant array (an array in which the
- ** element is the same for all indices)
- **
- ** Representation of a constant array (an array in which the element is
- ** the same for all indices).
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Representation of a constant array (an array in which the element is the
+ * same for all indices).
+ */
 
-#include "cvc4_public.h"
+#include "cvc5_public.h"
 
-#ifndef CVC4__ARRAY_STORE_ALL_H
-#define CVC4__ARRAY_STORE_ALL_H
+#ifndef CVC5__EXPR__ARRAY_STORE_ALL_H
+#define CVC5__EXPR__ARRAY_STORE_ALL_H
 
 #include <iosfwd>
 #include <memory>
 
-namespace CVC4 {
-// messy; Expr needs ArrayStoreAll (because it's the payload of a
-// CONSTANT-kinded expression), and ArrayStoreAll needs Expr.
-class Expr;
-class ArrayType;
-}  // namespace CVC4
+namespace cvc5::internal {
 
-namespace CVC4 {
+template <bool ref_count>
+class NodeTemplate;
+typedef NodeTemplate<true> Node;
+class TypeNode;
 
-class CVC4_PUBLIC ArrayStoreAll {
+class ArrayStoreAll
+{
  public:
   /**
    * @throws IllegalArgumentException if `type` is not an array or if `expr` is
    * not a constant of type `type`.
    */
-  ArrayStoreAll(const ArrayType& type, const Expr& expr);
+  ArrayStoreAll(const TypeNode& type, const Node& value);
   ~ArrayStoreAll();
 
   ArrayStoreAll(const ArrayStoreAll& other);
   ArrayStoreAll& operator=(const ArrayStoreAll& other);
 
-  const ArrayType& getType() const;
-  const Expr& getExpr() const;
+  const TypeNode& getType() const;
+  const Node& getValue() const;
 
   bool operator==(const ArrayStoreAll& asa) const;
   bool operator!=(const ArrayStoreAll& asa) const;
@@ -56,20 +50,20 @@ class CVC4_PUBLIC ArrayStoreAll {
   bool operator>=(const ArrayStoreAll& asa) const;
 
  private:
-  std::unique_ptr<ArrayType> d_type;
-  std::unique_ptr<Expr> d_expr;
+  std::unique_ptr<TypeNode> d_type;
+  std::unique_ptr<Node> d_value;
 }; /* class ArrayStoreAll */
 
-std::ostream& operator<<(std::ostream& out,
-                         const ArrayStoreAll& asa) CVC4_PUBLIC;
+std::ostream& operator<<(std::ostream& out, const ArrayStoreAll& asa);
 
 /**
  * Hash function for the ArrayStoreAll constants.
  */
-struct CVC4_PUBLIC ArrayStoreAllHashFunction {
+struct ArrayStoreAllHashFunction
+{
   size_t operator()(const ArrayStoreAll& asa) const;
 }; /* struct ArrayStoreAllHashFunction */
 
-}  // namespace CVC4
+}  // namespace cvc5::internal
 
-#endif /* CVC4__ARRAY_STORE_ALL_H */
+#endif /* CVC5__ARRAY_STORE_ALL_H */

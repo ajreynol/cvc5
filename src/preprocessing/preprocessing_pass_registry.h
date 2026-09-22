@@ -1,33 +1,30 @@
-/*********************                                                        */
-/*! \file preprocessing_pass_registry.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Andres Noetzli, Justin Xu, Yoni Zohar
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2019 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief The preprocessing pass registry
- **
- ** This file defines the classes PreprocessingPassRegistry, which keeps track
- ** of the available preprocessing passes.
- **/
-#include "cvc4_private.h"
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * The preprocessing pass registry
+ *
+ * This file defines the classes PreprocessingPassRegistry, which keeps track
+ * of the available preprocessing passes.
+ */
+#include "cvc5_private.h"
 
-#ifndef CVC4__PREPROCESSING__PREPROCESSING_PASS_REGISTRY_H
-#define CVC4__PREPROCESSING__PREPROCESSING_PASS_REGISTRY_H
+#ifndef CVC5__PREPROCESSING__PREPROCESSING_PASS_REGISTRY_H
+#define CVC5__PREPROCESSING__PREPROCESSING_PASS_REGISTRY_H
 
-#include <memory>
+#include <functional>
 #include <string>
 #include <unordered_map>
 
-#include "preprocessing/preprocessing_pass.h"
-
-namespace CVC4 {
+namespace cvc5::internal {
 namespace preprocessing {
 
+class PreprocessingPass;
 class PreprocessingPassContext;
 
 /**
@@ -36,7 +33,8 @@ class PreprocessingPassContext;
  * to be used as a singleton and can be shared between threads (assuming that
  * the memory allocator is thread-safe) as well as different solver instances.
  */
-class PreprocessingPassRegistry {
+class PreprocessingPassRegistry
+{
  public:
   /**
    * Gets the single instance of this class.
@@ -95,6 +93,6 @@ class PreprocessingPassRegistry {
 };  // class PreprocessingPassRegistry
 
 }  // namespace preprocessing
-}  // namespace CVC4
+}  // namespace cvc5::internal
 
-#endif /* CVC4__PREPROCESSING__PREPROCESSING_PASS_REGISTRY_H */
+#endif /* CVC5__PREPROCESSING__PREPROCESSING_PASS_REGISTRY_H */

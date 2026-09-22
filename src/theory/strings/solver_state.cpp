@@ -1,153 +1,42 @@
-/*********************                                                        */
-/*! \file solver_state.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2019 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Implementation of the solver state of the theory of strings.
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Implementation of the solver state of the theory of strings.
+ */
 
 #include "theory/strings/solver_state.h"
 
+#include "theory/rewriter.h"
+#include "theory/strings/model_cons.h"
 #include "theory/strings/theory_strings_utils.h"
+#include "theory/strings/word.h"
+#include "util/rational.h"
 
 using namespace std;
-using namespace CVC4::context;
-using namespace CVC4::kind;
+using namespace cvc5::context;
+using namespace cvc5::internal::kind;
 
-namespace CVC4 {
+namespace cvc5::internal {
 namespace theory {
 namespace strings {
 
-EqcInfo::EqcInfo(context::Context* c)
-    : d_lengthTerm(c),
-      d_codeTerm(c),
-      d_cardinalityLemK(c),
-      d_normalizedLength(c),
-      d_prefixC(c),
-      d_suffixC(c)
+SolverState::SolverState(Env& env, Valuation& v)
+    : TheoryState(env, v),
+      d_eeDisequalities(env.getContext()),
+      d_pendingConflictSet(env.getContext(), false),
+      d_pendingConflict(InferenceId::UNKNOWN),
+      d_modelCons(nullptr)
 {
+  d_zero = nodeManager()->mkConstInt(Rational(0));
+  d_false = nodeManager()->mkConst(false);
 }
 
-Node EqcInfo::addEndpointConst(Node t, Node c, bool isSuf)
-{
-  // check conflict
-  Node prev = isSuf ? d_suffixC : d_prefixC;
-  if (!prev.isNull())
-  {
-    Trace("strings-eager-pconf-debug") << "Check conflict " << prev << ", " << t
-                                       << " post=" << isSuf << std::endl;
-    Node prevC = utils::getConstantEndpoint(prev, isSuf);
-    Assert(!prevC.isNull());
-    Assert(prevC.getKind() == CONST_STRING);
-    if (c.isNull())
-    {
-      c = utils::getConstantEndpoint(t, isSuf);
-      Assert(!c.isNull());
-    }
-    Assert(c.getKind() == CONST_STRING);
-    bool conflict = false;
-    // if the constant prefixes are different
-    if (c != prevC)
-    {
-      // conflicts between constants should be handled by equality engine
-      Assert(!t.isConst() || !prev.isConst());
-      Trace("strings-eager-pconf-debug")
-          << "Check conflict constants " << prevC << ", " << c << std::endl;
-      const String& ps = prevC.getConst<String>();
-      const String& cs = c.getConst<String>();
-      unsigned pvs = ps.size();
-      unsigned cvs = cs.size();
-      if (pvs == cvs || (pvs > cvs && t.isConst())
-          || (cvs > pvs && prev.isConst()))
-      {
-        // If equal length, cannot be equal due to node check above.
-        // If one is fully constant and has less length than the other, then the
-        // other will not fit and we are in conflict.
-        conflict = true;
-      }
-      else
-      {
-        const String& larges = pvs > cvs ? ps : cs;
-        const String& smalls = pvs > cvs ? cs : ps;
-        if (isSuf)
-        {
-          conflict = !larges.hasSuffix(smalls);
-        }
-        else
-        {
-          conflict = !larges.hasPrefix(smalls);
-        }
-      }
-      if (!conflict && (pvs > cvs || prev.isConst()))
-      {
-        // current is subsumed, either shorter prefix or the other is a full
-        // constant
-        return Node::null();
-      }
-    }
-    else if (!t.isConst())
-    {
-      // current is subsumed since the other may be a full constant
-      return Node::null();
-    }
-    if (conflict)
-    {
-      Trace("strings-eager-pconf")
-          << "Conflict for " << prevC << ", " << c << std::endl;
-      std::vector<Node> ccs;
-      Node r[2];
-      for (unsigned i = 0; i < 2; i++)
-      {
-        Node tp = i == 0 ? t : prev;
-        if (tp.getKind() == STRING_IN_REGEXP)
-        {
-          ccs.push_back(tp);
-          r[i] = tp[0];
-        }
-        else
-        {
-          r[i] = tp;
-        }
-      }
-      if (r[0] != r[1])
-      {
-        ccs.push_back(r[0].eqNode(r[1]));
-      }
-      Assert(!ccs.empty());
-      Node ret =
-          ccs.size() == 1 ? ccs[0] : NodeManager::currentNM()->mkNode(AND, ccs);
-      Trace("strings-eager-pconf")
-          << "String: eager prefix conflict: " << ret << std::endl;
-      return ret;
-    }
-  }
-  if (isSuf)
-  {
-    d_suffixC = t;
-  }
-  else
-  {
-    d_prefixC = t;
-  }
-  return Node::null();
-}
-
-SolverState::SolverState(context::Context* c,
-                         eq::EqualityEngine& ee,
-                         Valuation& v)
-    : d_context(c),
-      d_ee(ee),
-      d_valuation(v),
-      d_conflict(c, false),
-      d_pendingConflict(c)
-{
-}
 SolverState::~SolverState()
 {
   for (std::pair<const Node, EqcInfo*>& it : d_eqcInfo)
@@ -156,49 +45,15 @@ SolverState::~SolverState()
   }
 }
 
-Node SolverState::getRepresentative(Node t) const
+const context::CDList<Node>& SolverState::getDisequalityList() const
 {
-  if (d_ee.hasTerm(t))
-  {
-    return d_ee.getRepresentative(t);
-  }
-  return t;
+  return d_eeDisequalities;
 }
 
-bool SolverState::hasTerm(Node a) const { return d_ee.hasTerm(a); }
-
-bool SolverState::areEqual(Node a, Node b) const
+void SolverState::addDisequality(TNode t1, TNode t2)
 {
-  if (a == b)
-  {
-    return true;
-  }
-  else if (hasTerm(a) && hasTerm(b))
-  {
-    return d_ee.areEqual(a, b);
-  }
-  return false;
+  d_eeDisequalities.push_back(t1.eqNode(t2));
 }
-
-bool SolverState::areDisequal(Node a, Node b) const
-{
-  if (a == b)
-  {
-    return false;
-  }
-  else if (hasTerm(a) && hasTerm(b))
-  {
-    Node ar = d_ee.getRepresentative(a);
-    Node br = d_ee.getRepresentative(b);
-    return (ar != br && ar.isConst() && br.isConst())
-           || d_ee.areDisequal(ar, br, false);
-  }
-  Node ar = getRepresentative(a);
-  Node br = getRepresentative(b);
-  return ar != br && ar.isConst() && br.isConst();
-}
-
-eq::EqualityEngine* SolverState::getEqualityEngine() const { return &d_ee; }
 
 EqcInfo* SolverState::getOrMakeEqcInfo(Node eqc, bool doMake)
 {
@@ -209,104 +64,171 @@ EqcInfo* SolverState::getOrMakeEqcInfo(Node eqc, bool doMake)
   }
   if (doMake)
   {
-    EqcInfo* ei = new EqcInfo(d_context);
+    EqcInfo* ei = new EqcInfo(d_env.getContext());
     d_eqcInfo[eqc] = ei;
     return ei;
   }
   return nullptr;
 }
 
-void SolverState::addEndpointsToEqcInfo(Node t, Node concat, Node eqc)
-{
-  Assert(concat.getKind() == STRING_CONCAT
-         || concat.getKind() == REGEXP_CONCAT);
-  EqcInfo* ei = nullptr;
-  // check each side
-  for (unsigned r = 0; r < 2; r++)
-  {
-    unsigned index = r == 0 ? 0 : concat.getNumChildren() - 1;
-    Node c = utils::getConstantComponent(concat[index]);
-    if (!c.isNull())
-    {
-      if (ei == nullptr)
-      {
-        ei = getOrMakeEqcInfo(eqc);
-      }
-      Trace("strings-eager-pconf-debug")
-          << "New term: " << concat << " for " << t << " with prefix " << c
-          << " (" << (r == 1) << ")" << std::endl;
-      setPendingConflictWhen(ei->addEndpointConst(t, c, r == 1));
-    }
-  }
-}
+TheoryModel* SolverState::getModel() { return d_valuation.getModel(); }
 
-Node SolverState::getLengthExp(Node t, std::vector<Node>& exp, Node te)
+Node SolverState::getLengthExp(Node t,
+                               std::vector<Node>& exp,
+                               Node te,
+                               bool minExp)
 {
   Assert(areEqual(t, te));
-  Node lt = utils::mkNLength(te);
-  if (hasTerm(lt))
+  // if we are minimizing explanations
+  if (minExp)
   {
-    // use own length if it exists, leads to shorter explanation
-    return lt;
+    Node lt = nodeManager()->mkNode(Kind::STRING_LENGTH, te);
+    lt = rewrite(lt);
+    if (hasTerm(lt))
+    {
+      // use own length if it exists, leads to shorter explanation
+      return lt;
+    }
   }
   EqcInfo* ei = getOrMakeEqcInfo(t, false);
   Node lengthTerm = ei ? ei->d_lengthTerm : Node::null();
+  Node ret;
   if (lengthTerm.isNull())
   {
-    // typically shouldnt be necessary
-    lengthTerm = t;
+    // typically shouldn't be necessary
+    lengthTerm = te;
   }
-  Debug("strings") << "SolverState::getLengthTerm " << t << " is " << lengthTerm
-                   << std::endl;
+  else
+  {
+    lengthTerm = lengthTerm[0];
+  }
+  Trace("strings") << "SolverState::getLengthTerm " << t << "/" << te << " is "
+                   << lengthTerm << std::endl;
   if (te != lengthTerm)
   {
     exp.push_back(te.eqNode(lengthTerm));
   }
-  return Rewriter::rewrite(
-      NodeManager::currentNM()->mkNode(STRING_LENGTH, lengthTerm));
+  return rewrite(nodeManager()->mkNode(Kind::STRING_LENGTH, lengthTerm));
 }
 
-Node SolverState::getLength(Node t, std::vector<Node>& exp)
+Node SolverState::getLength(Node t, std::vector<Node>& exp, bool minExp)
 {
-  return getLengthExp(t, exp, t);
+  return getLengthExp(t, exp, t, minExp);
 }
 
-void SolverState::setConflict() { d_conflict = true; }
-bool SolverState::isInConflict() const { return d_conflict; }
-
-void SolverState::setPendingConflictWhen(Node conf)
+Node SolverState::explainNonEmpty(Node s)
 {
-  if (!conf.isNull() && d_pendingConflict.get().isNull())
+  Assert(s.getType().isStringLike());
+  Node emp = Word::mkEmptyWord(s.getType());
+  if (areDisequal(s, emp))
   {
-    d_pendingConflict = conf;
+    return s.eqNode(emp).negate();
+  }
+  Node sLen = nodeManager()->mkNode(Kind::STRING_LENGTH, s);
+  sLen = rewrite(sLen);
+  if (areDisequal(sLen, d_zero))
+  {
+    return sLen.eqNode(d_zero).negate();
+  }
+  return Node::null();
+}
+
+bool SolverState::isEqualEmptyWord(Node s, Node& emps)
+{
+  Node sr = getRepresentative(s);
+  if (sr.isConst())
+  {
+    if (Word::getLength(sr) == 0)
+    {
+      emps = sr;
+      return true;
+    }
+  }
+  return false;
+}
+
+void SolverState::setPendingMergeConflict(Node conf, InferenceId id, bool rev)
+{
+  if (d_pendingConflictSet.get())
+  {
+    // already set conflict
+    return;
+  }
+  InferInfo iiPrefixConf(id);
+  // remember whether this was a prefix/suffix, which is used when looking
+  // if the explanation can be minimized
+  iiPrefixConf.d_idRev = rev;
+  iiPrefixConf.d_conc = d_false;
+  utils::flattenOp(Kind::AND, conf, iiPrefixConf.d_premises);
+  setPendingConflict(iiPrefixConf);
+}
+
+void SolverState::setPendingConflict(InferInfo& ii)
+{
+  if (!d_pendingConflictSet.get())
+  {
+    d_pendingConflict = ii;
+    d_pendingConflictSet.set(true);
   }
 }
 
-Node SolverState::getPendingConflict() const { return d_pendingConflict; }
+bool SolverState::hasPendingConflict() const { return d_pendingConflictSet; }
 
-std::pair<bool, Node> SolverState::entailmentCheck(TheoryOfMode mode, TNode lit)
+bool SolverState::getPendingConflict(InferInfo& ii) const
+{
+  if (d_pendingConflictSet)
+  {
+    ii = d_pendingConflict;
+    return true;
+  }
+  return false;
+}
+
+std::pair<bool, Node> SolverState::entailmentCheck(options::TheoryOfMode mode,
+                                                   TNode lit)
 {
   return d_valuation.entailmentCheck(mode, lit);
 }
 
+void SolverState::separateByLengthTyped(
+    const std::vector<Node>& n,
+    std::map<TypeNode, std::vector<std::vector<Node>>>& cols,
+    std::map<TypeNode, std::vector<Node>>& lts)
+{
+  // group terms by types
+  std::map<TypeNode, std::vector<Node>> tvecs;
+  for (const Node& eqc : n)
+  {
+    tvecs[eqc.getType()].push_back(eqc);
+  }
+  // separate for each type
+  for (const std::pair<const TypeNode, std::vector<Node>>& v : tvecs)
+  {
+    separateByLength(v.second, cols[v.first], lts[v.first]);
+  }
+}
+
 void SolverState::separateByLength(const std::vector<Node>& n,
-                                   std::vector<std::vector<Node> >& cols,
+                                   std::vector<std::vector<Node>>& cols,
                                    std::vector<Node>& lts)
 {
   unsigned leqc_counter = 0;
+  // map (length, type) to an equivalence class identifier
   std::map<Node, unsigned> eqc_to_leqc;
+  // backwards map
   std::map<unsigned, Node> leqc_to_eqc;
-  std::map<unsigned, std::vector<Node> > eqc_to_strings;
-  NodeManager* nm = NodeManager::currentNM();
+  // Collection of eqc for each identifier. Notice that some identifiers may
+  // not have an associated length in the mappings above, if the length of
+  // an equivalence class is unknown.
+  std::map<unsigned, std::vector<Node>> eqc_to_strings;
   for (const Node& eqc : n)
   {
-    Assert(d_ee.getRepresentative(eqc) == eqc);
+    Assert(d_ee->getRepresentative(eqc) == eqc);
     EqcInfo* ei = getOrMakeEqcInfo(eqc, false);
     Node lt = ei ? ei->d_lengthTerm : Node::null();
     if (!lt.isNull())
     {
-      lt = nm->mkNode(STRING_LENGTH, lt);
-      Node r = d_ee.getRepresentative(lt);
+      Node r = d_ee->getRepresentative(lt);
       if (eqc_to_leqc.find(r) == eqc_to_leqc.end())
       {
         eqc_to_leqc[r] = leqc_counter;
@@ -321,14 +243,18 @@ void SolverState::separateByLength(const std::vector<Node>& n,
       leqc_counter++;
     }
   }
-  for (const std::pair<const unsigned, std::vector<Node> >& p : eqc_to_strings)
+  for (const std::pair<const unsigned, std::vector<Node>>& p : eqc_to_strings)
   {
-    cols.push_back(std::vector<Node>());
-    cols.back().insert(cols.back().end(), p.second.begin(), p.second.end());
+    Assert(!p.second.empty());
+    cols.emplace_back(p.second.begin(), p.second.end());
     lts.push_back(leqc_to_eqc[p.first]);
   }
 }
 
+void SolverState::setModelConstructor(ModelCons* mc) { d_modelCons = mc; }
+
+ModelCons* SolverState::getModelConstructor() { return d_modelCons; }
+
 }  // namespace strings
 }  // namespace theory
-}  // namespace CVC4
+}  // namespace cvc5::internal

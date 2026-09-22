@@ -1,29 +1,30 @@
-/*********************                                                        */
-/*! \file cardinality_extension.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2019 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief An extension of the theory sets for handling cardinality constraints
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * An extension of the theory sets for handling cardinality constraints.
+ */
 
-#include "cvc4_private.h"
+#include "cvc5_private.h"
 
-#ifndef CVC4__THEORY__SETS__CARDINALITY_EXTENSION_H
-#define CVC4__THEORY__SETS__CARDINALITY_EXTENSION_H
+#ifndef CVC5__THEORY__SETS__CARDINALITY_EXTENSION_H
+#define CVC5__THEORY__SETS__CARDINALITY_EXTENSION_H
 
 #include "context/cdhashset.h"
 #include "context/context.h"
+#include "smt/env_obj.h"
 #include "theory/sets/inference_manager.h"
 #include "theory/sets/solver_state.h"
+#include "theory/sets/term_registry.h"
+#include "theory/type_set.h"
 #include "theory/uf/equality_engine.h"
 
-namespace CVC4 {
+namespace cvc5::internal {
 namespace theory {
 namespace sets {
 
@@ -31,7 +32,7 @@ namespace sets {
  * This class implements a variant of the procedure from Bansal et al, IJCAR
  * 2016. It is used during a full effort check in the following way:
  *    reset(); { registerTerm(n,lemmas); | n in CardTerms }  check();
- * where CardTerms is the set of all applications of CARD in the current
+ * where CardTerms is the set of all applications of SET_CARD in the current
  * context.
  *
  * The remaining public methods are used during model construction, i.e.
@@ -53,24 +54,23 @@ namespace sets {
  * This variant of the procedure takes inspiration from the procedure
  * for word equations in Liang et al, CAV 2014. In that procedure, "normal
  * forms" are generated for String terms by recursively expanding
- * concatentations modulo equality. This procedure similarly maintains
+ * concatenations modulo equality. This procedure similarly maintains
  * normal forms, where the normal form for Set terms is a set of (equivalence
  * class representatives of) Venn regions that do not contain the empty set.
  */
-class CardinalityExtension
+class CardinalityExtension : protected EnvObj
 {
-  typedef context::CDHashSet<Node, NodeHashFunction> NodeSet;
+  typedef context::CDHashSet<Node> NodeSet;
 
  public:
   /**
    * Constructs a new instance of the cardinality solver w.r.t. the provided
    * contexts.
    */
-  CardinalityExtension(SolverState& s,
+  CardinalityExtension(Env& env,
+                       SolverState& s,
                        InferenceManager& im,
-                       eq::EqualityEngine& e,
-                       context::Context* c,
-                       context::UserContext* u);
+                       TermRegistry& treg);
 
   ~CardinalityExtension() {}
   /** reset
@@ -82,7 +82,7 @@ class CardinalityExtension
   /** register term
    *
    * Register that the term n exists in the current context, where n is an
-   * application of CARD.
+   * application of SET_CARD.
    */
   void registerTerm(Node n);
   /** check
@@ -124,7 +124,8 @@ class CardinalityExtension
   void mkModelValueElementsFor(Valuation& v,
                                Node eqc,
                                std::vector<Node>& els,
-                               const std::map<Node, Node>& mvals);
+                               const std::map<Node, Node>& mvals,
+                               TheoryModel* model);
   /** get ordered sets equivalence classes
    *
    * Get the ordered set of equivalence classes computed by this class. This
@@ -135,8 +136,26 @@ class CardinalityExtension
    */
   const std::vector<Node>& getOrderedSetsEqClasses() { return d_oSetEqc; }
 
+  /**
+   * get the slack elements generated for each finite type. This function is
+   * called by TheorySetsPrivate::collectModelInfo to ask the TheoryModel to
+   * exclude these slack elements from the members in all sets of that type.
+   */
+  const std::map<TypeNode, std::vector<TNode>>& getFiniteTypeSlackElements()
+      const
+  {
+    return d_finite_type_slack_elements;
+  }
+  /**
+   * get non-slack members in all sets of the given finite type. This function
+   * is called by TheorySetsPrivate::collectModelInfo to specify the exclusion
+   * sets for TheoryModel
+   */
+  const std::vector<Node>& getFiniteTypeMembers(TypeNode typeNode);
+
  private:
   /** constants */
+  Node d_true;
   Node d_zero;
   /** the empty vector */
   std::vector<Node> d_emp_exp;
@@ -144,11 +163,11 @@ class CardinalityExtension
   SolverState& d_state;
   /** Reference to the inference manager for the theory of sets */
   InferenceManager& d_im;
-  /** Reference to the equality engine of theory of sets */
-  eq::EqualityEngine& d_ee;
+  /** Reference to the term registry */
+  TermRegistry& d_treg;
   /** register cardinality term
    *
-   * This method add lemmas corresponding to the definition of
+   * This method adds lemmas corresponding to the definition of
    * the cardinality of set term n. For example, if n is A^B (denoting set
    * intersection as ^), then we consider the lemmas card(A^B)>=0,
    * card(A) = card(A\B) + card(A^B) and card(B) = card(B\A) + card(A^B).
@@ -302,6 +321,25 @@ class CardinalityExtension
    * function.
    */
   void checkNormalForm(Node eqc, std::vector<Node>& intro_sets);
+
+  /**
+   * Add cardinality lemmas for the univset of each type with cardinality terms.
+   * The lemmas are explained below.
+   */
+  void checkCardinalityExtended();
+  /**
+   * This function adds the following lemmas for type t for each S
+   * where S is a (representative) set term of type t, and for each negative
+   * member x not in S:
+   * 1- (=> true (<= (card (as univset t)) n) where n is the
+   * cardinality of t, which may be symbolic
+   * 2- (=> true (subset S (as univset t)) where S is a set
+   * term of type t
+   * 3- (=> (not (member negativeMember S))) (member
+   * negativeMember (as univset t)))
+   */
+  void checkCardinalityExtended(TypeNode& t);
+
   /** element types of sets for which cardinality is enabled */
   std::map<TypeNode, bool> d_t_card_enabled;
   /**
@@ -318,16 +356,19 @@ class CardinalityExtension
   std::vector<Node> d_oSetEqc;
   /**
    * This maps set terms to the set of representatives of their "parent" sets,
-   * see checkCardCycles.
+   * see checkCardCycles. Parents are stored as a pair of the form
+   *   (r, t)
+   * where t is the parent term and r is the representative of equivalence
+   * class of t.
    */
-  std::map<Node, std::vector<Node> > d_card_parent;
+  std::map<Node, std::vector<std::pair<Node, Node>>> d_cardParent;
   /**
-   * Maps equivalence classes + set terms in that equivalence class to their
-   * "flat form" (see checkNormalForms).
+   * Maps equivalence classes + "base" terms of set terms in that equivalence
+   * class to their "flat form" (see checkNormalForms).
    */
-  std::map<Node, std::map<Node, std::vector<Node> > > d_ff;
+  std::map<Node, std::map<Node, std::vector<Node>>> d_ff;
   /** Maps equivalence classes to their "normal form" (see checkNormalForms). */
-  std::map<Node, std::vector<Node> > d_nf;
+  std::map<Node, std::vector<Node>> d_nf;
   /** The local base node map
    *
    * This maps set terms to the "local base node" of its cardinality graph.
@@ -338,10 +379,42 @@ class CardinalityExtension
    * ( A ^ B ), and (B \ A).
    */
   std::map<Node, Node> d_localBase;
+
+  /**
+   * a map to store proxy nodes for the universe sets
+   */
+  std::map<Node, Node> d_univProxy;
+
+  /**
+   * collect the elements in all sets of finite types in model, and
+   * store them in the field d_finite_type_elements
+   */
+  void collectFiniteTypeSetElements(TheoryModel* model);
+  /**
+   * a map to store the non-slack elements encountered so far in all finite
+   * types
+   */
+  std::map<TypeNode, std::vector<Node>> d_finite_type_elements;
+  /**
+   * a map to store slack elements in all finite types
+   */
+  std::map<TypeNode, std::vector<TNode>> d_finite_type_slack_elements;
+  /** This boolean determines whether we already collected finite type constants
+   *  present in the current model.
+   *  Default value is false
+   */
+  bool d_finite_type_constants_processed;
+
+  /*
+   * a map that stores skolem nodes n that satisfies the constraint
+   * (<= (card t) n) where t is an infinite type
+   */
+  std::map<TypeNode, Node> d_infiniteTypeUnivCardSkolems;
+
 }; /* class CardinalityExtension */
 
 }  // namespace sets
 }  // namespace theory
-}  // namespace CVC4
+}  // namespace cvc5::internal
 
 #endif

@@ -1,77 +1,97 @@
-/*********************                                                        */
-/*! \file theory_bool.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds, Dejan Jovanovic, Morgan Deters
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2019 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief The theory of booleans.
- **
- ** The theory of booleans.
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * The theory of booleans.
+ */
 
-#include "theory/theory.h"
 #include "theory/booleans/theory_bool.h"
-#include "theory/booleans/circuit_propagator.h"
-#include "theory/valuation.h"
-#include "smt_util/boolean_simplification.h"
-#include "theory/substitutions.h"
 
-#include <vector>
 #include <stack>
+#include <vector>
+
+#include "proof/proof_node_manager.h"
+#include "theory/booleans/circuit_propagator.h"
+#include "theory/booleans/theory_bool_rewriter.h"
+#include "theory/substitutions.h"
+#include "theory/theory.h"
+#include "theory/trust_substitutions.h"
+#include "theory/valuation.h"
 #include "util/hash.h"
 
-using namespace std;
+using namespace cvc5::internal::kind;
 
-namespace CVC4 {
+namespace cvc5::internal {
 namespace theory {
 namespace booleans {
 
-Theory::PPAssertStatus TheoryBool::ppAssert(TNode in, SubstitutionMap& outSubstitutions) {
+TheoryBool::TheoryBool(Env& env, OutputChannel& out, Valuation valuation)
+    : Theory(THEORY_BOOL, env, out, valuation),
+      d_rewriter(nodeManager()),
+      d_checker(nodeManager())
+{
+}
 
-  if (in.getKind() == kind::CONST_BOOLEAN && !in.getConst<bool>()) {
-    // If we get a false literal, we're in conflict
-    return PP_ASSERT_STATUS_CONFLICT;
+bool TheoryBool::ppAssert(TrustNode tin, TrustSubstitutionMap& outSubstitutions)
+{
+  Assert(tin.getKind() == TrustNodeKind::LEMMA);
+  TNode in = tin.getNode();
+  if (in.getKind() == Kind::CONST_BOOLEAN)
+  {
+    if (in.getConst<bool>())
+    {
+      return true;
+    }
+    // should not be a false literal, which should be caught by preprocessing
+    Assert(in.getConst<bool>());
   }
 
   // Add the substitution from the variable to its value
-  if (in.getKind() == kind::NOT) {
+  if (in.getKind() == Kind::NOT)
+  {
     if (in[0].isVar())
     {
-      outSubstitutions.addSubstitution(in[0], NodeManager::currentNM()->mkConst<bool>(false));
-      return PP_ASSERT_STATUS_SOLVED;
+      outSubstitutions.addSubstitutionSolved(
+          in[0], nodeManager()->mkConst<bool>(false), tin);
+      return true;
     }
-  } else {
-    if (in.isVar())
+    else if (in[0].getKind() == Kind::EQUAL && in[0][0].getType().isBoolean())
     {
-      outSubstitutions.addSubstitution(in, NodeManager::currentNM()->mkConst<bool>(true));
-      return PP_ASSERT_STATUS_SOLVED;
+      TNode eq = in[0];
+      if (eq[0].isVar() && d_valuation.isLegalElimination(eq[0], eq[1]))
+      {
+        outSubstitutions.addSubstitutionSolved(eq[0], eq[1].notNode(), tin);
+        return true;
+      }
+      else if (eq[1].isVar() && d_valuation.isLegalElimination(eq[1], eq[0]))
+      {
+        outSubstitutions.addSubstitutionSolved(eq[1], eq[0].notNode(), tin);
+        return true;
+      }
     }
   }
+  else if (in.isVar())
+  {
+    outSubstitutions.addSubstitutionSolved(
+        in, nodeManager()->mkConst<bool>(true), tin);
+    return true;
+  }
 
-  return Theory::ppAssert(in, outSubstitutions);
+  // the positive Boolean equality case is handled in the default way
+  return Theory::ppAssert(tin, outSubstitutions);
 }
 
-/*
-void TheoryBool::check(Effort level) {
-  if (done() && !fullEffort(level)) {
-    return;
-  }
-  while (!done())
-  {
-    // Get all the assertions
-    Assertion assertion = get();
-    TNode fact = assertion.assertion;
-  }
-  if( Theory::fullEffort(level) ){
-  }
-}  
-*/
+TheoryRewriter* TheoryBool::getTheoryRewriter() { return &d_rewriter; }
 
-}/* CVC4::theory::booleans namespace */
-}/* CVC4::theory namespace */
-}/* CVC4 namespace */
+ProofRuleChecker* TheoryBool::getProofChecker() { return &d_checker; }
+
+std::string TheoryBool::identify() const { return std::string("TheoryBool"); }
+
+}  // namespace booleans
+}  // namespace theory
+}  // namespace cvc5::internal

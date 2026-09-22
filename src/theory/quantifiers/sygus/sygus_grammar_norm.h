@@ -1,35 +1,29 @@
-/*********************                                                        */
-/*! \file sygus_grammar_norm.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Haniel Barbosa, Andrew Reynolds, Tim King
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2019 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief class for simplifying SyGuS grammars after they are encoded into
- ** datatypes.
- **/
-#include "cvc4_private.h"
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Class for simplifying SyGuS grammars after they are encoded into datatypes.
+ */
+#include "cvc5_private.h"
 
-#ifndef CVC4__THEORY__QUANTIFIERS__SYGUS_GRAMMAR_NORM_H
-#define CVC4__THEORY__QUANTIFIERS__SYGUS_GRAMMAR_NORM_H
+#ifndef CVC5__THEORY__QUANTIFIERS__SYGUS_GRAMMAR_NORM_H
+#define CVC5__THEORY__QUANTIFIERS__SYGUS_GRAMMAR_NORM_H
 
 #include <map>
 #include <memory>
-#include <string>
 #include <vector>
 
-#include "expr/datatype.h"
 #include "expr/node.h"
 #include "expr/sygus_datatype.h"
-#include "expr/type.h"
 #include "expr/type_node.h"
-#include "theory/quantifiers/term_util.h"
+#include "smt/env_obj.h"
 
-namespace CVC4 {
+namespace cvc5::internal {
 namespace theory {
 namespace quantifiers {
 
@@ -84,11 +78,16 @@ class OpPosTrie
    * unres_t becomes the indexed type and true is returned. Otherwise a new type
    * is created, indexed by the given positions, and assigned to unres_t, with
    * false being returned.
+   *
+   * @param useIndexedName If true, we include the indices in op_pos in the
+   * name of unres_tn.
    */
-  bool getOrMakeType(TypeNode tn,
+  bool getOrMakeType(NodeManager* nm,
+                     TypeNode tn,
                      TypeNode& unres_tn,
                      const std::vector<unsigned>& op_pos,
-                     unsigned ind = 0);
+                     unsigned ind = 0,
+                     bool useIndexedName = false);
   /** clear all data from this trie */
   void clear() { d_children.clear(); }
 
@@ -127,10 +126,10 @@ class OpPosTrie
  * These lighweight transformations are always applied, independently of the
  * normalization option being enabled.
  */
-class SygusGrammarNorm
+class SygusGrammarNorm : protected EnvObj
 {
  public:
-  SygusGrammarNorm(QuantifiersEngine* qe);
+  SygusGrammarNorm(Env& env, TermDbSygus* tds);
   ~SygusGrammarNorm() {}
   /** creates a normalized typenode from a given one.
    *
@@ -150,16 +149,14 @@ class SygusGrammarNorm
 
   /* Retrives, or, if none, creates, stores and returns, the node for the
    * identity operator (\lambda x. x) for the given type node */
-  static inline Node getIdOp(TypeNode tn)
+  static inline Node getIdOp(NodeManager* nm, TypeNode tn)
   {
     auto it = d_tn_to_id.find(tn);
     if (it == d_tn_to_id.end())
     {
-      std::vector<Node> vars = {NodeManager::currentNM()->mkBoundVar(tn)};
-      Node n = NodeManager::currentNM()->mkNode(
-          kind::LAMBDA,
-          NodeManager::currentNM()->mkNode(kind::BOUND_VAR_LIST, vars),
-          vars.back());
+      std::vector<Node> vars = {nm->mkBoundVar(tn)};
+      Node n = nm->mkNode(
+          Kind::LAMBDA, nm->mkNode(Kind::BOUND_VAR_LIST, vars), vars.back());
       d_tn_to_id[tn] = n;
       return n;
     }
@@ -198,17 +195,7 @@ class SygusGrammarNorm
      * The types of the arguments of "cons" are recursively normalized
      */
     void addConsInfo(SygusGrammarNorm* sygus_norm,
-                     const DatatypeConstructor& cons);
-    /**
-     * Returns the total version of Kind k if it is a partial operator, or
-     * otherwise k itself.
-     */
-    static Kind getEliminateKind(Kind k);
-    /**
-     * Returns a version of n where all partial functions such as bvudiv
-     * have been replaced by their total versions like bvudiv_total.
-     */
-    static Node eliminatePartialOperators(Node n);
+                     const DTypeConstructor& cons);
 
     /** initializes a datatype with the information in the type object
      *
@@ -219,7 +206,7 @@ class SygusGrammarNorm
      * The initialized datatype and its unresolved type are saved in the global
      * accumulators of "sygus_norm"
      */
-    void initializeDatatype(SygusGrammarNorm* sygus_norm, const Datatype& dt);
+    void initializeDatatype(SygusGrammarNorm* sygus_norm, const DType& dt);
 
     //---------- information stored from original type node
 
@@ -253,7 +240,7 @@ class SygusGrammarNorm
      */
     virtual void buildType(SygusGrammarNorm* sygus_norm,
                            TypeObject& to,
-                           const Datatype& dt,
+                           const DType& dt,
                            std::vector<unsigned>& op_pos) = 0;
   }; /* class Transf */
 
@@ -271,7 +258,7 @@ class SygusGrammarNorm
     /** build type */
     void buildType(SygusGrammarNorm* sygus_norm,
                    TypeObject& to,
-                   const Datatype& dt,
+                   const DType& dt,
                    std::vector<unsigned>& op_pos) override;
 
    private:
@@ -286,7 +273,7 @@ class SygusGrammarNorm
    * neutral element.
    *
    * TODO: #1304:
-   * - define this transformation for more than just PLUS for Int.
+   * - define this transformation for more than just ADD for Int.
    * - improve the building such that elements that should not be entitled a
    * "link in the chain" (such as 5 in opposition to variables and 1) do not get
    * one
@@ -300,7 +287,7 @@ class SygusGrammarNorm
   {
    public:
     TransfChain(unsigned chain_op_pos, const std::vector<unsigned>& elem_pos)
-        : d_chain_op_pos(chain_op_pos), d_elem_pos(elem_pos){};
+        : d_chain_op_pos(chain_op_pos), d_elem_pos(elem_pos) {};
 
     /** builds types encoding a chain in which each link contains a repetition
      * of the application of the chain operator over a non-identity element
@@ -329,10 +316,10 @@ class SygusGrammarNorm
      */
     void buildType(SygusGrammarNorm* sygus_norm,
                    TypeObject& to,
-                   const Datatype& dt,
+                   const DType& dt,
                    std::vector<unsigned>& op_pos) override;
 
-    /** Whether operator is chainable for the type (e.g. PLUS for Int)
+    /** Whether operator is chainable for the type (e.g. ADD for Int)
      *
      *  Since the map this function depends on cannot be built statically, this
      *  function first build maps the first time a type is checked. As a
@@ -344,7 +331,7 @@ class SygusGrammarNorm
      */
     static bool isChainable(TypeNode tn, Node op);
     /* Whether n is the identity for the chain operator of the type (e.g. 1 is
-     * not the identity 0 for PLUS for Int)
+     * not the identity 0 for ADD for Int)
      *
      * TODO: #1304: Cover more types, make this robust to more complex grammars
      */
@@ -367,7 +354,7 @@ class SygusGrammarNorm
     static std::map<TypeNode, std::vector<Kind>> d_chain_ops;
     /** Specifies for each type node and chainable operator its identity
      *
-     * For example, for Int and PLUS the map is {Int -> {+ -> 0}}
+     * For example, for Int and ADD the map is {Int -> {+ -> 0}}
      *
      * TODO #1304: consider more operators
      */
@@ -375,8 +362,6 @@ class SygusGrammarNorm
 
   }; /* class TransfChain */
 
-  /** reference to quantifier engine */
-  QuantifiersEngine* d_qe;
   /** sygus term database associated with this utility */
   TermDbSygus* d_tds;
   /** List of variable inputs of function-to-synthesize.
@@ -386,9 +371,9 @@ class SygusGrammarNorm
    */
   TNode d_sygus_vars;
   /* Datatypes to be resolved */
-  std::vector<Datatype> d_dt_all;
+  std::vector<DType> d_dt_all;
   /* Types to be resolved */
-  std::set<Type> d_unres_t_all;
+  std::set<TypeNode> d_unres_t_all;
   /* Associates type nodes with OpPosTries */
   std::map<TypeNode, OpPosTrie> d_tries;
   /* Map of type nodes into their identity operators (\lambda x. x) */
@@ -421,7 +406,7 @@ class SygusGrammarNorm
    * recursion depth is limited by the height of the types, which is small
    */
   TypeNode normalizeSygusRec(TypeNode tn,
-                             const Datatype& dt,
+                             const DType& dt,
                              std::vector<unsigned>& op_pos);
 
   /** wrapper for the above function
@@ -436,12 +421,12 @@ class SygusGrammarNorm
    * TODO: #1304: Infer more complex transformations
    */
   std::unique_ptr<Transf> inferTransf(TypeNode tn,
-                                      const Datatype& dt,
+                                      const DType& dt,
                                       const std::vector<unsigned>& op_pos);
 }; /* class SygusGrammarNorm */
 
 }  // namespace quantifiers
 }  // namespace theory
-}  // namespace CVC4
+}  // namespace cvc5::internal
 
 #endif

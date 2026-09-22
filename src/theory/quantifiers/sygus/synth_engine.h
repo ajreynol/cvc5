@@ -1,37 +1,41 @@
-/*********************                                                        */
-/*! \file synth_engine.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds, Mathias Preiner, Morgan Deters
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2019 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief The quantifiers module for managing all approaches to synthesis,
- ** in particular, those described in Reynolds et al CAV 2015.
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * The quantifiers module for managing all approaches to synthesis,
+ * in particular, those described in Reynolds et al CAV 2015.
+ */
 
-#include "cvc4_private.h"
+#include "cvc5_private.h"
 
-#ifndef CVC4__THEORY__QUANTIFIERS__SYNTH_ENGINE_H
-#define CVC4__THEORY__QUANTIFIERS__SYNTH_ENGINE_H
+#ifndef CVC5__THEORY__QUANTIFIERS__SYNTH_ENGINE_H
+#define CVC5__THEORY__QUANTIFIERS__SYNTH_ENGINE_H
 
 #include "context/cdhashmap.h"
-#include "theory/quantifiers/quant_util.h"
+#include "theory/quantifiers/quant_module.h"
+#include "theory/quantifiers/sygus/sygus_qe_preproc.h"
+#include "theory/quantifiers/sygus/sygus_stats.h"
 #include "theory/quantifiers/sygus/synth_conjecture.h"
 
-namespace CVC4 {
+namespace cvc5::internal {
 namespace theory {
 namespace quantifiers {
 
 class SynthEngine : public QuantifiersModule
 {
-  typedef context::CDHashMap<Node, bool, NodeHashFunction> NodeBoolMap;
+  typedef context::CDHashMap<Node, bool> NodeBoolMap;
 
  public:
-  SynthEngine(QuantifiersEngine* qe, context::Context* c);
+  SynthEngine(Env& env,
+              QuantifiersState& qs,
+              QuantifiersInferenceManager& qim,
+              QuantifiersRegistry& qr,
+              TermRegistry& tr);
   ~SynthEngine();
   /** presolve
    *
@@ -45,12 +49,12 @@ class SynthEngine : public QuantifiersModule
   QEffort needsModel(Theory::Effort e) override;
   /* Call during quantifier engine's check */
   void check(Theory::Effort e, QEffort quant_e) override;
+  /** check ownership */
+  void checkOwnership(Node q) override;
   /* Called for new quantifiers */
   void registerQuantifier(Node q) override;
   /** Identify this module (for debugging, dynamic configuration, etc..) */
-  std::string identify() const override { return "SynthEngine"; }
-  /** print solution for synthesis conjectures */
-  void printSynthSolution(std::ostream& out);
+  std::string identify() const override;
   /** get synth solutions
    *
    * This function adds entries to sol_map that map functions-to-synthesize
@@ -62,7 +66,7 @@ class SynthEngine : public QuantifiersModule
    * SynthConjecture::getSynthSolutions.
    */
   bool getSynthSolutions(std::map<Node, std::map<Node, Node> >& sol_map);
-  /** preregister assertion (before rewrite)
+  /** preprocess notify assertion (before rewrite)
    *
    * The purpose of this method is to inform the solution reconstruction
    * techniques within the single invocation module that n is an original
@@ -70,28 +74,9 @@ class SynthEngine : public QuantifiersModule
    * to help when trying to reconstruct a solution that fits a given input
    * syntax.
    */
-  void preregisterAssertion(Node n);
-
- public:
-  class Statistics
-  {
-   public:
-    IntStat d_cegqi_lemmas_ce;
-    IntStat d_cegqi_lemmas_refine;
-    IntStat d_cegqi_si_lemmas;
-    IntStat d_solutions;
-    IntStat d_filtered_solutions;
-    IntStat d_candidate_rewrites_print;
-    Statistics();
-    ~Statistics();
-  }; /* class SynthEngine::Statistics */
-  Statistics d_statistics;
+  void ppNotifyAssertions(const std::vector<Node>& assertions) override;
 
  private:
-  /** term database sygus of d_qe */
-  TermDbSygus* d_tds;
-  /** the conjecture formula(s) we are waiting to assign */
-  std::vector<Node> d_waiting_conj;
   /** The synthesis conjectures that this class is managing. */
   std::vector<std::unique_ptr<SynthConjecture> > d_conjs;
   /**
@@ -100,6 +85,8 @@ class SynthEngine : public QuantifiersModule
    * preregisterAssertion.
    */
   SynthConjecture* d_conj;
+  /** The statistics */
+  SygusStatistics d_statistics;
   /** assign quantified formula q as a conjecture
    *
    * This method either assigns q to a synthesis conjecture object in d_conjs,
@@ -119,6 +106,6 @@ class SynthEngine : public QuantifiersModule
 
 }  // namespace quantifiers
 }  // namespace theory
-} /* namespace CVC4 */
+}  // namespace cvc5::internal
 
 #endif

@@ -1,20 +1,18 @@
-/*********************                                                        */
-/*! \file lazy_trie.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Haniel Barbosa, Andrew Reynolds
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2019 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Implementation of lazy trie
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Implementation of lazy trie.
+ */
 
 #include "theory/quantifiers/lazy_trie.h"
 
-namespace CVC4 {
+namespace cvc5::internal {
 namespace theory {
 namespace quantifiers {
 
@@ -25,7 +23,7 @@ Node LazyTrie::add(Node n,
                    bool forceKeep)
 {
   LazyTrie* lt = this;
-  while (lt != NULL)
+  while (lt != nullptr)
   {
     if (index == ntotal)
     {
@@ -90,7 +88,7 @@ void LazyTrieMulti::addClassifier(LazyTrieEvaluator* ev, unsigned ntotal)
     // apply new classifier
     Assert(d_rep_to_class.find(trie->d_lazy_child) != d_rep_to_class.end());
     std::vector<Node> prev_sep_class = d_rep_to_class[trie->d_lazy_child];
-    if (Trace.isOn("lazy-trie-multi"))
+    if (TraceIsOn("lazy-trie-multi"))
     {
       Trace("lazy-trie-multi") << "...last level. Prev sep class: \n";
       for (const Node& n : prev_sep_class)
@@ -132,8 +130,8 @@ Node LazyTrieMulti::add(Node f, LazyTrieEvaluator* ev, unsigned ntotal)
   // f was added to the separation class with representative res
   if (res != f)
   {
-    Trace("lazy-trie-multi") << "... added " << f << " to the sepclass of "
-                             << res << "\n";
+    Trace("lazy-trie-multi")
+        << "... added " << f << " to the sepclass of " << res << "\n";
     Assert(d_rep_to_class.find(res) != d_rep_to_class.end());
     Assert(!d_rep_to_class[res].empty());
     d_rep_to_class[res].push_back(f);
@@ -154,6 +152,6 @@ void LazyTrieMulti::clear()
   d_rep_to_class.clear();
 }
 
-} /* CVC4::theory::quantifiers namespace */
-} /* CVC4::theory namespace */
-} /* CVC4 namespace */
+}  // namespace quantifiers
+}  // namespace theory
+}  // namespace cvc5::internal

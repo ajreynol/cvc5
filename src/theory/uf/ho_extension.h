@@ -1,33 +1,35 @@
-/*********************                                                        */
-/*! \file ho_extension.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2019 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief The higher-order extension of TheoryUF.
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * The higher-order extension of TheoryUF.
+ */
 
-#include "cvc4_private.h"
+#include "cvc5_private.h"
 
-#ifndef __CVC4__THEORY__UF__HO_EXTENSION_H
-#define __CVC4__THEORY__UF__HO_EXTENSION_H
+#ifndef CVC5__THEORY__UF__HO_EXTENSION_H
+#define CVC5__THEORY__UF__HO_EXTENSION_H
 
 #include "context/cdhashmap.h"
 #include "context/cdhashset.h"
 #include "context/cdo.h"
 #include "expr/node.h"
+#include "smt/env_obj.h"
+#include "theory/skolem_lemma.h"
+#include "theory/theory_inference_manager.h"
 #include "theory/theory_model.h"
+#include "theory/theory_state.h"
 
-namespace CVC4 {
+namespace cvc5::internal {
 namespace theory {
 namespace uf {
 
-class TheoryUF;
+class LambdaLift;
 
 /** The higher-order extension of the theory of uninterpreted functions
  *
@@ -44,15 +46,18 @@ class TheoryUF;
  *
  * For more details, see "Extending SMT Solvers to Higher-Order", Barbosa et al.
  */
-class HoExtension
+class HoExtension : protected EnvObj
 {
-  typedef context::CDHashSet<Node, NodeHashFunction> NodeSet;
-  typedef context::CDHashMap<Node, Node, NodeHashFunction> NodeNodeMap;
+  typedef context::CDHashSet<Node> NodeSet;
+  typedef context::CDHashMap<Node, Node> NodeNodeMap;
 
  public:
-  HoExtension(TheoryUF& p, context::Context* c, context::UserContext* u);
+  HoExtension(Env& env,
+              TheoryState& state,
+              TheoryInferenceManager& im,
+              LambdaLift& ll);
 
-  /** expand definition
+  /** ppRewrite
    *
    * This returns the expanded form of node.
    *
@@ -61,7 +66,7 @@ class HoExtension
    * function variables for function heads that are not variables via the
    * getApplyUfForHoApply method below.
    */
-  Node expandDefinition(Node node);
+  TrustNode ppRewrite(Node node, std::vector<SkolemLemma>& lems);
 
   /** check higher order
    *
@@ -110,7 +115,13 @@ class HoExtension
    * values in m. It returns false if any (dis)equality added to m led to
    * an inconsistency in m.
    */
-  bool collectModelInfoHo(std::set<Node>& termSet, TheoryModel* m);
+  bool collectModelInfoHo(TheoryModel* m, const std::set<Node>& termSet);
+
+  /**
+   * Compute relevant terms. For each (f a b) in termSet, we add terms
+   * e.g. (@ f a), (@ (@ f a) b) to termSet.
+   */
+  void computeRelevantTerms(std::set<Node>& termSet);
 
  protected:
   /** get apply uf for ho apply
@@ -167,8 +178,20 @@ class HoExtension
 
   /** check whether app-completion should be applied for any
    * pair of terms in the equality engine.
+   *
+   * Returns the number of lemmas added on this call.
    */
   unsigned checkAppCompletion();
+  /**
+   * Check lazy lambda.
+   *
+   * This assumes that lambdas are not eagerly lifted to quantified formulas.
+   * It processes two lemma schemas, UF_HO_LAMBDA_UNIV_EQ and
+   * UF_HO_LAMBDA_APP_REDUCE. For details on these, see inference_id.h.
+   *
+   * Returns the number of lemmas added on this call.
+   */
+  unsigned checkLazyLambda();
   /** collect model info for higher-order term
    *
    * This adds required constraints to m for term n. In particular, if n is
@@ -178,22 +201,45 @@ class HoExtension
   bool collectModelInfoHoTerm(Node n, TheoryModel* m);
 
  private:
+  /** Cache lemma lem, return true if it does not already exist */
+  bool cacheLemma(TNode lem);
   /** common constants */
   Node d_true;
-  /** the parent of this extension */
-  TheoryUF& d_parent;
+  /** Reference to the state object */
+  TheoryState& d_state;
+  /** Reference to the inference manager */
+  TheoryInferenceManager& d_im;
+  /** Lambda lifting utility */
+  LambdaLift& d_ll;
   /** extensionality has been applied to these disequalities */
   NodeSet d_extensionality;
+  /**
+   * The lemmas we have sent. This is required since the UF inference manager
+   * does not cache lemmas.
+   */
+  NodeSet d_cachedLemmas;
+  /**
+   * In the following, we say that a "lambda function" is a variable k that was
+   * introduced by the lambda lifting utility, and has a corresponding lambda
+   * definition.
+   *
+   * This maps equivalence class representatives that have lambda functions in
+   * them to one such lambda function. This map is computed at each full effort
+   * and valid only during collectModelInfoHo.
+   */
+  std::unordered_map<Node, Node> d_lambdaEqc;
 
   /** cache of getExtensionalityDeq below */
   std::map<Node, Node> d_extensionality_deq;
 
   /** map from non-standard operators to their skolems */
   NodeNodeMap d_uf_std_skolem;
-}; /* class TheoryUF */
+  /** Equalities between lambads we have already processed */
+  NodeSet d_lamEqProcessed;
+};
 
 }  // namespace uf
 }  // namespace theory
-}  // namespace CVC4
+}  // namespace cvc5::internal
 
-#endif /* __CVC4__THEORY__UF__HO_EXTENSION_H */
+#endif

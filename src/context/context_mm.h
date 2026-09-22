@@ -1,33 +1,32 @@
-/*********************                                                        */
-/*! \file context_mm.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Clark Barrett, Andres Noetzli, Morgan Deters
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2019 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Region-based memory manager with stack-based push and pop.
- **
- ** Region-based memory manager with stack-based push and pop.  Designed
- ** for use by ContextManager.
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Region-based memory manager with stack-based push and pop.
+ *
+ * Designed for use by ContextManager.
+ */
 
-#include "cvc4_private.h"
+#include "cvc5parser_public.h"
 
-#ifndef CVC4__CONTEXT__CONTEXT_MM_H
-#define CVC4__CONTEXT__CONTEXT_MM_H
+#ifndef CVC5__CONTEXT__CONTEXT_MM_H
+#define CVC5__CONTEXT__CONTEXT_MM_H
 
+#ifndef CVC5_DEBUG_CONTEXT_MEMORY_MANAGER
 #include <deque>
-#include <limits>
+#endif
+#include <cvc5/cvc5_export.h>
+
 #include <vector>
 
-namespace CVC4 {
-namespace context {
+namespace cvc5::context {
 
-#ifndef CVC4_DEBUG_CONTEXT_MEMORY_MANAGER
+#ifndef CVC5_DEBUG_CONTEXT_MEMORY_MANAGER
 
 /**
  * Region-based memory manager for contexts.  Calls to newData provide memory
@@ -39,8 +38,8 @@ namespace context {
  * releases the new region and restores the top region from the stack.
  *
  */
-class ContextMemoryManager {
-
+class CVC5_EXPORT ContextMemoryManager
+{
   /**
    * Memory in regions is allocated in chunks.  This is the chunk size
    */
@@ -104,7 +103,7 @@ class ContextMemoryManager {
    */
   void newChunk();
 
-#ifdef CVC4_VALGRIND
+#ifdef CVC5_VALGRIND
   /**
    * Vector of allocations for each level. Used for accurately marking
    * allocations as free'd in Valgrind.
@@ -116,9 +115,7 @@ class ContextMemoryManager {
   /**
    * Get the maximum allocation size for this memory manager.
    */
-  static unsigned getMaxAllocationSize() {
-    return chunkSizeBytes;
-  }
+  static unsigned getMaxAllocationSize() { return chunkSizeBytes; }
 
   /**
    * Constructor - creates an initial region and an empty stack
@@ -146,9 +143,9 @@ class ContextMemoryManager {
    */
   void pop();
 
-};/* class ContextMemoryManager */
+}; /* class ContextMemoryManager */
 
-#else /* CVC4_DEBUG_CONTEXT_MEMORY_MANAGER */
+#else /* CVC5_DEBUG_CONTEXT_MEMORY_MANAGER */
 
 #warning \
     "Using the debug version of ContextMemoryManager, expect performance degradation"
@@ -161,10 +158,7 @@ class ContextMemoryManager {
 class ContextMemoryManager
 {
  public:
-  static unsigned getMaxAllocationSize()
-  {
-    return std::numeric_limits<unsigned>::max();
-  }
+  static unsigned getMaxAllocationSize();
 
   ContextMemoryManager() { d_allocations.push_back(std::vector<char*>()); }
   ~ContextMemoryManager()
@@ -200,17 +194,17 @@ class ContextMemoryManager
   std::vector<std::vector<char*>> d_allocations;
 }; /* ContextMemoryManager */
 
-#endif /* CVC4_DEBUG_CONTEXT_MEMORY_MANAGER */
+#endif /* CVC5_DEBUG_CONTEXT_MEMORY_MANAGER */
 
 /**
  * An STL-like allocator class for allocating from context memory.
  */
 template <class T>
-class ContextMemoryAllocator {
+class ContextMemoryAllocator
+{
   ContextMemoryManager* d_mm;
 
-public:
-
+ public:
   typedef size_t size_type;
   typedef std::ptrdiff_t difference_type;
   typedef T* pointer;
@@ -218,7 +212,9 @@ public:
   typedef T& reference;
   typedef T const& const_reference;
   typedef T value_type;
-  template <class U> struct rebind {
+  template <class U>
+  struct rebind
+  {
     typedef ContextMemoryAllocator<U> other;
   };
 
@@ -237,33 +233,35 @@ public:
   {
     return ContextMemoryManager::getMaxAllocationSize() / sizeof(T);
   }
-  T* allocate(size_t n, const void* = 0) const {
+  T* allocate(size_t n, const void* = nullptr) const
+  {
     return static_cast<T*>(d_mm->newData(n * sizeof(T)));
   }
-  void deallocate(T* p, size_t n) const {
+  void deallocate(CVC5_UNUSED T* p, CVC5_UNUSED size_t n) const
+  {
     /* no explicit delete */
   }
-  void construct(T* p, T const& v) const {
-    ::new(reinterpret_cast<void*>(p)) T(v);
+  void construct(T* p, T const& v) const
+  {
+    ::new (reinterpret_cast<void*>(p)) T(v);
   }
-  void destroy(T* p) const {
-    p->~T();
-  }
-};/* class ContextMemoryAllocator<T> */
+  void destroy(T* p) const { p->~T(); }
+}; /* class ContextMemoryAllocator<T> */
 
 template <class T>
 inline bool operator==(const ContextMemoryAllocator<T>& a1,
-                       const ContextMemoryAllocator<T>& a2) {
+                       const ContextMemoryAllocator<T>& a2)
+{
   return a1.d_mm == a2.d_mm;
 }
 
 template <class T>
 inline bool operator!=(const ContextMemoryAllocator<T>& a1,
-                       const ContextMemoryAllocator<T>& a2) {
+                       const ContextMemoryAllocator<T>& a2)
+{
   return a1.d_mm != a2.d_mm;
 }
 
-}/* CVC4::context namespace */
-}/* CVC4 namespace */
+}  // namespace cvc5::context
 
-#endif /* CVC4__CONTEXT__CONTEXT_MM_H */
+#endif /* CVC5__CONTEXT__CONTEXT_MM_H */
