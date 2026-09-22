@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Mudathir Mohamed, Aina Niemetz, Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -101,6 +98,21 @@ public class Solver extends AbstractPointer
   }
 
   /**
+   * Return a hash code value for this solver.
+   *
+   * The hash code is derived from the underlying native pointer, which is what
+   * {@link #equals(Object)} compares, so that instances that are equal have the
+   * same hash code.
+   *
+   * @return a hash code value for this solver
+   */
+  @Override
+  public int hashCode()
+  {
+    return Long.hashCode(pointer);
+  }
+
+  /**
    * Get the associated term manager instance
    * @return The term manager.
    */
@@ -187,7 +199,7 @@ public class Solver extends AbstractPointer
    * It will be removed in a future release.
    *
    * @return Sort RoundingMode.
-   * @throws CVC5ApiException
+   * @throws CVC5ApiException on error
    */
   @Deprecated
   public Sort getRoundingModeSort() throws CVC5ApiException
@@ -239,7 +251,7 @@ public class Solver extends AbstractPointer
    *
    * @param size The bit-width of the bit-vector sort.
    * @return The bit-vector sort.
-   * @throws CVC5ApiException
+   * @throws CVC5ApiException on error
    */
   @Deprecated
   public Sort mkBitVectorSort(int size) throws CVC5ApiException
@@ -258,7 +270,7 @@ public class Solver extends AbstractPointer
    * @param size The size of the finite field sort.
    * @param base The base of the string representation.
    * @return The finite field sort.
-   * @throws CVC5ApiException
+   * @throws CVC5ApiException on error
    */
   @Deprecated
   public Sort mkFiniteFieldSort(String size, int base) throws CVC5ApiException
@@ -277,7 +289,7 @@ public class Solver extends AbstractPointer
    * @param exp The bit-width of the exponent of the floating-point sort.
    * @param sig The bit-width of the significand of the floating-point sort.
    * @return The floating-point sort.
-   * @throws CVC5ApiException
+   * @throws CVC5ApiException on error
    */
   @Deprecated
   public Sort mkFloatingPointSort(int exp, int sig) throws CVC5ApiException
@@ -295,7 +307,7 @@ public class Solver extends AbstractPointer
    *
    * @param dtypedecl The datatype declaration from which the sort is created.
    * @return The datatype sort.
-   * @throws CVC5ApiException
+   * @throws CVC5ApiException on error
    */
   @Deprecated
   public Sort mkDatatypeSort(DatatypeDecl dtypedecl) throws CVC5ApiException
@@ -315,7 +327,7 @@ public class Solver extends AbstractPointer
    *
    * @param dtypedecls The datatype declarations from which the sort is created.
    * @return The datatype sorts.
-   * @throws CVC5ApiException
+   * @throws CVC5ApiException on error
    */
   @Deprecated
   public Sort[] mkDatatypeSorts(DatatypeDecl[] dtypedecls) throws CVC5ApiException
@@ -567,7 +579,7 @@ public class Solver extends AbstractPointer
    * @param symbol The symbol of the sort.
    * @param arity The number of sort parameters of the sort.
    * @return The unresolved sort.
-   * @throws CVC5ApiException
+   * @throws CVC5ApiException on error
    */
   @Deprecated
   public Sort mkUnresolvedDatatypeSort(String symbol, int arity) throws CVC5ApiException
@@ -588,7 +600,7 @@ public class Solver extends AbstractPointer
    *
    * @param symbol The symbol of the sort.
    * @return The unresolved sort.
-   * @throws CVC5ApiException
+   * @throws CVC5ApiException on error
    */
   @Deprecated
   public Sort mkUnresolvedDatatypeSort(String symbol) throws CVC5ApiException
@@ -610,7 +622,7 @@ public class Solver extends AbstractPointer
    * @param arity The arity of the sort (must be &gt; 0)
    * @param symbol The symbol of the sort.
    * @return The sort constructor sort.
-   * @throws CVC5ApiException
+   * @throws CVC5ApiException on error
    */
   @Deprecated
   public Sort mkUninterpretedSortConstructorSort(int arity, String symbol) throws CVC5ApiException
@@ -631,7 +643,7 @@ public class Solver extends AbstractPointer
    *
    * @param arity The arity of the sort (must be &gt; 0)
    * @return The sort constructor sort.
-   * @throws CVC5ApiException
+   * @throws CVC5ApiException on error
    */
   @Deprecated
   public Sort mkUninterpretedSortConstructorSort(int arity) throws CVC5ApiException
@@ -1074,7 +1086,7 @@ public class Solver extends AbstractPointer
    * @param kind The kind of the operator.
    * @param arg The unsigned int argument to this operator.
    * @return The operator.
-   * @throws CVC5ApiException
+   * @throws CVC5ApiException on error
    */
   @Deprecated
   public Op mkOp(Kind kind, int arg) throws CVC5ApiException
@@ -1103,7 +1115,7 @@ public class Solver extends AbstractPointer
    * @param arg1 The first unsigned int argument to this operator.
    * @param arg2 The second unsigned int argument to this operator.
    * @return The operator.
-   * @throws CVC5ApiException
+   * @throws CVC5ApiException on error
    */
   @Deprecated
   public Op mkOp(Kind kind, int arg1, int arg2) throws CVC5ApiException
@@ -1126,7 +1138,7 @@ public class Solver extends AbstractPointer
    * @param kind The kind of the operator.
    * @param args The arguments (indices) of the operator.
    * @return The operator.
-   * @throws CVC5ApiException
+   * @throws CVC5ApiException on error
    */
   @Deprecated
   public Op mkOp(Kind kind, int[] args) throws CVC5ApiException
@@ -1215,7 +1227,7 @@ public class Solver extends AbstractPointer
    *          integer (e.g., "123").
    * @return A constant of sort Integer assuming {@code s} represents an
    *         integer).
-   * @throws CVC5ApiException
+   * @throws CVC5ApiException on error
    */
   @Deprecated
   public Term mkInteger(String s) throws CVC5ApiException
@@ -1252,7 +1264,7 @@ public class Solver extends AbstractPointer
    *          integer (e.g., "123") or real constant (e.g., "12.34" or
    * "12/34").
    * @return A constant of sort Real.
-   * @throws CVC5ApiException
+   * @throws CVC5ApiException on error
    */
   @Deprecated
   public Term mkReal(String s) throws CVC5ApiException
@@ -1463,7 +1475,7 @@ public class Solver extends AbstractPointer
    * @param s A list of unsigned (unicode) values this constant represents
    *          as string.
    * @return The String constant.
-   * @throws CVC5ApiException
+   * @throws CVC5ApiException on error
    */
   @Deprecated
   public Term mkString(int[] s) throws CVC5ApiException
@@ -1515,7 +1527,7 @@ public class Solver extends AbstractPointer
    *
    * @param size The bit-width of the bit-vector sort.
    * @return The bit-vector constant.
-   * @throws CVC5ApiException
+   * @throws CVC5ApiException on error
    */
   @Deprecated
   public Term mkBitVector(int size) throws CVC5ApiException
@@ -1536,7 +1548,7 @@ public class Solver extends AbstractPointer
    * @param size The bit-width of the bit-vector sort.
    * @param val The value of the constant.
    * @return The bit-vector constant.
-   * @throws CVC5ApiException
+   * @throws CVC5ApiException on error
    */
   @Deprecated
   public Term mkBitVector(int size, long val) throws CVC5ApiException
@@ -1559,7 +1571,7 @@ public class Solver extends AbstractPointer
    * @param s The string representation of the constant.
    * @param base The base of the string representation (2, 10, or 16)
    * @return The bit-vector constant.
-   * @throws CVC5ApiException
+   * @throws CVC5ApiException on error
    */
   @Deprecated
   public Term mkBitVector(int size, String s, int base) throws CVC5ApiException
@@ -1581,7 +1593,7 @@ public class Solver extends AbstractPointer
    * @param sort The sort of the finite field.
    * @param base The base of the string representation.
    * @return The finite field constant.
-   * @throws CVC5ApiException
+   * @throws CVC5ApiException on error
    */
   @Deprecated
   public Term mkFiniteFieldElem(String val, Sort sort, int base) throws CVC5ApiException
@@ -1620,7 +1632,7 @@ public class Solver extends AbstractPointer
    * @param exp Number of bits in the exponent.
    * @param sig Number of bits in the significand.
    * @return The floating-point constant.
-   * @throws CVC5ApiException
+   * @throws CVC5ApiException on error
    */
   @Deprecated
   public Term mkFloatingPointPosInf(int exp, int sig) throws CVC5ApiException
@@ -1639,7 +1651,7 @@ public class Solver extends AbstractPointer
    * @param exp Number of bits in the exponent.
    * @param sig Number of bits in the significand.
    * @return The floating-point constant.
-   * @throws CVC5ApiException
+   * @throws CVC5ApiException on error
    */
   @Deprecated
   public Term mkFloatingPointNegInf(int exp, int sig) throws CVC5ApiException
@@ -1658,7 +1670,7 @@ public class Solver extends AbstractPointer
    * @param exp Number of bits in the exponent.
    * @param sig Number of bits in the significand.
    * @return The floating-point constant.
-   * @throws CVC5ApiException
+   * @throws CVC5ApiException on error
    */
   @Deprecated
   public Term mkFloatingPointNaN(int exp, int sig) throws CVC5ApiException
@@ -1677,7 +1689,7 @@ public class Solver extends AbstractPointer
    * @param exp Number of bits in the exponent.
    * @param sig Number of bits in the significand.
    * @return The floating-point constant.
-   * @throws CVC5ApiException
+   * @throws CVC5ApiException on error
    */
   @Deprecated
   public Term mkFloatingPointPosZero(int exp, int sig) throws CVC5ApiException
@@ -1696,7 +1708,7 @@ public class Solver extends AbstractPointer
    * @param exp Number of bits in the exponent.
    * @param sig Number of bits in the significand.
    * @return The floating-point constant.
-   * @throws CVC5ApiException
+   * @throws CVC5ApiException on error
    */
   @Deprecated
   public Term mkFloatingPointNegZero(int exp, int sig) throws CVC5ApiException
@@ -1734,7 +1746,7 @@ public class Solver extends AbstractPointer
    * @param sig Size of the significand.
    * @param val Value of the floating-point constant as a bit-vector term.
    * @return The floating-point value.
-   * @throws CVC5ApiException
+   * @throws CVC5ApiException on error
    */
   @Deprecated
   public Term mkFloatingPoint(int exp, int sig, Term val) throws CVC5ApiException
@@ -1755,7 +1767,7 @@ public class Solver extends AbstractPointer
    * @param exp  The bit-vector representing the exponent.
    * @param sig The bit-vector representing the significand.
    * @return The floating-point value.
-   * @throws CVC5ApiException
+   * @throws CVC5ApiException on error
    */
   @Deprecated
   public Term mkFloatingPoint(Term sign, Term exp, Term sig) throws CVC5ApiException
@@ -1777,7 +1789,7 @@ public class Solver extends AbstractPointer
    * @param sort The sort the cardinality constraint is for.
    * @param upperBound The upper bound on the cardinality of the sort.
    * @return The cardinality constraint.
-   * @throws CVC5ApiException
+   * @throws CVC5ApiException on error
    */
   @Deprecated
   public Term mkCardinalityConstraint(Sort sort, int upperBound) throws CVC5ApiException
@@ -1930,7 +1942,7 @@ public class Solver extends AbstractPointer
   /**
    * Create a datatype declaration.
    *
-   * Create sorts parameter with {@link Solver#mkParamSort(String)}.
+   * Create sorts parameter with {@link TermManager#mkParamSort(String)}.
    *
    * @api.note This method is experimental and may change in future versions.
    *
@@ -1952,7 +1964,7 @@ public class Solver extends AbstractPointer
   /**
    * Create a datatype declaration.
    *
-   * Create sorts parameter with {@link Solver#mkParamSort(String)}.
+   * Create sorts parameter with {@link TermManager#mkParamSort(String)}.
    *
    * @deprecated
    * This function is deprecated and replaced by
@@ -1975,16 +1987,12 @@ public class Solver extends AbstractPointer
   /* .................................................................... */
 
   /**
-   * Simplify a formula without doing "much" work.
+   * Simplify a term or formula based on rewriting.
    *
-   * Does not involve the SAT Engine in the simplification, but uses the
-   * current definitions, assertions, and the current partial model, if one has
-   * been constructed.  It also involves theory normalization.
+   * @api.note This function is experimental and may change in future versions.
    *
-   * @api.note This method is experimental and may change in future versions.
-   *
-   * @param t The formula to simplify.
-   * @return The simplified formula.
+   * @param t The term to simplify.
+   * @return The simplified term.
    */
   public Term simplify(Term t)
   {
@@ -1994,6 +2002,26 @@ public class Solver extends AbstractPointer
 
   private native long simplify(long pointer, long termPointer);
 
+  /**
+   * Simplify a term or formula based on rewriting and (optionally) applying
+   * substitutions for solved variables.
+   *
+   * If applySubs is true, then for example, if `(= x 0)` was asserted to this
+   * solver, this method may replace occurrences of `x` with `0`.
+   *
+   * @api.note This function is experimental and may change in future versions.
+   *
+   * @param t The term to simplify.
+   * @param applySubs Whether to apply substitutions for solved variables.
+   * @return The simplified term.
+   */
+  public Term simplify(Term t, boolean applySubs)
+  {
+    long termPointer = simplify(pointer, t.getPointer(), applySubs);
+    return new Term(termPointer);
+  }
+
+  private native long simplify(long pointer, long termPointer, boolean applySubs);
   /**
    * Assert a formula.
    * SMT-LIB:
@@ -2148,7 +2176,7 @@ public class Solver extends AbstractPointer
    * @param symbol The name of the sort.
    * @param arity The arity of the sort.
    * @return The sort.
-   * @throws CVC5ApiException
+   * @throws CVC5ApiException on error
    */
   public Sort declareSort(String symbol, int arity) throws CVC5ApiException
   {
@@ -2176,7 +2204,7 @@ public class Solver extends AbstractPointer
    * Otherwise, this method will always return the same Sort
    * for each call with the given arity and symbol where fresh is false.
    * @return The sort.
-   * @throws CVC5ApiException
+   * @throws CVC5ApiException on error
    */
   public Sort declareSort(String symbol, int arity, boolean fresh) throws CVC5ApiException
   {
@@ -2295,7 +2323,7 @@ public class Solver extends AbstractPointer
    * ( define-fun-rec <function_def> )
    * }
    *
-   * Create parameter {@code fun} with {@link Solver#mkConst(Sort)}.
+   * Create parameter {@code fun} with {@link TermManager#mkConst(Sort)}.
    *
    * @param fun The sorted function.
    * @param boundVars The parameters to this function.
@@ -2316,7 +2344,7 @@ public class Solver extends AbstractPointer
    * ( define-fun-rec <function_def> )
    * }
    *
-   * Create parameter {@code fun} with {@link Solver#mkConst(Sort)}.
+   * Create parameter {@code fun} with {@link TermManager#mkConst(Sort)}.
    *
    * @param fun The sorted function.
    * @param boundVars The parameters to this function.
@@ -2345,7 +2373,7 @@ public class Solver extends AbstractPointer
    * }
    *
    * Create elements of parameter {@code funs} with
-   * {@link Solver#mkConst(Sort)}.
+   * {@link TermManager#mkConst(Sort)}.
    *
    * @param funs The sorted functions.
    * @param boundVars The list of parameters to the functions.
@@ -2364,7 +2392,7 @@ public class Solver extends AbstractPointer
    * }
    *
    * Create elements of parameter {@code funs} with
-   * {@link Solver#mkConst(Sort)}.
+   * {@link TermManager#mkConst(Sort)}.
    *
    * @param funs The sorted functions.
    * @param boundVars The list of parameters to the functions.
@@ -2750,6 +2778,27 @@ public class Solver extends AbstractPointer
   private native String proofToString(long pointer, long proofs, int format);
 
   /**
+   * Prints a proof into a string with a slected proof format mode.
+   * Other aspects of printing are taken from the solver options.
+   *
+   * @api.note This method is experimental and may change in future versions.
+   *
+   * @param proof A proof.
+   * @param format The proof format used to print the proof. Must be
+   * `PROOF_FORMAT_NONE` if the proof is from a component other than
+   * `PROOF_COMPONENT_FULL`.
+   * @param assertionNames Mapping between assertions and names, if they were
+   * given by the user.  This is used by the Alethe proof format.
+   * @return The proof printed in the current format.
+   */
+  public String proofToString(Proof proof, ProofFormat format, Map assertionNames)
+  {
+    return proofToString(pointer, proof.getPointer(), format.getValue(), assertionNames);
+  }
+
+  private native String proofToString(long pointer, long proofs, int format, Map assertionNames);
+
+  /**
    * Get the value of the given term in the current model.
    *
    * SMT-LIB:
@@ -3035,6 +3084,19 @@ public class Solver extends AbstractPointer
       long pointer, String symbol, long[] sortPointers, long sortPointer, IOracle oracle);
 
   /**
+   * Add plugin to this solver. Its callbacks will be called throughout the
+   * lifetime of this solver.
+   *
+   * @param p The plugin to add to this solver.
+   */
+  public void addPlugin(AbstractPlugin p)
+  {
+    addPlugin(pointer, p.getTermManager().getPointer(), p);
+  }
+
+  private native void addPlugin(long pointer, long termManagerPointer, AbstractPlugin p);
+
+  /**
    * Pop a level from the assertion stack.
    *
    * SMT-LIB:
@@ -3042,7 +3104,7 @@ public class Solver extends AbstractPointer
    * ( pop <numeral> )
    * }
    *
-   * @throws CVC5ApiException
+   * @throws CVC5ApiException on error
    */
   public void pop() throws CVC5ApiException
   {
@@ -3058,7 +3120,7 @@ public class Solver extends AbstractPointer
    * }
    *
    * @param nscopes The number of levels to pop.
-   * @throws CVC5ApiException
+   * @throws CVC5ApiException on error
    */
   public void pop(int nscopes) throws CVC5ApiException
   {
@@ -3069,23 +3131,32 @@ public class Solver extends AbstractPointer
   private native void pop(long pointer, int nscopes);
 
   /**
-   * Get an interpolant
+   * Get an interpolant.
+   *
+   * <p>
+   * Given that {@code A->B} is valid,
+   * this function determines a term {@code I}
+   * over the shared variables of {@code A} and
+   * {@code B},
+   * such that {@code A->I} and {@code I->B}
+   * are valid. {@code A} is the current set of
+   * assertions and {@code B} is the conjecture, given as {@code conj}.
+   * </p>
    *
    * SMT-LIB:
    * {@code
-   * ( get-interpolant <conj> )
+   * ( get-interpolant <symbol> <conj> )
    * }
    *
-   * Requires option {@code produce-interpolants} to be set to a mode different
-   * from {@code none}.
+   * @api.note In SMT-LIB, {@code <symbol>} assigns a symbol to the interpolant.
+   *
+   * @api.note Requires option {@code produce-interpolants} to be set to a mode
+   * different from {@code none}.
    *
    * @api.note This method is experimental and may change in future versions.
    *
    * @param conj The conjecture term.
-   * @return A Term I such that {@code A->I} and {@code I->B} are valid, where
-   *         {@code A} is the current set of assertions and {@code B} is given
-   *         in the input by {@code conj}, or the null term if such a term
-   *         cannot be found.
+   * @return The interpolant, if an interpolant exists, else the null term.
    */
   public Term getInterpolant(Term conj)
   {
@@ -3096,24 +3167,34 @@ public class Solver extends AbstractPointer
   private native long getInterpolant(long pointer, long conjPointer);
 
   /**
-   * Get an interpolant
+   * Get an interpolant.
+   *
+   * <p>
+   * Given that {@code A->B} is valid,
+   * this function determines a term {@code I},
+   * over the shared variables of {@code A} and
+   * {@code B},
+   * with respect to a given grammar, such
+   * that {@code A->I} and {@code I->B} are valid, if such a term exits.
+   * {@code A} is the current set of assertions and {@code B} is the
+   * conjecture, given as {@code conj}.
+   * </p>
    *
    * SMT-LIB:
    * {@code
-   * ( get-interpolant <conj> <g> )
+   * ( get-interpolant <symbol> <conj> <g> )
    * }
    *
-   * Requires option {@code produce-interpolants} to be set to a mode different
-   * from {@code none}.
+   * @api.note In SMT-LIB, {@code <symbol>} assigns a symbol to the interpolant.
+   *
+   * @api.note Requires option {@code produce-interpolants} to be set to a mode
+   * different from {@code none}.
    *
    * @api.note This method is experimental and may change in future versions.
    *
    * @param conj The conjecture term.
-   * @param grammar The grammar for the interpolant I.
-   * @return A Term I such that {@code A->I} and {@code I->B} are valid, where
-   *         {@code A} is the current set of assertions and {@code B} is given
-   *         in the input by {@code conj}, or the null term if such a term
-   *         cannot be found.
+   * @param grammar The grammar for the interpolant {@code I}.
+   * @return The interpolant, if an interpolant exists, else the null term.
    */
   public Term getInterpolant(Term conj, Grammar grammar)
   {
@@ -3301,7 +3382,7 @@ public class Solver extends AbstractPointer
    * ( push <numeral> )
    * }
    *
-   * @throws CVC5ApiException
+   * @throws CVC5ApiException on error
    */
   public void push() throws CVC5ApiException
   {
@@ -3317,7 +3398,7 @@ public class Solver extends AbstractPointer
    * }
    *
    * @param nscopes The number of levels to push.
-   * @throws CVC5ApiException
+   * @throws CVC5ApiException on error
    */
   public void push(int nscopes) throws CVC5ApiException
   {
@@ -3352,7 +3433,7 @@ public class Solver extends AbstractPointer
    *
    * @param keyword The info flag.
    * @param value The value of the info flag.
-   * @throws CVC5ApiException
+   * @throws CVC5ApiException on error
    */
   public void setInfo(String keyword, String value) throws CVC5ApiException
   {
@@ -3370,7 +3451,7 @@ public class Solver extends AbstractPointer
    * }
    *
    * @param logic The logic to set.
-   * @throws CVC5ApiException
+   * @throws CVC5ApiException on error
    */
   public void setLogic(String logic) throws CVC5ApiException
   {
@@ -3397,7 +3478,7 @@ public class Solver extends AbstractPointer
    * @api.note Asserts isLogicSet().
    *
    * @return The logic used by the solver.
-   * @throws CVC5ApiException
+   * @throws CVC5ApiException on error
    */
   public String getLogic() throws CVC5ApiException
   {

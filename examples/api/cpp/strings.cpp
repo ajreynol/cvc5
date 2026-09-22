@@ -1,16 +1,13 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Aina Niemetz, Tianyi Liang, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
  * ****************************************************************************
  *
- * A simple demonstration of reasoning about strings with cvc5 via C++ API.
+ * A simple demonstration of reasoning about strings via the C++ API.
  */
 
 #include <cvc5/cvc5.h>
@@ -30,8 +27,6 @@ int main()
   slv.setOption("produce-models", "true");
   // The option strings-exp is needed
   slv.setOption("strings-exp", "true");
-  // Set output language to SMTLIB2
-  slv.setOption("output-language", "smt2");
 
   // String type
   Sort string = tm.getStringSort();
@@ -87,7 +82,7 @@ int main()
   Result result = slv.checkSatAssuming(q);
   std::cout << "cvc5 reports: " << q << " is " << result << "." << std::endl;
 
-  if(result.isSat())
+  if (result.isSat())
   {
     std::cout << "  x  = " << slv.getValue(x) << std::endl;
     std::cout << "  s1.s2 = " << slv.getValue(s) << std::endl;

@@ -1,4 +1,5 @@
-; COMMAND-LINE: --mbqi --ho-elim
+; REQUIRES: unrestricted-mode
+; COMMAND-LINE: --mbqi
 ; EXPECT: unsat
 (set-logic HO_ALL)
 (declare-sort $$unsorted 0)

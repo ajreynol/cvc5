@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Aina Niemetz, Gereon Kremer, Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -74,6 +71,9 @@ class Solver;
 class Statistics;
 struct APIStatistics;
 class Term;
+class PluginInternal;
+
+using NodeManagerSharedPtr = std::shared_ptr<internal::NodeManager>;
 
 /* -------------------------------------------------------------------------- */
 /* Exception                                                                  */
@@ -287,6 +287,21 @@ class CVC5_EXPORT Result
  */
 CVC5_EXPORT std::ostream& operator<<(std::ostream& out, const Result& r);
 
+}  // namespace cvc5
+
+namespace std {
+/**
+ * Hash function for results.
+ */
+template <>
+struct CVC5_EXPORT hash<cvc5::Result>
+{
+  size_t operator()(const cvc5::Result& result) const;
+};
+}  // namespace std
+
+namespace cvc5 {
+
 /* -------------------------------------------------------------------------- */
 /* SynthResult                                                                */
 /* -------------------------------------------------------------------------- */
@@ -334,6 +349,20 @@ class CVC5_EXPORT SynthResult
   bool isUnknown() const;
 
   /**
+   * Operator overloading for equality of two synthesis results.
+   * @param r The synthesis result to compare to for equality.
+   * @return True if the synthesis results are equal.
+   */
+  bool operator==(const SynthResult& r) const;
+
+  /**
+   * Operator overloading for disequality of two synthesis results.
+   * @param r The synthesis result to compare to for disequality.
+   * @return True if the synthesis results are disequal.
+   */
+  bool operator!=(const SynthResult& r) const;
+
+  /**
    * @return A string representation of this synthesis result.
    */
   std::string toString() const;
@@ -362,6 +391,21 @@ class CVC5_EXPORT SynthResult
  * @return The output stream.
  */
 CVC5_EXPORT std::ostream& operator<<(std::ostream& out, const SynthResult& r);
+
+}  // namespace cvc5
+
+namespace std {
+/**
+ * Hash function for synthesis results.
+ */
+template <>
+struct CVC5_EXPORT hash<cvc5::SynthResult>
+{
+  size_t operator()(const cvc5::SynthResult& result) const;
+};
+}  // namespace std
+
+namespace cvc5 {
 
 /* -------------------------------------------------------------------------- */
 /* Sort                                                                       */
@@ -465,9 +509,9 @@ class CVC5_EXPORT Sort
    *
    * The symbol of this sort is the string that was
    * provided when constructing it via
-   * Solver::mkUninterpretedSort(const std::string&) const,
-   * Solver::mkUnresolvedSort(const std::string&, size_t) const, or
-   * Solver::mkUninterpretedSortConstructorSort(const std::string&, size_t).
+   * TermManager::mkUninterpretedSort(const std::optional<std::string>&), or
+   * TermManager::mkUninterpretedSortConstructorSort(size_t, const
+   * std::optional<std::string>&).
    *
    * @return The raw symbol of the sort.
    */
@@ -674,7 +718,7 @@ class CVC5_EXPORT Sort
    * Instantiate a parameterized datatype sort or uninterpreted sort
    * constructor sort.
    *
-   * Create sort parameters with Solver::mkParamSort().
+   * Create sort parameters with TermManager::mkParamSort().
    *
    * @param params The list of sort parameters to instantiate with.
    * @return The instantiated sort.
@@ -909,15 +953,15 @@ class CVC5_EXPORT Sort
       const std::vector<Sort>& sorts);
   /** Helper to convert a vector of internal TypeNodes to Sorts. */
   std::vector<Sort> static typeNodeVectorToSorts(
-      TermManager* tm, const std::vector<internal::TypeNode>& types);
+      NodeManagerSharedPtr nm, const std::vector<internal::TypeNode>& types);
 
   /**
    * Constructor.
-   * @param tm The associated term manager.
+   * @param nm The associated node manager.
    * @param t  The internal type that is to be wrapped by this sort.
    * @return The Sort.
    */
-  Sort(TermManager* tm, const internal::TypeNode& t);
+  Sort(NodeManagerSharedPtr nm, const internal::TypeNode& t);
 
   /**
    * Helper for isNull checks. This prevents calling an API function with
@@ -926,9 +970,9 @@ class CVC5_EXPORT Sort
   bool isNullHelper() const;
 
   /**
-   * The associated term manager.
+   * The associated node manager.
    */
-  TermManager* d_tm = nullptr;
+  NodeManagerSharedPtr d_nm = nullptr;
 
   /**
    * The internal type wrapped by this sort.
@@ -1048,19 +1092,19 @@ class CVC5_EXPORT Op
  private:
   /**
    * Constructor for a single kind (non-indexed operator).
-   * @param tm The associated term manager.
+   * @param nm The associated node manager.
    * @param k  The kind of this Op.
    */
-  Op(TermManager* tm, const Kind k);
+  Op(NodeManagerSharedPtr nm, const Kind k);
 
   /**
    * Constructor.
-   * @param tm The associated term managaer.
+   * @param nm The associated node manager.
    * @param k The kind of this Op.
    * @param n The internal node that is to be wrapped by this term.
    * @return The Term.
    */
-  Op(TermManager* tm, const Kind k, const internal::Node& n);
+  Op(NodeManagerSharedPtr nm, const Kind k, const internal::Node& n);
 
   /**
    * Helper for isNull checks. This prevents calling an API function with
@@ -1093,9 +1137,9 @@ class CVC5_EXPORT Op
   Term getIndexHelper(size_t index);
 
   /**
-   * The associated term manager.
+   * The associated node manager.
    */
-  TermManager* d_tm = nullptr;
+  NodeManagerSharedPtr d_nm = nullptr;
 
   /** The kind of this operator. */
   Kind d_kind;
@@ -1150,6 +1194,7 @@ class CVC5_EXPORT Term
   friend class TermManager;
   friend class Solver;
   friend class Grammar;
+  friend class PluginInternal;
   friend class SynthResult;
   friend struct std::hash<Term>;
 
@@ -1405,25 +1450,13 @@ class CVC5_EXPORT Term
 
     /**
      * Constructor
-     * @param tm The associated term manager.
+     * @param nm The associated node manager.
      * @param e  A `std::shared pointer` to the node that we're iterating over.
      * @param p  The position of the iterator (e.g. which child it's on).
      */
-    const_iterator(TermManager* tm,
+    const_iterator(NodeManagerSharedPtr nm,
                    const std::shared_ptr<internal::Node>& e,
                    uint32_t p);
-
-    /**
-     * Copy constructor.
-     */
-    const_iterator(const const_iterator& it);
-
-    /**
-     * Assignment operator.
-     * @param it The iterator to assign to.
-     * @return The reference to the iterator after assignment.
-     */
-    const_iterator& operator=(const const_iterator& it);
 
     /**
      * Equality operator.
@@ -1459,9 +1492,9 @@ class CVC5_EXPORT Term
 
    private:
     /**
-     * The associated term manager.
+     * The associated node manager.
      */
-    TermManager* d_tm = nullptr;
+    NodeManagerSharedPtr d_nm = nullptr;
     /** The original node to be iterated over. */
     std::shared_ptr<internal::Node> d_origNode;
     /** Keeps track of the iteration position. */
@@ -1561,8 +1594,20 @@ class CVC5_EXPORT Term
    * @note This is not to be confused with toString(), which returns
    *       some string representation of the term, whatever data it may hold.
    * @return The string term as a native string value.
+   * @warning This function is deprecated and replaced by
+   *          Term::getU32StringValue(). It will be removed in a future
+   *          release.
    */
-  std::wstring getStringValue() const;
+  [[deprecated("Use Term::getU32StringValue() instead")]] std::wstring
+  getStringValue() const;
+  /**
+   * Get the native UTF-32 string representation of a string value.
+   * @note Requires that this term is a string value (see isStringValue()).
+   * @note This is not to be confused with toString(), which returns
+   *       some string representation of the term, whatever data it may hold.
+   * @return The string term as a native UTF-32 string value.
+   */
+  std::u32string getU32StringValue() const;
 
   /**
    * Determine if this term is a rational value whose numerator fits into an
@@ -1885,27 +1930,23 @@ class CVC5_EXPORT Term
 
  protected:
   /**
-   * The associated term manager.
+   * The associated node manager.
    */
-  TermManager* d_tm = nullptr;
+  NodeManagerSharedPtr d_nm = nullptr;
 
  private:
   /** Helper function to collect all elements of a set. */
   static void collectSet(std::set<Term>& set,
                          const internal::Node& node,
-                         TermManager* tm);
-  /** Helper function to collect all elements of a sequence. */
-  static void collectSequence(std::vector<Term>& seq,
-                              const internal::Node& node,
-                              TermManager* tm);
+                         const NodeManagerSharedPtr& nm);
 
   /**
    * Constructor.
-   * @param tm The associated term manager.
+   * @param nm The associated node manager.
    * @param n The internal node that is to be wrapped by this term.
    * @return The Term.
    */
-  Term(TermManager* tm, const internal::Node& n);
+  Term(NodeManagerSharedPtr nm, const internal::Node& n);
 
   /** @return The internal wrapped Node of this term. */
   const internal::Node& getNode(void) const;
@@ -1915,7 +1956,7 @@ class CVC5_EXPORT Term
       const std::vector<Term>& terms);
   /** Helper to convert a vector of internal Nodes to Terms. */
   std::vector<Term> static nodeVectorToTerms(
-      TermManager* tm, const std::vector<internal::Node>& nodes);
+      NodeManagerSharedPtr nm, const std::vector<internal::Node>& nodes);
 
   /**
    * Helper for isNull checks. This prevents calling an API function with
@@ -2085,11 +2126,11 @@ class CVC5_EXPORT DatatypeConstructorDecl
  private:
   /**
    * Constructor.
-   * @param nm The associated node manager.
+   * @param nm   The associated node manager.
    * @param name The name of the datatype constructor.
    * @return The DatatypeConstructorDecl.
    */
-  DatatypeConstructorDecl(TermManager* tm, const std::string& name);
+  DatatypeConstructorDecl(NodeManagerSharedPtr nm, const std::string& name);
 
   /**
    * Helper for isNull checks. This prevents calling an API function with
@@ -2104,9 +2145,9 @@ class CVC5_EXPORT DatatypeConstructorDecl
   bool isResolved() const;
 
   /**
-   * The associated term manager.
+   * The associated node manager.
    */
-  TermManager* d_tm = nullptr;
+  NodeManagerSharedPtr d_nm = nullptr;
 
   /**
    * The internal (intermediate) datatype constructor wrapped by this
@@ -2167,7 +2208,7 @@ class CVC5_EXPORT DatatypeDecl
    * @param decl The datatype declaration to compare to for equality.
    * @return True if the datatype declarations are equal.
    */
-  bool operator==(const DatatypeDecl& decll) const;
+  bool operator==(const DatatypeDecl& decl) const;
 
   /**
    * Add datatype constructor declaration.
@@ -2216,24 +2257,24 @@ class CVC5_EXPORT DatatypeDecl
  private:
   /**
    * Constructor.
-   * @param tm   The associated term manager.
+   * @param nm   The associated node manager.
    * @param name The name of the datatype.
    * @param isCoDatatype True if a codatatype is to be constructed.
    * @return The DatatypeDecl.
    */
-  DatatypeDecl(TermManager* tm,
+  DatatypeDecl(NodeManagerSharedPtr nm,
                const std::string& name,
                bool isCoDatatype = false);
 
   /**
    * Constructor for parameterized datatype declaration.
-   * Create sorts parameter with Solver::mkParamSort().
-   * @param tm   The associated term manager.
+   * Create sorts parameter with TermManager::mkParamSort().
+   * @param nm   The associated node manager.
    * @param name The name of the datatype.
    * @param params A list of sort parameters.
    * @param isCoDatatype True if a codatatype is to be constructed.
    */
-  DatatypeDecl(TermManager* tm,
+  DatatypeDecl(NodeManagerSharedPtr nm,
                const std::string& name,
                const std::vector<Sort>& params,
                bool isCoDatatype = false);
@@ -2248,9 +2289,9 @@ class CVC5_EXPORT DatatypeDecl
   bool isNullHelper() const;
 
   /**
-   * The associated term manager.
+   * The associated node manager.
    */
-  TermManager* d_tm = nullptr;
+  NodeManagerSharedPtr d_nm = nullptr;
 
   /**
    * The internal (intermediate) datatype wrapped by this datatype
@@ -2352,11 +2393,12 @@ class CVC5_EXPORT DatatypeSelector
  private:
   /**
    * Constructor.
-   * @param tm   The associated term manager.
+   * @param nm   The associated node manager.
    * @param stor The internal datatype selector to be wrapped.
    * @return The DatatypeSelector.
    */
-  DatatypeSelector(TermManager* tm, const internal::DTypeSelector& stor);
+  DatatypeSelector(NodeManagerSharedPtr nm,
+                   const internal::DTypeSelector& stor);
 
   /**
    * Helper for isNull checks. This prevents calling an API function with
@@ -2365,9 +2407,9 @@ class CVC5_EXPORT DatatypeSelector
   bool isNullHelper() const;
 
   /**
-   * The associated term manager.
+   * The associated node manager.
    */
-  TermManager* d_tm = nullptr;
+  NodeManagerSharedPtr d_nm = nullptr;
 
   /**
    * The internal datatype selector wrapped by this datatype selector.
@@ -2433,7 +2475,7 @@ class CVC5_EXPORT DatatypeConstructor
    * constructors, including nullary ones, should be used as the
    * first argument to Terms whose kind is #APPLY_CONSTRUCTOR. For example,
    * the nil list can be constructed by
-   * `Solver::mkTerm(Kind::APPLY_CONSTRUCTOR, {t})`, where `t` is the term
+   * `TermManager::mkTerm(Kind::APPLY_CONSTRUCTOR, {t})`, where `t` is the term
    * returned by this function.
    *
    * @note This function should not be used for parametric datatypes. Instead,
@@ -2476,7 +2518,7 @@ class CVC5_EXPORT DatatypeConstructor
    *
    * @note The returned constructor term `t` is used to construct the above
    *       (nullary) application of `nil` with
-   *       `Solver::mkTerm(Kind::APPLY_CONSTRUCTOR, {t})`.
+   *       `TermManager::mkTerm(Kind::APPLY_CONSTRUCTOR, {t})`.
    *
    * @warning This function is experimental and may change in future versions.
    *
@@ -2562,13 +2604,6 @@ class CVC5_EXPORT DatatypeConstructor
     const_iterator();
 
     /**
-     * Assignment operator.
-     * @param it The iterator to assign to.
-     * @return The reference to the iterator after assignment.
-     */
-    const_iterator& operator=(const const_iterator& it);
-
-    /**
      * Equality operator.
      * @param it The iterator to compare to for equality.
      * @return True if the iterators are equal.
@@ -2609,18 +2644,18 @@ class CVC5_EXPORT DatatypeConstructor
    private:
     /**
      * Constructor.
-     * @param tm   The associated term manager.
+     * @param nm   The associated node manager.
      * @param ctor The internal datatype constructor to iterate over.
      * @param begin True if this is a `begin()` iterator.
      */
-    const_iterator(TermManager* tm,
+    const_iterator(NodeManagerSharedPtr nm,
                    const internal::DTypeConstructor& ctor,
                    bool begin);
 
     /**
-     * The associated term manager.
+     * The associated node manager.
      */
-    TermManager* d_tm = nullptr;
+    NodeManagerSharedPtr d_nm = nullptr;
 
     /**
      * A pointer to the list of selectors of the internal datatype
@@ -2649,11 +2684,12 @@ class CVC5_EXPORT DatatypeConstructor
  private:
   /**
    * Constructor.
-   * @param tm   The associated term manager.
+   * @param nm   The associated node manager.
    * @param ctor The internal datatype constructor to be wrapped.
    * @return The DatatypeConstructor.
    */
-  DatatypeConstructor(TermManager* tm, const internal::DTypeConstructor& ctor);
+  DatatypeConstructor(NodeManagerSharedPtr nm,
+                      const internal::DTypeConstructor& ctor);
 
   /**
    * Return selector for name.
@@ -2669,9 +2705,9 @@ class CVC5_EXPORT DatatypeConstructor
   bool isNullHelper() const;
 
   /**
-   * The associated term manager.
+   * The associated node manager.
    */
-  TermManager* d_tm = nullptr;
+  NodeManagerSharedPtr d_nm = nullptr;
 
   /**
    * The internal datatype constructor wrapped by this datatype constructor.
@@ -2854,13 +2890,6 @@ class CVC5_EXPORT Datatype
     const_iterator();
 
     /**
-     * Assignment operator.
-     * @param it The iterator to assign to.
-     * @return The reference to the iterator after assignment.
-     */
-    const_iterator& operator=(const const_iterator& it);
-
-    /**
      * Equality operator.
      * @param it The iterator to compare to for equality.
      * @return True if the iterators are equal.
@@ -2901,16 +2930,18 @@ class CVC5_EXPORT Datatype
    private:
     /**
      * Constructor.
-     * @param tm    The associated term manager.
+     * @param nm    The associated node manager.
      * @param dtype The internal datatype to iterate over.
      * @param begin True if this is a begin() iterator.
      */
-    const_iterator(TermManager* tm, const internal::DType& dtype, bool begin);
+    const_iterator(NodeManagerSharedPtr nm,
+                   const internal::DType& dtype,
+                   bool begin);
 
     /**
-     * The associated term manager.
+     * The associated node manager.
      */
-    TermManager* d_tm = nullptr;
+    NodeManagerSharedPtr d_nm = nullptr;
 
     /**
      * A pointer to the list of constructors of the internal datatype
@@ -2939,11 +2970,11 @@ class CVC5_EXPORT Datatype
  private:
   /**
    * Constructor.
-   * @param tm    The associated term manager.
+   * @param nm    The associated node manager.
    * @param dtype The internal datatype to be wrapped.
    * @return The Datatype.
    */
-  Datatype(TermManager* tm, const internal::DType& dtype);
+  Datatype(NodeManagerSharedPtr nm, const internal::DType& dtype);
 
   /**
    * Return constructor for name.
@@ -2966,9 +2997,9 @@ class CVC5_EXPORT Datatype
   bool isNullHelper() const;
 
   /**
-   * The associated term manager.
+   * The associated node manager.
    */
-  TermManager* d_tm = nullptr;
+  NodeManagerSharedPtr d_nm = nullptr;
 
   /**
    * The internal datatype wrapped by this datatype.
@@ -3062,8 +3093,39 @@ class CVC5_EXPORT Grammar
 {
   friend class parser::Cmd;
   friend class Solver;
+  friend struct std::hash<Grammar>;
 
  public:
+  /**
+   * Nullary constructor. Needed for the Cython API.
+   */
+  Grammar();
+
+  /**
+   * Destructor for bookeeping.
+   */
+  ~Grammar();
+
+  /**
+   * Determine if this is the null grammar (Grammar::Grammar()).
+   * @return True if this grammar is the null grammar.
+   */
+  bool isNull() const;
+
+  /**
+   * Operator overloading for referential equality of two grammars.
+   * @param grammar The grammarto compare to for equality.
+   * @return True if both grammars point to the same internal grammar object.
+   */
+  bool operator==(const Grammar& grammar) const;
+
+  /**
+   * Referential disequality operator.
+   * @param grammar The grammar to compare to for disequality.
+   * @return True if both grammars point to different internal grammar objects.
+   */
+  bool operator!=(const Grammar& grammar) const;
+
   /**
    * Add `rule` to the set of rules corresponding to `ntSymbol`.
    * @param ntSymbol The non-terminal to which the rule is added.
@@ -3096,24 +3158,14 @@ class CVC5_EXPORT Grammar
    */
   std::string toString() const;
 
-  /**
-   * Nullary constructor. Needed for the Cython API.
-   */
-  Grammar();
-
-  /**
-   * Destructor for bookeeping.
-   */
-  ~Grammar();
-
  private:
   /**
    * Constructor.
-   * @param tm        The associated term manager.
+   * @param nm        The associated node manager.
    * @param sygusVars The input variables to synth-fun/synth-var.
    * @param ntSymbols The non-terminals of this grammar.
    */
-  Grammar(TermManager* tm,
+  Grammar(NodeManagerSharedPtr nm,
           const std::vector<Term>& sygusVars,
           const std::vector<Term>& ntSymbols);
 
@@ -3123,22 +3175,37 @@ class CVC5_EXPORT Grammar
   Sort resolve();
 
   /**
-   * The associated term manager.
+   * The associated node manager.
    * @note This is only needed temporarily until deprecated term/sort handling
    * functions are removed.
    */
-  TermManager* d_tm;
+  NodeManagerSharedPtr d_nm;
   /** The internal representation of this grammar. */
-  std::shared_ptr<internal::SygusGrammar> d_sg;
+  std::shared_ptr<internal::SygusGrammar> d_grammar;
 };
 
 /**
  * Serialize a grammar to given stream.
- * @param out The output stream.
- * @param g The grammar to be serialized to the given output stream.
+ * @param out     The output stream.
+ * @param grammar The grammar to be serialized to the given output stream.
  * @return The output stream.
  */
-CVC5_EXPORT std::ostream& operator<<(std::ostream& out, const Grammar& g);
+CVC5_EXPORT std::ostream& operator<<(std::ostream& out, const Grammar& grammar);
+
+}  // namespace cvc5
+
+namespace std {
+/**
+ * Hash function for grammar.
+ */
+template <>
+struct CVC5_EXPORT hash<cvc5::Grammar>
+{
+  size_t operator()(const cvc5::Grammar& grammar) const;
+};
+}  // namespace std
+
+namespace cvc5 {
 
 /* -------------------------------------------------------------------------- */
 /* Options                                                                    */
@@ -3175,7 +3242,7 @@ class CVC5_EXPORT DriverOptions
 
 /**
  * \verbatim embed:rst:leading-asterisk
- * Holds some description about a particular option, including its name, its
+ * Holds information about a specific option, including its name, its
  * aliases, whether the option was explicitly set by the user, and information
  * concerning its value. It can be obtained via
  * :cpp:func:`Solver::getOptionInfo() <cvc5::Solver::getOptionInfo()>` and
@@ -3253,16 +3320,37 @@ struct CVC5_EXPORT OptionInfo
     std::vector<std::string> modes;
   };
 
+  /** Move assignment operator. */
+  // Note: this is only required to surpress deprecation warnings for deprecated
+  //       members of this struct. Can be removed after the deprecated members
+  //       have been removed.
+  OptionInfo& operator=(OptionInfo&& info);
   /** The option name */
   std::string name;
   /** The option name aliases */
   std::vector<std::string> aliases;
+  /** The features not supported with this */
+  std::vector<std::string> noSupports;
   /** Whether the option was explicitly set by the user */
   bool setByUser;
-  /** Whether this is an expert option */
-  bool isExpert;
-  /** Whether this is a regular option */
-  bool isRegular;
+  /**
+   * True if the option is an expert option
+   * @warning This field is deprecated and replaced by `category`. It will be
+   *          removed in a future release.
+   */
+  [[deprecated(
+      "Query cvc5::modes::OptionCategory category for EXPERT instead")]] bool
+      isExpert;
+  /**
+   * True if the option is a regular option
+   * @warning This field is deprecated and replaced by `category`. It will be
+   *          removed in a future release.
+   */
+  [[deprecated(
+      "Query cvc5::modes::OptionCategory category for REGULAR instead")]] bool
+      isRegular;
+  /** The category of this option. */
+  modes::OptionCategory category;
   /** Possible types for ``valueInfo``. */
   using OptionInfoVariant = std::variant<VoidInfo,
                                          ValueInfo<bool>,
@@ -3303,10 +3391,18 @@ struct CVC5_EXPORT OptionInfo
    * @return The current value as a `double`.
    */
   double doubleValue() const;
+  /**
+   * Get a string representation of an option info.
+   * @return The string representation.
+   */
+  std::string toString() const;
 };
 
 /**
- * Print an `OptionInfo` object to an ``std::ostream``.
+ * Print an `OptionInfo` object to an output stream.
+ * @param os The output stream.
+ * @param oi The option info.
+ * @return The output stream.
  */
 CVC5_EXPORT std::ostream& operator<<(std::ostream& os, const OptionInfo& oi);
 
@@ -3318,11 +3414,12 @@ CVC5_EXPORT std::ostream& operator<<(std::ostream& os, const OptionInfo& oi);
  * \verbatim embed:rst:leading-asterisk
  * Represents a snapshot of a single statistic value. See :doc:`/statistics` for
  * how statistics can be used.
+ *
  * A value can be of type ``int64_t``, ``double``, ``std::string`` or a
- * histogram
- * (``std::map<std::string, uint64_t>``).
+ * histogram (``std::map<std::string, uint64_t>``).
  * The value type can be queried (using ``isInt()``, ``isDouble()``, etc.) and
  * the stored value can be accessed (using ``getInt()``, ``getDouble()``, etc.).
+ *
  * It is possible to query whether this statistic is an internal statistic by
  * :cpp:func:`isInternal() <cvc5::Stat::isInternal()>` and whether its value is
  * the default value by :cpp:func:`isDefault() <cvc5::Stat::isDefault()>`.
@@ -3338,9 +3435,11 @@ class CVC5_EXPORT Stat
   /** Representation of a histogram: maps names to frequencies. */
   using HistogramData = std::map<std::string, uint64_t>;
   /**
-   * Create an empty statistics object. On such an object all ``isX()`` return
-   * false and all ``getX()`` throw an API exception. It solely exists because
-   * it makes implementing bindings for other languages much easier.
+   * Create an empty statistics object.
+   *
+   * On such an object all `isX()` return false and all `getX()` throw an API
+   * exception. It solely exists because it makes implementing bindings for
+   * other languages much easier.
    */
   Stat();
   /** Copy constructor */
@@ -3351,56 +3450,62 @@ class CVC5_EXPORT Stat
   Stat& operator=(const Stat& s);
 
   /**
-   * Determine if this value is intended for internal use only.
+   * Determine if this statistic is intended for internal use only.
    * @return True if this is an internal statistic.
    */
   bool isInternal() const;
   /**
-   * Determine if this value holds the default value.
+   * Determine if this statistic holds the default value.
    * @return True if this is a defaulted statistic.
    */
   bool isDefault() const;
 
   /**
-   * Determine if  this value is an integer.
+   * Determine if this statistic holds an integer value.
    * @return True if this value is an integer.
    */
   bool isInt() const;
   /**
-   * Return the integer value.
+   * Get the value of an integer statistic.
    * @return The integer value.
    */
   int64_t getInt() const;
   /**
-   * Determine if this value is a double.
+   * Determine if this statistic holds a double value.
    * @return True if this value is a double.
    */
   bool isDouble() const;
   /**
-   * Return the double value.
+   * Get the value of a double statistic.
    * @return The double value.
    */
   double getDouble() const;
   /**
-   * Determine if this value is a string.
+   * Determine if this statistic holds a string value.
    * @return True if this value is a string.
    */
   bool isString() const;
   /**
-   * Return the string value.
+   * Get the value of a string statistic.
    * @return The string value.
    */
   const std::string& getString() const;
   /**
-   * Determine if this value is a histogram.
+   * Determine if this statistics holds a histogram.
    * @return True if this value is a histogram.
    */
   bool isHistogram() const;
   /**
-   * Return the histogram value.
+   * Get the value of a histogram statistic.
    * @return The histogram value.
    */
   const HistogramData& getHistogram() const;
+
+  /**
+   * Get a string represenation of this statistic.
+   * @return The string represenation.
+   */
+  std::string toString() const;
 
  private:
   Stat(bool internal, bool def, StatData&& sd);
@@ -3412,9 +3517,9 @@ class CVC5_EXPORT Stat
 };
 
 /**
- * Print a `Stat` object to an ``std::ostream``.
+ * Print a `Stat` object to an `std::ostream`.
  */
-CVC5_EXPORT std::ostream& operator<<(std::ostream& os, const Stat& sv);
+CVC5_EXPORT std::ostream& operator<<(std::ostream& os, const Stat& stat);
 
 /**
  * \verbatim embed:rst:leading-asterisk
@@ -3422,20 +3527,19 @@ CVC5_EXPORT std::ostream& operator<<(std::ostream& os, const Stat& sv);
  * how statistics can be used.
  *
  * Statistics can be queried from the Solver via
- * :cpp:func:`Solver::getStatistics() <cvc5::Solver::getStatistics()>`, and
- * from the TermManager via :cpp:func:`TermManager::getStatistics()
- * <cvc5::TermManager::getStatistics()>`. An statistics instance obtained from
- * either call is independent of the :cpp:class:`Solver <cvc5::Solver>` (and
- * its associated :cpp:class:`TermManager <cvc5::TermManager>`object: it will
- * not change when new terms are created or the solver's internal statistics
- * do. It will also not be invalidated if the solver/term manageris destroyed.
+ * :cpp:func:`Solver::getStatistics()`, and from the TermManager via
+ * :cpp:func:`TermManager::getStatistics()`. A statistics instance obtained
+ * from either call is independent of the :cpp:class:`Solver` (and its
+ * associated :cpp:class:`TermManager` object: it will not change when new
+ * terms are created or the solver's internal statistics do. It will also not
+ * be invalidated if the solver/term manageris destroyed.
  *
- * Iterating over this class (via :cpp:func:`begin()
- * <cvc5::Statistics::begin()>` and :cpp:func:`end() <cvc5::Statistics::end()>`)
- * shows only public statistics that have been changed. By passing appropriate
- * flags to :cpp:func:`begin() <cvc5::Statistics::begin()>`, statistics that are
- * internal, defaulted, or both, can be included as well. A single statistic
- * value is represented as :cpp:class:`Stat <cvc5::Stat>`. \endverbatim
+ * Iterating over this class (via :cpp:func:`Statistics::begin()` and
+ * :cpp:func:`Statistics::end()`) shows only public statistics that have been
+ * changed. By passing appropriate flags to :cpp:func:`Statistics::begin()`,
+ * statistics that are internal, defaulted, or both, can be included as well.
+ * A single statistic value is represented as :cpp:class:`Stat`.
+ * \endverbatim
  */
 class CVC5_EXPORT Statistics
 {
@@ -3494,6 +3598,12 @@ class CVC5_EXPORT Statistics
   /** End iteration */
   iterator end() const;
 
+  /**
+   * Get a string represenation of this statistics object.
+   * @return The string represenation.
+   */
+  std::string toString() const;
+
  private:
   Statistics(const internal::StatisticsRegistry& reg);
   /** Internal data */
@@ -3501,6 +3611,48 @@ class CVC5_EXPORT Statistics
 };
 CVC5_EXPORT std::ostream& operator<<(std::ostream& out,
                                      const Statistics& stats);
+
+/* -------------------------------------------------------------------------- */
+/* Plugin                                                                     */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * A cvc5 plugin.
+ */
+class CVC5_EXPORT Plugin
+{
+  friend class Solver;
+
+ public:
+  Plugin(TermManager& tm);
+  virtual ~Plugin() = default;
+  /**
+   * Call to check, return vector of lemmas to add to the SAT solver.
+   * This method is called periodically, roughly at every SAT decision.
+   *
+   * @return The vector of lemmas to add to the SAT solver.
+   */
+  virtual std::vector<Term> check();
+  /**
+   * Notify SAT clause, called when `clause` is learned by the SAT solver.
+   * @param clause The learned clause.
+   */
+  virtual void notifySatClause(const Term& clause);
+  /**
+   * Notify theory lemma, called when `lemma` is sent by a theory solver.
+   * @param lemma The theory lemma.
+   */
+  virtual void notifyTheoryLemma(const Term& lemma);
+  /**
+   * Get the name of the plugin (for debugging).
+   * @return The name of the plugin.
+   */
+  virtual std::string getName() = 0;
+
+ private:
+  /** Converter to external */
+  std::shared_ptr<cvc5::PluginInternal> d_pExtToInt;
+};
 
 /* -------------------------------------------------------------------------- */
 /* Proof                                                                      */
@@ -3514,6 +3666,7 @@ CVC5_EXPORT std::ostream& operator<<(std::ostream& out,
 class CVC5_EXPORT Proof
 {
   friend class Solver;
+  friend struct std::hash<Proof>;
 
  public:
   /**
@@ -3525,8 +3678,28 @@ class CVC5_EXPORT Proof
    */
   ~Proof();
 
-  /** @return The proof rule used by the root step of the proof. */
+  /**
+   * Determine if this is the null proof (Proof::Proof()).
+   * @return True if this grammar is the null proof.
+   */
+  bool isNull() const;
+
+  /**
+   * Get the proof rule used by the root step of the proof.
+   * @return The proof rule.
+   */
   ProofRule getRule() const;
+
+  /**
+   * Get the proof rewrite rule used  by the root step of the proof.
+   *
+   * Requires that `getRule()` does not return #DSL_REWRITE or
+   * #THEORY_REWRITE.
+   *
+   * @return The proof rewrite rule.
+   *
+   */
+  ProofRewriteRule getRewriteRule() const;
 
   /** @return The conclusion of the root step of the proof. */
   Term getResult() const;
@@ -3540,27 +3713,52 @@ class CVC5_EXPORT Proof
    */
   const std::vector<Term> getArguments() const;
 
+  /**
+   * Operator overloading for referential equality of two proofs.
+   * @param p The proof to compare to for equality.
+   * @return True if both proofs point to the same internal proof object.
+   */
+  bool operator==(const Proof& p) const;
+
+  /**
+   * Referential disequality operator.
+   * @param p The proof to compare to for disequality.
+   * @return True if both proofs point to different internal proof objects.
+   */
+  bool operator!=(const Proof& p) const;
+
  private:
   /** Construct a proof by wrapping a ProofNode. */
-  Proof(TermManager* tm, const std::shared_ptr<internal::ProofNode> p);
+  Proof(NodeManagerSharedPtr nm, const std::shared_ptr<internal::ProofNode> p);
 
-  /** @return The internal proof node wrapped by this proof object. */
-  const std::shared_ptr<internal::ProofNode>& getProofNode(void) const;
-
+  /** The associated node manager. */
+  NodeManagerSharedPtr d_nm;
   /** The internal proof node wrapped by this proof object. */
-  std::shared_ptr<internal::ProofNode> d_proof_node;
-  /**
-   * The associated term manager.
-   * @note This is only needed temporarily until deprecated term/sort handling
-   * functions are removed.
-   */
-  TermManager* d_tm;
+  std::shared_ptr<internal::ProofNode> d_proofNode;
 };
+
+}  // namespace cvc5
+
+namespace std {
+/**
+ * Hash function for proofs.
+ */
+template <>
+struct CVC5_EXPORT hash<cvc5::Proof>
+{
+  size_t operator()(const cvc5::Proof& p) const;
+};
+}  // namespace std
+
+namespace cvc5 {
 
 /* -------------------------------------------------------------------------- */
 /* TermManager                                                                */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * A cvc5 term manager.
+ */
 class CVC5_EXPORT TermManager
 {
   friend class Sort;
@@ -3569,6 +3767,7 @@ class CVC5_EXPORT TermManager
   friend class DatatypeConstructorDecl;
   friend class DatatypeDecl;
   friend class Grammar;
+  friend class Plugin;
   friend class Solver;
 
  public:
@@ -3673,11 +3872,24 @@ class CVC5_EXPORT TermManager
       const std::vector<DatatypeDecl>& dtypedecls);
   /**
    * Create function sort.
-   * @param sorts The sort of the function arguments.
+   * @param sorts    The sort of the function arguments.
    * @param codomain The sort of the function return value.
    * @return The function sort.
    */
   Sort mkFunctionSort(const std::vector<Sort>& sorts, const Sort& codomain);
+  /**
+   * Create a skolem.
+   * @param id      The skolem identifier.
+   * @param indices The indices of the skolem.
+   * @return The skolem.
+   */
+  Term mkSkolem(SkolemId id, const std::vector<Term>& indices);
+  /**
+   * Get the number of indices for a skolem id.
+   * @param id The skolem id.
+   * @return The number of indices for the skolem id.
+   */
+  size_t getNumIndicesForSkolemId(SkolemId id);
   /**
    * Create a sort parameter.
    *
@@ -3818,7 +4030,7 @@ class CVC5_EXPORT TermManager
    * @param args The arguments (indices) of the operator.
    *
    * @note If ``args`` is empty, the Op simply wraps the cvc5::Kind.  The
-   * Kind can be used in Solver::mkTerm directly without creating an Op
+   * Kind can be used in TermManager::mkTerm directly without creating an Op
    * first.
    */
   Op mkOp(Kind kind, const std::vector<uint32_t>& args = {});
@@ -3842,7 +4054,7 @@ class CVC5_EXPORT TermManager
    * Create n-ary term of given kind.
    * @param kind     The kind of the term.
    * @param children The children of the term.
-   * @return The Term
+   * @return The term.
    */
   Term mkTerm(Kind kind, const std::vector<Term>& children = {});
   /**
@@ -3969,8 +4181,24 @@ class CVC5_EXPORT TermManager
    *
    * @param s The string this constant represents.
    * @return The String constant.
+   * @warning This function is deprecated and replaced by
+   *          \ref TermManager::mkString(const std::u32string& s)
+   * "TermManager::mkString(const std::u32string& s)". It will be removed in a
+   * future release.
    */
-  Term mkString(const std::wstring& s);
+  [[deprecated(
+      "Use TermManager::mkString(const std::u32string& s) instead")]] Term
+  mkString(const std::wstring& s);
+  /**
+   * Create a String constant from a `std::u32string`.
+   *
+   * This function does not support escape sequences as `std::u32string` already
+   * supports unicode characters.
+   *
+   * @param s The string this constant represents.
+   * @return The String constant.
+   */
+  Term mkString(const std::u32string& s);
   /**
    * Create an empty sequence of the given element sort.
    * @param sort The element sort of the sequence.
@@ -4214,7 +4442,7 @@ class CVC5_EXPORT TermManager
   /**
    * Create a datatype declaration.
    *
-   * Create sorts parameter with Solver::mkParamSort().
+   * Create sorts parameter with TermManager::mkParamSort().
    *
    * @param name         The name of the datatype.
    * @param params       A list of sort parameters.
@@ -4256,7 +4484,7 @@ class CVC5_EXPORT TermManager
   /**
    * Helper for calls to mkVar from the TermManager and Solver. Ensures that
    * API statistics are collected.
-   * @param sort   The internal type of the variable.
+   * @param type   The internal type of the variable.
    * @param symbol The symbol of the variable.
    */
   internal::Node mkVarHelper(
@@ -4265,7 +4493,7 @@ class CVC5_EXPORT TermManager
   /**
    * Helper for calls to mkConst from the TermManager and Solver. Ensures that
    * API statistics are collected.
-   * @param sort   The internal type of the const.
+   * @param type   The internal type of the const.
    * @param symbol The symbol of the const.
    * @param fresh  True to return a fresh variable. If false, it returns the
    *               same variable for the given type and name.
@@ -4275,21 +4503,25 @@ class CVC5_EXPORT TermManager
                                bool fresh = true);
   /**
    * Helper for mk-functions that call NodeManager::mkConst().
+   * @param nm The associated node manager.
    * @param t  The value.
    * @return The value term.
    */
   template <typename T>
-  Term mkValHelper(const T& t);
+  static Term mkValHelper(NodeManagerSharedPtr nm, const T& t);
   /** Helper for creating operators. */
   template <typename T>
   Op mkOpHelper(Kind kind, const T& t);
   /**
    * Helper for creating rational values.
+   * @param nm The associated node manager.
    * @param r  The value (either int or real).
    * @param    isInt True to create an integer value.
    * @return The rational value term.
    */
-  Term mkRationalValHelper(const internal::Rational& r, bool isInt);
+  static Term mkRationalValHelper(NodeManagerSharedPtr nm,
+                                  const internal::Rational& r,
+                                  bool isInt);
   /**
    * Helper for mkReal functions that take a string as argument.
    * @param s     The string representation of the real/int value.
@@ -4356,11 +4588,11 @@ class CVC5_EXPORT TermManager
   Term mkTermHelper(const Op& op, const std::vector<Term>& children);
 
   /** The associated node manager. */
-  internal::NodeManager* d_nm;
+  std::shared_ptr<internal::NodeManager> d_nm;
   /** The statistics collected on the Api level. */
-  std::unique_ptr<APIStatistics> d_stats;
+  std::shared_ptr<APIStatistics> d_stats;
   /** The statistics registry (independent from any Solver's registry). */
-  std::unique_ptr<internal::StatisticsRegistry> d_statsReg;
+  std::shared_ptr<internal::StatisticsRegistry> d_statsReg;
 };
 
 /* -------------------------------------------------------------------------- */
@@ -4379,6 +4611,7 @@ class CVC5_EXPORT Solver
   friend class DatatypeSelector;
   friend class DriverOptions;
   friend class Grammar;
+  friend class Plugin;
   friend class Op;
   friend class parser::Cmd;
   friend class Proof;
@@ -4393,7 +4626,6 @@ class CVC5_EXPORT Solver
 
   /**
    * Constructor.
-   * @return The Solver.
    * @warning This constructor is deprecated and replaced by
    *          `Solver::Solver(TermManager&)`. It will be removed in a future
    *          release.
@@ -4404,7 +4636,6 @@ class CVC5_EXPORT Solver
    *
    * Constructs solver instance from a given term manager instance.
    * @param tm The associated term manager.
-   * @return The Solver.
    */
   Solver(TermManager& tm);
 
@@ -4875,7 +5106,7 @@ class CVC5_EXPORT Solver
    * @param args The arguments (indices) of the operator.
    *
    * @note If ``args`` is empty, the Op simply wraps the cvc5::Kind.  The
-   * Kind can be used in Solver::mkTerm directly without creating an Op
+   * Kind can be used in TermManager::mkTerm directly without creating an Op
    * first.
    * @warning This function is deprecated and replaced by `TermManager::mkOp()`.
    *          It will be removed in a future release.
@@ -5092,10 +5323,12 @@ class CVC5_EXPORT Solver
    * @param s The string this constant represents.
    * @return The String constant.
    * @warning This function is deprecated and replaced by
-   *          `TermManager::mkString()`. It will be removed in a future release.
+   *          `TermManager::mkString(const std::u32string& s)`. It will be
+   * removed in a future release.
    */
-  [[deprecated("Use TermManager::mkString() instead")]] Term mkString(
-      const std::wstring& s) const;
+  [[deprecated(
+      "Use TermManager::mkString(const std::u32string& s) instead")]] Term
+  mkString(const std::wstring& s) const;
 
   /**
    * Create an empty sequence of the given element sort.
@@ -5380,7 +5613,7 @@ class CVC5_EXPORT Solver
 
   /**
    * Create a datatype declaration.
-   * Create sorts parameter with Solver::mkParamSort().
+   * Create sorts parameter with TermManager::mkParamSort().
    *
    * @warning This function is experimental and may change in future versions.
    *
@@ -5402,18 +5635,19 @@ class CVC5_EXPORT Solver
   /* .................................................................... */
 
   /**
-   * Simplify a formula without doing "much" work.
+   * Simplify a term or formula based on rewriting and (optionally) applying
+   * substitutions for solved variables.
    *
-   * Does not involve the SAT Engine in the simplification, but uses the
-   * current definitions, and assertions.  It also involves theory
-   * normalization.
+   * If applySubs is true, then for example, if `(= x 0)` was asserted to this
+   * solver, this method may replace occurrences of `x` with `0`.
    *
    * @warning This function is experimental and may change in future versions.
    *
-   * @param t The formula to simplify.
-   * @return The simplified formula.
+   * @param t         The term to simplify.
+   * @param applySubs True to apply substitutions for solved variables.
+   * @return The simplified term.
    */
-  Term simplify(const Term& t);
+  Term simplify(const Term& t, bool applySubs = false);
 
   /**
    * Assert a formula.
@@ -5675,6 +5909,7 @@ class CVC5_EXPORT Solver
    *     (get-info <info_flag>)
    * \endverbatim
    *
+   * @param flag The info flag.
    * @return The info.
    */
   std::string getInfo(const std::string& flag) const;
@@ -5773,14 +6008,13 @@ class CVC5_EXPORT Solver
    *     (get-unsat-core-lemmas)
    *
    * Requires the SAT proof unsat core mode, so to enable option
-   * :ref:`unsat-core-mode=sat-proof <lbl-option-unsat-core-mode>`.
-   *
+   * :ref:`unsat-cores-mode=sat-proof <lbl-option-unsat-cores-mode>`.
    * \endverbatim
    *
    * @warning This function is experimental and may change in future versions.
    *
    * @return A set of terms representing the lemmas used to derive
-   * unsatisfiability.
+   *         unsatisfiability.
    */
   std::vector<Term> getUnsatCoreLemmas() const;
 
@@ -5797,9 +6031,22 @@ class CVC5_EXPORT Solver
   std::map<Term, Term> getDifficulty() const;
 
   /**
-   * Get a timeout core, which computes a subset of the current assertions that
-   * cause a timeout. Note it does not require being proceeded by a call to
-   * checkSat.
+   * Get a timeout core.
+   *
+   * \verbatim embed:rst:leading-asterisk
+   * This function computes a subset of the current assertions that cause a
+   * timeout. It may make multiple checks for satisfiability internally, each
+   * limited by the timeout value given by
+   * :ref:`timeout-core-timeout <lbl-option-timeout-core-timeout>`.
+   *
+   * If the result is unknown and the reason is timeout, then returned the set
+   * of assertions corresponds to a subset of the current assertions that cause
+   * a timeout in the specified time :ref:`timeout-core-timeout
+   * <lbl-option-timeout-core-timeout>`. If the result is unsat, then the list
+   * of formulas correspond to an unsat core for the current assertions.
+   * Otherwise, the result is sat, indicating that the current assertions are
+   * satisfiable, and the returned set of assertions is empty.
+   * \endverbatim
    *
    * SMT-LIB:
    *
@@ -5807,30 +6054,36 @@ class CVC5_EXPORT Solver
    * .. code:: smtlib
    *
    *     (get-timeout-core)
+   *
    * \endverbatim
    *
    * @warning This function is experimental and may change in future versions.
    *
    * @return The result of the timeout core computation. This is a pair
-   * containing a result and a list of formulas. If the result is unknown
-   * and the reason is timeout, then the list of formulas correspond to a
-   * subset of the current assertions that cause a timeout in the specified
-   * time :ref:`timeout-core-timeout <lbl-option-timeout-core-timeout>`.
-   * If the result is unsat, then the list of formulas correspond to an
-   * unsat core for the current assertions. Otherwise, the result is sat,
-   * indicating that the current assertions are satisfiable, and
-   * the list of formulas is empty.
-   *
-   * This function may make multiple checks for satisfiability internally, each
-   * limited by the timeout value given by
-   * :ref:`timeout-core-timeout <lbl-option-timeout-core-timeout>`.
+   *         containing a result and a set of assertions.
    */
   std::pair<Result, std::vector<Term>> getTimeoutCore() const;
 
   /**
-   * Get a timeout core, which computes a subset of the given assumptions that
-   * cause a timeout when added to the current assertions. Note it does not
-   * require being proceeded by a call to checkSat.
+   * Get a timeout core of the given assumptions.
+   *
+   * This function computes a subset of the given assumptions that cause a
+   * timeout when added to the current assertions.
+   *
+   * \verbatim embed:rst:leading-asterisk
+   * If the result is unknown and the reason is timeout, then the set of
+   * assumptions corresponds to a subset of the given assumptions that cause a
+   * timeout when added to the current assertions in the specified time
+   * :ref:`timeout-core-timeout <lbl-option-timeout-core-timeout>`. If the
+   * result is unsat, then the set of assumptions together with the current
+   * assertions correspond to an unsat core for the current assertions.
+   * Otherwise, the result is sat, indicating that the given assumptions plus
+   * the current assertions are satisfiable, and the returned set of
+   * assumptions is empty.
+   * \endverbatim
+   *
+   * @note This command does not require being preceeded by a call to
+   *       `checkSat()`.
    *
    * SMT-LIB:
    *
@@ -5843,16 +6096,9 @@ class CVC5_EXPORT Solver
    * @warning This function is experimental and may change in future versions.
    *
    * @param assumptions The (non-empty) set of formulas to assume.
+   *
    * @return The result of the timeout core computation. This is a pair
-   * containing a result and a list of formulas. If the result is unknown
-   * and the reason is timeout, then the list of formulas correspond to a
-   * subset of assumptions that cause a timeout when added to the current
-   * assertions in the specified time
-   * :ref:`timeout-core-timeout <lbl-option-timeout-core-timeout>`.
-   * If the result is unsat, then the list of formulas plus the current
-   * assertions correspond to an unsat core for the current assertions.
-   * Otherwise, the result is sat, indicating that the given assumptions plus
-   * the current assertions are satisfiable, and the list of formulas is empty.
+   *         containing a result and a set of assumptions.
    */
   std::pair<Result, std::vector<Term>> getTimeoutCoreAssuming(
       const std::vector<Term>& assumptions) const;
@@ -5891,7 +6137,7 @@ class CVC5_EXPORT Solver
    * `modes::ProofFormat::NONE` if the proof is from a component other than
    * `modes::ProofComponent::FULL`.
    * @param assertionNames Mapping between assertions and names, if they were
-   * given by the user.
+   * given by the user.  This is used by the Alethe proof format.
    * @return The string representation of the proof in the given format.
    */
   std::string proofToString(
@@ -5955,13 +6201,14 @@ class CVC5_EXPORT Solver
   std::vector<Term> getModelDomainElements(const Sort& s) const;
 
   /**
-   * This returns false if the model value of free constant v was not essential
-   * for showing the satisfiability of the last call to checkSat using the
-   * current model. This function will only return false (for any `v`) if
-   * option
-   * \verbatim embed:rst:inline :ref:`model-cores
-   * <lbl-option-model-cores>`\endverbatim has been set.
+   * Determine if the model value of the given free constant was essential for
+   * showing satisfiability of the last `checkSat()` query based on the current
+   * model.
    *
+   * For any free constant `v`, this will only return false if
+   * \verbatim embed:rst:inline :ref:`model-cores
+   * <lbl-option-model-cores>`\endverbatim
+   * has been set to true.
    * @warning This function is experimental and may change in future versions.
    *
    * @param v The term in question.
@@ -6139,7 +6386,7 @@ class CVC5_EXPORT Solver
    * \verbatim embed:rst:leading-asterisk
    * .. code:: smtlib
    *
-   * (declare-oracle-fun <sym> (<sort>*) <sort> <sym>)
+   *     (declare-oracle-fun <sym> (<sort>*) <sort> <sym>)
    * \endverbatim
    *
    * In particular, the above command is implemented by constructing a
@@ -6158,6 +6405,13 @@ class CVC5_EXPORT Solver
                         const Sort& sort,
                         std::function<Term(const std::vector<Term>&)> fn) const;
   /**
+   * Add plugin to this solver. Its callbacks will be called throughout the
+   * lifetime of this solver.
+   * @warning This function is experimental and may change in future versions.
+   * @param p The plugin to add to this solver.
+   */
+  void addPlugin(Plugin& p);
+  /**
    * Pop (a) level(s) from the assertion stack.
    *
    * SMT-LIB:
@@ -6173,51 +6427,67 @@ class CVC5_EXPORT Solver
   void pop(uint32_t nscopes = 1) const;
 
   /**
-   * Get an interpolant
+   * Get an interpolant.
+   *
+   * Given that @f$A\rightarrow B@f$ is valid, this function
+   * determines a term @f$I@f$ over the shared variables of
+   * @f$A@f$ and @f$B@f$, such that @f$A \rightarrow I@f$ and
+   * @f$I \rightarrow B@f$ are valid. @f$A@f$ is the
+   * current set of assertions and @f$B@f$ is the conjecture, given as `conj`.
    *
    * SMT-LIB:
    *
    * \verbatim embed:rst:leading-asterisk
    * .. code:: smtlib
    *
-   *     (get-interpolant <conj>)
+   *     (get-interpolant <symbol> <conj>)
    *
-   * Requires option
-   * :ref:`produce-interpolants <lbl-option-produce-interpolants>` to be set to
-   * a mode different from `none`. \endverbatim
+   * .. note:: In SMT-LIB, `<symbol>` assigns a symbol to the interpolant.
+   *
+   * .. note:: Requires option
+   *          :ref:`produce-interpolants <lbl-option-produce-interpolants>` to
+   *          be set to a mode different from `none`.
+   * \endverbatim
    *
    * @warning This function is experimental and may change in future versions.
    *
    * @param conj The conjecture term.
-   * @return A Term @f$I@f$ such that @f$A \rightarrow I@f$ and
-   *         @f$I \rightarrow B@f$ are valid, where @f$A@f$ is the
-   *         current set of assertions and @f$B@f$ is given in the input by
-   *         `conj`, or the null term if such a term cannot be found.
+   * @return The interpolant, if an interpolant exists, else the null term.
    */
   Term getInterpolant(const Term& conj) const;
 
   /**
-   * Get an interpolant
+   * Get an interpolant.
+   *
+   *
+   *
+   * Given that @f$A\rightarrow B@f$ is valid, this function
+   * determines a term @f$I@f$ over the shared variables of
+   * @f$A@f$ and @f$B@f$, such that @f$A \rightarrow I@f$ and
+   * @f$I \rightarrow B@f$ are valid.
+   * @f$I@f$ is constructed from the given grammar.
+   * @f$A@f$ is the
+   * current set of assertions and @f$B@f$ is the conjecture, given as `conj`.
    *
    * SMT-LIB:
    *
    * \verbatim embed:rst:leading-asterisk
    * .. code:: smtlib
    *
-   *     (get-interpolant <conj> <grammar>)
+   *     (get-interpolant <symbol> <conj> <grammar>)
    *
-   * Requires option
-   * :ref:`produce-interpolants <lbl-option-produce-interpolants>` to be set to
-   * a mode different from `none`. \endverbatim
+   * .. note:: In SMT-LIB, `<symbol>` assigns a symbol to the interpolant.
+   *
+   * .. note:: Requires option
+   *          :ref:`produce-interpolants <lbl-option-produce-interpolants>` to
+   *          be set to a mode different from `none`.
+   * \endverbatim
    *
    * @warning This function is experimental and may change in future versions.
    *
    * @param conj The conjecture term.
    * @param grammar The grammar for the interpolant I.
-   * @return A Term @f$I@f$ such that @f$A \rightarrow I@f$ and
-   *         @f$I \rightarrow B@f$ are valid, where @f$A@f$ is the
-   *         current set of assertions and @f$B@f$ is given in the input by
-   *         `conj`, or the null term if such a term cannot be found.
+   * @return The interpolant, if an interpolant exists, else the null term.
    */
   Term getInterpolant(const Term& conj, Grammar& grammar) const;
 
@@ -6434,9 +6704,10 @@ class CVC5_EXPORT Solver
   void setLogic(const std::string& logic) const;
 
   /**
-   * Is logic set? Returns whether we called setLogic yet for this solver.
+   * Determine if `setLogic()` has been called.
    *
-   * @return whether we called setLogic yet for this solver.
+   * @return True if `setLogic()` has already been called for this solver
+   *         instance.
    */
   bool isLogicSet() const;
 
@@ -6736,15 +7007,22 @@ class CVC5_EXPORT Solver
   /**
    * Determines if the output stream for the given tag is enabled. Tags can be
    * enabled with the `output` option (and `-o <tag>` on the command line).
-   * Raises an exception when an invalid tag is given.
+   *
+   * Requires that a valid tag is given.
+   * @param tag The output tag.
    * @return True if the given tag is enabled.
    */
   bool isOutputOn(const std::string& tag) const;
 
   /**
-   * Get an output stream for the given tag. Tags can be enabled with the
-   * `output` option (and `-o <tag>` on the command line). Raises an exception
-   * when an invalid tag is given.
+   * Get an output stream for the given tag.
+   *
+   * Tags can be enabled with the `output` option (and `-o <tag>` on the
+   * command line). Raises an exception when an invalid tag is given.
+   *
+   * @warning This function is experimental and may change in future versions.
+   *
+   * @param tag The output tag.
    * @return The output stream.
    */
   std::ostream& getOutput(const std::string& tag) const;
@@ -6765,9 +7043,20 @@ class CVC5_EXPORT Solver
   /**
    * Constructs a solver with the given original options. This should only be
    * used internally when the Solver is reset.
+   * @param tm       The associated term manager.
    * @param original The original set of configuration options.
    */
   Solver(TermManager& tm, std::unique_ptr<internal::Options>&& original);
+
+  /**
+   * Reset this solver to the state it had right after construction: the
+   * underlying SMT engine is rebuilt from the original option settings.
+   *
+   * Note that this preserves the identity of this object, so pointers and
+   * references to it (e.g. the one held by InputParser) stay valid, as does
+   * its term manager and hence all terms and sorts created so far.
+   */
+  void resetInternal();
 
   /**
    * Synthesize n-ary function following specified syntactic constraints.
@@ -6783,14 +7072,12 @@ class CVC5_EXPORT Solver
    * @param symbol The name of the function.
    * @param boundVars The parameters to this function.
    * @param sort The sort of the return value of this function.
-   * @param isInv Determines whether this is `synth-fun` or `synth-inv`.
    * @param grammar The syntactic constraints.
    * @return The function.
    */
   Term synthFunHelper(const std::string& symbol,
                       const std::vector<Term>& boundVars,
                       const Sort& sort,
-                      bool isInv = false,
                       Grammar* grammar = nullptr) const;
 
   /** Helper for getting timeout cores */
@@ -6813,15 +7100,15 @@ class CVC5_EXPORT Solver
   /** Vector version of above. */
   void ensureWellFormedTerms(const std::vector<Term>& ts) const;
 
+  /** The associated term manager. */
+  mutable TermManager d_tm;
+
   /** Keep a copy of the original option settings (for resets). */
   std::unique_ptr<internal::Options> d_originalOptions;
   /** The SMT engine of this solver. */
   std::unique_ptr<internal::SolverEngine> d_slv;
   /** The random number generator of this solver. */
   std::unique_ptr<internal::Random> d_rng;
-
-  /** The associated term manager. */
-  TermManager& d_tm;
 };
 
 }  // namespace cvc5

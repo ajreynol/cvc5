@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Aina Niemetz, Andres Noetzli
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -42,10 +39,10 @@ bool DetTrace::DetTraceTrie::add(Node loc, const std::vector<Node>& val)
   return false;
 }
 
-Node DetTrace::DetTraceTrie::constructFormula(const std::vector<Node>& vars,
+Node DetTrace::DetTraceTrie::constructFormula(NodeManager* nm,
+                                              const std::vector<Node>& vars,
                                               unsigned index)
 {
-  NodeManager* nm = NodeManager::currentNM();
   if (index == vars.size())
   {
     return nm->mkConst(true);
@@ -56,7 +53,7 @@ Node DetTrace::DetTraceTrie::constructFormula(const std::vector<Node>& vars,
     Node eq = vars[index].eqNode(p.first);
     if (index < vars.size() - 1)
     {
-      Node conc = p.second.constructFormula(vars, index + 1);
+      Node conc = p.second.constructFormula(nm, vars, index + 1);
       disj.push_back(nm->mkNode(Kind::AND, eq, conc));
     }
     else
@@ -81,12 +78,12 @@ bool DetTrace::increment(Node loc, std::vector<Node>& vals)
   return false;
 }
 
-Node DetTrace::constructFormula(const std::vector<Node>& vars)
+Node DetTrace::constructFormula(NodeManager* nm, const std::vector<Node>& vars)
 {
-  return d_trie.constructFormula(vars);
+  return d_trie.constructFormula(nm, vars);
 }
 
-void DetTrace::print(const char* c) const
+void DetTrace::print(CVC5_UNUSED const char* c) const
 {
   for (const Node& n : d_curr)
   {
@@ -198,8 +195,7 @@ void TransitionInference::process(Node n, Node f)
 
 void TransitionInference::process(Node n)
 {
-  NodeManager* nm = NodeManager::currentNM();
-  SkolemManager* sm = nm->getSkolemManager();
+  NodeManager* nm = nodeManager();
   d_complete = true;
   d_trivial = true;
   std::vector<Node> n_check;
@@ -279,8 +275,7 @@ void TransitionInference::process(Node n)
       {
         for (unsigned j = 0, nchild = next.getNumChildren(); j < nchild; j++)
         {
-          Node v = sm->mkDummySkolem(
-              "ir", next[j].getType(), "template inference rev argument");
+          Node v = NodeManager::mkDummySkolem("ir", next[j].getType());
           d_prime_vars.push_back(v);
         }
       }
@@ -428,12 +423,9 @@ bool TransitionInference::processDisjunct(
       d_trivial = false;
       d_func = op;
       Trace("cegqi-inv-debug") << "Use " << op << " with args ";
-      NodeManager* nm = NodeManager::currentNM();
-      SkolemManager* sm = nm->getSkolemManager();
       for (const Node& l : lit)
       {
-        Node v =
-            sm->mkDummySkolem("i", l.getType(), "template inference argument");
+        Node v = NodeManager::mkDummySkolem("i", l.getType());
         d_vars.push_back(v);
         Trace("cegqi-inv-debug") << v << " ";
       }
@@ -534,7 +526,7 @@ TraceIncStatus TransitionInference::incrementTrace(DetTrace& dt,
   if (!fwd)
   {
     // only implemented in forward direction
-    Assert(false);
+    DebugUnhandled();
     return TRACE_INC_INVALID;
   }
   Component& cm = d_trans;
@@ -585,7 +577,7 @@ TraceIncStatus TransitionInference::incrementTrace(DetTrace& dt, bool fwd)
 
 Node TransitionInference::constructFormulaTrace(DetTrace& dt) const
 {
-  return dt.constructFormula(d_vars);
+  return dt.constructFormula(nodeManager(), d_vars);
 }
 
 }  // namespace quantifiers

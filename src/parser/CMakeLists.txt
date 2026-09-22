@@ -1,10 +1,7 @@
 ###############################################################################
-# Top contributors (to current version):
-#   Andrew Reynolds, Mathias Preiner, Gereon Kremer
-#
 # This file is part of the cvc5 project.
 #
-# Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+# Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
 # in the top-level source directory and their institutional affiliations.
 # All rights reserved.  See the file COPYING in the top-level source
 # directory for licensing information.
@@ -17,6 +14,7 @@
 # libcvc5parser source files
 
 set(libcvc5parserapi_src_files
+  ../api/c/cvc5_parser.cpp
   ../api/cpp/cvc5_parser.cpp
 )
 
@@ -71,27 +69,27 @@ target_compile_definitions(cvc5parserapi-objs PUBLIC -D__BUILDING_CVC5LIB -Dcvc5
 add_dependencies(cvc5parser-objs gen-expr gen-options)
 add_dependencies(cvc5parserapi-objs cvc5parser-objs gen-expr)
 
+if(USE_POLY)
+  # The LibPoly headers include <gmp.h>, so GMP's include directory is needed
+  # here as well when GMP lives outside the default system include path.
+  add_dependencies(cvc5parser-objs Polyxx GMP)
+  target_include_directories(cvc5parser-objs SYSTEM PRIVATE ${Poly_INCLUDE_DIR} ${GMP_INCLUDE_DIR})
+  add_dependencies(cvc5parserapi-objs Polyxx GMP)
+  target_include_directories(cvc5parserapi-objs SYSTEM PRIVATE ${Poly_INCLUDE_DIR} ${GMP_INCLUDE_DIR})
+endif()
+
 add_library(cvc5parser
   $<TARGET_OBJECTS:cvc5parser-objs>
   $<TARGET_OBJECTS:cvc5parserapi-objs>
 )
 if(BUILD_SHARED_LIBS)
-  set_target_properties(cvc5parser PROPERTIES SOVERSION ${CVC5_SOVERSION})
+  set_target_properties(cvc5parser PROPERTIES
+    VERSION ${CVC5_VERSION_NUMBER} SOVERSION ${CVC5_SOVERSION})
 endif()
 
 set_target_properties(cvc5parser PROPERTIES OUTPUT_NAME cvc5parser)
 target_link_libraries(cvc5parser PRIVATE cvc5)
 
-install(TARGETS cvc5parser
-  EXPORT cvc5-targets
-  DESTINATION ${CMAKE_INSTALL_LIBDIR})
-
-# The generated lexer/parser files define some functions as
-# __declspec(dllexport) via the ANTLR3_API macro, which leads to lots of
-# unresolved symbols when linking against libcvc5parser.
-# -Wl,--export-all-symbols makes sure that all symbols are exported when
-# building a DLL.
-if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
-  set_target_properties(cvc5parser-objs
-    PROPERTIES LINK_FLAGS "-Wl,--export-all-symbols")
-endif()
+# On Windows, CMake's default install action places
+# DLLs into the runtime path (by default "bin")
+install(TARGETS cvc5parser EXPORT cvc5-targets)

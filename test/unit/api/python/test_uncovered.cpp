@@ -1,16 +1,13 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Gereon Kremer, Aina Niemetz, Daniel Larraz
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
  * ****************************************************************************
  *
- * Testing stuff that is not exposed by the python API to fix code coverage
+ * Testing functions that are not exposed by the Python API for code coverage.
  */
 
 #include <cvc5/cvc5_parser.h>
@@ -120,7 +117,7 @@ TEST_F(TestApiBlackUncovered, deprecated)
   (void)slv.mkSepNil(slv.getIntegerSort());
   (void)slv.mkString("asdfasdf");
   std::wstring s;
-  (void)slv.mkString(s);
+  (void)slv.mkString(s).getStringValue();
   (void)slv.mkEmptySequence(slv.getIntegerSort());
   (void)slv.mkUniverseSet(slv.getIntegerSort());
   (void)slv.mkBitVector(32, 2);
@@ -142,6 +139,8 @@ TEST_F(TestApiBlackUncovered, deprecated)
 
   (void)slv.mkVar(slv.getIntegerSort());
   (void)slv.mkDatatypeDecl("paramlist", {slv.mkParamSort("T")});
+
+  (void)parser::SymbolManager(d_solver.get());
 }
 
 TEST_F(TestApiBlackUncovered, exception_getmessage)
@@ -162,6 +161,69 @@ TEST_F(TestApiBlackUncovered, exception_getmessage)
   }
 }
 
+TEST_F(TestApiBlackUncovered, equalHash)
+{
+  DatatypeDecl decl1 = d_tm.mkDatatypeDecl("list");
+  DatatypeConstructorDecl cons1 = d_tm.mkDatatypeConstructorDecl("cons");
+  cons1.addSelector("head", d_tm.getIntegerSort());
+  decl1.addConstructor(cons1);
+  DatatypeConstructorDecl nil1 = d_tm.mkDatatypeConstructorDecl("nil");
+  decl1.addConstructor(nil1);
+  Sort list1 = d_tm.mkDatatypeSort(decl1);
+  Datatype dt1 = list1.getDatatype();
+  DatatypeConstructor consConstr1 = dt1[0];
+  DatatypeConstructor nilConstr1 = dt1[1];
+  DatatypeSelector head1 = consConstr1.getSelector("head");
+
+  DatatypeDecl decl2 = d_tm.mkDatatypeDecl("list");
+  DatatypeConstructorDecl cons2 = d_tm.mkDatatypeConstructorDecl("cons");
+  cons2.addSelector("head", d_tm.getIntegerSort());
+  decl2.addConstructor(cons2);
+  DatatypeConstructorDecl nil2 = d_tm.mkDatatypeConstructorDecl("nil");
+  decl2.addConstructor(nil2);
+  Sort list2 = d_tm.mkDatatypeSort(decl2);
+  Datatype dt2 = list2.getDatatype();
+  DatatypeConstructor consConstr2 = dt2[0];
+  DatatypeConstructor nilConstr2 = dt2[1];
+  DatatypeSelector head2 = consConstr2.getSelector("head");
+
+  ASSERT_EQ(decl1, decl1);
+  ASSERT_FALSE(decl1 == decl2);
+  ASSERT_EQ(cons1, cons1);
+  ASSERT_FALSE(cons1 == cons2);
+  ASSERT_EQ(nil1, nil1);
+  ASSERT_FALSE(nil1 == nil2);
+  ASSERT_EQ(consConstr1, consConstr1);
+  ASSERT_FALSE(consConstr1 == consConstr2);
+  ASSERT_EQ(head1, head1);
+  ASSERT_FALSE(head1 == head2);
+  ASSERT_EQ(dt1, dt1);
+  ASSERT_FALSE(dt1 == dt2);
+
+  ASSERT_EQ(std::hash<DatatypeDecl>{}(decl1), std::hash<DatatypeDecl>{}(decl1));
+  ASSERT_EQ(std::hash<DatatypeDecl>{}(decl1), std::hash<DatatypeDecl>{}(decl2));
+  ASSERT_EQ(std::hash<DatatypeConstructorDecl>{}(cons1),
+            std::hash<DatatypeConstructorDecl>{}(cons1));
+  ASSERT_EQ(std::hash<DatatypeConstructorDecl>{}(cons1),
+            std::hash<DatatypeConstructorDecl>{}(cons2));
+  ASSERT_EQ(std::hash<DatatypeConstructorDecl>{}(nil1),
+            std::hash<DatatypeConstructorDecl>{}(nil1));
+  ASSERT_EQ(std::hash<DatatypeConstructorDecl>{}(nil1),
+            std::hash<DatatypeConstructorDecl>{}(nil2));
+  ASSERT_EQ(std::hash<DatatypeConstructor>{}(consConstr1),
+            std::hash<DatatypeConstructor>{}(consConstr1));
+  ASSERT_EQ(std::hash<DatatypeConstructor>{}(consConstr1),
+            std::hash<DatatypeConstructor>{}(consConstr2));
+  ASSERT_EQ(std::hash<DatatypeSelector>{}(head1),
+            std::hash<DatatypeSelector>{}(head1));
+  ASSERT_EQ(std::hash<DatatypeSelector>{}(head1),
+            std::hash<DatatypeSelector>{}(head2));
+  ASSERT_EQ(std::hash<Datatype>{}(dt1), std::hash<Datatype>{}(dt1));
+  ASSERT_EQ(std::hash<Datatype>{}(dt1), std::hash<Datatype>{}(dt2));
+
+  (void)std::hash<cvc5::Result>{}(cvc5::Result());
+}
+
 TEST_F(TestApiBlackUncovered, streaming_operators_to_string)
 {
   std::stringstream ss;
@@ -180,11 +242,15 @@ TEST_F(TestApiBlackUncovered, streaming_operators_to_string)
      << std::to_string(cvc5::modes::ProofComponent::FULL);
   ss << cvc5::modes::FindSynthTarget::ENUM
      << std::to_string(cvc5::modes::FindSynthTarget::ENUM);
+  ss << cvc5::modes::OptionCategory::EXPERT
+     << std::to_string(cvc5::modes::OptionCategory::EXPERT);
   ss << cvc5::modes::InputLanguage::SMT_LIB_2_6
      << std::to_string(cvc5::modes::InputLanguage::SMT_LIB_2_6);
   ss << cvc5::modes::ProofFormat::LFSC
      << std::to_string(cvc5::modes::ProofFormat::LFSC);
-  ss << cvc5::ProofRule::ASSUME;
+  ss << cvc5::ProofRule::ASSUME << std::to_string(cvc5::ProofRule::ASSUME);
+  ss << cvc5::ProofRewriteRule::NONE
+     << std::to_string(cvc5::ProofRewriteRule::NONE);
   ss << cvc5::SkolemId::PURIFY << std::to_string(cvc5::SkolemId::PURIFY);
   ss << cvc5::Result();
   ss << cvc5::Op();
@@ -197,6 +263,19 @@ TEST_F(TestApiBlackUncovered, streaming_operators_to_string)
   ss << std::vector<Term>{x, x};
   ss << std::set<Term>{x, x};
   ss << std::unordered_set<Term>{x, x};
+}
+
+TEST_F(TestApiBlackUncovered, grammar)
+{
+  d_solver->setOption("sygus", "true");
+
+  Term x = d_tm.mkVar(d_bool, "x");
+  Term start1 = d_tm.mkVar(d_bool, "start");
+  Term start2 = d_tm.mkVar(d_bool, "start");
+  Grammar g1 = d_solver->mkGrammar({}, {start1});
+  ASSERT_EQ(g1, g1);
+  ASSERT_FALSE(g1 != g1);
+  ASSERT_EQ(std::hash<Grammar>{}(g1), std::hash<Grammar>{}(g1));
 }
 
 TEST_F(TestApiBlackUncovered, datatypeApi)
@@ -316,80 +395,95 @@ TEST_F(TestApiBlackUncovered, Options)
   {
     auto info = d_solver->getOptionInfo("verbose");
     ss << info;
-    }
-    {
+  }
+  {
     auto info = d_solver->getOptionInfo("print-success");
     ss << info;
     info.boolValue();
-    }
-    {
+  }
+  {
     auto info = d_solver->getOptionInfo("verbosity");
     ss << info;
     info.intValue();
-    }
-    {
+  }
+  {
     auto info = d_solver->getOptionInfo("rlimit");
     ss << info;
     info.uintValue();
-    }
-    {
+  }
+  {
     auto info = d_solver->getOptionInfo("random-freq");
     ss << info;
     info.doubleValue();
-    }
-    {
+  }
+  {
     auto info = d_solver->getOptionInfo("force-logic");
     ss << info;
     info.stringValue();
-    }
-    {
+  }
+  {
     auto info = d_solver->getOptionInfo("simplification");
     ss << info;
-    }
+  }
 }
 
 TEST_F(TestApiBlackUncovered, Statistics)
 {
-    d_solver->assertFormula(d_tm.mkConst(d_tm.getBooleanSort(), "x"));
-    d_solver->checkSat();
-    Statistics stats = d_solver->getStatistics();
-    std::stringstream ss;
-    ss << stats;
-    auto it = stats.begin();
-    ASSERT_NE(it, stats.end());
-    it++;
-    it--;
-    ++it;
-    --it;
-    ASSERT_EQ(it, stats.begin());
-    ss << it->first;
+  d_solver->assertFormula(d_tm.mkConst(d_tm.getBooleanSort(), "x"));
+  d_solver->checkSat();
+  Statistics stats = d_solver->getStatistics();
+  auto s = stats.get("global::totalTime");
+  std::stringstream ss;
+  ss << stats << s.toString();
+  auto it = stats.begin();
+  ASSERT_NE(it, stats.end());
+  it++;
+  it--;
+  ++it;
+  --it;
+  ASSERT_EQ(it, stats.begin());
+  ss << it->first;
 
-    testing::internal::CaptureStdout();
-    d_solver->printStatisticsSafe(STDOUT_FILENO);
-    d_tm.printStatisticsSafe(STDOUT_FILENO);
-    testing::internal::GetCapturedStdout();
+  testing::internal::CaptureStdout();
+  d_solver->printStatisticsSafe(STDOUT_FILENO);
+  d_tm.printStatisticsSafe(STDOUT_FILENO);
+  testing::internal::GetCapturedStdout();
+}
+
+TEST_F(TestApiBlackUncovered, SynthResult)
+{
+  d_solver->setOption("sygus", "true");
+  (void)d_solver->synthFun("f", {}, d_bool);
+  Term tfalse = d_tm.mkFalse();
+  Term ttrue = d_tm.mkTrue();
+  d_solver->addSygusConstraint(ttrue);
+  cvc5::SynthResult res1 = d_solver->checkSynth();
+  d_solver->addSygusConstraint(tfalse);
+  cvc5::SynthResult res2 = d_solver->checkSynth();
+  ASSERT_EQ(std::hash<cvc5::SynthResult>{}(res1),
+            std::hash<cvc5::SynthResult>{}(res1));
 }
 
 // Copied from api/cpp/solver_black.cpp
 TEST_F(TestApiBlackUncovered, declareOracleFunUnsat)
 {
-    d_solver->setOption("oracles", "true");
-    Sort iSort = d_tm.getIntegerSort();
-    // f is the function implementing (lambda ((x Int)) (+ x 1))
-    Term f = d_solver->declareOracleFun(
-        "f", {iSort}, iSort, [&](const std::vector<Term>& input) {
-          if (input[0].isUInt32Value())
-          {
-            return d_tm.mkInteger(input[0].getUInt32Value() + 1);
-          }
-          return d_tm.mkInteger(0);
-        });
-    Term three = d_tm.mkInteger(3);
-    Term five = d_tm.mkInteger(5);
-    Term eq = d_tm.mkTerm(Kind::EQUAL,
-                          {d_tm.mkTerm(Kind::APPLY_UF, {f, three}), five});
-    d_solver->assertFormula(eq);
-    d_solver->checkSat();
+  d_solver->setOption("oracles", "true");
+  Sort iSort = d_tm.getIntegerSort();
+  // f is the function implementing (lambda ((x Int)) (+ x 1))
+  Term f = d_solver->declareOracleFun(
+      "f", {iSort}, iSort, [&](const std::vector<Term>& input) {
+        if (input[0].isUInt32Value())
+        {
+          return d_tm.mkInteger(input[0].getUInt32Value() + 1);
+        }
+        return d_tm.mkInteger(0);
+      });
+  Term three = d_tm.mkInteger(3);
+  Term five = d_tm.mkInteger(5);
+  Term eq =
+      d_tm.mkTerm(Kind::EQUAL, {d_tm.mkTerm(Kind::APPLY_UF, {f, three}), five});
+  d_solver->assertFormula(eq);
+  d_solver->checkSat();
 }
 
 TEST_F(TestApiBlackUncovered, Proof)
@@ -399,6 +493,12 @@ TEST_F(TestApiBlackUncovered, Proof)
   ASSERT_TRUE(proof.getResult().isNull());
   ASSERT_TRUE(proof.getChildren().empty());
   ASSERT_TRUE(proof.getArguments().empty());
+}
+
+TEST_F(TestApiBlackUncovered, ProofRewriteRule)
+{
+  ASSERT_EQ(std::hash<cvc5::ProofRewriteRule>()(ProofRewriteRule::NONE),
+            static_cast<size_t>(ProofRewriteRule::NONE));
 }
 
 TEST_F(TestApiBlackUncovered, SkolemId)

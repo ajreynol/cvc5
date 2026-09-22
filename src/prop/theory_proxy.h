@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Aina Niemetz, Dejan Jovanovic
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -228,6 +225,12 @@ class TheoryProxy : protected EnvObj, public Registrar
    * local assertions.
    */
   bool d_dmTrackActiveSkDefs;
+  /**
+   * Are we in solve?
+   * This is true if there was a call to presolve() after the last call to
+   * postsolve(), if any.
+   */
+  bool d_inSolve;
 
   /** The theory engine we are using. */
   TheoryEngine* d_theoryEngine;

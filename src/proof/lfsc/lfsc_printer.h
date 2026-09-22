@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Hans-Jörg Schurr, Abdalrhman Mohamed
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -174,7 +171,7 @@ class LfscPrinter : protected EnvObj
                                 std::map<const ProofNode*, size_t>& pletMap);
   /** Print DSL rule */
   void printDslRule(std::ostream& out,
-                    rewriter::DslProofRule id,
+                    ProofRewriteRule id,
                     std::vector<Node>& format);
   //------------------------------ end printing proofs
   /** The term processor */
@@ -209,7 +206,7 @@ class LfscPrinter : protected EnvObj
    * Each rule is mapped to a list of terms, where Node::null signifies
    * positions of holes, non-null nodes are child proofs to print.
    */
-  std::map<rewriter::DslProofRule, std::vector<Node>> d_dslFormat;
+  std::map<ProofRewriteRule, std::vector<Node>> d_dslFormat;
 };
 
 }  // namespace proof

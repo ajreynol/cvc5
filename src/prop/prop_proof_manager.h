@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Haniel Barbosa, Andrew Reynolds, Aina Niemetz
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -30,6 +27,9 @@
 #include "theory/inference_id.h"
 
 namespace cvc5::internal {
+
+class ProofLogger;
+
 namespace prop {
 
 class CDCLTSatSolver;
@@ -48,7 +48,23 @@ class PropPfManager : protected EnvObj
   friend class SatProofManager;
 
  public:
-  PropPfManager(Env& env, CDCLTSatSolver* satSolver, CnfStream& cnfProof);
+  /**
+   * @param env The environment
+   * @param satSolver Pointer to the SAT solver
+   * @param cnfProof Pointer to the CNF stream
+   * @param assumptions Reference to assumptions of parent prop engine
+   */
+  PropPfManager(Env& env,
+                CDCLTSatSolver* satSolver,
+                CnfStream& cnfProof,
+                const context::CDList<Node>& assumptions);
+
+  /** Presolve, which initializes proof logging. */
+  void presolve();
+  /** Logs the preprocessing proof, if the proof logger is set. */
+  void logPreprocessing();
+  /** Postsolve, which finalizes proof logging. */
+  void postsolve(SatValue result);
   /**
    * Ensure that the given node will have a designated SAT literal that is
    * definitionally equal to it.  The result of this function is that the Node
@@ -108,6 +124,15 @@ class PropPfManager : protected EnvObj
 
   /** Return lemmas used in the SAT proof. */
   std::vector<Node> getUnsatCoreLemmas();
+
+  /**
+   * Get inference id for a lemma, e.g. one that appears in the return of
+   * getUnsatCoreLemmas. Note that the inference id will be InferenceId::NONE
+   * if lem is not an unsat core lemma, or if it corresponded e.g. to a lemma
+   * learned via theory propagation.
+   */
+  theory::InferenceId getInferenceIdFor(const Node& lem,
+                                        uint64_t& timestamp) const;
 
   /**
    * Checks that the prop engine proof is closed w.r.t. the given assertions and
@@ -170,26 +195,12 @@ class PropPfManager : protected EnvObj
   /** Retrieve the clauses derived from lemmas */
   std::vector<Node> getLemmaClauses();
   /**
-   * Get auxilary units. Computes top-level formulas in clauses that
-   * also occur as literals which we call "auxiliary units". In particular,
-   * consider the set of propositionally unsatisfiable clauses:
+   * Return theory lemmas used for showing unsat. If the SAT solver has a proof,
+   * we examine its leaves. Otherwise, we throw an exception.
    *
-   * (or ~(or A B) ~C)
-   * (or A B)
-   * C
-   *
-   * Here, we return (or A B) as an auxilary unit clause.
-   *
-   * Note that in the above example, it is ambiguous whether to interpret the
-   * second clause (or A B) as a unit clause or as a clause with literals
-   * A and B. To ensure that we generate an unsatisfiable DIMACS, we include
-   * both in a proof output. In particular, Any OR-term that occurs as a literal
-   * of another clause is included in the return vector.
-   *
-   * @param clauses The clauses
-   * @return the auxiliary units for the set of clauses.
+   * @return the unsat core of lemmas.
    */
-  std::vector<Node> computeAuxiliaryUnits(const std::vector<Node>& clauses);
+  std::vector<Node> getUnsatCoreClauses();
   /** The proofs of this proof manager, which are saved once requested (note the
    * cache is for both the request of the full proof (true) or not (false)).
    *
@@ -203,6 +214,8 @@ class PropPfManager : protected EnvObj
   std::unique_ptr<prop::ProofPostprocess> d_pfpp;
   /** Proof-producing CNF converter */
   ProofCnfStream d_pfCnfStream;
+  /** Pointer to the proof logger of the environment */
+  ProofLogger* d_plog;
   /**
    * The SAT solver of this prop engine, which should provide a refutation
    * proof when requested */
@@ -215,14 +228,36 @@ class PropPfManager : protected EnvObj
   context::CDList<Node> d_assertions;
   /** The cnf stream proof generator */
   CnfStream& d_cnfStream;
+  /** Reference to the assumptions of the parent prop engine */
+  const context::CDList<Node>& d_assumptions;
   /** Asserted clauses derived from the input */
   context::CDHashSet<Node> d_inputClauses;
   /** Asserted clauses derived from lemmas */
   context::CDHashSet<Node> d_lemmaClauses;
+  /** Are we tracking inference identifiers? */
+  bool d_trackLemmaClauseIds;
+  /** Mapping lemma clauses to inference identifiers */
+  context::CDHashMap<Node, theory::InferenceId> d_lemmaClauseIds;
+  /**
+   * Mapping lemma clauses to a timestamp. Currently, the timestamp corresponds
+   * to the number of calls to full check we have seen thus far.
+   */
+  context::CDHashMap<Node, uint64_t> d_lemmaClauseTimestamp;
+  /** The current identifier */
+  theory::InferenceId d_currLemmaId;
   /** The current propagation being processed via this class. */
   Node d_currPropagationProcessed;
   /** Temporary, pointer to SAT proof manager */
   SatProofManager* d_satPm;
+  /**
+   * Counts number of inference ids in requested unsat core lemmas. Note this is
+   * tracked only if -o unsat-core-lemmas is on.
+   */
+  HistogramStat<theory::InferenceId> d_uclIds;
+  /** Total number of unsat core lemmas */
+  IntStat d_uclSize;
+  /** Total number of times we asked for unsat core lemmas */
+  IntStat d_numUcl;
 }; /* class PropPfManager */
 
 }  // namespace prop

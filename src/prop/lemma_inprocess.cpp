@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -52,7 +49,7 @@ TrustNode LemmaInprocess::inprocessLemma(TrustNode& trn)
 Node LemmaInprocess::processInternal(const Node& lem)
 {
   std::vector<Node> eqLitLemmas;
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   std::unordered_map<TNode, Node> visited;
   std::unordered_map<TNode, Node>::iterator it;
   std::vector<TNode> visit;
@@ -92,10 +89,9 @@ Node LemmaInprocess::processInternal(const Node& lem)
         }
         else
         {
-          bool currLit = prevLit;
           if (scur != cur)
           {
-            currLit = d_cs->hasLiteral(scur);
+            bool currLit = d_cs->hasLiteral(scur);
             scur = rewrite(scur);
             Trace("lemma-inprocess-debug")
                 << "Inprocess " << cur << " -> " << scur << std::endl;

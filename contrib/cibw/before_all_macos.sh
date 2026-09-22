@@ -1,9 +1,26 @@
 #!/usr/bin/env bash
+###############################################################################
+# This file is part of the cvc5 project.
+#
+# Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+# in the top-level source directory and their institutional affiliations.
+# All rights reserved.  See the file COPYING in the top-level source
+# directory for licensing information.
+# #############################################################################
 
-python3 -m pip install -r contrib/requirements_build.txt
+GPL="$1"
 
-./configure.sh production --auto-download \
-  --python-bindings --python-only-src --prefix=./install -DBUILD_GMP=1
+COMMON_CMD="./configure.sh unrestricted --auto-download --python-bindings --python-only-src --prefix=./install -DBUILD_GMP=1"
+
+if [ "$GPL" = "true" ]; then
+  # Install build dependencies for GPL libraries
+  brew install autoconf automake libtool
+  GPL_FLAGS="--gpl --cln --glpk --cocoa --normaliz"
+else
+  GPL_FLAGS=""
+fi
+
+$COMMON_CMD $GPL_FLAGS
 
 SETUP_CFG=./build/src/api/python/setup.cfg
 echo "[build_ext]" > ${SETUP_CFG}

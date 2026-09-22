@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Mudathir Mohamed, Aina Niemetz, Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -74,6 +71,14 @@ class SortTest
     assertDoesNotThrow(() -> d_tm.getIntegerSort() == new Sort());
     assertDoesNotThrow(() -> d_tm.getIntegerSort() != new Sort());
     assertDoesNotThrow(() -> d_tm.getIntegerSort().compareTo(new Sort()));
+  }
+
+  @Test
+  void hash()
+  {
+    assertEquals(d_tm.getIntegerSort().hashCode(), d_tm.getIntegerSort().hashCode());
+    assertNotEquals(d_tm.getIntegerSort().hashCode(), d_tm.getStringSort().hashCode());
+    assertNotEquals(d_tm.getIntegerSort().hashCode(), (new Sort()).hashCode());
   }
 
   @Test

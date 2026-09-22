@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Mudathir Mohamed, Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -21,10 +18,13 @@ import io.github.cvc5.modes.InputLanguage;
  * This class is the main interface for retrieving commands and expressions
  * from an input using a parser.
  *
- * After construction, it is expected that an input is first set via e.g.
- * setFileInput, setStringInput, or setIncrementalStringInput and
- * appendIncrementalStringInput. Then, the methods nextCommand and
- * nextExpression can be invoked to parse the input.
+ * After construction, it is expected that an input is first set via
+ * {@link InputParser#setFileInput(InputLanguage, String)},
+ * {@link InputParser#setStringInput(InputLanguage, String, String)},
+ * or {@link InputParser#setIncrementalStringInput(InputLanguage, String)} and
+ * {@link InputParser#appendIncrementalStringInput(String)}. Then, the methods
+ * {@link InputParser#nextCommand()} and {@link InputParser#nextTerm()} can be
+ * invoked to parse the input.
  *
  * The input parser interacts with a symbol manager, which determines which
  * symbols are defined in the current context, based on the background logic
@@ -33,7 +33,7 @@ import io.github.cvc5.modes.InputLanguage;
  *
  * If provided, the symbol manager must have a logic that is compatible
  * with the provided solver. That is, if both the solver and symbol
- * manager have their logics set (SymbolManager.isLogicSet and
+ * manager have their logics set ({@link SymbolManager#isLogicSet()} and
  * {@link Solver#isLogicSet()}, then their logics must be the same.
  *
  * Upon setting an input source, if either the solver (resp. symbol
@@ -66,7 +66,8 @@ public class InputParser extends AbstractPointer
   {
     // unlike cpp api, here we create a symbol manager first and then
     // we call the corresponding constructor in cpp api
-    super(newInputParser(solver.getPointer(), new SymbolManager(solver).getPointer()));
+    super(newInputParser(
+        solver.getPointer(), new SymbolManager(solver.getTermManager()).getPointer()));
   }
 
   private static native long newInputParser(long solverPointer);
@@ -80,6 +81,8 @@ public class InputParser extends AbstractPointer
   }
 
   /**
+   * Get the underlying solver of this input parser.
+   *
    * @return The underlying solver of this input parser
    */
   public Solver getSolver()
@@ -90,6 +93,8 @@ public class InputParser extends AbstractPointer
   private native long getSolver(long pointer);
 
   /**
+   * Get the underlying symbol manager of this input parser.
+   *
    * @return The underlying symbol manager of this input parser.
    */
   public SymbolManager getSymbolManager()
@@ -170,6 +175,7 @@ public class InputParser extends AbstractPointer
   /**
    * Parse and return the next term. Requires setting the logic prior
    * to this point.
+   * @return The parsed term.
    */
   public Term nextTerm()
   {
@@ -178,7 +184,11 @@ public class InputParser extends AbstractPointer
 
   private native long nextTerm(long pointer);
 
-  /** @return True if this parser done reading input. */
+  /**
+   * Determine if this parser done reading input.
+   *
+   * @return True if this parser done reading input.
+   */
   public boolean done()
   {
     return done(pointer);

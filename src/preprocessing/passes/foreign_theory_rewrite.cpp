@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Yoni Zohar, Andrew Reynolds, Aina Niemetz
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -96,21 +93,16 @@ Node ForeignTheoryRewriter::foreignRewrite(Node n)
   Assert(n.getKind() != Kind::GT);
   Assert(n.getKind() != Kind::LT);
   Assert(n.getKind() != Kind::LEQ);
-  // apply rewrites according to the structure of n
-  if (n.getKind() == Kind::GEQ)
+  // apply rewrites according to the structure of n.
+  if ((n.getKind() == Kind::GEQ || n.getKind() == Kind::EQUAL)
+      && n[0].getType().isInteger())
   {
-    return rewriteStringsGeq(n);
-  }
-  return n;
-}
-
-Node ForeignTheoryRewriter::rewriteStringsGeq(Node n)
-{
-  theory::strings::ArithEntail ae(d_env.getRewriter());
-  // check if the node can be simplified to true
-  if (ae.check(n[0], n[1], false))
-  {
-    return nodeManager()->mkConst(true);
+    theory::strings::ArithEntail ae(nodeManager(), d_env.getRewriter());
+    Node r = ae.rewritePredViaEntailment(n);
+    if (!r.isNull())
+    {
+      return r;
+    }
   }
   return n;
 }
@@ -126,7 +118,7 @@ Node ForeignTheoryRewriter::reconstructNode(Node originalNode,
   }
   // re-build the node with the same kind and new children
   Kind k = originalNode.getKind();
-  NodeBuilder builder(k);
+  NodeBuilder builder(originalNode.getNodeManager(), k);
   // special case for parameterized nodes
   if (originalNode.getMetaKind() == kind::metakind::PARAMETERIZED)
   {
@@ -153,8 +145,15 @@ PreprocessingPassResult ForeignTheoryRewrite::applyInternal(
   for (size_t i = 0, nasserts = assertionsToPreprocess->size(); i < nasserts;
        ++i)
   {
+    const Node& a = (*assertionsToPreprocess)[i];
+    Node ar = d_ftr.simplify(a);
+    if (a == ar)
+    {
+      continue;
+    }
     assertionsToPreprocess->replace(
-        i, rewrite(d_ftr.simplify((*assertionsToPreprocess)[i])));
+        i, ar, nullptr, TrustId::PREPROCESS_FOREIGN_THEORY_REWRITE);
+    assertionsToPreprocess->ensureRewritten(i);
     if (assertionsToPreprocess->isInConflict())
     {
       return PreprocessingPassResult::CONFLICT;

@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Gereon Kremer, Abdalrhman Mohamed
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -40,24 +37,24 @@ SynthVerify::SynthVerify(Env& env, TermDbSygus* tds)
   // we start with the provided options
   d_subOptions.copyValues(options());
   // limit the number of instantiation rounds on subcalls
-  d_subOptions.writeQuantifiers().instMaxRounds =
+  d_subOptions.write_quantifiers().instMaxRounds =
       d_subOptions.quantifiers.sygusVerifyInstMaxRounds;
   // Disable sygus on the subsolver. This is particularly important since it
   // ensures that recursive function definitions have the standard ownership
   // instead of being claimed by sygus in the subsolver.
-  d_subOptions.writeBase().inputLanguage = Language::LANG_SMTLIB_V2_6;
-  d_subOptions.writeQuantifiers().sygus = false;
+  d_subOptions.write_base().inputLanguage = Language::LANG_SMTLIB_V2_6;
+  d_subOptions.write_quantifiers().sygus = false;
   // use tangent planes by default, since we want to put effort into
   // the verification step for sygus queries with non-linear arithmetic
   if (!d_subOptions.arith.nlExtTangentPlanesWasSetByUser)
   {
-    d_subOptions.writeArith().nlExtTangentPlanes = true;
+    d_subOptions.write_arith().nlExtTangentPlanes = true;
   }
   // we must use the same setting for datatype selectors, since shared selectors
   // can appear in solutions
-  d_subOptions.writeDatatypes().dtSharedSelectors =
+  d_subOptions.write_datatypes().dtSharedSelectors =
       options().datatypes.dtSharedSelectors;
-  d_subOptions.writeDatatypes().dtSharedSelectorsWasSetByUser = true;
+  d_subOptions.write_datatypes().dtSharedSelectorsWasSetByUser = true;
   // disable checking
   smt::SetDefaults::disableChecking(d_subOptions);
 }

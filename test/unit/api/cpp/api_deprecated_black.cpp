@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Aina Niemetz
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -15,6 +12,7 @@
  */
 
 #include <cvc5/cvc5.h>
+#include <cvc5/cvc5_parser.h>
 
 #include "gtest/gtest.h"
 
@@ -136,7 +134,7 @@ TEST_F(TestApiDeprecated, solver)
   (void)slv.mkSepNil(slv.getIntegerSort());
   (void)slv.mkString("asdfasdf");
   std::wstring s;
-  (void)slv.mkString(s);
+  (void)slv.mkString(s).getStringValue();
   (void)slv.mkEmptySequence(slv.getIntegerSort());
   (void)slv.mkUniverseSet(slv.getIntegerSort());
   (void)slv.mkBitVector(32, 2);
@@ -158,6 +156,7 @@ TEST_F(TestApiDeprecated, solver)
 
   (void)slv.mkVar(slv.getIntegerSort());
   (void)slv.mkDatatypeDecl("paramlist", {slv.mkParamSort("T")});
+  (void)parser::SymbolManager(&slv);
 }
 
 }  // namespace cvc5::internal::test

@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Hans-Jörg Schurr, Gereon Kremer
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -25,8 +22,8 @@ using namespace cvc5::internal::kind;
 namespace cvc5::internal {
 
 ProofCheckerStatistics::ProofCheckerStatistics(StatisticsRegistry& sr)
-    : d_ruleChecks(
-        sr.registerHistogram<ProofRule>("ProofCheckerStatistics::ruleChecks")),
+    : d_ruleChecks(sr.registerHistogram<ProofRule>(
+          "ProofCheckerStatistics::ruleChecks")),
       d_totalRuleChecks(
           sr.registerInt("ProofCheckerStatistics::totalRuleChecks"))
 {
@@ -139,6 +136,11 @@ Node ProofChecker::checkDebug(ProofRule id,
   Trace(traceTag) << "cchildren: " << cchildren << std::endl;
   Trace(traceTag) << "     args: " << args << std::endl;
   return res;
+}
+
+void ProofChecker::setProofCheckMode(options::ProofCheckMode pcMode)
+{
+  d_pcMode = pcMode;
 }
 
 Node ProofChecker::checkInternal(ProofRule id,

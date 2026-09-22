@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -38,21 +35,29 @@ InstStrategySubConflict::InstStrategySubConflict(
   // determine the options to use for the verification subsolvers we spawn
   // we start with the provided options
   d_subOptions.copyValues(options());
+  // disable checking first
+  smt::SetDefaults::disableChecking(d_subOptions);
   // requires full proofs
-  d_subOptions.writeSmt().produceProofs = true;
+  d_subOptions.write_smt().produceProofs = true;
   // don't do simplification, which can preprocess quantifiers to those not
   // occurring in the main solver
-  d_subOptions.writeSmt().simplificationMode =
+  d_subOptions.write_smt().simplificationMode =
       options::SimplificationMode::NONE;
   // requires unsat cores
-  d_subOptions.writeSmt().produceUnsatCores = true;
+  d_subOptions.write_smt().produceUnsatCores = true;
   // don't do this strategy
-  d_subOptions.writeQuantifiers().quantSubCbqi = false;
+  d_subOptions.write_quantifiers().quantSubCbqi = false;
+  // initialize the trust proof generator if necessary
+  if (d_env.isTheoryProofProducing())
+  {
+    d_tpg.reset(
+        new TrustProofGenerator(env, TrustId::QUANTIFIERS_SUB_CBQI_LEMMA, {}));
+  }
 }
 
-void InstStrategySubConflict::reset_round(Theory::Effort e) {}
+void InstStrategySubConflict::reset_round(CVC5_UNUSED Theory::Effort e) {}
 
-bool InstStrategySubConflict::needsCheck(Theory::Effort e)
+bool InstStrategySubConflict::needsCheck(CVC5_UNUSED Theory::Effort e)
 {
   return !d_qstate.isInConflict();
 }
@@ -67,12 +72,7 @@ void InstStrategySubConflict::check(Theory::Effort e, QEffort quant_e)
   {
     return;
   }
-  double clSet = 0;
-  if (TraceIsOn("qscf-engine"))
-  {
-    clSet = double(clock()) / double(CLOCKS_PER_SEC);
-    Trace("qscf-engine") << "---Subconflict Find Engine Round---" << std::endl;
-  }
+  beginCallDebug();
   std::vector<Node> assertions;
   std::unordered_set<Node> quants;
   const LogicInfo& logicInfo = d_qstate.getLogicInfo();
@@ -109,7 +109,7 @@ void InstStrategySubConflict::check(Theory::Effort e, QEffort quant_e)
   SubsolverSetupInfo ssi(d_env, d_subOptions);
   std::unique_ptr<SolverEngine> findConflict;
   uint64_t timeout = options().quantifiers.quantSubCbqiTimeout;
-  initializeSubsolver(findConflict, ssi, timeout != 0, timeout);
+  initializeSubsolver(nodeManager(), findConflict, ssi, timeout != 0, timeout);
   // assert and check-sat
   for (const Node& a : assertions)
   {
@@ -159,27 +159,19 @@ void InstStrategySubConflict::check(Theory::Effort e, QEffort quant_e)
         << addedLemmas << "/" << triedLemmas << " instantiated" << std::endl;
     // Add the computed unsat core as a conflict, which will cause a backtrack.
     UnsatCore uc = findConflict->getUnsatCore();
-    Node ucc = NodeManager::currentNM()->mkAnd(uc.getCore());
+    Node ucc = nodeManager()->mkAnd(uc.getCore());
     Trace("qscf-engine-debug") << "Unsat core is " << ucc << std::endl;
     Trace("qscf-engine") << "Core size = " << uc.getCore().size() << std::endl;
-    d_qim.lemma(ucc.notNode(), InferenceId::QUANTIFIERS_SUB_UC);
+    TrustNode trn = TrustNode::mkTrustLemma(ucc.notNode(), d_tpg.get());
+    d_qim.trustedLemma(trn, InferenceId::QUANTIFIERS_SUB_UC);
     // also mark conflicting instance
     d_qstate.notifyConflictingInst();
   }
 
-  if (TraceIsOn("qscf-engine"))
-  {
-    double clSet2 = double(clock()) / double(CLOCKS_PER_SEC);
-    Trace("qscf-engine") << "Finished subconflict find engine, time = "
-                         << (clSet2 - clSet);
-    Trace("qscf-engine") << ", result = " << r;
-    if (addedLemmas > 0)
-    {
-      Trace("qscf-engine") << ", addedLemmas = " << addedLemmas;
-    }
-    Trace("qscf-engine") << std::endl;
-  }
+  endCallDebug();
 }
+
+std::string InstStrategySubConflict::identify() const { return "sub-cbqi"; }
 
 }  // namespace quantifiers
 }  // namespace theory

@@ -1,10 +1,7 @@
 ###############################################################################
-# Top contributors (to current version):
-#   Mudathir Mohamed, Andres Noetzli, Hans-Jörg Schurr
-#
 # This file is part of the cvc5 project.
 #
-# Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+# Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
 # in the top-level source directory and their institutional affiliations.
 # All rights reserved.  See the file COPYING in the top-level source
 # directory for licensing information.
@@ -102,12 +99,13 @@ add_custom_command(
 add_custom_target(generate-java-types DEPENDS ${JAVA_TYPES_FILES})
 
 # find java
-find_package(Java COMPONENTS Development REQUIRED)
+find_package(Java 1.8 COMPONENTS Development REQUIRED)
 include(UseJava)
 
 # specify java source files
 set(JAVA_FILES
   ${CMAKE_CURRENT_LIST_DIR}/io/github/cvc5/AbstractPointer.java
+  ${CMAKE_CURRENT_LIST_DIR}/io/github/cvc5/AbstractPlugin.java
   ${CMAKE_CURRENT_LIST_DIR}/io/github/cvc5/Command.java
   ${CMAKE_CURRENT_LIST_DIR}/io/github/cvc5/Context.java
   ${CMAKE_CURRENT_LIST_DIR}/io/github/cvc5/CVC5ApiException.java
@@ -183,12 +181,83 @@ add_custom_command(
 add_custom_target(generate-jni-headers DEPENDS ${JNI_HEADERS})
 add_dependencies(generate-jni-headers generate-java-kinds generate-java-types generate-java-proofrules generate-java-skolemfunids)
 
-# find jni package
-find_package(JNI REQUIRED)
-message(STATUS "JAVA_AWT_LIBRARY     : ${JAVA_AWT_LIBRARY}")
+# JNI_HOME, if defined, specifies the path to the JNI libraries
+if(NOT DEFINED JNI_HOME AND DEFINED ENV{JNI_HOME})
+  set(JNI_HOME $ENV{JNI_HOME})
+endif()
+
+if(NOT DEFINED JAVA_HOME AND NOT DEFINED JNI_HOME AND NOT WIN32)
+  # If there are multiple versions of Java on the system,
+  # CMake might find a version of JNI that differs from
+  # the version of the Java executable. To address this,
+  # we retrieve the java.home from the JVM settings and
+  # set the JAVA_HOME variable.
+  # This approach works properly on Unix systems but
+  # not on Windows.
+  execute_process(
+    COMMAND ${Java_JAVA_EXECUTABLE} -XshowSettings:runtime -version
+    OUTPUT_VARIABLE java_settings
+    ERROR_VARIABLE java_settings
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+  )
+  # Extract the line containing "java.home"
+  string(REGEX MATCH "java.home = [^\r\n]+" java_home_line "${java_settings}")
+  # Extract the path from the line
+  string(REPLACE "java.home = " "" JAVA_HOME "${java_home_line}")
+  message(STATUS "JAVA_HOME: ${JAVA_HOME}")
+endif()
+
+if(DEFINED JNI_HOME)
+  message(STATUS "JNI_HOME: ${JNI_HOME}")
+  set(JAVA_HOME "${JNI_HOME}") # FindJNI uses JAVA_HOME
+  if(CMAKE_CROSSCOMPILING OR CMAKE_CROSSCOMPILING_MACOS)
+    # If cross-compiling, we need to set the JNI variables manually
+    if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+      set(JAVA_AWT_LIBRARY "${JAVA_HOME}/lib/jawt.lib")
+      set(JAVA_JVM_LIBRARY "${JAVA_HOME}/lib/server/jvm.lib")
+      set(JAVA_INCLUDE_PATH "${JAVA_HOME}/include/")
+      set(JAVA_INCLUDE_PATH2 "${JAVA_HOME}/include/win32")
+      set(JAVA_AWT_INCLUDE_PATH "${JAVA_HOME}/include")
+    elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+      set(JAVA_AWT_LIBRARY "${JAVA_HOME}/lib/libjawt.dylib")
+      set(JAVA_JVM_LIBRARY "${JAVA_HOME}/lib/server/libjvm.dylib")
+      set(JAVA_INCLUDE_PATH "${JAVA_HOME}/include/")
+      set(JAVA_INCLUDE_PATH2 "${JAVA_HOME}/include/darwin")
+      set(JAVA_AWT_INCLUDE_PATH "${JAVA_HOME}/include")
+    else()
+      set(JAVA_AWT_LIBRARY "${JAVA_HOME}/lib/libjawt.so")
+      set(JAVA_JVM_LIBRARY "${JAVA_HOME}/lib/server/libjvm.so")
+      set(JAVA_INCLUDE_PATH "${JAVA_HOME}/include/")
+      set(JAVA_INCLUDE_PATH2 "${JAVA_HOME}/include/linux")
+      set(JAVA_AWT_INCLUDE_PATH "${JAVA_HOME}/include")
+    endif()
+  endif()
+endif()
+
+if(BUILD_SHARED_LIBS)
+  # Find JNI package
+  find_package(JNI REQUIRED)
+else()
+  # When a static build is enabled, we still build a JNI shared library,
+  # but all cvc5 dependencies are statically linked to it. To do that,
+  # we need to find the shared JNI libraries for Java.
+  # Save the original suffixes
+  set(_original_suffixes "${CMAKE_FIND_LIBRARY_SUFFIXES}")
+  # Temporarily add appropriate suffixes to find JNI libraries
+  if (WIN32)
+    list(APPEND CMAKE_FIND_LIBRARY_SUFFIXES .dll)
+  else()
+    list(APPEND CMAKE_FIND_LIBRARY_SUFFIXES .so .dylib)
+  endif()
+  # Find JNI package
+  find_package(JNI REQUIRED)
+  # Restore the original suffixes
+  set(CMAKE_FIND_LIBRARY_SUFFIXES "${_original_suffixes}")
+endif()
+
+message(STATUS "JNI_FOUND            : ${JNI_FOUND}")
 message(STATUS "JNI_INCLUDE_DIRS     : ${JNI_INCLUDE_DIRS}")
 message(STATUS "JNI_LIBRARIES        : ${JNI_LIBRARIES} ")
-message(STATUS "JNI_FOUND            : ${JNI_FOUND}")
 message(STATUS "JAVA_AWT_LIBRARY     : ${JAVA_AWT_LIBRARY}")
 message(STATUS "JAVA_JVM_LIBRARY     : ${JAVA_JVM_LIBRARY}")
 message(STATUS "JAVA_INCLUDE_PATH    : ${JAVA_INCLUDE_PATH}")
@@ -196,6 +265,10 @@ message(STATUS "JAVA_INCLUDE_PATH2   : ${JAVA_INCLUDE_PATH2}")
 message(STATUS "JAVA_AWT_INCLUDE_PATH: ${JAVA_AWT_INCLUDE_PATH}")
 
 set(jni_files
+  jni/api_plugin.cpp
+  jni/api_plugin.h
+  jni/api_solver.cpp
+  jni/api_solver.h
   jni/api_utilities.cpp
   jni/datatype.cpp
   jni/command.cpp
@@ -218,38 +291,128 @@ set(jni_files
   jni/term.cpp
   jni/term_manager.cpp)
 
-add_library(cvc5jni ${jni_files})
+# Enforce the build of a shared library
+add_library(cvc5jni SHARED ${jni_files})
 add_dependencies(cvc5jni generate-jni-headers)
+
+if(WIN32 AND NOT BUILD_SHARED_LIBS)
+  # Ensure that cvc5jni does not expect DLL imports,
+  # but static linking
+  target_compile_definitions(cvc5jni PRIVATE CVC5_STATIC_DEFINE)
+endif()
 
 target_include_directories(cvc5jni PUBLIC ${JNI_INCLUDE_DIRS})
 target_include_directories(cvc5jni PUBLIC ${PROJECT_SOURCE_DIR}/src)
-target_include_directories(cvc5jni PUBLIC ${CMAKE_BINARY_DIR}/src/)
+target_include_directories(cvc5jni PUBLIC ${PROJECT_BINARY_DIR}/src/)
 target_include_directories(cvc5jni PUBLIC ${JNI_DIR})
 target_link_libraries(cvc5jni PRIVATE cvc5 cvc5parser)
 
-set(CVC5_JAR "cvc5-${CVC5_VERSION}.jar")
+# Normalize the system name and CPU architecture according to the conventions of
+# the os-maven-plugin, so that the JNI library is built under the path
+# ${JNI_PREFIX}/${SYS_NAME}/${CPU_ARCH}. This enables the creation of
+# a single JAR that can contain native JNI libraries for multiple OSes and
+# CPU architectures simultaneously.
+# Additionally, it prevents file collisions when multiple JARs containing
+# a native JNI library for the same OS but different architectures are added to
+# the classpath at the same time.
+set(JNI_PREFIX "cvc5-libs")
+string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" CPU_ARCH)
+# Normalize supported CPU architectures
+if(CPU_ARCH MATCHES "x86_64|amd64")
+  set(CPU_ARCH "x86_64")
+elseif(CPU_ARCH MATCHES "aarch64|arm64")
+  set(CPU_ARCH "aarch_64")
+endif()
+# Normalize supported system names
+string(TOLOWER "${CMAKE_SYSTEM_NAME}" SYS_NAME)
+if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+  set(SYS_NAME "osx")
+endif()
 
-# create cvc5.jar file
-add_jar(cvc5jar
-  SOURCES
-  ${JAVA_FILES}
-  VERSION ${CVC5_VERSION}
-  OUTPUT_NAME cvc5
+set(JNI_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/${JNI_PREFIX}/${SYS_NAME}/${CPU_ARCH}")
+set_target_properties(cvc5jni PROPERTIES
+  LIBRARY_OUTPUT_DIRECTORY "${JNI_OUTPUT_DIR}"
+  RUNTIME_OUTPUT_DIRECTORY "${JNI_OUTPUT_DIR}"
 )
+
+if (WIN32 AND NOT BUILD_SHARED_LIBS)
+  # Statically link all libraries, including MinGW-w64 libraries
+  set_target_properties(cvc5jni PROPERTIES LINK_FLAGS -static)
+  set_target_properties(cvc5jni PROPERTIES LINK_SEARCH_START_STATIC ON)
+  set_target_properties(cvc5jni PROPERTIES LINK_SEARCH_END_STATIC ON)
+endif()
+
+# Java on Windows expects the JNI libraries without the prefix
+if (WIN32)
+  set_target_properties(cvc5jni PROPERTIES PREFIX "")
+  set_target_properties(cvc5jni PROPERTIES IMPORT_PREFIX "")
+endif()
+
+# Create cvc5.jar file
+if (WIN32)
+  # CMake creates a symbolic link pointing to the jar with
+  # the version info when the VERSION attribute is provided.
+  # This fails on Windows so we don't provide it.
+  add_jar(cvc5jar
+    SOURCES
+    ${JAVA_FILES}
+    OUTPUT_NAME cvc5
+  )
+else()
+  add_jar(cvc5jar
+    SOURCES
+    ${JAVA_FILES}
+    VERSION ${CVC5_MAVEN_VERSION}
+    OUTPUT_NAME cvc5
+  )
+endif()
 
 add_dependencies(cvc5jar generate-java-kinds cvc5jni cvc5 cvc5parser)
 
-# install in the same directory of cvc5-targets
-install(TARGETS cvc5jni
-  LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-  ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-)
+if(BUILD_DOCS)
+  # Build cvc5-sources.jar to enable viewing, navigation, and debugging of the library source code
+  set(SOURCES_JAR ${CMAKE_CURRENT_BINARY_DIR}/cvc5-sources.jar)
 
-install_jar(cvc5jar DESTINATION share/java)
+  add_custom_command(
+      OUTPUT ${SOURCES_JAR}
+      COMMAND ${Java_JAR_EXECUTABLE} cf ${SOURCES_JAR}
+              -C ${CMAKE_CURRENT_LIST_DIR} io/github/cvc5
+              -C ${CMAKE_CURRENT_BINARY_DIR} io/github/cvc5
+      DEPENDS ${JAVA_FILES}
+      COMMENT "Generating sources JAR"
+  )
+  add_custom_target(cvc5-sources-jar ALL DEPENDS ${SOURCES_JAR})
+endif()
+
+if(NOT BUILD_SHARED_LIBS)
+  # Build a JAR including the native library for publication to Maven Central
+  set(NATIVE_JAR ${CMAKE_CURRENT_BINARY_DIR}/cvc5-${SYS_NAME}-${CPU_ARCH}.jar)
+  add_custom_command(
+      OUTPUT ${NATIVE_JAR}
+      COMMAND ${Java_JAR_EXECUTABLE} cf ${NATIVE_JAR} -C ${CMAKE_CURRENT_BINARY_DIR} ${JNI_PREFIX}
+      DEPENDS cvc5jni
+      COMMENT "Generating native JAR"
+  )
+  add_custom_target(cvc5-native-jar ALL DEPENDS ${NATIVE_JAR})
+endif()
+
+# POM file for publishing cvc5 Java bindings to Maven Central
+configure_file(pom.xml.in ${PROJECT_BINARY_DIR}/pom.xml @ONLY)
+
+# Install in the same directory of cvc5-targets.
+# On Windows, CMake's default install action places
+# DLLs into the runtime path (by default "bin")
+install(TARGETS cvc5jni COMPONENT java-api)
+
+install_jar(cvc5jar
+  DESTINATION share/java
+  COMPONENT java-api
+)
 
 install_jar_exports(
   TARGETS cvc5jar
   NAMESPACE cvc5::
   FILE cvc5JavaTargets.cmake
   DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/cvc5
+  COMPONENT java-api
 )

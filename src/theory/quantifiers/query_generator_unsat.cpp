@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Gereon Kremer
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -32,11 +29,11 @@ QueryGeneratorUnsat::QueryGeneratorUnsat(Env& env) : QueryGenerator(env)
   // determine the options to use for the verification subsolvers we spawn
   // we start with the provided options
   d_subOptions.copyValues(d_env.getOptions());
-  d_subOptions.writeQuantifiers().sygus = false;
-  d_subOptions.writeSmt().produceProofs = true;
-  d_subOptions.writeSmt().checkProofs = true;
-  d_subOptions.writeSmt().produceModels = true;
-  d_subOptions.writeSmt().checkModels = true;
+  d_subOptions.write_quantifiers().sygus = false;
+  d_subOptions.write_smt().produceProofs = true;
+  d_subOptions.write_smt().checkProofs = true;
+  d_subOptions.write_smt().produceModels = true;
+  d_subOptions.write_smt().checkModels = true;
 }
 
 bool QueryGeneratorUnsat::addTerm(Node n, std::vector<Node>& queries)
@@ -156,7 +153,7 @@ size_t QueryGeneratorUnsat::getNextRandomIndex(
 {
   Assert(!d_terms.empty());
   Assert(processed.size() < d_terms.size());
-  size_t rindex = Random::getRandom().pick(0, d_terms.size() - 1);
+  size_t rindex = Random::getRandom().pick<size_t>(0, d_terms.size() - 1);
   while (processed.find(rindex) != processed.end())
   {
     rindex++;
