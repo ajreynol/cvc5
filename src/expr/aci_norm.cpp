@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Aina Niemetz, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2025 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -39,15 +36,13 @@ Node getNullTerminator(NodeManager* nm, Kind k, TypeNode tn)
     case Kind::AND:
     case Kind::SEP_STAR: nullTerm = nm->mkConst(true); break;
     case Kind::ADD:
-      // Note that we ignore the type. This is safe since ADD is permissive
-      // for subtypes.
-      nullTerm = nm->mkConstInt(Rational(0));
+      nullTerm = tn.isInteger() ? nm->mkConstInt(Rational(0))
+                                : nm->mkConstReal(Rational(0));
       break;
     case Kind::MULT:
     case Kind::NONLINEAR_MULT:
-      // Note that we ignore the type. This is safe since multiplication is
-      // permissive for subtypes.
-      nullTerm = nm->mkConstInt(Rational(1));
+      nullTerm = tn.isInteger() ? nm->mkConstInt(Rational(1))
+                                : nm->mkConstReal(Rational(1));
       break;
     case Kind::STRING_CONCAT:
       // handles strings and sequences
@@ -132,10 +127,7 @@ bool isAssocCommIdem(Kind k)
   return false;
 }
 
-bool isAssocComm(Kind k)
-{
-  return (k==Kind::BITVECTOR_XOR);
-}
+bool isAssocComm(Kind k) { return (k == Kind::BITVECTOR_XOR); }
 
 bool isAssoc(Kind k)
 {
@@ -261,6 +253,7 @@ Node getZeroElement(NodeManager* nm, Kind k, TypeNode tn)
       zeroTerm = nm->mkNode(Kind::REGEXP_ALL);
       break;
     case Kind::REGEXP_INTER:
+    case Kind::REGEXP_CONCAT:
       // empty language
       zeroTerm = nm->mkNode(Kind::REGEXP_NONE);
       break;
@@ -307,6 +300,7 @@ bool isAbsorb(Kind k)
     case Kind::AND:
     case Kind::REGEXP_UNION:
     case Kind::REGEXP_INTER:
+    case Kind::REGEXP_CONCAT:
     case Kind::BITVECTOR_AND:
     case Kind::BITVECTOR_OR: return true;
     default: break;
