@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Daneshvar Amrollahi
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -454,7 +451,6 @@ size_t numDigits(size_t n)
  * @param freeVar2node Map for free variable substitutions.
  * @param boundVar2node Map for bound variable substitutions.
  * @param normalizedName Map for storing normalized variable names.
- * @param normalizedSorts Map for normalized sorts.
  * @param nodeManager The node manager for creating new nodes.
  * @param d_preprocContext The preprocessing pass context.
  * @param sortNormalizer The sort normalizer for type conversion.
@@ -465,10 +461,9 @@ Node rename(const Node& n,
             std::unordered_map<Node, Node>& freeVar2node,
             std::unordered_map<Node, Node>& boundVar2node,
             std::unordered_map<std::string, std::string>& normalizedName,
-            std::unordered_map<TypeNode, TypeNode> normalizedSorts,
             NodeManager* nodeManager,
             PreprocessingPassContext* d_preprocContext,
-            NormalizeSortNodeConverter* sortNormalizer,
+            NormalizeSortNodeConverter& sortNormalizer,
             bool& hasQID)
 {
   // Map to cache normalized nodes
@@ -518,7 +513,7 @@ Node rename(const Node& n,
                                          + std::string(8 - numDigits(id), '0')
                                          + std::to_string(id);
               Node ret = nodeManager->mkBoundVar(
-                  new_var_name, sortNormalizer->convertType(current.getType()));
+                  new_var_name, sortNormalizer.convertType(current.getType()));
 
               boundVar2node[current] = ret;
               normalized[current] = ret;
@@ -544,15 +539,13 @@ Node rename(const Node& n,
               Node substVar = nodeManager->getSkolemManager()->mkDummySkolem(
                   new_var_name,
                   current.getType(),
-                  "normalized " + current.toString() + " to " + new_var_name,
                   SkolemFlags::SKOLEM_EXACT_NAME);
 
               // Create normalized variable with normalized type for the final
               // result
               Node ret = nodeManager->getSkolemManager()->mkDummySkolem(
                   new_var_name,
-                  sortNormalizer->convertType(current.getType()),
-                  "normalized " + current.toString() + " to " + new_var_name,
+                  sortNormalizer.convertType(current.getType()),
                   SkolemFlags::SKOLEM_EXACT_NAME);
 
               freeVar2node[current] = ret;
@@ -612,7 +605,7 @@ Node rename(const Node& n,
                                          + std::to_string(id);
 
               Node ret = nodeManager->mkBoundVar(
-                  new_var_name, sortNormalizer->convertType(bv.getType()));
+                  new_var_name, sortNormalizer.convertType(bv.getType()));
               boundVar2node[bv] = ret;
               normalized[bv] = ret;
             }
@@ -625,8 +618,9 @@ Node rename(const Node& n,
         }
 
         // Push unvisited children onto the stack
-        for (const Node& child : current)
+        for (int i = current.getNumChildren() - 1; i >= 0; --i)
         {
+          const Node& child = current[i];
           if (visited.find(child) == visited.end())
           {
             stack.push_back(child);
@@ -836,7 +830,6 @@ Node renameQid(const Node& n,
             Node ret = nodeManager->getSkolemManager()->mkDummySkolem(
                 new_var_name,
                 current.getType(),
-                "renamed qid " + current.toString() + " to " + new_var_name,
                 SkolemFlags::SKOLEM_EXACT_NAME);
             qidRenamed[current] = ret;
             normalized[current] = ret;
@@ -935,9 +928,9 @@ PreprocessingPassResult Normalize::applyInternal(
       symbolOccurrences;
   for (const auto& nodeInfo : nodeInfos)
   {
-    for (const auto& [symbol, _] : nodeInfo->varNames)
+    for (const auto& varName : nodeInfo->varNames)
     {
-      symbolOccurrences[symbol].push_back(nodeInfo);
+      symbolOccurrences[varName.first].push_back(nodeInfo);
     }
   }
 
@@ -970,6 +963,9 @@ PreprocessingPassResult Normalize::applyInternal(
       eqClasses.begin(),
       eqClasses.end(),
       [](const std::vector<NodeInfo*>& a, const std::vector<NodeInfo*>& b) {
+        // Silence false positive:
+        // https://github.com/llvm/llvm-project/issues/78132
+        // NOLINTNEXTLINE(clang-analyzer-cplusplus.Move)
         return a[0]->encoding > b[0]->encoding;
       });
 
@@ -1025,8 +1021,7 @@ PreprocessingPassResult Normalize::applyInternal(
     }
   }
 
-  NormalizeSortNodeConverter* sortNormalizer =
-      new NormalizeSortNodeConverter(normalizedSorts, nodeManager());
+  NormalizeSortNodeConverter sortNormalizer(normalizedSorts, nodeManager());
 
   // ----------------------------------------
   // Step 7: Normalize nodes based on sorted order
@@ -1044,7 +1039,6 @@ PreprocessingPassResult Normalize::applyInternal(
                             freeVar2node,
                             boundVar2node,
                             normalizedName,
-                            normalizedSorts,
                             nodeManager(),
                             d_preprocContext,
                             sortNormalizer,
