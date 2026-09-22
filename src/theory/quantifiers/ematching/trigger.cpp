@@ -152,7 +152,7 @@ Node Trigger::getInstPattern() const
 uint64_t Trigger::addInstantiations()
 {
   uint64_t gtAddedLemmas = 0;
-  if (options::groundTermTriggerRegister() && !d_groundTerms.empty())
+  if (options().quantifiers.groundTermTriggerRegister && !d_groundTerms.empty())
   {
     // for each ground term t that does not exist in the equality engine, we
     // add a purification lemma of the form (k = t).
