@@ -73,8 +73,6 @@ void CandidateGeneratorQE::resetForOperator(Node eqc, Node op)
     {
       d_termIterList = tat->getLeaves(d_pat.getNumChildren());
       d_mode = cand_term_db;
-      s_opCount[d_op]++;
-      s_opSize[d_op] = d_termIterList.size();
     }
     else
     {
