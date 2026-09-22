@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Abdalrhman Mohamed, Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -30,6 +27,8 @@ namespace cvc5::internal {
  */
 class SygusGrammar
 {
+  friend struct std::hash<SygusGrammar>;
+
  public:
   /**
    * Constructor.
@@ -38,6 +37,10 @@ class SygusGrammar
    */
   SygusGrammar(const std::vector<Node>& sygusVars,
                const std::vector<Node>& ntSyms);
+  /**
+   * Reconstruct grammar from sygus datatype
+   */
+  SygusGrammar(const std::vector<Node>& sygusVars, const TypeNode& sdt);
 
   /**
    * Add \p rule to the set of rules corresponding to \p ntSym.
@@ -105,6 +108,23 @@ class SygusGrammar
    */
   std::string toString() const;
 
+  /**
+   * Get lambda for rule. This returns a lambda of the form
+   *   (lambda (x1...xn) r')
+   * where r' is the result of replacing each occurrence of a non-terminal
+   * from this grammar in r by a fresh variable. All variables introduced in
+   * this way are included in x1...xn. An entry is added to ntSymMap for each
+   * variable xi mapping it to the non-terminal that it replaced.
+   * Returns r itself if it has no non-terminals.
+   */
+  Node getLambdaForRule(const Node& r, std::map<Node, Node>& ntSymMap) const;
+
+  /**
+   * Determine if any rules have been added to this grammar.
+   * @return True if rules have been added.
+   */
+  bool hasRules() const;
+
  private:
   /** Input variables to the corresponding function/invariant to synthesize.*/
   std::vector<Node> d_sygusVars;
@@ -118,4 +138,11 @@ class SygusGrammar
 
 }  // namespace cvc5::internal
 
+namespace std {
+template <>
+struct hash<cvc5::internal::SygusGrammar>
+{
+  size_t operator()(const cvc5::internal::SygusGrammar& grammar) const;
+};
+}  // namespace std
 #endif

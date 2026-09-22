@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Mudathir Mohamed, Aina Niemetz, Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -20,34 +17,41 @@ import java.math.BigInteger;
 /**
  * A cvc5 Proof.
  */
-public class Proof implements IPointer
+public class Proof extends AbstractPointer
 {
-  Proof(long pointer)
+  /**
+   * Null proof
+   */
+  public Proof()
   {
-    this.pointer = pointer;
-  }
-
-  protected long pointer;
-
-  public void deletePointer()
-  {
-    if (pointer != 0)
-    {
-      deletePointer(pointer);
-    }
-    pointer = 0;
-  }
-
-  protected native void deletePointer(long pointer);
-
-  public long getPointer()
-  {
-    return pointer;
+    this(getNullProof());
   }
 
   /**
+   * This is an internal constructor intended to be used only
+   * inside cvc5 package.
+   *
+   * @param pointer the cpp pointer to Proof
+   */
+  Proof(long pointer)
+  {
+    super(pointer);
+  }
+
+  private static native long getNullProof();
+
+  protected native void deletePointer(long pointer);
+
+  protected String toString(long pointer)
+  {
+    throw new UnsupportedOperationException("Proof.toString() is not supported in the cpp api");
+  }
+
+  /**
+   * Get the proof rule used by the root step of the proof.
+   *
    * @return The proof rule used by the root step of the proof.
-   * @throws CVC5ApiException
+   * @throws CVC5ApiException on error
    */
   public ProofRule getRule() throws CVC5ApiException
   {
@@ -57,7 +61,26 @@ public class Proof implements IPointer
 
   private native int getRule(long pointer);
 
-  /** @return The conclusion of the root step of the proof. */
+  /**
+   * Get the proof rewrite rule used by the root step of the proof.
+   *
+   * @return The proof rewrite rule used by the root step of the proof.
+   * @throws CVC5ApiException if `getRule()` does not return `DSL_REWRITE`
+   *         or `THEORY_REWRITE`.
+   */
+  public ProofRewriteRule getRewriteRule() throws CVC5ApiException
+  {
+    int value = getRewriteRule(pointer);
+    return ProofRewriteRule.fromInt(value);
+  }
+
+  private native int getRewriteRule(long pointer);
+
+  /**
+   * Get the conclusion of the root step of the proof.
+   *
+   * @return The conclusion of the root step of the proof.
+   */
   public Term getResult()
   {
     long termPointer = getResult(pointer);
@@ -66,7 +89,11 @@ public class Proof implements IPointer
 
   private native long getResult(long pointer);
 
-  /** @return The premises of the root step of the proof. */
+  /**
+   * Get the premises of the root step of the proof.
+   *
+   * @return The premises of the root step of the proof.
+   */
   public Proof[] getChildren()
   {
     long[] proofPointers = getChildren(pointer);
@@ -76,6 +103,8 @@ public class Proof implements IPointer
   private native long[] getChildren(long pointer);
 
   /**
+   * Get the arguments of the root step of the proof as a vector of terms.
+   *
    * @return The arguments of the root step of the proof as a vector of terms.
    *         Some of those terms might be strings.
    */
@@ -86,4 +115,43 @@ public class Proof implements IPointer
   }
 
   private native long[] getArguments(long pointer);
+
+  /**
+   * Referential equality operator.
+   *
+   * @param p The proof to compare to for equality.
+   * @return True if the proofs point to the same internal proof object.
+   */
+  @Override
+  public boolean equals(Object p)
+  {
+    if (this == p)
+    {
+      return true;
+    }
+    if (p == null || getClass() != p.getClass())
+    {
+      return false;
+    }
+    Proof proof = (Proof) p;
+    if (pointer == proof.pointer)
+    {
+      return true;
+    }
+    return equals(pointer, proof.getPointer());
+  }
+
+  private native boolean equals(long pointer1, long pointer2);
+
+  /**
+   * Get the hash value of a proof.
+   * @return The hash value.
+   */
+  @Override
+  public int hashCode()
+  {
+    return Long.hashCode(hashCode(pointer));
+  }
+
+  private native long hashCode(long pointer);
 }

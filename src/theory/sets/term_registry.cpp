@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Andres Noetzli, Aina Niemetz
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -25,18 +22,16 @@ namespace cvc5::internal {
 namespace theory {
 namespace sets {
 
-TermRegistry::TermRegistry(Env& env,
-                           SolverState& state,
-                           InferenceManager& im,
-                           SkolemCache& skc)
+TermRegistry::TermRegistry(Env& env, InferenceManager& im, SkolemCache& skc)
     : EnvObj(env),
       d_im(im),
       d_skCache(skc),
       d_proxy(userContext()),
       d_proxy_to_term(userContext()),
-      d_epg(env.isTheoryProofProducing() ? new EagerProofGenerator(
-                env, nullptr, "sets::TermRegistry::epg")
-                                         : nullptr)
+      d_epg(
+          env.isTheoryProofProducing()
+              ? new EagerProofGenerator(env, nullptr, "sets::TermRegistry::epg")
+              : nullptr)
 {
 }
 
@@ -54,7 +49,7 @@ Node TermRegistry::getProxy(Node n)
   {
     return (*it).second;
   }
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   Node k = d_skCache.mkTypedSkolemCached(
       n.getType(), n, SkolemCache::SK_PURIFY, "sp");
 
@@ -77,7 +72,7 @@ Node TermRegistry::getEmptySet(TypeNode tn)
   {
     return it->second;
   }
-  Node n = NodeManager::currentNM()->mkConst(EmptySet(tn));
+  Node n = nodeManager()->mkConst(EmptySet(tn));
   d_emptyset[tn] = n;
   return n;
 }
@@ -89,7 +84,7 @@ Node TermRegistry::getUnivSet(TypeNode tn)
   {
     return it->second;
   }
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   Node n = nm->mkNullaryOperator(tn, Kind::SET_UNIVERSE);
   d_univset[tn] = n;
   return n;

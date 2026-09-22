@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Gereon Kremer, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -158,7 +155,7 @@ class TConvProofGenerator : protected EnvObj, public ProofGenerator
                       Node s,
                       ProofGenerator* pg,
                       bool isPre = false,
-                      ProofRule trustId = ProofRule::ASSUME,
+                      TrustId trustId = TrustId::NONE,
                       bool isClosed = false,
                       uint32_t tctx = 0);
   /** Same as above, for a single step */
@@ -172,6 +169,12 @@ class TConvProofGenerator : protected EnvObj, public ProofGenerator
                       const std::vector<Node>& args,
                       bool isPre = false,
                       uint32_t tctx = 0);
+  /** Same as above, with a theory rewrite step */
+  void addTheoryRewriteStep(Node t,
+                            Node s,
+                            ProofRewriteRule id,
+                            bool isPre = false,
+                            uint32_t tctx = 0);
   /** Has rewrite step for term t */
   bool hasRewriteStep(Node t, uint32_t tctx = 0, bool isPre = false) const;
   /**

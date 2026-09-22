@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Gereon Kremer, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -22,8 +19,8 @@
 #include "theory/arith/arith_msum.h"
 #include "theory/arith/arith_utilities.h"
 #include "theory/arith/nl/nl_lemma_utils.h"
-#include "theory/theory_model.h"
 #include "theory/rewriter.h"
+#include "theory/theory_model.h"
 
 using namespace cvc5::internal::kind;
 
@@ -34,11 +31,11 @@ namespace nl {
 
 NlModel::NlModel(Env& env) : EnvObj(env), d_used_approx(false)
 {
-  d_true = NodeManager::currentNM()->mkConst(true);
-  d_false = NodeManager::currentNM()->mkConst(false);
-  d_zero = NodeManager::currentNM()->mkConstReal(Rational(0));
-  d_one = NodeManager::currentNM()->mkConstReal(Rational(1));
-  d_two = NodeManager::currentNM()->mkConstReal(Rational(2));
+  d_true = nodeManager()->mkConst(true);
+  d_false = nodeManager()->mkConst(false);
+  d_zero = nodeManager()->mkConstReal(Rational(0));
+  d_one = nodeManager()->mkConstReal(Rational(1));
+  d_two = nodeManager()->mkConstReal(Rational(2));
 }
 
 NlModel::~NlModel() {}
@@ -119,13 +116,13 @@ Node NlModel::computeModelValue(TNode n, bool isConcrete)
       {
         children.emplace_back(computeModelValue(n[i], isConcrete));
       }
-      ret = NodeManager::currentNM()->mkNode(n.getKind(), children);
+      ret = nodeManager()->mkNode(n.getKind(), children);
       ret = rewrite(ret);
     }
   }
   Trace("nl-ext-mv-debug") << "computed " << (isConcrete ? "M" : "M_A") << "["
                            << n << "] = " << ret << std::endl;
-  Assert(n.getType() == ret.getType());
+  AssertEqual(n.getType(), ret.getType());
   cache[n] = ret;
   return ret;
 }
@@ -212,7 +209,7 @@ bool NlModel::checkModel(const std::vector<Node>& assertions,
           Kind k = cur.getKind();
           if (k != Kind::MULT && k != Kind::ADD && k != Kind::NONLINEAR_MULT
               && k != Kind::TO_REAL && !isTranscendentalKind(k)
-              && k != Kind::IAND && k != Kind::POW2)
+              && k != Kind::IAND && k != Kind::PIAND && k != Kind::POW2)
           {
             // if we have not set an approximate bound for it
             if (!hasAssignment(cur))
@@ -299,6 +296,16 @@ bool NlModel::addSubstitution(TNode v, TNode s)
       return false;
     }
   }
+  // Check if the substitution is cyclic, considering arithmetic subterms.
+  // This prevents an assignment like x -> (* 2 x) but allows an assignment
+  // like x -> (f x) where f is an uninterpreted function.
+  Node subsFull = d_substitutions.applyArith(s);
+  if (ArithSubs::hasArithSubterm(subsFull, v))
+  {
+    Trace("nl-ext-model") << "ERROR: has subterm " << subsFull << std::endl;
+    return false;
+  }
+
   // if we previously had an approximate bound, the exact bound should be in its
   // range
   std::map<Node, std::pair<Node, Node>>::iterator itb =
@@ -311,8 +318,9 @@ bool NlModel::addSubstitution(TNode v, TNode s)
     {
       Trace("nl-ext-model")
           << "...ERROR: already has bound which is out of range." << std::endl;
-      Assert(false) << "Out of bounds exact bound given for a variable with an "
-                       "approximate bound";
+      DebugUnhandled()
+          << "Out of bounds exact bound given for a variable with an "
+             "approximate bound";
       return false;
     }
   }
@@ -332,8 +340,8 @@ bool NlModel::addSubstitution(TNode v, TNode s)
 
 bool NlModel::addBound(TNode v, TNode l, TNode u)
 {
-  Assert(l.getType() == v.getType());
-  Assert(u.getType() == v.getType());
+  AssertEqual(l.getType(), v.getType());
+  AssertEqual(u.getType(), v.getType());
   Trace("nl-ext-model") << "* check model bound : " << v << " -> [" << l << " "
                         << u << "]" << std::endl;
   if (l == u)
@@ -347,7 +355,8 @@ bool NlModel::addBound(TNode v, TNode l, TNode u)
     Trace("nl-ext-model")
         << "...ERROR: setting bound for variable that already has exact value."
         << std::endl;
-    Assert(false) << "Setting bound for variable that already has exact value.";
+    DebugUnhandled()
+        << "Setting bound for variable that already has exact value.";
     return false;
   }
   Assert(l.isConst());
@@ -402,7 +411,7 @@ bool NlModel::solveEqualitySimple(Node eq,
   Node var;
   Node b = d_zero;
   Node c = d_zero;
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   // the list of variables that occur as a monomial in msum, and whose value
   // is so far unconstrained in the model.
   std::unordered_set<Node> unc_vars;
@@ -474,7 +483,7 @@ bool NlModel::solveEqualitySimple(Node eq,
           // We also ensure types are correct here, which avoids substituting
           // a term of non-integer type for a variable of integer type.
           if (veqc.isNull() && !expr::hasSubterm(slv, uv)
-              && slv.getType() == uv.getType())
+              && CVC5_EQUAL(slv.getType(), uv.getType()))
           {
             Trace("nl-ext-cm")
                 << "check-model-subs : " << uv << " -> " << slv << std::endl;
@@ -529,7 +538,7 @@ bool NlModel::solveEqualitySimple(Node eq,
   if (b == d_zero)
   {
     Trace("nl-ext-cms") << "...fail due to zero a/b." << std::endl;
-    Assert(false);
+    DebugUnhandled();
     return false;
   }
   Node val = nm->mkConstReal(-c.getConst<Rational>() / b.getConst<Rational>());
@@ -557,7 +566,7 @@ bool NlModel::simpleCheckModelLit(Node lit)
     Trace("nl-ext-cms") << "  return constant." << std::endl;
     return lit.getConst<bool>();
   }
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   bool pol = lit.getKind() != Kind::NOT;
   Node atom = lit.getKind() == Kind::NOT ? lit[0] : lit;
 
@@ -667,9 +676,9 @@ bool NlModel::simpleCheckModelLit(Node lit)
         Trace("nl-ext-cms-debug") << "    a = " << a << std::endl;
         Trace("nl-ext-cms-debug") << "    b = " << b << std::endl;
         // find maximal/minimal value on the interval
-        Node apex = nm->mkNode(Kind::DIVISION,
-                               nm->mkNode(Kind::NEG, b),
-                               nm->mkNode(Kind::MULT, d_two, a));
+        Node apex = nm->mkNode(
+            Kind::DIVISION,
+            {nm->mkNode(Kind::NEG, b), nm->mkNode(Kind::MULT, d_two, a)});
         apex = rewrite(apex);
         Assert(apex.isConst());
         // for lower, upper, whether we are greater than the apex
@@ -758,7 +767,7 @@ bool NlModel::simpleCheckModelLit(Node lit)
 bool NlModel::simpleCheckModelMsum(const std::map<Node, Node>& msum, bool pol)
 {
   Trace("nl-ext-cms-debug") << "* Try simple interval analysis..." << std::endl;
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   // map from transcendental functions to whether they were set to lower
   // bound
   bool simpleSuccess = true;
@@ -880,8 +889,8 @@ bool NlModel::simpleCheckModelMsum(const std::map<Node, Node>& msum, bool pol)
               << "  failed due to unknown bound for " << vc << std::endl;
           // should either assign a model bound or eliminate the variable
           // via substitution
-          Assert(false) << "A variable " << vc
-                        << " is missing a bound/value in the model";
+          DebugUnhandled() << "A variable " << vc
+                           << " is missing a bound/value in the model";
           return false;
         }
       }
@@ -1028,7 +1037,7 @@ void NlModel::printModelValue(const char* c, Node n, unsigned prec) const
 
 void NlModel::getModelValueRepair(std::map<Node, Node>& arithModel)
 {
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   Trace("nl-model") << "NlModel::getModelValueRepair:" << std::endl;
   // If we extended the model with entries x -> 0 for unconstrained values,
   // we first update the map to the extended one.

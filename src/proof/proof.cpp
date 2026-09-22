@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Mathias Preiner, Haniel Barbosa
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -18,6 +15,7 @@
 #include "proof/proof_checker.h"
 #include "proof/proof_node.h"
 #include "proof/proof_node_manager.h"
+#include "rewriter/rewrites.h"
 #include "smt/env.h"
 
 using namespace cvc5::internal::kind;
@@ -180,8 +178,9 @@ bool CDProof::addStep(Node expected,
     pchildren.push_back(pc);
   }
 
-  // the user may have provided SYMM of an assumption
-  if (id == ProofRule::SYMM)
+  // The user may have provided SYMM of an assumption. This block is only
+  // necessary if d_autoSymm is enabled.
+  if (d_autoSymm && id == ProofRule::SYMM)
   {
     Assert(pchildren.size() == 1);
     if (isAssumption(pchildren[0].get()))
@@ -255,6 +254,37 @@ void CDProof::notifyNewProof(Node expected)
       Trace("cdproof") << "  no connect" << std::endl;
     }
   }
+}
+
+bool CDProof::addTrustedStep(Node expected,
+                             TrustId id,
+                             const std::vector<Node>& children,
+                             const std::vector<Node>& args,
+                             bool ensureChildren,
+                             CDPOverwrite opolicy)
+{
+  std::vector<Node> sargs;
+  sargs.push_back(mkTrustId(nodeManager(), id));
+  sargs.push_back(expected);
+  sargs.insert(sargs.end(), args.begin(), args.end());
+  return addStep(
+      expected, ProofRule::TRUST, children, sargs, ensureChildren, opolicy);
+}
+
+bool CDProof::addTheoryRewriteStep(Node expected,
+                                   ProofRewriteRule id,
+                                   bool ensureChildren,
+                                   CDPOverwrite opolicy)
+{
+  if (expected.getKind() != Kind::EQUAL)
+  {
+    return false;
+  }
+  std::vector<Node> sargs;
+  sargs.push_back(rewriter::mkRewriteRuleNode(nodeManager(), id));
+  sargs.push_back(expected);
+  return addStep(
+      expected, ProofRule::THEORY_REWRITE, {}, sargs, ensureChildren, opolicy);
 }
 
 bool CDProof::addStep(Node expected,
@@ -411,6 +441,20 @@ bool CDProof::hasStep(Node fact)
     return true;
   }
   return false;
+}
+
+bool CDProof::hasFact(Node fact) const
+{
+  if (getProof(fact) != nullptr)
+  {
+    return true;
+  }
+  if (!d_autoSymm)
+  {
+    return false;
+  }
+  Node symFact = getSymmFact(fact);
+  return !symFact.isNull() && getProof(symFact) != nullptr;
 }
 
 size_t CDProof::getNumProofNodes() const { return d_nodes.size(); }

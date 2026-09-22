@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Gereon Kremer, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -16,6 +13,7 @@
 #include "theory/arrays/inference_manager.h"
 
 #include "options/smt_options.h"
+#include "proof/trust_id.h"
 #include "theory/builtin/proof_checker.h"
 #include "theory/theory.h"
 #include "theory/theory_state.h"
@@ -29,9 +27,10 @@ namespace arrays {
 
 InferenceManager::InferenceManager(Env& env, Theory& t, TheoryState& state)
     : TheoryInferenceManager(env, t, state, "theory::arrays::", false),
-      d_lemmaPg(isProofEnabled() ? new EagerProofGenerator(
-                    env, userContext(), "ArrayLemmaProofGenerator")
-                                 : nullptr)
+      d_lemmaPg(isProofEnabled()
+                    ? new EagerProofGenerator(
+                          env, userContext(), "ArrayLemmaProofGenerator")
+                    : nullptr)
 {
 }
 
@@ -61,7 +60,7 @@ bool InferenceManager::arrayLemma(
 {
   Trace("arrays-infer") << "TheoryArrays::arrayLemma: " << conc << " by " << exp
                         << "; " << id << std::endl;
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   if (isProofEnabled())
   {
     std::vector<Node> children;
@@ -112,17 +111,24 @@ void InferenceManager::convert(ProofRule& id,
       Assert(exp.isConst());
       args.push_back(conc[0]);
       break;
-    case ProofRule::ARRAYS_EXT: children.push_back(exp); break;
+    case ProofRule::ARRAYS_EXT:
+      // since this rule depends on the ARRAY_DEQ_DIFF skolem which sorts
+      // indices, we assert that the equality is ordered here, which it should
+      // be based on the standard order for equality.
+      Assert(exp.getKind() == Kind::NOT && exp[0].getKind() == Kind::EQUAL
+             && exp[0][0] < exp[0][1]);
+      children.push_back(exp);
+      break;
     default:
-      if (id != ProofRule::THEORY_INFERENCE)
+      if (id != ProofRule::TRUST)
       {
-        Assert(false) << "Unknown rule " << id << "\n";
+        DebugUnhandled() << "Unknown rule " << id << "\n";
       }
       children.push_back(exp);
-      args.push_back(conc);
       args.push_back(
-          builtin::BuiltinProofRuleChecker::mkTheoryIdNode(THEORY_ARRAYS));
-      id = ProofRule::THEORY_INFERENCE;
+          mkTrustId(nodeManager(), TrustId::THEORY_INFERENCE_ARRAYS));
+      args.push_back(conc);
+      id = ProofRule::TRUST;
       break;
   }
 }

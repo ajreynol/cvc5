@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -42,9 +39,9 @@ void NodeBitblaster::bbAtom(TNode node)
   Node normalized = rewrite(node);
   Node atom_bb =
       normalized.getKind() != Kind::CONST_BOOLEAN
-              && normalized.getKind() != Kind::BITVECTOR_BITOF
+              && normalized.getKind() != Kind::BITVECTOR_BIT
           ? d_atomBBStrategies[static_cast<uint32_t>(normalized.getKind())](
-              normalized, this)
+                normalized, this)
           : normalized;
 
   storeBBAtom(node, rewrite(atom_bb));
@@ -74,7 +71,7 @@ void NodeBitblaster::makeVariable(TNode var, Bits& bits)
   Assert(bits.size() == 0);
   for (unsigned i = 0; i < utils::getSize(var); ++i)
   {
-    bits.push_back(utils::mkBitOf(var, i));
+    bits.push_back(utils::mkBit(var, i));
   }
   d_variables.insert(var);
 }
@@ -108,11 +105,12 @@ Node NodeBitblaster::getStoredBBAtom(TNode node)
   return negated ? atom_bb.negate() : atom_bb;
 }
 
-Node NodeBitblaster::getModelFromSatSolver(TNode a, bool fullModel)
+Node NodeBitblaster::getModelFromSatSolver(TNode a, CVC5_UNUSED bool fullModel)
 {
+  NodeManager* nm = a.getNodeManager();
   if (!hasBBTerm(a))
   {
-    return utils::mkConst(utils::getSize(a), 0u);
+    return utils::mkConst(nm, utils::getSize(a), 0u);
   }
 
   bool assignment;
@@ -133,7 +131,7 @@ Node NodeBitblaster::getModelFromSatSolver(TNode a, bool fullModel)
     }
     value = value * 2 + bit;
   }
-  return utils::mkConst(bits.size(), value);
+  return utils::mkConst(nm, bits.size(), value);
 }
 
 void NodeBitblaster::computeRelevantTerms(std::set<Node>& termSet)
@@ -173,7 +171,7 @@ bool NodeBitblaster::isVariable(TNode node)
 Node NodeBitblaster::applyAtomBBStrategy(TNode node)
 {
   Assert(node.getKind() != Kind::CONST_BOOLEAN);
-  Assert(node.getKind() != Kind::BITVECTOR_BITOF);
+  Assert(node.getKind() != Kind::BITVECTOR_BIT);
   return d_atomBBStrategies[static_cast<uint32_t>(node.getKind())](node, this);
 }
 

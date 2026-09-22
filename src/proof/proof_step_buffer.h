@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Gereon Kremer
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -20,8 +17,9 @@
 
 #include <vector>
 
-#include "expr/node.h"
 #include "cvc5/cvc5_proof_rule.h"
+#include "expr/node.h"
+#include "proof/trust_id.h"
 
 namespace cvc5::internal {
 
@@ -99,6 +97,11 @@ class ProofStepBuffer
                const std::vector<Node>& children,
                const std::vector<Node>& args,
                Node expected);
+  /** Add trusted step */
+  bool addTrustedStep(TrustId id,
+                      const std::vector<Node>& children,
+                      const std::vector<Node>& args,
+                      Node conc);
   /** Multi-step version */
   void addSteps(ProofStepBuffer& psb);
   /** pop step */

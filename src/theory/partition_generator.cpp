@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Amalee Wilson, Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -15,9 +12,8 @@
 
 #include "theory/partition_generator.h"
 
-#include <math.h>
-
 #include <algorithm>
+#include <cmath>
 #include <random>
 
 #include "expr/node_algorithm.h"
@@ -73,11 +69,12 @@ void PartitionGenerator::incrementOrInsertLemmaAtom(Node& node)
   }
 }
 
-void PartitionGenerator::notifyLemma(TNode n,
-                                     InferenceId id,
-                                     LemmaProperty p,
-                                     const std::vector<Node>& skAsserts,
-                                     const std::vector<Node>& sks)
+void PartitionGenerator::notifyLemma(
+    TNode n,
+    CVC5_UNUSED InferenceId id,
+    CVC5_UNUSED LemmaProperty p,
+    CVC5_UNUSED const std::vector<Node>& skAsserts,
+    CVC5_UNUSED const std::vector<Node>& sks)
 {
   if (options().parallel.partitionStrategy == options::PartitionMode::LEMMA_CUBE
       || options().parallel.partitionStrategy
@@ -164,15 +161,14 @@ std::vector<Node> PartitionGenerator::collectLiterals(LiteralListType litType)
       break;
     }
     case HEAP:
-    { 
-      unfilteredLiterals = d_propEngine->getPropOrderHeap(); 
+    {
+      unfilteredLiterals = d_propEngine->getPropOrderHeap();
       break;
     }
     case LEMMA:
     {
-      std::vector<Node> lemmaNodes(d_lemmaLiterals.size());
-      std::copy(
-          d_lemmaLiterals.begin(), d_lemmaLiterals.end(), lemmaNodes.begin());
+      std::vector<Node> lemmaNodes(d_lemmaLiterals.begin(),
+                                   d_lemmaLiterals.end());
       unfilteredLiterals = lemmaNodes;
       break;
     }
@@ -228,7 +224,7 @@ Node PartitionGenerator::blockPath(TNode toBlock)
 Node PartitionGenerator::stopPartitioning()
 {
   d_emittedAllPartitions = true;
-  return NodeManager::currentNM()->mkConst(false);
+  return nodeManager()->mkConst(false);
 }
 
 // For the scatter strategy, we make the following kinds of partitions:
@@ -240,7 +236,6 @@ Node PartitionGenerator::stopPartitioning()
 // timeout or total number of requested partitions.
 // Once we reach that point, we dump all the partitions.
 Node PartitionGenerator::makeScatterPartitions(LiteralListType litType,
-                                               bool emitZLL,
                                                bool timedOut,
                                                bool randomize)
 {
@@ -276,7 +271,7 @@ Node PartitionGenerator::makeScatterPartitions(LiteralListType litType,
     }
 
     // Make a cube from the literals
-    Node conj = NodeManager::currentNM()->mkAnd(literals);
+    Node conj = nodeManager()->mkAnd(literals);
 
     // For the scatter strategy, partitions look like the following:
     // P1 =              C1 = l1_{1} & .... & l1_{d_conflictSize}
@@ -299,7 +294,7 @@ Node PartitionGenerator::makeScatterPartitions(LiteralListType litType,
     toEmit.push_back(conj);
 
     // Now make the scatter partition and add it to the list of partitions.
-    Node scatterPartition = NodeManager::currentNM()->mkAnd(toEmit);
+    Node scatterPartition = nodeManager()->mkAnd(toEmit);
     d_scatterPartitions.push_back(scatterPartition);
 
     // Just increment and don't actually output the partition yet
@@ -394,12 +389,12 @@ Node PartitionGenerator::makeCubePartitions(LiteralListType litType,
     }
     for (const std::vector<Node>& row : resultNodeLists)
     {
-      Node conj = NodeManager::currentNM()->mkAnd(row);
+      Node conj = nodeManager()->mkAnd(row);
       if (emitZLL)
       {
         std::vector<Node> zllLiterals = collectLiterals(ZLL);
         zllLiterals.push_back(conj);
-        Node zllConj = NodeManager::currentNM()->mkAnd(zllLiterals);
+        Node zllConj = nodeManager()->mkAnd(zllLiterals);
         emitPartition(zllConj);
       }
       else
@@ -435,7 +430,7 @@ void PartitionGenerator::emitRemainingPartitions(bool solved)
     if (emitZLL)
     {
       zllLiterals.push_back(partition);
-      lemma = NodeManager::currentNM()->mkAnd(zllLiterals);
+      lemma = nodeManager()->mkAnd(zllLiterals);
       zllLiterals.pop_back();
     }
 
@@ -454,12 +449,12 @@ void PartitionGenerator::emitRemainingPartitions(bool solved)
       nots.push_back(cube.notNode());
     }
 
-    Node finalPartition = NodeManager::currentNM()->mkAnd(nots);
+    Node finalPartition = nodeManager()->mkAnd(nots);
 
     if (emitZLL)
     {
       zllLiterals.push_back(finalPartition);
-      finalPartition = NodeManager::currentNM()->mkAnd(zllLiterals);
+      finalPartition = nodeManager()->mkAnd(zllLiterals);
     }
 
     emitPartition(finalPartition);
@@ -544,15 +539,15 @@ void PartitionGenerator::check(Theory::Effort e)
       break;
     case options::PartitionMode::HEAP_SCATTER:
       lem = makeScatterPartitions(
-          /*litType=*/HEAP, emitZLL, timeOutExceeded, randomize);
+          /*litType=*/HEAP, timeOutExceeded, randomize);
       break;
     case options::PartitionMode::DECISION_SCATTER:
       lem = makeScatterPartitions(
-          /*litType=*/DECISION, emitZLL, timeOutExceeded, randomize);
+          /*litType=*/DECISION, timeOutExceeded, randomize);
       break;
     case options::PartitionMode::LEMMA_SCATTER:
       lem = makeScatterPartitions(
-          /*litType=*/LEMMA, emitZLL, timeOutExceeded, randomize);
+          /*litType=*/LEMMA, timeOutExceeded, randomize);
       break;
     default: return;
   }

@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Gereon Kremer, Andrew Reynolds, Aina Niemetz
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -39,15 +36,16 @@ TranscendentalState::TranscendentalState(Env& env,
     : EnvObj(env),
       d_im(im),
       d_model(model),
+      d_taylor(nodeManager()),
       d_trPurify(userContext()),
       d_trPurifies(userContext()),
       d_trPurifyVars(userContext())
 {
-  d_true = NodeManager::currentNM()->mkConst(true);
-  d_false = NodeManager::currentNM()->mkConst(false);
-  d_zero = NodeManager::currentNM()->mkConstInt(Rational(0));
-  d_one = NodeManager::currentNM()->mkConstInt(Rational(1));
-  d_neg_one = NodeManager::currentNM()->mkConstInt(Rational(-1));
+  d_true = nodeManager()->mkConst(true);
+  d_false = nodeManager()->mkConst(false);
+  d_zero = nodeManager()->mkConstInt(Rational(0));
+  d_one = nodeManager()->mkConstInt(Rational(1));
+  d_neg_one = nodeManager()->mkConstInt(Rational(-1));
   if (d_env.isTheoryProofProducing())
   {
     d_proof.reset(
@@ -120,7 +118,8 @@ void TranscendentalState::init(const std::vector<Node>& xts,
         d_trPurifies[a] = a;
       }
     }
-    Trace("nl-ext-trans-init") << "extf: " << a << ", consider=" << consider << std::endl;
+    Trace("nl-ext-trans-init")
+        << "extf: " << a << ", consider=" << consider << std::endl;
     if (!consider)
     {
       // must assign a purified term
@@ -177,7 +176,7 @@ void TranscendentalState::init(const std::vector<Node>& xts,
 void TranscendentalState::ensureCongruence(TNode a,
                                            std::map<Kind, ArgTrie>& argTrie)
 {
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   std::vector<Node> repList;
   for (const Node& ac : a)
   {
@@ -217,7 +216,7 @@ void TranscendentalState::ensureCongruence(TNode a,
 
 void TranscendentalState::mkPi()
 {
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   if (d_pi.isNull())
   {
     d_pi = nm->mkNullaryOperator(nm->realType(), Kind::PI);
@@ -238,10 +237,10 @@ void TranscendentalState::getCurrentPiBounds()
       || piv.getConst<Rational>() < d_pi_bound[0].getConst<Rational>()
       || piv.getConst<Rational>() > d_pi_bound[1].getConst<Rational>())
   {
-    NodeManager* nm = NodeManager::currentNM();
+    NodeManager* nm = nodeManager();
     Node pi_lem = nm->mkNode(Kind::AND,
-                             nm->mkNode(Kind::GEQ, d_pi, d_pi_bound[0]),
-                             nm->mkNode(Kind::LEQ, d_pi, d_pi_bound[1]));
+                             {nm->mkNode(Kind::GEQ, d_pi, d_pi_bound[0]),
+                              nm->mkNode(Kind::LEQ, d_pi, d_pi_bound[1])});
     CDProof* proof = nullptr;
     if (isProofEnabled())
     {
@@ -289,7 +288,7 @@ std::pair<Node, Node> TranscendentalState::getClosestSecantPoints(TNode e,
 Node TranscendentalState::mkSecantPlane(
     TNode arg, TNode lower, TNode upper, TNode lval, TNode uval)
 {
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   // Figure 3: S_l( x ), S_u( x ) for s = 0,1
   Node rcoeff_n = rewrite(nm->mkNode(Kind::SUB, lower, upper));
   Assert(rcoeff_n.isConst());
@@ -299,10 +298,10 @@ Node TranscendentalState::mkSecantPlane(
       nm->mkNode(Kind::ADD,
                  lval,
                  nm->mkNode(Kind::MULT,
-                            nm->mkNode(Kind::DIVISION,
-                                       nm->mkNode(Kind::SUB, lval, uval),
-                                       nm->mkNode(Kind::SUB, lower, upper)),
-                            nm->mkNode(Kind::SUB, arg, lower)));
+                            {nm->mkNode(Kind::DIVISION,
+                                        {nm->mkNode(Kind::SUB, lval, uval),
+                                         nm->mkNode(Kind::SUB, lower, upper)}),
+                             nm->mkNode(Kind::SUB, arg, lower)}));
   Trace("nl-trans") << "Creating secant plane for transcendental function of "
                     << arg << std::endl;
   Trace("nl-trans") << "\tfrom ( " << lower << " ; " << lval << " ) to ( "
@@ -324,7 +323,7 @@ NlLemma TranscendentalState::mkSecantLemma(TNode lower,
 {
   Assert(lower.isConst() && upper.isConst());
   Assert(lower.getConst<Rational>() < upper.getConst<Rational>());
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   // With respect to Figure 3, this is slightly different.
   // In particular, we chose b to be the model value of bounds[s],
   // which is a constant although bounds[s] may not be (e.g. if it
@@ -338,8 +337,8 @@ NlLemma TranscendentalState::mkSecantLemma(TNode lower,
   // This is sound since we are guarded by the symbolic
   // representation of PI/2.
   Node antec_n = nm->mkNode(Kind::AND,
-                            nm->mkNode(Kind::GEQ, tf[0], lower),
-                            nm->mkNode(Kind::LEQ, tf[0], upper));
+                            {nm->mkNode(Kind::GEQ, tf[0], lower),
+                             nm->mkNode(Kind::LEQ, tf[0], upper)});
   Trace("nl-trans") << "Bound for secant plane: " << lower << " <= " << tf[0]
                     << " <= " << upper << std::endl;
   Trace("nl-trans") << "\t" << antec_n << std::endl;
@@ -465,7 +464,7 @@ bool TranscendentalState::isPurified(TNode n) const
 
 Node TranscendentalState::getPurifiedForm(TNode n)
 {
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   SkolemManager* sm = nm->getSkolemManager();
   NodeMap::const_iterator it = d_trPurify.find(n);
   if (it != d_trPurify.end())
@@ -481,8 +480,7 @@ Node TranscendentalState::getPurifiedForm(TNode n)
   }
   else
   {
-    y = sm->mkSkolemFunction(
-        SkolemFunId::TRANSCENDENTAL_PURIFY_ARG, nm->realType(), n);
+    y = sm->mkSkolemFunction(SkolemId::TRANSCENDENTAL_PURIFY_ARG, n);
   }
   Node new_n = nm->mkNode(k, y);
   d_trPurify[n] = new_n;
