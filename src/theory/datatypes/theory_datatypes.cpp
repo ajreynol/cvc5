@@ -1432,9 +1432,9 @@ bool TheoryDatatypes::instantiate(EqcInfo* eqc, Node n)
   {
     forceLemma = dt.involvesExternalType();
   }
-  Trace("datatypes-infer-debug") << "DtInstantiate : " << eqc << " " << concs
+  Trace("datatypes-infer-debug") << "DtInstantiate : " << eqc << " " << eq
                                  << " forceLemma = " << forceLemma << std::endl;
-  Trace("datatypes-infer") << "DtInfer : instantiate : " << concs << " by " << exp
+  Trace("datatypes-infer") << "DtInfer : instantiate : " << eq << " by " << exp
                            << std::endl;
   // Notice that we do *not* mark eqc as instantiated here. Instead, this is
   // done when the inference below is sent, via notifyInstantiate. This is
