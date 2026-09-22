@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andres Noetzli, Yoni Zohar, Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2025 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -32,6 +29,7 @@
 #include "preprocessing/passes/bv_intro_pow2.h"
 #include "preprocessing/passes/bv_to_bool.h"
 #include "preprocessing/passes/bv_to_int.h"
+#include "preprocessing/passes/distinct_elim.h"
 #include "preprocessing/passes/eager_qmatching.h"
 #include "preprocessing/passes/extended_rewriter_pass.h"
 #include "preprocessing/passes/ff_bitsum.h"
@@ -47,6 +45,7 @@
 #include "preprocessing/passes/miplib_trick.h"
 #include "preprocessing/passes/nl_ext_purify.h"
 #include "preprocessing/passes/non_clausal_simp.h"
+#include "preprocessing/passes/normalize.h"
 #include "preprocessing/passes/pseudo_boolean_processor.h"
 #include "preprocessing/passes/quantifiers_preprocess.h"
 #include "preprocessing/passes/real_to_int.h"
@@ -135,6 +134,7 @@ PreprocessingPassRegistry::PreprocessingPassRegistry()
   registerPassInfo("ff-disjunctive-bit", callCtor<FfDisjunctiveBit>);
   registerPassInfo("learned-rewrite", callCtor<LearnedRewrite>);
   registerPassInfo("foreign-theory-rewrite", callCtor<ForeignTheoryRewrite>);
+  registerPassInfo("distinct-elim", callCtor<DistinctElim>);
   registerPassInfo("synth-rr", callCtor<SynthRewRulesPass>);
   registerPassInfo("real-to-int", callCtor<RealToInt>);
   registerPassInfo("sygus-infer", callCtor<SygusInference>);
@@ -161,6 +161,7 @@ PreprocessingPassRegistry::PreprocessingPassRegistry()
   registerPassInfo("fun-def-fmf", callCtor<FunDefFmf>);
   registerPassInfo("static-rewrite", callCtor<StaticRewrite>);
   registerPassInfo("strings-eager-pp", callCtor<StringsEagerPp>);
+  registerPassInfo("normalize", callCtor<Normalize>);
   registerPassInfo("eager-qmatching", callCtor<EagerQMatching>);
 }
 
