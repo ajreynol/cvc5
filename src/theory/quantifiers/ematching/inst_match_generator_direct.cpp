@@ -17,6 +17,7 @@
 #include "theory/quantifiers/term_database.h"
 #include "theory/quantifiers/term_registry.h"
 #include "theory/quantifiers/term_util.h"
+#include "theory/uf/equality_engine.h"
 #include "theory/uf/equality_engine_iterator.h"
 
 using namespace cvc5::internal::kind;
@@ -138,7 +139,7 @@ Node InstMatchGeneratorDirect::getEqcKey(Node n) const
   {
     return Node::null();
   }
-  return d_qstate.hasTerm(n) ? d_qstate.getRepresentative(n) : n;
+  return d_qstate.hasTerm(n) ? Node(d_qstate.getRepresentative(n)) : n;
 }
 
 bool InstMatchGeneratorDirect::isGoodCandidate(TNode n,
