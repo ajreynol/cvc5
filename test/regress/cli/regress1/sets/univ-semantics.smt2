@@ -1,6 +1,7 @@
+; REQUIRES: unrestricted-mode
 (set-logic ALL)
 (set-info :status sat)
-(set-option :sets-ext true)
+(set-option :sets-exp true)
 (declare-fun x () Int)
 (declare-fun y () (Set Int))
 (declare-fun P ((Set Int)) Bool)

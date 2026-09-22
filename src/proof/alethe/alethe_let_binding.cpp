@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Haniel Barbosa, Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -25,13 +22,14 @@ AletheLetBinding::AletheLetBinding(uint32_t thresh) : LetBinding("let", thresh)
 {
 }
 
-Node AletheLetBinding::convert(Node n, const std::string& prefix)
+Node AletheLetBinding::convert(NodeManager* nm,
+                               Node n,
+                               const std::string& prefix)
 {
   if (d_letMap.empty())
   {
     return n;
   }
-  NodeManager* nm = NodeManager::currentNM();
   // terms with a child that is being declared
   std::unordered_set<TNode> hasDeclaredChild;
   // For a term being declared, its position relative to the list of children
@@ -56,6 +54,13 @@ Node AletheLetBinding::convert(Node n, const std::string& prefix)
     if (it == visited.end())
     {
       uint32_t id = getId(cur);
+      // do not letify partially applied terms, which may have been generated
+      // during RARE elaboration.
+      if (cur.getKind() == Kind::HO_APPLY && cur.getType().isFunction())
+      {
+        visited[cur] = cur;
+        continue;
+      }
       // do not letify id 0
       if (id > 0)
       {
@@ -67,7 +72,7 @@ Node AletheLetBinding::convert(Node n, const std::string& prefix)
           // create the let variable for cur
           std::stringstream ss;
           ss << prefix << id;
-          visited[cur] = nm->mkBoundVar(ss.str(), cur.getType());
+          visited[cur] = NodeManager::mkBoundVar(ss.str(), cur.getType());
           Trace("alethe-printer-share")
               << "\tdeclared, use var " << visited[cur] << "\n";
           continue;
@@ -118,7 +123,7 @@ Node AletheLetBinding::convert(Node n, const std::string& prefix)
         options::ioutils::applyFlattenHOChains(ss, true);
         cur.toStream(ss);
         ss << " :named " << prefix << id << ")";
-        Node letVar = nm->mkRawSymbol(ss.str(), cur.getType());
+        Node letVar = NodeManager::mkRawSymbol(ss.str(), cur.getType());
         visited[cur] = letVar;
         declaredValue[cur] = letVar;
         continue;
@@ -212,10 +217,11 @@ Node AletheLetBinding::convert(Node n, const std::string& prefix)
         ret.toStream(ss);
         ssVar << prefix << id;
         ss << " :named " << ssVar.str() << ")";
-        Node declaration = nm->mkRawSymbol(ss.str(), ret.getType());
+        Node declaration = NodeManager::mkRawSymbol(ss.str(), ret.getType());
         declaredValue[cur] = declaration;
         visited[cur] =
-            cur == n ? declaration : nm->mkBoundVar(ssVar.str(), cur.getType());
+            cur == n ? declaration
+                     : NodeManager::mkBoundVar(ssVar.str(), cur.getType());
         continue;
       }
       visited[cur] = ret;

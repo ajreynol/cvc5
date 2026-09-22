@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Vinícius Braga Freire, Haniel Barbosa, Diego Della Rocca de Camargos
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -348,7 +345,7 @@ void DotPrinter::printProofNodeInfo(std::ostream& out, const ProofNode* pn)
 
   out << "\t" << d_ruleID << " [ label = \"{";
 
-  resultStr << d_lbind.convert(pn->getResult(), "let");
+  resultStr << d_lbind.convert(pn->getResult());
   std::string astring = resultStr.str();
   out << sanitizeString(astring);
 
@@ -450,7 +447,7 @@ inline bool DotPrinter::isInput(const ProofNode* pn)
 inline bool DotPrinter::isSat(const ProofRule& rule)
 {
   return ProofRule::CHAIN_RESOLUTION <= rule
-         && rule <= ProofRule::MACRO_RESOLUTION_TRUST;
+         && rule <= ProofRule::CHAIN_M_RESOLUTION;
 }
 
 inline bool DotPrinter::isCNF(const ProofRule& rule)
@@ -503,7 +500,7 @@ void DotPrinter::ruleArguments(std::ostringstream& currentArguments,
     // if two arguments, ignore first and print second
     if (args.size() == 2)
     {
-      currentArguments << d_lbind.convert(args[1], "let");
+      currentArguments << d_lbind.convert(args[1]);
     }
     else
     {
@@ -527,10 +524,10 @@ void DotPrinter::ruleArguments(std::ostringstream& currentArguments,
   }
   else
   {
-    currentArguments << d_lbind.convert(args[0], "let");
+    currentArguments << d_lbind.convert(args[0]);
     for (size_t i = 1, size = args.size(); i < size; i++)
     {
-      currentArguments << ", " << d_lbind.convert(args[i], "let");
+      currentArguments << ", " << d_lbind.convert(args[i]);
     }
   }
   currentArguments << " ]";

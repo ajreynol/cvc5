@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Gereon Kremer, Morgan Deters, Dejan Jovanovic
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -34,7 +31,9 @@ namespace cvc5::internal {
 namespace theory {
 namespace booleans {
 
-CircuitPropagator::CircuitPropagator(Env& env, bool enableForward, bool enableBackward)
+CircuitPropagator::CircuitPropagator(Env& env,
+                                     bool enableForward,
+                                     bool enableBackward)
     : EnvObj(env),
       d_context(),
       d_propagationQueue(),
@@ -75,7 +74,7 @@ void CircuitPropagator::assertTrue(TNode assertion)
   else if (assertion.getKind() == Kind::AND)
   {
     ProofCircuitPropagatorBackward prover{
-        d_env.getProofNodeManager(), assertion, true};
+        d_env.getNodeManager(), d_env.getProofNodeManager(), assertion, true};
     if (isProofEnabled())
     {
       addProof(assertion, prover.assume(assertion));
@@ -121,7 +120,7 @@ void CircuitPropagator::assignAndEnqueue(TNode n,
     if (proof == nullptr)
     {
       warning() << "CircuitPropagator: Proof is missing for " << n << std::endl;
-      Assert(false);
+      DebugUnhandled();
     }
     else
     {
@@ -167,15 +166,17 @@ void CircuitPropagator::makeConflict(Node n)
     {
       return;
     }
-    ProofCircuitPropagator pcp(d_env.getProofNodeManager());
+    ProofCircuitPropagator pcp(d_env.getNodeManager(),
+                               d_env.getProofNodeManager());
     if (n == bfalse)
     {
       d_epg->setProofFor(bfalse, pcp.assume(bfalse));
     }
     else
     {
-      d_epg->setProofFor(bfalse,
-                         pcp.conflict(pcp.assume(n), pcp.assume(n.negate())));
+      // Use nPf to ensure deterministic node ID assignments
+      Pf nPf = pcp.assume(n);
+      d_epg->setProofFor(bfalse, pcp.conflict(nPf, pcp.assume(n.negate())));
     }
     g = d_proofInternal.get();
     Trace("circuit-prop") << "Added conflict " << *d_epg->getProofFor(bfalse)
@@ -239,8 +240,10 @@ void CircuitPropagator::propagateBackward(TNode parent, bool parentAssignment)
 {
   Trace("circuit-prop") << "CircuitPropagator::propagateBackward(" << parent
                         << ", " << parentAssignment << ")" << endl;
-  ProofCircuitPropagatorBackward prover{
-      d_env.getProofNodeManager(), parent, parentAssignment};
+  ProofCircuitPropagatorBackward prover{d_env.getNodeManager(),
+                                        d_env.getProofNodeManager(),
+                                        parent,
+                                        parentAssignment};
 
   // backward rules
   switch (parent.getKind())
@@ -453,7 +456,7 @@ void CircuitPropagator::propagateForward(TNode child, bool childAssignment)
     Assert(expr::hasSubterm(parent, child));
 
     ProofCircuitPropagatorForward prover{
-        d_env.getProofNodeManager(), child, childAssignment, parent};
+        d_env.getNodeManager(), d_env.getProofNodeManager(), child, parent};
 
     // Forward rules
     switch (parent.getKind())

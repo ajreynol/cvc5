@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Mudathir Mohamed, Aina Niemetz, Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -77,15 +74,13 @@ void RelsUtils::computeTC(Node rel,
 Node RelsUtils::constructPair(Node rel, Node a, Node b)
 {
   const DType& dt = rel.getType().getSetElementType().getDType();
-  return NodeManager::currentNM()->mkNode(
+  return NodeManager::mkNode(
       Kind::APPLY_CONSTRUCTOR, dt[0].getConstructor(), a, b);
 }
 
 Node RelsUtils::evaluateGroup(TNode n)
 {
   Assert(n.getKind() == Kind::RELATION_GROUP);
-
-  NodeManager* nm = NodeManager::currentNM();
 
   Node A = n[0];
   TypeNode setType = A.getType();
@@ -94,7 +89,7 @@ Node RelsUtils::evaluateGroup(TNode n)
   if (A.getKind() == Kind::SET_EMPTY)
   {
     // return a nonempty partition
-    return nm->mkNode(Kind::SET_SINGLETON, A);
+    return NodeManager::mkNode(Kind::SET_SINGLETON, A);
   }
 
   std::vector<uint32_t> indices =

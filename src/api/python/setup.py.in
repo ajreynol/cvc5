@@ -1,11 +1,8 @@
 #!/usr/bin/env python
 ###############################################################################
-# Top contributors (to current version):
-#   Daniel Larraz, Makai Mann
-#
 # This file is part of the cvc5 project.
 #
-# Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+# Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
 # in the top-level source directory and their institutional affiliations.
 # All rights reserved.  See the file COPYING in the top-level source
 # directory for licensing information.
@@ -20,10 +17,11 @@
 ##
 
 import os
+import sysconfig
+import platform
 from setuptools import setup
 
-ext_suffix = 'pyd' if os.name == 'nt' else 'so'
-ext_filename = 'cvc5_python_base.' + ext_suffix
+ext_filename = 'cvc5_python_base' + sysconfig.get_config_var('EXT_SUFFIX')
 
 packages=['cvc5', 'cvc5.pythonic']
 license_files=["COPYING", "licenses/*"]
@@ -44,8 +42,6 @@ else:
     import sys
     import sysconfig
     from setuptools.extension import Extension
-
-    from Cython.Distutils import build_ext
     from Cython.Build import cythonize
 
     if sys.platform == 'darwin':
@@ -69,14 +65,24 @@ else:
         'binding': False,
     }
 
-    extra_compile_args = ["-std=c++17", "-fno-var-tracking"]
+    extra_compile_args = [
+        "-std=c++17",
+        "-fno-var-tracking",
+        # Suppress deprecation warnings for deprecated members of OptionInfo
+        "-Wno-deprecated-declarations"
+    ]
 
     if sys.platform == 'win32':
         # Compile argument '-DMS_WIN64' fixes a division by zero error
         # See https://stackoverflow.com/q/64898146
         extra_compile_args += ["-DMS_WIN64"]
-        # Add default MSYS2 installation path for local development
-        os.environ['PATH'] += r';C:\msys64\mingw64\bin'
+        # Respect user preference
+        if not os.environ.get("CXX"):
+            machine = platform.machine().lower()
+            if machine in ["x86_64", "amd64"]:
+                os.environ['CXX'] = r'x86_64-w64-mingw32-clang++'
+            elif machine in ["arm64", "aarch64"]:
+                os.environ['CXX'] = r'aarch64-w64-mingw32-clang++'
 
     ext_options = {
         "libraries" : ["cvc5", "cvc5parser"],
@@ -90,19 +96,7 @@ else:
     ext_module = Extension(mod_name, mod_src_files, **ext_options)
     ext_module.cython_directives = {"embedsignature": True}
 
-    class ExtensionBuilder(build_ext):
-        def get_ext_filename(self, ext_name):
-            # Do not include the python version, the ABI tag, and
-            # the platform name in the extension module name.
-            # This facilitates specifying the dependencies of
-            # the module in CMake.
-            filename = super().get_ext_filename(ext_name)
-            suffix = sysconfig.get_config_var('EXT_SUFFIX')
-            ext = os.path.splitext(filename)[1]
-            return filename.replace(suffix, "") + ext
-
     setup(
-        cmdclass={'build_ext': ExtensionBuilder},
         ext_modules=cythonize([ext_module], compiler_directives=compiler_directives),
         packages=packages,
         license_files=license_files

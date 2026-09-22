@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Gereon Kremer, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -28,6 +25,7 @@
 #include "options/strings_options.h"
 #include "printer/printer.h"
 #include "proof/conv_proof_generator.h"
+#include "smt/proof_manager.h"
 #include "smt/solver_engine_stats.h"
 #include "theory/evaluator.h"
 #include "theory/quantifiers/oracle_checker.h"
@@ -45,6 +43,7 @@ Env::Env(NodeManager* nm, const Options* opts)
     : d_nm(nm),
       d_context(new context::Context()),
       d_userContext(new context::UserContext()),
+      d_pfManager(nullptr),
       d_proofNodeManager(nullptr),
       d_rewriter(new theory::Rewriter(nm)),
       d_evalRew(nullptr),
@@ -68,20 +67,22 @@ Env::Env(NodeManager* nm, const Options* opts)
   d_eval.reset(
       new theory::Evaluator(nullptr, d_options.strings.stringsAlphaCard));
   d_statisticsRegistry->registerTimer("global::totalTime").start();
-  d_resourceManager = std::make_unique<ResourceManager>(*d_statisticsRegistry, d_options);
+  d_resourceManager =
+      std::make_unique<ResourceManager>(*d_statisticsRegistry, d_options);
   d_rewriter->d_resourceManager = d_resourceManager.get();
 }
 
 Env::~Env() {}
 
-NodeManager* Env::getNodeManager() { return d_nm; }
+NodeManager* Env::getNodeManager() const { return d_nm; }
 
-void Env::finishInit(ProofNodeManager* pnm)
+void Env::finishInit(smt::PfManager* pm)
 {
-  if (pnm != nullptr)
+  if (pm != nullptr)
   {
+    d_pfManager = pm;
     Assert(d_proofNodeManager == nullptr);
-    d_proofNodeManager = pnm;
+    d_proofNodeManager = pm->getProofNodeManager();
     d_rewriter->finishInit(*this);
   }
   d_topLevelSubs.reset(
@@ -91,6 +92,8 @@ void Env::finishInit(ProofNodeManager* pnm)
   {
     d_ochecker.reset(new theory::quantifiers::OracleChecker(*this));
   }
+  d_statisticsRegistry->setStatsAll(d_options.base.statisticsAll);
+  d_statisticsRegistry->setStatsInternal(d_options.base.statisticsInternal);
 }
 
 void Env::shutdown()
@@ -104,7 +107,16 @@ context::Context* Env::getContext() { return d_context.get(); }
 
 context::UserContext* Env::getUserContext() { return d_userContext.get(); }
 
+smt::PfManager* Env::getProofManager() { return d_pfManager; }
+
+ProofLogger* Env::getProofLogger()
+{
+  return d_pfManager ? d_pfManager->getProofLogger() : nullptr;
+}
+
 ProofNodeManager* Env::getProofNodeManager() { return d_proofNodeManager; }
+
+bool Env::isProofProducing() const { return d_proofNodeManager != nullptr; }
 
 bool Env::isSatProofProducing() const
 {
@@ -115,7 +127,8 @@ bool Env::isSatProofProducing() const
 bool Env::isTheoryProofProducing() const
 {
   return d_proofNodeManager != nullptr
-         && d_options.smt.proofMode == options::ProofMode::FULL;
+         && (d_options.smt.proofMode == options::ProofMode::FULL
+             || d_options.smt.proofMode == options::ProofMode::FULL_STRICT);
 }
 
 theory::Rewriter* Env::getRewriter() { return d_rewriter.get(); }
@@ -180,10 +193,7 @@ std::ostream& Env::verbose(int64_t level) const
   return cvc5::internal::null_os;
 }
 
-std::ostream& Env::warning() const
-{
-  return verbose(0);
-}
+std::ostream& Env::warning() const { return verbose(0); }
 
 Node Env::evaluate(TNode n,
                    const std::vector<Node>& args,
@@ -215,7 +225,11 @@ Node Env::rewriteViaMethod(TNode n, MethodId idr)
   }
   if (idr == MethodId::RW_EXT_REWRITE)
   {
-    return d_rewriter->extendedRewrite(n);
+    return d_rewriter->extendedRewrite(n, false);
+  }
+  if (idr == MethodId::RW_EXT_REWRITE_AGG)
+  {
+    return d_rewriter->extendedRewrite(n, true);
   }
   if (idr == MethodId::RW_REWRITE_EQ_EXT)
   {
@@ -231,8 +245,7 @@ Node Env::rewriteViaMethod(TNode n, MethodId idr)
     return n;
   }
   // unknown rewriter
-  Unhandled() << "Env::rewriteViaMethod: no rewriter for " << idr
-              << std::endl;
+  Unhandled() << "Env::rewriteViaMethod: no rewriter for " << idr << std::endl;
   return n;
 }
 
@@ -240,6 +253,20 @@ bool Env::isFiniteType(TypeNode tn) const
 {
   return isCardinalityClassFinite(tn.getCardinalityClass(),
                                   d_options.quantifiers.finiteModelFind);
+}
+
+bool Env::isFiniteCardinalityClass(CardinalityClass cc) const
+{
+  return isCardinalityClassFinite(cc, d_options.quantifiers.finiteModelFind);
+}
+
+bool Env::isFirstClassType(TypeNode tn) const
+{
+  if (tn.isRegExp())
+  {
+    return d_options.strings.regExpFirstClass;
+  }
+  return tn.isFirstClass();
 }
 
 void Env::setUninterpretedSortOwner(theory::TheoryId theory)
@@ -259,11 +286,10 @@ theory::TheoryId Env::theoryOf(TypeNode typeNode) const
 
 theory::TheoryId Env::theoryOf(TNode node) const
 {
-  theory::TheoryId tid = theory::Theory::theoryOf(node,
-                                  d_options.theory.theoryOfMode,
-                                  d_uninterpretedSortOwner);
+  theory::TheoryId tid = theory::Theory::theoryOf(
+      node, d_options.theory.theoryOfMode, d_uninterpretedSortOwner);
   // Special case: Boolean term skolems belong to THEORY_UF.
-  if (tid==theory::TheoryId::THEORY_BOOL && isBooleanTermSkolem(node))
+  if (tid == theory::TheoryId::THEORY_BOOL && isBooleanTermSkolem(node))
   {
     return theory::TheoryId::THEORY_UF;
   }
@@ -317,9 +343,16 @@ Node Env::getSharableFormula(const Node& n) const
     // note we only remove purify skolems if the above option is disabled
     on = SkolemManager::getOriginalForm(n);
   }
-  SkolemManager * skm = d_nm->getSkolemManager();
+  SkolemManager* skm = d_nm->getSkolemManager();
   std::vector<Node> toProcess;
   toProcess.push_back(on);
+  // The set of kinds that we never want to share. Any kind that can appear
+  // in lemmas but we don't have API support for should go in this list.
+  const std::unordered_set<Kind> excludeKinds = {
+      Kind::INST_CONSTANT,
+      Kind::DUMMY_SKOLEM,
+      Kind::CARDINALITY_CONSTRAINT,
+      Kind::COMBINED_CARDINALITY_CONSTRAINT};
   size_t index = 0;
   do
   {
@@ -331,7 +364,7 @@ Node Env::getSharableFormula(const Node& n) const
     for (const Node& s : syms)
     {
       Kind sk = s.getKind();
-      if (sk == Kind::INST_CONSTANT || sk == Kind::DUMMY_SKOLEM)
+      if (excludeKinds.find(sk) != excludeKinds.end())
       {
         // these kinds are never sharable
         return Node::null();
@@ -349,7 +382,7 @@ Node Env::getSharableFormula(const Node& n) const
         if (!skm->isSkolemFunction(s, id, cacheVal))
         {
           // kind SKOLEM should imply that it is a skolem function
-          Assert(false);
+          DebugUnhandled();
           return Node::null();
         }
         if (!cacheVal.isNull()

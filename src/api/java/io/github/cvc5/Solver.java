@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Mudathir Mohamed, Aina Niemetz, Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -98,6 +95,21 @@ public class Solver extends AbstractPointer
       return true;
     }
     return false;
+  }
+
+  /**
+   * Return a hash code value for this solver.
+   *
+   * The hash code is derived from the underlying native pointer, which is what
+   * {@link #equals(Object)} compares, so that instances that are equal have the
+   * same hash code.
+   *
+   * @return a hash code value for this solver
+   */
+  @Override
+  public int hashCode()
+  {
+    return Long.hashCode(pointer);
   }
 
   /**
@@ -1930,7 +1942,7 @@ public class Solver extends AbstractPointer
   /**
    * Create a datatype declaration.
    *
-   * Create sorts parameter with {@link Solver#mkParamSort(String)}.
+   * Create sorts parameter with {@link TermManager#mkParamSort(String)}.
    *
    * @api.note This method is experimental and may change in future versions.
    *
@@ -1952,7 +1964,7 @@ public class Solver extends AbstractPointer
   /**
    * Create a datatype declaration.
    *
-   * Create sorts parameter with {@link Solver#mkParamSort(String)}.
+   * Create sorts parameter with {@link TermManager#mkParamSort(String)}.
    *
    * @deprecated
    * This function is deprecated and replaced by
@@ -2311,7 +2323,7 @@ public class Solver extends AbstractPointer
    * ( define-fun-rec <function_def> )
    * }
    *
-   * Create parameter {@code fun} with {@link Solver#mkConst(Sort)}.
+   * Create parameter {@code fun} with {@link TermManager#mkConst(Sort)}.
    *
    * @param fun The sorted function.
    * @param boundVars The parameters to this function.
@@ -2332,7 +2344,7 @@ public class Solver extends AbstractPointer
    * ( define-fun-rec <function_def> )
    * }
    *
-   * Create parameter {@code fun} with {@link Solver#mkConst(Sort)}.
+   * Create parameter {@code fun} with {@link TermManager#mkConst(Sort)}.
    *
    * @param fun The sorted function.
    * @param boundVars The parameters to this function.
@@ -2361,7 +2373,7 @@ public class Solver extends AbstractPointer
    * }
    *
    * Create elements of parameter {@code funs} with
-   * {@link Solver#mkConst(Sort)}.
+   * {@link TermManager#mkConst(Sort)}.
    *
    * @param funs The sorted functions.
    * @param boundVars The list of parameters to the functions.
@@ -2380,7 +2392,7 @@ public class Solver extends AbstractPointer
    * }
    *
    * Create elements of parameter {@code funs} with
-   * {@link Solver#mkConst(Sort)}.
+   * {@link TermManager#mkConst(Sort)}.
    *
    * @param funs The sorted functions.
    * @param boundVars The list of parameters to the functions.
@@ -2766,6 +2778,27 @@ public class Solver extends AbstractPointer
   private native String proofToString(long pointer, long proofs, int format);
 
   /**
+   * Prints a proof into a string with a slected proof format mode.
+   * Other aspects of printing are taken from the solver options.
+   *
+   * @api.note This method is experimental and may change in future versions.
+   *
+   * @param proof A proof.
+   * @param format The proof format used to print the proof. Must be
+   * `PROOF_FORMAT_NONE` if the proof is from a component other than
+   * `PROOF_COMPONENT_FULL`.
+   * @param assertionNames Mapping between assertions and names, if they were
+   * given by the user.  This is used by the Alethe proof format.
+   * @return The proof printed in the current format.
+   */
+  public String proofToString(Proof proof, ProofFormat format, Map assertionNames)
+  {
+    return proofToString(pointer, proof.getPointer(), format.getValue(), assertionNames);
+  }
+
+  private native String proofToString(long pointer, long proofs, int format, Map assertionNames);
+
+  /**
    * Get the value of the given term in the current model.
    *
    * SMT-LIB:
@@ -3098,23 +3131,32 @@ public class Solver extends AbstractPointer
   private native void pop(long pointer, int nscopes);
 
   /**
-   * Get an interpolant
+   * Get an interpolant.
+   *
+   * <p>
+   * Given that {@code A->B} is valid,
+   * this function determines a term {@code I}
+   * over the shared variables of {@code A} and
+   * {@code B},
+   * such that {@code A->I} and {@code I->B}
+   * are valid. {@code A} is the current set of
+   * assertions and {@code B} is the conjecture, given as {@code conj}.
+   * </p>
    *
    * SMT-LIB:
    * {@code
-   * ( get-interpolant <conj> )
+   * ( get-interpolant <symbol> <conj> )
    * }
    *
-   * Requires option {@code produce-interpolants} to be set to a mode different
-   * from {@code none}.
+   * @api.note In SMT-LIB, {@code <symbol>} assigns a symbol to the interpolant.
+   *
+   * @api.note Requires option {@code produce-interpolants} to be set to a mode
+   * different from {@code none}.
    *
    * @api.note This method is experimental and may change in future versions.
    *
    * @param conj The conjecture term.
-   * @return A Term I such that {@code A->I} and {@code I->B} are valid, where
-   *         {@code A} is the current set of assertions and {@code B} is given
-   *         in the input by {@code conj}, or the null term if such a term
-   *         cannot be found.
+   * @return The interpolant, if an interpolant exists, else the null term.
    */
   public Term getInterpolant(Term conj)
   {
@@ -3125,24 +3167,34 @@ public class Solver extends AbstractPointer
   private native long getInterpolant(long pointer, long conjPointer);
 
   /**
-   * Get an interpolant
+   * Get an interpolant.
+   *
+   * <p>
+   * Given that {@code A->B} is valid,
+   * this function determines a term {@code I},
+   * over the shared variables of {@code A} and
+   * {@code B},
+   * with respect to a given grammar, such
+   * that {@code A->I} and {@code I->B} are valid, if such a term exits.
+   * {@code A} is the current set of assertions and {@code B} is the
+   * conjecture, given as {@code conj}.
+   * </p>
    *
    * SMT-LIB:
    * {@code
-   * ( get-interpolant <conj> <g> )
+   * ( get-interpolant <symbol> <conj> <g> )
    * }
    *
-   * Requires option {@code produce-interpolants} to be set to a mode different
-   * from {@code none}.
+   * @api.note In SMT-LIB, {@code <symbol>} assigns a symbol to the interpolant.
+   *
+   * @api.note Requires option {@code produce-interpolants} to be set to a mode
+   * different from {@code none}.
    *
    * @api.note This method is experimental and may change in future versions.
    *
    * @param conj The conjecture term.
-   * @param grammar The grammar for the interpolant I.
-   * @return A Term I such that {@code A->I} and {@code I->B} are valid, where
-   *         {@code A} is the current set of assertions and {@code B} is given
-   *         in the input by {@code conj}, or the null term if such a term
-   *         cannot be found.
+   * @param grammar The grammar for the interpolant {@code I}.
+   * @return The interpolant, if an interpolant exists, else the null term.
    */
   public Term getInterpolant(Term conj, Grammar grammar)
   {

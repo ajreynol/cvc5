@@ -44,7 +44,7 @@ name   = "Quantifiers"
 
 [[option]]
   name       = "prenexQuant"
-  category   = "regular"
+  category   = "expert"
   long       = "prenex-quant=MODE"
   type       = "PrenexQuantMode"
   default    = "SIMPLE"
@@ -78,6 +78,15 @@ name   = "Quantifiers"
   type       = "bool"
   default    = "true"
   help       = "enable simple variable elimination for quantified formulas"
+
+[[option]]
+  name       = "varEntEqElimQuant"
+  category   = "regular"
+  long       = "var-ent-eq-elim-quant"
+  type       = "bool"
+  default    = "true"
+  no_support = ["proofs"]
+  help       = "enable variable elimination for quantified formulas that infers entailed equalities corresponding to eliminations"
 
 [[option]]
   name       = "varIneqElimQuant"
@@ -182,6 +191,7 @@ name   = "Quantifiers"
   long       = "ext-rewrite-quant"
   type       = "bool"
   default    = "false"
+  no_support = ["proofs"]
   help       = "apply extended rewriting to bodies of quantified formulas"
 
 [[option]]
@@ -194,20 +204,84 @@ name   = "Quantifiers"
 
 [[option]]
   name       = "mbqi"
-  category   = "expert"
+  category   = "regular"
   long       = "mbqi"
   type       = "bool"
   default    = "false"
   help       = "use model-based quantifier instantiation"
 
 [[option]]
-  name       = "mbqiFastSygus"
+  name       = "mbqiNestedCheck"
   category   = "expert"
-  long       = "mbqi-fast-sygus"
+  long       = "mbqi-nested-check"
+  type       = "bool"
+  default    = "true"
+  help       = "check nested quantified formulas in MBQI"
+
+[[option]]
+  name       = "mbqiCheckTimeout"
+  category   = "common"
+  long       = "mbqi-check-timeout=N"
+  type       = "uint64_t"
+  default    = "500"
+  help       = "timeout (in milliseconds) for verifying subcalls for model-based instantiation (0 == no limit)"
+
+[[option]]
+  name       = "leibnizEqElim"
+  category   = "expert"
+  long       = "leibniz-elim"
+  type       = "bool"
+  default    = "false"
+  help       = "Leibniz equality elimination for quantified formulas"
+
+[[option]]
+  name       = "mbqiEnum"
+  category   = "regular"
+  long       = "mbqi-enum"
   type       = "bool"
   default    = "false"
   help       = "use fast enumeration to augment instantiations from MBQI"
 
+[[option]]
+  name       = "mbqiEnumExtVarsGrammar"
+  category   = "expert"
+  long       = "mbqi-enum-ext-vars-grammar"
+  type       = "bool"
+  default    = "true"
+  help       = "include variables defined in terms of others in grammars for fast enumerative mbqi"
+
+[[option]]
+  name       = "mbqiEnumFreeSymsGrammar"
+  category   = "expert"
+  long       = "mbqi-enum-free-syms-grammar"
+  type       = "bool"
+  default    = "true"
+  help       = "include free symbols from the body of the quantified formula in grammars for fast enumerative mbqi"
+
+[[option]]
+  name       = "mbqiEnumGlobalSymGrammar"
+  category   = "expert"
+  long       = "mbqi-enum-global-syms-grammar"
+  type       = "bool"
+  default    = "true"
+  help       = "include global symbols from all available assertions in grammars for fast enumerative mbqi"
+
+[[option]]
+  name       = "mbqiEnumChoiceGrammar"
+  category   = "expert"
+  long       = "mbqi-enum-choice-grammar"
+  type       = "bool"
+  default    = "false"
+  help       = "use choice in fast enumeration to augment instantiations from MBQI"
+
+[[option]]
+  name       = "mbqiEnumChoiceGrammarAll"
+  category   = "expert"
+  long       = "mbqi-enum-choice-grammar-all"
+  type       = "bool"
+  default    = "false"
+  help       = "use choice in fast enumeration to augment instantiations from MBQI, all non-terminals"
+  
 #### E-matching options
 
 [[option]]
@@ -223,7 +297,7 @@ name   = "Quantifiers"
   category   = "regular"
   long       = "term-db-mode=MODE"
   type       = "TermDbMode"
-  default    = "RELEVANT"
+  default    = "RELEVANT_ALL_DELAY"
   help       = "which ground terms to consider for instantiation"
   help_mode  = "Modes for terms included in the quantifiers term database."
 [[option.mode.ALL]]
@@ -232,6 +306,9 @@ name   = "Quantifiers"
 [[option.mode.RELEVANT]]
   name = "relevant"
   help = "Quantifiers module considers only ground terms connected to current assertions."
+[[option.mode.RELEVANT_ALL_DELAY]]
+  name = "relevant-all-delay"
+  help = "Quantifiers module considers only ground terms connected to current assertions, then all ground terms as a last resort."
 
 [[option]]
   name       = "registerQuantBodyTerms"
@@ -518,7 +595,7 @@ name   = "Quantifiers"
 
 [[option]]
   name       = "fullSaturateQuant"
-  category   = "regular"
+  category   = "common"
   long       = "full-saturate-quant"
   type       = "bool"
   default    = "false"
@@ -526,7 +603,7 @@ name   = "Quantifiers"
 
 [[option]]
   name       = "enumInst"
-  category   = "regular"
+  category   = "common"
   long       = "enum-inst"
   type       = "bool"
   default    = "false"
@@ -647,7 +724,7 @@ name   = "Quantifiers"
 
 [[option]]
   name       = "fmfFunWellDefined"
-  category   = "regular"
+  category   = "expert"
   long       = "fmf-fun"
   type       = "bool"
   default    = "false"
@@ -655,7 +732,7 @@ name   = "Quantifiers"
 
 [[option]]
   name       = "fmfFunWellDefinedRelevant"
-  category   = "regular"
+  category   = "expert"
   long       = "fmf-fun-rlv"
   type       = "bool"
   default    = "false"
@@ -731,7 +808,7 @@ name   = "Quantifiers"
 
 [[option]]
   name       = "conflictBasedInst"
-  category   = "regular"
+  category   = "common"
   long       = "cbqi"
   type       = "bool"
   default    = "true"
@@ -816,11 +893,12 @@ name   = "Quantifiers"
   long       = "sub-cbqi"
   type       = "bool"
   default    = "false"
+  no_support = ["proofs"]
   help       = "Enable conflict-based instantiation subsolver strategy"
 
 [[option]]
   name       = "quantSubCbqiTimeout"
-  category   = "regular"
+  category   = "common"
   long       = "sub-cbqi-timeout=N"
   type       = "uint64_t"
   default    = "0"
@@ -1084,7 +1162,7 @@ name   = "Quantifiers"
 
 [[option]]
   name       = "sygusRepairConstTimeout"
-  category   = "expert"
+  category   = "common"
   long       = "sygus-repair-const-timeout=N"
   type       = "uint64_t"
   default    = "0"
@@ -1155,6 +1233,14 @@ name   = "Quantifiers"
   type       = "bool"
   default    = "false"
   help       = "statically normalize sygus grammars based on flattening (linearization)"
+
+[[option]]
+  name       = "sygusGrammarHoPartial"
+  category   = "expert"
+  long       = "sygus-grammar-ho-partial"
+  type       = "bool"
+  default    = "false"
+  help       = "add partial function applications to the grammar"
 
 [[option]]
   name       = "sygusGrammarConsMode"
@@ -1304,7 +1390,7 @@ name   = "Quantifiers"
   long       = "sygus-rec-fun"
   type       = "bool"
   default    = "true"
-  help       = "enable efficient support for recursive functions in sygus grammars"
+  help       = "enable efficient support for recursive functions in sygus"
 
 [[option]]
   name       = "sygusRecFunEvalLimit"
@@ -1313,6 +1399,14 @@ name   = "Quantifiers"
   type       = "uint64_t"
   default    = "1000"
   help       = "use a hard limit for how many times in a given evaluator call a recursive function can be evaluated (so infinite loops can be avoided)"
+
+[[option]]
+  name       = "sygusRecFunInfer"
+  category   = "expert"
+  long       = "sygus-rec-fun-infer"
+  type       = "bool"
+  default    = "true"
+  help       = "automatically infer recursive definitions for sygus"
 
 [[option]]
   name       = "sygusVerifyInstMaxRounds"
@@ -1324,11 +1418,19 @@ name   = "Quantifiers"
 
 [[option]]
   name       = "sygusVerifyTimeout"
-  category   = "regular"
+  category   = "common"
   long       = "sygus-verify-timeout=N"
   type       = "uint64_t"
   default    = "0"
-  help       = "timeout (in milliseconds) for verifying satisfiability of synthesized terms"
+  help       = "timeout (in milliseconds) for verifying satisfiability of synthesized terms (0 == no limit)"
+
+[[option]]
+  name       = "fullSygusVerify"
+  category   = "expert"
+  long       = "full-sygus-verify"
+  type       = "bool"
+  default    = "false"
+  help       = "resort to full effort techniques instead of answering unknown when checking sygus candidates"
 
 # Internal uses of sygus
 
@@ -1414,7 +1516,7 @@ name   = "Quantifiers"
 
 [[option]]
   name       = "sygusExprMinerCheckTimeout"
-  category   = "expert"
+  category   = "common"
   long       = "sygus-expr-miner-check-timeout=N"
   type       = "uint64_t"
   default    = "0"
@@ -1554,13 +1656,14 @@ name   = "Quantifiers"
   long       = "cegqi-nested-qe"
   type       = "bool"
   default    = "false"
+  no_support = ["proofs"]
   help       = "process nested quantified formulas with quantifier elimination in counterexample-based quantifier instantiation"
 
 # CEGQI for arithmetic
 
 [[option]]
   name       = "cegqiUseInfInt"
-  category   = "regular"
+  category   = "expert"
   long       = "cegqi-inf-int"
   type       = "bool"
   default    = "false"
@@ -1568,7 +1671,7 @@ name   = "Quantifiers"
 
 [[option]]
   name       = "cegqiUseInfReal"
-  category   = "regular"
+  category   = "expert"
   long       = "cegqi-inf-real"
   type       = "bool"
   default    = "false"
@@ -1592,10 +1695,10 @@ name   = "Quantifiers"
 
 [[option]]
   name       = "cegqiMidpoint"
-  category   = "regular"
+  category   = "expert"
   long       = "cegqi-midpoint"
   type       = "bool"
-  default    = "false"
+  default    = "true"
   help       = "choose substitutions based on midpoints of lower and upper bounds for counterexample-based quantifier instantiation"
 
 [[option]]
@@ -1614,6 +1717,7 @@ name   = "Quantifiers"
   long       = "cegqi-bv"
   type       = "bool"
   default    = "true"
+  no_support = ["proofs"]
   help       = "use word-level inversion approach for counterexample-guided quantifier instantiation for bit-vectors"
 
 [[option]]
@@ -1626,7 +1730,7 @@ name   = "Quantifiers"
 
 [[option]]
   name       = "cegqiBvIneqMode"
-  category   = "regular"
+  category   = "expert"
   long       = "cegqi-bv-ineq=MODE"
   type       = "CegqiBvIneqMode"
   default    = "EQ_BOUNDARY"
@@ -1666,14 +1770,6 @@ name   = "Quantifiers"
   default    = "false"
   help       = "try to solve non-linear bv literals using model value projections"
 
-[[option]]
-  name       = "cegqiBvConcInv"
-  category   = "expert"
-  long       = "cegqi-bv-concat-inv"
-  type       = "bool"
-  default    = "true"
-  help       = "compute inverse for concat over equalities rather than producing an invertibility condition"
-
 ### Reduction options
 
 [[option]]
@@ -1690,6 +1786,7 @@ name   = "Quantifiers"
   long       = "macros-quant"
   type       = "bool"
   default    = "false"
+  no_support = ["proofs"]
   help       = "perform quantifiers macro expansion"
 
 [[option]]
@@ -1698,6 +1795,7 @@ name   = "Quantifiers"
   long       = "macros-quant-mode=MODE"
   type       = "MacrosQuantMode"
   default    = "GROUND_UF"
+  no_support = ["proofs"]
   help       = "mode for quantifiers macro expansion"
   help_mode  = "Modes for quantifiers macro expansion."
 [[option.mode.ALL]]
@@ -1748,7 +1846,7 @@ name   = "Quantifiers"
 
 [[option]]
   name       = "hoElim"
-  category   = "regular"
+  category   = "expert"
   long       = "ho-elim"
   type       = "bool"
   default    = "false"
@@ -1756,11 +1854,19 @@ name   = "Quantifiers"
 
 [[option]]
   name       = "hoElimStoreAx"
-  category   = "regular"
+  category   = "expert"
   long       = "ho-elim-store-ax"
   type       = "bool"
   default    = "true"
   help       = "use store axiom during ho-elim"
+
+[[option]]
+  name       = "instLocal"
+  category   = "regular"
+  long       = "inst-local"
+  type       = "bool"
+  default    = "false"
+  help       = "Instantiations are local to the SAT context"
 
 ### SyGuS instantiation options
 
