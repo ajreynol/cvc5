@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Abdalrhman Mohamed
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2025 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -58,21 +55,20 @@ RewriteDbProofCons::RewriteDbProofCons(Env& env, RewriteDb* db)
   d_false = nm->mkConst(false);
 }
 
-bool RewriteDbProofCons::prove(
-    CDProof* cdp,
-    const Node& a,
-    const Node& b,
-    int64_t recLimit,
-    int64_t stepLimit,
-    TheoryRewriteMode tmode)
+bool RewriteDbProofCons::prove(CDProof* cdp,
+                               const Node& a,
+                               const Node& b,
+                               int64_t recLimit,
+                               int64_t stepLimit,
+                               TheoryRewriteMode tmode)
 {
   d_tmode = tmode;
   // clear the proof caches
   d_pcache.clear();
   // do not clear evaluation cache
   Node eq = a.eqNode(b);
-  Trace("rpc") << "RewriteDbProofCons::prove: " << a << " == " << b
-               << std::endl;
+  Trace("rpc") << "RewriteDbProofCons::prove: " << a << " == " << b << ", mode "
+               << tmode << std::endl;
   // As a heuristic, always apply CONG if we are an equality between two
   // binder terms with the same quantifier prefix or ALPHA_EQUIV if they have
   // a different prefix whose types are the same.
@@ -149,13 +145,12 @@ bool RewriteDbProofCons::prove(
   return success;
 }
 
-bool RewriteDbProofCons::proveEqStratified(
-    CDProof* cdp,
-    const Node& eq,
-    const Node& eqi,
-    int64_t recLimit,
-    int64_t stepLimit,
-    TheoryRewriteMode tmode)
+bool RewriteDbProofCons::proveEqStratified(CDProof* cdp,
+                                           const Node& eq,
+                                           const Node& eqi,
+                                           int64_t recLimit,
+                                           int64_t stepLimit,
+                                           TheoryRewriteMode tmode)
 {
   bool success = false;
   // first, try the basic utility
@@ -203,6 +198,14 @@ Node RewriteDbProofCons::preprocessClosureEq(CDProof* cdp,
                                              const Node& a,
                                              const Node& b)
 {
+  // if it is a single step rewrite, do not preprocess
+  theory::Rewriter* rr = d_env.getRewriter();
+  ProofRewriteRule prid = rr->findRule(a, b, theory::TheoryRewriteCtx::PRE_DSL);
+  if (prid != ProofRewriteRule::NONE)
+  {
+    // a simple theory rewrite happens to solve it, do not continue
+    return Node::null();
+  }
   // Ensure patterns are removed by calling d_rdnc postConvert (single step),
   // which also ensures differences e.g. LAMBDA vs FUNCTION_ARRAY_CONST are
   // resolved. We do not apply convert recursively here.
@@ -216,14 +219,6 @@ Node RewriteDbProofCons::preprocessClosureEq(CDProof* cdp,
   // only apply this to standard binders (those with 2 children)
   if (ai.getNumChildren() != 2 || bi.getNumChildren() != 2)
   {
-    return Node::null();
-  }
-  theory::Rewriter* rr = d_env.getRewriter();
-  ProofRewriteRule prid =
-      rr->findRule(ai, bi, theory::TheoryRewriteCtx::PRE_DSL);
-  if (prid != ProofRewriteRule::NONE)
-  {
-    // a simple theory rewrite happens to solve it, do not continue
     return Node::null();
   }
   Node eq;
@@ -251,7 +246,7 @@ Node RewriteDbProofCons::preprocessClosureEq(CDProof* cdp,
       }
       if (ai[0][i] != bi[0][i])
       {
-        if (ai[0][i].getType() != bi[0][i].getType())
+        if (!CVC5_EQUAL(ai[0][i].getType(), bi[0][i].getType()))
         {
           return Node::null();
         }
@@ -427,10 +422,15 @@ RewriteProofStatus RewriteDbProofCons::proveInternalViaStrategy(const Node& eqi)
   }
   // Maybe holds via a THEORY_REWRITE that has been marked with
   // TheoryRewriteCtx::DSL_SUBCALL.
-  if (d_tmode==TheoryRewriteMode::STANDARD)
+  if (d_tmode == TheoryRewriteMode::STANDARD)
   {
-    if (proveWithRule(
-            RewriteProofStatus::THEORY_REWRITE, eqi, {}, {}, false, false, true))
+    if (proveWithRule(RewriteProofStatus::THEORY_REWRITE,
+                      eqi,
+                      {},
+                      {},
+                      false,
+                      false,
+                      true))
     {
       return RewriteProofStatus::THEORY_REWRITE;
     }
@@ -1227,7 +1227,7 @@ bool RewriteDbProofCons::ensureProofInternal(CDProof* cdp, const Node& eqi)
               // get the conditions, store into premises of cur.
               if (!rpr.getObligations(vs, rsubs, ps))
               {
-                Assert(false) << "failed a side condition?";
+                DebugUnhandled() << "failed a side condition?";
                 return false;
               }
               pfac.insert(pfac.end(), rsubs.begin(), rsubs.end());
@@ -1371,8 +1371,11 @@ bool RewriteDbProofCons::ensureProofInternal(CDProof* cdp, const Node& eqi)
         for (const Node& s : pcur.d_vars)
         {
           Trace("rpc-debug") << "  - step: " << s << std::endl;
+          // Fixed-point steps are an explicit rewrite chain. Register them as
+          // pre-rewrites so they are applied in the recorded order before
+          // child rewriting changes the current redex.
           tcpg.addRewriteStep(
-              s[0], s[1], cdp, false, TrustId::NONE, false, emptyPath ? 0 : tc);
+              s[0], s[1], cdp, true, TrustId::NONE, false, emptyPath ? 0 : tc);
           // the next rewrite should be applied at the depth that adds the
           // length of the path.
           tc += path.size();
@@ -1402,8 +1405,11 @@ bool RewriteDbProofCons::ensureProofInternal(CDProof* cdp, const Node& eqi)
         else
         {
           Assert(status == RewriteProofStatus::THEORY_REWRITE);
-          // use the utility, possibly to do macro expansion
-          d_trrc.ensureProofForTheoryRewrite(cdp, pcur.d_dslId, cur);
+          // Use the utility, possibly to do macro expansion.
+          // We use a fresh CDProof to avoid duplicate substeps.
+          CDProof cdpt(d_env);
+          d_trrc.ensureProofForTheoryRewrite(&cdpt, pcur.d_dslId, cur);
+          cdp->addProof(cdpt.getProofFor(cur));
         }
       }
     }
@@ -1413,6 +1419,19 @@ bool RewriteDbProofCons::ensureProofInternal(CDProof* cdp, const Node& eqi)
 
 Node RewriteDbProofCons::doEvaluate(const Node& n)
 {
+  // Only possible to evaluate if we rewrite to a constant. This is worthwhile
+  // to check since the rewrite of n has likely already been computed, whereas
+  // the evaluator below is not (globally) cached. We can do this optimization
+  // only if the term does not contain abstract subterms, which should not be
+  // sent to the rewriter.
+  if (!expr::hasAbstractSubterm(n))
+  {
+    Node nc = rewrite(n);
+    if (!nc.isConst())
+    {
+      return Node::null();
+    }
+  }
   auto [itv, inserted] = d_evalCache.emplace(n, Node());
   if (inserted)
   {
