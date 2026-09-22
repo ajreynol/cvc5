@@ -28,25 +28,26 @@
 namespace cvc5::internal {
 
 namespace configuration {
-  static constexpr bool isStatisticsBuild()
-  {
+static constexpr bool isStatisticsBuild()
+{
 #ifdef CVC5_STATISTICS_ON
-    return true;
+  return true;
 #else
-    return false;
+  return false;
 #endif
-  }
+}
 }  // namespace configuration
 
 /**
  * Represents the (static) configuration of cvc5.
  */
-class CVC5_EXPORT Configuration
+class CVC5_EXPORT Configuration final
 {
- private:
-  /** Private default ctor: Disallow construction of this class */
-  Configuration();
+ public:
+  /** Delete default ctor: Disallow construction of this class. */
+  Configuration() = delete;
 
+ private:
   // these constants are filled in by the build system
   static const bool GIT_BUILD;
   static const bool CVC5_IS_RELEASE;
@@ -54,8 +55,7 @@ class CVC5_EXPORT Configuration
   static const char* const CVC5_FULL_VERSION;
   static const char* const CVC5_GIT_INFO;
 
-public:
-
+ public:
   static std::string getName();
 
   static bool isSafeBuild();
@@ -92,6 +92,8 @@ public:
 
   static std::string about();
 
+  static std::string aboutAndCopyright();
+
   static bool licenseIsGpl();
 
   static bool isBuiltWithGmp();
@@ -110,6 +112,8 @@ public:
 
   static bool isBuiltWithCoCoA();
 
+  static bool isBuiltWithNormaliz();
+
   static bool isBuiltWithPortfolio();
 
   /* Return a sorted array of the trace tags name */
@@ -122,6 +126,8 @@ public:
 
   static std::string getCompiler();
   static std::string getCompiledDateTime();
+
+  static std::string getBuildType();
 
 }; /* class Configuration */
 

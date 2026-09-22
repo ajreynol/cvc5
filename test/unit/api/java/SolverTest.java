@@ -49,6 +49,15 @@ class SolverTest
   }
 
   @Test
+  void equalHash()
+  {
+    Solver solver = new Solver(d_tm);
+    assertEquals(d_solver, d_solver);
+    assertNotEquals(d_solver, solver);
+    assertEquals(d_solver.hashCode(), d_solver.hashCode());
+  }
+
+  @Test
   void recoverableException() throws CVC5ApiException
   {
     d_solver.setOption("produce-models", "true");
@@ -771,7 +780,8 @@ class SolverTest
       assertions.add(() -> assertTrue(Arrays.asList(modeInfo.getModes()).contains("batch")));
       assertions.add(() -> assertTrue(Arrays.asList(modeInfo.getModes()).contains("none")));
       assertEquals(info.toString(),
-          "OptionInfo{ simplification, simplification-mode | mode | batch | default batch | modes: batch, none }");
+          "OptionInfo{ simplification, simplification-mode | mode | batch | default batch | modes: "
+              + "batch, none }");
     }
     assertAll(assertions);
   }
@@ -2399,6 +2409,7 @@ class SolverTest
   @Test
   void pluginUnsat()
   {
+    d_solver.setOption("sat-solver", "minisat");
     PluginUnsat pu = new PluginUnsat(d_tm);
     d_solver.addPlugin(pu);
     assertTrue(pu.getName().equals("PluginUnsat"));
@@ -2452,7 +2463,8 @@ class SolverTest
   @Test
   void pluginListen()
   {
-    // NOTE: this shouldn't be necessary but ensures notifySatClause is called here.
+    d_solver.setOption("sat-solver", "minisat");
+    // Allow notifications for unit clauses added before the main solve.
     d_solver.setOption("plugin-notify-sat-clause-in-solve", "false");
     PluginListen pl = new PluginListen(d_tm);
     d_solver.addPlugin(pl);

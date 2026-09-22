@@ -13,9 +13,9 @@
 #include "theory/arith/arith_poly_norm.h"
 
 #include "expr/attribute.h"
+#include "theory/arith/arith_poly_norm.h"
 #include "theory/bv/theory_bv_utils.h"
 #include "util/bitvector.h"
-#include "theory/arith/arith_poly_norm.h"
 
 using namespace cvc5::internal::kind;
 
@@ -97,7 +97,7 @@ void PolyNorm::modCoeffs(const Rational& c)
   {
     Assert(m.second.isIntegral());
     m.second = Rational(m.second.getNumerator().euclidianDivideRemainder(ci));
-    if (m.second.sgn()==0)
+    if (m.second.sgn() == 0)
     {
       zeroes.push_back(m.first);
     }
@@ -422,8 +422,8 @@ PolyNorm PolyNorm::mkPolyNorm(TNode n)
           {
             it = visited.find(cur[i]);
             Assert(it != visited.end());
-            if (((k == Kind::SUB || k == Kind::BITVECTOR_SUB) && i == 1) || k == Kind::NEG
-                || k == Kind::BITVECTOR_NEG)
+            if (((k == Kind::SUB || k == Kind::BITVECTOR_SUB) && i == 1)
+                || k == Kind::NEG || k == Kind::BITVECTOR_NEG)
             {
               ret.subtract(it->second);
             }
@@ -499,6 +499,10 @@ bool PolyNorm::isArithPolyNormRel(TNode a, TNode b, Rational& ca, Rational& cb)
   Assert(a.getType().isBoolean());
   if (a == b)
   {
+    // must set the coefficients, since they may be used by the caller to
+    // construct the premise of ARITH_POLY_NORM_REL
+    ca = Rational(1);
+    cb = Rational(1);
     return true;
   }
   Kind k = a.getKind();

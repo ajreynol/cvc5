@@ -45,14 +45,14 @@ class TestBlackOptions : public TestApi
     {
       std::visit(
           overloaded{
-              [this, &name](const OptionInfo::VoidInfo& v) {
+              [this, &name](const OptionInfo::VoidInfo&) {
                 d_solver->setOption(name, "");
               },
-              [this, &name](const OptionInfo::ValueInfo<bool>& v) {
+              [this, &name](const OptionInfo::ValueInfo<bool>&) {
                 d_solver->setOption(name, "false");
                 d_solver->setOption(name, "true");
               },
-              [this, &name](const OptionInfo::ValueInfo<std::string>& v) {
+              [this, &name](const OptionInfo::ValueInfo<std::string>&) {
                 d_solver->setOption(name, "foo");
               },
               [this, &name](const OptionInfo::NumberInfo<int64_t>& v) {
@@ -77,8 +77,14 @@ class TestBlackOptions : public TestApi
                       d_solver->setOption(name, std::to_string(*v.maximum)));
                   range.second = *v.maximum;
                 }
+                // Compute the midpoint without overflowing. Note that neither
+                // (first + second) nor the span (second - first) is
+                // representable in general, e.g., for [-1, INT64_MAX].
                 EXPECT_NO_THROW(d_solver->setOption(
-                    name, std::to_string((range.first + range.second) / 2)));
+                    name,
+                    std::to_string(range.first / 2 + range.second / 2
+                                   + (range.first % 2 + range.second % 2)
+                                         / 2)));
                 EXPECT_THROW(d_solver->setOption(name, "0123abc"),
                              CVC5ApiOptionException);
               },
@@ -106,8 +112,12 @@ class TestBlackOptions : public TestApi
                       d_solver->setOption(name, std::to_string(*v.maximum)));
                   range.second = *v.maximum;
                 }
+                // Compute the midpoint without overflowing: range.second is
+                // UINT64_MAX unless the option declares a maximum.
                 EXPECT_NO_THROW(d_solver->setOption(
-                    name, std::to_string((range.first + range.second) / 2)));
+                    name,
+                    std::to_string(range.first
+                                   + (range.second - range.first) / 2)));
                 EXPECT_THROW(d_solver->setOption(name, "0123abc"),
                              CVC5ApiOptionException);
               },
@@ -164,30 +174,30 @@ class TestBlackOptions : public TestApi
     {
       std::visit(
           overloaded{
-              [this, &name](const OptionInfo::VoidInfo& v) {
+              [this, &name](const OptionInfo::VoidInfo&) {
                 d_solver->setOption(name, "");
               },
-              [this, &name](const OptionInfo::ValueInfo<bool>& v) {
+              [this, &name](const OptionInfo::ValueInfo<bool>&) {
                 d_solver->setOption(name, "false");
               },
-              [this, &name](const OptionInfo::ValueInfo<std::string>& v) {
+              [this, &name](const OptionInfo::ValueInfo<std::string>&) {
                 d_solver->setOption(name, "foo");
               },
-              [this, &name](const OptionInfo::NumberInfo<int64_t>& v) {
+              [this, &name](const OptionInfo::NumberInfo<int64_t>&) {
                 std::pair<int64_t, int64_t> range{
                     std::numeric_limits<int64_t>::min(),
                     std::numeric_limits<int64_t>::max()};
                 d_solver->setOption(
                     name, std::to_string((range.first + range.second) / 2));
               },
-              [this, &name](const OptionInfo::NumberInfo<uint64_t>& v) {
+              [this, &name](const OptionInfo::NumberInfo<uint64_t>&) {
                 std::pair<uint64_t, uint64_t> range{
                     std::numeric_limits<uint64_t>::min(),
                     std::numeric_limits<uint64_t>::max()};
                 d_solver->setOption(
                     name, std::to_string((range.first + range.second) / 2));
               },
-              [this, &name](const OptionInfo::NumberInfo<double>& v) {
+              [this, &name](const OptionInfo::NumberInfo<double>&) {
                 std::pair<double, double> range{
                     std::numeric_limits<double>::min(),
                     std::numeric_limits<double>::max()};
@@ -283,14 +293,14 @@ TEST_F(TestBlackOptions, getOptionInfoBenchmark)
 {
   auto names = options::getNames();
   std::unordered_set<std::string> ignore = {
-    "output",
-    "quiet",
-    "rweight",
-    "trace",
-    "verbose",
+      "output",
+      "quiet",
+      "rweight",
+      "trace",
+      "verbose",
   };
-  auto end = std::remove_if(names.begin(), names.end(), [&](const auto& i){
-      return ignore.count(i);
+  auto end = std::remove_if(names.begin(), names.end(), [&](const auto& i) {
+    return ignore.count(i);
   });
   names.erase(end, names.end());
   size_t ct = 0;
