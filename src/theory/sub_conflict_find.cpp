@@ -35,15 +35,15 @@ SubConflictFind::SubConflictFind(Env& env, TheoryEngine* engine)
   // if we are getting theory lemmas, we need proofs
   if (options().theory.subConflictTheoryLem)
   {
-    d_subOptions.writeSmt().produceProofs = true;
+    d_subOptions.write_smt().produceProofs = true;
   }
   // want small core so set simplification to none
-  d_subOptions.writeSmt().simplificationMode =
+  d_subOptions.write_smt().simplificationMode =
       options::SimplificationMode::NONE;
   // requires cores
-  d_subOptions.writeSmt().produceUnsatCores = true;
+  d_subOptions.write_smt().produceUnsatCores = true;
   // don't do this strategy
-  d_subOptions.writeTheory().subConflictFind = false;
+  d_subOptions.write_theory().subConflictFind = false;
 }
 
 void SubConflictFind::check(Theory::Effort effort)
@@ -84,7 +84,8 @@ void SubConflictFind::check(Theory::Effort effort)
   // do subsolver check
   SubsolverSetupInfo ssi(d_env, d_subOptions);
   uint64_t timeout = options().theory.subConflictTimeout;
-  initializeSubsolver(d_findConflict, ssi, timeout != 0, timeout);
+  initializeSubsolver(
+      nodeManager(), d_findConflict, ssi, timeout != 0, timeout);
   // assert and check-sat
   for (const Node& a : assertions)
   {
@@ -99,7 +100,7 @@ void SubConflictFind::check(Theory::Effort effort)
     addedLemmas = 1;
     // Add the computed unsat core as a conflict, which will cause a backtrack.
     UnsatCore uc = d_findConflict->getUnsatCore();
-    Node ucc = NodeManager::currentNM()->mkAnd(uc.getCore());
+    Node ucc = nodeManager()->mkAnd(uc.getCore());
     Trace("scf-debug") << "Unsat core is " << ucc << std::endl;
     Trace("scf") << "Core size = " << uc.getCore().size() << std::endl;
     d_out.lemma(ucc.notNode(), InferenceId::SUB_CONFLICT_UC);
