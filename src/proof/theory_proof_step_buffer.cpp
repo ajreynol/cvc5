@@ -176,7 +176,7 @@ bool TheoryProofStepBuffer::applyExtendedPredInfer(Node src,
       if (psrco[i] == ptgto)
       {
         success = true;
-        NodeManager* nm = NodeManager::currentNM();
+        NodeManager* nm = psrco.getNodeManager();
         Node ni = nm->mkConstInt(Rational(i));
         addStep(ProofRule::AND_ELIM, {psrco}, {ni}, ptgto);
         break;
