@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Aina Niemetz, Morgan Deters
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -50,9 +47,15 @@ bool AbductionSolver::getAbduct(const std::vector<Node>& axioms,
   Trace("sygus-abduct") << "Axioms: " << axioms << std::endl;
   Trace("sygus-abduct") << "SolverEngine::getAbduct: goal " << goal
                         << std::endl;
-  std::vector<Node> asserts(axioms.begin(), axioms.end());
+  SubstitutionMap& tls = d_env.getTopLevelSubstitutions().get();
+  std::vector<Node> axiomsn;
+  for (const Node& ax : axioms)
+  {
+    axiomsn.emplace_back(tls.apply(ax));
+  }
+  std::vector<Node> asserts(axiomsn.begin(), axiomsn.end());
   // must expand definitions
-  Node conjn = d_env.getTopLevelSubstitutions().apply(goal);
+  Node conjn = tls.apply(goal);
   conjn = rewrite(conjn);
   // now negate
   conjn = conjn.negate();
@@ -60,7 +63,7 @@ bool AbductionSolver::getAbduct(const std::vector<Node>& axioms,
   asserts.push_back(conjn);
   std::string name("__internal_abduct");
   Node aconj = quantifiers::SygusAbduct::mkAbductionConjecture(
-      name, asserts, axioms, grammarType);
+      nodeManager(), name, asserts, axiomsn, grammarType);
   // should be a quantified conjecture with one function-to-synthesize
   Assert(aconj.getKind() == Kind::FORALL && aconj[0].getNumChildren() == 1);
   // remember the abduct-to-synthesize
@@ -79,7 +82,7 @@ bool AbductionSolver::getAbduct(const std::vector<Node>& axioms,
   SetDefaults::disableChecking(subOptions);
   SubsolverSetupInfo ssi(d_env, subOptions);
   // we generate a new smt engine to do the abduction query
-  initializeSubsolver(d_subsolver, ssi);
+  initializeSubsolver(nodeManager(), d_subsolver, ssi);
   // get the logic
   LogicInfo l = d_subsolver->getLogicInfo().getUnlockedCopy();
   // enable everything needed for sygus
@@ -132,7 +135,7 @@ bool AbductionSolver::getAbductInternal(Node& abd)
       // get the grammar type for the abduct
       Node agdtbv =
           theory::quantifiers::SygusUtils::getOrMkSygusArgumentList(d_sssf);
-      if(!agdtbv.isNull())
+      if (!agdtbv.isNull())
       {
         Assert(agdtbv.getKind() == Kind::BOUND_VAR_LIST);
         // convert back to original
@@ -146,7 +149,8 @@ bool AbductionSolver::getAbductInternal(Node& abd)
           vars.push_back(bv);
           syms.push_back(bv.hasAttribute(sta) ? bv.getAttribute(sta) : bv);
         }
-        abd = abd.substitute(vars.begin(), vars.end(), syms.begin(), syms.end());
+        abd =
+            abd.substitute(vars.begin(), vars.end(), syms.begin(), syms.end());
       }
 
       // if check abducts option is set, we check the correctness
@@ -191,7 +195,7 @@ void AbductionSolver::checkAbduct(Node a)
                           << ": make new SMT engine" << std::endl;
     // Start new SMT engine to check solution
     std::unique_ptr<SolverEngine> abdChecker;
-    initializeSubsolver(abdChecker, ssi);
+    initializeSubsolver(nodeManager(), abdChecker, ssi);
     Trace("check-abduct") << "SolverEngine::checkAbduct: phase " << j
                           << ": asserting formulas" << std::endl;
     for (const Node& e : asserts)

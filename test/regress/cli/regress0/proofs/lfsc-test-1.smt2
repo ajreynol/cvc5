@@ -1,4 +1,5 @@
-; COMMAND-LINE: --dump-proofs --proof-format-mode=lfsc 
+; REQUIRES: unrestricted-mode
+; COMMAND-LINE: --dump-proofs --proof-format-mode=lfsc
 ; EXIT: 0
 ; SCRUBBER: grep -v -E '.*' 
 (set-logic QF_UF)

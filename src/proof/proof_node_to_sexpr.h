@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Hans-Joerg Schurr, Haniel Barbosa
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -37,7 +34,7 @@ class ProofNode;
 class ProofNodeToSExpr
 {
  public:
-  ProofNodeToSExpr();
+  ProofNodeToSExpr(NodeManager* nm);
   ~ProofNodeToSExpr() {}
   /** Convert the given proof node to an s-expression
    *
@@ -48,7 +45,7 @@ class ProofNodeToSExpr
    * The s-expression for a ProofNode has the form:
    *   (SEXPR (VAR "<d_rule>") S1 ... Sn (VAR ":args") (SEXPR <d_args>))
    * where S1, ..., Sn are the s-expressions for its <d_children>.
-   * 
+   *
    * @param pn The proof node to print
    * @param printConclusion Whether to print conclusions
    */
@@ -80,6 +77,8 @@ class ProofNodeToSExpr
   Node getArgument(Node arg, ArgFormat f);
 
  private:
+  /** the associated node manager */
+  NodeManager* d_nm;
   /** map proof rules to a variable */
   std::map<ProofRule, Node> d_pfrMap;
   /** map kind to a variable displaying the kind they represent */

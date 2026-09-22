@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Aina Niemetz
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -19,6 +16,7 @@
 #define CVC5__EXPR__TERM_CANONIZE_H
 
 #include <map>
+
 #include "expr/node.h"
 
 namespace cvc5::internal {
@@ -61,21 +59,40 @@ class TermCanonize
                bool applyGTerms = false);
   ~TermCanonize() {}
 
-  /** Maps operators to an identifier, useful for ordering. */
-  int getIdForOperator(Node op);
-  /** Maps types to an identifier, useful for ordering. */
-  int getIdForType(TypeNode t);
   /** get term order
    *
-   * Returns true if a <= b in the term ordering used by this class. The
-   * term order is determined by the leftmost position in a and b whose
-   * operators o_a and o_b are distinct at that position. Then a <= b iff
-   * getIdForOperator( o_a ) <= getIdForOperator( o_b ).
+   * Returns true if a < b in the strict term ordering used by this class,
+   * and false if a and b are equal. This can be used as a comparator for
+   * std::sort.
+   *
+   * Bound variables precede all other nodes. Two bound variables are compared
+   * using the built-in node ordering.
+   *
+   * For all other nodes, compare their operators using the built-in node
+   * ordering, using the node itself when it has no operator (e.g. a constant
+   * or a free variable). If these are equal, the node with fewer children
+   * comes first. If the numbers of children are also equal, recursively
+   * compare the first pair of distinct children, from left to right. If all
+   * children are equal, return false.
    */
   bool getTermOrder(Node a, Node b);
-  /** get canonical free variable #i of type tn */
+  /**
+   * Get canonical free variable #i of type tn and type class tc.
+   *
+   * @param tn The type of the variable.
+   * @param i The index of the variable within its type / type class pair.
+   * @param tc The type class identifier, as returned by TypeClassCallback.
+   * Different type classes have distinct canonical variables even for the
+   * same type and index. The default is 0, the type class used when no callback
+   * is provided.
+   */
   Node getCanonicalFreeVar(TypeNode tn, size_t i, uint32_t tc = 0);
-  /** get canonical free variable #i of type tn */
+  /**
+   * Get canonical free constant #i of type tn and type class tc. This is the
+   * ground counterpart of getCanonicalFreeVar above: it returns a fresh
+   * skolem rather than a bound variable, and is used when this class is
+   * canonizing ground terms (applyGTerms).
+   */
   Node getCanonicalFreeConstant(TypeNode tn, size_t i, uint32_t tc = 0);
   /**
    * Return the range of the free variable in the above map, or 0 if it does not
@@ -102,27 +119,21 @@ class TermCanonize
   Node getCanonicalTerm(TNode n, std::map<TNode, Node>& visited);
 
  private:
+  /** Common implementation of the two methods above; index 0 is variables,
+   * index 1 is constants. */
   Node getCanonicalFreeSymInternal(TypeNode tn,
                                    size_t i,
                                    uint32_t tc,
                                    size_t index);
   /** The (optional) type class callback */
   TypeClassCallback* d_tcc;
-  /** Whether we are apply term order */
+  /** Whether we are applying term order */
   bool d_applyTOrder;
   /** Whether we are applying to HO variables */
   bool d_doHoVar;
   /** Whether we are canonizing ground terms */
   bool d_applyGTerms;
-  /** the number of ids we have allocated for operators */
-  int d_op_id_count;
-  /** map from operators to id */
-  std::map<Node, int> d_op_id;
-  /** the number of ids we have allocated for types */
-  int d_typ_id_count;
-  /** map from type to id */
-  std::map<TypeNode, int> d_typ_id;
-  /** free variables / constants for each type / type class pair */
+  /** free variables (index 0) / constants (index 1) per type / type class */
   std::map<std::pair<TypeNode, uint32_t>, std::vector<Node> > d_cn_free_var[2];
   /**
    * Map from each free variable above to their index in their respective vector

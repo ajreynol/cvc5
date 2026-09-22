@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Gereon Kremer, Morgan Deters
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -51,7 +48,7 @@ class TermDbEager;
 class TermDbSygus;
 class TermEnumeration;
 class TermRegistry;
-}
+}  // namespace quantifiers
 
 /**
  * The main class that manages techniques for quantified formulas.
@@ -83,7 +80,7 @@ class QuantifiersEngine : protected EnvObj
   /** notify preprocessed assertion */
   void ppNotifyAssertions(const std::vector<Node>& assertions);
   /** check at level */
-  void check( Theory::Effort e );
+  void check(Theory::Effort e);
   /** notify that theories were combined */
   void notifyCombineTheories();
   /** preRegister quantifier
@@ -93,14 +90,14 @@ class QuantifiersEngine : protected EnvObj
    */
   void preRegisterQuantifier(Node q);
   /** assert universal quantifier */
-  void assertQuantifier( Node q, bool pol );
+  void assertQuantifier(Node q, bool pol);
   /** notification when master equality engine is updated */
   void eqNotifyNewClass(TNode t);
-  /** notification when master equality engine is updated */
+  /** notification when master equality engine merges two classes*/
   void eqNotifyMerge(TNode t1, TNode t2);
-  /**  */
+  /** notification when master equality engine has a new disequality */
   void eqNotifyDisequal(TNode t1, TNode t2);
-  /** */
+  /** notification when master equality engine merges two constant classes */
   void eqNotifyConstantTermMerge(TNode t1, TNode t2);
   /** mark relevant quantified formula, this will indicate it should be checked
    * before the others */
@@ -158,6 +155,22 @@ class QuantifiersEngine : protected EnvObj
   std::vector<Node> getOracleFuns() const;
   //----------end user interface for instantiations
  private:
+  /**
+   * Check at level, setting setModelUnsoundId to an IncompleteId if we are
+   * "unknown" instead of "unsat".
+   * @param e the effort level
+   * @param setModelUnsoundId the incomplete id if e is last call and we should
+   * answer "unknown" instead of "sat".
+   */
+  void checkInternal(Theory::Effort e, IncompleteId& setModelUnsoundId);
+  /**
+   * Return true if we should recheck
+   * @param e the effort level
+   * @param setModelUnsoundId the incomplete id indicating why we are currently
+   * answering "unknown".
+   */
+  bool shouldRecheck(CVC5_UNUSED Theory::Effort e,
+                     IncompleteId setModelUnsoundId);
   //---------------------- private initialization
   /**
    * Finish initialize, which passes pointers to the objects that quantifiers

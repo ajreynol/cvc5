@@ -72,7 +72,7 @@ TermDbEager::TermDbEager(Env& env,
   {
     d_instWatch.reset(new eager::InstWatch(*this));
   }
-  d_boolType = NodeManager::currentNM()->booleanType();
+  d_boolType = nodeManager()->booleanType();
 }
 
 void TermDbEager::finishInit(QuantifiersInferenceManager* qim) { d_qim = qim; }
@@ -519,7 +519,7 @@ bool TermDbEager::isPropagatingInstance(Node n)
 
 Node TermDbEager::isPropagatingTerm(Node n)
 {
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   std::unordered_map<TNode, TNode> visited;
   std::unordered_map<TNode, TNode>::iterator it;
   std::vector<TNode> visit;
@@ -616,7 +616,7 @@ Node TermDbEager::mkExplainInst(const Node& q, const std::vector<Node>& terms)
   std::vector<Node> qterms;
   qterms.push_back(q);
   qterms.insert(qterms.end(), terms.begin(), terms.end());
-  SkolemManager* skm = NodeManager::currentNM()->getSkolemManager();
+  SkolemManager* skm = nodeManager()->getSkolemManager();
   return skm->mkInternalSkolemFunction(
       InternalSkolemId::QUANTIFIERS_INST, d_boolType, {qterms});
 }
@@ -625,7 +625,7 @@ Node TermDbEager::getExplainInst(const Node& i, std::vector<Node>& terms)
 {
   Node cacheVal;
   SkolemId id;
-  SkolemManager* skm = NodeManager::currentNM()->getSkolemManager();
+  SkolemManager* skm = nodeManager()->getSkolemManager();
   if (skm->isSkolemFunction(i, id, cacheVal))
   {
     terms.insert(terms.end(), cacheVal.begin() + 2, cacheVal.end());

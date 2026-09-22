@@ -61,7 +61,7 @@ InstWatch::InstWatch(TermDbEager& tde)
       d_qs(tde.getState()),
       d_processedInst(tde.getEnv().getContext())
 {
-  d_false = NodeManager::currentNM()->mkConst(false);
+  d_false = tde.getEnv().getNodeManager()->mkConst(false);
 }
 
 void InstWatch::watch(const Node& q,
@@ -169,7 +169,7 @@ Node InstWatch::mkInstantiation(const Node& q, const std::vector<Node>& terms)
   std::vector<Node> sterms;
   sterms.push_back(q);
   sterms.insert(sterms.end(), terms.begin(), terms.end());
-  return NodeManager::currentNM()->mkNode(Kind::SEXPR, sterms);
+  return q.getNodeManager()->mkNode(Kind::SEXPR, sterms);
 }
 
 Node InstWatch::getInstantiation(const Node& inst, std::vector<Node>& terms)

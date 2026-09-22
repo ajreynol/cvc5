@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Haniel Barbosa, Aina Niemetz
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -17,6 +14,7 @@
 
 #include <sstream>
 
+#include "expr/bound_var_manager.h"
 // TODO #1216: move the code in this include
 #include "expr/node_algorithm.h"
 #include "expr/skolem_manager.h"
@@ -34,34 +32,8 @@ TermCanonize::TermCanonize(TypeClassCallback* tcc,
     : d_tcc(tcc),
       d_applyTOrder(applyTOrder),
       d_doHoVar(doHoVar),
-      d_applyGTerms(applyGTerms),
-      d_op_id_count(0),
-      d_typ_id_count(0)
+      d_applyGTerms(applyGTerms)
 {
-}
-
-int TermCanonize::getIdForOperator(Node op)
-{
-  std::map<Node, int>::iterator it = d_op_id.find(op);
-  if (it == d_op_id.end())
-  {
-    d_op_id[op] = d_op_id_count;
-    d_op_id_count++;
-    return d_op_id[op];
-  }
-  return it->second;
-}
-
-int TermCanonize::getIdForType(TypeNode t)
-{
-  std::map<TypeNode, int>::iterator it = d_typ_id.find(t);
-  if (it == d_typ_id.end())
-  {
-    d_typ_id[t] = d_typ_id_count;
-    d_typ_id_count++;
-    return d_typ_id[t];
-  }
-  return it->second;
 }
 
 bool TermCanonize::getTermOrder(Node a, Node b)
@@ -101,7 +73,7 @@ bool TermCanonize::getTermOrder(Node a, Node b)
     }
     else
     {
-      return getIdForOperator(aop) < getIdForOperator(bop);
+      return aop < bop;
     }
   }
   return false;
@@ -123,7 +95,6 @@ Node TermCanonize::getCanonicalFreeSymInternal(TypeNode tn,
                                                size_t index)
 {
   Assert(!tn.isNull());
-  NodeManager* nm = NodeManager::currentNM();
   std::pair<TypeNode, uint32_t> key(tn, tc);
   std::vector<Node>& tvars = d_cn_free_var[index][key];
   while (tvars.size() <= i)
@@ -144,10 +115,14 @@ Node TermCanonize::getCanonicalFreeSymInternal(TypeNode tn,
       }
       os << typ_name[0] << i;
     }
+    NodeManager* nm = tn.getNodeManager();
     Node x;
     if (index == 0)
     {
-      x = nm->mkBoundVar(os.str(), tn);
+      BoundVarManager* bvm = nm->getBoundVarManager();
+      Node cacheVal = BoundVarManager::getCacheValue(
+          BoundVarManager::getCacheValue(nm, tc), i);
+      x = bvm->mkBoundVar(BoundVarId::TERM_CANONIZE, cacheVal, os.str(), tn);
     }
     else
     {
@@ -210,15 +185,10 @@ Node TermCanonize::getCanonicalTerm(
   {
     // collect children
     Trace("canon-term-debug") << "Collect children" << std::endl;
-    std::vector<Node> cchildren(n.begin(), n.end());
-    // if applicable, first sort by term order
-    if (d_applyTOrder && theory::quantifiers::TermUtil::isComm(n.getKind()))
+    std::vector<Node> cchildren;
+    for (const Node& cn : n)
     {
-      Trace("canon-term-debug")
-          << "Sort based on commutative operator " << n.getKind() << std::endl;
-      sortTermOrder sto;
-      sto.d_tu = this;
-      std::sort(cchildren.begin(), cchildren.end(), sto);
+      cchildren.push_back(cn);
     }
     // make canonical if non-ground
     if (expr::hasBoundVar(n))
@@ -231,16 +201,26 @@ Node TermCanonize::getCanonicalTerm(
     }
     else if (d_applyGTerms)
     {
+      // n is ground: replace it wholesale by a canonical free constant
       uint32_t tc = getTypeClass(n);
       TypeNode tn = n.getType();
       std::pair<TypeNode, uint32_t> key(tn, tc);
-      // allocate variable
+      // allocate constant
       unsigned vn = ccount[key];
       ccount[key]++;
       Node k = getCanonicalFreeConstant(tn, vn, tc);
       visited[n] = k;
       Trace("canon-term-debug") << "...allocate constant " << k << std::endl;
       return k;
+    }
+    // if applicable, sort by term order
+    if (d_applyTOrder && theory::quantifiers::TermUtil::isComm(n.getKind()))
+    {
+      Trace("canon-term-debug")
+          << "Sort based on commutative operator " << n.getKind() << std::endl;
+      sortTermOrder sto;
+      sto.d_tu = this;
+      std::sort(cchildren.begin(), cchildren.end(), sto);
     }
     if (n.getMetaKind() == metakind::PARAMETERIZED)
     {
@@ -254,7 +234,7 @@ Node TermCanonize::getCanonicalTerm(
     }
     Trace("canon-term-debug")
         << "...constructing for " << n << "." << std::endl;
-    Node ret = NodeManager::currentNM()->mkNode(n.getKind(), cchildren);
+    Node ret = n.getNodeManager()->mkNode(n.getKind(), cchildren);
     Trace("canon-term-debug")
         << "...constructed " << ret << " for " << n << "." << std::endl;
     visited[n] = ret;

@@ -144,7 +144,7 @@ void QuantInfo::initialize(QuantifiersRegistry& qr, const Node& q)
         mpSel.emplace_back(mt);
         if (fvs.size() == nvars)
         {
-          d_mpat = NodeManager::currentNM()->mkNode(Kind::INST_PATTERN, mpSel);
+          d_mpat = q.getNodeManager()->mkNode(Kind::INST_PATTERN, mpSel);
           break;
         }
       }

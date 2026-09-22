@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Morgan Deters, Tim King, Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -84,7 +81,7 @@ class BooleanSimplification
       return buffer[0];
     }
 
-    NodeBuilder nb(Kind::AND);
+    NodeBuilder nb(andNode.getNodeManager(), Kind::AND);
     nb.append(buffer);
     return nb;
   }
@@ -111,7 +108,7 @@ class BooleanSimplification
       return buffer[0];
     }
 
-    NodeBuilder nb(Kind::OR);
+    NodeBuilder nb(orNode.getNodeManager(), Kind::OR);
     nb.append(buffer);
     return nb;
   }
@@ -131,7 +128,8 @@ class BooleanSimplification
     TNode right = implication[1];
 
     Node notLeft = negate(left);
-    Node clause = NodeBuilder(Kind::OR) << notLeft << right;
+    Node clause = NodeBuilder(implication.getNodeManager(), Kind::OR)
+                  << notLeft << right;
 
     return simplifyClause(clause);
   }
@@ -150,16 +148,11 @@ class BooleanSimplification
    * @param k the kind to collapse (should equal the kind of node n)
    * @param notK the "negation" of kind k (e.g. OR's negation is AND),
    * or Kind::UNDEFINED_KIND if none.
-   * @param negateChildren true if the children of the resulting node
-   * (that is, the elements in buffer) should all be negated; you want
-   * this if e.g. you're simplifying the (OR...) in (NOT (OR...)),
-   * intending to make the result an AND.
    */
   static inline void push_back_associative_commute(Node n,
                                                    std::vector<Node>& buffer,
                                                    Kind k,
-                                                   Kind notK,
-                                                   bool negateChildren = false)
+                                                   Kind notK)
   {
     AssertArgument(buffer.empty(), buffer);
     AssertArgument(!n.isNull(), n);
@@ -177,7 +170,7 @@ class BooleanSimplification
     {
       // all the TRUEs for an AND (resp FALSEs for an OR) were simplified away
       buffer.push_back(
-          NodeManager::currentNM()->mkConst(k == Kind::AND ? true : false));
+          n.getNodeManager()->mkConst(k == Kind::AND ? true : false));
     }
   } /* push_back_associative_commute() */
 
@@ -200,7 +193,7 @@ class BooleanSimplification
     }
     if (n.isConst())
     {
-      return NodeManager::currentNM()->mkConst(!n.getConst<bool>());
+      return n.getNodeManager()->mkConst(!n.getConst<bool>());
     }
     if (polarity)
     {

@@ -3,6 +3,10 @@ description: Setup caches (ccache, contribs and dependencies)
 inputs:
   cache-key:
     default: "none"
+  install-ethos:
+    default: false
+  install-carcara:
+    default: false
   shell:
     default: bash
 
@@ -35,7 +39,7 @@ runs:
   using: composite
   steps:
     - name: Setup ccache cache
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: ccache-dir
         key: ${{ inputs.cache-key }}-${{ runner.os }}-ccache-${{ github.sha }}
@@ -52,20 +56,27 @@ runs:
 
     - name: Setup contrib dependencies cache
       id: contrib-cache
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
-        path: deps/bin
+        path: |
+          deps/bin
+          deps/rare
         key: ${{ inputs.cache-key }}-${{ runner.os }}-contrib-${{ hashFiles('contrib/get-**') }}-${{ hashFiles('.github/**') }}
 
     - name: Install contrib dependencies
       if: steps.contrib-cache.outputs.cache-hit != 'true'
       shell: ${{ inputs.shell }}
       run: |
-        ./contrib/get-carcara-checker
-        ./contrib/get-ethos-checker
+        mkdir -p ./deps/bin
+        if [ "${{ inputs.install-carcara }}" = "true" ]; then
+          ./contrib/get-carcara-checker
+        fi
+        if [ "${{ inputs.install-ethos }}" = "true" ]; then
+          ./contrib/get-ethos-checker
+        fi
 
     - name: Setup dependencies cache
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: |
           build-shared/deps

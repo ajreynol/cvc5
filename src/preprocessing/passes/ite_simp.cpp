@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Aina Niemetz, Andrew Reynolds, Tim King
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -116,7 +113,7 @@ Node mkAssocAnd(NodeManager* nm, const std::vector<Node>& children)
 
 ITESimp::Statistics::Statistics(StatisticsRegistry& reg)
     : d_arithSubstitutionsAdded(reg.registerInt(
-        "preprocessing::passes::ITESimp::ArithSubstitutionsAdded"))
+          "preprocessing::passes::ITESimp::ArithSubstitutionsAdded"))
 {
 }
 
@@ -136,7 +133,8 @@ Node ITESimp::simpITE(util::ITEUtilities* ite_utils, TNode assertion)
       verbose(2) << "starting simplifyWithCare()" << endl;
       Node postSimpWithCare = ite_utils->simplifyWithCare(res_rewritten);
       verbose(2) << "ending simplifyWithCare()"
-             << " post simplifyWithCare()" << postSimpWithCare.getId() << endl;
+                 << " post simplifyWithCare()" << postSimpWithCare.getId()
+                 << endl;
       result = rewrite(postSimpWithCare);
     }
     else
@@ -184,7 +182,8 @@ bool ITESimp::doneSimpITE(AssertionPipeline* assertionsToPreprocess)
             Node more = aiteu.reduceConstantIteByGCD(res);
             Trace("arith::ite::red") << "  gcd->" << more << endl;
             Node morer = rewrite(more);
-            assertionsToPreprocess->replace(i, morer);
+            assertionsToPreprocess->replace(
+                i, morer, nullptr, TrustId::PREPROCESS_ITE_SIMP);
           }
         }
       }
@@ -224,7 +223,8 @@ bool ITESimp::doneSimpITE(AssertionPipeline* assertionsToPreprocess)
             Node more = aiteu.reduceConstantIteByGCD(res);
             Trace("arith::ite::red") << "  gcd->" << more << endl;
             Node morer = rewrite(more);
-            assertionsToPreprocess->replace(i, morer);
+            assertionsToPreprocess->replace(
+                i, morer, nullptr, TrustId::PREPROCESS_ITE_SIMP);
           }
         }
       }
@@ -252,7 +252,8 @@ PreprocessingPassResult ITESimp::applyInternal(
   {
     d_preprocContext->spendResource(Resource::PreprocessStep);
     Node simp = simpITE(&d_iteUtilities, (*assertionsToPreprocess)[i]);
-    assertionsToPreprocess->replace(i, simp);
+    assertionsToPreprocess->replace(
+        i, simp, nullptr, TrustId::PREPROCESS_ITE_SIMP);
     if (assertionsToPreprocess->isInConflict())
     {
       return PreprocessingPassResult::CONFLICT;
@@ -262,7 +263,6 @@ PreprocessingPassResult ITESimp::applyInternal(
   return done ? PreprocessingPassResult::NO_CONFLICT
               : PreprocessingPassResult::CONFLICT;
 }
-
 
 /* -------------------------------------------------------------------------- */
 
