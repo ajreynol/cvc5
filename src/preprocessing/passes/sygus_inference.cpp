@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Mathias Preiner, Aina Niemetz
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -15,8 +12,10 @@
 
 #include "preprocessing/passes/sygus_inference.h"
 
+#include "options/quantifiers_options.h"
 #include "preprocessing/assertion_pipeline.h"
 #include "preprocessing/preprocessing_pass_context.h"
+#include "smt/logic_exception.h"
 #include "smt/solver_engine.h"
 #include "theory/quantifiers/quantifiers_attributes.h"
 #include "theory/quantifiers/quantifiers_preprocess.h"
@@ -33,7 +32,7 @@ namespace preprocessing {
 namespace passes {
 
 SygusInference::SygusInference(PreprocessingPassContext* preprocContext)
-    : PreprocessingPass(preprocContext, "sygus-infer"){};
+    : PreprocessingPass(preprocContext, "sygus-infer") {};
 
 PreprocessingPassResult SygusInference::applyInternal(
     AssertionPipeline* assertionsToPreprocess)
@@ -41,7 +40,7 @@ PreprocessingPassResult SygusInference::applyInternal(
   Trace("sygus-infer") << "Run sygus inference..." << std::endl;
   std::vector<Node> funs;
   std::vector<Node> sols;
-  // see if we can succesfully solve the input as a sygus problem
+  // see if we can successfully solve the input as a sygus problem
   if (solveSygus(assertionsToPreprocess->ref(), funs, sols))
   {
     Trace("sygus-infer") << "...Solved:" << std::endl;
@@ -69,6 +68,13 @@ PreprocessingPassResult SygusInference::applyInternal(
       }
     }
   }
+  else if (options().quantifiers.sygusInference
+           == options::SygusInferenceMode::ON)
+  {
+    std::stringstream ss;
+    ss << "Cannot translate input to sygus for --sygus-inference";
+    throw LogicException(ss.str());
+  }
   return PreprocessingPassResult::NO_CONFLICT;
 }
 
@@ -79,10 +85,12 @@ bool SygusInference::solveSygus(const std::vector<Node>& assertions,
   if (assertions.empty())
   {
     Trace("sygus-infer") << "...fail: empty assertions." << std::endl;
+    Warning() << "Cannot convert to sygus since there are no assertions."
+              << std::endl;
     return false;
   }
 
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
 
   // collect free variables in all assertions
   std::vector<Node> qvars;
@@ -99,7 +107,7 @@ bool SygusInference::solveSygus(const std::vector<Node>& assertions,
   while (index < assertions_proc.size())
   {
     Node ca = assertions_proc[index];
-    if (ca.getKind() == AND)
+    if (ca.getKind() == Kind::AND)
     {
       for (const Node& ai : ca)
       {
@@ -126,7 +134,7 @@ bool SygusInference::solveSygus(const std::vector<Node>& assertions,
     // rewrite
     pas = rewrite(pas);
     Trace("sygus-infer") << "assertion : " << pas << std::endl;
-    if (pas.getKind() == FORALL)
+    if (pas.getKind() == Kind::FORALL)
     {
       // preprocess the quantified formula
       TrustNode trn = qp.preprocess(pas);
@@ -136,7 +144,7 @@ bool SygusInference::solveSygus(const std::vector<Node>& assertions,
       }
       Trace("sygus-infer-debug") << "  ...preprocessed to " << pas << std::endl;
     }
-    if (pas.getKind() == FORALL)
+    if (pas.getKind() == Kind::FORALL)
     {
       // it must be a standard quantifier
       theory::quantifiers::QAttributes qa;
@@ -145,6 +153,9 @@ bool SygusInference::solveSygus(const std::vector<Node>& assertions,
       {
         Trace("sygus-infer")
             << "...fail: non-standard top-level quantifier." << std::endl;
+        Warning() << "Cannot convert to sygus since there is a non-standard "
+                     "top-level quantified formula: "
+                  << pas << std::endl;
         return false;
       }
       // infer prefix
@@ -161,7 +172,7 @@ bool SygusInference::solveSygus(const std::vector<Node>& assertions,
         else
         {
           Assert(vnum == qtvars[tnv].size());
-          Node bv = nm->mkBoundVar(tnv);
+          Node bv = NodeManager::mkBoundVar(tnv);
           qtvars[tnv].push_back(bv);
           qvars.push_back(bv);
           subs.push_back(bv);
@@ -187,13 +198,13 @@ bool SygusInference::solveSygus(const std::vector<Node>& assertions,
       if (visited.find(cur) == visited.end())
       {
         visited.insert(cur);
-        if (cur.getKind() == APPLY_UF)
+        if (cur.getKind() == Kind::APPLY_UF)
         {
           Node op = cur.getOperator();
           // visit the operator, which might not be a variable
           visit.push_back(op);
         }
-        else if (cur.isVar() && cur.getKind() != BOUND_VARIABLE)
+        else if (cur.isVar() && cur.getKind() != Kind::BOUND_VARIABLE)
         {
           // We are either in the case of a free first-order constant or a
           // function in a higher-order context. We add to free_functions
@@ -208,6 +219,9 @@ bool SygusInference::solveSygus(const std::vector<Node>& assertions,
         {
           Trace("sygus-infer")
               << "...fail: non-top-level quantifier." << std::endl;
+          Warning() << "Cannot convert to sygus since there is a non-top-level "
+                       "quantified formula: "
+                    << cur << std::endl;
           return false;
         }
         for (const TNode& cn : cur)
@@ -222,6 +236,9 @@ bool SygusInference::solveSygus(const std::vector<Node>& assertions,
   // no functions to synthesize
   if (free_functions.empty())
   {
+    Warning()
+        << "Cannot convert to sygus since there are no free function symbols."
+        << std::endl;
     Trace("sygus-infer") << "...fail: no free function symbols." << std::endl;
     return false;
   }
@@ -239,7 +256,7 @@ bool SygusInference::solveSygus(const std::vector<Node>& assertions,
   }
   else
   {
-    body = nm->mkNode(AND, processed_assertions);
+    body = nm->mkNode(Kind::AND, processed_assertions);
   }
 
   // for each free function symbol, make a bound variable of the same type
@@ -248,7 +265,7 @@ bool SygusInference::solveSygus(const std::vector<Node>& assertions,
   std::map<Node, Node> ff_var_to_ff;
   for (const Node& ff : free_functions)
   {
-    Node ffv = nm->mkBoundVar(ff.getType());
+    Node ffv = NodeManager::mkBoundVar(ff.getType());
     ff_vars.push_back(ffv);
     Trace("sygus-infer") << "  synth-fun: " << ff << " as " << ffv << std::endl;
     ff_var_to_ff[ffv] = ff;
@@ -265,14 +282,15 @@ bool SygusInference::solveSygus(const std::vector<Node>& assertions,
   body = body.negate();
   if (!qvars.empty())
   {
-    Node bvl = nm->mkNode(BOUND_VAR_LIST, qvars);
-    body = nm->mkNode(EXISTS, bvl, body);
+    Node bvl = nm->mkNode(Kind::BOUND_VAR_LIST, qvars);
+    body = nm->mkNode(Kind::EXISTS, bvl, body);
   }
 
   // sygus attribute to mark the conjecture as a sygus conjecture
   Trace("sygus-infer") << "Make outer sygus conjecture..." << std::endl;
 
-  body = quantifiers::SygusUtils::mkSygusConjecture(ff_vars, body);
+  body =
+      quantifiers::SygusUtils::mkSygusConjecture(nodeManager(), ff_vars, body);
 
   Trace("sygus-infer") << "*** Return sygus inference : " << body << std::endl;
 
@@ -288,6 +306,13 @@ bool SygusInference::solveSygus(const std::vector<Node>& assertions,
   if (!rrSygus->getSubsolverSynthSolutions(synth_sols))
   {
     // failed, conjecture was infeasible
+    if (options().quantifiers.sygusInference == options::SygusInferenceMode::ON)
+    {
+      std::stringstream ss;
+      ss << "Translated to sygus, but failed to show problem to be satisfiable "
+            "with --sygus-inference.";
+      throw LogicException(ss.str());
+    }
     return false;
   }
 
@@ -314,7 +339,6 @@ bool SygusInference::solveSygus(const std::vector<Node>& assertions,
   }
   return true;
 }
-
 
 }  // namespace passes
 }  // namespace preprocessing

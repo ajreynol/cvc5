@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -36,7 +33,7 @@ namespace parser {
  * terms. It does not lex command tokens.
  *
  * Partially based on
- * https://github.com/bitwuzla/bitwuzla/blob/dev/src/parser/smt2/lexer.h
+ * https://github.com/bitwuzla/bitwuzla/blob/main/src/parser/smt2/lexer.h
  */
 class Smt2Lexer : public Lexer
 {
@@ -75,9 +72,20 @@ class Smt2Lexer : public Lexer
     BIT = (1 << 3),
     SYMBOL_START = (1 << 4),
     SYMBOL = (1 << 5),
+    PRINTABLE = (1 << 6),
   };
   /** The set of non-letter/non-digit characters that may occur in keywords. */
   inline static const std::string s_extraSymbolChars = "+-/*=%?!.$_~&^<>@";
+  /** The set of legal printable characters. */
+  inline static const std::string s_printableAsciiChars =
+      "!\"#$%&'()*+,-./"
+      "0123456789"
+      ":;<=>?@"
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+      "[\\]^_`"
+      "abcdefghijklmnopqrstuvwxyz"
+      "{|}~"
+      " \t\r\n";
   /** parse <c>, return false if <c> is not ch. */
   bool parseLiteralChar(int32_t ch);
   /** parse <c>, return false if <c> is not from cc */

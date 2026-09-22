@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Tim King, Gereon Kremer, Aina Niemetz
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -93,8 +90,8 @@ class Rational
   Rational(unsigned long int n) : d_value(n) {}
 
 #ifdef CVC5_NEED_INT64_T_OVERLOADS
-  Rational(int64_t n) : d_value(static_cast<long>(n)) {}
-  Rational(uint64_t n) : d_value(static_cast<unsigned long>(n)) {}
+  Rational(int64_t n) : d_value(n) {}
+  Rational(uint64_t n) : d_value(n) {}
 #endif /* CVC5_NEED_INT64_T_OVERLOADS */
 
   /**
@@ -118,14 +115,8 @@ class Rational
   }
 
 #ifdef CVC5_NEED_INT64_T_OVERLOADS
-  Rational(int64_t n, int64_t d) : d_value(static_cast<long>(n))
-  {
-    d_value /= cln::cl_I(d);
-  }
-  Rational(uint64_t n, uint64_t d) : d_value(static_cast<unsigned long>(n))
-  {
-    d_value /= cln::cl_I(d);
-  }
+  Rational(int64_t n, int64_t d) : d_value(n) { d_value /= cln::cl_I(d); }
+  Rational(uint64_t n, uint64_t d) : d_value(n) { d_value /= cln::cl_I(d); }
 #endif /* CVC5_NEED_INT64_T_OVERLOADS */
 
   Rational(const Integer& n, const Integer& d) : d_value(n.get_cl_I())
@@ -298,7 +289,10 @@ class Rational
 
 struct RationalHashFunction
 {
-  inline size_t operator()(const cvc5::internal::Rational& r) const { return r.hash(); }
+  inline size_t operator()(const cvc5::internal::Rational& r) const
+  {
+    return r.hash();
+  }
 }; /* struct RationalHashFunction */
 
 std::ostream& operator<<(std::ostream& os, const Rational& n);

@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -29,7 +26,7 @@
 namespace cvc5 {
 namespace parser {
 
-class Command;
+class Cmd;
 class SymManager;
 class Lexer;
 
@@ -72,10 +69,10 @@ class Parser : public ParserStateCallback
   /**
    * Parse and return the next command.
    */
-  std::unique_ptr<Command> nextCommand();
+  std::unique_ptr<Cmd> nextCommand();
 
   /** Parse and return the next expression. */
-  Term nextExpression();
+  Term nextTerm();
 
   /** Is this parser done reading input? */
   bool done() const;
@@ -88,7 +85,7 @@ class Parser : public ParserStateCallback
   void unexpectedEOF(const std::string& msg) override;
 
   /** make flex parser from language string */
-  static std::unique_ptr<Parser> mkParser(const std::string& lang,
+  static std::unique_ptr<Parser> mkParser(modes::InputLanguage lang,
                                           Solver* solver,
                                           SymManager* sm);
 
@@ -102,10 +99,10 @@ class Parser : public ParserStateCallback
    * Parse and return the next command.
    * NOTE: currently memory management of commands is handled internally.
    */
-  virtual std::unique_ptr<Command> parseNextCommand() = 0;
+  virtual std::unique_ptr<Cmd> parseNextCommand() = 0;
 
   /** Parse and return the next expression. */
-  virtual Term parseNextExpression() = 0;
+  virtual Term parseNextTerm() = 0;
   /** Solver */
   Solver* d_solver;
   /** Symbol manager */

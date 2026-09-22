@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Aina Niemetz, Martin Brain
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -35,7 +32,8 @@ bool isMaybeRoundingMode(const TypeNode& tn)
   return tn.isRoundingMode() || tn.isFullyAbstract();
 }
 
-TypeNode FloatingPointConstantTypeRule::preComputeType(NodeManager* nm, TNode n)
+TypeNode FloatingPointConstantTypeRule::preComputeType(
+    CVC5_UNUSED NodeManager* nm, CVC5_UNUSED TNode n)
 {
   return TypeNode::null();
 }
@@ -70,14 +68,16 @@ TypeNode FloatingPointConstantTypeRule::computeType(NodeManager* nodeManager,
   return nodeManager->mkFloatingPointType(f.getSize());
 }
 
-TypeNode RoundingModeConstantTypeRule::preComputeType(NodeManager* nm, TNode n)
+TypeNode RoundingModeConstantTypeRule::preComputeType(
+    CVC5_UNUSED NodeManager* nm, CVC5_UNUSED TNode n)
 {
   return TypeNode::null();
 }
-TypeNode RoundingModeConstantTypeRule::computeType(NodeManager* nodeManager,
-                                                   TNode n,
-                                                   bool check,
-                                                   std::ostream* errOut)
+TypeNode RoundingModeConstantTypeRule::computeType(
+    NodeManager* nodeManager,
+    TNode n,
+    bool check,
+    CVC5_UNUSED std::ostream* errOut)
 {
   TRACE("RoundingModeConstantTypeRule");
 
@@ -85,7 +85,8 @@ TypeNode RoundingModeConstantTypeRule::computeType(NodeManager* nodeManager,
   return nodeManager->roundingModeType();
 }
 
-TypeNode FloatingPointFPTypeRule::preComputeType(NodeManager* nm, TNode n)
+TypeNode FloatingPointFPTypeRule::preComputeType(CVC5_UNUSED NodeManager* nm,
+                                                 CVC5_UNUSED TNode n)
 {
   return TypeNode::null();
 }
@@ -100,9 +101,9 @@ TypeNode FloatingPointFPTypeRule::computeType(NodeManager* nodeManager,
   TypeNode exponentType = n[1].getTypeOrNull();
   TypeNode significandType = n[2].getTypeOrNull();
 
-  if (!signType.isMaybeKind(kind::BITVECTOR_TYPE)
-      || !exponentType.isMaybeKind(kind::BITVECTOR_TYPE)
-      || !significandType.isMaybeKind(kind::BITVECTOR_TYPE))
+  if (!signType.isMaybeKind(Kind::BITVECTOR_TYPE)
+      || !exponentType.isMaybeKind(Kind::BITVECTOR_TYPE)
+      || !significandType.isMaybeKind(Kind::BITVECTOR_TYPE))
   {
     if (errOut)
     {
@@ -113,7 +114,7 @@ TypeNode FloatingPointFPTypeRule::computeType(NodeManager* nodeManager,
   // if not concrete, we are abstract floating point
   if (!exponentType.isBitVector() || !significandType.isBitVector())
   {
-    return nodeManager->mkAbstractType(kind::FLOATINGPOINT_TYPE);
+    return nodeManager->mkAbstractType(Kind::FLOATINGPOINT_TYPE);
   }
   uint32_t exponentBits = exponentType.getBitVectorSize();
   uint32_t significandBits = significandType.getBitVectorSize();
@@ -154,7 +155,8 @@ TypeNode FloatingPointFPTypeRule::computeType(NodeManager* nodeManager,
   return nodeManager->mkFloatingPointType(exponentBits, significandBits + 1);
 }
 
-TypeNode FloatingPointTestTypeRule::preComputeType(NodeManager* nm, TNode n)
+TypeNode FloatingPointTestTypeRule::preComputeType(NodeManager* nm,
+                                                   CVC5_UNUSED TNode n)
 {
   return nm->booleanType();
 }
@@ -169,7 +171,7 @@ TypeNode FloatingPointTestTypeRule::computeType(NodeManager* nodeManager,
   {
     TypeNode firstOperand = n[0].getTypeOrNull();
 
-    if (!firstOperand.isMaybeKind(kind::FLOATINGPOINT_TYPE))
+    if (!firstOperand.isMaybeKind(Kind::FLOATINGPOINT_TYPE))
     {
       if (errOut)
       {
@@ -195,15 +197,16 @@ TypeNode FloatingPointTestTypeRule::computeType(NodeManager* nodeManager,
   return nodeManager->booleanType();
 }
 
-TypeNode FloatingPointOperationTypeRule::preComputeType(NodeManager* nm,
-                                                        TNode n)
+TypeNode FloatingPointOperationTypeRule::preComputeType(
+    CVC5_UNUSED NodeManager* nm, CVC5_UNUSED TNode n)
 {
   return TypeNode::null();
 }
-TypeNode FloatingPointOperationTypeRule::computeType(NodeManager* nodeManager,
-                                                     TNode n,
-                                                     bool check,
-                                                     std::ostream* errOut)
+TypeNode FloatingPointOperationTypeRule::computeType(
+    CVC5_UNUSED NodeManager* nodeManager,
+    TNode n,
+    bool check,
+    std::ostream* errOut)
 {
   TRACE("FloatingPointOperationTypeRule");
 
@@ -211,7 +214,7 @@ TypeNode FloatingPointOperationTypeRule::computeType(NodeManager* nodeManager,
 
   if (check)
   {
-    if (!firstOperand.isMaybeKind(kind::FLOATINGPOINT_TYPE))
+    if (!firstOperand.isMaybeKind(Kind::FLOATINGPOINT_TYPE))
     {
       if (errOut)
       {
@@ -238,13 +241,16 @@ TypeNode FloatingPointOperationTypeRule::computeType(NodeManager* nodeManager,
   return firstOperand;
 }
 
-TypeNode FloatingPointRoundingOperationTypeRule::preComputeType(NodeManager* nm,
-                                                                TNode n)
+TypeNode FloatingPointRoundingOperationTypeRule::preComputeType(
+    CVC5_UNUSED NodeManager* nm, CVC5_UNUSED TNode n)
 {
   return TypeNode::null();
 }
 TypeNode FloatingPointRoundingOperationTypeRule::computeType(
-    NodeManager* nodeManager, TNode n, bool check, std::ostream* errOut)
+    CVC5_UNUSED NodeManager* nodeManager,
+    TNode n,
+    bool check,
+    std::ostream* errOut)
 {
   TRACE("FloatingPointRoundingOperationTypeRule");
 
@@ -266,7 +272,7 @@ TypeNode FloatingPointRoundingOperationTypeRule::computeType(
 
   if (check)
   {
-    if (!firstOperand.isMaybeKind(kind::FLOATINGPOINT_TYPE))
+    if (!firstOperand.isMaybeKind(Kind::FLOATINGPOINT_TYPE))
     {
       if (errOut)
       {
@@ -293,13 +299,16 @@ TypeNode FloatingPointRoundingOperationTypeRule::computeType(
   return firstOperand;
 }
 
-TypeNode FloatingPointPartialOperationTypeRule::preComputeType(NodeManager* nm,
-                                                               TNode n)
+TypeNode FloatingPointPartialOperationTypeRule::preComputeType(
+    CVC5_UNUSED NodeManager* nm, CVC5_UNUSED TNode n)
 {
   return TypeNode::null();
 }
 TypeNode FloatingPointPartialOperationTypeRule::computeType(
-    NodeManager* nodeManager, TNode n, bool check, std::ostream* errOut)
+    CVC5_UNUSED NodeManager* nodeManager,
+    TNode n,
+    bool check,
+    std::ostream* errOut)
 {
   TRACE("FloatingPointOperationTypeRule");
   AlwaysAssert(n.getNumChildren() > 0);
@@ -308,7 +317,7 @@ TypeNode FloatingPointPartialOperationTypeRule::computeType(
 
   if (check)
   {
-    if (!firstOperand.isMaybeKind(kind::FLOATINGPOINT_TYPE))
+    if (!firstOperand.isMaybeKind(Kind::FLOATINGPOINT_TYPE))
     {
       if (errOut)
       {
@@ -334,7 +343,7 @@ TypeNode FloatingPointPartialOperationTypeRule::computeType(
 
     TypeNode UFValueType = n[children - 1].getTypeOrNull();
 
-    if (!UFValueType.isMaybeKind(kind::BITVECTOR_TYPE)
+    if (!UFValueType.isMaybeKind(Kind::BITVECTOR_TYPE)
         || (UFValueType.isBitVector() && UFValueType.getBitVectorSize() != 1))
     {
       if (errOut)
@@ -350,8 +359,8 @@ TypeNode FloatingPointPartialOperationTypeRule::computeType(
   return firstOperand;
 }
 
-TypeNode FloatingPointToFPIEEEBitVectorTypeRule::preComputeType(NodeManager* nm,
-                                                                TNode n)
+TypeNode FloatingPointToFPIEEEBitVectorTypeRule::preComputeType(
+    CVC5_UNUSED NodeManager* nm, CVC5_UNUSED TNode n)
 {
   return TypeNode::null();
 }
@@ -369,7 +378,7 @@ TypeNode FloatingPointToFPIEEEBitVectorTypeRule::computeType(
   {
     TypeNode operandType = n[0].getTypeOrNull();
 
-    if (!operandType.isMaybeKind(kind::BITVECTOR_TYPE))
+    if (!operandType.isMaybeKind(Kind::BITVECTOR_TYPE))
     {
       if (errOut)
       {
@@ -428,7 +437,7 @@ TypeNode FloatingPointToFPFloatingPointTypeRule::computeType(
 
     TypeNode operandType = n[1].getTypeOrNull();
 
-    if (!operandType.isMaybeKind(kind::FLOATINGPOINT_TYPE))
+    if (!operandType.isMaybeKind(Kind::FLOATINGPOINT_TYPE))
     {
       if (errOut)
       {
@@ -521,7 +530,7 @@ TypeNode FloatingPointToFPSignedBitVectorTypeRule::computeType(
 
     TypeNode operandType = n[1].getTypeOrNull();
 
-    if (!(operandType.isMaybeKind(kind::BITVECTOR_TYPE)))
+    if (!(operandType.isMaybeKind(Kind::BITVECTOR_TYPE)))
     {
       if (errOut)
       {
@@ -567,7 +576,7 @@ TypeNode FloatingPointToFPUnsignedBitVectorTypeRule::computeType(
 
     TypeNode operandType = n[1].getTypeOrNull();
 
-    if (!(operandType.isMaybeKind(kind::BITVECTOR_TYPE)))
+    if (!(operandType.isMaybeKind(Kind::BITVECTOR_TYPE)))
     {
       if (errOut)
       {
@@ -612,7 +621,7 @@ TypeNode FloatingPointToUBVTypeRule::computeType(NodeManager* nodeManager,
 
     TypeNode operandType = n[1].getTypeOrNull();
 
-    if (!(operandType.isMaybeKind(kind::FLOATINGPOINT_TYPE)))
+    if (!(operandType.isMaybeKind(Kind::FLOATINGPOINT_TYPE)))
     {
       if (errOut)
       {
@@ -657,7 +666,7 @@ TypeNode FloatingPointToSBVTypeRule::computeType(NodeManager* nodeManager,
 
     TypeNode operandType = n[1].getTypeOrNull();
 
-    if (!(operandType.isMaybeKind(kind::FLOATINGPOINT_TYPE)))
+    if (!(operandType.isMaybeKind(Kind::FLOATINGPOINT_TYPE)))
     {
       if (errOut)
       {
@@ -705,7 +714,7 @@ TypeNode FloatingPointToUBVTotalTypeRule::computeType(NodeManager* nodeManager,
 
     TypeNode operandType = n[1].getTypeOrNull();
 
-    if (!(operandType.isMaybeKind(kind::FLOATINGPOINT_TYPE)))
+    if (!(operandType.isMaybeKind(Kind::FLOATINGPOINT_TYPE)))
     {
       if (errOut)
       {
@@ -718,7 +727,7 @@ TypeNode FloatingPointToUBVTotalTypeRule::computeType(NodeManager* nodeManager,
 
     TypeNode defaultValueType = n[2].getTypeOrNull();
 
-    if (!(defaultValueType.isMaybeKind(kind::BITVECTOR_TYPE))
+    if (!(defaultValueType.isMaybeKind(Kind::BITVECTOR_TYPE))
         || !(defaultValueType.getBitVectorSize() == info))
     {
       if (errOut)
@@ -767,7 +776,7 @@ TypeNode FloatingPointToSBVTotalTypeRule::computeType(NodeManager* nodeManager,
 
     TypeNode operandType = n[1].getTypeOrNull();
 
-    if (!(operandType.isMaybeKind(kind::FLOATINGPOINT_TYPE)))
+    if (!(operandType.isMaybeKind(Kind::FLOATINGPOINT_TYPE)))
     {
       if (errOut)
       {
@@ -780,7 +789,7 @@ TypeNode FloatingPointToSBVTotalTypeRule::computeType(NodeManager* nodeManager,
 
     TypeNode defaultValueType = n[2].getTypeOrNull();
 
-    if (!(defaultValueType.isMaybeKind(kind::BITVECTOR_TYPE))
+    if (!(defaultValueType.isMaybeKind(Kind::BITVECTOR_TYPE))
         || !(defaultValueType.getBitVectorSize() == info))
     {
       if (errOut)
@@ -796,7 +805,8 @@ TypeNode FloatingPointToSBVTotalTypeRule::computeType(NodeManager* nodeManager,
   return nodeManager->mkBitVectorType(info.d_bv_size);
 }
 
-TypeNode FloatingPointToRealTypeRule::preComputeType(NodeManager* nm, TNode n)
+TypeNode FloatingPointToRealTypeRule::preComputeType(NodeManager* nm,
+                                                     CVC5_UNUSED TNode n)
 {
   return nm->realType();
 }
@@ -812,7 +822,7 @@ TypeNode FloatingPointToRealTypeRule::computeType(NodeManager* nodeManager,
   {
     TypeNode operandType = n[0].getTypeOrNull();
 
-    if (!operandType.isMaybeKind(kind::FLOATINGPOINT_TYPE))
+    if (!operandType.isMaybeKind(Kind::FLOATINGPOINT_TYPE))
     {
       if (errOut)
       {
@@ -827,7 +837,7 @@ TypeNode FloatingPointToRealTypeRule::computeType(NodeManager* nodeManager,
 }
 
 TypeNode FloatingPointToRealTotalTypeRule::preComputeType(NodeManager* nm,
-                                                          TNode n)
+                                                          CVC5_UNUSED TNode n)
 {
   return nm->realType();
 }
@@ -843,7 +853,7 @@ TypeNode FloatingPointToRealTotalTypeRule::computeType(NodeManager* nodeManager,
   {
     TypeNode operandType = n[0].getTypeOrNull();
 
-    if (!operandType.isMaybeKind(kind::FLOATINGPOINT_TYPE))
+    if (!operandType.isMaybeKind(Kind::FLOATINGPOINT_TYPE))
     {
       if (errOut)
       {
@@ -869,7 +879,8 @@ TypeNode FloatingPointToRealTotalTypeRule::computeType(NodeManager* nodeManager,
   return nodeManager->realType();
 }
 
-TypeNode FloatingPointComponentBit::preComputeType(NodeManager* nm, TNode n)
+TypeNode FloatingPointComponentBit::preComputeType(NodeManager* nm,
+                                                   CVC5_UNUSED TNode n)
 {
   return nm->mkBitVectorType(1);
 }
@@ -884,7 +895,7 @@ TypeNode FloatingPointComponentBit::computeType(NodeManager* nodeManager,
   {
     TypeNode operandType = n[0].getTypeOrNull();
 
-    if (!operandType.isMaybeKind(kind::FLOATINGPOINT_TYPE))
+    if (!operandType.isMaybeKind(Kind::FLOATINGPOINT_TYPE))
     {
       if (errOut)
       {
@@ -895,7 +906,7 @@ TypeNode FloatingPointComponentBit::computeType(NodeManager* nodeManager,
       return TypeNode::null();
     }
     if (!(Theory::isLeafOf(n[0], THEORY_FP)
-          || n[0].getKind() == kind::FLOATINGPOINT_TO_FP_FROM_REAL))
+          || n[0].getKind() == Kind::FLOATINGPOINT_TO_FP_FROM_REAL))
     {
       if (errOut)
       {
@@ -910,8 +921,8 @@ TypeNode FloatingPointComponentBit::computeType(NodeManager* nodeManager,
   return nodeManager->mkBitVectorType(1);
 }
 
-TypeNode FloatingPointComponentExponent::preComputeType(NodeManager* nm,
-                                                        TNode n)
+TypeNode FloatingPointComponentExponent::preComputeType(
+    CVC5_UNUSED NodeManager* nm, CVC5_UNUSED TNode n)
 {
   return TypeNode::null();
 }
@@ -926,7 +937,7 @@ TypeNode FloatingPointComponentExponent::computeType(NodeManager* nodeManager,
 
   if (check)
   {
-    if (!operandType.isMaybeKind(kind::FLOATINGPOINT_TYPE))
+    if (!operandType.isMaybeKind(Kind::FLOATINGPOINT_TYPE))
     {
       if (errOut)
       {
@@ -937,7 +948,7 @@ TypeNode FloatingPointComponentExponent::computeType(NodeManager* nodeManager,
       return TypeNode::null();
     }
     if (!(Theory::isLeafOf(n[0], THEORY_FP)
-          || n[0].getKind() == kind::FLOATINGPOINT_TO_FP_FROM_REAL))
+          || n[0].getKind() == Kind::FLOATINGPOINT_TO_FP_FROM_REAL))
     {
       if (errOut)
       {
@@ -959,8 +970,8 @@ TypeNode FloatingPointComponentExponent::computeType(NodeManager* nodeManager,
   return nodeManager->mkBitVectorType(bw);
 }
 
-TypeNode FloatingPointComponentSignificand::preComputeType(NodeManager* nm,
-                                                           TNode n)
+TypeNode FloatingPointComponentSignificand::preComputeType(
+    CVC5_UNUSED NodeManager* nm, CVC5_UNUSED TNode n)
 {
   return TypeNode::null();
 }
@@ -973,7 +984,7 @@ TypeNode FloatingPointComponentSignificand::computeType(
 
   if (check)
   {
-    if (!operandType.isMaybeKind(kind::FLOATINGPOINT_TYPE))
+    if (!operandType.isMaybeKind(Kind::FLOATINGPOINT_TYPE))
     {
       if (errOut)
       {
@@ -984,7 +995,7 @@ TypeNode FloatingPointComponentSignificand::computeType(
       return TypeNode::null();
     }
     if (!(Theory::isLeafOf(n[0], THEORY_FP)
-          || n[0].getKind() == kind::FLOATINGPOINT_TO_FP_FROM_REAL))
+          || n[0].getKind() == Kind::FLOATINGPOINT_TO_FP_FROM_REAL))
     {
       if (errOut)
       {
@@ -1002,7 +1013,8 @@ TypeNode FloatingPointComponentSignificand::computeType(
   return nodeManager->mkBitVectorType(bw);
 }
 
-TypeNode RoundingModeBitBlast::preComputeType(NodeManager* nm, TNode n)
+TypeNode RoundingModeBitBlast::preComputeType(NodeManager* nm,
+                                              CVC5_UNUSED TNode n)
 {
   return nm->mkBitVectorType(CVC5_NUM_ROUNDING_MODES);
 }

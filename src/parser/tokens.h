@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -54,6 +51,7 @@ enum Token : uint32_t
   DECLARE_ORACLE_FUN_TOK,
   DECLARE_POOL_TOK,
   DECLARE_SORT_TOK,
+  DECLARE_SORT_PARAMETER_TOK,
   DECLARE_VAR_TOK,
   DEFINE_CONST_TOK,
   DEFINE_FUNS_REC_TOK,
@@ -80,9 +78,12 @@ enum Token : uint32_t
   GET_QE_DISJUNCT_TOK,
   GET_QE_TOK,
   GET_TIMEOUT_CORE_TOK,
+  GET_TIMEOUT_CORE_ASSUMING_TOK,
   GET_UNSAT_ASSUMPTIONS_TOK,
   GET_UNSAT_CORE_TOK,
+  GET_UNSAT_CORE_LEMMAS_TOK,
   GET_VALUE_TOK,
+  GET_MODEL_DOMAIN_ELEMENTS_TOK,
   HEX_LITERAL,
   INCLUDE_TOK,
   INDEX_TOK,
@@ -97,6 +98,7 @@ enum Token : uint32_t
   POP_TOK,
   PUSH_TOK,
   QUOTED_SYMBOL,
+  RATIONAL_LITERAL,
   RESET_ASSERTIONS_TOK,
   RESET_TOK,
   RPAREN_TOK,

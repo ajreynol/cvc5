@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Andres Noetzli, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -46,7 +43,7 @@ bool InstStrategyPool::needsCheck(Theory::Effort e)
   return d_qstate.getInstWhenNeedsCheck(e);
 }
 
-void InstStrategyPool::reset_round(Theory::Effort e) {}
+void InstStrategyPool::reset_round(CVC5_UNUSED Theory::Effort e) {}
 
 void InstStrategyPool::registerQuantifier(Node q)
 {
@@ -61,9 +58,17 @@ void InstStrategyPool::registerQuantifier(Node q)
     // add patterns
     for (const Node& p : subsPat)
     {
-      if (p.getKind() == INST_POOL)
+      if (p.getKind() == Kind::INST_POOL)
       {
-        d_userPools[q].push_back(p);
+        if (hasTupleSemantics(q, p) || hasProductSemantics(q, p))
+        {
+          d_userPools[q].push_back(p);
+        }
+        else
+        {
+          Warning() << "Cannot find semantics of pool " << p << " in " << q
+                    << std::endl;
+        }
       }
     }
   }
@@ -78,7 +83,7 @@ void InstStrategyPool::checkOwnership(Node q)
     // formula
     for (const Node& p : q[2])
     {
-      if (p.getKind() == INST_POOL)
+      if (p.getKind() == Kind::INST_POOL)
       {
         d_qreg.setOwner(q, this, 1);
         return;
@@ -89,8 +94,8 @@ void InstStrategyPool::checkOwnership(Node q)
 
 bool InstStrategyPool::hasProductSemantics(Node q, Node p)
 {
-  Assert(q.getKind() == EXISTS || q.getKind() == FORALL);
-  Assert(p.getKind() == INST_POOL);
+  Assert(q.getKind() == Kind::EXISTS || q.getKind() == Kind::FORALL);
+  Assert(p.getKind() == Kind::INST_POOL);
   size_t nchild = p.getNumChildren();
   if (nchild != q[0].getNumChildren())
   {
@@ -111,8 +116,8 @@ bool InstStrategyPool::hasProductSemantics(Node q, Node p)
 
 bool InstStrategyPool::hasTupleSemantics(Node q, Node p)
 {
-  Assert(q.getKind() == EXISTS || q.getKind() == FORALL);
-  Assert(p.getKind() == INST_POOL);
+  Assert(q.getKind() == Kind::EXISTS || q.getKind() == Kind::FORALL);
+  Assert(p.getKind() == Kind::INST_POOL);
   if (p.getNumChildren() != 1)
   {
     return false;
@@ -141,19 +146,14 @@ bool InstStrategyPool::hasTupleSemantics(Node q, Node p)
   return true;
 }
 
-void InstStrategyPool::check(Theory::Effort e, QEffort quant_e)
+void InstStrategyPool::check(CVC5_UNUSED Theory::Effort e,
+                             CVC5_UNUSED QEffort quant_e)
 {
   if (d_userPools.empty())
   {
     return;
   }
-  double clSet = 0;
-  if (TraceIsOn("pool-engine"))
-  {
-    clSet = double(clock()) / double(CLOCKS_PER_SEC);
-    Trace("pool-engine") << "---Pool instantiation, effort = " << e << "---"
-                         << std::endl;
-  }
+  beginCallDebug();
   FirstOrderModel* fm = d_treg.getModel();
   bool inConflict = false;
   uint64_t addedLemmas = 0;
@@ -187,28 +187,20 @@ void InstStrategyPool::check(Theory::Effort e, QEffort quant_e)
       break;
     }
   }
-  if (TraceIsOn("pool-engine"))
-  {
-    Trace("pool-engine") << "Added lemmas = " << addedLemmas << std::endl;
-    double clSet2 = double(clock()) / double(CLOCKS_PER_SEC);
-    Trace("pool-engine") << "Finished pool instantiation, time = "
-                         << (clSet2 - clSet) << std::endl;
-  }
+  endCallDebug();
 }
 
-std::string InstStrategyPool::identify() const
-{
-  return std::string("InstStrategyPool");
-}
+std::string InstStrategyPool::identify() const { return "pool-inst"; }
 
 bool InstStrategyPool::process(Node q, Node p, uint64_t& addedLemmas)
 {
-  Assert(q.getKind() == FORALL && p.getKind() == INST_POOL);
+  Assert(q.getKind() == Kind::FORALL && p.getKind() == Kind::INST_POOL);
   // maybe has tuple semantics?
   if (hasTupleSemantics(q, p))
   {
     return processTuple(q, p, addedLemmas);
   }
+  Assert(hasProductSemantics(q, p));
   // otherwise, process standard
   Instantiate* ie = d_qim.getInstantiate();
   TermTupleEnumeratorEnv ttec;
@@ -261,7 +253,7 @@ bool InstStrategyPool::processTuple(Node q, Node p, uint64_t& addedLemmas)
     {
       return true;
     }
-    if (t.getKind() != APPLY_CONSTRUCTOR)
+    if (t.getKind() != Kind::APPLY_CONSTRUCTOR)
     {
       // a symbolic tuple is in the pool, we ignore it.
       continue;

@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Aina Niemetz, Andrew Reynolds, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -50,8 +47,8 @@ class TheoryPreregistrarNotify : public context::ContextNotifyObj
 
 TheoryPreregistrar::TheoryPreregistrar(Env& env,
                                        TheoryEngine* te,
-                                       CDCLTSatSolver* ss,
-                                       CnfStream* cs)
+                                       CVC5_UNUSED CDCLTSatSolver* ss,
+                                       CVC5_UNUSED CnfStream* cs)
     : EnvObj(env),
       d_theoryEngine(te),
       d_notify(new TheoryPreregistrarNotify(env, *this))
@@ -64,9 +61,16 @@ bool TheoryPreregistrar::needsActiveSkolemDefs() const { return false; }
 
 void TheoryPreregistrar::check() {}
 
-void TheoryPreregistrar::addAssertion(TNode n, TNode skolem, bool isLemma) {}
+void TheoryPreregistrar::addAssertion(CVC5_UNUSED TNode n,
+                                      CVC5_UNUSED TNode skolem,
+                                      CVC5_UNUSED bool isLemma)
+{
+}
 
-void TheoryPreregistrar::notifyActiveSkolemDefs(std::vector<TNode>& defs) {}
+void TheoryPreregistrar::notifyActiveSkolemDefs(
+    CVC5_UNUSED std::vector<TNode>& defs)
+{
+}
 
 void TheoryPreregistrar::notifySatLiteral(TNode n)
 {
@@ -80,10 +84,8 @@ void TheoryPreregistrar::notifySatLiteral(TNode n)
   }
 }
 
-void TheoryPreregistrar::notifyBacktrack(uint32_t nlevels)
+void TheoryPreregistrar::notifyBacktrack()
 {
-  (void)nlevels;
-
   uint32_t level = d_env.getContext()->getLevel();
   for (size_t i = 0, n = d_sat_literals.size(); i < n; ++i)
   {
@@ -104,7 +106,7 @@ void TheoryPreregistrar::notifyBacktrack(uint32_t nlevels)
     // at a higher level than the current SAT context level. These literals
     // are popped from the SAT context on backtrack but remain in the SAT
     // solver, and thus must be reregistered.
-    Trace("prereg") << "reregister: " << n << std::endl;
+    Trace("prereg") << "reregister: " << node << std::endl;
     // Note: This call potentially adds to d_sat_literals, which we are
     //       currently iterating over. This is not an issue, though, since
     //       a) we access it by index and b) any literals added through this
@@ -127,7 +129,7 @@ bool TheoryPreregistrar::notifyAsserted(TNode n)
   }
   // otherwise, we always ensure it is preregistered now, which does nothing
   // if it is already preregistered
-  TNode natom = n.getKind() == kind::NOT ? n[0] : n;
+  TNode natom = n.getKind() == Kind::NOT ? n[0] : n;
   Trace("prereg") << "preregister (lazy): " << natom << std::endl;
   d_theoryEngine->preRegister(natom);
   return true;

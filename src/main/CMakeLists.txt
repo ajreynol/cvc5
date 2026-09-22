@@ -1,10 +1,7 @@
 ###############################################################################
-# Top contributors (to current version):
-#   Mathias Preiner, Gereon Kremer, Aina Niemetz
-#
 # This file is part of the cvc5 project.
 #
-# Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+# Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
 # in the top-level source directory and their institutional affiliations.
 # All rights reserved.  See the file COPYING in the top-level source
 # directory for licensing information.
@@ -40,7 +37,7 @@ add_library(main OBJECT ${libmain_src_files} ${libmain_gen_src_files})
 target_compile_definitions(main PRIVATE -D__BUILDING_CVC5DRIVER -Dcvc5_obj_EXPORTS)
 set_target_properties(main PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
-add_dependencies(main gen-tokens cvc5-obj)
+add_dependencies(main gen-tokens cvc5-obj cvc5parser-objs)
 
 # main-test library is only used for linking against api and unit tests so
 # that we don't have to include all object files of main into each api/unit
@@ -63,7 +60,7 @@ target_compile_definitions(cvc5-bin PRIVATE -D__BUILDING_CVC5DRIVER -Dcvc5_obj_E
 set_target_properties(cvc5-bin
   PROPERTIES
     OUTPUT_NAME cvc5
-    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/bin)
 if(PROGRAM_PREFIX)
   install(PROGRAMS
     $<TARGET_FILE:cvc5-bin>
@@ -87,6 +84,9 @@ if(NOT BUILD_SHARED_LIBS)
   set_target_properties(cvc5-bin PROPERTIES INSTALL_RPATH "")
 endif()
 target_link_libraries(cvc5-bin PUBLIC cvc5 cvc5parser)
+if(USE_COCOA)
+  target_include_directories(cvc5-bin SYSTEM PRIVATE ${CoCoA_INCLUDE_DIR})
+endif()
 
 if(USE_EDITLINE)
   target_link_libraries(cvc5-bin PUBLIC ${Editline_LIBRARIES})

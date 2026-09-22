@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Gereon Kremer, Abdalrhman Mohamed
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -30,6 +27,7 @@
 #include "theory/quantifiers/sygus/embedding_converter.h"
 #include "theory/quantifiers/sygus/enum_value_manager.h"
 #include "theory/quantifiers/sygus/print_sygus_to_builtin.h"
+#include "theory/quantifiers/sygus/sygus_enumerator.h"
 #include "theory/quantifiers/sygus/sygus_pbe.h"
 #include "theory/quantifiers/sygus/synth_engine.h"
 #include "theory/quantifiers/sygus/term_database_sygus.h"
@@ -67,13 +65,14 @@ SynthConjecture::SynthConjecture(Env& env,
       d_ceg_proc(new SynthConjectureProcess(env)),
       d_embConv(new EmbeddingConverter(env, d_tds, this)),
       d_sygus_rconst(new SygusRepairConst(env, d_tds)),
-      d_exampleInfer(new ExampleInfer(d_tds)),
+      d_exampleInfer(new ExampleInfer(nodeManager())),
       d_ceg_pbe(new SygusPbe(env, qs, qim, d_tds, this)),
       d_ceg_cegis(new Cegis(env, qs, qim, d_tds, this)),
       d_ceg_cegisUnif(new CegisUnif(env, qs, qim, d_tds, this)),
       d_sygus_ccore(new CegisCoreConnective(env, qs, qim, d_tds, this)),
       d_master(nullptr),
-      d_repair_index(0)
+      d_repair_index(0),
+      d_verifyWarned(false)
 {
   if (options().datatypes.sygusSymBreakPbe
       || options().quantifiers.sygusUnifPbe)
@@ -117,10 +116,10 @@ void SynthConjecture::presolve()
 void SynthConjecture::assign(Node q)
 {
   Assert(d_embed_quant.isNull());
-  Assert(q.getKind() == FORALL);
+  Assert(q.getKind() == Kind::FORALL);
   Trace("cegqi") << "SynthConjecture : assign : " << q << std::endl;
   d_quant = q;
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   SkolemManager* sm = nm->getSkolemManager();
 
   // pre-simplify the quantified formula based on the process utility
@@ -167,6 +166,14 @@ void SynthConjecture::assign(Node q)
   d_embed_quant = d_embConv->process(d_simp_quant, templates, templates_arg);
   Trace("cegqi") << "SynthConjecture : converted to embedding : "
                  << d_embed_quant << std::endl;
+  // In very rare cases, the above call will return null if we construct a
+  // well-founded grammar. In this case, we fail immediately with "unknown".
+  if (d_embed_quant.isNull())
+  {
+    d_qim.lemma(d_quant.negate(), InferenceId::QUANTIFIERS_SYGUS_NO_WF_GRAMMAR);
+    d_qim.setRefutationUnsound(IncompleteId::QUANTIFIERS_SYGUS_NO_WF_GRAMMAR);
+    return;
+  }
 
   if (!sc.isNull())
   {
@@ -188,9 +195,10 @@ void SynthConjecture::assign(Node q)
         std::vector<Node> lvars;
         for (const TypeNode& tn : atypes)
         {
-          lvars.push_back(nm->mkBoundVar(tn));
+          lvars.push_back(NodeManager::mkBoundVar(tn));
         }
-        s = nm->mkNode(LAMBDA, nm->mkNode(BOUND_VAR_LIST, lvars), s);
+        s = nm->mkNode(
+            Kind::LAMBDA, nm->mkNode(Kind::BOUND_VAR_LIST, lvars), s);
       }
       subs.push_back(s);
     }
@@ -223,9 +231,10 @@ void SynthConjecture::assign(Node q)
   {
     Node v = d_embed_quant[0][i];
     vars.push_back(v);
-    Node e = sm->mkSkolemFunction(SkolemFunId::QUANTIFIERS_SYNTH_FUN_EMBED,
-                                  v.getType(),
-                                  d_simp_quant[0][i]);
+    Node e = sm->mkInternalSkolemFunction(
+        InternalSkolemId::QUANTIFIERS_SYNTH_FUN_EMBED,
+        v.getType(),
+        {d_simp_quant[0][i]});
     d_candidates.push_back(e);
   }
   Trace("cegqi") << "Base quantified formula is : " << d_embed_quant
@@ -235,11 +244,12 @@ void SynthConjecture::assign(Node q)
   bsubs.add(vars, d_candidates);
   d_base_inst = d_tds->rewriteNode(bsubs.apply(d_embed_quant[1]));
   d_checkBody = d_embed_quant[1];
-  if (d_checkBody.getKind() == NOT && d_checkBody[0].getKind() == FORALL)
+  if (d_checkBody.getKind() == Kind::NOT
+      && d_checkBody[0].getKind() == Kind::FORALL)
   {
     for (const Node& v : d_checkBody[0][0])
     {
-      Node sk = sm->mkDummySkolem("rsk", v.getType());
+      Node sk = NodeManager::mkDummySkolem("rsk", v.getType());
       bsubs.add(v, sk);
       d_innerVars.push_back(v);
       d_innerSks.push_back(sk);
@@ -278,9 +288,10 @@ void SynthConjecture::assign(Node q)
   Node conjForExamples = d_base_inst;
   if (!d_embedSideCondition.isNull())
   {
-    conjForExamples = nm->mkNode(AND, d_embedSideCondition, d_base_inst);
+    conjForExamples = nm->mkNode(Kind::AND, d_embedSideCondition, d_base_inst);
   }
-  if (d_exampleInfer!=nullptr && !d_exampleInfer->initialize(conjForExamples, d_candidates))
+  if (d_exampleInfer != nullptr
+      && !d_exampleInfer->initialize(conjForExamples, d_candidates))
   {
     // there is a contradictory example pair, the conjecture is infeasible.
     Node infLem = d_quant.negate();
@@ -311,16 +322,12 @@ void SynthConjecture::assign(Node q)
                  << std::endl;
 }
 
-
 bool SynthConjecture::isSingleInvocation() const
 {
   return d_ceg_si->isSingleInvocation();
 }
 
-bool SynthConjecture::needsCheck()
-{
-  return true;
-}
+bool SynthConjecture::needsCheck() { return true; }
 
 bool SynthConjecture::doCheck()
 {
@@ -387,11 +394,19 @@ bool SynthConjecture::doCheck()
       }
       d_repair_index++;
       if (d_sygus_rconst->repairSolution(
-              d_candidates, fail_cvs, candidate_values, true))
+              d_candidates, fail_cvs, candidate_values))
       {
         constructed_cand = true;
       }
     }
+    else
+    {
+      Trace("sygus-engine-debug") << "...no candidates to repair" << std::endl;
+    }
+  }
+  else
+  {
+    Trace("sygus-engine-debug") << "...not repairing" << std::endl;
   }
 
   bool printDebug = isOutputOn(OutputTag::SYGUS);
@@ -494,36 +509,63 @@ bool SynthConjecture::doCheck()
       return false;
     }
   }
+  else
+  {
+    return false;
+  }
 
   // must get a counterexample to the value of the current candidate
   Node query;
-  if (constructed_cand)
+  if (TraceIsOn("sygus-engine-debug"))
   {
-    if (TraceIsOn("sygus-engine-debug"))
+    Trace("sygus-engine-debug")
+        << "CegConjuncture : check candidate : " << std::endl;
+    for (unsigned i = 0, size = candidate_values.size(); i < size; i++)
     {
-      Trace("sygus-engine-debug")
-          << "CegConjuncture : check candidate : " << std::endl;
-      for (unsigned i = 0, size = candidate_values.size(); i < size; i++)
-      {
-        Trace("sygus-engine-debug")
-            << "  " << i << " : " << d_candidates[i] << " -> "
-            << candidate_values[i] << std::endl;
-      }
+      Trace("sygus-engine-debug") << "  " << i << " : " << d_candidates[i]
+                                  << " -> " << candidate_values[i] << std::endl;
     }
-    Assert(candidate_values.size() == d_candidates.size());
-    query = d_checkBody.substitute(d_candidates.begin(),
-                                   d_candidates.end(),
-                                   candidate_values.begin(),
-                                   candidate_values.end());
   }
-  else
+  Assert(candidate_values.size() == d_candidates.size());
+  query = d_checkBody.substitute(d_candidates.begin(),
+                                 d_candidates.end(),
+                                 candidate_values.begin(),
+                                 candidate_values.end());
+  query = rewrite(query);
+  Trace("sygus-engine-debug") << "Rewritten query is " << query << std::endl;
+  if (expr::hasFreeVar(query))
   {
-    query = d_checkBody;
-  }
-
-  if (!constructed_cand)
-  {
-    return false;
+    Trace("sygus-engine-debug")
+        << "Free variable, from fwd-decls?" << std::endl;
+    NodeManager* nm = nodeManager();
+    std::vector<Node> qconj;
+    qconj.push_back(query);
+    Subs psubs;
+    for (size_t i = 0, size = d_candidates.size(); i < size; i++)
+    {
+      Node bsol = datatypes::utils::sygusToBuiltin(candidate_values[i], false);
+      // convert to lambda
+      TypeNode tn = d_candidates[i].getType();
+      const DType& dt = tn.getDType();
+      Node fvar = d_quant[0][i];
+      Node bvl = dt.getSygusVarList();
+      if (!bvl.isNull())
+      {
+        // since we don't have function subtyping, this assertion should only
+        // check the return type
+        Assert(fvar.getType().isFunction());
+        AssertEqual(fvar.getType().getRangeType(), bsol.getType());
+        bsol = nm->mkNode(Kind::LAMBDA, bvl, bsol);
+      }
+      Trace("sygus-engine-debug")
+          << "Builtin sol: " << d_quant[0][i] << " -> " << bsol << std::endl;
+      // add purifying substitution, in case the dependencies are recusive
+      psubs.add(d_quant[0][i]);
+      // conjoin higher-order equality
+      qconj.push_back(d_quant[0][i].eqNode(bsol));
+    }
+    query = nm->mkAnd(qconj);
+    query = rewrite(psubs.apply(query));
   }
 
   // if we trust the sampling we ran, we terminate now
@@ -554,12 +596,6 @@ bool SynthConjecture::doCheck()
     out << ")" << std::endl;
   }
 
-  if (query.isNull())
-  {
-    // no lemma to check
-    return false;
-  }
-
   // Record the solution, which may be falsified below. We require recording
   // here since the result of the satisfiability test may be unknown.
   recordSolution(candidate_values);
@@ -574,6 +610,20 @@ bool SynthConjecture::doCheck()
   }
   else if (r.getStatus() != Result::UNSAT)
   {
+    if (!d_verifyWarned)
+    {
+      d_verifyWarned = true;
+      std::stringstream ss;
+      ss << "Warning: The SyGuS solver failed to verify a candidate solution, "
+            "likely due to the base logic being undecidable.";
+      if (!options().quantifiers.fullSygusVerify)
+      {
+        ss << " The option --full-sygus-verify can be used to put more effort "
+              "into verifying individual candidate solutions.";
+      }
+      ss << " Use -q to silence this warning.";
+      Warning() << ss.str() << std::endl;
+    }
     // In the rare case that the subcall is unknown, we simply exclude the
     // solution, without adding a counterexample point. This should only
     // happen if the quantifier free logic is undecidable.
@@ -730,10 +780,11 @@ EnumValueManager* SynthConjecture::getEnumValueManagerFor(Node e)
   }
   // otherwise, allocate it
   Node f = d_tds->getSynthFunForEnumerator(e);
-  bool hasExamples = (d_exampleInfer != nullptr && d_exampleInfer->hasExamples(f)
-                      && d_exampleInfer->getNumExamples(f) != 0);
-  d_enumManager[e].reset(new EnumValueManager(
-      d_env, d_qstate, d_qim, d_treg, d_stats, e, hasExamples));
+  bool hasExamples =
+      (d_exampleInfer != nullptr && d_exampleInfer->hasExamples(f)
+       && d_exampleInfer->getNumExamples(f) != 0);
+  d_enumManager[e].reset(
+      new EnumValueManager(d_env, d_qim, d_treg, d_stats, e, hasExamples));
   EnumValueManager* eman = d_enumManager[e].get();
   // set up the examples
   if (hasExamples)
@@ -774,7 +825,7 @@ Node SynthConjecture::getModelValue(Node n)
   return d_treg.getModel()->getValue(n);
 }
 
-void SynthConjecture::debugPrint(const char* c)
+void SynthConjecture::debugPrint(CVC5_UNUSED const char* c)
 {
   Trace(c) << "Synthesis conjecture : " << d_embed_quant << std::endl;
   Trace(c) << "  * Candidate programs : " << d_candidates << std::endl;
@@ -794,18 +845,20 @@ void SynthConjecture::excludeCurrentSolution(const std::vector<Node>& values,
   {
     Node cprog = d_candidates[i];
     Assert(d_tds->isEnumerator(cprog));
-    if (d_tds->isPassiveEnumerator(cprog))
+    if (!d_tds->isPassiveEnumerator(cprog))
     {
-      Node cval = values[i];
-      // add to explanation of exclusion
-      d_tds->getExplain()->getExplanationForEquality(cprog, cval, exp);
+      // If any candidate is actively generated, then we should not add the
+      // lemma below. We never mix fast and smart enumerators.
+      return;
     }
+    Node cval = values[i];
+    // add to explanation of exclusion
+    d_tds->getExplain()->getExplanationForEquality(cprog, cval, exp);
   }
   if (!exp.empty())
   {
-    Node exc_lem = exp.size() == 1
-                       ? exp[0]
-                       : NodeManager::currentNM()->mkNode(kind::AND, exp);
+    Node exc_lem =
+        exp.size() == 1 ? exp[0] : nodeManager()->mkNode(Kind::AND, exp);
     exc_lem = exc_lem.negate();
     Trace("cegqi-lemma") << "Cegqi::Lemma : exclude current solution : "
                          << exc_lem << " by " << id << std::endl;
@@ -830,7 +883,7 @@ bool SynthConjecture::runExprMiner()
   }
   // always exclude if sygus stream is enabled
   bool doExclude = options().quantifiers.sygusStream;
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   std::ostream& out = options().base.out;
   for (size_t i = 0, size = d_embed_quant[0].getNumChildren(); i < size; i++)
   {
@@ -881,7 +934,7 @@ bool SynthConjecture::runExprMiner()
       Node vl = dt.getSygusVarList();
       if (!vl.isNull())
       {
-        Assert(vl.getKind() == BOUND_VAR_LIST);
+        Assert(vl.getKind() == Kind::BOUND_VAR_LIST);
         SygusVarToTermAttribute sta;
         for (const Node& v : vl)
         {
@@ -897,7 +950,7 @@ bool SynthConjecture::runExprMiner()
       }
       else
       {
-        vl = nm->mkNode(BOUND_VAR_LIST, pvs);
+        vl = nm->mkNode(Kind::BOUND_VAR_LIST, pvs);
         out << vl << " ";
       }
       out << dt.getSygusType() << " ";
@@ -917,9 +970,9 @@ bool SynthConjecture::runExprMiner()
 }
 
 bool SynthConjecture::getSynthSolutions(
-    std::map<Node, std::map<Node, Node> >& sol_map)
+    std::map<Node, std::map<Node, Node>>& sol_map)
 {
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   std::vector<Node> sols;
   std::vector<int8_t> statuses;
   Trace("cegqi-debug") << "getSynthSolutions..." << std::endl;
@@ -955,12 +1008,12 @@ bool SynthConjecture::getSynthSolutions(
       // since we don't have function subtyping, this assertion should only
       // check the return type
       Assert(fvar.getType().isFunction());
-      Assert(fvar.getType().getRangeType() == bsol.getType());
-      bsol = nm->mkNode(LAMBDA, bvl, bsol);
+      AssertEqual(fvar.getType().getRangeType(), bsol.getType());
+      bsol = nm->mkNode(Kind::LAMBDA, bvl, bsol);
     }
     else
     {
-      Assert(fvar.getType() == bsol.getType());
+      AssertEqual(fvar.getType(), bsol.getType());
     }
     // store in map
     smc[fvar] = bsol;
@@ -1007,13 +1060,13 @@ bool SynthConjecture::getSynthSolutionsInternal(std::vector<Node>& sols,
     int8_t status = -1;
     if (isSingleInvocation())
     {
-      Assert(d_ceg_si != NULL);
+      Assert(d_ceg_si != nullptr);
       sol = d_ceg_si->getSolution(i, tn, status, true);
       if (sol.isNull())
       {
         return false;
       }
-      sol = sol.getKind() == LAMBDA ? sol[1] : sol;
+      sol = sol.getKind() == Kind::LAMBDA ? sol[1] : sol;
     }
     else
     {
@@ -1043,7 +1096,7 @@ bool SynthConjecture::getSynthSolutionsInternal(std::vector<Node>& sols,
           Trace("cegqi-inv-debug") << "Simplified : " << sol << std::endl;
           // now, reconstruct to the syntax
           sol = d_ceg_si->reconstructToSyntax(sol, tn, status, true);
-          sol = sol.getKind() == LAMBDA ? sol[1] : sol;
+          sol = sol.getKind() == Kind::LAMBDA ? sol[1] : sol;
           Trace("cegqi-inv-debug")
               << "Reconstructed to syntax : " << sol << std::endl;
         }
@@ -1101,9 +1154,8 @@ Node SynthConjecture::getSymmetryBreakingPredicate(
 
   if (!sb_lemmas.empty())
   {
-    return sb_lemmas.size() == 1
-               ? sb_lemmas[0]
-               : NodeManager::currentNM()->mkNode(kind::AND, sb_lemmas);
+    return sb_lemmas.size() == 1 ? sb_lemmas[0]
+                                 : nodeManager()->mkNode(Kind::AND, sb_lemmas);
   }
   else
   {

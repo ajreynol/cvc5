@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Mathias Preiner, Yoni Zohar
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -18,8 +15,9 @@
 #include "options/base_options.h"
 #include "options/quantifiers_options.h"
 #include "printer/smt2/smt2_printer.h"
+#include "smt/logic_exception.h"
 #include "theory/datatypes/sygus_datatype_utils.h"
-#include "theory/quantifiers/sygus/sygus_grammar_cons_new.h"
+#include "theory/quantifiers/sygus/sygus_grammar_cons.h"
 #include "theory/quantifiers/sygus/sygus_grammar_norm.h"
 #include "theory/quantifiers/sygus/sygus_utils.h"
 #include "theory/quantifiers/sygus/synth_conjecture.h"
@@ -41,7 +39,7 @@ EmbeddingConverter::EmbeddingConverter(Env& env,
 
 bool EmbeddingConverter::hasSyntaxRestrictions(Node q)
 {
-  Assert(q.getKind() == FORALL);
+  Assert(q.getKind() == Kind::FORALL);
   for (const Node& f : q[0])
   {
     TypeNode tn = SygusUtils::getSygusType(f);
@@ -56,7 +54,7 @@ bool EmbeddingConverter::hasSyntaxRestrictions(Node q)
 void EmbeddingConverter::collectTerms(
     Node n, std::map<TypeNode, std::unordered_set<Node>>& consts)
 {
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   std::unordered_map<TNode, bool> visited;
   std::unordered_map<TNode, bool>::iterator it;
   std::vector<TNode> visit;
@@ -112,8 +110,6 @@ Node EmbeddingConverter::process(Node q,
   std::map<TypeNode, std::unordered_set<Node>> exc_cons;
   std::map<TypeNode, std::unordered_set<Node>> inc_cons;
 
-  NodeManager* nm = NodeManager::currentNM();
-
   std::vector<Node> ebvl;
   for (unsigned i = 0; i < q[0].getNumChildren(); i++)
   {
@@ -165,13 +161,27 @@ Node EmbeddingConverter::process(Node q,
         trules.insert(trules.end(), c.second.begin(), c.second.end());
       }
       tn = SygusGrammarCons::mkDefaultSygusType(
-          options(), preGrammarType, sfvl, trules);
+          d_env, preGrammarType, sfvl, trules);
+      // this can happen only in very rare cases, e.g. where we are asking
+      // to generate a grammar for arrays and no ground values exist and
+      // array constants cannot be used
+      if (!tn.isWellFounded())
+      {
+        Warning() << "Warning: Failed to construct grammar for "
+                  << preGrammarType
+                  << " since no ground values can be generated for that type."
+                  << std::endl;
+        return Node::null();
+      }
     }
+    // Ensure the expanded definition forms are set. This is done after
+    // normalization above.
+    datatypes::utils::computeExpandedDefinitionForms(d_env, tn);
     // print the grammar
     if (isOutputOn(OutputTag::SYGUS_GRAMMAR))
     {
       output(OutputTag::SYGUS_GRAMMAR)
-          << "(sygus-grammar " << sf
+          << "(sygus-grammar " << sf << " "
           << printer::smt2::Smt2Printer::sygusGrammarString(tn) << ")"
           << std::endl;
     }
@@ -190,7 +200,7 @@ Node EmbeddingConverter::process(Node q,
     }
 
     // ev is the first-order variable corresponding to this synth fun
-    Node ev = nm->mkBoundVar("f" + sf.getName(), tn);
+    Node ev = NodeManager::mkBoundVar("f" + sf.getName(), tn);
     ebvl.push_back(ev);
     Trace("cegqi") << "...embedding synth fun : " << sf << " -> " << ev
                    << std::endl;
@@ -206,7 +216,7 @@ Node EmbeddingConverter::process(Node q,
   Assert(q[0].getNumChildren() == ebvl.size());
   Assert(d_synth_fun_vars.empty());
 
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
 
   std::vector<Node> qchildren;
   Node qbody_subs = q[1];
@@ -231,20 +241,20 @@ Node EmbeddingConverter::process(Node q,
       Trace("cegqi-debug") << "Template for " << sf << " is : " << templ
                            << " with arg " << templ_arg << std::endl;
       Trace("cegqi-debug")
-          << "  apply this template as a substituion during preprocess..."
+          << "  apply this template as a substitution during preprocess..."
           << std::endl;
       std::vector<Node> schildren;
       std::vector<Node> largs;
       for (unsigned j = 0; j < sfvl.getNumChildren(); j++)
       {
         schildren.push_back(sfvl[j]);
-        largs.push_back(nm->mkBoundVar(sfvl[j].getType()));
+        largs.push_back(NodeManager::mkBoundVar(sfvl[j].getType()));
       }
       std::vector<Node> subsfn_children;
       subsfn_children.push_back(sf);
       subsfn_children.insert(
           subsfn_children.end(), schildren.begin(), schildren.end());
-      Node subsfn = nm->mkNode(kind::APPLY_UF, subsfn_children);
+      Node subsfn = nm->mkNode(Kind::APPLY_UF, subsfn_children);
       TNode subsf = subsfn;
       Trace("cegqi-debug") << "  substitute arg : " << templ_arg << " -> "
                            << subsf << std::endl;
@@ -252,8 +262,8 @@ Node EmbeddingConverter::process(Node q,
       // substitute lambda arguments
       templ = templ.substitute(
           schildren.begin(), schildren.end(), largs.begin(), largs.end());
-      Node subsn =
-          nm->mkNode(kind::LAMBDA, nm->mkNode(BOUND_VAR_LIST, largs), templ);
+      Node subsn = nm->mkNode(
+          Kind::LAMBDA, nm->mkNode(Kind::BOUND_VAR_LIST, largs), templ);
       TNode var = sf;
       TNode subs = subsn;
       Trace("cegqi-debug") << "  substitute : " << var << " -> " << subs
@@ -270,7 +280,7 @@ Node EmbeddingConverter::process(Node q,
       d_is_syntax_restricted = true;
     }
   }
-  qchildren.push_back(nm->mkNode(kind::BOUND_VAR_LIST, ebvl));
+  qchildren.push_back(nm->mkNode(Kind::BOUND_VAR_LIST, ebvl));
   if (qbody_subs != q[1])
   {
     Trace("cegqi") << "...rewriting : " << qbody_subs << std::endl;
@@ -282,12 +292,12 @@ Node EmbeddingConverter::process(Node q,
   {
     qchildren.push_back(q[2]);
   }
-  return nm->mkNode(kind::FORALL, qchildren);
+  return nm->mkNode(Kind::FORALL, qchildren);
 }
 
 Node EmbeddingConverter::convertToEmbedding(Node n)
 {
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   std::unordered_map<TNode, Node> visited;
   std::unordered_map<TNode, Node>::iterator it;
   std::vector<TNode> visit;
@@ -314,7 +324,7 @@ Node EmbeddingConverter::convertToEmbedding(Node n)
       // get the potential operator
       if (cur.getNumChildren() > 0)
       {
-        if (cur.getKind() == kind::APPLY_UF)
+        if (cur.getKind() == Kind::APPLY_UF)
         {
           op = cur.getOperator();
         }
@@ -355,7 +365,7 @@ Node EmbeddingConverter::convertToEmbedding(Node n)
         if (!cur.getType().isFunction())
         {
           // will make into an application of an evaluation function
-          ret = nm->mkNode(DT_SYGUS_EVAL, children);
+          ret = nm->mkNode(Kind::DT_SYGUS_EVAL, children);
         }
         else
         {
@@ -372,13 +382,14 @@ Node EmbeddingConverter::convertToEmbedding(Node n)
           std::vector<Node> vs;
           for (const Node& v : vars)
           {
-            vs.push_back(nm->mkBoundVar(v.getType()));
+            vs.push_back(NodeManager::mkBoundVar(v.getType()));
           }
-          Node lvl = nm->mkNode(BOUND_VAR_LIST, vs);
+          Node lvl = nm->mkNode(Kind::BOUND_VAR_LIST, vs);
           std::vector<Node> eargs;
           eargs.push_back(ef);
           eargs.insert(eargs.end(), vs.begin(), vs.end());
-          ret = nm->mkNode(LAMBDA, lvl, nm->mkNode(DT_SYGUS_EVAL, eargs));
+          ret = nm->mkNode(
+              Kind::LAMBDA, lvl, nm->mkNode(Kind::DT_SYGUS_EVAL, eargs));
         }
       }
       else if (childChanged)

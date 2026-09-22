@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Christopher L. Conway, Morgan Deters
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -15,11 +12,12 @@
 
 #include "parser/parser.h"
 
+#include <cvc5/cvc5_parser.h>
+
 #include "base/check.h"
 #include "base/output.h"
-#include "parser/api/cpp/command.h"
+#include "parser/commands.h"
 #include "parser/lexer.h"
-#include "parser/parser_exception.h"
 #include "parser/smt2/smt2_parser.h"
 
 namespace cvc5 {
@@ -30,7 +28,7 @@ Parser::Parser(Solver* solver, SymManager* sm)
 {
 }
 
-void Parser::setLogic(const std::string& name) {}
+void Parser::setLogic(CVC5_UNUSED const std::string& name) {}
 
 void Parser::setFileInput(const std::string& filename)
 {
@@ -44,8 +42,7 @@ void Parser::setStreamInput(std::istream& input, const std::string& name)
   initializeInput(name);
 }
 
-void Parser::setStringInput(const std::string& input,
-                                const std::string& name)
+void Parser::setStringInput(const std::string& input, const std::string& name)
 {
   d_flexInput = Input::mkStringInput(input);
   initializeInput(name);
@@ -66,10 +63,10 @@ void Parser::unexpectedEOF(const std::string& msg)
   d_lex->parseError(msg, true);
 }
 
-std::unique_ptr<Command> Parser::nextCommand()
+std::unique_ptr<Cmd> Parser::nextCommand()
 {
   Trace("parser") << "nextCommand()" << std::endl;
-  std::unique_ptr<Command> cmd;
+  std::unique_ptr<Cmd> cmd;
   try
   {
     cmd = parseNextCommand();
@@ -89,15 +86,15 @@ std::unique_ptr<Command> Parser::nextCommand()
   return cmd;
 }
 
-Term Parser::nextExpression()
+Term Parser::nextTerm()
 {
-  Trace("parser") << "nextExpression()" << std::endl;
+  Trace("parser") << "nextTerm()" << std::endl;
   Term result;
   if (!d_done)
   {
     try
     {
-      result = parseNextExpression();
+      result = parseNextTerm();
       setDone(result.isNull());
     }
     catch (ParserException& e)
@@ -111,22 +108,32 @@ Term Parser::nextExpression()
       parseError(e.what());
     }
   }
-  Trace("parser") << "nextExpression() => " << result << std::endl;
+  Trace("parser") << "nextTerm() => " << result << std::endl;
   return result;
 }
 
 bool Parser::done() const { return d_done; }
 
-std::unique_ptr<Parser> Parser::mkParser(const std::string& lang,
+std::unique_ptr<Parser> Parser::mkParser(modes::InputLanguage lang,
                                          Solver* solver,
                                          SymManager* sm)
 {
   std::unique_ptr<Parser> parser;
-  if (lang == "LANG_SYGUS_V2" || lang == "LANG_SMTLIB_V2_6")
+  if (lang == modes::InputLanguage::SMT_LIB_2_6
+      || lang == modes::InputLanguage::SYGUS_2_1)
   {
-    bool isSygus = (lang == "LANG_SYGUS_V2");
-    bool strictMode = solver->getOptionInfo("strict-parsing").boolValue();
-    parser.reset(new Smt2Parser(solver, sm, strictMode, isSygus));
+    bool isSygus = (lang == modes::InputLanguage::SYGUS_2_1);
+    ParsingMode parsingMode = ParsingMode::DEFAULT;
+    std::string mode = solver->getOption("parsing-mode");
+    if (mode == "strict")
+    {
+      parsingMode = ParsingMode::STRICT;
+    }
+    else if (mode == "lenient")
+    {
+      parsingMode = ParsingMode::LENIENT;
+    }
+    parser.reset(new Smt2Parser(solver, sm, parsingMode, isSygus));
   }
   else
   {

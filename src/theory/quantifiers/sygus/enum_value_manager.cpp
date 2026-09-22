@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Gereon Kremer, Abdalrhman Mohamed
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -34,7 +31,6 @@ namespace theory {
 namespace quantifiers {
 
 EnumValueManager::EnumValueManager(Env& env,
-                                   QuantifiersState& qs,
                                    QuantifiersInferenceManager& qim,
                                    TermRegistry& tr,
                                    SygusStatistics& s,
@@ -42,7 +38,6 @@ EnumValueManager::EnumValueManager(Env& env,
                                    bool hasExamples)
     : EnvObj(env),
       d_enum(e),
-      d_qstate(qs),
       d_qim(qim),
       d_treg(tr),
       d_stats(s),
@@ -109,7 +104,7 @@ Node EnumValueManager::getEnumeratedValue(bool& activeIncomplete)
               d_env, d_tds, &d_stats, d_eec.get());
         }
         // if sygus repair const is enabled, we enumerate terms with free
-        // variables as arguments to any-constant constructors
+        // variables as arguments to any-constant constructors.
         d_evg = std::make_unique<SygusEnumerator>(
             d_env,
             d_tds,
@@ -171,7 +166,7 @@ Node EnumValueManager::getEnumeratedValue(bool& activeIncomplete)
   if (!inc)
   {
     // No more concrete values generated from absE.
-    NodeManager* nm = NodeManager::currentNM();
+    NodeManager* nm = nodeManager();
     d_ev_curr_active_gen = Node::null();
     std::vector<Node> exp;
     // If we are a basic enumerator, a single abstract value maps to *all*
@@ -197,9 +192,9 @@ Node EnumValueManager::getEnumeratedValue(bool& activeIncomplete)
     }
     else
     {
-      Assert(false);
+      DebugUnhandled();
     }
-    Node lem = exp.size() == 1 ? exp[0] : nm->mkNode(OR, exp);
+    Node lem = exp.size() == 1 ? exp[0] : nm->mkNode(Kind::OR, exp);
     Trace("cegqi-lemma") << "Cegqi::Lemma : actively-generated enumerator "
                             "exclude current solution : "
                          << lem << std::endl;

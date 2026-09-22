@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Mathias Preiner, Gereon Kremer
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -20,11 +17,11 @@
 #include "expr/dtype.h"
 #include "expr/dtype_cons.h"
 #include "expr/node_algorithm.h"
-#include "expr/skolem_manager.h"
 #include "expr/sygus_datatype.h"
 #include "smt/env.h"
 #include "theory/evaluator.h"
 #include "theory/rewriter.h"
+#include "theory/trust_substitutions.h"
 
 using namespace cvc5::internal;
 using namespace cvc5::internal::kind;
@@ -42,7 +39,7 @@ Node applySygusArgs(const DType& dt,
   // optimization: if n is just a sygus bound variable, return immediately
   // by replacing with the proper argument, or returning unchanged if it is
   // a bound variable not corresponding to a formal argument.
-  if (n.getKind() == BOUND_VARIABLE)
+  if (n.getKind() == Kind::BOUND_VARIABLE)
   {
     if (n.hasAttribute(SygusVarNumAttribute()))
     {
@@ -85,7 +82,7 @@ Node applySygusArgs(const DType& dt,
   {
     return n;
   }
-  if (val.getKind() == BOUND_VARIABLE)
+  if (val.getKind() == Kind::BOUND_VARIABLE)
   {
     // single substitution case
     int vn = val.getAttribute(SygusVarNumAttribute());
@@ -104,10 +101,10 @@ Node applySygusArgs(const DType& dt,
 
 Kind getOperatorKindForSygusBuiltin(Node op)
 {
-  Assert(op.getKind() != BUILTIN);
-  if (op.getKind() == LAMBDA)
+  Assert(op.getKind() != Kind::BUILTIN);
+  if (op.getKind() == Kind::LAMBDA)
   {
-    return APPLY_UF;
+    return Kind::APPLY_UF;
   }
   return NodeManager::getKindForFunction(op);
 }
@@ -151,8 +148,8 @@ Node mkSygusTerm(const Node& op,
                  const std::vector<Node>& children,
                  bool doBetaReduction)
 {
-  NodeManager* nm = NodeManager::currentNM();
-  Assert(nm->getSkolemManager()->getId(op) != SkolemFunId::SYGUS_ANY_CONSTANT);
+  NodeManager* nm = op.getNodeManager();
+  Assert(op.getInternalSkolemId() != InternalSkolemId::SYGUS_ANY_CONSTANT);
   Trace("dt-sygus-util") << "Operator is " << op << std::endl;
   if (children.empty())
   {
@@ -163,9 +160,9 @@ Node mkSygusTerm(const Node& op,
   std::vector<Node> schildren;
   // get the kind of the operator
   Kind ok = op.getKind();
-  if (ok != BUILTIN)
+  if (ok != Kind::BUILTIN)
   {
-    if (ok == LAMBDA && doBetaReduction)
+    if (ok == Kind::LAMBDA && doBetaReduction)
     {
       // Do immediate beta reduction. It suffices to use a normal substitution
       // since neither op nor children have quantifiers, since they are
@@ -184,7 +181,7 @@ Node mkSygusTerm(const Node& op,
   }
   schildren.insert(schildren.end(), children.begin(), children.end());
   Node ret;
-  if (ok == BUILTIN)
+  if (ok == Kind::BUILTIN)
   {
     ret = nm->mkNode(op, schildren);
     Trace("dt-sygus-util") << "...return (builtin) " << ret << std::endl;
@@ -193,23 +190,23 @@ Node mkSygusTerm(const Node& op,
   // get the kind used for applying op
   Kind otk = NodeManager::operatorToKind(op);
   Trace("dt-sygus-util") << "operator kind is " << otk << std::endl;
-  if (otk != UNDEFINED_KIND)
+  if (otk != Kind::UNDEFINED_KIND)
   {
     // If it is an APPLY_UF operator, we should have at least an operator and
     // a child.
-    Assert(otk != APPLY_UF || schildren.size() != 1);
+    Assert(otk != Kind::APPLY_UF || schildren.size() != 1);
     ret = nm->mkNode(otk, schildren);
     Trace("dt-sygus-util") << "...return (op) " << ret << std::endl;
     return ret;
   }
   Kind tok = getOperatorKindForSygusBuiltin(op);
-  if (schildren.size() == 1 && tok == UNDEFINED_KIND)
+  if (schildren.size() == 1 && tok == Kind::UNDEFINED_KIND)
   {
     ret = schildren[0];
   }
   else
   {
-    ret = NodeManager::currentNM()->mkNode(tok, schildren);
+    ret = nm->mkNode(tok, schildren);
   }
   Trace("dt-sygus-util") << "...return " << ret << std::endl;
   return ret;
@@ -259,7 +256,7 @@ Node sygusToBuiltin(Node n, bool isExternal)
       // Notice this condition succeeds in roughly 99% of the executions of this
       // method (based on our coverage tests), hence the else if / else cases
       // below do not significantly impact performance.
-      if (cur.getKind() == APPLY_CONSTRUCTOR)
+      if (cur.getKind() == Kind::APPLY_CONSTRUCTOR)
       {
         if (!isExternal && cur.hasAttribute(SygusToBuiltinTermAttribute()))
         {
@@ -277,7 +274,7 @@ Node sygusToBuiltin(Node n, bool isExternal)
       }
       else if (cur.getType().isSygusDatatype())
       {
-        Assert (cur.isVar());
+        Assert(cur.isVar());
         if (cur.hasAttribute(SygusToBuiltinVarAttribute()))
         {
           // use the previously constructed variable for it
@@ -289,8 +286,7 @@ Node sygusToBuiltin(Node n, bool isExternal)
           ss << cur;
           const DType& dt = cur.getType().getDType();
           // make a fresh variable
-          NodeManager * nm = NodeManager::currentNM();
-          Node var = nm->mkBoundVar(ss.str(), dt.getSygusType());
+          Node var = NodeManager::mkBoundVar(ss.str(), dt.getSygusType());
           SygusToBuiltinVarAttribute stbv;
           cur.setAttribute(stbv, var);
           visited[cur] = var;
@@ -308,7 +304,7 @@ Node sygusToBuiltin(Node n, bool isExternal)
     else if (it->second.isNull())
     {
       Node ret = cur;
-      Assert(cur.getKind() == APPLY_CONSTRUCTOR);
+      Assert(cur.getKind() == Kind::APPLY_CONSTRUCTOR);
       const DType& dt = cur.getType().getDType();
       // Non sygus-datatype terms are also themselves. Notice we treat the
       // case of non-sygus datatypes this way since it avoids computing
@@ -352,7 +348,16 @@ Node builtinVarToSygus(Node v)
   return Node::null();
 }
 
-void getFreeSymbolsSygusType(TypeNode sdt, std::unordered_set<Node>& syms)
+/**
+ * Get free symbols or variables in a sygus datatype type.
+ * @param sdt The sygus datatype.
+ * @param sym The symbols to add to.
+ * @param isVar If we are looking for variables (if not, we are looking for
+ * symbols).
+ */
+void getFreeSymbolsSygusTypeInternal(TypeNode sdt,
+                                     std::unordered_set<Node>& syms,
+                                     bool isVar)
 {
   // datatype types we need to process
   std::vector<TypeNode> typeToProcess;
@@ -370,7 +375,14 @@ void getFreeSymbolsSygusType(TypeNode sdt, std::unordered_set<Node>& syms)
       {
         // collect the symbols from the operator
         Node op = dtc[j].getSygusOp();
-        expr::getSymbols(op, syms);
+        if (isVar)
+        {
+          expr::getVariables(op, syms);
+        }
+        else
+        {
+          expr::getSymbols(op, syms);
+        }
         // traverse the argument types
         for (unsigned k = 0, nargs = dtc[j].getNumArgs(); k < nargs; k++)
         {
@@ -395,11 +407,21 @@ void getFreeSymbolsSygusType(TypeNode sdt, std::unordered_set<Node>& syms)
   }
 }
 
+void getFreeSymbolsSygusType(TypeNode sdt, std::unordered_set<Node>& syms)
+{
+  getFreeSymbolsSygusTypeInternal(sdt, syms, false);
+}
+
+void getFreeVariablesSygusType(TypeNode sdt, std::unordered_set<Node>& syms)
+{
+  getFreeSymbolsSygusTypeInternal(sdt, syms, true);
+}
+
 TypeNode substituteAndGeneralizeSygusType(TypeNode sdt,
                                           const std::vector<Node>& syms,
                                           const std::vector<Node>& vars)
 {
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = sdt.getNodeManager();
   const DType& sdtd = sdt.getDType();
   // compute the new formal argument list
   std::vector<Node> formalVars;
@@ -417,13 +439,17 @@ TypeNode substituteAndGeneralizeSygusType(TypeNode sdt,
   }
   for (const Node& v : vars)
   {
-    if (v.getKind() == BOUND_VARIABLE)
+    if (v.getKind() == Kind::BOUND_VARIABLE)
     {
       formalVars.push_back(v);
     }
   }
   // make the sygus variable list for the formal argument list
-  Node abvl = nm->mkNode(BOUND_VAR_LIST, formalVars);
+  Node abvl;
+  if (!formalVars.empty())
+  {
+    abvl = nm->mkNode(Kind::BOUND_VAR_LIST, formalVars);
+  }
   Trace("sygus-abduct-debug") << "...finish" << std::endl;
 
   // must convert all constructors to version with variables in "vars"
@@ -463,6 +489,12 @@ TypeNode substituteAndGeneralizeSygusType(TypeNode sdt,
           << "Process datatype " << sdts.back().getName() << "..." << std::endl;
       for (unsigned j = 0, ncons = dtc.getNumConstructors(); j < ncons; j++)
       {
+        // if the any constant constructor, we just carry it to the new datatype
+        if (dtc[j].isSygusAnyConstant())
+        {
+          sdts.back().addAnyConstantConstructor(dtc[j].getArgType(0));
+          continue;
+        }
         Node op = dtc[j].getSygusOp();
         // apply the substitution to the argument
         Node ops =
@@ -534,19 +566,6 @@ TypeNode substituteAndGeneralizeSygusType(TypeNode sdt,
     {
       const DType& dtj = datatypeTypes[j].getDType();
       Trace("dtsygus-gen-debug") << "#" << j << ": " << dtj << std::endl;
-      for (unsigned k = 0, ncons = dtj.getNumConstructors(); k < ncons; k++)
-      {
-        for (unsigned l = 0, nargs = dtj[k].getNumArgs(); l < nargs; l++)
-        {
-          if (!dtj[k].getArgType(l).isDatatype())
-          {
-            Trace("dtsygus-gen-debug")
-                << "Argument " << l << " of " << dtj[k]
-                << " is not datatype : " << dtj[k].getArgType(l) << std::endl;
-            AlwaysAssert(false);
-          }
-        }
-      }
     }
   }
   return sdtS;
@@ -562,18 +581,17 @@ TypeNode generalizeSygusType(TypeNode sdt)
   }
   std::vector<Node> svec;
   std::vector<Node> vars;
-  NodeManager* nm = NodeManager::currentNM();
   for (const Node& s : syms)
   {
     svec.push_back(s);
-    vars.push_back(nm->mkBoundVar(s.getName(), s.getType()));
+    vars.push_back(NodeManager::mkBoundVar(s.getName(), s.getType()));
   }
   return substituteAndGeneralizeSygusType(sdt, svec, vars);
 }
 
 unsigned getSygusTermSize(Node n)
 {
-  if (n.getKind() != APPLY_CONSTRUCTOR)
+  if (n.getKind() != Kind::APPLY_CONSTRUCTOR)
   {
     return 0;
   }
@@ -609,6 +627,39 @@ Node getExpandedDefinitionForm(Node op)
   Node eop = op.getAttribute(SygusExpDefFormAttribute());
   // if not set, assume original
   return eop.isNull() ? op : eop;
+}
+
+void computeExpandedDefinitionForms(Env& env, const TypeNode& tn)
+{
+  std::unordered_set<TypeNode> processed;
+  std::vector<TypeNode> toProcess;
+  toProcess.push_back(tn);
+  while (!toProcess.empty())
+  {
+    TypeNode tnp = toProcess.back();
+    toProcess.pop_back();
+    Assert(tnp.isSygusDatatype());
+    const DType& dt = tnp.getDType();
+    const std::vector<std::shared_ptr<DTypeConstructor>>& cons =
+        dt.getConstructors();
+    for (const std::shared_ptr<DTypeConstructor>& c : cons)
+    {
+      Node op = c->getSygusOp();
+      Node eop = env.getTopLevelSubstitutions().apply(op);
+      eop = env.getRewriter()->rewrite(eop);
+      setExpandedDefinitionForm(op, eop);
+      // also must consider the arguments
+      for (size_t j = 0, nargs = c->getNumArgs(); j < nargs; ++j)
+      {
+        TypeNode tnc = c->getArgType(j);
+        if (tnc.isSygusDatatype() && processed.find(tnc) == processed.end())
+        {
+          toProcess.push_back(tnc);
+          processed.insert(tnc);
+        }
+      }
+    }
+  }
 }
 
 }  // namespace utils

@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -38,11 +35,11 @@ State::State(Env& env, context::Context* c, QuantifiersState& qs, TermDb& tdb)
       d_initialized(c, false),
       d_numActiveQuant(c, 0)
 {
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   SkolemManager* sm = nm->getSkolemManager();
   TypeNode btype = nm->booleanType();
-  d_none = sm->mkSkolemFunction(SkolemFunId::IEVAL_NONE, btype);
-  d_some = sm->mkSkolemFunction(SkolemFunId::IEVAL_SOME, btype);
+  d_none = sm->mkInternalSkolemFunction(InternalSkolemId::IEVAL_NONE, btype);
+  d_some = sm->mkInternalSkolemFunction(InternalSkolemId::IEVAL_SOME, btype);
 }
 
 bool State::hasInitialized() const { return d_initialized.get(); }
@@ -126,7 +123,7 @@ void State::watch(Node q, const std::vector<Node>& vars, Node body)
     if (itr == d_registeredTerms.end())
     {
       d_registeredTerms.insert(cur);
-      if (cur.getKind() == BOUND_VARIABLE)
+      if (cur.getKind() == Kind::BOUND_VARIABLE)
       {
         // should be one of the free variables of the quantified formula
         Assert(std::find(vars.begin(), vars.end(), cur) != vars.end());
@@ -363,7 +360,7 @@ void State::notifyPatternEqGround(TNode p, TNode g)
     context::CDList<Node>& notifyList = it->second.d_parentNotify;
     for (TNode pp : notifyList)
     {
-      if (pp.getKind() == FORALL)
+      if (pp.getKind() == Kind::FORALL)
       {
         // if we have a quantified formula as a parent, notify is a special
         // method, which will test the constraints
@@ -389,7 +386,7 @@ void State::notifyPatternEqGround(TNode p, TNode g)
 
 void State::notifyQuant(TNode q, TNode p, TNode val)
 {
-  Assert(q.getKind() == FORALL);
+  Assert(q.getKind() == Kind::FORALL);
   QuantInfo& qi = getQuantInfo(q);
   if (!qi.isActive())
   {
@@ -571,6 +568,7 @@ std::string State::toStringDebugSearch() const
     }
   }
   ss << " ]";
+  (void)nqc;
   Assert(nqc == d_numActiveQuant.get()) << "Active quant mismatch " << ss.str();
   return ss.str();
 }

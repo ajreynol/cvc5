@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Aina Niemetz, Clark Barrett
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -26,7 +23,8 @@ namespace cvc5::internal {
 namespace theory {
 namespace arrays {
 
-TypeNode ArraySelectTypeRule::preComputeType(NodeManager* nm, TNode n)
+TypeNode ArraySelectTypeRule::preComputeType(CVC5_UNUSED NodeManager* nm,
+                                             CVC5_UNUSED TNode n)
 {
   return TypeNode::null();
 }
@@ -36,11 +34,11 @@ TypeNode ArraySelectTypeRule::computeType(NodeManager* nodeManager,
                                           bool check,
                                           std::ostream* errOut)
 {
-  Assert(n.getKind() == kind::SELECT);
+  Assert(n.getKind() == Kind::SELECT);
   TypeNode arrayType = n[0].getTypeOrNull();
   if (check)
   {
-    if (!arrayType.isMaybeKind(kind::ARRAY_TYPE))
+    if (!arrayType.isMaybeKind(Kind::ARRAY_TYPE))
     {
       if (errOut)
       {
@@ -61,13 +59,14 @@ TypeNode ArraySelectTypeRule::computeType(NodeManager* nodeManager,
   if (arrayType.isAbstract())
   {
     // if selecting from a (fully) abstract array, the return is unknown.
-    return nodeManager->mkAbstractType(kind::ABSTRACT_TYPE);
+    return nodeManager->mkAbstractType(Kind::ABSTRACT_TYPE);
   }
   // otherwise
   return arrayType.getArrayConstituentType();
 }
 
-TypeNode ArrayStoreTypeRule::preComputeType(NodeManager* nm, TNode n)
+TypeNode ArrayStoreTypeRule::preComputeType(CVC5_UNUSED NodeManager* nm,
+                                            CVC5_UNUSED TNode n)
 {
   return TypeNode::null();
 }
@@ -76,12 +75,12 @@ TypeNode ArrayStoreTypeRule::computeType(NodeManager* nodeManager,
                                          bool check,
                                          std::ostream* errOut)
 {
-  if (n.getKind() == kind::STORE)
+  if (n.getKind() == Kind::STORE)
   {
     TypeNode arrayType = n[0].getTypeOrNull();
     if (check)
     {
-      if (!arrayType.isMaybeKind(kind::ARRAY_TYPE))
+      if (!arrayType.isMaybeKind(Kind::ARRAY_TYPE))
       {
         if (errOut)
         {
@@ -112,19 +111,20 @@ TypeNode ArrayStoreTypeRule::computeType(NodeManager* nodeManager,
       }
       return TypeNode::null();
     }
-    return NodeManager::currentNM()->mkArrayType(indexjoin, valuejoin);
+    return nodeManager->mkArrayType(indexjoin, valuejoin);
   }
   else
   {
-    Assert(n.getKind() == kind::STORE_ALL);
+    Assert(n.getKind() == Kind::STORE_ALL);
     ArrayStoreAll storeAll = n.getConst<ArrayStoreAll>();
     return storeAll.getType();
   }
 }
 
-bool ArrayStoreTypeRule::computeIsConst(NodeManager* nodeManager, TNode n)
+bool ArrayStoreTypeRule::computeIsConst(CVC5_UNUSED NodeManager* nodeManager,
+                                        TNode n)
 {
-  Assert(n.getKind() == kind::STORE);
+  Assert(n.getKind() == Kind::STORE);
 
   TNode store = n[0];
   TNode index = n[1];
@@ -139,14 +139,14 @@ bool ArrayStoreTypeRule::computeIsConst(NodeManager* nodeManager, TNode n)
 
   // Normal form for nested stores is just ordering by index but also need to
   // check that we are not writing to default value
-  if (store.getKind() == kind::STORE && (!(store[1] < index)))
+  if (store.getKind() == Kind::STORE && (!(store[1] < index)))
   {
     return false;
   }
 
   unsigned depth = 1;
   unsigned valCount = 1;
-  while (store.getKind() == kind::STORE)
+  while (store.getKind() == Kind::STORE)
   {
     depth += 1;
     if (store[2] == value)
@@ -155,7 +155,7 @@ bool ArrayStoreTypeRule::computeIsConst(NodeManager* nodeManager, TNode n)
     }
     store = store[0];
   }
-  Assert(store.getKind() == kind::STORE_ALL);
+  Assert(store.getKind() == Kind::STORE_ALL);
   ArrayStoreAll storeAll = store.getConst<ArrayStoreAll>();
   Node defaultValue = storeAll.getValue();
   if (value == defaultValue)
@@ -187,7 +187,7 @@ bool ArrayStoreTypeRule::computeIsConst(NodeManager* nodeManager, TNode n)
   TNode mostFrequentValue;
   unsigned mostFrequentValueCount = 0;
   store = n[0];
-  if (store.getKind() == kind::STORE)
+  if (store.getKind() == Kind::STORE)
   {
     mostFrequentValue = getMostFrequentValue(store);
     mostFrequentValueCount = getMostFrequentValueCount(store);
@@ -217,7 +217,8 @@ bool ArrayStoreTypeRule::computeIsConst(NodeManager* nodeManager, TNode n)
   return true;
 }
 
-TypeNode ArrayLambdaTypeRule::preComputeType(NodeManager* nm, TNode n)
+TypeNode ArrayLambdaTypeRule::preComputeType(CVC5_UNUSED NodeManager* nm,
+                                             CVC5_UNUSED TNode n)
 {
   return TypeNode::null();
 }
@@ -226,11 +227,11 @@ TypeNode ArrayLambdaTypeRule::computeType(NodeManager* nodeManager,
                                           bool check,
                                           std::ostream* errOut)
 {
-  Assert(n.getKind() == kind::ARRAY_LAMBDA);
+  Assert(n.getKind() == Kind::ARRAY_LAMBDA);
   TypeNode lamType = n[0].getTypeOrNull();
   if (check)
   {
-    if (n[0].getKind() != kind::LAMBDA)
+    if (n[0].getKind() != Kind::LAMBDA)
     {
       if (errOut)
       {
@@ -252,7 +253,7 @@ TypeNode ArrayLambdaTypeRule::computeType(NodeManager* nodeManager,
 
 Cardinality ArraysProperties::computeCardinality(TypeNode type)
 {
-  Assert(type.getKind() == kind::ARRAY_TYPE);
+  Assert(type.getKind() == Kind::ARRAY_TYPE);
 
   Cardinality indexCard = type[0].getCardinality();
   Cardinality valueCard = type[1].getCardinality();
@@ -267,13 +268,12 @@ bool ArraysProperties::isWellFounded(TypeNode type)
 
 Node ArraysProperties::mkGroundTerm(TypeNode type)
 {
-  Assert(type.getKind() == kind::ARRAY_TYPE);
-  NodeManager* nm = NodeManager::currentNM();
+  Assert(type.getKind() == Kind::ARRAY_TYPE);
   TypeNode elemType = type.getArrayConstituentType();
-  Node elem = nm->mkGroundTerm(elemType);
+  Node elem = NodeManager::mkGroundTerm(elemType);
   if (elem.isConst())
   {
-    return NodeManager::currentNM()->mkConst(ArrayStoreAll(type, elem));
+    return type.getNodeManager()->mkConst(ArrayStoreAll(type, elem));
   }
   // Note the distinction between mkGroundTerm and mkGroundValue. While
   // an arbitrary value can be obtained by calling the type enumerator here,
@@ -288,7 +288,8 @@ Node ArraysProperties::mkGroundTerm(TypeNode type)
   return builtin::SortProperties::mkGroundTerm(type);
 }
 
-TypeNode ArrayEqRangeTypeRule::preComputeType(NodeManager* nm, TNode n)
+TypeNode ArrayEqRangeTypeRule::preComputeType(CVC5_UNUSED NodeManager* nm,
+                                              CVC5_UNUSED TNode n)
 {
   return nm->booleanType();
 }
@@ -298,12 +299,12 @@ TypeNode ArrayEqRangeTypeRule::computeType(NodeManager* nodeManager,
                                            bool check,
                                            std::ostream* errOut)
 {
-  Assert(n.getKind() == kind::EQ_RANGE);
+  Assert(n.getKind() == Kind::EQ_RANGE);
   if (check)
   {
     TypeNode n0_type = n[0].getTypeOrNull();
     TypeNode n1_type = n[1].getTypeOrNull();
-    if (!n0_type.isMaybeKind(kind::ARRAY_TYPE))
+    if (!n0_type.isMaybeKind(Kind::ARRAY_TYPE))
     {
       if (errOut)
       {
@@ -311,7 +312,7 @@ TypeNode ArrayEqRangeTypeRule::computeType(NodeManager* nodeManager,
       }
       return TypeNode::null();
     }
-    if (!n1_type.isMaybeKind(kind::ARRAY_TYPE))
+    if (!n1_type.isMaybeKind(Kind::ARRAY_TYPE))
     {
       if (errOut)
       {
@@ -346,8 +347,8 @@ TypeNode ArrayEqRangeTypeRule::computeType(NodeManager* nodeManager,
       }
       return TypeNode::null();
     }
-    if (!indexType.isMaybeKind(kind::BITVECTOR_TYPE)
-        && !indexType.isMaybeKind(kind::FLOATINGPOINT_TYPE)
+    if (!indexType.isMaybeKind(Kind::BITVECTOR_TYPE)
+        && !indexType.isMaybeKind(Kind::FLOATINGPOINT_TYPE)
         && !indexType.isRealOrInt())
     {
       if (errOut)

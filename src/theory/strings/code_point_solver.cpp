@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Andres Noetzli, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -42,7 +39,7 @@ CodePointSolver::CodePointSolver(Env& env,
       d_bsolver(bs),
       d_csolver(cs)
 {
-  d_negOne = NodeManager::currentNM()->mkConstInt(Rational(-1));
+  d_negOne = nodeManager()->mkConstInt(Rational(-1));
 }
 
 void CodePointSolver::checkCodes()
@@ -53,7 +50,7 @@ void CodePointSolver::checkCodes()
   {
     return;
   }
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   // We construct a mapping from string equivalent classes to code point
   // applications. This mapping contains entries:
   // (1) r -> (str.to_code t) where r is the representative of t and the
@@ -89,7 +86,7 @@ void CodePointSolver::checkCodes()
       }
       codeArg = ei->d_codeTerm.get();
     }
-    Node vc = nm->mkNode(kind::STRING_TO_CODE, codeArg);
+    Node vc = nm->mkNode(Kind::STRING_TO_CODE, codeArg);
     // only relevant for injectivity if not already equal to negative one
     if (d_state.areEqual(vc, d_negOne))
     {
@@ -138,7 +135,7 @@ void CodePointSolver::checkCodes()
     Node deq = c[0].eqNode(c[1]).negate();
     Node eqn = c[0][0].eqNode(c[1][0]);
     // str.code(x)==-1 V str.code(x)!=str.code(y) V x==y
-    Node inj_lem = nm->mkNode(kind::OR, eq_no, deq, eqn);
+    Node inj_lem = nm->mkNode(Kind::OR, eq_no, deq, eqn);
     deq = rewrite(deq);
     d_im.addPendingPhaseRequirement(deq, false);
     std::vector<Node> emptyVec;

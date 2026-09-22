@@ -1,5 +1,6 @@
 ; Ensure that no `stdout` or `"stdout"` file is created
-; SCRUBBER: ls stdout || ls \"stdout\" || echo success
+; REQUIRES: unrestricted-mode
+; SCRUBBER: [ -f  stdout ] || [ -f \"stdout\" ] || echo success
 ; EXPECT: success
 (set-option :global-declarations true)
 (set-option :diagnostic-output-channel "stdout")

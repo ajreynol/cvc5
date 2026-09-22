@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Gereon Kremer, Tim King
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -15,10 +12,10 @@
 
 #include "theory/arith/theory_arith.h"
 
+#include "cvc5/cvc5_proof_rule.h"
 #include "options/smt_options.h"
 #include "printer/smt2/smt2_printer.h"
 #include "proof/proof_checker.h"
-#include "proof/proof_rule.h"
 #include "smt/logic_exception.h"
 #include "theory/arith/arith_evaluator.h"
 #include "theory/arith/arith_rewriter.h"
@@ -46,13 +43,13 @@ TheoryArith::TheoryArith(Env& env, OutputChannel& out, Valuation valuation)
       d_ppre(d_env),
       d_bab(env, d_astate, d_im, d_ppre),
       d_eqSolver(nullptr),
-      d_internal(new linear::TheoryArithPrivate(*this, env, d_bab)),
+      d_internal(env, d_astate, d_im, d_bab),
       d_nonlinearExtension(nullptr),
       d_opElim(d_env),
-      d_arithPreproc(env, d_im, d_pnm, d_opElim),
-      d_rewriter(d_opElim),
+      d_arithPreproc(env, d_im, d_opElim),
+      d_rewriter(nodeManager(), d_opElim, options().arith.arithExp),
       d_arithModelCacheSet(false),
-      d_checker()
+      d_checker(nodeManager())
 {
 #ifdef CVC5_USE_COCOA
   // must be initialized before using CoCoA.
@@ -66,9 +63,7 @@ TheoryArith::TheoryArith(Env& env, OutputChannel& out, Valuation valuation)
   d_eqSolver.reset(new EqualitySolver(env, d_astate, d_im));
 }
 
-TheoryArith::~TheoryArith(){
-  delete d_internal;
-}
+TheoryArith::~TheoryArith() {}
 
 TheoryRewriter* TheoryArith::getTheoryRewriter() { return &d_rewriter; }
 
@@ -86,11 +81,11 @@ void TheoryArith::finishInit()
   if (logic.isTheoryEnabled(THEORY_ARITH) && logic.areTranscendentalsUsed())
   {
     // witness is used to eliminate square root
-    d_valuation.setUnevaluatedKind(kind::WITNESS);
+    d_valuation.setUnevaluatedKind(Kind::WITNESS);
     // we only need to add the operators that are not syntax sugar
-    d_valuation.setUnevaluatedKind(kind::EXPONENTIAL);
-    d_valuation.setUnevaluatedKind(kind::SINE);
-    d_valuation.setUnevaluatedKind(kind::PI);
+    d_valuation.setUnevaluatedKind(Kind::EXPONENTIAL);
+    d_valuation.setUnevaluatedKind(Kind::SINE);
+    d_valuation.setUnevaluatedKind(Kind::PI);
   }
   // only need to create nonlinear extension if non-linear logic
   if (logic.isTheoryEnabled(THEORY_ARITH) && !logic.isLinear())
@@ -99,12 +94,13 @@ void TheoryArith::finishInit()
   }
   d_eqSolver->finishInit();
   // finish initialize in the old linear solver
-  d_internal->finishInit();
+  eq::EqualityEngine* ee = getEqualityEngine();
+  d_internal.finishInit(ee);
 
   // Set the congruence manager on the equality solver. If the congruence
   // manager exists, it is responsible for managing the notifications from
   // the equality engine, which the equality solver forwards to it.
-  d_eqSolver->setCongruenceManager(d_internal->getCongruenceManager());
+  d_eqSolver->setCongruenceManager(d_internal.getCongruenceManager());
 }
 
 void TheoryArith::preRegisterTerm(TNode n)
@@ -115,8 +111,16 @@ void TheoryArith::preRegisterTerm(TNode n)
   // note that we don't throw an exception for non-linear multiplication in
   // linear logics, since this is caught in the linear solver with a more
   // informative error message
-  if (isTransKind || k == IAND || k == POW2)
+  if (isTransKind || isExtendedNonLinearKind(k))
   {
+    if (!options().arith.arithExp)
+    {
+      std::stringstream ss;
+      ss << "Support for arithmetic extensions (required for " << k
+         << ") not available in this configuration, try "
+            "--arith-exp.";
+      throw SafeLogicException(ss.str());
+    }
     if (d_nonlinearExtension == nullptr)
     {
       std::stringstream ss;
@@ -147,17 +151,33 @@ void TheoryArith::preRegisterTerm(TNode n)
       throw LogicException(ss.str());
     }
   }
+  // if POW is allowed but was not rewritten
+  if (k == Kind::POW || (k == Kind::POW2 && n[0].isConst()))
+  {
+    std::stringstream ss;
+    ss << "The exponent of the POW(^) operator can only be a positive "
+          "integral constant below "
+       << (expr::NodeValue::MAX_CHILDREN + 1) << ". ";
+    ss << "Exception occurred in:" << std::endl;
+    ss << "  " << n;
+    throw LogicException(ss.str());
+  }
   if (d_nonlinearExtension != nullptr)
   {
     d_nonlinearExtension->preRegisterTerm(n);
   }
-  d_internal->preRegisterTerm(n);
+  else if (n.getKind() == Kind::NONLINEAR_MULT)
+  {
+    throw LogicException(
+        "A non-linear term was asserted to arithmetic in a linear logic.");
+  }
+  d_internal.preRegisterTerm(n);
 }
 
 void TheoryArith::notifySharedTerm(TNode n)
 {
-  n = n.getKind() == kind::TO_REAL ? n[0] : n;
-  d_internal->notifySharedTerm(n);
+  n = n.getKind() == Kind::TO_REAL ? n[0] : n;
+  d_internal.notifySharedTerm(n);
 }
 
 TrustNode TheoryArith::ppRewrite(TNode atom, std::vector<SkolemLemma>& lems)
@@ -178,14 +198,14 @@ TrustNode TheoryArith::ppStaticRewrite(TNode atom)
 {
   Trace("arith::preprocess") << "arith::ppStaticRewrite() : " << atom << endl;
   Kind k = atom.getKind();
-  if (k == kind::EQUAL)
+  if (k == Kind::EQUAL)
   {
     return d_ppre.ppRewriteEq(atom);
   }
-  else if (k == kind::GEQ)
+  else if (k == Kind::GEQ)
   {
     // try to eliminate bv2nat from inequalities
-    Node atomr = ArithRewriter::rewriteIneqToBv(atom);
+    Node atomr = d_rewriter.rewriteIneqToBv(atom);
     if (atomr != atom)
     {
       return TrustNode::mkTrustRewrite(atom, atomr);
@@ -194,24 +214,25 @@ TrustNode TheoryArith::ppStaticRewrite(TNode atom)
   return TrustNode::null();
 }
 
-Theory::PPAssertStatus TheoryArith::ppAssert(
-    TrustNode tin, TrustSubstitutionMap& outSubstitutions)
+bool TheoryArith::ppAssert(TrustNode tin,
+                           TrustSubstitutionMap& outSubstitutions)
 {
-  return d_internal->ppAssert(tin, outSubstitutions);
+  return d_internal.ppAssert(tin, outSubstitutions);
 }
 
-void TheoryArith::ppStaticLearn(TNode n, NodeBuilder& learned)
+void TheoryArith::ppStaticLearn(TNode n, std::vector<TrustNode>& learned)
 {
   if (options().arith.arithStaticLearning)
   {
-    d_internal->ppStaticLearn(n, learned);
+    d_internal.ppStaticLearn(n, learned);
   }
 }
 
-bool TheoryArith::preCheck(Effort level)
+bool TheoryArith::preCheck(CVC5_UNUSED Effort level)
 {
   Trace("arith-check") << "TheoryArith::preCheck " << level << std::endl;
-  return d_internal->preCheck(level);
+  bool newFacts = !done();
+  return d_internal.preCheck(newFacts);
 }
 
 void TheoryArith::postCheck(Effort level)
@@ -228,20 +249,10 @@ void TheoryArith::postCheck(Effort level)
     d_im.clearPending();
     d_im.clearWaitingLemmas();
   }
-  // check with the non-linear solver at last call
-  if (level == Theory::EFFORT_LAST_CALL)
-  {
-    // If we computed lemmas in the last FULL_EFFORT check, send them now.
-    if (d_im.hasPendingLemma())
-    {
-      d_im.doPendingFacts();
-      d_im.doPendingLemmas();
-      d_im.doPendingPhaseRequirements();
-    }
-    return;
-  }
+  // we don't check at last call
+  Assert(level != Theory::EFFORT_LAST_CALL);
   // otherwise, check with the linear solver
-  if (d_internal->postCheck(level))
+  if (d_internal.postCheck(level))
   {
     // linear solver emitted a conflict or lemma, return
     return;
@@ -270,7 +281,7 @@ void TheoryArith::postCheck(Effort level)
         return;
       }
     }
-    else if (d_internal->foundNonlinear())
+    else if (d_internal.foundNonlinear())
     {
       // set incomplete
       d_im.setModelUnsound(IncompleteId::ARITH_NL_DISABLED);
@@ -306,14 +317,22 @@ bool TheoryArith::preNotifyFact(
     ret = d_eqSolver->preNotifyFact(atom, pol, fact, isPrereg, isInternal);
   }
   // we also always also notify the internal solver
-  d_internal->preNotifyFact(atom, pol, fact);
+  d_internal.preNotifyFact(fact);
   return ret;
 }
 
-bool TheoryArith::needsCheckLastEffort() {
+bool TheoryArith::needsCheckLastEffort()
+{
   if (d_nonlinearExtension != nullptr)
   {
-    return d_nonlinearExtension->hasNlTerms();
+    // If we computed lemmas in the last FULL_EFFORT check, send them now.
+    if (d_im.hasPendingLemma())
+    {
+      Trace("arith-nl-buffer") << "Send buffered lemmas..." << std::endl;
+      d_im.doPendingFacts();
+      d_im.doPendingLemmas();
+      d_im.doPendingPhaseRequirements();
+    }
   }
   return false;
 }
@@ -326,12 +345,10 @@ TrustNode TheoryArith::explain(TNode n)
   {
     return texp;
   }
-  return d_internal->explain(n);
+  return d_internal.explain(n);
 }
 
-void TheoryArith::propagate(Effort e) {
-  d_internal->propagate(e);
-}
+void TheoryArith::propagate(CVC5_UNUSED Effort e) { d_internal.propagate(); }
 
 bool TheoryArith::collectModelInfo(TheoryModel* m,
                                    const std::set<Node>& termSet)
@@ -339,12 +356,12 @@ bool TheoryArith::collectModelInfo(TheoryModel* m,
   // If we have a buffered lemma (from the non-linear extension), then we
   // do not assert model values, since those values are likely incorrect.
   // Moreover, the model does not need to satisfy the assertions, so
-  // arbitrary values can be used for arithmetic terms. Hence, we do
-  // nothing here. The buffered lemmas will be sent immediately
-  // at LAST_CALL effort (see postCheck).
+  // arbitrary values can be used for arithmetic terms. Hence, we just return
+  // false here. The buffered lemmas will be sent immediately when asking if
+  // a LAST_CALL effort should be performed (see needsCheckLastEffort).
   if (d_im.hasPendingLemma())
   {
-    return true;
+    return false;
   }
   // this overrides behavior to not assert equality engine
   return collectModelValues(m, termSet);
@@ -358,7 +375,8 @@ bool TheoryArith::collectModelValues(TheoryModel* m,
     Trace("arith::model") << "arithmetic model after pruning" << std::endl;
     for (const auto& p : d_arithModelCache)
     {
-      Trace("arith::model") << "\t" << p.first << " -> " << p.second << std::endl;
+      Trace("arith::model")
+          << "\t" << p.first << " -> " << p.second << std::endl;
     }
   }
 
@@ -378,14 +396,23 @@ bool TheoryArith::collectModelValues(TheoryModel* m,
       continue;
     }
     // maps to constant of same type
-    Assert(p.first.getType() == p.second.getType())
+    AssertEqual(p.first.getType(), p.second.getType())
         << "Bad type : " << p.first << " -> " << p.second;
     if (m->assertEquality(p.first, p.second, true))
     {
       continue;
     }
-    Assert(false) << "A model equality could not be asserted: " << p.first
-                        << " == " << p.second << std::endl;
+    else if (d_valuation.needCheck())
+    {
+      // If a theory solver has already sent a lemma in this context, we
+      // know that theory engine will be called to recheck, so we can safely
+      // return unsuccessfully here. Note that the arithmetic solver itself
+      // may be the one that sent the lemma, for instance if we had buffered
+      // lemmas during the call to needsCheckLastEffort.
+      return false;
+    }
+    DebugUnhandled() << "A model equality could not be asserted: " << p.first
+                     << " == " << p.second << std::endl;
     // If we failed to assert an equality, it is likely due to theory
     // combination, namely the repaired model for non-linear changed
     // an equality status that was agreed upon by both (linear) arithmetic
@@ -396,25 +423,31 @@ bool TheoryArith::collectModelValues(TheoryModel* m,
     if (d_nonlinearExtension != nullptr)
     {
       Node eq = p.first.eqNode(p.second);
-      Node lem = NodeManager::currentNM()->mkNode(kind::OR, eq, eq.negate());
+      Node lem = nodeManager()->mkNode(Kind::OR, eq, eq.negate());
       bool added = d_im.lemma(lem, InferenceId::ARITH_SPLIT_FOR_NL_MODEL);
-      AlwaysAssert(added) << "The lemma was already in cache. Probably there is something wrong with theory combination...";
+      AlwaysAssert(added) << "The lemma was already in cache. Probably there "
+                             "is something wrong with theory combination...";
     }
     return false;
   }
   return true;
 }
 
-void TheoryArith::notifyRestart(){
-  d_internal->notifyRestart();
+void TheoryArith::notifyRestart() { d_internal.notifyRestart(); }
+
+void TheoryArith::presolve()
+{
+  d_internal.presolve();
+  if (d_nonlinearExtension != nullptr)
+  {
+    d_nonlinearExtension->presolve();
+  }
 }
 
-void TheoryArith::presolve(){
-  d_internal->presolve();
-}
-
-EqualityStatus TheoryArith::getEqualityStatus(TNode a, TNode b) {
-  Trace("arith-eq-status") << "TheoryArith::getEqualityStatus(" << a << ", " << b << ")" << std::endl;
+EqualityStatus TheoryArith::getEqualityStatus(TNode a, TNode b)
+{
+  Trace("arith-eq-status") << "TheoryArith::getEqualityStatus(" << a << ", "
+                           << b << ")" << std::endl;
   if (a == b)
   {
     Trace("arith-eq-status") << "...return (trivial) true" << std::endl;
@@ -422,15 +455,19 @@ EqualityStatus TheoryArith::getEqualityStatus(TNode a, TNode b) {
   }
   if (d_arithModelCache.empty())
   {
-    EqualityStatus es = d_internal->getEqualityStatus(a, b);
+    EqualityStatus es = d_internal.getEqualityStatus(a, b);
     Trace("arith-eq-status") << "...return (from linear) " << es << std::endl;
     return es;
   }
-  Trace("arith-eq-status") << "Evaluate under " << d_arithModelCacheSubs.d_vars << " / "
-                 << d_arithModelCacheSubs.d_subs << std::endl;
-  Node diff = NodeManager::currentNM()->mkNode(Kind::SUB, a, b);
+  Trace("arith-eq-status") << "Evaluate under " << d_arithModelCacheSubs.d_vars
+                           << " / " << d_arithModelCacheSubs.d_subs
+                           << std::endl;
+  Node diff = nodeManager()->mkNode(Kind::SUB, a, b);
+  // do not traverse non-linear multiplication here, since the value of
+  // multiplication in this method should consider the value of the
+  // non-linear multiplication term, and not its evaluation.
   std::optional<bool> isZero =
-      isExpressionZero(d_env, diff, d_arithModelCacheSubs);
+      isExpressionZero(d_env, diff, d_arithModelCacheSubs, false);
   if (isZero)
   {
     EqualityStatus es =
@@ -444,18 +481,18 @@ EqualityStatus TheoryArith::getEqualityStatus(TNode a, TNode b) {
 
 Node TheoryArith::getCandidateModelValue(TNode var)
 {
-  var = var.getKind() == kind::TO_REAL ? var[0] : var;
+  var = var.getKind() == Kind::TO_REAL ? var[0] : var;
   std::map<Node, Node>::iterator it = d_arithModelCache.find(var);
   if (it != d_arithModelCache.end())
   {
     return it->second;
   }
-  return d_internal->getCandidateModelValue(var);
+  return d_internal.getCandidateModelValue(var);
 }
 
 std::pair<bool, Node> TheoryArith::entailmentCheck(TNode lit)
 {
-  return d_internal->entailmentCheck(lit);
+  return d_internal.entailmentCheck(lit);
 }
 
 eq::ProofEqEngine* TheoryArith::getProofEqEngine()
@@ -476,7 +513,7 @@ void TheoryArith::updateModelCacheInternal(const std::set<Node>& termSet)
   if (!d_arithModelCacheSet)
   {
     d_arithModelCacheSet = true;
-    d_internal->collectModelValues(
+    d_internal.collectModelValues(
         termSet, d_arithModelCache, d_arithModelCacheIllTyped);
   }
 }
@@ -506,7 +543,7 @@ bool TheoryArith::sanityCheckIntegerModel()
   {
     for (CVC5_UNUSED const auto& p : d_arithModelCache)
     {
-      Assert(p.first.getType() == p.second.getType())
+      AssertEqual(p.first.getType(), p.second.getType())
           << "Bad type: " << p.first << " -> " << p.second;
     }
   }

@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Mathias Preiner, Gereon Kremer
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -59,7 +56,7 @@ bool SolutionFilterStrength::addTerm(Node n, std::vector<Node>& filtered)
     return true;
   }
   Node basen = d_isStrong ? n : n.negate();
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   // Do i subsume the disjunction of all previous solutions? If so, we discard
   // this immediately
   Node curr;
@@ -67,8 +64,8 @@ bool SolutionFilterStrength::addTerm(Node n, std::vector<Node>& filtered)
   {
     curr = d_curr_sols.size() == 1
                ? d_curr_sols[0]
-               : nm->mkNode(d_isStrong ? OR : AND, d_curr_sols);
-    Node imp = nm->mkNode(AND, basen.negate(), curr);
+               : nm->mkNode(d_isStrong ? Kind::OR : Kind::AND, d_curr_sols);
+    Node imp = nm->mkNode(Kind::AND, basen.negate(), curr);
     Trace("sygus-sol-implied")
         << "  implies: check subsumed (strong=" << d_isStrong << ") " << imp
         << "..." << std::endl;
@@ -89,7 +86,7 @@ bool SolutionFilterStrength::addTerm(Node n, std::vector<Node>& filtered)
     std::vector<Node> nsubsume;
     for (const Node& s : d_curr_sols)
     {
-      Node imp = nm->mkNode(AND, s.negate(), basen);
+      Node imp = nm->mkNode(Kind::AND, s.negate(), basen);
       Trace("sygus-sol-implied")
           << "  implies: check subsuming " << imp << "..." << std::endl;
       // check the satisfiability query

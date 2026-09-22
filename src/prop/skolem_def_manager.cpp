@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -111,7 +108,7 @@ bool SkolemDefManager::hasSkolems(TNode n)
         // introduced in a lemma prior to its definition being introduced.
         // This is for example the case in strings reduction for Booleans,
         // ground term purification for E-matching, etc.
-        d_hasSkolems[cur] = (ck == kind::SKOLEM
+        d_hasSkolems[cur] = (ck == Kind::SKOLEM
                              && (d_skDefs.find(cur) != d_skDefs.end()
                                  || cur.getType().isBoolean()));
       }

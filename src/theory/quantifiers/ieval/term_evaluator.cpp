@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -45,7 +42,7 @@ TermEvaluatorEntailed::TermEvaluatorEntailed(Env& env,
 
 TNode TermEvaluatorEntailed::evaluateBase(const State& s, TNode n)
 {
-  if (n.getKind() == FORALL)
+  if (n.getKind() == Kind::FORALL)
   {
     return s.getSome();
   }
@@ -61,9 +58,9 @@ TNode TermEvaluatorEntailed::partialEvaluateChild(
   // Implies and xor are eliminated from the propositional skeleton of
   // quantifier bodies, so we don't check for them here. They still may
   // occur e.g. as arguments to parameteric operators involving Bool.
-  if (k == AND || k == OR)
+  if (k == Kind::AND || k == Kind::OR)
   {
-    if (val.isConst() && val.getConst<bool>() == (k == OR))
+    if (val.isConst() && val.getConst<bool>() == (k == Kind::OR))
     {
       // the value determines the value of this
       Trace("ieval-state-debug") << "...short circuit " << val << std::endl;
@@ -71,17 +68,17 @@ TNode TermEvaluatorEntailed::partialEvaluateChild(
       return val;
     }
   }
-  else if (k == NOT)
+  else if (k == Kind::NOT)
   {
     if (val.isConst())
     {
-      NodeManager* nm = NodeManager::currentNM();
+      NodeManager* nm = nodeManager();
       val = nm->mkConst(!val.getConst<bool>());
     }
     Trace("ieval-state-debug") << "...eval negation " << val << std::endl;
     return val;
   }
-  else if (k == ITE)
+  else if (k == Kind::ITE)
   {
     // if the condition is being set, and the branch already has a value,
     // then this has the value of the branch.
@@ -173,9 +170,9 @@ TNode TermEvaluatorEntailed::evaluate(const State& s,
   }
 
   Kind k = n.getKind();
-  NodeManager* nm = NodeManager::currentNM();
-  Assert(k != NOT);
-  if (k == AND || k == OR)
+  NodeManager* nm = nodeManager();
+  Assert(k != Kind::NOT);
+  if (k == Kind::AND || k == Kind::OR)
   {
     bool hasSome = false;
     for (TNode cvalue : childValues)
@@ -196,10 +193,10 @@ TNode TermEvaluatorEntailed::evaluate(const State& s,
       }
     }
     // if any child is some, we are some as well
-    ret = hasSome ? Node(s.getSome()) : nm->mkConst(k == AND);
+    ret = hasSome ? Node(s.getSome()) : nm->mkConst(k == Kind::AND);
     Trace("ieval-state-debug") << "...exhausted AND/OR" << std::endl;
   }
-  else if (k == EQUAL)
+  else if (k == Kind::EQUAL)
   {
     // this handles any type EQUAL. If either side is none, we should have
     // short circuited above.
@@ -239,7 +236,7 @@ TNode TermEvaluatorEntailed::evaluate(const State& s,
       return s.getSome();
     }
   }
-  else if (k == ITE)
+  else if (k == Kind::ITE)
   {
     TNode cval1 = childValues[0];
     Assert(!cval1.isNull());

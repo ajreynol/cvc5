@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Abdalrhman Mohamed, Andrew Reynolds, Andres Noetzli
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -65,6 +62,7 @@ class AstPrinter : public cvc5::internal::Printer
   /** Print declare-fun command */
   void toStreamCmdDeclareFunction(std::ostream& out,
                                   const std::string& id,
+                                  const std::vector<TypeNode>& argTypes,
                                   TypeNode type) const override;
 
   /** Print declare-sort command */

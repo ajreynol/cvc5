@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Haniel Barbosa, Gereon Kremer
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -20,10 +17,11 @@
 
 #include <map>
 
+#include "cvc5/cvc5_proof_rule.h"
 #include "expr/kind.h"
 #include "expr/node.h"
 #include "proof/method_id.h"
-#include "proof/proof_rule.h"
+#include "proof/trust_id.h"
 #include "rewriter/rewrites.h"
 #include "theory/inference_id.h"
 #include "theory/theory_id.h"
@@ -36,7 +34,7 @@ class ProofNode;
 class ProofNodeToSExpr
 {
  public:
-  ProofNodeToSExpr();
+  ProofNodeToSExpr(NodeManager* nm);
   ~ProofNodeToSExpr() {}
   /** Convert the given proof node to an s-expression
    *
@@ -47,13 +45,12 @@ class ProofNodeToSExpr
    * The s-expression for a ProofNode has the form:
    *   (SEXPR (VAR "<d_rule>") S1 ... Sn (VAR ":args") (SEXPR <d_args>))
    * where S1, ..., Sn are the s-expressions for its <d_children>.
-   * 
+   *
    * @param pn The proof node to print
    * @param printConclusion Whether to print conclusions
    */
   Node convertToSExpr(const ProofNode* pn, bool printConclusion = false);
 
- private:
   /** argument format, determines how to print an argument */
   enum class ArgFormat
   {
@@ -65,6 +62,8 @@ class ProofNodeToSExpr
     THEORY_ID,
     // print the argument as a method id
     METHOD_ID,
+    // print the arugment as a trust id
+    TRUST_ID,
     // print the argument as an inference id
     INFERENCE_ID,
     // print the argument as a DSL rewrite id
@@ -72,19 +71,29 @@ class ProofNodeToSExpr
     // print a variable whose name is the term (see getOrMkNodeVariable)
     NODE_VAR
   };
+  /** get argument format for proof node */
+  ArgFormat getArgumentFormat(const ProofNode* pn, size_t i);
+  /** get argument based on the provided format */
+  Node getArgument(Node arg, ArgFormat f);
+
+ private:
+  /** the associated node manager */
+  NodeManager* d_nm;
   /** map proof rules to a variable */
-  std::map<PfRule, Node> d_pfrMap;
+  std::map<ProofRule, Node> d_pfrMap;
   /** map kind to a variable displaying the kind they represent */
   std::map<Kind, Node> d_kindMap;
   /** map theory ids to a variable displaying the theory id they represent */
   std::map<theory::TheoryId, Node> d_tidMap;
   /** map method ids to a variable displaying the method id they represent */
   std::map<MethodId, Node> d_midMap;
+  /** map trust ids to a variable displaying the method id they represent */
+  std::map<TrustId, Node> d_tridMap;
   /** map infer ids to a variable displaying the inference id they represent */
   std::map<theory::InferenceId, Node> d_iidMap;
   /** map dsl rewrite ids to a variable displaying the dsl rewrite id they
    * represent */
-  std::map<rewriter::DslPfRule, Node> d_dslrMap;
+  std::map<ProofRewriteRule, Node> d_dslrMap;
   /** Dummy ":args" marker */
   Node d_argsMarker;
   /** Dummy ":conclusion" marker */
@@ -97,13 +106,15 @@ class ProofNodeToSExpr
    */
   std::map<TNode, Node> d_nodeMap;
   /** get or make pf rule variable */
-  Node getOrMkPfRuleVariable(PfRule r);
+  Node getOrMkProofRuleVariable(ProofRule r);
   /** get or make kind variable from the kind embedded in n */
   Node getOrMkKindVariable(TNode n);
   /** get or make theory id variable */
   Node getOrMkTheoryIdVariable(TNode n);
   /** get or make method id variable */
   Node getOrMkMethodIdVariable(TNode n);
+  /** get or make trust id variable */
+  Node getOrMkTrustIdVariable(TNode n);
   /** get or make inference id variable */
   Node getOrMkInferenceIdVariable(TNode n);
   /** get or make DSL rewrite id variable */
@@ -114,12 +125,8 @@ class ProofNodeToSExpr
    * print e.g. builtin operators as first-class terms in the SEXPR.
    */
   Node getOrMkNodeVariable(TNode n);
-  /** get argument based on the provided format */
-  Node getArgument(Node arg, ArgFormat f);
-  /** get argument format for proof node */
-  ArgFormat getArgumentFormat(const ProofNode* pn, size_t i);
 };
 
 }  // namespace cvc5::internal
 
-#endif /* CVC5__PROOF__PROOF_RULE_H */
+#endif /* CVC5__PROOF__PROOF_NODE_TO_SEXPR_H */

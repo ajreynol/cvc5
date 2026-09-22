@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Andres Noetzli, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -55,7 +52,7 @@ class CVC5_EXPORT SymManager
   friend class cvc5::parser::Command;
 
  public:
-  SymManager(cvc5::Solver* s);
+  SymManager(cvc5::TermManager& tm);
   ~SymManager();
   /** Get the underlying symbol table */
   cvc5::internal::parser::SymbolTable* getSymbolTable();
@@ -79,8 +76,7 @@ class CVC5_EXPORT SymManager
    * @param name an identifier
    * @param obj the expression to bind to <code>name</code>
    * @param doOverload set if the binding can overload the function name.
-   *
-   * Returns false if the binding was invalid.
+   * @return false if the binding was invalid.
    */
   bool bind(const std::string& name, cvc5::Term obj, bool doOverload = false);
 
@@ -93,8 +89,10 @@ class CVC5_EXPORT SymManager
    *
    * @param name an identifier
    * @param t the type to bind to <code>name</code>
+   * @param isUser does this correspond to a user sort?
+   * @return false if the binding was invalid.
    */
-  void bindType(const std::string& name, cvc5::Sort t);
+  bool bindType(const std::string& name, cvc5::Sort t, bool isUser);
 
   /**
    * Bind a type to a name in the current scope.  If <code>name</code>
@@ -106,10 +104,13 @@ class CVC5_EXPORT SymManager
    * @param name an identifier
    * @param params the parameters to the type
    * @param t the type to bind to <code>name</code>
+   * @param isUser does this correspond to a user sort?
+   * @return false if the binding was invalid.
    */
-  void bindType(const std::string& name,
+  bool bindType(const std::string& name,
                 const std::vector<cvc5::Sort>& params,
-                cvc5::Sort t);
+                cvc5::Sort t,
+                bool isUser);
   /**
    * Binds sorts of a list of mutually-recursive datatype declarations.
    *
@@ -172,11 +173,11 @@ class CVC5_EXPORT SymManager
   /**
    * @return The sorts we have declared that should be printed in the model.
    */
-  std::vector<cvc5::Sort> getModelDeclareSorts() const;
+  std::vector<cvc5::Sort> getDeclaredSorts() const;
   /**
    * @return The terms we have declared that should be printed in the model.
    */
-  std::vector<cvc5::Term> getModelDeclareTerms() const;
+  std::vector<cvc5::Term> getDeclaredTerms() const;
   /**
    * @return The functions we have declared that should be printed in a response
    * to check-synth.
@@ -225,6 +226,14 @@ class CVC5_EXPORT SymManager
   void setGlobalDeclarations(bool flag);
   /** Get global declarations flag. */
   bool getGlobalDeclarations() const;
+  /** Set fresh declarations to the value flag. */
+  void setFreshDeclarations(bool flag);
+  /** Get fresh declarations flag. */
+  bool getFreshDeclarations() const;
+  /** Set term sort overloading to the value flag. */
+  void setTermSortOverload(bool flag);
+  /** Get term sort overloading flag. */
+  bool getTermSortOverload() const;
   /**
    * Set the last abduct or interpolant to synthesize had the given name. This
    * is required since e.g. get-abduct-next must know the name of the
@@ -248,12 +257,14 @@ class CVC5_EXPORT SymManager
   void setLogic(const std::string& logic, bool isForced = false);
   /** Have we called the above method with isForced=true? */
   bool isLogicForced() const;
+  /** Has the logic been set? */
+  bool isLogicSet() const;
   /** Get the last string in an above call */
   const std::string& getLogic() const;
 
  private:
   /** The API Solver object. */
-  cvc5::Solver* d_solver;
+  cvc5::TermManager d_tm;
   /** The implementation of the symbol manager */
   class Implementation;
   std::unique_ptr<Implementation> d_implementation;
@@ -262,8 +273,17 @@ class CVC5_EXPORT SymManager
    * SMT-LIB option :global-declarations. By default, its value is false.
    */
   bool d_globalDeclarations;
+  /**
+   * Whether the fresh declarations option is enabled. By default, its value is
+   * true.
+   */
+  bool d_freshDeclarations;
+  /** Whether --term-sort-overload is enabled */
+  bool d_termSortOverload;
   /** Whether the logic has been forced with --force-logic. */
   bool d_logicIsForced;
+  /** Whether the logic has been set */
+  bool d_logicIsSet;
   /** The logic. */
   std::string d_logic;
 };
