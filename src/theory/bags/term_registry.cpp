@@ -1,30 +1,30 @@
-/*********************                                                        */
-/*! \file term_registry.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Mudathir Mohamed
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Implementation of bags term registry object
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Implementation of bags term registry object.
+ */
 
 #include "theory/bags/term_registry.h"
 
-using namespace std;
-using namespace CVC4::kind;
+#include "expr/emptyset.h"
+#include "theory/bags/inference_manager.h"
+#include "theory/bags/solver_state.h"
 
-namespace CVC4 {
+using namespace std;
+using namespace cvc5::internal::kind;
+
+namespace cvc5::internal {
 namespace theory {
 namespace bags {
 
-TermRegistry::TermRegistry(SolverState& state, InferenceManager& im)
-    : d_im(im),
-      d_proxy(state.getUserContext()),
-      d_proxy_to_term(state.getUserContext())
+TermRegistry::TermRegistry(Env& env)
+    : EnvObj(env), d_proxy(userContext()), d_proxy_to_term(userContext())
 {
 }
 
@@ -35,11 +35,11 @@ Node TermRegistry::getEmptyBag(TypeNode tn)
   {
     return it->second;
   }
-  Node n = NodeManager::currentNM()->mkConst(EmptySet(tn));
+  Node n = nodeManager()->mkConst(EmptySet(tn));
   d_emptybag[tn] = n;
   return n;
 }
 
 }  // namespace bags
 }  // namespace theory
-}  // namespace CVC4
+}  // namespace cvc5::internal

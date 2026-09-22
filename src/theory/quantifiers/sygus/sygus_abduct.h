@@ -1,27 +1,26 @@
-/*********************                                                        */
-/*! \file sygus_abduct.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Sygus abduction utility, which transforms an arbitrary input into an
- ** abduction problem.
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Sygus abduction utility, which transforms an arbitrary input into an
+ * abduction problem.
+ */
 
-#ifndef CVC4__THEORY__QUANTIFIERS__SYGUS_ABDUCT_H
-#define CVC4__THEORY__QUANTIFIERS__SYGUS_ABDUCT_H
+#ifndef CVC5__THEORY__QUANTIFIERS__SYGUS_ABDUCT_H
+#define CVC5__THEORY__QUANTIFIERS__SYGUS_ABDUCT_H
 
 #include <string>
 #include <vector>
-#include "expr/node.h"
-#include "expr/type.h"
 
-namespace CVC4 {
+#include "expr/node.h"
+#include "expr/type_node.h"
+
+namespace cvc5::internal {
 namespace theory {
 namespace quantifiers {
 
@@ -77,7 +76,8 @@ class SygusAbduct
    * term whose free variables are a subset of asserts, is the term
    * t * { varlist -> SygusVarToTermAttribute(varlist) }.
    */
-  static Node mkAbductionConjecture(const std::string& name,
+  static Node mkAbductionConjecture(NodeManager* nm,
+                                    const std::string& name,
                                     const std::vector<Node>& asserts,
                                     const std::vector<Node>& axioms,
                                     TypeNode abdGType);
@@ -85,6 +85,6 @@ class SygusAbduct
 
 }  // namespace quantifiers
 }  // namespace theory
-}  // namespace CVC4
+}  // namespace cvc5::internal
 
-#endif /* CVC4__THEORY__QUANTIFIERS__SYGUS_ABDUCT_H */
+#endif /* CVC5__THEORY__QUANTIFIERS__SYGUS_ABDUCT_H */

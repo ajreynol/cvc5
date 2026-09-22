@@ -1,30 +1,27 @@
-/*********************                                                        */
-/*! \file solution_filter.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds, Mathias Preiner
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Utility for filtering sygus solutions.
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Utility for filtering sygus solutions.
+ */
 
-#include "cvc4_private.h"
+#include "cvc5_private.h"
 
-#ifndef CVC4__THEORY__QUANTIFIERS__SOLUTION_FILTER_H
-#define CVC4__THEORY__QUANTIFIERS__SOLUTION_FILTER_H
+#ifndef CVC5__THEORY__QUANTIFIERS__SOLUTION_FILTER_H
+#define CVC5__THEORY__QUANTIFIERS__SOLUTION_FILTER_H
 
-#include <map>
-#include <unordered_set>
 #include "expr/node.h"
+#include "options/options.h"
 #include "theory/quantifiers/expr_miner.h"
 #include "theory/quantifiers/lazy_trie.h"
 #include "theory/quantifiers/sygus_sampler.h"
 
-namespace CVC4 {
+namespace cvc5::internal {
 namespace theory {
 namespace quantifiers {
 
@@ -39,7 +36,7 @@ namespace quantifiers {
 class SolutionFilterStrength : public ExprMiner
 {
  public:
-  SolutionFilterStrength();
+  SolutionFilterStrength(Env& env);
   ~SolutionFilterStrength() {}
   /** initialize */
   void initialize(const std::vector<Node>& vars,
@@ -54,7 +51,7 @@ class SolutionFilterStrength : public ExprMiner
    * Dually, if d_isStrong is false, then if this method returns false, then
    * the entailment n |= n_1 V ... V n_m holds.
    */
-  bool addTerm(Node n, std::ostream& out) override;
+  bool addTerm(Node n, std::vector<Node>& filtered) override;
   /** set logically strong */
   void setLogicallyStrong(bool isStrong);
 
@@ -66,10 +63,12 @@ class SolutionFilterStrength : public ExprMiner
   std::vector<Node> d_curr_sols;
   /** whether we are trying to find the logically strongest solutions */
   bool d_isStrong;
+  /** The options for subsolver calls */
+  Options d_subOptions;
 };
 
 }  // namespace quantifiers
 }  // namespace theory
-}  // namespace CVC4
+}  // namespace cvc5::internal
 
-#endif /* CVC4__THEORY__QUANTIFIERS__SOLUTION_FILTER_H */
+#endif /* CVC5__THEORY__QUANTIFIERS__SOLUTION_FILTER_H */

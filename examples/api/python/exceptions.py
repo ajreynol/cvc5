@@ -1,27 +1,26 @@
 #!/usr/bin/env python
-#####################
-## exceptions.py
-## Top contributors (to current version):
-##   Andres Noetzli
-## This file is part of the CVC4 project.
-## Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
-## in the top-level source directory and their institutional affiliations.
-## All rights reserved.  See the file COPYING in the top-level source
-## directory for licensing information.
-##
-## Catching CVC4 exceptions with the legacy Python API.
-##
-## A simple demonstration of catching CVC4 execptions with the legacy Python
-## API.
+###############################################################################
+# This file is part of the cvc5 project.
+#
+# Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+# in the top-level source directory and their institutional affiliations.
+# All rights reserved.  See the file COPYING in the top-level source
+# directory for licensing information.
+# #############################################################################
+#
+# Catching cvc5 exceptions with the legacy Python API.
+#
+# A simple demonstration of catching cvc5 exceptions with the legacy Python API.
 ##
 
-import pycvc4
-from pycvc4 import kinds
+import cvc5
+from cvc5 import Kind
 import sys
 
 
 def main():
-    slv = pycvc4.Solver()
+    tm = cvc5.TermManager()
+    slv = cvc5.Solver(tm)
 
     slv.setOption("produce-models", "true")
 
@@ -34,8 +33,8 @@ def main():
 
     # Creating a term with an invalid type
     try:
-        integer = slv.getIntegerSort()
-        x = slv.mkConst("x", integer)
+        integer = tm.getIntegerSort()
+        x = tm.mkConst("x", integer)
         invalidTerm = em.mkTerm(AND, x, x)
         slv.checkSat(invalidTerm)
         return 1
@@ -44,7 +43,7 @@ def main():
 
     # Asking for a model after unsat result
     try:
-        slv.checkSat(slv.mkBoolean(False))
+        slv.checkSat(tm.mkBoolean(False))
         slv.getModel()
         return 1
     except:

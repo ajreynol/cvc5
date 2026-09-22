@@ -1,31 +1,27 @@
-/*********************                                                        */
-/*! \file sygus_unif.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds, Haniel Barbosa, Mathias Preiner
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief sygus_unif
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * sygus_unif
+ */
 
-#include "cvc4_private.h"
+#include "cvc5_private.h"
 
-#ifndef CVC4__THEORY__QUANTIFIERS__SYGUS_UNIF_H
-#define CVC4__THEORY__QUANTIFIERS__SYGUS_UNIF_H
+#ifndef CVC5__THEORY__QUANTIFIERS__SYGUS_UNIF_H
+#define CVC5__THEORY__QUANTIFIERS__SYGUS_UNIF_H
 
 #include <map>
+
 #include "expr/node.h"
 #include "theory/quantifiers/sygus/sygus_unif_strat.h"
 
-namespace CVC4 {
+namespace cvc5::internal {
 namespace theory {
-
-class QuantifiersEngine;
-
 namespace quantifiers {
 
 class TermDbSygus;
@@ -44,10 +40,10 @@ class TermDbSygus;
  * Based on the above, solutions can be constructed via calls to
  * constructSolution.
  */
-class SygusUnif
+class SygusUnif : protected EnvObj
 {
  public:
-  SygusUnif();
+  SygusUnif(Env& env);
   virtual ~SygusUnif();
 
   /** initialize candidate
@@ -67,7 +63,7 @@ class SygusUnif
    * the respective function-to-synthesize.
    */
   virtual void initializeCandidate(
-      QuantifiersEngine* qe,
+      TermDbSygus* tds,
       Node f,
       std::vector<Node>& enums,
       std::map<Node, std::vector<Node>>& strategy_lemmas);
@@ -92,10 +88,8 @@ class SygusUnif
                                  std::vector<Node>& lemmas) = 0;
 
  protected:
-  /** reference to quantifier engine */
-  QuantifiersEngine* d_qe;
-  /** sygus term database of d_qe */
-  quantifiers::TermDbSygus* d_tds;
+  /** Pointer to the term database sygus */
+  TermDbSygus* d_tds;
 
   //-----------------------debug printing
   /** print ind indentations on trace c */
@@ -175,11 +169,11 @@ class SygusUnif
   virtual Node constructBestConditional(Node ce,
                                         const std::vector<Node>& conds);
   /** Heuristically choose the best string to concatenate from strs to the
-  * solution in context x, currently random
-  * incr stores the vector of indices that are incremented by this solution in
-  * example outputs.
-  * total_inc[x] is the sum of incr[x] for each x in strs.
-  */
+   * solution in context x, currently random
+   * incr stores the vector of indices that are incremented by this solution in
+   * example outputs.
+   * total_inc[x] is the sum of incr[x] for each x in strs.
+   */
   virtual Node constructBestStringToConcat(
       const std::vector<Node>& strs,
       const std::map<Node, size_t>& total_inc,
@@ -196,8 +190,8 @@ class SygusUnif
   Node getMinimalTerm(const std::vector<Node>& terms);
 };
 
-} /* CVC4::theory::quantifiers namespace */
-} /* CVC4::theory namespace */
-} /* CVC4 namespace */
+}  // namespace quantifiers
+}  // namespace theory
+}  // namespace cvc5::internal
 
-#endif /* CVC4__THEORY__QUANTIFIERS__SYGUS_UNIF_H */
+#endif /* CVC5__THEORY__QUANTIFIERS__SYGUS_UNIF_H */

@@ -1,56 +1,60 @@
-/*********************                                                        */
-/*! \file proof_equality_engine.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Implementation of the proof-producing equality engine
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Implementation of the proof-producing equality engine.
+ */
 
 #include "theory/uf/proof_equality_engine.h"
 
+#include "proof/lazy_proof_chain.h"
+#include "proof/proof_node.h"
+#include "proof/proof_node_manager.h"
+#include "smt/env.h"
 #include "theory/rewriter.h"
+#include "theory/uf/eq_proof.h"
+#include "theory/uf/equality_engine.h"
 #include "theory/uf/proof_checker.h"
 
-using namespace CVC4::kind;
+using namespace cvc5::internal::kind;
 
-namespace CVC4 {
+namespace cvc5::internal {
 namespace theory {
 namespace eq {
 
-ProofEqEngine::ProofEqEngine(context::Context* c,
-                             context::UserContext* u,
-                             EqualityEngine& ee,
-                             ProofNodeManager* pnm)
-    : EagerProofGenerator(pnm, u, "pfee::" + ee.identify()),
+ProofEqEngine::ProofEqEngine(Env& env, EqualityEngine& ee)
+    : EagerProofGenerator(env, env.getUserContext(), "pfee::" + ee.identify()),
       d_ee(ee),
-      d_factPg(c, pnm),
-      d_pnm(pnm),
-      d_proof(pnm, nullptr, c, "pfee::LazyCDProof::" + ee.identify()),
-      d_keep(c)
+      d_factPg(env, env.getContext()),
+      d_assumpPg(env.getProofNodeManager()),
+      d_proof(env,
+              nullptr,
+              env.getContext(),
+              "pfee::LazyCDProof::" + ee.identify()),
+      d_keep(env.getContext())
 {
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   d_true = nm->mkConst(true);
   d_false = nm->mkConst(false);
-  AlwaysAssert(pnm != nullptr)
+  AlwaysAssert(env.getProofNodeManager() != nullptr)
       << "Should not construct ProofEqEngine without proof node manager";
 }
 
 bool ProofEqEngine::assertFact(Node lit,
-                               PfRule id,
+                               ProofRule id,
                                const std::vector<Node>& exp,
                                const std::vector<Node>& args)
 {
   Trace("pfee") << "pfee::assertFact " << lit << " " << id << ", exp = " << exp
                 << ", args = " << args << std::endl;
 
-  Node atom = lit.getKind() == NOT ? lit[0] : lit;
-  bool polarity = lit.getKind() != NOT;
+  Node atom = lit.getKind() == Kind::NOT ? lit[0] : lit;
+  bool polarity = lit.getKind() != Kind::NOT;
   // register the step in the proof
   if (holds(atom, polarity))
   {
@@ -68,21 +72,21 @@ bool ProofEqEngine::assertFact(Node lit,
   ps.d_args = args;
   d_factPg.addStep(lit, ps);
   // add lazy step to proof
-  d_proof.addLazyStep(lit, &d_factPg, false);
+  d_proof.addLazyStep(lit, &d_factPg);
   // second, assert it to the equality engine
-  Node reason = NodeManager::currentNM()->mkAnd(exp);
+  Node reason = nodeManager()->mkAnd(exp);
   return assertFactInternal(atom, polarity, reason);
 }
 
 bool ProofEqEngine::assertFact(Node lit,
-                               PfRule id,
+                               ProofRule id,
                                Node exp,
                                const std::vector<Node>& args)
 {
   Trace("pfee") << "pfee::assertFact " << lit << " " << id << ", exp = " << exp
                 << ", args = " << args << std::endl;
-  Node atom = lit.getKind() == NOT ? lit[0] : lit;
-  bool polarity = lit.getKind() != NOT;
+  Node atom = lit.getKind() == Kind::NOT ? lit[0] : lit;
+  bool polarity = lit.getKind() != Kind::NOT;
   // register the step in the proof
   if (holds(atom, polarity))
   {
@@ -95,12 +99,12 @@ bool ProofEqEngine::assertFact(Node lit,
   // the responsibilty of the caller to ensure these do not occur.
   if (exp != d_true)
   {
-    if (exp.getKind() == AND)
+    if (exp.getKind() == Kind::AND)
     {
       for (const Node& expc : exp)
       {
         // should not have doubly nested AND
-        Assert(expc.getKind() != AND);
+        Assert(expc.getKind() != Kind::AND);
         expv.push_back(expc);
       }
     }
@@ -116,7 +120,7 @@ bool ProofEqEngine::assertFact(Node lit,
   ps.d_args = args;
   d_factPg.addStep(lit, ps);
   // add lazy step to proof
-  d_proof.addLazyStep(lit, &d_factPg, false);
+  d_proof.addLazyStep(lit, &d_factPg);
   // second, assert it to the equality engine
   return assertFactInternal(atom, polarity, exp);
 }
@@ -126,8 +130,8 @@ bool ProofEqEngine::assertFact(Node lit, Node exp, ProofStepBuffer& psb)
   Trace("pfee") << "pfee::assertFact " << lit << ", exp = " << exp
                 << " via buffer with " << psb.getNumSteps() << " steps"
                 << std::endl;
-  Node atom = lit.getKind() == NOT ? lit[0] : lit;
-  bool polarity = lit.getKind() != NOT;
+  Node atom = lit.getKind() == Kind::NOT ? lit[0] : lit;
+  bool polarity = lit.getKind() != Kind::NOT;
   if (holds(atom, polarity))
   {
     // we do not process this fact if it already holds
@@ -140,7 +144,7 @@ bool ProofEqEngine::assertFact(Node lit, Node exp, ProofStepBuffer& psb)
     d_factPg.addStep(step.first, step.second);
   }
   // add lazy step to proof
-  d_proof.addLazyStep(lit, &d_factPg, false);
+  d_proof.addLazyStep(lit, &d_factPg);
   // second, assert it to the equality engine
   return assertFactInternal(atom, polarity, exp);
 }
@@ -149,15 +153,15 @@ bool ProofEqEngine::assertFact(Node lit, Node exp, ProofGenerator* pg)
 {
   Trace("pfee") << "pfee::assertFact " << lit << ", exp = " << exp
                 << " via generator" << std::endl;
-  Node atom = lit.getKind() == NOT ? lit[0] : lit;
-  bool polarity = lit.getKind() != NOT;
+  Node atom = lit.getKind() == Kind::NOT ? lit[0] : lit;
+  bool polarity = lit.getKind() != Kind::NOT;
   if (holds(atom, polarity))
   {
     // we do not process this fact if it already holds
     return false;
   }
   // note the proof generator is responsible for remembering the explanation
-  d_proof.addLazyStep(lit, pg, false);
+  d_proof.addLazyStep(lit, pg);
   // second, assert it to the equality engine
   return assertFactInternal(atom, polarity, exp);
 }
@@ -170,15 +174,15 @@ TrustNode ProofEqEngine::assertConflict(Node lit)
   // lit may not be equivalent to false, but should rewrite to false
   if (lit != d_false)
   {
-    Assert(Rewriter::rewrite(lit) == d_false)
+    Assert(rewrite(lit) == d_false)
         << "pfee::assertConflict: conflict literal is not rewritable to "
            "false";
     std::vector<Node> exp;
     exp.push_back(lit);
     std::vector<Node> args;
-    if (!d_proof.addStep(d_false, PfRule::MACRO_SR_PRED_ELIM, exp, args))
+    if (!d_proof.addStep(d_false, ProofRule::MACRO_SR_PRED_ELIM, exp, args))
     {
-      Assert(false) << "pfee::assertConflict: failed conflict step";
+      DebugUnhandled() << "pfee::assertConflict: failed conflict step";
       return TrustNode::null();
     }
   }
@@ -186,7 +190,7 @@ TrustNode ProofEqEngine::assertConflict(Node lit)
       d_false, assumps, TrustNodeKind::CONFLICT, &d_proof);
 }
 
-TrustNode ProofEqEngine::assertConflict(PfRule id,
+TrustNode ProofEqEngine::assertConflict(ProofRule id,
                                         const std::vector<Node>& exp,
                                         const std::vector<Node>& args)
 {
@@ -194,14 +198,6 @@ TrustNode ProofEqEngine::assertConflict(PfRule id,
                 << ", args = " << args << std::endl;
   // conflict is same as lemma concluding false
   return assertLemma(d_false, id, exp, {}, args);
-}
-
-TrustNode ProofEqEngine::assertConflict(const std::vector<Node>& exp,
-                                        ProofStepBuffer& psb)
-{
-  Trace("pfee") << "pfee::assertConflict " << exp << " via buffer with "
-                << psb.getNumSteps() << " steps" << std::endl;
-  return assertLemma(d_false, exp, {}, psb);
 }
 
 TrustNode ProofEqEngine::assertConflict(const std::vector<Node>& exp,
@@ -214,7 +210,7 @@ TrustNode ProofEqEngine::assertConflict(const std::vector<Node>& exp,
 }
 
 TrustNode ProofEqEngine::assertLemma(Node conc,
-                                     PfRule id,
+                                     ProofRule id,
                                      const std::vector<Node>& exp,
                                      const std::vector<Node>& noExplain,
                                      const std::vector<Node>& args)
@@ -223,60 +219,34 @@ TrustNode ProofEqEngine::assertLemma(Node conc,
                 << ", exp = " << exp << ", noExplain = " << noExplain
                 << ", args = " << args << std::endl;
   Assert(conc != d_true);
-  LazyCDProof tmpProof(d_pnm, &d_proof);
+  LazyCDProof tmpProof(d_env, &d_proof);
   LazyCDProof* curr;
-  if (conc == d_false)
+  TrustNodeKind tnk;
+  // same policy as above: for conflicts, use existing lazy proof
+  if (conc == d_false && noExplain.empty())
   {
-    // optimization: we can use the main lazy proof directly, because we
-    // know we will backtrack immediately after this call.
     curr = &d_proof;
+    tnk = TrustNodeKind::CONFLICT;
   }
   else
   {
-    // use a lazy proof that always links to d_proof
     curr = &tmpProof;
+    tnk = TrustNodeKind::LEMMA;
   }
-  // Register the proof step.
-  if (!curr->addStep(conc, id, exp, args))
+  // explain each literal in the vector
+  std::vector<TNode> assumps;
+  explainVecWithProof(tnk, assumps, exp, noExplain, curr);
+  // Register the proof step. We use a separate lazy CDProof which will make
+  // calls to curr above for the proofs of the literals in exp.
+  LazyCDProof outer(d_env, curr);
+  if (!outer.addStep(conc, id, exp, args))
   {
     // a step went wrong, e.g. during checking
-    Assert(false) << "pfee::assertConflict: register proof step";
+    DebugUnhandled() << "pfee::assertConflict: register proof step";
     return TrustNode::null();
   }
-  // We've now decided which lazy proof to use (curr), now get the proof
-  // for conc.
-  return assertLemmaInternal(conc, exp, noExplain, curr);
-}
-
-TrustNode ProofEqEngine::assertLemma(Node conc,
-                                     const std::vector<Node>& exp,
-                                     const std::vector<Node>& noExplain,
-                                     ProofStepBuffer& psb)
-{
-  Trace("pfee") << "pfee::assertLemma " << conc << ", exp = " << exp
-                << ", noExplain = " << noExplain << " via buffer with "
-                << psb.getNumSteps() << " steps" << std::endl;
-  LazyCDProof tmpProof(d_pnm, &d_proof);
-  LazyCDProof* curr;
-  // same policy as above: for conflicts, use existing lazy proof
-  if (conc == d_false)
-  {
-    curr = &d_proof;
-  }
-  else
-  {
-    curr = &tmpProof;
-  }
-  // add all steps to the proof
-  const std::vector<std::pair<Node, ProofStep>>& steps = psb.getSteps();
-  for (const std::pair<Node, ProofStep>& ps : steps)
-  {
-    if (!curr->addStep(ps.first, ps.second))
-    {
-      return TrustNode::null();
-    }
-  }
-  return assertLemmaInternal(conc, exp, noExplain, curr);
+  // Now get the proof for conc.
+  return ensureProofForFact(conc, assumps, tnk, &outer);
 }
 
 TrustNode ProofEqEngine::assertLemma(Node conc,
@@ -288,54 +258,47 @@ TrustNode ProofEqEngine::assertLemma(Node conc,
   Trace("pfee") << "pfee::assertLemma " << conc << ", exp = " << exp
                 << ", noExplain = " << noExplain << " via generator"
                 << std::endl;
-  LazyCDProof tmpProof(d_pnm, &d_proof);
+  LazyCDProof tmpProof(d_env, &d_proof);
   LazyCDProof* curr;
+  TrustNodeKind tnk;
   // same policy as above: for conflicts, use existing lazy proof
-  if (conc == d_false)
+  if (conc == d_false && noExplain.empty())
   {
     curr = &d_proof;
+    tnk = TrustNodeKind::CONFLICT;
   }
   else
   {
     curr = &tmpProof;
+    tnk = TrustNodeKind::LEMMA;
   }
-  // Register the proof. Notice we do a deep copy here because the CDProof
-  // curr should take ownership of the proof steps that pg provided for conc.
-  // In other words, this sets up the "skeleton" of proof that is the base
-  // of the proof we are constructing. The call to assertLemmaInternal below
-  // will expand the leaves of this proof. If we used a shallow copy, then
-  // the connection to these leaves would be lost since they would not be
-  // owned by curr.
-  if (!pg->addProofTo(conc, curr, CDPOverwrite::ASSUME_ONLY, true))
-  {
-    // a step went wrong, e.g. during checking
-    Assert(false) << "pfee::assertConflict: register proof step";
-    return TrustNode::null();
-  }
-  return assertLemmaInternal(conc, exp, noExplain, curr);
+  // explain each literal in the vector
+  std::vector<TNode> assumps;
+  explainVecWithProof(tnk, assumps, exp, noExplain, curr);
+  // We use a lazy proof chain here. The provided proof generator sets up the
+  // "skeleton" that is the base of the proof we are constructing. The call to
+  // LazyCDProofChain::getProofFor will expand the leaves of this proof via
+  // calls to curr.
+  LazyCDProofChain outer(d_env, true, nullptr, curr, false);
+  outer.addLazyStep(conc, pg);
+  return ensureProofForFact(conc, assumps, tnk, &outer);
 }
 
 TrustNode ProofEqEngine::explain(Node conc)
 {
   Trace("pfee") << "pfee::explain " << conc << std::endl;
-  LazyCDProof tmpProof(d_pnm, &d_proof);
+  LazyCDProof tmpProof(d_env, &d_proof);
   std::vector<TNode> assumps;
   explainWithProof(conc, assumps, &tmpProof);
   return ensureProofForFact(conc, assumps, TrustNodeKind::PROP_EXP, &tmpProof);
 }
 
-TrustNode ProofEqEngine::assertLemmaInternal(Node conc,
-                                             const std::vector<Node>& exp,
-                                             const std::vector<Node>& noExplain,
-                                             LazyCDProof* curr)
+void ProofEqEngine::explainVecWithProof(TrustNodeKind& tnk,
+                                        std::vector<TNode>& assumps,
+                                        const std::vector<Node>& exp,
+                                        const std::vector<Node>& noExplain,
+                                        LazyCDProof* curr)
 {
-  // We are a conflict if the conclusion is false and all literals are
-  // explained.
-  TrustNodeKind tnk =
-      conc == d_false ? TrustNodeKind::CONFLICT : TrustNodeKind::LEMMA;
-
-  // get the explanation, with proofs
-  std::vector<TNode> assumps;
   std::vector<Node> expn;
   for (const Node& e : exp)
   {
@@ -349,20 +312,21 @@ TrustNode ProofEqEngine::assertLemmaInternal(Node conc,
       assumps.push_back(e);
       // it is not a conflict, since it may involve new literals
       tnk = TrustNodeKind::LEMMA;
+      // ensure this is an assumption
+      curr->addLazyStep(e, &d_assumpPg);
     }
   }
-  return ensureProofForFact(conc, assumps, tnk, curr);
 }
 
 TrustNode ProofEqEngine::ensureProofForFact(Node conc,
                                             const std::vector<TNode>& assumps,
                                             TrustNodeKind tnk,
-                                            LazyCDProof* curr)
+                                            ProofGenerator* curr)
 {
   Trace("pfee-proof") << std::endl;
   Trace("pfee-proof") << "pfee::ensureProofForFact: input " << conc << " via "
                       << assumps << ", TrustNodeKind=" << tnk << std::endl;
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   // The proof
   std::shared_ptr<ProofNode> pf;
   ProofGenerator* pfg = nullptr;
@@ -382,7 +346,8 @@ TrustNode ProofEqEngine::ensureProofForFact(Node conc,
         << std::endl
         << std::endl;
     // should have existed
-    Assert(false) << "pfee::assertConflict: failed to get proof for " << conc;
+    DebugUnhandled() << "pfee::assertConflict: failed to get proof for "
+                     << conc;
     return TrustNode::null();
   }
   // clone it so that we have a fresh copy
@@ -399,7 +364,7 @@ TrustNode ProofEqEngine::ensureProofForFact(Node conc,
   // we first ensure the assumptions are flattened
   for (const TNode& a : assumps)
   {
-    if (a.getKind() == AND)
+    if (a.getKind() == Kind::AND)
     {
       scopeAssumps.insert(scopeAssumps.end(), a.begin(), a.end());
     }
@@ -408,9 +373,21 @@ TrustNode ProofEqEngine::ensureProofForFact(Node conc,
       scopeAssumps.push_back(a);
     }
   }
-  // scope the proof constructed above, and connect the formula with the proof
-  // minimize the assumptions
-  pf = d_pnm->mkScope(pfBody, scopeAssumps, true, true);
+  // Scope the proof constructed above, and connect the formula with the proof
+  // minimize the assumptions.
+  ProofNodeManager* pnm = d_env.getProofNodeManager();
+  pf = pnm->mkScope(pfBody, scopeAssumps, true, true);
+  // If we have no assumptions, and are proving an explanation for propagation
+  if (scopeAssumps.empty() && tnk == TrustNodeKind::PROP_EXP)
+  {
+    // Must add "true" as an explicit argument. This is to ensure that the
+    // propagation F from true proves (=> true F) instead of F, since this is
+    // the form required by TrustNodeKind::PROP_EXP. We do not ensure closed or
+    // minimize here, since we already ensured the proof was closed above, and
+    // we do not want to minimize, or else "true" would be omitted.
+    scopeAssumps.push_back(nm->mkConst(true));
+    pf = pnm->mkScope(pf, scopeAssumps, false);
+  }
   exp = nm->mkAnd(scopeAssumps);
   // Make the lemma or conflict node. This must exactly match the conclusion
   // of SCOPE below.
@@ -423,16 +400,16 @@ TrustNode ProofEqEngine::ensureProofForFact(Node conc,
   }
   else
   {
-    formula =
-        exp == d_true
-            ? conc
-            : (conc == d_false ? exp.negate() : nm->mkNode(IMPLIES, exp, conc));
+    formula = exp == d_true
+                  ? conc
+                  : (conc == d_false ? exp.negate()
+                                     : nm->mkNode(Kind::IMPLIES, exp, conc));
   }
   Trace("pfee-proof") << "pfee::ensureProofForFact: formula is " << formula
                       << std::endl;
   // should always be non-null
   Assert(pf != nullptr);
-  if (Trace.isOn("pfee-proof") || Trace.isOn("pfee-proof-final"))
+  if (TraceIsOn("pfee-proof") || TraceIsOn("pfee-proof-final"))
   {
     Trace("pfee-proof") << "pfee::ensureProofForFact: printing proof"
                         << std::endl;
@@ -476,7 +453,7 @@ bool ProofEqEngine::assertFactInternal(TNode atom, bool polarity, TNode reason)
   Trace("pfee-debug") << "pfee::assertFactInternal: " << atom << " " << polarity
                       << " " << reason << std::endl;
   bool ret;
-  if (atom.getKind() == EQUAL)
+  if (atom.getKind() == Kind::EQUAL)
   {
     ret = d_ee.assertEquality(atom, polarity, reason);
   }
@@ -495,7 +472,7 @@ bool ProofEqEngine::assertFactInternal(TNode atom, bool polarity, TNode reason)
 
 bool ProofEqEngine::holds(TNode atom, bool polarity)
 {
-  if (atom.getKind() == EQUAL)
+  if (atom.getKind() == Kind::EQUAL)
   {
     if (!d_ee.hasTerm(atom[0]) || !d_ee.hasTerm(atom[1]))
     {
@@ -522,11 +499,11 @@ void ProofEqEngine::explainWithProof(Node lit,
   }
   std::shared_ptr<eq::EqProof> pf = std::make_shared<eq::EqProof>();
   Trace("pfee-proof") << "pfee::explainWithProof: " << lit << std::endl;
-  bool polarity = lit.getKind() != NOT;
+  bool polarity = lit.getKind() != Kind::NOT;
   TNode atom = polarity ? lit : lit[0];
-  Assert(atom.getKind() != AND);
+  Assert(atom.getKind() != Kind::AND);
   std::vector<TNode> tassumps;
-  if (atom.getKind() == EQUAL)
+  if (atom.getKind() == Kind::EQUAL)
   {
     if (atom[0] == atom[1])
     {
@@ -548,7 +525,7 @@ void ProofEqEngine::explainWithProof(Node lit,
   }
   Trace("pfee-proof") << "...got " << tassumps << std::endl;
   // avoid duplicates
-  for (const TNode a : tassumps)
+  for (TNode a : tassumps)
   {
     if (a == lit)
     {
@@ -559,7 +536,7 @@ void ProofEqEngine::explainWithProof(Node lit,
       assumps.push_back(a);
     }
   }
-  if (Trace.isOn("pfee-proof"))
+  if (TraceIsOn("pfee-proof"))
   {
     Trace("pfee-proof") << "pfee::explainWithProof: add to proof ---"
                         << std::endl;
@@ -575,4 +552,4 @@ void ProofEqEngine::explainWithProof(Node lit,
 
 }  // namespace eq
 }  // namespace theory
-}  // namespace CVC4
+}  // namespace cvc5::internal

@@ -1,28 +1,26 @@
-/*********************                                                        */
-/*! \file word.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds, Andres Noetzli
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Utility functions for words.
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Utility functions for words.
+ */
 
-#include "cvc4_private.h"
+#include "cvc5_private.h"
 
-#ifndef CVC4__THEORY__STRINGS__WORD_H
-#define CVC4__THEORY__STRINGS__WORD_H
+#ifndef CVC5__THEORY__STRINGS__WORD_H
+#define CVC5__THEORY__STRINGS__WORD_H
 
 #include <vector>
 
 #include "expr/node.h"
 #include "expr/type_node.h"
 
-namespace CVC4 {
+namespace cvc5::internal {
 namespace theory {
 namespace strings {
 
@@ -45,6 +43,12 @@ class Word
    * concatenation is equivalent to x.
    */
   static std::vector<Node> getChars(TNode x);
+  /**
+   * Get nth. If x is a string constant, this returns the constant integer
+   * corresponding to the code point of x at position n. If x is a sequence
+   * constant, then this returns the nth element of x.
+   */
+  static Node getNth(TNode x, size_t n);
 
   /** Return true if x is empty */
   static bool isEmpty(TNode x);
@@ -103,17 +107,58 @@ class Word
   /**
    * Checks if there is any overlap between word x and another word y. This
    * corresponds to checking whether one string contains the other and whether a
-   * substring/subsequence of one is a prefix of the other and vice-versa.
+   * substring/subsequence of one is a prefix of the other and/or vice-versa.
+   *
+   * If rev=false, this method returns true if x is non-empty, and either
+   * x contains y, or a non-empty suffix of x is a prefix of y.
+   * Examples:
+   *   "", "" -> false
+   *   "", "a" -> false
+   *   "abc", "" -> true
+   *   "abc", "aa" -> false
+   *   "abc", "cd" -> true
+   *   "abc", "b" -> true
+   *   "abc", "abcd" -> true
+   *   "abc", "aab" -> false
+   *
+   * Overall, the intuition is the following when rev=false:
+   *   If hasOverlap(c, d, false) returns false, then the first occurence (if
+   * any) of d in a string of the form c++e is as a substring of e, for any e.
+   *   In other words, the content of c does not contribute to where d is
+   * contained when looking from the start of the string.
+   *
+   * If rev=true, this method returns true if x is non-empty, and either
+   * x contains y, or a non-empty prefix of x is a suffix of y.
+   * Examples:
+   *   "", "" -> false
+   *   "", "a" -> false
+   *   "abc", "" -> true
+   *   "abc", "aa" -> true
+   *   "abc", "cd" -> false
+   *   "abc", "b" -> true
+   *   "abc", "abcd" -> false
+   *   "abc", "aab" -> true
+   *
+   * Overall, the intuition of this operation is the following when rev=true:
+   *   If hasOverlap(c, d, true) returns false, then the last occurence (if any)
+   *   of d in a string of the form e++c is as a substring of e, for any e.
+   *   In other words, the content of c does not contribute to where d is
+   * contained when looking from the end of the string.
    *
    * @param x The first string
    * @param y The second string
+   * @param rev Whether we are checking the reverse direction.
    * @return True if there is an overlap, false otherwise
    */
-  static bool noOverlapWith(TNode x, TNode y);
+  static bool hasOverlap(TNode x, TNode y, bool rev);
+  /**
+   * Equivalent to hasOverlap(x, y, false) || hasOverlap(y, x, false).
+   */
+  static bool hasBidirectionalOverlap(TNode x, TNode y);
 
   /** overlap
    *
-   * if overlap returns m>0,
+   * when overlap returns m,
    * then the maximal suffix of this string that is a prefix of y is of length
    * m.
    *
@@ -127,7 +172,7 @@ class Word
 
   /** reverse overlap
    *
-   * if roverlap returns m>0,
+   * when roverlap returns m,
    * then the maximal prefix of this word that is a suffix of y is of length m.
    *
    * For example, if x is "abcdef", then:
@@ -165,6 +210,6 @@ class Word
 
 }  // namespace strings
 }  // namespace theory
-}  // namespace CVC4
+}  // namespace cvc5::internal
 
 #endif

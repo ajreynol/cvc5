@@ -1,25 +1,24 @@
-/*********************                                                        */
-/*! \file strategy.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Gereon Kremer
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Strategies for the nonlinear extension
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Strategies for the nonlinear extension.
+ */
 
-#ifndef CVC4__THEORY__ARITH__NL__STRATEGY_H
-#define CVC4__THEORY__ARITH__NL__STRATEGY_H
+#ifndef CVC5__THEORY__ARITH__NL__STRATEGY_H
+#define CVC5__THEORY__ARITH__NL__STRATEGY_H
 
 #include <iosfwd>
-#include <map>
 #include <vector>
 
-namespace CVC4 {
+#include "options/options.h"
+
+namespace cvc5::internal {
 namespace theory {
 namespace arith {
 namespace nl {
@@ -27,15 +26,18 @@ namespace nl {
 /** The possible inference steps for the nonlinear extension */
 enum class InferStep
 {
+  /** Placeholder specifying no inference step */
+  NONE,
+
   /** Break if any lemma is pending */
   BREAK,
   /** Flush waiting lemmas to be pending */
   FLUSH_WAITING_LEMMAS,
 
-  /** Initialize the CAD solver */
-  CAD_INIT,
-  /** A full CAD check */
-  CAD_FULL,
+  /** Initialize the coverings solver */
+  COVERINGS_INIT,
+  /** A full coverings check */
+  COVERINGS_FULL,
 
   /** Initialize the IAND solver */
   IAND_INIT,
@@ -44,13 +46,30 @@ enum class InferStep
   /** An initial IAND check */
   IAND_INITIAL,
 
+  /** Initialize the PIAND solver */
+  PIAND_INIT,
+  /** A full PIAND check */
+  PIAND_FULL,
+  /** An initial PIAND check */
+  PIAND_INITIAL,
+
+  /** Initialize the POW2 solver */
+  POW2_INIT,
+  /** A full POW2 check */
+  POW2_FULL,
+  /** An initial POW2 check */
+  POW2_INITIAL,
+
   /** An ICP check */
+
   ICP,
 
   /** Initialize the NL solver */
   NL_INIT,
   /** Nl factoring lemmas */
   NL_FACTORING,
+  /** Nl monomial equality propagation by flattening */
+  NL_FLATTEN_MON,
   /** Nl lemmas for monomial bound inference */
   NL_MONOMIAL_INFER_BOUNDS,
   /** Nl lemmas for monomial magnitudes (class 0) */
@@ -78,6 +97,9 @@ enum class InferStep
   TRANS_MONOTONIC,
   /** Tangent planes from transcendental solver */
   TRANS_TANGENT_PLANES,
+
+  /** The inference step is unknown */
+  UNKNOWN
 };
 
 /** Streaming operator for InferStep */
@@ -162,7 +184,7 @@ class Strategy
   /** Is this strategy initialized? */
   bool isStrategyInit() const;
   /** Initialize this strategy */
-  void initializeStrategy();
+  void initializeStrategy(const Options& options);
   /** Retrieve the strategy for the given effort e */
   StepGenerator getStrategy();
 
@@ -174,6 +196,6 @@ class Strategy
 }  // namespace nl
 }  // namespace arith
 }  // namespace theory
-}  // namespace CVC4
+}  // namespace cvc5::internal
 
-#endif /* CVC4__THEORY__ARITH__NL__STRATEGY_H */
+#endif /* CVC5__THEORY__ARITH__NL__STRATEGY_H */

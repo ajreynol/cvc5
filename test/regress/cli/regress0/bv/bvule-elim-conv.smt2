@@ -1,0 +1,6 @@
+(set-logic ALL)
+(set-info :status sat)
+(declare-fun a () Int)
+(assert (bvule ((_ int_to_bv 32) a) #x01010101))
+(assert (bvule #x00010101 ((_ int_to_bv 32) a)))
+(check-sat)

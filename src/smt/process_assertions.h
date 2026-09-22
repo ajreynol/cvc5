@@ -1,39 +1,38 @@
-/*********************                                                        */
-/*! \file process_assertions.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds, Tim King, Morgan Deters
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief The module for processing assertions for an SMT engine.
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * The module for processing assertions for an SMT engine.
+ */
 
-#include "cvc4_private.h"
+#include "cvc5_private.h"
 
-#ifndef CVC4__SMT__PROCESS_ASSERTIONS_H
-#define CVC4__SMT__PROCESS_ASSERTIONS_H
+#ifndef CVC5__SMT__PROCESS_ASSERTIONS_H
+#define CVC5__SMT__PROCESS_ASSERTIONS_H
 
-#include <map>
+#include <unordered_map>
 
-#include "context/cdhashmap.h"
 #include "context/cdlist.h"
 #include "expr/node.h"
-#include "expr/type_node.h"
 #include "preprocessing/preprocessing_pass.h"
-#include "preprocessing/preprocessing_pass_context.h"
-#include "smt/assertions.h"
-#include "smt/smt_engine_stats.h"
+#include "smt/env_obj.h"
 #include "util/resource_manager.h"
 
-namespace CVC4 {
+namespace cvc5::internal {
 
-class SmtEngine;
+namespace preprocessing {
+class AssertionPipeline;
+}
 
 namespace smt {
+
+class Assertions;
+struct SolverEngineStatistics;
 
 /**
  * Module in charge of processing assertions for an SMT engine.
@@ -49,15 +48,14 @@ namespace smt {
  * it processes assertions in a way that assumes that apply(...) could be
  * applied multiple times to different sets of assertions.
  */
-class ProcessAssertions
+class ProcessAssertions : protected EnvObj
 {
   /** The types for the recursive function definitions */
   typedef context::CDList<Node> NodeList;
-  typedef unordered_map<Node, Node, NodeHashFunction> NodeToNodeHashMap;
-  typedef unordered_map<Node, bool, NodeHashFunction> NodeToBoolHashMap;
+  typedef std::unordered_map<Node, bool> NodeToBoolHashMap;
 
  public:
-  ProcessAssertions(SmtEngine& smt, ResourceManager& rm);
+  ProcessAssertions(Env& env, SolverEngineStatistics& stats);
   ~ProcessAssertions();
   /** Finish initialize
    *
@@ -70,28 +68,16 @@ class ProcessAssertions
    */
   void cleanup();
   /**
-   * Process the formulas in as. Returns true if there was no conflict when
+   * Process the formulas in ap. Returns true if there was no conflict when
    * processing the assertions.
-   */
-  bool apply(Assertions& as);
-  /**
-   * Expand definitions in term n. Return the expanded form of n.
    *
-   * @param n The node to expand
-   * @param cache Cache of previous results
-   * @param expandOnly if true, then the expandDefinitions function of
-   * TheoryEngine is not called on subterms of n.
-   * @return The expanded term.
+   * @param ap The assertions to preprocess.
    */
-  Node expandDefinitions(TNode n,
-                         NodeToNodeHashMap& cache,
-                         bool expandOnly = false);
+  bool apply(preprocessing::AssertionPipeline& ap);
 
  private:
-  /** Reference to the SMT engine */
-  SmtEngine& d_smt;
-  /** Reference to resource manager */
-  ResourceManager& d_resourceManager;
+  /** Reference to the SMT stats */
+  SolverEngineStatistics& d_slvStats;
   /** The preprocess context */
   preprocessing::PreprocessingPassContext* d_preprocessingPassContext;
   /** True node */
@@ -108,7 +94,7 @@ class ProcessAssertions
    */
   unsigned d_simplifyAssertionsDepth;
   /** Spend resource r by the resource manager of this class. */
-  void spendResource(ResourceManager::Resource r);
+  void spendResource(Resource r);
   /**
    * Perform non-clausal simplification of a Node.  This involves
    * Theory implementations, but does NOT involve the SAT solver in
@@ -116,32 +102,25 @@ class ProcessAssertions
    *
    * Returns false if the formula simplifies to "false"
    */
-  bool simplifyAssertions(preprocessing::AssertionPipeline& assertions);
+  bool simplifyAssertions(preprocessing::AssertionPipeline& ap);
   /**
    * Dump assertions. Print the current assertion list to the dump
    * assertions:`key` if it is enabled.
    */
-  void dumpAssertions(const char* key,
-                      const preprocessing::AssertionPipeline& assertionList);
+  void dumpAssertions(const std::string& key,
+                      const preprocessing::AssertionPipeline& ap);
   /**
-   * Helper function to fix up assertion list to restore invariants needed after
-   * ite removal.
+   * Dump assertions to stream os using the print benchmark utility.
    */
-  void collectSkolems(IteSkolemMap& iskMap,
-                      TNode n,
-                      set<TNode>& skolemSet,
-                      NodeToBoolHashMap& cache);
-  /**
-   * Helper function to fix up assertion list to restore invariants needed after
-   * ite removal.
-   */
-  bool checkForBadSkolems(IteSkolemMap& iskMap,
-                          TNode n,
-                          TNode skolem,
-                          NodeToBoolHashMap& cache);
+  void dumpAssertionsToStream(std::ostream& os,
+                              const preprocessing::AssertionPipeline& ap,
+                              bool printDefs = true);
+  /** apply pass */
+  preprocessing::PreprocessingPassResult applyPass(
+      const std::string& pass, preprocessing::AssertionPipeline& ap);
 };
 
 }  // namespace smt
-}  // namespace CVC4
+}  // namespace cvc5::internal
 
 #endif

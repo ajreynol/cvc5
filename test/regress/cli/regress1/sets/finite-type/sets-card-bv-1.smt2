@@ -1,0 +1,11 @@
+; REQUIRES: unrestricted-mode
+(set-logic ALL)
+(set-info :status sat)
+(set-option :produce-models true)
+(set-option :sets-exp true)
+(declare-fun A () (Set (_ BitVec 3)))
+(declare-fun universe () (Set (_ BitVec 3)))
+(assert (= (set.card A) 3))
+(assert (= universe (as set.universe (Set (_ BitVec 3)))))
+(check-sat)
+

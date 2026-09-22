@@ -1,19 +1,19 @@
-/*********************                                                        */
-/*! \file sequence.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds, Andres Noetzli
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Implementation of the sequence data type.
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Implementation of the sequence data type.
+ */
 
 #include "expr/sequence.h"
 
+#include <limits>
+#include <sstream>
 #include <vector>
 
 #include "expr/node.h"
@@ -21,7 +21,7 @@
 
 using namespace std;
 
-namespace CVC4 {
+namespace cvc5::internal {
 
 Sequence::Sequence(const TypeNode& t, const std::vector<Node>& s)
     : d_type(new TypeNode(t)), d_seq(s)
@@ -320,7 +320,6 @@ Sequence Sequence::replace(const Sequence& s, const Sequence& t) const
 
 Sequence Sequence::substr(size_t i) const
 {
-  Assert(i >= 0);
   Assert(i <= size());
   std::vector<Node> retVec(d_seq.begin() + i, d_seq.end());
   return Sequence(getType(), retVec);
@@ -328,20 +327,10 @@ Sequence Sequence::substr(size_t i) const
 
 Sequence Sequence::substr(size_t i, size_t j) const
 {
-  Assert(i >= 0);
-  Assert(j >= 0);
   Assert(i + j <= size());
   std::vector<Node>::const_iterator itr = d_seq.begin() + i;
   std::vector<Node> retVec(itr, itr + j);
   return Sequence(getType(), retVec);
-}
-
-bool Sequence::noOverlapWith(const Sequence& y) const
-{
-  Assert(getType() == y.getType());
-  return y.find(*this) == std::string::npos
-         && this->find(y) == std::string::npos && this->overlap(y) == 0
-         && y.overlap(*this) == 0;
 }
 
 size_t Sequence::maxSize() { return std::numeric_limits<uint32_t>::max(); }
@@ -368,13 +357,13 @@ std::ostream& operator<<(std::ostream& os, const Sequence& s)
 
 size_t SequenceHashFunction::operator()(const Sequence& s) const
 {
-  size_t ret = 0;
+  uint64_t ret = fnv1a::offsetBasis;
   const std::vector<Node>& vec = s.getVec();
   for (const Node& n : vec)
   {
-    ret = fnv1a::fnv1a_64(ret, NodeHashFunction()(n));
+    ret = fnv1a::fnv1a_64(ret, std::hash<Node>()(n));
   }
-  return ret;
+  return static_cast<size_t>(ret);
 }
 
-}  // namespace CVC4
+}  // namespace cvc5::internal

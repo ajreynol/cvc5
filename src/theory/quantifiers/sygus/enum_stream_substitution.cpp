@@ -1,36 +1,37 @@
-/*********************                                                        */
-/*! \file enum_stream_substitution.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Haniel Barbosa, Andrew Reynolds
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief class for streaming concrete values (through substitutions) from
- ** enumerated abstract ones
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Class for streaming concrete values (through substitutions) from
+ * enumerated abstract ones.
+ */
 
 #include "theory/quantifiers/sygus/enum_stream_substitution.h"
 
+#include <numeric>  // for std::iota
+#include <sstream>
+
+#include "expr/dtype_cons.h"
 #include "options/base_options.h"
 #include "options/datatypes_options.h"
 #include "options/quantifiers_options.h"
 #include "printer/printer.h"
 #include "theory/quantifiers/sygus/term_database_sygus.h"
+#include "theory/rewriter.h"
 
-#include <numeric>  // for std::iota
+using namespace cvc5::internal::kind;
 
-using namespace CVC4::kind;
-
-namespace CVC4 {
+namespace cvc5::internal {
 namespace theory {
 namespace quantifiers {
 
-EnumStreamPermutation::EnumStreamPermutation(quantifiers::TermDbSygus* tds)
-    : d_tds(tds), d_first(true), d_curr_ind(0)
+EnumStreamPermutation::EnumStreamPermutation(Env& env, TermDbSygus* tds)
+    : EnvObj(env), d_tds(tds), d_first(true), d_curr_ind(0)
 {
 }
 
@@ -46,8 +47,8 @@ void EnumStreamPermutation::reset(Node value)
   // get variables in value's type
   TypeNode tn = value.getType();
   Node var_list = tn.getDType().getSygusVarList();
-  NodeManager* nm = NodeManager::currentNM();
-  // get subtypes in value's type
+  NodeManager* nm = nodeManager();
+  // get subfield types in value's type
   SygusTypeInfo& ti = d_tds->getTypeInfo(tn);
   std::vector<TypeNode> sf_types;
   ti.getSubfieldTypes(sf_types);
@@ -55,7 +56,7 @@ void EnumStreamPermutation::reset(Node value)
   std::map<Node, Node> cons_var;
   for (const Node& v : var_list)
   {
-    // collect constructors for variable in all subtypes
+    // collect constructors for variable in all subfield types
     for (const TypeNode& stn : sf_types)
     {
       const DType& dt = stn.getDType();
@@ -63,7 +64,8 @@ void EnumStreamPermutation::reset(Node value)
       {
         if (dt[i].getNumArgs() == 0 && dt[i].getSygusOp() == v)
         {
-          Node cons = nm->mkNode(APPLY_CONSTRUCTOR, dt[i].getConstructor());
+          Node cons =
+              nm->mkNode(Kind::APPLY_CONSTRUCTOR, dt[i].getConstructor());
           d_var_tn_cons[v][stn] = cons;
           cons_var[cons] = v;
         }
@@ -72,12 +74,12 @@ void EnumStreamPermutation::reset(Node value)
   }
   // collect variables occurring in value
   std::vector<Node> vars;
-  std::unordered_set<Node, NodeHashFunction> visited;
+  std::unordered_set<Node> visited;
   collectVars(value, vars, visited);
   // partition permutation variables
   d_curr_ind = 0;
   Trace("synth-stream-concrete") << " ..permutting vars :";
-  std::unordered_set<Node, NodeHashFunction> seen_vars;
+  std::unordered_set<Node> seen_vars;
   for (const Node& v_cons : vars)
   {
     Assert(cons_var.find(v_cons) != cons_var.end());
@@ -88,10 +90,10 @@ void EnumStreamPermutation::reset(Node value)
       d_var_classes[ti.getSubclassForVar(var)].push_back(var);
     }
   }
-  for (const std::pair<unsigned, std::vector<Node>>& p : d_var_classes)
+  for (const std::pair<const unsigned, std::vector<Node>>& p : d_var_classes)
   {
     d_perm_state_class.push_back(PermutationState(p.second));
-    if (Trace.isOn("synth-stream-concrete"))
+    if (TraceIsOn("synth-stream-concrete"))
     {
       Trace("synth-stream-concrete") << " " << p.first << " -> [";
       for (const Node& var : p.second)
@@ -108,7 +110,7 @@ void EnumStreamPermutation::reset(Node value)
 
 Node EnumStreamPermutation::getNext()
 {
-  if (Trace.isOn("synth-stream-concrete"))
+  if (TraceIsOn("synth-stream-concrete"))
   {
     std::stringstream ss;
     TermDbSygus::toStreamSygus(ss, d_value);
@@ -121,8 +123,7 @@ Node EnumStreamPermutation::getNext()
   {
     d_first = false;
     Node bultin_value = d_tds->sygusToBuiltin(d_value, d_value.getType());
-    d_perm_values.insert(
-        d_tds->getExtRewriter()->extendedRewrite(bultin_value));
+    d_perm_values.insert(d_tds->rewriteNode(bultin_value));
     return d_value;
   }
   unsigned n_classes = d_perm_state_class.size();
@@ -189,10 +190,9 @@ Node EnumStreamPermutation::getNext()
     bultin_perm_value = d_tds->sygusToBuiltin(perm_value, perm_value.getType());
     Trace("synth-stream-concrete-debug")
         << " ......perm builtin is " << bultin_perm_value;
-    if (options::sygusSymBreakDynamic())
+    if (options().datatypes.sygusRewriter != options::SygusRewriterMode::NONE)
     {
-      bultin_perm_value =
-          d_tds->getExtRewriter()->extendedRewrite(bultin_perm_value);
+      bultin_perm_value = d_tds->rewriteNode(bultin_perm_value);
       Trace("synth-stream-concrete-debug")
           << " and rewrites to " << bultin_perm_value;
     }
@@ -200,7 +200,7 @@ Node EnumStreamPermutation::getNext()
     // if permuted value is equivalent modulo rewriting to a previous one, look
     // for another
   } while (!d_perm_values.insert(bultin_perm_value).second);
-  if (Trace.isOn("synth-stream-concrete"))
+  if (TraceIsOn("synth-stream-concrete"))
   {
     std::stringstream ss;
     TermDbSygus::toStreamSygus(ss, perm_value);
@@ -229,10 +229,9 @@ unsigned EnumStreamPermutation::getVarClassSize(unsigned id) const
   return it->second.size();
 }
 
-void EnumStreamPermutation::collectVars(
-    Node n,
-    std::vector<Node>& vars,
-    std::unordered_set<Node, NodeHashFunction>& visited)
+void EnumStreamPermutation::collectVars(Node n,
+                                        std::vector<Node>& vars,
+                                        std::unordered_set<Node>& visited)
 {
   if (visited.find(n) != visited.end())
   {
@@ -247,7 +246,7 @@ void EnumStreamPermutation::collectVars(
     }
     return;
   }
-  if (d_tds->sygusToBuiltin(n, n.getType()).getKind() == kind::BOUND_VARIABLE)
+  if (d_tds->sygusToBuiltin(n, n.getType()).getKind() == Kind::BOUND_VARIABLE)
   {
     if (std::find(vars.begin(), vars.end(), n) == vars.end())
     {
@@ -287,7 +286,7 @@ void EnumStreamPermutation::PermutationState::getLastPerm(
 {
   for (unsigned i = 0, size = d_last_perm.size(); i < size; ++i)
   {
-    if (Trace.isOn("synth-stream-concrete"))
+    if (TraceIsOn("synth-stream-concrete"))
     {
       std::stringstream ss;
       TermDbSygus::toStreamSygus(ss, d_vars[d_last_perm[i]]);
@@ -326,8 +325,8 @@ bool EnumStreamPermutation::PermutationState::getNextPermutation()
   return true;
 }
 
-EnumStreamSubstitution::EnumStreamSubstitution(quantifiers::TermDbSygus* tds)
-    : d_tds(tds), d_stream_permutations(tds), d_curr_ind(0)
+EnumStreamSubstitution::EnumStreamSubstitution(Env& env, TermDbSygus* tds)
+    : EnvObj(env), d_tds(tds), d_stream_permutations(env, tds), d_curr_ind(0)
 {
 }
 
@@ -336,15 +335,15 @@ void EnumStreamSubstitution::initialize(TypeNode tn)
   d_tn = tn;
   // get variables in value's type
   Node var_list = tn.getDType().getSygusVarList();
-  // get subtypes in value's type
-  NodeManager* nm = NodeManager::currentNM();
+  // get subfield types in value's type
+  NodeManager* nm = nodeManager();
   SygusTypeInfo& ti = d_tds->getTypeInfo(tn);
   std::vector<TypeNode> sf_types;
   ti.getSubfieldTypes(sf_types);
   // associate variables with constructors in all subfield types
   for (const Node& v : var_list)
   {
-    // collect constructors for variable in all subtypes
+    // collect constructors for variable in all subfield types
     for (const TypeNode& stn : sf_types)
     {
       const DType& dt = stn.getDType();
@@ -353,7 +352,7 @@ void EnumStreamSubstitution::initialize(TypeNode tn)
         if (dt[i].getNumArgs() == 0 && dt[i].getSygusOp() == v)
         {
           d_var_tn_cons[v][stn] =
-              nm->mkNode(APPLY_CONSTRUCTOR, dt[i].getConstructor());
+              nm->mkNode(Kind::APPLY_CONSTRUCTOR, dt[i].getConstructor());
         }
       }
     }
@@ -368,7 +367,7 @@ void EnumStreamSubstitution::initialize(TypeNode tn)
 
 void EnumStreamSubstitution::resetValue(Node value)
 {
-  if (Trace.isOn("synth-stream-concrete"))
+  if (TraceIsOn("synth-stream-concrete"))
   {
     std::stringstream ss;
     TermDbSygus::toStreamSygus(ss, value);
@@ -383,7 +382,7 @@ void EnumStreamSubstitution::resetValue(Node value)
   d_curr_ind = 0;
   d_comb_state_class.clear();
   Trace("synth-stream-concrete") << " ..combining vars  :";
-  for (const std::pair<unsigned, std::vector<Node>>& p : d_var_classes)
+  for (const std::pair<const unsigned, std::vector<Node>>& p : d_var_classes)
   {
     // ignore classes without variables being permuted
     unsigned perm_var_class_sz = d_stream_permutations.getVarClassSize(p.first);
@@ -393,7 +392,7 @@ void EnumStreamSubstitution::resetValue(Node value)
     }
     d_comb_state_class.push_back(CombinationState(
         p.second.size(), perm_var_class_sz, p.first, p.second));
-    if (Trace.isOn("synth-stream-concrete"))
+    if (TraceIsOn("synth-stream-concrete"))
     {
       Trace("synth-stream-concrete")
           << " " << p.first << " -> " << perm_var_class_sz << " from [ ";
@@ -411,7 +410,7 @@ void EnumStreamSubstitution::resetValue(Node value)
 
 Node EnumStreamSubstitution::getNext()
 {
-  if (Trace.isOn("synth-stream-concrete"))
+  if (TraceIsOn("synth-stream-concrete"))
   {
     std::stringstream ss;
     TermDbSygus::toStreamSygus(ss, d_value);
@@ -466,7 +465,7 @@ Node EnumStreamSubstitution::getNext()
       }
     }
   }
-  if (Trace.isOn("synth-stream-concrete-debug"))
+  if (TraceIsOn("synth-stream-concrete-debug"))
   {
     std::stringstream ss;
     TermDbSygus::toStreamSygus(ss, d_last);
@@ -511,12 +510,11 @@ Node EnumStreamSubstitution::getNext()
   // construction (unless it's equiv to a constant, e.g. true / false)
   Node builtin_comb_value =
       d_tds->sygusToBuiltin(comb_value, comb_value.getType());
-  if (options::sygusSymBreakDynamic())
+  if (options().datatypes.sygusRewriter != options::SygusRewriterMode::NONE)
   {
-    builtin_comb_value =
-        d_tds->getExtRewriter()->extendedRewrite(builtin_comb_value);
+    builtin_comb_value = d_tds->rewriteNode(builtin_comb_value);
   }
-  if (Trace.isOn("synth-stream-concrete"))
+  if (TraceIsOn("synth-stream-concrete"))
   {
     std::stringstream ss;
     TermDbSygus::toStreamSygus(ss, comb_value);
@@ -528,18 +526,19 @@ Node EnumStreamSubstitution::getNext()
   if (!builtin_comb_value.isConst()
       && !d_comb_values.insert(builtin_comb_value).second)
   {
-    if (Trace.isOn("synth-stream-concrete"))
+    if (TraceIsOn("synth-stream-concrete"))
     {
       std::stringstream ss, ss1;
       TermDbSygus::toStreamSygus(ss, comb_value);
       Trace("synth-stream-concrete")
-          << " ..term " << ss.str() << " is REDUNDANT with " << builtin_comb_value
+          << " ..term " << ss.str() << " is REDUNDANT with "
+          << builtin_comb_value
           << "\n ..excluding all other concretizations (had "
           << d_comb_values.size() << " already)\n\n";
     }
     return Node::null();
   }
-  if (Trace.isOn("synth-stream-concrete"))
+  if (TraceIsOn("synth-stream-concrete"))
   {
     std::stringstream ss;
     TermDbSygus::toStreamSygus(ss, comb_value);
@@ -561,7 +560,7 @@ EnumStreamSubstitution::CombinationState::CombinationState(
   d_subclass_id = subclass_id;
 }
 
-const unsigned EnumStreamSubstitution::CombinationState::getSubclassId() const
+unsigned EnumStreamSubstitution::CombinationState::getSubclassId() const
 {
   return d_subclass_id;
 }
@@ -576,7 +575,7 @@ void EnumStreamSubstitution::CombinationState::getLastComb(
 {
   for (unsigned i = 0, size = d_last_comb.size(); i < size; ++i)
   {
-    if (Trace.isOn("synth-stream-concrete"))
+    if (TraceIsOn("synth-stream-concrete"))
     {
       std::stringstream ss;
       TermDbSygus::toStreamSygus(ss, d_vars[d_last_comb[i]]);
@@ -606,6 +605,11 @@ bool EnumStreamSubstitution::CombinationState::getNextCombination()
   return new_comb;
 }
 
+EnumStreamConcrete::EnumStreamConcrete(Env& env, TermDbSygus* tds)
+    : EnumValGenerator(env), d_ess(env, tds)
+{
+}
+
 void EnumStreamConcrete::initialize(Node e) { d_ess.initialize(e.getType()); }
 void EnumStreamConcrete::addValue(Node v)
 {
@@ -620,4 +624,4 @@ bool EnumStreamConcrete::increment()
 Node EnumStreamConcrete::getCurrent() { return d_currTerm; }
 }  // namespace quantifiers
 }  // namespace theory
-}  // namespace CVC4
+}  // namespace cvc5::internal

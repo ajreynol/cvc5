@@ -1,36 +1,41 @@
-/*********************                                                        */
-/*! \file ackermann.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Ying Sheng, Yoni Zohar, Aina Niemetz
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Ackermannization preprocessing pass.
- **
- ** This implements the Ackermannization preprocessing pass, which enables
- ** very limited theory combination support for eager bit-blasting via
- ** Ackermannization. It reduces constraints over the combination of the
- ** theories of fixed-size bit-vectors and uninterpreted functions as
- ** described in
- **   Liana Hadarean, An Efficient and Trustworthy Theory Solver for
- **   Bit-vectors in Satisfiability Modulo Theories.
-￼**   https://cs.nyu.edu/media/publications/hadarean_liana.pdf
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Ackermannization preprocessing pass.
+ *
+ * This implements the Ackermannization preprocessing pass, which enables
+ * very limited theory combination support for eager bit-blasting via
+ * Ackermannization. It reduces constraints over the combination of the
+ * theories of fixed-size bit-vectors and uninterpreted functions as
+ * described in
+ *   Liana Hadarean, An Efficient and Trustworthy Theory Solver for
+ *   Bit-vectors in Satisfiability Modulo Theories.
+ *   https://cs.nyu.edu/media/publications/hadarean_liana.pdf
+ */
 
 #include "preprocessing/passes/ackermann.h"
+
 #include <cmath>
+
 #include "base/check.h"
 #include "expr/node_algorithm.h"
+#include "expr/skolem_manager.h"
+#include "options/base_options.h"
 #include "options/options.h"
+#include "preprocessing/assertion_pipeline.h"
+#include "preprocessing/preprocessing_pass_context.h"
+#include "smt/logic_exception.h"
 
-using namespace CVC4;
-using namespace CVC4::theory;
+using namespace cvc5::internal;
+using namespace cvc5::internal::theory;
 
-namespace CVC4 {
+namespace cvc5::internal {
 namespace preprocessing {
 namespace passes {
 
@@ -40,16 +45,16 @@ namespace {
 
 void addLemmaForPair(TNode args1,
                      TNode args2,
-                     const TNode func,
+                     CVC5_UNUSED const TNode func,
                      AssertionPipeline* assertionsToPreprocess,
                      NodeManager* nm)
 {
   Node args_eq;
 
-  if (args1.getKind() == kind::APPLY_UF)
+  if (args1.getKind() == Kind::APPLY_UF)
   {
     Assert(args1.getOperator() == func);
-    Assert(args2.getKind() == kind::APPLY_UF && args2.getOperator() == func);
+    Assert(args2.getKind() == Kind::APPLY_UF && args2.getOperator() == func);
     Assert(args1.getNumChildren() == args2.getNumChildren());
     Assert(args1.getNumChildren() >= 1);
 
@@ -57,31 +62,42 @@ void addLemmaForPair(TNode args1,
 
     for (unsigned i = 0, n = args1.getNumChildren(); i < n; ++i)
     {
-      eqs[i] = nm->mkNode(kind::EQUAL, args1[i], args2[i]);
+      eqs[i] = nm->mkNode(Kind::EQUAL, args1[i], args2[i]);
     }
     if (eqs.size() >= 2)
     {
-      args_eq = nm->mkNode(kind::AND, eqs);
+      args_eq = nm->mkNode(Kind::AND, eqs);
     }
     else
     {
       args_eq = eqs[0];
     }
+
+    // add consistency lemma
+    Node func_eq = nm->mkNode(Kind::EQUAL, args1, args2);
+    Node lemma = nm->mkNode(Kind::IMPLIES, args_eq, func_eq);
+    assertionsToPreprocess->push_back(
+        lemma, false, nullptr, TrustId::PREPROCESS_ACKERMANN_LEMMA);
   }
   else
   {
-    Assert(args1.getKind() == kind::SELECT && args1.getOperator() == func);
-    Assert(args2.getKind() == kind::SELECT && args2.getOperator() == func);
+    Assert(args1.getKind() == Kind::SELECT && args1.getOperator() == func);
+    Assert(args2.getKind() == Kind::SELECT && args2.getOperator() == func);
     Assert(args1.getNumChildren() == 2);
     Assert(args2.getNumChildren() == 2);
-    args_eq = nm->mkNode(Kind::AND,
-      nm->mkNode(kind::EQUAL, args1[0], args2[0]),
-      nm->mkNode(kind::EQUAL, args1[1], args2[1])
-    );
+    // add consistency lemma only if types match
+    if (CVC5_EQUAL(args1.getType(), args2.getType())
+        && CVC5_EQUAL(args1[1].getType(), args2[1].getType()))
+    {
+      args_eq = nm->mkNode(Kind::AND,
+                           {nm->mkNode(Kind::EQUAL, args1[0], args2[0]),
+                            nm->mkNode(Kind::EQUAL, args1[1], args2[1])});
+      Node func_eq = nm->mkNode(Kind::EQUAL, args1, args2);
+      Node lemma = nm->mkNode(Kind::IMPLIES, args_eq, func_eq);
+      assertionsToPreprocess->push_back(
+          lemma, false, nullptr, TrustId::PREPROCESS_ACKERMANN_LEMMA);
+    }
   }
-  Node func_eq = nm->mkNode(kind::EQUAL, args1, args2);
-  Node lemma = nm->mkNode(kind::IMPLIES, args_eq, func_eq);
-  assertionsToPreprocess->push_back(lemma);
 }
 
 void storeFunctionAndAddLemmas(TNode func,
@@ -99,11 +115,8 @@ void storeFunctionAndAddLemmas(TNode func,
   TNodeSet& set = fun_to_args[func];
   if (set.find(term) == set.end())
   {
-    TypeNode tn = term.getType();
-    Node skolem = nm->mkSkolem("SKOLEM$$",
-                               tn,
-                               "is a variable created by the ackermannization "
-                               "preprocessing pass");
+    SkolemManager* sm = nm->getSkolemManager();
+    Node skolem = sm->mkPurifySkolem(term);
     for (const auto& t : set)
     {
       addLemmaForPair(t, term, func, assertions, nm);
@@ -141,13 +154,13 @@ void storeFunctionAndAddLemmas(TNode func,
  * storeFunctionAndAddLemmas will then add the constraint g(x)=g(y) ->
  * f(g(x))=f(g(y)).
  * Now that we see g(x) and g(y), we explicitly add them as well. */
-void collectFunctionsAndLemmas(FunctionToArgsMap& fun_to_args,
+void collectFunctionsAndLemmas(NodeManager* nm,
+                               FunctionToArgsMap& fun_to_args,
                                SubstitutionMap& fun_to_skolem,
                                std::vector<TNode>* vec,
                                AssertionPipeline* assertions)
 {
   TNodeSet seen;
-  NodeManager* nm = NodeManager::currentNM();
   TNode term;
   while (!vec->empty())
   {
@@ -156,7 +169,7 @@ void collectFunctionsAndLemmas(FunctionToArgsMap& fun_to_args,
     if (seen.find(term) == seen.end())
     {
       TNode func;
-      if (term.getKind() == kind::APPLY_UF || term.getKind() == kind::SELECT)
+      if (term.getKind() == Kind::APPLY_UF || term.getKind() == Kind::SELECT)
       {
         storeFunctionAndAddLemmas(term.getOperator(),
                                   term,
@@ -166,10 +179,13 @@ void collectFunctionsAndLemmas(FunctionToArgsMap& fun_to_args,
                                   nm,
                                   vec);
       }
+      else if (term.getKind() == Kind::STORE)
+      {
+        throw LogicException("Ackermannization is not supported for kind: "
+                             + kindToString(term.getKind()));
+      }
       else
       {
-        AlwaysAssert(term.getKind() != kind::STORE)
-            << "Cannot use Ackermannization on formula with stores to arrays";
         /* add children to the vector, so that they are processed later */
         for (TNode n : term)
         {
@@ -196,41 +212,35 @@ size_t getBVSkolemSize(size_t capacity)
  * a sufficient bit-vector size.
  * Populate usVarsToBVVars so that it maps variables with uninterpreted sort to
  * the fresh skolem BV variables. variables */
-void collectUSortsToBV(const unordered_set<TNode, TNodeHashFunction>& vars,
+void collectUSortsToBV(NodeManager* nm,
+                       const std::unordered_set<TNode>& vars,
                        const USortToBVSizeMap& usortCardinality,
                        SubstitutionMap& usVarsToBVVars)
 {
-  NodeManager* nm = NodeManager::currentNM();
-
   for (TNode var : vars)
   {
     TypeNode type = var.getType();
     size_t size = getBVSkolemSize(usortCardinality.at(type));
-    Node skolem = nm->mkSkolem(
-        "BVSKOLEM$$",
-        nm->mkBitVectorType(size),
-        "a variable created by the ackermannization "
-        "preprocessing pass, representing a variable with uninterpreted sort "
-            + type.toString() + ".");
+    Node skolem =
+        NodeManager::mkDummySkolem("ackermann.bv", nm->mkBitVectorType(size));
     usVarsToBVVars.addSubstitution(var, skolem);
   }
 }
 
 /* This function returns the list of terms with uninterpreted sort in the
  * formula represented by assertions. */
-std::unordered_set<TNode, TNodeHashFunction> getVarsWithUSorts(
-    AssertionPipeline* assertions)
+std::unordered_set<TNode> getVarsWithUSorts(AssertionPipeline* assertions)
 {
-  std::unordered_set<TNode, TNodeHashFunction> res;
+  std::unordered_set<TNode> res;
 
   for (const Node& assertion : assertions->ref())
   {
-    std::unordered_set<TNode, TNodeHashFunction> vars;
+    std::unordered_set<Node> vars;
     expr::getVariables(assertion, vars);
 
-    for (const TNode& var : vars)
+    for (const Node& var : vars)
     {
-      if (var.getType().isSort())
+      if (var.getType().isUninterpretedSort())
       {
         res.insert(var);
       }
@@ -246,18 +256,18 @@ std::unordered_set<TNode, TNodeHashFunction> getVarsWithUSorts(
  * size. The size is calculated to have enough capacity, that can accommodate
  * the variables occured in the original formula. At the end, all variables of
  * uninterpreted sorts will be converted into Skolem variables of BV */
-void usortsToBitVectors(const LogicInfo& d_logic,
+void usortsToBitVectors(NodeManager* nm,
+                        const LogicInfo& d_logic,
                         AssertionPipeline* assertions,
                         USortToBVSizeMap& usortCardinality,
                         SubstitutionMap& usVarsToBVVars)
 {
-  std::unordered_set<TNode, TNodeHashFunction> toProcess =
-      getVarsWithUSorts(assertions);
+  std::unordered_set<TNode> toProcess = getVarsWithUSorts(assertions);
 
   if (toProcess.size() > 0)
   {
     /* the current version only supports BV for removing uninterpreted sorts */
-    if (not d_logic.isTheoryEnabled(theory::THEORY_BV))
+    if (!d_logic.isTheoryEnabled(theory::THEORY_BV))
     {
       return;
     }
@@ -271,7 +281,7 @@ void usortsToBitVectors(const LogicInfo& d_logic,
       usortCardinality[type] = usortCardinality[type] + 1;
     }
 
-    collectUSortsToBV(toProcess, usortCardinality, usVarsToBVVars);
+    collectUSortsToBV(nm, toProcess, usortCardinality, usVarsToBVVars);
 
     for (size_t i = 0, size = assertions->size(); i < size; ++i)
     {
@@ -279,7 +289,7 @@ void usortsToBitVectors(const LogicInfo& d_logic,
       Node newA = usVarsToBVVars.apply((*assertions)[i]);
       if (newA != old)
       {
-        assertions->replace(i, newA);
+        assertions->replace(i, newA, nullptr, TrustId::PREPROCESS_ACKERMANN);
         Trace("uninterpretedSorts-to-bv")
             << "  " << old << " => " << (*assertions)[i] << "\n";
       }
@@ -291,16 +301,16 @@ void usortsToBitVectors(const LogicInfo& d_logic,
 
 Ackermann::Ackermann(PreprocessingPassContext* preprocContext)
     : PreprocessingPass(preprocContext, "ackermann"),
-      d_funcToSkolem(preprocContext->getUserContext()),
-      d_usVarsToBVVars(preprocContext->getUserContext()),
-      d_logic(preprocContext->getLogicInfo())
+      d_funcToSkolem(userContext()),
+      d_usVarsToBVVars(userContext()),
+      d_logic(logicInfo())
 {
 }
 
 PreprocessingPassResult Ackermann::applyInternal(
     AssertionPipeline* assertionsToPreprocess)
 {
-  AlwaysAssert(!options::incrementalSolving());
+  AlwaysAssert(!options().base.incrementalSolving);
 
   /* collect all function applications and generate consistency lemmas
    * accordingly */
@@ -309,20 +319,29 @@ PreprocessingPassResult Ackermann::applyInternal(
   {
     to_process.push_back(a);
   }
-  collectFunctionsAndLemmas(
-      d_funcToArgs, d_funcToSkolem, &to_process, assertionsToPreprocess);
+  collectFunctionsAndLemmas(nodeManager(),
+                            d_funcToArgs,
+                            d_funcToSkolem,
+                            &to_process,
+                            assertionsToPreprocess);
 
   /* replace applications of UF by skolems */
   // FIXME for model building, github issue #1901
   for (unsigned i = 0, size = assertionsToPreprocess->size(); i < size; ++i)
   {
     assertionsToPreprocess->replace(
-        i, d_funcToSkolem.apply((*assertionsToPreprocess)[i]));
+        i,
+        d_funcToSkolem.apply((*assertionsToPreprocess)[i]),
+        nullptr,
+        TrustId::PREPROCESS_ACKERMANN);
   }
 
   /* replace uninterpreted sorts with bit-vectors */
-  usortsToBitVectors(
-      d_logic, assertionsToPreprocess, d_usortCardinality, d_usVarsToBVVars);
+  usortsToBitVectors(nodeManager(),
+                     d_logic,
+                     assertionsToPreprocess,
+                     d_usortCardinality,
+                     d_usVarsToBVVars);
 
   return PreprocessingPassResult::NO_CONFLICT;
 }
@@ -331,4 +350,4 @@ PreprocessingPassResult Ackermann::applyInternal(
 
 }  // namespace passes
 }  // namespace preprocessing
-}  // namespace CVC4
+}  // namespace cvc5::internal

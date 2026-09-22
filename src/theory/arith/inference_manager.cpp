@@ -1,16 +1,14 @@
-/*********************                                                        */
-/*! \file inference_manager.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Gereon Kremer, Mathias Preiner
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Implementation of the inference manager for the theory of strings.
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Implementation of the inference manager for the theory of strings.
+ */
 
 #include "theory/arith/inference_manager.h"
 
@@ -18,23 +16,23 @@
 #include "theory/arith/theory_arith.h"
 #include "theory/rewriter.h"
 
-namespace CVC4 {
+namespace cvc5::internal {
 namespace theory {
 namespace arith {
 
-InferenceManager::InferenceManager(TheoryArith& ta,
-                                   ArithState& astate,
-                                   ProofNodeManager* pnm)
-    : InferenceManagerBuffered(ta, astate, pnm), d_lemmasPp(ta.getUserContext())
+InferenceManager::InferenceManager(Env& env, TheoryArith& ta, TheoryState& s)
+    : InferenceManagerBuffered(env, ta, s, "theory::arith::"),
+      // currently must track propagated literals if using the equality solver
+      d_trackPropLits(options().arith.arithEqSolver),
+      d_propLits(context())
 {
 }
 
-void InferenceManager::addPendingArithLemma(std::unique_ptr<ArithLemma> lemma,
-                                            bool isWaiting)
+void InferenceManager::addPendingLemma(std::unique_ptr<SimpleTheoryLemma> lemma,
+                                       bool isWaiting)
 {
-  Trace("arith::infman") << "Add " << lemma->d_inference << " " << lemma->d_node
+  Trace("arith::infman") << "Add " << lemma->getId() << " " << lemma->d_node
                          << (isWaiting ? " as waiting" : "") << std::endl;
-  lemma->d_node = Rewriter::rewrite(lemma->d_node);
   if (hasCachedLemma(lemma->d_node, lemma->d_property))
   {
     return;
@@ -60,53 +58,39 @@ void InferenceManager::addPendingArithLemma(std::unique_ptr<ArithLemma> lemma,
     d_pendingLem.emplace_back(std::move(lemma));
   }
 }
-void InferenceManager::addPendingArithLemma(const ArithLemma& lemma,
-                                            bool isWaiting)
+void InferenceManager::addPendingLemma(const SimpleTheoryLemma& lemma,
+                                       bool isWaiting)
 {
-  addPendingArithLemma(std::unique_ptr<ArithLemma>(new ArithLemma(lemma)),
-                       isWaiting);
+  addPendingLemma(
+      std::unique_ptr<SimpleTheoryLemma>(new SimpleTheoryLemma(lemma)),
+      isWaiting);
 }
-void InferenceManager::addPendingArithLemma(const Node& lemma,
-                                            InferenceId inftype,
-                                            bool isWaiting)
+void InferenceManager::addPendingLemma(const Node& lemma,
+                                       InferenceId inftype,
+                                       ProofGenerator* pg,
+                                       bool isWaiting,
+                                       LemmaProperty p)
 {
-  addPendingArithLemma(std::unique_ptr<ArithLemma>(new ArithLemma(
-                           lemma, LemmaProperty::NONE, nullptr, inftype)),
-                       isWaiting);
+  addPendingLemma(std::unique_ptr<SimpleTheoryLemma>(
+                      new SimpleTheoryLemma(inftype, lemma, p, pg)),
+                  isWaiting);
 }
 
 void InferenceManager::flushWaitingLemmas()
 {
   for (auto& lem : d_waitingLem)
   {
-    Trace("arith::infman") << "Flush waiting lemma to pending: "
-                           << lem->d_inference << " " << lem->d_node
-                           << std::endl;
+    Trace("arith::infman") << "Flush waiting lemma to pending: " << lem->getId()
+                           << " " << lem->d_node << std::endl;
     d_pendingLem.emplace_back(std::move(lem));
   }
   d_waitingLem.clear();
 }
-void InferenceManager::clearWaitingLemmas()
-{
-  d_waitingLem.clear();
-}
+void InferenceManager::clearWaitingLemmas() { d_waitingLem.clear(); }
 
-void InferenceManager::addConflict(const Node& conf, InferenceId inftype)
-{
-  Trace("arith::infman") << "Adding conflict: " << inftype << " " << conf
-                         << std::endl;
-  conflict(conf);
-}
+bool InferenceManager::hasUsed() const { return hasSent() || hasPending(); }
 
-bool InferenceManager::hasUsed() const
-{
-  return hasSent() || hasPending();
-}
-
-bool InferenceManager::hasWaitingLemma() const
-{
-  return !d_waitingLem.empty();
-}
+bool InferenceManager::hasWaitingLemma() const { return !d_waitingLem.empty(); }
 
 std::size_t InferenceManager::numWaitingLemmas() const
 {
@@ -115,33 +99,22 @@ std::size_t InferenceManager::numWaitingLemmas() const
 
 bool InferenceManager::hasCachedLemma(TNode lem, LemmaProperty p)
 {
-  if (isLemmaPropertyPreprocess(p))
-  {
-    return d_lemmasPp.find(lem) != d_lemmasPp.end();
-  }
-  return TheoryInferenceManager::hasCachedLemma(lem, p);
+  Node rewritten = rewrite(lem);
+  return TheoryInferenceManager::hasCachedLemma(rewritten, p);
 }
 
 bool InferenceManager::cacheLemma(TNode lem, LemmaProperty p)
 {
-  if (isLemmaPropertyPreprocess(p))
-  {
-    if (d_lemmasPp.find(lem) != d_lemmasPp.end())
-    {
-      return false;
-    }
-    d_lemmasPp.insert(lem);
-    return true;
-  }
-  return TheoryInferenceManager::cacheLemma(lem, p);
+  Node rewritten = rewrite(lem);
+  return TheoryInferenceManager::cacheLemma(rewritten, p);
 }
 
-bool InferenceManager::isEntailedFalse(const ArithLemma& lem)
+bool InferenceManager::isEntailedFalse(const SimpleTheoryLemma& lem)
 {
-  if (options::nlExtEntailConflicts())
+  if (options().arith.nlExtEntailConflicts)
   {
     Node ch_lemma = lem.d_node.negate();
-    ch_lemma = Rewriter::rewrite(ch_lemma);
+    ch_lemma = rewrite(ch_lemma);
     Trace("arith-inf-manager") << "InferenceManager::Check entailment of "
                                << ch_lemma << "..." << std::endl;
 
@@ -160,6 +133,21 @@ bool InferenceManager::isEntailedFalse(const ArithLemma& lem)
   return false;
 }
 
+bool InferenceManager::propagateLit(TNode lit)
+{
+  if (d_trackPropLits)
+  {
+    d_propLits.insert(lit);
+  }
+  return TheoryInferenceManager::propagateLit(lit);
+}
+
+bool InferenceManager::hasPropagated(TNode lit) const
+{
+  Assert(d_trackPropLits);
+  return d_propLits.find(lit) != d_propLits.end();
+}
+
 }  // namespace arith
 }  // namespace theory
-}  // namespace CVC4
+}  // namespace cvc5::internal

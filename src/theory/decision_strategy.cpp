@@ -1,32 +1,30 @@
-/*********************                                                        */
-/*! \file decision_strategy.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Implementation of base classes for decision strategies used by theory
- ** solvers for use in the DecisionManager of TheoryEngine.
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Implementation of base classes for decision strategies used by theory
+ * solvers for use in the DecisionManager of TheoryEngine.
+ */
 
 #include "theory/decision_strategy.h"
 
 #include "theory/rewriter.h"
 
-using namespace CVC4::kind;
+using namespace cvc5::internal::kind;
 
-namespace CVC4 {
+namespace cvc5::internal {
 namespace theory {
 
-DecisionStrategyFmf::DecisionStrategyFmf(context::Context* satContext,
-                                         Valuation valuation)
-    : d_valuation(valuation),
-      d_has_curr_literal(false, satContext),
-      d_curr_literal(0, satContext)
+DecisionStrategyFmf::DecisionStrategyFmf(Env& env, Valuation valuation)
+    : DecisionStrategy(env),
+      d_valuation(valuation),
+      d_has_curr_literal(context(), false),
+      d_curr_literal(context(), 0)
 {
 }
 
@@ -73,6 +71,9 @@ Node DecisionStrategyFmf::getNextDecisionRequest()
       else
       {
         Trace("dec-strategy-debug") << "...already assigned true." << std::endl;
+        // the current literal has been decided with the right polarity, we are
+        // done
+        d_has_curr_literal = true;
       }
     }
     else
@@ -80,8 +81,6 @@ Node DecisionStrategyFmf::getNextDecisionRequest()
       Trace("dec-strategy-debug") << "...exhausted literals." << std::endl;
     }
   } while (!success);
-  // the current literal has been decided with the right polarity, we are done
-  d_has_curr_literal = true;
   return Node::null();
 }
 
@@ -111,27 +110,25 @@ Node DecisionStrategyFmf::getLiteral(unsigned n)
   while (n >= d_literals.size())
   {
     Node lit = mkLiteral(d_literals.size());
-    if (!lit.isNull())
+    if (lit.isNull())
     {
-      lit = Rewriter::rewrite(lit);
+      // literal is not ready yet, return null
+      // note we assume that mkLiteral is dynamic here.
+      return lit;
     }
+    lit = rewrite(lit);
     d_literals.push_back(lit);
   }
   Node ret = d_literals[n];
-  if (!ret.isNull())
-  {
-    // always ensure it is in the CNF stream
-    ret = d_valuation.ensureLiteral(ret);
-  }
-  return ret;
+  // always ensure it is in the CNF stream
+  return d_valuation.ensureLiteral(ret);
 }
 
-DecisionStrategySingleton::DecisionStrategySingleton(
-    const char* name,
-    Node lit,
-    context::Context* satContext,
-    Valuation valuation)
-    : DecisionStrategyFmf(satContext, valuation), d_name(name), d_literal(lit)
+DecisionStrategySingleton::DecisionStrategySingleton(Env& env,
+                                                     const char* name,
+                                                     Node lit,
+                                                     Valuation valuation)
+    : DecisionStrategyFmf(env, valuation), d_name(name), d_literal(lit)
 {
 }
 
@@ -146,5 +143,26 @@ Node DecisionStrategySingleton::mkLiteral(unsigned n)
 
 Node DecisionStrategySingleton::getSingleLiteral() { return d_literal; }
 
+DecisionStrategyVector::DecisionStrategyVector(Env& env,
+                                               const char* name,
+                                               Valuation valuation)
+    : DecisionStrategyFmf(env, valuation), d_name(name)
+{
+}
+
+Node DecisionStrategyVector::mkLiteral(unsigned n)
+{
+  if (n < d_literals.size())
+  {
+    return d_literals[n];
+  }
+  return Node::null();
+}
+
+void DecisionStrategyVector::addLiteral(const Node& n)
+{
+  d_literals.push_back(n);
+}
+
 }  // namespace theory
-}  // namespace CVC4
+}  // namespace cvc5::internal

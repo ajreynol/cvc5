@@ -1,17 +1,14 @@
-/*********************                                                        */
-/*! \file normal_form.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds, Andres Noetzli
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Implementation of normal form data structure for the theory of
- **  strings.
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Implementation of normal form data structure for the theory of strings.
+ */
 
 #include "theory/strings/normal_form.h"
 
@@ -21,16 +18,16 @@
 #include "theory/strings/word.h"
 
 using namespace std;
-using namespace CVC4::kind;
+using namespace cvc5::internal::kind;
 
-namespace CVC4 {
+namespace cvc5::internal {
 namespace theory {
 namespace strings {
 
 void NormalForm::init(Node base)
 {
   Assert(base.getType().isStringLike());
-  Assert(base.getKind() != STRING_CONCAT);
+  Assert(base.getKind() != Kind::STRING_CONCAT);
   d_base = base;
   d_nf.clear();
   d_isRev = false;
@@ -52,8 +49,7 @@ void NormalForm::reverse()
 
 void NormalForm::splitConstant(unsigned index, Node c1, Node c2)
 {
-  Assert(Rewriter::rewrite(NodeManager::currentNM()->mkNode(
-             STRING_CONCAT, d_isRev ? c2 : c1, d_isRev ? c1 : c2))
+  Assert(Word::mkWordFlatten({d_isRev ? c2 : c1, d_isRev ? c1 : c2})
          == d_nf[index]);
   d_nf.insert(d_nf.begin() + index + 1, c2);
   d_nf[index] = c1;
@@ -61,13 +57,13 @@ void NormalForm::splitConstant(unsigned index, Node c1, Node c2)
   // notice this is not critical for soundness: not doing the below incrementing
   // will only lead to overapproximating when antecedants are required in
   // explanations
-  for (const std::pair<Node, std::map<bool, unsigned> >& pe : d_expDep)
+  for (const std::pair<const Node, std::map<bool, unsigned> >& pe : d_expDep)
   {
-    for (const std::pair<bool, unsigned>& pep : pe.second)
+    for (const auto& pep : pe.second)
     {
       // See if this can be incremented: it can if this literal is not relevant
       // to the current index, and hence it is not relevant for both c1 and c2.
-      Assert(pep.second >= 0 && pep.second <= d_nf.size());
+      Assert(pep.second <= d_nf.size());
       bool increment = (pep.first == d_isRev)
                            ? pep.second > index
                            : (d_nf.size() - 1 - pep.second) < index;
@@ -83,6 +79,7 @@ void NormalForm::addToExplanation(Node exp,
                                   unsigned new_val,
                                   unsigned new_rev_val)
 {
+  Assert(!exp.isConst());
   if (std::find(d_exp.begin(), d_exp.end(), exp) == d_exp.end())
   {
     d_exp.push_back(exp);
@@ -116,7 +113,7 @@ void NormalForm::addToExplanation(Node exp,
 
 void NormalForm::getExplanation(int index, std::vector<Node>& curr_exp)
 {
-  if (index == -1 || !options::stringMinPrefixExplain())
+  if (index == -1)
   {
     curr_exp.insert(curr_exp.end(), d_exp.begin(), d_exp.end());
     return;
@@ -151,14 +148,9 @@ Node NormalForm::collectConstantStringAt(size_t& index)
     {
       std::reverse(c.begin(), c.end());
     }
-    Node cc = Rewriter::rewrite(utils::mkConcat(c, c[0].getType()));
-    Assert(cc.isConst());
-    return cc;
+    return utils::mkConcat(c, c[0].getType());
   }
-  else
-  {
-    return Node::null();
-  }
+  return Node::null();
 }
 
 void NormalForm::getExplanationForPrefixEq(NormalForm& nfi,
@@ -177,13 +169,11 @@ void NormalForm::getExplanationForPrefixEq(NormalForm& nfi,
   Trace("strings-explain-prefix")
       << "Included " << curr_exp.size() << " / "
       << (nfi.d_exp.size() + nfj.d_exp.size()) << std::endl;
-  if (nfi.d_base != nfj.d_base)
-  {
-    Node eq = nfi.d_base.eqNode(nfj.d_base);
-    curr_exp.push_back(eq);
-  }
+  // add explanation for why they are equal
+  Node eq = nfi.d_base.eqNode(nfj.d_base);
+  curr_exp.push_back(eq);
 }
 
 }  // namespace strings
 }  // namespace theory
-}  // namespace CVC4
+}  // namespace cvc5::internal

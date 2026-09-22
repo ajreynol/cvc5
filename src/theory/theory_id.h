@@ -1,28 +1,26 @@
-/*********************                                                        */
-/*! \file theory_id.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds, Aina Niemetz, Dejan Jovanovic
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief [[ Add one-line brief description here ]]
- **
- ** [[ Add lengthier description here ]]
- ** \todo document this file
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * [[ Add one-line brief description here ]]
+ *
+ * [[ Add lengthier description here ]]
+ * \todo document this file
+ */
 
-#include "cvc4_public.h"
+#include "cvc5_public.h"
 
-#ifndef CVC4__THEORY__THEORY_ID_H
-#define CVC4__THEORY__THEORY_ID_H
+#ifndef CVC5__THEORY__THEORY_ID_H
+#define CVC5__THEORY__THEORY_ID_H
 
-#include <iostream>
+#include <iosfwd>
 
-namespace CVC4 {
+namespace cvc5::internal {
 namespace theory {
 
 /**
@@ -37,6 +35,7 @@ enum TheoryId
   THEORY_UF,
   THEORY_ARITH,
   THEORY_BV,
+  THEORY_FF,
   THEORY_FP,
   THEORY_ARRAYS,
   THEORY_DATATYPES,
@@ -46,17 +45,21 @@ enum TheoryId
   THEORY_STRINGS,
   THEORY_QUANTIFIERS,
 
-  THEORY_LAST
+  THEORY_LAST,
+  THEORY_NONE
+  // Note theory engine modules use theory identifiers THEORY_NONE + n for n>0
+  // for the purposes of identifying the source of lemmas.
 };
 
 const TheoryId THEORY_FIRST = static_cast<TheoryId>(0);
 const TheoryId THEORY_SAT_SOLVER = THEORY_LAST;
 
-TheoryId& operator++(TheoryId& id) CVC4_PUBLIC;
+TheoryId& operator++(TheoryId& id);
 
+const char* toString(TheoryId theoryId);
 std::ostream& operator<<(std::ostream& out, TheoryId theoryId);
 
-std::string getStatsPrefix(TheoryId theoryId) CVC4_PUBLIC;
+std::string getStatsPrefix(TheoryId theoryId);
 
 /**
  * A set of theories. Utilities for TheoryIdSet can be found below.
@@ -106,5 +109,5 @@ class TheoryIdSetUtil
 };
 
 }  // namespace theory
-}  // namespace CVC4
+}  // namespace cvc5::internal
 #endif

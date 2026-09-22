@@ -1,77 +1,103 @@
-#.rst:
-# FindCython
-# ----------
+###############################################################################
+# This file is part of the cvc5 project.
 #
-# Find ``cython`` executable.
+# Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+# in the top-level source directory and their institutional affiliations.
+# All rights reserved.  See the file COPYING in the top-level source
+# directory for licensing information.
+# #############################################################################
 #
-# This module defines the following variables:
-#
-#  ``CYTHON_EXECUTABLE``
-#    path to the ``cython`` program
-#
-#  ``CYTHON_VERSION``
-#    version of ``cython``
-#
-#  ``CYTHON_FOUND``
-#    true if the program was found
-#
-# See also UseCython.cmake
-#
-#=============================================================================
-# Copyright 2011 Kitware, Inc.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#=============================================================================
+# Find Cython
+# Cython_FOUND - found Cython Python module
+##
 
-# Use the Cython executable that lives next to the Python executable
-# if it is a local installation.
-find_package(PythonInterp)
-if(PYTHONINTERP_FOUND)
-  get_filename_component(_python_path ${PYTHON_EXECUTABLE} PATH)
-  find_program(CYTHON_EXECUTABLE
-               NAMES cython cython.bat cython3
-               HINTS ${_python_path}
-               DOC "path to the cython executable")
+macro(get_cython_version)
+  execute_process(
+      COMMAND "${Python_EXECUTABLE}" -c "import Cython; print(Cython.__version__)"
+      RESULT_VARIABLE Cython_VERSION_CHECK_RESULT
+      OUTPUT_VARIABLE Cython_VERSION
+      ERROR_QUIET
+      OUTPUT_STRIP_TRAILING_WHITESPACE
+  )
+endmacro()
+
+get_cython_version()
+
+if (Cython_FIND_REQUIRED)
+  set(Cython_FIND_MODE FATAL_ERROR)
 else()
-  find_program(CYTHON_EXECUTABLE
-               NAMES cython cython.bat cython3
-               DOC "path to the cython executable")
+  set(Cython_FIND_MODE STATUS)
 endif()
 
-if(CYTHON_EXECUTABLE)
-  set(CYTHON_version_command ${CYTHON_EXECUTABLE} --version)
-
-  execute_process(COMMAND ${CYTHON_version_command}
-                  OUTPUT_VARIABLE CYTHON_version_output
-                  ERROR_VARIABLE CYTHON_version_error
-                  RESULT_VARIABLE CYTHON_version_result
-                  OUTPUT_STRIP_TRAILING_WHITESPACE)
-
-  if(NOT ${CYTHON_version_result} EQUAL 0)
-    set(_error_msg "Command \"${CYTHON_version_command}\" failed with")
-    set(_error_msg "${_error_msg} output:\n${CYTHON_version_error}")
-    message(SEND_ERROR "${_error_msg}")
-  else()
-    if("${CYTHON_version_output}" MATCHES "^[Cc]ython version ([^,]+)")
-      set(CYTHON_VERSION "${CMAKE_MATCH_1}")
+if (Cython_VERSION_CHECK_RESULT EQUAL 0)
+    set(Cython_FOUND TRUE)
+    message(STATUS "Found Cython version: ${Cython_VERSION}")
+    if (DEFINED Cython_FIND_VERSION)
+        if(Cython_FIND_VERSION_EXACT)
+            if (NOT (Cython_VERSION VERSION_EQUAL ${Cython_FIND_VERSION}))
+              if(ENABLE_AUTO_DOWNLOAD)
+                message(STATUS
+                  "Installing module Cython==${Cython_FIND_VERSION}"
+                )
+                execute_process(
+                  COMMAND
+                  ${Python_EXECUTABLE} -m pip install Cython==${Cython_FIND_VERSION}
+                  RESULT_VARIABLE CYTHON_INSTALL_CMD_EXIT_CODE
+                )
+                if(CYTHON_INSTALL_CMD_EXIT_CODE)
+                  message(${Cython_FIND_MODE}
+                    "Could not install Cython==${Cython_FIND_VERSION}")
+                else()
+                  get_cython_version()
+                endif()
+              else()
+                message(${Cython_FIND_MODE}
+                  "Cython version == ${Cython_FIND_VERSION} is required, "
+                  "but found version ${Cython_VERSION}")
+              endif()
+            endif()
+        else()
+            if (Cython_VERSION VERSION_LESS ${Cython_FIND_VERSION})
+              if(ENABLE_AUTO_DOWNLOAD)
+                message(STATUS "Upgrading module Cython")
+                execute_process(COMMAND
+                  ${Python_EXECUTABLE} -m pip install Cython -U
+                  RESULT_VARIABLE CYTHON_INSTALL_CMD_EXIT_CODE
+                )
+                if(CYTHON_INSTALL_CMD_EXIT_CODE)
+                  message(${Cython_FIND_MODE}
+                    "Could not install Cython >= ${Cython_FIND_VERSION}")
+                else()
+                  get_cython_version()
+                endif()
+              else()
+                message(${Cython_FIND_MODE}
+                  "Cython version >= ${Cython_FIND_VERSION} is required, "
+                  "but found version ${Cython_VERSION}")
+              endif()
+            endif()
+        endif()
     endif()
+else()
+  set(Cython_FOUND FALSE)
+  if(ENABLE_AUTO_DOWNLOAD)
+    message(STATUS "Installing module Cython")
+    execute_process(
+      COMMAND ${Python_EXECUTABLE} -m pip install Cython
+      RESULT_VARIABLE CYTHON_INSTALL_CMD_EXIT_CODE)
+    if(CYTHON_INSTALL_CMD_EXIT_CODE)
+      message(${Cython_FIND_MODE} "Could not install module Cython")
+    else()
+      set(Cython_FOUND TRUE)
+      get_cython_version()
+    endif()
+  else()
+    message(${Cython_FIND_MODE}
+        "Could not find module Cython for Python "
+        "version ${Python_VERSION_MAJOR}.${Python_VERSION_MINOR}. "
+        "Make sure to install Cython for this Python version "
+        "via \n`${Python_EXECUTABLE} -m pip install Cython'.\n"
+        "or use --auto-download to let us install it for you.\n"
+        "Note: You need to have pip installed for this Python version.")
   endif()
 endif()
-
-include(FindPackageHandleStandardArgs)
-FIND_PACKAGE_HANDLE_STANDARD_ARGS(Cython REQUIRED_VARS CYTHON_EXECUTABLE)
-
-mark_as_advanced(CYTHON_EXECUTABLE)
-
-include(UseCython)
-

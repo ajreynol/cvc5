@@ -1,22 +1,24 @@
-/*********************                                                        */
-/*! \file sygus_datatype.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds, Haniel Barbosa
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Implementation of class for constructing SyGuS datatypes.
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Implementation of class for constructing SyGuS datatypes.
+ */
 
 #include "expr/sygus_datatype.h"
 
-using namespace CVC4::kind;
+#include <sstream>
 
-namespace CVC4 {
+#include "expr/skolem_manager.h"
+
+using namespace cvc5::internal::kind;
+
+namespace cvc5::internal {
 
 SygusDatatype::SygusDatatype(const std::string& name) : d_dt(DType(name)) {}
 
@@ -36,24 +38,22 @@ void SygusDatatype::addConstructor(Node op,
 
 void SygusDatatype::addAnyConstantConstructor(TypeNode tn)
 {
+  SkolemManager* sm = tn.getNodeManager()->getSkolemManager();
   // add an "any constant" proxy variable
-  Node av = NodeManager::currentNM()->mkSkolem("_any_constant", tn);
-  // mark that it represents any constant
-  SygusAnyConstAttribute saca;
-  av.setAttribute(saca, true);
+  Node av =
+      sm->mkInternalSkolemFunction(InternalSkolemId::SYGUS_ANY_CONSTANT, tn);
   std::stringstream ss;
   ss << getName() << "_any_constant";
   std::string cname(ss.str());
   std::vector<TypeNode> builtinArg;
   builtinArg.push_back(tn);
-  addConstructor(
-      av, cname, builtinArg, 0);
+  addConstructor(av, cname, builtinArg, 0);
 }
-void SygusDatatype::addConstructor(Kind k,
+void SygusDatatype::addConstructor(NodeManager* nm,
+                                   Kind k,
                                    const std::vector<TypeNode>& argTypes,
                                    int weight)
 {
-  NodeManager* nm = NodeManager::currentNM();
   addConstructor(nm->operatorOf(k), kindToString(k), argTypes, weight);
 }
 
@@ -73,7 +73,7 @@ void SygusDatatype::initializeDatatype(TypeNode sygusType,
   // should not have initialized (set sygus) yet
   Assert(!isInitialized());
   // should have added a constructor
-  Assert(!d_cons.empty());
+  Assert(allowAll || allowConst || !d_cons.empty());
   /* Use the sygus type to not lose reference to the original types (Bool,
    * Int, etc) */
   d_dt.setSygus(sygusType, sygusVars, allowConst, allowAll);
@@ -97,4 +97,4 @@ const DType& SygusDatatype::getDatatype() const
 
 bool SygusDatatype::isInitialized() const { return d_dt.isSygus(); }
 
-}  // namespace CVC4
+}  // namespace cvc5::internal

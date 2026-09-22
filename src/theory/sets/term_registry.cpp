@@ -1,43 +1,46 @@
-/*********************                                                        */
-/*! \file term_registry.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds, Mudathir Mohamed, Andres Noetzli
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Implementation of sets term registry object
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Implementation of sets term registry object.
+ */
 
 #include "theory/sets/term_registry.h"
 
 #include "expr/emptyset.h"
+#include "expr/skolem_manager.h"
 
 using namespace std;
-using namespace CVC4::kind;
+using namespace cvc5::internal::kind;
 
-namespace CVC4 {
+namespace cvc5::internal {
 namespace theory {
 namespace sets {
 
-TermRegistry::TermRegistry(SolverState& state,
-                           InferenceManager& im,
-                           SkolemCache& skc)
-    : d_im(im),
+TermRegistry::TermRegistry(Env& env, InferenceManager& im, SkolemCache& skc)
+    : EnvObj(env),
+      d_im(im),
       d_skCache(skc),
-      d_proxy(state.getUserContext()),
-      d_proxy_to_term(state.getUserContext())
+      d_proxy(userContext()),
+      d_proxy_to_term(userContext()),
+      d_epg(
+          env.isTheoryProofProducing()
+              ? new EagerProofGenerator(env, nullptr, "sets::TermRegistry::epg")
+              : nullptr)
 {
 }
 
 Node TermRegistry::getProxy(Node n)
 {
   Kind nk = n.getKind();
-  if (nk != EMPTYSET && nk != SINGLETON && nk != INTERSECTION && nk != SETMINUS
-      && nk != UNION && nk != UNIVERSE_SET)
+  if (nk != Kind::SET_EMPTY && nk != Kind::SET_SINGLETON
+      && nk != Kind::SET_INTER && nk != Kind::SET_MINUS && nk != Kind::SET_UNION
+      && nk != Kind::SET_UNIVERSE && nk != Kind::SET_MAP)
   {
     return n;
   }
@@ -46,20 +49,18 @@ Node TermRegistry::getProxy(Node n)
   {
     return (*it).second;
   }
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   Node k = d_skCache.mkTypedSkolemCached(
       n.getType(), n, SkolemCache::SK_PURIFY, "sp");
+
   d_proxy[n] = k;
   d_proxy_to_term[k] = n;
   Node eq = k.eqNode(n);
-  Trace("sets-lemma") << "Sets::Lemma : " << eq << " by proxy" << std::endl;
-  d_im.lemma(eq, LemmaProperty::NONE, false);
-  if (nk == SINGLETON)
+  sendSimpleLemmaInternal(eq, InferenceId::SETS_PROXY);
+  if (nk == Kind::SET_SINGLETON)
   {
-    Node slem = nm->mkNode(MEMBER, n[0], k);
-    Trace("sets-lemma") << "Sets::Lemma : " << slem << " by singleton"
-                        << std::endl;
-    d_im.lemma(slem, LemmaProperty::NONE, false);
+    Node slem = nm->mkNode(Kind::SET_MEMBER, n[0], k);
+    sendSimpleLemmaInternal(slem, InferenceId::SETS_PROXY_SINGLETON);
   }
   return k;
 }
@@ -71,7 +72,7 @@ Node TermRegistry::getEmptySet(TypeNode tn)
   {
     return it->second;
   }
-  Node n = NodeManager::currentNM()->mkConst(EmptySet(tn));
+  Node n = nodeManager()->mkConst(EmptySet(tn));
   d_emptyset[tn] = n;
   return n;
 }
@@ -83,44 +84,10 @@ Node TermRegistry::getUnivSet(TypeNode tn)
   {
     return it->second;
   }
-  NodeManager* nm = NodeManager::currentNM();
-  Node n = nm->mkNullaryOperator(tn, UNIVERSE_SET);
-  for (it = d_univset.begin(); it != d_univset.end(); ++it)
-  {
-    Node n1;
-    Node n2;
-    if (tn.isSubtypeOf(it->first))
-    {
-      n1 = n;
-      n2 = it->second;
-    }
-    else if (it->first.isSubtypeOf(tn))
-    {
-      n1 = it->second;
-      n2 = n;
-    }
-    if (!n1.isNull())
-    {
-      Node ulem = nm->mkNode(SUBSET, n1, n2);
-      Trace("sets-lemma") << "Sets::Lemma : " << ulem << " by univ-type"
-                          << std::endl;
-      d_im.lemma(ulem, LemmaProperty::NONE, false);
-    }
-  }
+  NodeManager* nm = nodeManager();
+  Node n = nm->mkNullaryOperator(tn, Kind::SET_UNIVERSE);
   d_univset[tn] = n;
   return n;
-}
-
-Node TermRegistry::getTypeConstraintSkolem(Node n, TypeNode tn)
-{
-  std::map<TypeNode, Node>::iterator it = d_tc_skolem[n].find(tn);
-  if (it == d_tc_skolem[n].end())
-  {
-    Node k = NodeManager::currentNM()->mkSkolem("tc_k", tn);
-    d_tc_skolem[n][tn] = k;
-    return k;
-  }
-  return it->second;
 }
 
 void TermRegistry::debugPrintSet(Node s, const char* c) const
@@ -149,6 +116,21 @@ void TermRegistry::debugPrintSet(Node s, const char* c) const
   }
 }
 
+void TermRegistry::sendSimpleLemmaInternal(Node n, InferenceId id)
+{
+  Trace("sets-lemma") << "Sets::Lemma : " << n << " by " << id << std::endl;
+  if (d_epg.get() != nullptr)
+  {
+    TrustNode teq =
+        d_epg->mkTrustNode(n, ProofRule::MACRO_SR_PRED_INTRO, {}, {n});
+    d_im.trustedLemma(teq, id);
+  }
+  else
+  {
+    d_im.lemma(n, id);
+  }
+}
+
 }  // namespace sets
 }  // namespace theory
-}  // namespace CVC4
+}  // namespace cvc5::internal

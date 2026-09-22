@@ -1,33 +1,41 @@
-/*********************                                                        */
-/*! \file preprocessor.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds, Morgan Deters, Haniel Barbosa
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief The preprocessor of the SmtEngine.
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * The preprocessor of the SolverEngine.
+ */
 
-#include "cvc4_private.h"
+#include "cvc5_private.h"
 
-#ifndef CVC4__SMT__PREPROCESSOR_H
-#define CVC4__SMT__PREPROCESSOR_H
+#ifndef CVC5__SMT__PREPROCESSOR_H
+#define CVC5__SMT__PREPROCESSOR_H
 
-#include <vector>
+#include <memory>
 
-#include "preprocessing/preprocessing_pass_context.h"
+#include "smt/env_obj.h"
 #include "smt/process_assertions.h"
-#include "smt/term_formula_removal.h"
 #include "theory/booleans/circuit_propagator.h"
 
-namespace CVC4 {
+namespace cvc5::internal {
+
+class TheoryEngine;
+
+namespace preprocessing {
+class PreprocessingPassContext;
+}
+namespace prop {
+class PropEngine;
+}
+
 namespace smt {
 
 class AbstractValues;
+class PreprocessProofGenerator;
 
 /**
  * The preprocessor module of an SMT engine.
@@ -38,78 +46,52 @@ class AbstractValues;
  * (2) implementing methods for expanding and simplifying formulas. The latter
  * takes into account the substitutions inferred by this class.
  */
-class Preprocessor
+class Preprocessor : protected EnvObj
 {
  public:
-  Preprocessor(SmtEngine& smt, context::UserContext* u, AbstractValues& abs);
+  Preprocessor(Env& env, SolverEngineStatistics& stats);
   ~Preprocessor();
   /**
    * Finish initialization
    */
-  void finishInit();
+  void finishInit(TheoryEngine* te,
+                  prop::PropEngine* pe,
+                  PreprocessProofGenerator* pppg);
   /**
    * Process the assertions that have been asserted in argument as. Returns
    * true if no conflict was discovered while preprocessing them.
+   *
+   * @param ap The assertions to preprocess
    */
-  bool process(Assertions& as);
-  /**
-   * Postprocess assertions, called after the SmtEngine has finished
-   * giving the assertions to the SMT solver and before the assertions are
-   * cleared.
-   */
-  void postprocess(Assertions& as);
+  bool process(preprocessing::AssertionPipeline& ap);
   /**
    * Clear learned literals from the Boolean propagator.
    */
   void clearLearnedLiterals();
+  /** Get learned literals */
+  std::vector<Node> getLearnedLiterals() const;
   /**
    * Cleanup, which deletes the processing passes owned by this module. This
    * is required to be done explicitly so that passes are deleted before the
-   * objects they refer to in the SmtEngine destructor.
+   * objects they refer to in the SolverEngine destructor.
    */
   void cleanup();
   /**
-   * Simplify a formula without doing "much" work.  Does not involve
-   * the SAT Engine in the simplification, but uses the current
-   * definitions, assertions, and the current partial model, if one
-   * has been constructed.  It also involves theory normalization.
+   * Apply top-level substitutions and eliminate abstract values in a term or
+   * formula n.  No other simplification or normalization is done.
    *
-   * @param n The node to simplify
-   * @param removeItes Whether to remove ITE (and other terms with formulas in
-   * term positions) from the result.
-   * @return The simplified term.
+   * @param n The node to subsitute
+   * @return The term after substitution.
    */
-  Node simplify(const Node& n, bool removeItes = false);
-  /**
-   * Expand the definitions in a term or formula n.  No other
-   * simplification or normalization is done.
-   *
-   * @param n The node to expand
-   * @param expandOnly if true, then the expandDefinitions function of
-   * TheoryEngine is not called on subterms of n.
-   * @return The expanded term.
-   */
-  Node expandDefinitions(const Node& n, bool expandOnly = false);
-  /** Same as above, with a cache of previous results. */
-  Node expandDefinitions(
-      const Node& n,
-      std::unordered_map<Node, Node, NodeHashFunction>& cache,
-      bool expandOnly = false);
-  /**
-   * Get the underlying term formula remover utility.
-   */
-  RemoveTermFormulas& getTermFormulaRemover();
+  Node applySubstitutions(const Node& n);
+  /** Same as above, for a list of assertions, updating in place */
+  void applySubstitutions(std::vector<Node>& ns);
+  /** Get the preprocess proof generator */
+  PreprocessProofGenerator* getPreprocessProofGenerator();
 
  private:
-  /**
-   * Apply substitutions that have been inferred by preprocessing, return the
-   * substituted form of node.
-   */
-  Node applySubstitutions(TNode node);
-  /** Reference to the parent SmtEngine */
-  SmtEngine& d_smt;
-  /** Reference to the abstract values utility */
-  AbstractValues& d_absValues;
+  /** Pointer to the preprocess proof generator. */
+  PreprocessProofGenerator* d_pppg;
   /**
    * A circuit propagator for non-clausal propositional deduction.
    */
@@ -125,14 +107,9 @@ class Preprocessor
    * passes.
    */
   ProcessAssertions d_processor;
-  /**
-   * The term formula remover, responsible for eliminating formulas that occur
-   * in term contexts.
-   */
-  RemoveTermFormulas d_rtf;
 };
 
 }  // namespace smt
-}  // namespace CVC4
+}  // namespace cvc5::internal
 
 #endif

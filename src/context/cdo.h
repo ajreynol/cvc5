@@ -1,29 +1,23 @@
-/*********************                                                        */
-/*! \file cdo.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Morgan Deters, Clark Barrett, Mathias Preiner
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief A context-dependent object.
- **
- ** A context-dependent object.
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * A context-dependent object.
+ */
 
-#include "cvc4_private.h"
+#include "cvc5parser_public.h"
 
-#ifndef CVC4__CONTEXT__CDO_H
-#define CVC4__CONTEXT__CDO_H
+#ifndef CVC5__CONTEXT__CDO_H
+#define CVC5__CONTEXT__CDO_H
 
 #include "context/context.h"
 
-
-namespace CVC4 {
-namespace context {
+namespace cvc5::context {
 
 /**
  * Most basic template for context-dependent objects.  Simply makes a copy
@@ -31,15 +25,14 @@ namespace context {
  * (using operator=) during restore.
  */
 template <class T>
-class CDO : public ContextObj {
-
+class CDO : public ContextObj
+{
   /**
    * The data of type T being stored in this context-dependent object.
    */
   T d_data;
 
-protected:
-
+ protected:
   /**
    * Copy constructor - it's private to ensure it is only used by save().
    * Basic CDO objects, cannot be copied-they have to be unique.
@@ -58,10 +51,7 @@ protected:
    */
   ContextObj* save(ContextMemoryManager* pCMM) override
   {
-    Debug("context") << "save cdo " << this;
-    ContextObj* p = new(pCMM) CDO<T>(*this);
-    Debug("context") << " to " << p << std::endl;
-    return p;
+    return new (pCMM) CDO<T>(*this);
   }
 
   /**
@@ -70,40 +60,18 @@ protected:
    */
   void restore(ContextObj* pContextObj) override
   {
-    //Debug("context") << "restore cdo " << this;
     CDO<T>* p = static_cast<CDO<T>*>(pContextObj);
     d_data = p->d_data;
-    //Debug("context") << " to " << get() << std::endl;
     // Explicitly call destructor as it will not otherwise get called.
     p->d_data.~T();
   }
 
-public:
-
+ public:
   /**
    * Main constructor - uses default constructor for T to create the initial
    * value of d_data.
    */
-  CDO(Context* context) :
-    ContextObj(context),
-    d_data(T()) {
-  }
-
-  /**
-   * Main constructor - uses default constructor for T to create the
-   * initial value of d_data.
-   *
-   * This version takes an argument that specifies whether this CDO<>
-   * was itself allocated in context memory.  If it was, it is linked
-   * with the current scope rather than scope 0.
-   *
-   * WARNING: Read the notes in src/context/context.h on "Gotchas when
-   * allocating contextual objects with non-standard allocators."
-   */
-  CDO(bool allocatedInCMM, Context* context) :
-    ContextObj(allocatedInCMM, context),
-    d_data(T()) {
-  }
+  CDO(Context* context) : ContextObj(context), d_data(T()) {}
 
   /**
    * Constructor from object of type T.  Creates a ContextObj and sets the data
@@ -111,29 +79,8 @@ public:
    * current Scope.  If the Scope is popped, the value will revert to whatever
    * is assigned by the default constructor for T
    */
-  CDO(Context* context, const T& data) :
-    ContextObj(context),
-    d_data(T()) {
-    makeCurrent();
-    d_data = data;
-  }
-
-  /**
-   * Constructor from object of type T.  Creates a ContextObj and sets the data
-   * to the given data value.  Note that this value is only valid in the
-   * current Scope.  If the Scope is popped, the value will revert to whatever
-   * is assigned by the default constructor for T.
-   *
-   * This version takes an argument that specifies whether this CDO<>
-   * was itself allocated in context memory.  If it was, it is linked
-   * with the current scope rather than scope 0.
-   *
-   * WARNING: Read the notes in src/context/context.h on "Gotchas when
-   * allocating contextual objects with non-standard allocators."
-   */
-  CDO(bool allocatedInCMM, Context* context, const T& data) :
-    ContextObj(allocatedInCMM, context),
-    d_data(T()) {
+  CDO(Context* context, const T& data) : ContextObj(context), d_data(T())
+  {
     makeCurrent();
     d_data = data;
   }
@@ -146,7 +93,8 @@ public:
   /**
    * Set the data in the CDO.  First call makeCurrent.
    */
-  void set(const T& data) {
+  void set(const T& data)
+  {
     makeCurrent();
     d_data = data;
   }
@@ -169,14 +117,14 @@ public:
   /**
    * For convenience, define operator= that takes an object of type T.
    */
-  CDO<T>& operator=(const T& data) {
+  CDO<T>& operator=(const T& data)
+  {
     set(data);
     return *this;
   }
 
-};/* class CDO */
+}; /* class CDO */
 
-}/* CVC4::context namespace */
-}/* CVC4 namespace */
+}  // namespace cvc5::context
 
-#endif /* CVC4__CONTEXT__CDO_H */
+#endif /* CVC5__CONTEXT__CDO_H */

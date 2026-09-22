@@ -1,29 +1,34 @@
-/*********************                                                        */
-/*! \file single_inv_partition.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds, Mathias Preiner, Morgan Deters
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief utility for processing single invocation synthesis conjectures
- **
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Utility for processing single invocation synthesis conjectures.
+ */
 #include "theory/quantifiers/single_inv_partition.h"
 
+#include <sstream>
+
 #include "expr/node_algorithm.h"
+#include "expr/skolem_manager.h"
 #include "theory/quantifiers/term_util.h"
 
-using namespace CVC4;
-using namespace CVC4::kind;
+using namespace cvc5::internal;
+using namespace cvc5::internal::kind;
 using namespace std;
 
-namespace CVC4 {
+namespace cvc5::internal {
 namespace theory {
 namespace quantifiers {
+
+SingleInvocationPartition::SingleInvocationPartition(Env& env)
+    : EnvObj(env), d_has_input_funcs(false)
+{
+}
 
 bool SingleInvocationPartition::init(Node n)
 {
@@ -102,9 +107,9 @@ bool SingleInvocationPartition::inferArgTypes(Node n,
   if (visited.find(n) == visited.end())
   {
     visited[n] = true;
-    if (n.getKind() != FORALL)
+    if (n.getKind() != Kind::FORALL)
     {
-      if (n.getKind() == APPLY_UF)
+      if (n.getKind() == Kind::APPLY_UF)
       {
         for (unsigned i = 0; i < n.getNumChildren(); i++)
         {
@@ -135,7 +140,7 @@ bool SingleInvocationPartition::init(std::vector<Node>& funcs, Node n)
   if (!funcs.empty())
   {
     TypeNode tn0 = funcs[0].getType();
-    if (tn0.getNumChildren() > 0)
+    if (tn0.isFunction())
     {
       for (unsigned i = 0, nargs = tn0.getNumChildren() - 1; i < nargs; i++)
       {
@@ -151,7 +156,7 @@ bool SingleInvocationPartition::init(std::vector<Node>& funcs, Node n)
         Trace("si-prt") << "...type mismatch" << std::endl;
         return false;
       }
-      else if (tni.getNumChildren() > 0)
+      else if (tni.isFunction())
       {
         for (unsigned j = 0, nargs = tni.getNumChildren() - 1; j < nargs; j++)
         {
@@ -176,7 +181,7 @@ bool SingleInvocationPartition::init(std::vector<Node>& funcs,
   Assert(d_arg_types.empty());
   Assert(d_input_funcs.empty());
   Assert(d_si_vars.empty());
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   d_has_input_funcs = has_funcs;
   d_arg_types.insert(d_arg_types.end(), typs.begin(), typs.end());
   d_input_funcs.insert(d_input_funcs.end(), funcs.begin(), funcs.end());
@@ -185,13 +190,13 @@ bool SingleInvocationPartition::init(std::vector<Node>& funcs,
   {
     std::stringstream ss;
     ss << "s_" << j;
-    Node si_v = nm->mkBoundVar(ss.str(), d_arg_types[j]);
+    Node si_v = NodeManager::mkBoundVar(ss.str(), d_arg_types[j]);
     d_si_vars.push_back(si_v);
   }
   Assert(d_si_vars.size() == d_arg_types.size());
   for (const Node& inf : d_input_funcs)
   {
-    Node sk = nm->mkSkolem("_sik", inf.getType());
+    Node sk = NodeManager::mkDummySkolem("_sik", inf.getType());
     d_input_func_sks.push_back(sk);
   }
   Trace("si-prt") << "SingleInvocationPartition::process " << n << std::endl;
@@ -216,7 +221,7 @@ bool SingleInvocationPartition::init(std::vector<Node>& funcs,
                                    d_input_funcs.end(),
                                    d_input_func_sks.begin(),
                                    d_input_func_sks.end());
-      cr = TermUtil::getQuantSimplify(cr);
+      cr = getQuantSimplify(cr);
       cr = cr.substitute(d_input_func_sks.begin(),
                          d_input_func_sks.end(),
                          d_input_funcs.begin(),
@@ -228,42 +233,38 @@ bool SingleInvocationPartition::init(std::vector<Node>& funcs,
       std::map<Node, bool> visited;
       // functions to arguments
       std::vector<Node> args;
-      std::vector<Node> terms;
-      std::vector<Node> subs;
+      Subs sb;
       bool singleInvocation = true;
       bool ngroundSingleInvocation = false;
-      if (processConjunct(cr, visited, args, terms, subs))
+      if (processConjunct(cr, visited, args, sb))
       {
-        for (unsigned j = 0; j < terms.size(); j++)
+        for (size_t j = 0, vsize = sb.d_vars.size(); j < vsize; j++)
         {
-          si_terms.push_back(subs[j]);
-          Node op = subs[j].hasOperator() ? subs[j].getOperator() : subs[j];
+          Node s = sb.d_subs[j];
+          si_terms.push_back(s);
+          Node op = s.hasOperator() ? s.getOperator() : s;
           Assert(d_func_fo_var.find(op) != d_func_fo_var.end());
           si_subs.push_back(d_func_fo_var[op]);
         }
         std::map<Node, Node> subs_map;
         std::map<Node, Node> subs_map_rev;
         // normalize the invocations
-        if (!terms.empty())
+        if (!sb.empty())
         {
-          Assert(terms.size() == subs.size());
-          cr = cr.substitute(
-              terms.begin(), terms.end(), subs.begin(), subs.end());
+          cr = sb.apply(cr);
         }
         std::vector<Node> children;
         children.push_back(cr);
-        terms.clear();
-        subs.clear();
+        sb.clear();
         Trace("si-prt") << "...single invocation, with arguments: "
                         << std::endl;
         for (unsigned j = 0; j < args.size(); j++)
         {
           Trace("si-prt") << args[j] << " ";
-          if (args[j].getKind() == BOUND_VARIABLE
-              && std::find(terms.begin(), terms.end(), args[j]) == terms.end())
+          if (args[j].getKind() == Kind::BOUND_VARIABLE
+              && !sb.contains(args[j]))
           {
-            terms.push_back(args[j]);
-            subs.push_back(d_si_vars[j]);
+            sb.add(args[j], d_si_vars[j]);
           }
           else
           {
@@ -271,16 +272,12 @@ bool SingleInvocationPartition::init(std::vector<Node>& funcs,
           }
         }
         Trace("si-prt") << std::endl;
-        cr = children.size() == 1
-                 ? children[0]
-                 : NodeManager::currentNM()->mkNode(OR, children);
-        Assert(terms.size() == subs.size());
-        cr =
-            cr.substitute(terms.begin(), terms.end(), subs.begin(), subs.end());
-        Trace("si-prt-debug") << "...normalized invocations to " << cr
-                              << std::endl;
+        cr = nm->mkOr(children);
+        cr = sb.apply(cr);
+        Trace("si-prt-debug")
+            << "...normalized invocations to " << cr << std::endl;
         // now must check if it has other bound variables
-        std::unordered_set<Node, NodeHashFunction> fvs;
+        std::unordered_set<Node> fvs;
         expr::getFreeVariables(cr, fvs);
         // bound variables must be contained in the single invocation variables
         for (const Node& bv : fvs)
@@ -311,7 +308,7 @@ bool SingleInvocationPartition::init(std::vector<Node>& funcs,
         Trace("si-prt") << "...not single invocation." << std::endl;
         singleInvocation = false;
         // rename bound variables with maximal overlap with si_vars
-        std::unordered_set<Node, NodeHashFunction> fvs;
+        std::unordered_set<Node> fvs;
         expr::getFreeVariables(cr, fvs);
         std::vector<Node> termsNs;
         std::vector<Node> subsNs;
@@ -329,8 +326,8 @@ bool SingleInvocationPartition::init(std::vector<Node>& funcs,
               {
                 termsNs.push_back(v);
                 subsNs.push_back(d_si_vars[k]);
-                Trace("si-prt-debug") << "  ...use " << d_si_vars[k]
-                                      << std::endl;
+                Trace("si-prt-debug")
+                    << "  ...use " << d_si_vars[k] << std::endl;
                 break;
               }
             }
@@ -340,11 +337,10 @@ bool SingleInvocationPartition::init(std::vector<Node>& funcs,
         cr = cr.substitute(
             termsNs.begin(), termsNs.end(), subsNs.begin(), subsNs.end());
       }
-      cr = Rewriter::rewrite(cr);
       Trace("si-prt") << ".....got si=" << singleInvocation
                       << ", result : " << cr << std::endl;
       d_conjuncts[2].push_back(cr);
-      std::unordered_set<Node, NodeHashFunction> fvs;
+      std::unordered_set<Node> fvs;
       expr::getFreeVariables(cr, fvs);
       d_all_vars.insert(fvs.begin(), fvs.end());
       if (singleInvocation)
@@ -353,7 +349,6 @@ bool SingleInvocationPartition::init(std::vector<Node>& funcs,
         Assert(si_terms.size() == si_subs.size());
         cr = cr.substitute(
             si_terms.begin(), si_terms.end(), si_subs.begin(), si_subs.end());
-        cr = Rewriter::rewrite(cr);
         Trace("si-prt") << ".....si version=" << cr << std::endl;
         d_conjuncts[0].push_back(cr);
       }
@@ -379,7 +374,7 @@ bool SingleInvocationPartition::collectConjuncts(Node n,
                                                  bool pol,
                                                  std::vector<Node>& conj)
 {
-  if ((!pol && n.getKind() == OR) || (pol && n.getKind() == AND))
+  if ((!pol && n.getKind() == Kind::OR) || (pol && n.getKind() == Kind::AND))
   {
     for (unsigned i = 0; i < n.getNumChildren(); i++)
     {
@@ -389,11 +384,11 @@ bool SingleInvocationPartition::collectConjuncts(Node n,
       }
     }
   }
-  else if (n.getKind() == NOT)
+  else if (n.getKind() == Kind::NOT)
   {
     return collectConjuncts(n[0], !pol, conj);
   }
-  else if (n.getKind() == FORALL)
+  else if (n.getKind() == Kind::FORALL)
   {
     return false;
   }
@@ -412,8 +407,7 @@ bool SingleInvocationPartition::collectConjuncts(Node n,
 bool SingleInvocationPartition::processConjunct(Node n,
                                                 std::map<Node, bool>& visited,
                                                 std::vector<Node>& args,
-                                                std::vector<Node>& terms,
-                                                std::vector<Node>& subs)
+                                                Subs& sb)
 {
   std::map<Node, bool>::iterator it = visited.find(n);
   if (it != visited.end())
@@ -425,7 +419,7 @@ bool SingleInvocationPartition::processConjunct(Node n,
     bool ret = true;
     for (unsigned i = 0; i < n.getNumChildren(); i++)
     {
-      if (!processConjunct(n[i], visited, args, terms, subs))
+      if (!processConjunct(n[i], visited, args, sb))
       {
         ret = false;
       }
@@ -440,12 +434,25 @@ bool SingleInvocationPartition::processConjunct(Node n,
         if (std::find(d_input_funcs.begin(), d_input_funcs.end(), f)
             != d_input_funcs.end())
         {
-          success = true;
+          // If n is an application of a function-to-synthesize f, or is
+          // itself a function-to-synthesize, then n must be fully applied.
+          // This catches cases where n is a function-to-synthesize that occurs
+          // in a higher-order context.
+          // If the type of n is functional, then it is not fully applied.
+          if (n.getType().isFunction())
+          {
+            ret = false;
+            success = false;
+          }
+          else
+          {
+            success = true;
+          }
         }
       }
       else
       {
-        if (n.getKind() == kind::APPLY_UF)
+        if (n.getKind() == Kind::APPLY_UF)
         {
           f = n.getOperator();
           success = true;
@@ -453,7 +460,8 @@ bool SingleInvocationPartition::processConjunct(Node n,
       }
       if (success)
       {
-        if (std::find(terms.begin(), terms.end(), n) == terms.end())
+        Trace("si-prt-debug") << "Process " << n << std::endl;
+        if (!sb.contains(n))
         {
           // check if it matches the type requirement
           if (isAntiSkolemizableType(f))
@@ -482,20 +490,18 @@ bool SingleInvocationPartition::processConjunct(Node n,
             }
             if (ret)
             {
-              terms.push_back(n);
-              subs.push_back(d_func_inv[f]);
+              sb.add(n, d_func_inv[f]);
             }
           }
           else
           {
-            Trace("si-prt-debug") << "... " << f << " is a bad operator."
-                                  << std::endl;
+            Trace("si-prt-debug")
+                << "... " << f << " is a bad operator." << std::endl;
             ret = false;
           }
         }
       }
     }
-    //}
     visited[n] = ret;
     return ret;
   }
@@ -533,7 +539,7 @@ bool SingleInvocationPartition::isAntiSkolemizableType(Node f)
         Node t;
         if (children.size() > 1)
         {
-          t = NodeManager::currentNM()->mkNode(kind::APPLY_UF, children);
+          t = nodeManager()->mkNode(Kind::APPLY_UF, children);
         }
         else
         {
@@ -551,7 +557,7 @@ bool SingleInvocationPartition::isAntiSkolemizableType(Node f)
         {
           rt = tn.getRangeType();
         }
-        Node v = NodeManager::currentNM()->mkBoundVar(ss.str(), rt);
+        Node v = nodeManager()->mkBoundVar(ss.str(), rt);
         d_func_fo_var[f] = v;
         d_fo_var_to_func[v] = f;
         d_func_vars.push_back(v);
@@ -565,14 +571,14 @@ bool SingleInvocationPartition::isAntiSkolemizableType(Node f)
 
 Node SingleInvocationPartition::getConjunct(int index)
 {
-  return d_conjuncts[index].empty() ? NodeManager::currentNM()->mkConst(true)
-                                    : (d_conjuncts[index].size() == 1
-                                           ? d_conjuncts[index][0]
-                                           : NodeManager::currentNM()->mkNode(
-                                                 AND, d_conjuncts[index]));
+  return d_conjuncts[index].empty()
+             ? nodeManager()->mkConst(true)
+             : (d_conjuncts[index].size() == 1
+                    ? d_conjuncts[index][0]
+                    : nodeManager()->mkNode(Kind::AND, d_conjuncts[index]));
 }
 
-void SingleInvocationPartition::debugPrint(const char* c)
+void SingleInvocationPartition::debugPrint(CVC5_UNUSED const char* c)
 {
   Trace(c) << "Single invocation variables : ";
   for (unsigned i = 0; i < d_si_vars.size(); i++)
@@ -610,6 +616,21 @@ void SingleInvocationPartition::debugPrint(const char* c)
   Trace(c) << std::endl;
 }
 
-} /* namespace CVC4::theory::quantifiers */
-} /* namespace CVC4::theory */
-} /* namespace CVC4 */
+Node SingleInvocationPartition::getQuantSimplify(TNode n) const
+{
+  std::unordered_set<Node> fvs;
+  expr::getFreeVariables(n, fvs);
+  if (fvs.empty())
+  {
+    return rewrite(n);
+  }
+  std::vector<Node> bvs(fvs.begin(), fvs.end());
+  NodeManager* nm = nodeManager();
+  Node q = nm->mkNode(Kind::FORALL, nm->mkNode(Kind::BOUND_VAR_LIST, bvs), n);
+  q = rewrite(q);
+  return TermUtil::getRemoveQuantifiers(q);
+}
+
+}  // namespace quantifiers
+}  // namespace theory
+}  // namespace cvc5::internal

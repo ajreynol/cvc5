@@ -1,84 +1,87 @@
-/*********************                                                        */
-/*! \file input.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Christopher L. Conway, Tim King, Morgan Deters
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief A super-class for input language parsers.
- **
- ** A super-class for input language parsers
- **/
-
-// This must be included first.
-#include "parser/antlr_input.h"
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ *  input class.
+ */
 
 #include "parser/input.h"
 
-#include "base/output.h"
-#include "expr/type.h"
-#include "parser/parser.h"
-#include "parser/parser_exception.h"
+#include <cvc5/cvc5_parser.h>
 
+#include <fstream>
 
-using namespace std;
-using namespace CVC4;
-using namespace CVC4::parser;
-using namespace CVC4::kind;
-
-namespace CVC4 {
+namespace cvc5 {
 namespace parser {
 
-InputStreamException::InputStreamException(const std::string& msg) :
-  Exception(msg) {
-}
-
-const std::string InputStream::getName() const {
-  return d_name;
-}
-
-Input::Input(InputStream& inputStream) :
-    d_inputStream( &inputStream ) {
-}
-
-Input::~Input() {
-  delete d_inputStream;
-}
-
-InputStream *Input::getInputStream() {
-  return d_inputStream;
-}
-
-Input* Input::newFileInput(InputLanguage lang,
-                           const std::string& filename,
-                           bool useMmap)
+/** File input class */
+class FileInput : public Input
 {
-  AntlrInputStream *inputStream = 
-    AntlrInputStream::newFileInputStream(filename, useMmap);
-  return AntlrInput::newInput(lang, *inputStream);
-}
+ public:
+  FileInput(const std::string& filename) : Input()
+  {
+    d_fs.open(filename, std::fstream::in);
+    if (!d_fs.is_open())
+    {
+      std::stringstream ss;
+      ss << "Couldn't open file: " << filename;
+      throw ParserException(ss.str());
+    }
+  }
+  std::istream* getStream() override { return &d_fs; }
 
-Input* Input::newStreamInput(InputLanguage lang,
-                             std::istream& input,
-                             const std::string& name,
-                             bool lineBuffered)
+ private:
+  /** File stream */
+  std::ifstream d_fs;
+};
+
+/** Stream reference input class */
+class StreamInput : public Input
 {
-  AntlrInputStream *inputStream =
-    AntlrInputStream::newStreamInputStream(input, name, lineBuffered);
-  return AntlrInput::newInput(lang, *inputStream);
-}
+ public:
+  StreamInput(std::istream& input) : Input(), d_input(input) {}
+  std::istream* getStream() override { return &d_input; }
+  bool isInteractive() const override { return true; }
 
-Input* Input::newStringInput(InputLanguage lang,
-                             const std::string& str,
-                             const std::string& name)
+ private:
+  /** Reference to stream */
+  std::istream& d_input;
+};
+
+/** String input class, which buffers to a std::stringstream */
+class StringInput : public Input
 {
-  AntlrInputStream *inputStream = AntlrInputStream::newStringInputStream(str, name);
-  return AntlrInput::newInput(lang, *inputStream);
+ public:
+  StringInput(const std::string& input) : Input() { d_input << input; }
+  std::istream* getStream() override { return &d_input; }
+
+ private:
+  /** Reference to stream */
+  std::stringstream d_input;
+};
+
+Input::Input() {}
+
+std::unique_ptr<Input> Input::mkFileInput(const std::string& filename)
+{
+  return std::unique_ptr<Input>(new FileInput(filename));
 }
 
-}/* CVC4::parser namespace */
-}/* CVC4 namespace */
+std::unique_ptr<Input> Input::mkStreamInput(std::istream& input)
+{
+  return std::unique_ptr<Input>(new StreamInput(input));
+}
+
+std::unique_ptr<Input> Input::mkStringInput(const std::string& input)
+{
+  return std::unique_ptr<Input>(new StringInput(input));
+}
+bool Input::isInteractive() const { return false; }
+
+}  // namespace parser
+}  // namespace cvc5

@@ -1,0 +1,89 @@
+###############################################################################
+# This file is part of the cvc5 project.
+#
+# Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+# in the top-level source directory and their institutional affiliations.
+# All rights reserved.  See the file COPYING in the top-level source
+# directory for licensing information.
+# #############################################################################
+#
+# The build system configuration.
+##
+find_package(Sphinx REQUIRED)
+check_python_module(breathe)
+check_python_module(sphinxcontrib.bibtex sphinxcontrib-bibtex)
+check_python_module(sphinx_tabs.tabs sphinx-tabs)
+check_python_module(sphinxcontrib.programoutput sphinxcontrib-programoutput)
+check_python_module(sphinx_rtd_theme sphinx-rtd-theme)
+
+add_subdirectory(api)
+
+set(SPHINX_INPUT_DIR ${CMAKE_CURRENT_SOURCE_DIR})
+set(SPHINX_OUTPUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/sphinx)
+if(BUILD_DOCS_GA)
+  check_python_module(sphinxcontrib.googleanalytics sphinxcontrib-googleanalytics)
+  set(GOOGLE_ANALYTICS_ENABLE "True")
+else()
+  set(GOOGLE_ANALYTICS_ENABLE "False")
+endif()
+
+# Use permanent links to the tagged sources in the documentation of a release
+# (e.g. .../blob/cvc5-x.y.z/...), and links to the main branch otherwise, so
+# that links keep pointing at the files as they were at release time (#12194).
+if(CVC5_IS_RELEASE STREQUAL "true")
+  set(CVC5_GIT_REF "cvc5-${CVC5_VERSION_NUMBER}")
+else()
+  set(CVC5_GIT_REF "main")
+endif()
+
+configure_file(conf.py.in ${CMAKE_CURRENT_BINARY_DIR}/conf.py)
+configure_file(references.bib ${CMAKE_CURRENT_BINARY_DIR}/references.bib COPYONLY)
+
+set(SPHINX_WARNING_AS_ERROR "")
+if(TREAT_WARNING_AS_ERROR)
+  set(SPHINX_WARNING_AS_ERROR "-W")
+endif()
+
+add_custom_target(
+  docs
+  DEPENDS docs-cpp docs-c docs-java docs-python gen-options cvc5-bin
+  COMMAND
+    ${Sphinx_EXECUTABLE} -v ${SPHINX_WARNING_AS_ERROR} -b html -c ${CMAKE_CURRENT_BINARY_DIR}
+    # Tell Breathe where to find the Doxygen output
+    -Dbreathe_projects.cvc5=${CPP_DOXYGEN_XML_DIR}
+    -Dbreathe_projects.cvc5_c=${C_DOXYGEN_XML_DIR}
+    -Dbreathe_projects.std=${CPP_DOXYGEN_XML_DIR} ${SPHINX_INPUT_DIR}
+    ${SPHINX_OUTPUT_DIR}
+  WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+  COMMENT "Generating Sphinx Api docs"
+)
+
+add_custom_command(
+  TARGET docs
+  POST_BUILD
+  COMMAND
+    ${CMAKE_COMMAND} -E cmake_echo_color --cyan "Preview docs in browser: file://localhost${SPHINX_OUTPUT_DIR}/index.html"
+)
+
+set(SPHINX_GH_OUTPUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/sphinx-gh)
+add_custom_target(
+  docs-gh
+  DEPENDS docs
+  # remove existing sphinx-gh/ directory
+  COMMAND ${CMAKE_COMMAND} -E remove_directory ${SPHINX_GH_OUTPUT_DIR}
+  # copy sphinx/ to sphinx-gh/
+  COMMAND ${CMAKE_COMMAND} -E copy_directory ${SPHINX_OUTPUT_DIR}
+          ${SPHINX_GH_OUTPUT_DIR}
+  # remove leftovers from the build
+  COMMAND ${CMAKE_COMMAND} -E remove_directory ${SPHINX_GH_OUTPUT_DIR}/.doctrees
+          ${SPHINX_GH_OUTPUT_DIR}/_sources ${SPHINX_GH_OUTPUT_DIR}/_static/fonts
+  COMMAND ${CMAKE_COMMAND} -E remove ${SPHINX_GH_OUTPUT_DIR}/objects.inv
+  # rename _static/ to static/ (as jekyll ignores _*/ dirs)
+  COMMAND ${CMAKE_COMMAND} -E rename ${SPHINX_GH_OUTPUT_DIR}/_static
+          ${SPHINX_GH_OUTPUT_DIR}/static
+  COMMAND find ${SPHINX_GH_OUTPUT_DIR} -type f | xargs sed -i'orig'
+          's/_static/static/'
+  COMMAND find ${SPHINX_GH_OUTPUT_DIR} -name '*orig' -delete
+  # done
+  COMMENT "Generating GitHub Api docs"
+)

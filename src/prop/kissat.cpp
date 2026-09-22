@@ -1,26 +1,25 @@
-/*********************                                                        */
-/*! \file kissat.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Aina Niemetz
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Wrapper for Kissat SAT Solver.
- **
- ** Wrapper for the Kissat SAT solver (for theory of bit-vectors).
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Wrapper for Kissat SAT Solver.
+ *
+ * Wrapper for the Kissat SAT solver (for theory of bit-vectors).
+ */
 
 #include "prop/kissat.h"
 
-#ifdef CVC4_USE_KISSAT
+#ifdef CVC5_USE_KISSAT
 
 #include "base/check.h"
+#include "util/statistics_registry.h"
 
-namespace CVC4 {
+namespace cvc5::internal {
 namespace prop {
 
 using KissatLit = int32_t;
@@ -60,7 +59,7 @@ KissatVar toKissatVar(SatVariable var) { return var; }
 
 }  // namespace
 
-KissatSolver::KissatSolver(StatisticsRegistry* registry,
+KissatSolver::KissatSolver(StatisticsRegistry& registry,
                            const std::string& name)
     : d_solver(kissat_init()),
       // Note: Kissat variables start with index 1 rather than 0 since negated
@@ -70,10 +69,10 @@ KissatSolver::KissatSolver(StatisticsRegistry* registry,
 {
 }
 
-void KissatSolver::init()
+void KissatSolver::initialize()
 {
-  d_true = newVar();
-  d_false = newVar();
+  d_true = newVar(false, true);
+  d_false = newVar(false, true);
   kissat_add(d_solver, toKissatVar(d_true));
   kissat_add(d_solver, 0);
   kissat_add(d_solver, -toKissatVar(d_false));
@@ -82,7 +81,8 @@ void KissatSolver::init()
 
 KissatSolver::~KissatSolver() { kissat_release(d_solver); }
 
-ClauseId KissatSolver::addClause(SatClause& clause, bool removable)
+ClauseId KissatSolver::addClause(const SatClause& clause,
+                                 CVC5_UNUSED bool removable)
 {
   for (const SatLiteral& lit : clause)
   {
@@ -93,14 +93,8 @@ ClauseId KissatSolver::addClause(SatClause& clause, bool removable)
   return ClauseIdError;
 }
 
-ClauseId KissatSolver::addXorClause(SatClause& clause, bool rhs, bool removable)
-{
-  Unreachable() << "Kissat does not support adding XOR clauses.";
-}
-
-SatVariable KissatSolver::newVar(bool isTheoryAtom,
-                                 bool preRegister,
-                                 bool canErase)
+SatVariable KissatSolver::newVar(CVC5_UNUSED bool isTheoryAtom,
+                                 CVC5_UNUSED bool canErase)
 {
   ++d_statistics.d_numVariables;
   return d_nextVarIdx++;
@@ -119,14 +113,23 @@ SatValue KissatSolver::solve()
   return res;
 }
 
-SatValue KissatSolver::solve(long unsigned int&)
+SatValue KissatSolver::solve(CVC5_UNUSED long unsigned int&)
 {
   Unimplemented() << "Setting limits for Kissat not supported yet";
+  return SAT_VALUE_UNKNOWN;
 };
 
-SatValue KissatSolver::solve(const std::vector<SatLiteral>& assumptions)
+SatValue KissatSolver::solve(
+    CVC5_UNUSED const std::vector<SatLiteral>& assumptions)
 {
   Unimplemented() << "Incremental solving with Kissat not supported yet";
+  return SAT_VALUE_UNKNOWN;
+}
+
+void KissatSolver::getUnsatAssumptions(
+    CVC5_UNUSED std::vector<SatLiteral>& unsat_assumptions)
+{
+  Unreachable() << "Kissat does not support unsat assumptions.";
 }
 
 void KissatSolver::interrupt() { kissat_terminate(d_solver); }
@@ -143,36 +146,18 @@ SatValue KissatSolver::modelValue(SatLiteral l)
   return value(l);
 }
 
-unsigned KissatSolver::getAssertionLevel() const
-{
-  Unreachable() << "Kissat does not support assertion levels.";
-}
-
 bool KissatSolver::ok() const { return d_okay; }
 
-KissatSolver::Statistics::Statistics(StatisticsRegistry* registry,
+KissatSolver::Statistics::Statistics(StatisticsRegistry& registry,
                                      const std::string& prefix)
-    : d_registry(registry),
-      d_numSatCalls("theory::bv::" + prefix + "::Kissat::calls_to_solve", 0),
-      d_numVariables("theory::bv::" + prefix + "::Kissat::variables", 0),
-      d_numClauses("theory::bv::" + prefix + "::Kissat::clauses", 0),
-      d_solveTime("theory::bv::" + prefix + "::Kissat::solve_time")
+    : d_numSatCalls(registry.registerInt(prefix + "Kissat::calls_to_solve")),
+      d_numVariables(registry.registerInt(prefix + "Kissat::variables")),
+      d_numClauses(registry.registerInt(prefix + "Kissat::clauses")),
+      d_solveTime(registry.registerTimer(prefix + "Kissat::solve_time"))
 {
-  d_registry->registerStat(&d_numSatCalls);
-  d_registry->registerStat(&d_numVariables);
-  d_registry->registerStat(&d_numClauses);
-  d_registry->registerStat(&d_solveTime);
-}
-
-KissatSolver::Statistics::~Statistics()
-{
-  d_registry->unregisterStat(&d_numSatCalls);
-  d_registry->unregisterStat(&d_numVariables);
-  d_registry->unregisterStat(&d_numClauses);
-  d_registry->unregisterStat(&d_solveTime);
 }
 
 }  // namespace prop
-}  // namespace CVC4
+}  // namespace cvc5::internal
 
-#endif  // CVC4_USE_KISSAT
+#endif  // CVC5_USE_KISSAT

@@ -1,26 +1,25 @@
-/*********************                                                        */
-/*! \file node_algorithm.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds, Andres Noetzli, Haniel Barbosa
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Common algorithms on nodes
- **
- ** This file implements common algorithms applied to nodes, such as checking if
- ** a node contains a free or a bound variable.
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ * Common algorithms on nodes.
+ *
+ * This file implements common algorithms applied to nodes, such as checking if
+ * a node contains a free or a bound variable.
+ */
 
 #include "expr/node_algorithm.h"
 
 #include "expr/attribute.h"
+#include "expr/cardinality_constraint.h"
 #include "expr/dtype.h"
+#include "expr/skolem_manager.h"
 
-namespace CVC4 {
+namespace cvc5::internal {
 namespace expr {
 
 bool hasSubterm(TNode n, TNode t, bool strict)
@@ -30,7 +29,7 @@ bool hasSubterm(TNode n, TNode t, bool strict)
     return true;
   }
 
-  std::unordered_set<TNode, TNodeHashFunction> visited;
+  std::unordered_set<TNode> visited;
   std::vector<TNode> toProcess;
 
   toProcess.push_back(n);
@@ -59,13 +58,12 @@ bool hasSubterm(TNode n, TNode t, bool strict)
       {
         return true;
       }
-      if (visited.find(child) != visited.end())
+      if (!visited.insert(child).second)
       {
         continue;
       }
       else
       {
-        visited.insert(child);
         toProcess.push_back(child);
       }
     }
@@ -76,9 +74,9 @@ bool hasSubterm(TNode n, TNode t, bool strict)
 
 bool hasSubtermMulti(TNode n, TNode t)
 {
-  std::unordered_map<TNode, bool, TNodeHashFunction> visited;
-  std::unordered_map<TNode, bool, TNodeHashFunction> contains;
-  std::unordered_map<TNode, bool, TNodeHashFunction>::iterator it;
+  std::unordered_map<TNode, bool> visited;
+  std::unordered_map<TNode, bool> contains;
+  std::unordered_map<TNode, bool>::iterator it;
   std::vector<TNode> visit;
   TNode cur;
   visit.push_back(n);
@@ -131,7 +129,7 @@ bool hasSubtermMulti(TNode n, TNode t)
 
 bool hasSubtermKind(Kind k, Node n)
 {
-  std::unordered_set<TNode, TNodeHashFunction> visited;
+  std::unordered_set<TNode> visited;
   std::vector<TNode> visit;
   TNode cur;
   visit.push_back(n);
@@ -139,48 +137,116 @@ bool hasSubtermKind(Kind k, Node n)
   {
     cur = visit.back();
     visit.pop_back();
-    if (visited.find(cur) == visited.end())
+    if (visited.insert(cur).second)
     {
-      visited.insert(cur);
       if (cur.getKind() == k)
       {
         return true;
       }
-      for (const Node& cn : cur)
+      if (cur.hasOperator())
       {
-        visit.push_back(cn);
+        visit.push_back(cur.getOperator());
       }
+      visit.insert(visit.end(), cur.begin(), cur.end());
     }
   } while (!visit.empty());
   return false;
 }
 
 bool hasSubtermKinds(const std::unordered_set<Kind, kind::KindHashFunction>& ks,
-                     Node n)
+                     TNode n)
 {
   if (ks.empty())
   {
     return false;
   }
-  std::unordered_set<TNode, TNodeHashFunction> visited;
+  std::unordered_set<TNode> visited;
+  return hasSubtermKinds(ks, n, visited) != Kind::UNDEFINED_KIND;
+}
+
+Kind hasSubtermKinds(const std::unordered_set<Kind, kind::KindHashFunction>& ks,
+                     TNode n,
+                     std::unordered_set<TNode>& visited)
+{
+  Assert(!ks.empty());
   std::vector<TNode> visit;
   TNode cur;
   visit.push_back(n);
+  Kind k;
   do
   {
     cur = visit.back();
     visit.pop_back();
     if (visited.find(cur) == visited.end())
     {
-      if (ks.find(cur.getKind()) != ks.end())
+      k = cur.getKind();
+      if (ks.find(k) != ks.end())
       {
-        return true;
+        return k;
       }
       visited.insert(cur);
+      if (cur.hasOperator())
+      {
+        visit.push_back(cur.getOperator());
+      }
       visit.insert(visit.end(), cur.begin(), cur.end());
     }
   } while (!visit.empty());
-  return false;
+  return Kind::UNDEFINED_KIND;
+}
+
+void getSubtermsKind(Kind k, TNode n, std::unordered_set<Node>& ts, bool nested)
+{
+  std::unordered_set<Kind, kind::KindHashFunction> ks{k};
+  std::map<Kind, std::unordered_set<Node>> tsm;
+  getSubtermsKinds(ks, n, tsm, nested);
+  std::unordered_set<Node>& tsc = tsm[k];
+  ts.insert(tsc.begin(), tsc.end());
+}
+
+void getSubtermsKinds(
+    const std::unordered_set<Kind, kind::KindHashFunction>& ks,
+    TNode n,
+    std::map<Kind, std::unordered_set<Node>>& ts,
+    bool nested)
+{
+  Assert(!ks.empty());
+  for (Kind k : ks)
+  {
+    if (ts.find(k) == ts.end())
+    {
+      ts[k].clear();
+    }
+  }
+  std::unordered_set<TNode> visited;
+  std::vector<TNode> visit;
+  TNode cur;
+  visit.push_back(n);
+  Kind k;
+  std::map<Kind, std::unordered_set<Node>>::iterator itt;
+  do
+  {
+    cur = visit.back();
+    visit.pop_back();
+    if (visited.insert(cur).second)
+    {
+      k = cur.getKind();
+      itt = ts.find(k);
+      if (itt != ts.end())
+      {
+        itt->second.insert(cur);
+        if (!nested)
+        {
+          continue;
+        }
+      }
+      if (cur.hasOperator())
+      {
+        visit.push_back(cur.getOperator());
+      }
+      visit.insert(visit.end(), cur.begin(), cur.end());
+    }
+  } while (!visit.empty());
 }
 
 bool hasSubterm(TNode n, const std::vector<Node>& t, bool strict)
@@ -194,7 +260,7 @@ bool hasSubterm(TNode n, const std::vector<Node>& t, bool strict)
     return true;
   }
 
-  std::unordered_set<TNode, TNodeHashFunction> visited;
+  std::unordered_set<TNode> visited;
   std::vector<TNode> toProcess;
 
   toProcess.push_back(n);
@@ -223,13 +289,12 @@ bool hasSubterm(TNode n, const std::vector<Node>& t, bool strict)
       {
         return true;
       }
-      if (visited.find(child) != visited.end())
+      if (!visited.insert(child).second)
       {
         continue;
       }
       else
       {
-        visited.insert(child);
         toProcess.push_back(child);
       }
     }
@@ -253,7 +318,7 @@ bool hasBoundVar(TNode n)
   if (!n.getAttribute(HasBoundVarComputedAttr()))
   {
     bool hasBv = false;
-    if (n.getKind() == kind::BOUND_VARIABLE)
+    if (n.getKind() == Kind::BOUND_VARIABLE)
     {
       hasBv = true;
     }
@@ -261,7 +326,11 @@ bool hasBoundVar(TNode n)
     {
       for (auto i = n.begin(); i != n.end() && !hasBv; ++i)
       {
-        hasBv = hasBoundVar(*i);
+        if (hasBoundVar(*i))
+        {
+          hasBv = true;
+          break;
+        }
       }
     }
     if (!hasBv && n.hasOperator())
@@ -270,17 +339,202 @@ bool hasBoundVar(TNode n)
     }
     n.setAttribute(HasBoundVarAttr(), hasBv);
     n.setAttribute(HasBoundVarComputedAttr(), true);
-    Debug("bva") << n << " has bva : " << n.getAttribute(HasBoundVarAttr())
+    Trace("bva") << n << " has bva : " << n.getAttribute(HasBoundVarAttr())
                  << std::endl;
     return hasBv;
   }
   return n.getAttribute(HasBoundVarAttr());
 }
 
+bool hasBoundVar(TNode n, const std::unordered_set<Node>& fvs)
+{
+  if (fvs.empty())
+  {
+    return false;
+  }
+  std::unordered_set<TNode> visited;
+  std::vector<TNode> toProcess;
+  toProcess.push_back(n);
+  // incrementally iterate and add to toProcess
+  for (unsigned i = 0; i < toProcess.size(); ++i)
+  {
+    TNode current = toProcess[i];
+    if (current.isClosure())
+    {
+      // check if any is contained in fvs
+      for (const Node& v : current[0])
+      {
+        if (fvs.find(v) != fvs.end())
+        {
+          return true;
+        }
+      }
+    }
+    for (unsigned j = 0, j_end = current.getNumChildren(); j <= j_end; ++j)
+    {
+      TNode child;
+      // try children then operator
+      if (j < j_end)
+      {
+        child = current[j];
+      }
+      else if (current.hasOperator())
+      {
+        child = current.getOperator();
+      }
+      else
+      {
+        break;
+      }
+      if (!visited.insert(child).second)
+      {
+        continue;
+      }
+      else
+      {
+        toProcess.push_back(child);
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * Check variables internal, which is used as a helper to implement many of the
+ * methods in this file.
+ *
+ * This computes the free variables in n, that is, the subterms of n of kind
+ * BOUND_VARIABLE that are not bound in n or occur in scope, adds these to fvs
+ * if computeFv is true.
+ *
+ * @param n The node under investigation
+ * @param fvs The set which free variables are added to
+ * @param scope The scope we are considering.
+ * @param wasShadow Flag set to true if variable shadowing was encountered.
+ * Only computed if checkShadow is true.
+ * @param computeFv If this flag is false, then we only return true/false and
+ * do not add to fvs.
+ * @param checkShadow If this flag is true, we immediately return true if a
+ * variable is shadowing. If this flag is false, we give an assertion failure
+ * when this occurs.
+ * @return true iff this node contains a free variable.
+ */
+bool checkVariablesInternal(TNode n,
+                            std::unordered_set<Node>& fvs,
+                            std::unordered_set<TNode>& scope,
+                            bool& wasShadow,
+                            bool computeFv = true,
+                            bool checkShadow = false)
+{
+  std::unordered_set<TNode> visited;
+  std::vector<TNode> visit;
+  TNode cur;
+  visit.push_back(n);
+  do
+  {
+    cur = visit.back();
+    visit.pop_back();
+    // can skip if it doesn't have a bound variable
+    if (!hasBoundVar(cur))
+    {
+      continue;
+    }
+    if (visited.insert(cur).second)
+    {
+      if (cur.getKind() == Kind::BOUND_VARIABLE)
+      {
+        if (scope.find(cur) == scope.end())
+        {
+          if (computeFv)
+          {
+            fvs.insert(cur);
+          }
+          else
+          {
+            return true;
+          }
+        }
+      }
+      else if (cur.isClosure())
+      {
+        // add to scope
+        std::vector<TNode> boundvars;
+        for (const TNode& cn : cur[0])
+        {
+          if (scope.find(cn) != scope.end())
+          {
+            if (checkShadow)
+            {
+              wasShadow = true;
+              return true;
+            }
+          }
+          else
+          {
+            // add to scope if it is not shadowing
+            boundvars.push_back(cn);
+            scope.insert(cn);
+          }
+        }
+        // must make recursive call to use separate cache
+        if (checkVariablesInternal(
+                cur[1], fvs, scope, wasShadow, computeFv, checkShadow)
+            && !computeFv)
+        {
+          return true;
+        }
+        // cleanup
+        for (const TNode& cn : boundvars)
+        {
+          scope.erase(cn);
+        }
+      }
+      else
+      {
+        if (cur.hasOperator())
+        {
+          visit.push_back(cur.getOperator());
+        }
+        visit.insert(visit.end(), cur.begin(), cur.end());
+      }
+    }
+  } while (!visit.empty());
+
+  return !fvs.empty();
+}
+
+/** Same as above, without checking for shadowing */
+bool getVariablesInternal(TNode n,
+                          std::unordered_set<Node>& fvs,
+                          std::unordered_set<TNode>& scope,
+                          bool computeFv = true)
+{
+  bool wasShadow = false;
+  return checkVariablesInternal(n, fvs, scope, wasShadow, computeFv, false);
+}
+
 bool hasFreeVar(TNode n)
 {
-  std::unordered_set<Node, NodeHashFunction> fvs;
-  return getFreeVariables(n, fvs, false);
+  // optimization for variables and constants
+  if (n.getNumChildren() == 0)
+  {
+    return n.getKind() == Kind::BOUND_VARIABLE;
+  }
+  std::unordered_set<Node> fvs;
+  std::unordered_set<TNode> scope;
+  return getVariablesInternal(n, fvs, scope, false);
+}
+
+bool hasFreeOrShadowedVar(TNode n, bool& wasShadow)
+{
+  // optimization for variables and constants
+  if (n.getNumChildren() == 0)
+  {
+    return n.getKind() == Kind::BOUND_VARIABLE;
+  }
+  std::unordered_set<Node> fvs;
+  std::unordered_set<TNode> scope;
+  return checkVariablesInternal(n, fvs, scope, wasShadow, false, true);
 }
 
 struct HasClosureTag
@@ -320,82 +574,34 @@ bool hasClosure(Node n)
   return n.getAttribute(HasClosureAttr());
 }
 
-bool getFreeVariables(TNode n,
-                      std::unordered_set<Node, NodeHashFunction>& fvs,
-                      bool computeFv)
+bool getFreeVariables(TNode n, std::unordered_set<Node>& fvs)
 {
-  std::unordered_set<TNode, TNodeHashFunction> bound_var;
-  std::unordered_map<TNode, bool, TNodeHashFunction> visited;
-  std::vector<TNode> visit;
-  TNode cur;
-  visit.push_back(n);
-  do
-  {
-    cur = visit.back();
-    visit.pop_back();
-    // can skip if it doesn't have a bound variable
-    if (!hasBoundVar(cur))
-    {
-      continue;
-    }
-    Kind k = cur.getKind();
-    bool isQuant = cur.isClosure();
-    std::unordered_map<TNode, bool, TNodeHashFunction>::iterator itv =
-        visited.find(cur);
-    if (itv == visited.end())
-    {
-      if (k == kind::BOUND_VARIABLE)
-      {
-        if (bound_var.find(cur) == bound_var.end())
-        {
-          if (computeFv)
-          {
-            fvs.insert(cur);
-          }
-          else
-          {
-            return true;
-          }
-        }
-      }
-      else if (isQuant)
-      {
-        for (const TNode& cn : cur[0])
-        {
-          // should not shadow
-          Assert(bound_var.find(cn) == bound_var.end());
-          bound_var.insert(cn);
-        }
-        visit.push_back(cur);
-      }
-      // must visit quantifiers again to clean up below
-      visited[cur] = !isQuant;
-      if (cur.hasOperator())
-      {
-        visit.push_back(cur.getOperator());
-      }
-      for (const TNode& cn : cur)
-      {
-        visit.push_back(cn);
-      }
-    }
-    else if (!itv->second)
-    {
-      Assert(isQuant);
-      for (const TNode& cn : cur[0])
-      {
-        bound_var.erase(cn);
-      }
-      visited[cur] = true;
-    }
-  } while (!visit.empty());
-
-  return !fvs.empty();
+  std::unordered_set<TNode> scope;
+  return getVariablesInternal(n, fvs, scope);
 }
 
-bool getVariables(TNode n, std::unordered_set<TNode, TNodeHashFunction>& vs)
+bool getFreeVariablesScope(TNode n,
+                           std::unordered_set<Node>& fvs,
+                           std::unordered_set<TNode>& scope)
 {
-  std::unordered_set<TNode, TNodeHashFunction> visited;
+  return getVariablesInternal(n, fvs, scope);
+}
+bool hasFreeVariablesScope(TNode n, std::unordered_set<TNode>& scope)
+{
+  std::unordered_set<Node> fvs;
+  return getVariablesInternal(n, fvs, scope, false);
+}
+
+bool getVariables(TNode n, std::unordered_set<Node>& vs)
+{
+  std::unordered_set<TNode> visited;
+  return getVariables(n, vs, visited);
+}
+
+bool getVariables(TNode n,
+                  std::unordered_set<Node>& vs,
+                  std::unordered_set<TNode>& visited)
+{
   std::vector<TNode> visit;
   TNode cur;
   visit.push_back(n);
@@ -403,8 +609,7 @@ bool getVariables(TNode n, std::unordered_set<TNode, TNodeHashFunction>& vs)
   {
     cur = visit.back();
     visit.pop_back();
-    std::unordered_set<TNode, TNodeHashFunction>::iterator itv =
-        visited.find(cur);
+    std::unordered_set<TNode>::iterator itv = visited.find(cur);
     if (itv == visited.end())
     {
       if (cur.isVar())
@@ -413,10 +618,11 @@ bool getVariables(TNode n, std::unordered_set<TNode, TNodeHashFunction>& vs)
       }
       else
       {
-        for (const TNode& cn : cur)
+        if (cur.hasOperator())
         {
-          visit.push_back(cn);
+          visit.push_back(cur.getOperator());
         }
+        visit.insert(visit.end(), cur.begin(), cur.end());
       }
       visited.insert(cur);
     }
@@ -425,15 +631,15 @@ bool getVariables(TNode n, std::unordered_set<TNode, TNodeHashFunction>& vs)
   return !vs.empty();
 }
 
-void getSymbols(TNode n, std::unordered_set<Node, NodeHashFunction>& syms)
+void getSymbols(TNode n, std::unordered_set<Node>& syms)
 {
-  std::unordered_set<TNode, TNodeHashFunction> visited;
+  std::unordered_set<TNode> visited;
   getSymbols(n, syms, visited);
 }
 
 void getSymbols(TNode n,
-                std::unordered_set<Node, NodeHashFunction>& syms,
-                std::unordered_set<TNode, TNodeHashFunction>& visited)
+                std::unordered_set<Node>& syms,
+                std::unordered_set<TNode>& visited)
 {
   std::vector<TNode> visit;
   TNode cur;
@@ -445,7 +651,7 @@ void getSymbols(TNode n,
     if (visited.find(cur) == visited.end())
     {
       visited.insert(cur);
-      if (cur.isVar() && cur.getKind() != kind::BOUND_VARIABLE)
+      if (cur.isVar() && cur.getKind() != Kind::BOUND_VARIABLE)
       {
         syms.insert(cur);
       }
@@ -453,26 +659,54 @@ void getSymbols(TNode n,
       {
         visit.push_back(cur.getOperator());
       }
-      for (TNode cn : cur)
-      {
-        visit.push_back(cn);
-      }
+      visit.insert(visit.end(), cur.begin(), cur.end());
     }
   } while (!visit.empty());
 }
 
-void getOperatorsMap(
-    TNode n,
-    std::map<TypeNode, std::unordered_set<Node, NodeHashFunction>>& ops)
+void getKindSubterms(TNode n,
+                     Kind k,
+                     bool topLevel,
+                     std::unordered_set<Node>& ts)
 {
-  std::unordered_set<TNode, TNodeHashFunction> visited;
+  std::unordered_set<TNode> visited;
+  std::vector<TNode> visit;
+  TNode cur;
+  visit.push_back(n);
+  do
+  {
+    cur = visit.back();
+    visit.pop_back();
+    if (visited.find(cur) == visited.end())
+    {
+      visited.insert(cur);
+      if (cur.getKind() == k)
+      {
+        ts.insert(cur);
+        if (topLevel)
+        {
+          // only considering top-level applications
+          continue;
+        }
+      }
+      if (cur.hasOperator())
+      {
+        visit.push_back(cur.getOperator());
+      }
+      visit.insert(visit.end(), cur.begin(), cur.end());
+    }
+  } while (!visit.empty());
+}
+
+void getOperatorsMap(TNode n, std::map<TypeNode, std::unordered_set<Node>>& ops)
+{
+  std::unordered_set<TNode> visited;
   getOperatorsMap(n, ops, visited);
 }
 
-void getOperatorsMap(
-    TNode n,
-    std::map<TypeNode, std::unordered_set<Node, NodeHashFunction>>& ops,
-    std::unordered_set<TNode, TNodeHashFunction>& visited)
+void getOperatorsMap(TNode n,
+                     std::map<TypeNode, std::unordered_set<Node>>& ops,
+                     std::unordered_set<TNode>& visited)
 {
   // nodes that we still need to visit
   std::vector<TNode> visit;
@@ -491,135 +725,58 @@ void getOperatorsMap(
       // add the current operator to the result
       if (cur.hasOperator())
       {
-       Node o;
-       if (cur.getMetaKind() == kind::metakind::PARAMETERIZED) {
-         o = cur.getOperator();
-       } else {
-         o = NodeManager::currentNM()->operatorOf(cur.getKind());
-       }
+        Node o;
+        if (cur.getMetaKind() == kind::metakind::PARAMETERIZED)
+        {
+          o = cur.getOperator();
+        }
+        else
+        {
+          o = cur.getNodeManager()->operatorOf(cur.getKind());
+        }
         ops[tn].insert(o);
       }
       // add children to visit in the future
-      for (TNode cn : cur)
-      {
-        visit.push_back(cn);
-      }
+      visit.insert(visit.end(), cur.begin(), cur.end());
     }
   } while (!visit.empty());
 }
 
-Node substituteCaptureAvoiding(TNode n, Node src, Node dest)
+void getTypes(TNode n, std::unordered_set<TypeNode>& types)
 {
-  if (n == src)
-  {
-    return dest;
-  }
-  if (src == dest)
-  {
-    return n;
-  }
-  std::vector<Node> srcs;
-  std::vector<Node> dests;
-  srcs.push_back(src);
-  dests.push_back(dest);
-  return substituteCaptureAvoiding(n, srcs, dests);
+  std::unordered_set<TNode> visited;
+  getTypes(n, types, visited);
 }
 
-Node substituteCaptureAvoiding(TNode n,
-                               std::vector<Node>& src,
-                               std::vector<Node>& dest)
+void getTypes(TNode n,
+              std::unordered_set<TypeNode>& types,
+              std::unordered_set<TNode>& visited)
 {
-  std::unordered_map<TNode, Node, TNodeHashFunction> visited;
-  std::unordered_map<TNode, Node, TNodeHashFunction>::iterator it;
+  std::unordered_set<TNode>::iterator it;
   std::vector<TNode> visit;
-  TNode curr;
+  TNode cur;
   visit.push_back(n);
-  Assert(src.size() == dest.size())
-      << "Substitution domain and range must be equal size";
   do
   {
-    curr = visit.back();
+    cur = visit.back();
     visit.pop_back();
-    it = visited.find(curr);
-
+    it = visited.find(cur);
     if (it == visited.end())
     {
-      auto itt = std::find(src.rbegin(), src.rend(), curr);
-      if (itt != src.rend())
+      visited.insert(cur);
+      types.insert(cur.getType());
+      // special cases where the type is not part of the AST
+      if (cur.getKind() == Kind::CARDINALITY_CONSTRAINT)
       {
-        Assert(
-            (std::distance(src.begin(), itt.base()) - 1) >= 0
-            && static_cast<unsigned>(std::distance(src.begin(), itt.base()) - 1)
-                   < dest.size());
-        visited[curr] = dest[std::distance(src.begin(), itt.base()) - 1];
-        continue;
+        types.insert(
+            cur.getOperator().getConst<CardinalityConstraint>().getType());
       }
-      if (curr.getNumChildren() == 0)
-      {
-        visited[curr] = curr;
-        continue;
-      }
-
-      visited[curr] = Node::null();
-      // if binder, rename variables to avoid capture
-      if (curr.isClosure())
-      {
-        NodeManager* nm = NodeManager::currentNM();
-        // have new vars -> renames subs in the end of current sub
-        for (const Node& v : curr[0])
-        {
-          src.push_back(v);
-          dest.push_back(nm->mkBoundVar(v.getType()));
-        }
-      }
-      // save for post-visit
-      visit.push_back(curr);
-      // visit children
-      if (curr.getMetaKind() == kind::metakind::PARAMETERIZED)
-      {
-        // push the operator
-        visit.push_back(curr.getOperator());
-      }
-      for (unsigned i = 0, size = curr.getNumChildren(); i < size; ++i)
-      {
-        visit.push_back(curr[i]);
-      }
-    }
-    else if (it->second.isNull())
-    {
-      // build node
-      NodeBuilder<> nb(curr.getKind());
-      if (curr.getMetaKind() == kind::metakind::PARAMETERIZED)
-      {
-        // push the operator
-        Assert(visited.find(curr.getOperator()) != visited.end());
-        nb << visited[curr.getOperator()];
-      }
-      // collect substituted children
-      for (unsigned i = 0, size = curr.getNumChildren(); i < size; ++i)
-      {
-        Assert(visited.find(curr[i]) != visited.end());
-        nb << visited[curr[i]];
-      }
-      visited[curr] = nb;
-
-      // remove renaming
-      if (curr.isClosure())
-      {
-        // remove beginning of sub which correspond to renaming of variables in
-        // this binder
-        unsigned nchildren = curr[0].getNumChildren();
-        src.resize(src.size() - nchildren);
-        dest.resize(dest.size() - nchildren);
-      }
+      visit.insert(visit.end(), cur.begin(), cur.end());
     }
   } while (!visit.empty());
-  Assert(visited.find(n) != visited.end());
-  return visited[n];
 }
 
-void getComponentTypes(
-    TypeNode t, std::unordered_set<TypeNode, TypeNodeHashFunction>& types)
+void getComponentTypes(TypeNode t, std::unordered_set<TypeNode>& types)
 {
   std::vector<TypeNode> toProcess;
   toProcess.push_back(t);
@@ -640,14 +797,12 @@ void getComponentTypes(
   } while (!toProcess.empty());
 }
 
-bool match(Node x,
-           Node y,
-           std::unordered_map<Node, Node, NodeHashFunction>& subs)
+bool match(Node x, Node y, std::unordered_map<Node, Node>& subs)
 {
   std::unordered_set<std::pair<TNode, TNode>, TNodePairHashFunction> visited;
   std::unordered_set<std::pair<TNode, TNode>, TNodePairHashFunction>::iterator
       it;
-  std::unordered_map<Node, Node, NodeHashFunction>::iterator subsIt;
+  std::unordered_map<Node, Node>::iterator subsIt;
 
   std::vector<std::pair<TNode, TNode>> stack;
   stack.emplace_back(x, y);
@@ -678,7 +833,7 @@ bool match(Node x,
       }
       // if the two subterms are not equal and the first one is a bound
       // variable...
-      if (curr.first.getKind() == kind::BOUND_VARIABLE)
+      if (curr.first.getKind() == Kind::BOUND_VARIABLE)
       {
         // and we have not seen this variable before...
         subsIt = subs.find(curr.first);
@@ -709,7 +864,7 @@ bool match(Node x,
       // equal
       // we compare operators instead of kinds because different terms may have
       // the same kind (both `(id x)` and `(square x)` have kind APPLY_UF)
-      // since many builtin operators like `PLUS` allow arbitrary number of
+      // since many builtin operators like `ADD` allow arbitrary number of
       // arguments, we also need to check if the two subterms have the same
       // number of children
       if (curr.first.getNumChildren() != curr.second.getNumChildren()
@@ -727,5 +882,140 @@ bool match(Node x,
   return true;
 }
 
+void getConversionConditions(Node n1,
+                             Node n2,
+                             std::vector<Node>& eqs,
+                             bool isHo)
+{
+  std::unordered_set<std::pair<TNode, TNode>, TNodePairHashFunction> visited;
+  std::unordered_set<std::pair<TNode, TNode>, TNodePairHashFunction>::iterator
+      it;
+  std::vector<std::pair<TNode, TNode>> stack;
+  stack.emplace_back(n1, n2);
+  std::pair<TNode, TNode> curr;
+  while (!stack.empty())
+  {
+    curr = stack.back();
+    stack.pop_back();
+    if (curr.first == curr.second)
+    {
+      // holds trivially
+      continue;
+    }
+    AssertEqual(curr.first.getType(), curr.second.getType());
+    it = visited.find(curr);
+    if (it != visited.end())
+    {
+      // already processed
+      continue;
+    }
+    visited.insert(curr);
+    bool rec = false;
+    if (curr.first.getNumChildren() > 0
+        && curr.first.getNumChildren() == curr.second.getNumChildren())
+    {
+      size_t prevSize = stack.size();
+      if (curr.first.getOperator() == curr.second.getOperator())
+      {
+        if (curr.first.isClosure())
+        {
+          // only recurse if equal variable lists
+          rec = (curr.first[0] == curr.second[0]);
+        }
+        else
+        {
+          rec = true;
+        }
+      }
+      else if (isHo && curr.first.getKind() == Kind::APPLY_UF
+               && curr.second.getKind() == Kind::APPLY_UF)
+      {
+        rec = true;
+        // if isHo, we recurse on distinct operators with the same type
+        // note that it is redundant to check type here, as we check the
+        // types of arguments below and undo if necessary
+        stack.emplace_back(curr.first.getOperator(), curr.second.getOperator());
+      }
+      if (rec)
+      {
+        // recurse on children
+        for (size_t i = 0, n = curr.first.getNumChildren(); i < n; ++i)
+        {
+          // if there is a type mismatch, we can't unify
+          if (!CVC5_EQUAL(curr.first[i].getType(), curr.second[i].getType()))
+          {
+            stack.resize(prevSize);
+            rec = false;
+            break;
+          }
+          stack.emplace_back(curr.first[i], curr.second[i]);
+        }
+      }
+    }
+    if (!rec)
+    {
+      eqs.push_back(curr.first.eqNode(curr.second));
+    }
+  }
+}
+
+bool isBooleanConnective(TNode cur)
+{
+  Kind k = cur.getKind();
+  return k == Kind::NOT || k == Kind::IMPLIES || k == Kind::AND || k == Kind::OR
+         || (k == Kind::ITE && cur.getType().isBoolean()) || k == Kind::XOR
+         || (k == Kind::EQUAL && cur[0].getType().isBoolean());
+}
+
+bool isTheoryAtom(TNode n)
+{
+  Kind k = n.getKind();
+  Assert(k != Kind::NOT);
+  return k != Kind::AND && k != Kind::OR && k != Kind::IMPLIES && k != Kind::ITE
+         && k != Kind::XOR && (k != Kind::EQUAL || !n[0].getType().isBoolean());
+}
+
+struct HasAbstractSubtermTag
+{
+};
+struct HasAbstractSubtermComputedTag
+{
+};
+/** Attribute true for expressions that have subterms with abstract type */
+using AbstractSubtermVarAttr = expr::Attribute<HasAbstractSubtermTag, bool>;
+using HasAbstractSubtermComputedAttr =
+    expr::Attribute<HasAbstractSubtermComputedTag, bool>;
+
+bool hasAbstractSubterm(TNode n)
+{
+  if (!n.getAttribute(HasAbstractSubtermComputedAttr()))
+  {
+    bool hasAbs = false;
+    if (n.getType().isAbstract())
+    {
+      hasAbs = true;
+    }
+    else
+    {
+      for (auto i = n.begin(); i != n.end(); ++i)
+      {
+        if (hasAbstractSubterm(*i))
+        {
+          hasAbs = true;
+          break;
+        }
+      }
+    }
+    if (!hasAbs && n.hasOperator())
+    {
+      hasAbs = hasAbstractSubterm(n.getOperator());
+    }
+    n.setAttribute(AbstractSubtermVarAttr(), hasAbs);
+    n.setAttribute(HasAbstractSubtermComputedAttr(), true);
+    return hasAbs;
+  }
+  return n.getAttribute(AbstractSubtermVarAttr());
+}
+
 }  // namespace expr
-}  // namespace CVC4
+}  // namespace cvc5::internal

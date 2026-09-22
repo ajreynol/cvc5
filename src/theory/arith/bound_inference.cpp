@@ -1,159 +1,268 @@
-/*********************                                                        */
-/*! \file bound_inference.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Gereon Kremer
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2019 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Extract bounds on variables from theory atoms.
+ */
 
 #include "theory/arith/bound_inference.h"
 
-#include "theory/arith/normal_form.h"
+#include "smt/env.h"
+#include "theory/arith/arith_utilities.h"
+#include "theory/arith/linear/normal_form.h"
+#include "theory/arith/rewriter/rewrite_atom.h"
 #include "theory/rewriter.h"
 
-namespace CVC4 {
+using namespace cvc5::internal::kind;
+
+namespace cvc5::internal {
 namespace theory {
 namespace arith {
 
-std::ostream& operator<<(std::ostream& os, const Bounds& b) {
-
-  return os << (b.lower_strict ? '(' : '[') << b.lower << " .. " << b.upper
-            << (b.upper_strict ? ')' : ']');
-
-}
-
-void BoundInference::update_lower_bound(const Node& origin,
-                                        const Node& variable,
-                                        const Node& value,
-                                        bool strict)
+std::ostream& operator<<(std::ostream& os, const Bounds& b)
 {
-  // variable > or >= value because of origin
-  Trace("nl-icp") << "\tNew bound " << variable << (strict ? ">" : ">=")
-                  << value << " due to " << origin << std::endl;
-  Bounds& b = get_or_add(variable);
-  if (b.lower.isNull() || b.lower.getConst<Rational>() < value.getConst<Rational>())
-  {
-    b.lower = value;
-    b.lower_strict = strict;
-    b.lower_origin = origin;
-  }
-  else if (strict && b.lower == value)
-  {
-    b.lower_strict = strict;
-    b.lower_origin = origin;
-  }
+  return os << (b.lower_strict ? '(' : '[') << b.lower_value << " .. "
+            << b.upper_value << (b.upper_strict ? ')' : ']');
 }
-void BoundInference::update_upper_bound(const Node& origin,
-                                        const Node& variable,
-                                        const Node& value,
-                                        bool strict)
-{
-  // variable < or <= value because of origin
-  Trace("nl-icp") << "\tNew bound " << variable << (strict ? "<" : "<=")
-                  << value << " due to " << origin << std::endl;
-  Bounds& b = get_or_add(variable);
-  if (b.upper.isNull() || b.upper.getConst<Rational>() > value.getConst<Rational>())
-  {
-    b.upper = value;
-    b.upper_strict = strict;
-    b.upper_origin = origin;
-  }
-  else if (strict && b.upper == value)
-  {
-    b.upper_strict = strict;
-    b.upper_origin = origin;
-  }
-}
+
+BoundInference::BoundInference(Env& env) : EnvObj(env) {}
 
 void BoundInference::reset() { d_bounds.clear(); }
 
-Bounds& BoundInference::get_or_add(const Node& v)
+Bounds& BoundInference::get_or_add(const Node& lhs)
 {
-  auto it = d_bounds.find(v);
+  auto it = d_bounds.find(lhs);
   if (it == d_bounds.end())
   {
-    it = d_bounds.emplace(v, Bounds()).first;
+    it = d_bounds.emplace(lhs, Bounds()).first;
   }
   return it->second;
 }
-Bounds BoundInference::get(const Node& v) const
+Bounds BoundInference::get(const Node& lhs) const
 {
-  auto it = d_bounds.find(v);
+  auto it = d_bounds.find(lhs);
   if (it == d_bounds.end())
   {
-    return Bounds{};
+    return Bounds();
   }
   return it->second;
 }
 
 const std::map<Node, Bounds>& BoundInference::get() const { return d_bounds; }
-bool BoundInference::add(const Node& n)
+bool BoundInference::add(const Node& n, bool onlyVariables)
 {
-  // Parse the node as a comparison
-  auto comp = Comparison::parseNormalForm(Rewriter::rewrite(n));
-  auto dec = comp.decompose(true);
-  if (std::get<0>(dec).isVariable())
+  Node tmp = rewrite(n);
+  if (tmp.getKind() == Kind::NOT && tmp[0].getKind() == Kind::EQUAL)
   {
-    Variable v = std::get<0>(dec).getVariable();
-    Kind relation = std::get<1>(dec);
-    if (relation == Kind::DISTINCT) return false;
-    Constant bound = std::get<2>(dec);
-    // has the form  v  ~relation~  bound
+    // Disequalities are not used for bound inference. Note we return here,
+    // since a disequality cannot necessarily be parsed as a comparison below.
+    return false;
+  }
+  if (tmp.getKind() == Kind::EQUAL)
+  {
+    // Normalize the equality, so that it can be parsed as a comparison below,
+    // see rewriter::normalizeEquality.
+    tmp = rewriter::normalizeEquality(nodeManager(), tmp);
+  }
+  if (tmp.getKind() == Kind::CONST_BOOLEAN)
+  {
+    return false;
+  }
+  // Parse the node as a comparison
+  auto comp = linear::Comparison::parseNormalForm(tmp);
+  auto dec = comp.decompose(true);
+  if (onlyVariables && !std::get<0>(dec).isVariable())
+  {
+    return false;
+  }
 
+  Node lhs = std::get<0>(dec).getNode();
+  Kind relation = std::get<1>(dec);
+  if (relation == Kind::DISTINCT) return false;
+  Node bound = std::get<2>(dec).getNode();
+  // has the form  lhs  ~relation~  bound
+
+  if (lhs.getType().isInteger())
+  {
+    Rational br = bound.getConst<Rational>();
+    auto* nm = nodeManager();
     switch (relation)
     {
-      case Kind::LEQ:
-        update_upper_bound(n, v.getNode(), bound.getNode(), false);
-        break;
+      case Kind::LEQ: bound = nm->mkConstInt(br.floor()); break;
       case Kind::LT:
-        update_upper_bound(n, v.getNode(), bound.getNode(), true);
-        break;
-      case Kind::EQUAL:
-        update_lower_bound(n, v.getNode(), bound.getNode(), false);
-        update_upper_bound(n, v.getNode(), bound.getNode(), false);
+        bound = nm->mkConstInt((br - 1).ceiling());
+        relation = Kind::LEQ;
         break;
       case Kind::GT:
-        update_lower_bound(n, v.getNode(), bound.getNode(), true);
+        bound = nm->mkConstInt((br + 1).floor());
+        relation = Kind::GEQ;
         break;
-      case Kind::GEQ:
-        update_lower_bound(n, v.getNode(), bound.getNode(), false);
+      case Kind::GEQ: bound = nm->mkConstInt(br.ceiling()); break;
+      default:
+        // always ensure integer
+        bound = nm->mkConstInt(br);
         break;
-      default: Assert(false);
     }
-    return true;
+    Trace("bound-inf") << "Strengthened " << n << " to " << lhs << " "
+                       << relation << " " << bound << std::endl;
   }
-  return false;
+
+  switch (relation)
+  {
+    case Kind::LEQ: update_upper_bound(n, lhs, bound, false); break;
+    case Kind::LT: update_upper_bound(n, lhs, bound, true); break;
+    case Kind::EQUAL:
+      update_lower_bound(n, lhs, bound, false);
+      update_upper_bound(n, lhs, bound, false);
+      break;
+    case Kind::GT: update_lower_bound(n, lhs, bound, true); break;
+    case Kind::GEQ: update_lower_bound(n, lhs, bound, false); break;
+    default: DebugUnhandled();
+  }
+  return true;
+}
+
+void BoundInference::replaceByOrigins(std::vector<Node>& nodes) const
+{
+  std::vector<Node> toAdd;
+  for (auto& n : nodes)
+  {
+    for (const auto& b : d_bounds)
+    {
+      if (n == b.second.lower_bound && n == b.second.upper_bound)
+      {
+        if (n != b.second.lower_origin && n != b.second.upper_origin)
+        {
+          Trace("bound-inf")
+              << "Replace " << n << " by origins " << b.second.lower_origin
+              << " and " << b.second.upper_origin << std::endl;
+          n = b.second.lower_origin;
+          toAdd.emplace_back(b.second.upper_origin);
+        }
+      }
+      else if (n == b.second.lower_bound)
+      {
+        if (n != b.second.lower_origin)
+        {
+          Trace("bound-inf") << "Replace " << n << " by origin "
+                             << b.second.lower_origin << std::endl;
+          n = b.second.lower_origin;
+        }
+      }
+      else if (n == b.second.upper_bound)
+      {
+        if (n != b.second.upper_origin)
+        {
+          Trace("bound-inf") << "Replace " << n << " by origin "
+                             << b.second.upper_origin << std::endl;
+          n = b.second.upper_origin;
+        }
+      }
+    }
+  }
+  nodes.insert(nodes.end(), toAdd.begin(), toAdd.end());
+}
+
+void BoundInference::update_lower_bound(const Node& origin,
+                                        const Node& lhs,
+                                        const Node& value,
+                                        bool strict)
+{
+  Assert(value.isConst());
+  // lhs > or >= value because of origin
+  Trace("bound-inf") << "\tNew bound " << lhs << (strict ? ">" : ">=") << value
+                     << " due to " << origin << std::endl;
+  Bounds& b = get_or_add(lhs);
+  if (b.lower_value.isNull()
+      || b.lower_value.getConst<Rational>() < value.getConst<Rational>())
+  {
+    auto* nm = nodeManager();
+    b.lower_value = value;
+    b.lower_strict = strict;
+
+    b.lower_origin = origin;
+
+    if (!b.lower_strict && !b.upper_strict && b.lower_value == b.upper_value)
+    {
+      // If both bounds come from the same origin, then that origin already is
+      // (equivalent to) the equality we would construct here. We use it, which
+      // avoids constructing an equality of a different form, e.g. one whose
+      // sides are cast to real.
+      Node eq = b.lower_origin == b.upper_origin ? b.lower_origin
+                                                 : mkEquality(lhs, value);
+      b.lower_bound = b.upper_bound = rewrite(eq);
+    }
+    else
+    {
+      b.lower_bound =
+          rewrite(nm->mkNode(strict ? Kind::GT : Kind::GEQ, lhs, value));
+    }
+  }
+  else if (strict && b.lower_value == value)
+  {
+    auto* nm = nodeManager();
+    b.lower_strict = strict;
+    b.lower_bound = rewrite(nm->mkNode(Kind::GT, lhs, value));
+    b.lower_origin = origin;
+  }
+}
+void BoundInference::update_upper_bound(const Node& origin,
+                                        const Node& lhs,
+                                        const Node& value,
+                                        bool strict)
+{
+  // lhs < or <= value because of origin
+  Trace("bound-inf") << "\tNew bound " << lhs << (strict ? "<" : "<=") << value
+                     << " due to " << origin << std::endl;
+  Bounds& b = get_or_add(lhs);
+  if (b.upper_value.isNull()
+      || b.upper_value.getConst<Rational>() > value.getConst<Rational>())
+  {
+    auto* nm = nodeManager();
+    b.upper_value = value;
+    b.upper_strict = strict;
+    b.upper_origin = origin;
+    if (!b.lower_strict && !b.upper_strict && b.lower_value == b.upper_value)
+    {
+      // If both bounds come from the same origin, then that origin already is
+      // (equivalent to) the equality we would construct here. We use it, which
+      // avoids constructing an equality of a different form, e.g. one whose
+      // sides are cast to real.
+      Node eq = b.lower_origin == b.upper_origin ? b.lower_origin
+                                                 : mkEquality(lhs, value);
+      b.lower_bound = b.upper_bound = rewrite(eq);
+    }
+    else
+    {
+      b.upper_bound =
+          rewrite(nm->mkNode(strict ? Kind::LT : Kind::LEQ, lhs, value));
+    }
+  }
+  else if (strict && b.upper_value == value)
+  {
+    auto* nm = nodeManager();
+    b.upper_strict = strict;
+    b.upper_bound = rewrite(nm->mkNode(Kind::LT, lhs, value));
+    b.upper_origin = origin;
+  }
 }
 
 std::ostream& operator<<(std::ostream& os, const BoundInference& bi)
 {
   os << "Bounds:" << std::endl;
-  for (const auto& vb : bi.get())
+  for (const auto& b : bi.get())
   {
-    os << "\t" << vb.first << " -> " << vb.second.lower << ".."
-       << vb.second.upper << std::endl;
+    os << "\t" << b.first << " -> " << b.second.lower_value << ".."
+       << b.second.upper_value << std::endl;
   }
   return os;
 }
 
-std::map<Node, std::pair<Node,Node>> getBounds(const std::vector<Node>& assertions) {
-  BoundInference bi;
-  for (const auto& a: assertions) {
-    bi.add(a);
-  }
-  std::map<Node, std::pair<Node,Node>> res;
-  for (const auto& vb: bi.get()) {
-    res.emplace(vb.first, std::make_pair(vb.second.lower, vb.second.upper));
-  }
-  return res;
-}
-
 }  // namespace arith
 }  // namespace theory
-}  // namespace CVC4
+}  // namespace cvc5::internal

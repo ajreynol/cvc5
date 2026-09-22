@@ -1,0 +1,10 @@
+; REQUIRES: unrestricted-mode
+(set-logic QF_ALL)
+(set-info :status sat)
+(set-option :sets-exp true)
+(set-option :produce-models true)
+(declare-fun A () (Set Bool))
+(declare-fun x () Bool)
+(assert (set.member (set.member x A) A))
+(assert (> (set.card A) 1))
+(check-sat)
