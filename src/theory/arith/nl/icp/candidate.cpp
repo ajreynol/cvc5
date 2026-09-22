@@ -1,20 +1,18 @@
-/*********************                                                        */
-/*! \file candidate.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Gereon Kremer
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Represents a contraction candidate for ICP-style propagation.
+ */
 
 #include "theory/arith/nl/icp/candidate.h"
 
-#ifdef CVC4_POLY_IMP
+#ifdef CVC5_POLY_IMP
 
 #include <iostream>
 
@@ -23,7 +21,7 @@
 #include "theory/arith/nl/icp/intersection.h"
 #include "theory/arith/nl/poly_conversion.h"
 
-namespace CVC4 {
+namespace cvc5::internal {
 namespace theory {
 namespace arith {
 namespace nl {
@@ -51,7 +49,7 @@ PropagationResult Candidate::propagate(poly::IntervalAssignment& ia,
       res.set_lower(poly::Value::minus_infty(), true);
       break;
     case poly::SignCondition::EQ: break;
-    case poly::SignCondition::NE: Assert(false); break;
+    case poly::SignCondition::NE: DebugUnhandled(); break;
     case poly::SignCondition::GT:
       res.set_lower(get_lower(res), true);
       res.set_upper(poly::Value::plus_infty(), true);
@@ -71,7 +69,8 @@ PropagationResult Candidate::propagate(poly::IntervalAssignment& ia,
     case PropagationResult::CONTRACTED:
     case PropagationResult::CONTRACTED_WITHOUT_CURRENT:
     {
-      Trace("nl-icp") << *this << " contracted " << lhs << " -> " << cur
+      Trace("nl-icp") << *this << " contracted "
+                      << stream_variable(polyCtx, lhs) << " -> " << cur
                       << std::endl;
       auto old = ia.get(lhs);
       bool strong = false;
@@ -97,7 +96,7 @@ PropagationResult Candidate::propagate(poly::IntervalAssignment& ia,
     }
     case PropagationResult::CONTRACTED_STRONGLY:
     case PropagationResult::CONTRACTED_STRONGLY_WITHOUT_CURRENT:
-      Assert(false) << "This method should not return strong flags.";
+      DebugUnhandled() << "This method should not return strong flags.";
       break;
     default: break;
   }
@@ -106,7 +105,7 @@ PropagationResult Candidate::propagate(poly::IntervalAssignment& ia,
 
 std::ostream& operator<<(std::ostream& os, const Candidate& c)
 {
-  os << c.lhs << " " << c.rel << " ";
+  os << stream_variable(c.polyCtx, c.lhs) << " " << c.rel << " ";
   if (c.rhsmult != poly::Rational(1)) os << c.rhsmult << " * ";
   return os << c.rhs;
 }
@@ -115,6 +114,6 @@ std::ostream& operator<<(std::ostream& os, const Candidate& c)
 }  // namespace nl
 }  // namespace arith
 }  // namespace theory
-}  // namespace CVC4
+}  // namespace cvc5::internal
 
 #endif

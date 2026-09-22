@@ -1,23 +1,31 @@
-/*********************                                                        */
-/*! \file let_binding.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief A let binding utility
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * A let binding utility.
+ */
 
 #include "printer/let_binding.h"
 
-namespace CVC4 {
+#include <sstream>
 
-LetBinding::LetBinding(uint32_t thresh)
-    : d_thresh(thresh),
+#include "expr/skolem_manager.h"
+
+namespace cvc5::internal {
+
+LetBinding::LetBinding(const std::string& prefix,
+                       uint32_t thresh,
+                       bool traverseBinders,
+                       bool traverseSkolems)
+    : d_prefix(prefix),
+      d_thresh(thresh),
+      d_traverseBinders(traverseBinders),
+      d_traverseSkolems(traverseSkolems),
       d_context(),
       d_visitList(&d_context),
       d_count(&d_context),
@@ -55,7 +63,7 @@ void LetBinding::letify(std::vector<Node>& letList)
   // populate the d_letList and d_letMap
   convertCountToLet();
   // add the new entries to the letList
-letList.insert(letList.end(), d_letList.begin() + prevSize, d_letList.end());
+  letList.insert(letList.end(), d_letList.begin() + prevSize, d_letList.end());
 }
 
 void LetBinding::pushScope() { d_context.push(); }
@@ -72,15 +80,15 @@ uint32_t LetBinding::getId(Node n) const
   return (*it).second;
 }
 
-Node LetBinding::convert(Node n, const std::string& prefix, bool letTop) const
+Node LetBinding::convert(Node n, bool letTop) const
 {
   if (d_letMap.empty())
   {
     return n;
   }
-  NodeManager* nm = NodeManager::currentNM();
-  std::unordered_map<TNode, Node, TNodeHashFunction> visited;
-  std::unordered_map<TNode, Node, TNodeHashFunction>::iterator it;
+  NodeManager* nm = n.getNodeManager();
+  std::unordered_map<TNode, Node> visited;
+  std::unordered_map<TNode, Node>::iterator it;
   std::vector<TNode> visit;
   TNode cur;
   visit.push_back(n);
@@ -98,8 +106,13 @@ Node LetBinding::convert(Node n, const std::string& prefix, bool letTop) const
       {
         // make the let variable
         std::stringstream ss;
-        ss << prefix << id;
-        visited[cur] = nm->mkBoundVar(ss.str(), cur.getType());
+        ss << d_prefix << id;
+        visited[cur] = NodeManager::mkBoundVar(ss.str(), cur.getType());
+      }
+      else if (cur.isClosure())
+      {
+        // do not convert beneath quantifiers
+        visited[cur] = cur;
       }
       else
       {
@@ -147,18 +160,41 @@ void LetBinding::updateCounts(Node n)
   {
     cur = visit.back();
     it = d_count.find(cur);
+    bool isSkolem = (d_traverseSkolems && cur.getKind() == Kind::SKOLEM);
+    // do not traverse beneath quantifiers if d_traverseBinders is false.
+    if ((!isSkolem && cur.getNumChildren() == 0)
+        || cur.getKind() == Kind::BOUND_VAR_LIST
+        || (!d_traverseBinders && cur.isClosure()))
+    {
+      visit.pop_back();
+      continue;
+    }
     if (it == d_count.end())
     {
-      // do not traverse beneath quantifiers
-      if (cur.getNumChildren() == 0 || cur.isClosure())
+      d_count[cur] = 0;
+      if (isSkolem)
       {
-        d_visitList.push_back(cur);
-        d_count[cur] = 1;
-        visit.pop_back();
+        SkolemId skid;
+        Node cacheVal;
+        if (SkolemManager::isSkolemFunction(cur, skid, cacheVal)
+            && !cacheVal.isNull())
+        {
+          if (cacheVal.getKind() == Kind::SEXPR)
+          {
+            visit.insert(visit.end(), cacheVal.begin(), cacheVal.end());
+          }
+          else
+          {
+            visit.push_back(cacheVal);
+          }
+        }
       }
       else
       {
-        d_count[cur] = 0;
+        if (cur.hasOperator())
+        {
+          visit.push_back(cur.getOperator());
+        }
         visit.insert(visit.end(), cur.begin(), cur.end());
       }
     }
@@ -183,12 +219,7 @@ void LetBinding::convertCountToLet()
   NodeIdMap::const_iterator itc;
   for (const Node& n : d_visitList)
   {
-    if (n.getNumChildren() == 0)
-    {
-      // do not letify terms with no children
-      continue;
-    }
-    else if (d_letMap.find(n) != d_letMap.end())
+    if (d_letMap.find(n) != d_letMap.end())
     {
       // already letified, perhaps at a lower context
       continue;
@@ -205,4 +236,4 @@ void LetBinding::convertCountToLet()
   }
 }
 
-}  // namespace CVC4
+}  // namespace cvc5::internal

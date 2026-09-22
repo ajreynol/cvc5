@@ -1,89 +1,110 @@
-/*********************                                                        */
-/*! \file real_algebraic_number_poly_imp.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Gereon Kremer
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Implementation of RealAlgebraicNumber based on libpoly.
- **
- ** Implementation of RealAlgebraicNumber based on libpoly.
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Implementation of RealAlgebraicNumber based on libpoly.
+ */
 
-#include "cvc4autoconfig.h"
+#include "base/cvc5config.h"
 #include "util/real_algebraic_number.h"
 
-#ifndef CVC4_POLY_IMP  // Make sure this comes after cvc4autoconfig.h
-#error "This source should only ever be built if CVC4_POLY_IMP is on!"
-#endif /* CVC4_POLY_IMP */
-
+#ifdef CVC5_POLY_IMP
 #include <poly/polyxx.h>
+#endif
 
 #include <limits>
+#include <sstream>
 
 #include "base/check.h"
 #include "util/poly_util.h"
 
-namespace CVC4 {
+#define RAN_UNREACHABLE \
+  Unreachable() << "RealAlgebraicNumber is not available without libpoly."
 
-RealAlgebraicNumber::RealAlgebraicNumber(poly::AlgebraicNumber&& an)
-    : d_value(std::move(an))
+namespace cvc5::internal {
+
+RealAlgebraicNumber::RealAlgebraicNumber()
+    :
+#ifdef CVC5_POLY_IMP
+      d_isRational(true),
+#endif
+      d_rat()
 {
 }
 
+#ifdef CVC5_POLY_IMP
+RealAlgebraicNumber::RealAlgebraicNumber(poly::AlgebraicNumber&& an)
+    : d_isRational(false), d_value(std::move(an))
+{
+}
+#endif
+
 RealAlgebraicNumber::RealAlgebraicNumber(const Integer& i)
-    : d_value(poly::DyadicRational(poly_utils::toInteger(i)))
+    :
+#ifdef CVC5_POLY_IMP
+      d_isRational(true),
+#endif
+      d_rat(i)
 {
 }
 
 RealAlgebraicNumber::RealAlgebraicNumber(const Rational& r)
+    :
+#ifdef CVC5_POLY_IMP
+      d_isRational(true),
+#endif
+      d_rat(r)
 {
-  poly::Rational pr = poly_utils::toRational(r);
-  auto dr = poly_utils::toDyadicRational(r);
-  if (dr)
-  {
-    d_value = poly::AlgebraicNumber(dr.value());
-  }
-  else
-  {
-    d_value = poly::AlgebraicNumber(
-        poly::UPolynomial({numerator(pr), -denominator(pr)}),
-        poly::DyadicInterval(floor(pr), ceil(pr)));
-  }
 }
 
-RealAlgebraicNumber::RealAlgebraicNumber(const std::vector<long>& coefficients,
-                                         long lower,
-                                         long upper)
+RealAlgebraicNumber::RealAlgebraicNumber(
+    CVC5_UNUSED const std::vector<long>& coefficients,
+    CVC5_UNUSED long lower,
+    CVC5_UNUSED long upper)
 {
+#ifdef CVC5_ASSERTIONS
   for (long c : coefficients)
   {
-    Assert(std::numeric_limits<std::int32_t>::min() <= c
-           && c <= std::numeric_limits<std::int32_t>::max())
+    Assert(std::numeric_limits<int32_t>::min() <= c
+           && c <= std::numeric_limits<int32_t>::max())
         << "Coefficients need to fit within 32 bit integers. Please use the "
            "constructor based on Integer instead.";
   }
+#endif
+#ifdef CVC5_POLY_IMP
+  d_isRational = false;
   d_value = poly::AlgebraicNumber(poly::UPolynomial(coefficients),
                                   poly::DyadicInterval(lower, upper));
+#else
+  RAN_UNREACHABLE;
+#endif
 }
 
 RealAlgebraicNumber::RealAlgebraicNumber(
-    const std::vector<Integer>& coefficients,
-    const Rational& lower,
-    const Rational& upper)
+    CVC5_UNUSED const std::vector<Integer>& coefficients,
+    CVC5_UNUSED const Rational& lower,
+    CVC5_UNUSED const Rational& upper)
 {
+#ifdef CVC5_POLY_IMP
+  d_isRational = false;
   *this = poly_utils::toRanWithRefinement(
       poly::UPolynomial(poly_utils::toInteger(coefficients)), lower, upper);
+#else
+  RAN_UNREACHABLE;
+#endif
 }
 RealAlgebraicNumber::RealAlgebraicNumber(
-    const std::vector<Rational>& coefficients,
-    const Rational& lower,
-    const Rational& upper)
+    CVC5_UNUSED const std::vector<Rational>& coefficients,
+    CVC5_UNUSED const Rational& lower,
+    CVC5_UNUSED const Rational& upper)
 {
+#ifdef CVC5_POLY_IMP
+  d_isRational = false;
   Integer factor = Integer(1);
   for (const auto& c : coefficients)
   {
@@ -97,79 +118,281 @@ RealAlgebraicNumber::RealAlgebraicNumber(
   }
   *this = poly_utils::toRanWithRefinement(
       poly::UPolynomial(std::move(coeffs)), lower, upper);
+#else
+  RAN_UNREACHABLE;
+#endif
+}
+
+bool RealAlgebraicNumber::isRational() const
+{
+#ifdef CVC5_POLY_IMP
+  if (!d_isRational)
+  {
+    return poly::is_rational(getValue());
+  }
+#endif
+  return true;
+}
+Rational RealAlgebraicNumber::toRational() const
+{
+#ifdef CVC5_POLY_IMP
+  if (!d_isRational)
+  {
+    return poly_utils::toRational(poly::to_rational_approximation(getValue()));
+  }
+#endif
+  return getRationalValue();
+}
+
+std::string RealAlgebraicNumber::toString() const
+{
+  std::stringstream ss;
+#ifdef CVC5_POLY_IMP
+  if (!d_isRational)
+  {
+    ss << getValue();
+    return ss.str();
+  }
+#endif
+  ss << getRationalValue();
+  return ss.str();
+}
+
+#ifdef CVC5_POLY_IMP
+poly::AlgebraicNumber RealAlgebraicNumber::convertToPoly(
+    const RealAlgebraicNumber& r)
+{
+  // if we are already poly, just return the value
+  if (!r.d_isRational)
+  {
+    return r.d_value;
+  }
+  // otherwise, this converts the rational value of r to poly
+  const Rational& rr = r.getRationalValue();
+  poly::Rational pr = poly_utils::toRational(rr);
+  auto dr = poly_utils::toDyadicRational(rr);
+  if (dr)
+  {
+    return poly::AlgebraicNumber(dr.value());
+  }
+  return poly::AlgebraicNumber(
+      poly::UPolynomial({-numerator(pr), denominator(pr)}),
+      poly::DyadicInterval(floor(pr), ceil(pr)));
+}
+#endif
+
+bool RealAlgebraicNumber::operator==(const RealAlgebraicNumber& rhs) const
+{
+#ifdef CVC5_POLY_IMP
+  if (!d_isRational || !rhs.d_isRational)
+  {
+    return convertToPoly(*this) == convertToPoly(rhs);
+  }
+#endif
+  return getRationalValue() == rhs.getRationalValue();
+}
+bool RealAlgebraicNumber::operator!=(const RealAlgebraicNumber& rhs) const
+{
+  return !(*this == rhs);
+}
+bool RealAlgebraicNumber::operator<(const RealAlgebraicNumber& rhs) const
+{
+#ifdef CVC5_POLY_IMP
+  if (!d_isRational || !rhs.d_isRational)
+  {
+    return convertToPoly(*this) < convertToPoly(rhs);
+  }
+#endif
+  return getRationalValue() < rhs.getRationalValue();
+}
+bool RealAlgebraicNumber::operator<=(const RealAlgebraicNumber& rhs) const
+{
+#ifdef CVC5_POLY_IMP
+  if (!d_isRational || !rhs.d_isRational)
+  {
+    return convertToPoly(*this) <= convertToPoly(rhs);
+  }
+#endif
+  return getRationalValue() <= rhs.getRationalValue();
+}
+bool RealAlgebraicNumber::operator>(const RealAlgebraicNumber& rhs) const
+{
+  return rhs < *this;
+}
+bool RealAlgebraicNumber::operator>=(const RealAlgebraicNumber& rhs) const
+{
+  return rhs <= *this;
+  ;
+}
+
+RealAlgebraicNumber RealAlgebraicNumber::operator+(
+    const RealAlgebraicNumber& rhs) const
+{
+#ifdef CVC5_POLY_IMP
+  // if either is poly, we convert both and return the result
+  if (!d_isRational || !rhs.d_isRational)
+  {
+    return convertToPoly(*this) + convertToPoly(rhs);
+  }
+#endif
+  return getRationalValue() + rhs.getRationalValue();
+}
+RealAlgebraicNumber RealAlgebraicNumber::operator-(
+    const RealAlgebraicNumber& rhs) const
+{
+#ifdef CVC5_POLY_IMP
+  if (!d_isRational || !rhs.d_isRational)
+  {
+    return convertToPoly(*this) - convertToPoly(rhs);
+  }
+#endif
+  return getRationalValue() - rhs.getRationalValue();
+}
+RealAlgebraicNumber RealAlgebraicNumber::operator-() const
+{
+#ifdef CVC5_POLY_IMP
+  if (!d_isRational)
+  {
+    return -getValue();
+  }
+#endif
+  return -getRationalValue();
+}
+RealAlgebraicNumber RealAlgebraicNumber::operator*(
+    const RealAlgebraicNumber& rhs) const
+{
+#ifdef CVC5_POLY_IMP
+  if (!d_isRational || !rhs.d_isRational)
+  {
+    return convertToPoly(*this) * convertToPoly(rhs);
+  }
+#endif
+  return getRationalValue() * rhs.getRationalValue();
+}
+RealAlgebraicNumber RealAlgebraicNumber::operator/(
+    const RealAlgebraicNumber& rhs) const
+{
+  Assert(!rhs.isZero()) << "Can not divide by zero";
+#ifdef CVC5_POLY_IMP
+  if (!d_isRational || !rhs.d_isRational)
+  {
+    return convertToPoly(*this) / convertToPoly(rhs);
+  }
+#endif
+  return getRationalValue() / rhs.getRationalValue();
+}
+
+RealAlgebraicNumber& RealAlgebraicNumber::operator+=(
+    const RealAlgebraicNumber& rhs)
+{
+#ifdef CVC5_POLY_IMP
+  if (!d_isRational || !rhs.d_isRational)
+  {
+    getValue() = convertToPoly(*this) + convertToPoly(rhs);
+    // ensure it is no longer marked as rational
+    d_isRational = false;
+    return *this;
+  }
+#endif
+  getRationalValue() = getRationalValue() + rhs.getRationalValue();
+  return *this;
+}
+RealAlgebraicNumber& RealAlgebraicNumber::operator-=(
+    const RealAlgebraicNumber& rhs)
+{
+#ifdef CVC5_POLY_IMP
+  if (!d_isRational || !rhs.d_isRational)
+  {
+    getValue() = convertToPoly(*this) - convertToPoly(rhs);
+    // ensure it is no longer marked as rational
+    d_isRational = false;
+    return *this;
+  }
+#endif
+  getRationalValue() = getRationalValue() - rhs.getRationalValue();
+  return *this;
+}
+RealAlgebraicNumber& RealAlgebraicNumber::operator*=(
+    const RealAlgebraicNumber& rhs)
+{
+#ifdef CVC5_POLY_IMP
+  if (!d_isRational || !rhs.d_isRational)
+  {
+    getValue() = convertToPoly(*this) * convertToPoly(rhs);
+    // ensure it is no longer marked as rational
+    d_isRational = false;
+    return *this;
+  }
+#endif
+  getRationalValue() = getRationalValue() * rhs.getRationalValue();
+  return *this;
+}
+
+int RealAlgebraicNumber::sgn() const
+{
+#ifdef CVC5_POLY_IMP
+  if (!d_isRational)
+  {
+    return poly::sgn(getValue());
+  }
+#endif
+  return getRationalValue().sgn();
+}
+bool RealAlgebraicNumber::isZero() const
+{
+#ifdef CVC5_POLY_IMP
+  if (!d_isRational)
+  {
+    return poly::is_zero(getValue());
+  }
+#endif
+  return getRationalValue().isZero();
+}
+bool RealAlgebraicNumber::isOne() const
+{
+#ifdef CVC5_POLY_IMP
+  if (!d_isRational)
+  {
+    return poly::is_one(getValue());
+  }
+#endif
+  return getRationalValue().isOne();
+}
+RealAlgebraicNumber RealAlgebraicNumber::inverse() const
+{
+  Assert(!isZero()) << "Can not invert zero";
+#ifdef CVC5_POLY_IMP
+  if (!d_isRational)
+  {
+    return poly::inverse(getValue());
+  }
+#endif
+  return getRationalValue().inverse();
+}
+
+size_t RealAlgebraicNumber::hash() const
+{
+#ifdef CVC5_POLY_IMP
+  if (!d_isRational)
+  {
+    return lp_algebraic_number_hash_approx(getValue().get_internal(), 2);
+  }
+#endif
+  return getRationalValue().hash();
 }
 
 std::ostream& operator<<(std::ostream& os, const RealAlgebraicNumber& ran)
 {
-  return os << ran.getValue();
+  return os << ran.toString();
 }
 
-bool operator==(const RealAlgebraicNumber& lhs, const RealAlgebraicNumber& rhs)
+}  // namespace cvc5::internal
+
+namespace std {
+size_t hash<cvc5::internal::RealAlgebraicNumber>::operator()(
+    const cvc5::internal::RealAlgebraicNumber& ran) const
 {
-  return lhs.getValue() == rhs.getValue();
-}
-bool operator!=(const RealAlgebraicNumber& lhs, const RealAlgebraicNumber& rhs)
-{
-  return lhs.getValue() != rhs.getValue();
-}
-bool operator<(const RealAlgebraicNumber& lhs, const RealAlgebraicNumber& rhs)
-{
-  return lhs.getValue() < rhs.getValue();
-}
-bool operator<=(const RealAlgebraicNumber& lhs, const RealAlgebraicNumber& rhs)
-{
-  return lhs.getValue() <= rhs.getValue();
-}
-bool operator>(const RealAlgebraicNumber& lhs, const RealAlgebraicNumber& rhs)
-{
-  return lhs.getValue() > rhs.getValue();
-}
-bool operator>=(const RealAlgebraicNumber& lhs, const RealAlgebraicNumber& rhs)
-{
-  return lhs.getValue() >= rhs.getValue();
+  return ran.hash();
 }
 
-RealAlgebraicNumber operator+(const RealAlgebraicNumber& lhs,
-                              const RealAlgebraicNumber& rhs)
-{
-  return lhs.getValue() + rhs.getValue();
-}
-RealAlgebraicNumber operator-(const RealAlgebraicNumber& lhs,
-                              const RealAlgebraicNumber& rhs)
-{
-  return lhs.getValue() - rhs.getValue();
-}
-RealAlgebraicNumber operator-(const RealAlgebraicNumber& ran)
-{
-  return -ran.getValue();
-}
-RealAlgebraicNumber operator*(const RealAlgebraicNumber& lhs,
-                              const RealAlgebraicNumber& rhs)
-{
-  return lhs.getValue() * rhs.getValue();
-}
-
-RealAlgebraicNumber& operator+=(RealAlgebraicNumber& lhs,
-                                const RealAlgebraicNumber& rhs)
-{
-  lhs.getValue() = lhs.getValue() + rhs.getValue();
-  return lhs;
-}
-RealAlgebraicNumber& operator-=(RealAlgebraicNumber& lhs,
-                                const RealAlgebraicNumber& rhs)
-{
-  lhs.getValue() = lhs.getValue() - rhs.getValue();
-  return lhs;
-}
-RealAlgebraicNumber& operator*=(RealAlgebraicNumber& lhs,
-                                const RealAlgebraicNumber& rhs)
-{
-  lhs.getValue() = lhs.getValue() * rhs.getValue();
-  return lhs;
-}
-
-int sgn(const RealAlgebraicNumber& ran) { return sgn(ran.getValue()); }
-bool isZero(const RealAlgebraicNumber& ran) { return is_zero(ran.getValue()); }
-bool isOne(const RealAlgebraicNumber& ran) { return is_one(ran.getValue()); }
-
-}  // namespace CVC4
+}  // namespace std

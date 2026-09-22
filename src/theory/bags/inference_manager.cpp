@@ -1,33 +1,31 @@
-/*********************                                                        */
-/*! \file inference_manager.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Mudathir Mohamed, Morgan Deters, Dejan Jovanovic
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Implementation of the inference manager for the theory of bags
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Implementation of the inference manager for the theory of bags.
+ */
 
 #include "theory/bags/inference_manager.h"
 
-using namespace std;
-using namespace CVC4::kind;
+#include "theory/bags/solver_state.h"
 
-namespace CVC4 {
+using namespace std;
+using namespace cvc5::internal::kind;
+
+namespace cvc5::internal {
 namespace theory {
 namespace bags {
 
-InferenceManager::InferenceManager(Theory& t,
-                                   SolverState& s,
-                                   ProofNodeManager* pnm)
-    : InferenceManagerBuffered(t, s, pnm), d_state(s)
+InferenceManager::InferenceManager(Env& env, Theory& t, SolverState& s)
+    : InferenceManagerBuffered(env, t, s, "theory::bags::"), d_state(s)
 {
-  d_true = NodeManager::currentNM()->mkConst(true);
-  d_false = NodeManager::currentNM()->mkConst(false);
+  d_true = nodeManager()->mkConst(true);
+  d_false = nodeManager()->mkConst(false);
 }
 
 void InferenceManager::doPending()
@@ -46,4 +44,4 @@ void InferenceManager::doPending()
 
 }  // namespace bags
 }  // namespace theory
-}  // namespace CVC4
+}  // namespace cvc5::internal

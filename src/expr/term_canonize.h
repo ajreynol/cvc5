@@ -1,27 +1,41 @@
-/*********************                                                        */
-/*! \file term_canonize.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Utilities for constructing canonical terms.
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Utilities for constructing canonical terms.
+ */
 
-#include "cvc4_private.h"
+#include "cvc5_private.h"
 
-#ifndef CVC4__EXPR__TERM_CANONIZE_H
-#define CVC4__EXPR__TERM_CANONIZE_H
+#ifndef CVC5__EXPR__TERM_CANONIZE_H
+#define CVC5__EXPR__TERM_CANONIZE_H
 
 #include <map>
+
 #include "expr/node.h"
 
-namespace CVC4 {
+namespace cvc5::internal {
 namespace expr {
+
+/**
+ * Generalization of types. This class is a simple callback for giving
+ * identifiers to variables that may be a more fine-grained way of classifying
+ * the variable than its type. An example usage of type classes are for
+ * distinguishing "list variables" for rewrite rule reconstruction.
+ */
+class TypeClassCallback
+{
+ public:
+  TypeClassCallback() {}
+  virtual ~TypeClassCallback() {}
+  /** Return the type class for variable v */
+  virtual uint32_t getTypeClass(TNode v) = 0;
+};
 
 /** TermCanonize
  *
@@ -33,23 +47,48 @@ namespace expr {
 class TermCanonize
 {
  public:
-  TermCanonize();
+  /**
+   * @param tcc The type class callback. This class will canonize variables in
+   * a way that disinguishes variables that are given different type class
+   * identifiers. Otherwise, this class will assume all variables of the
+   * same type have the same type class.
+   */
+  TermCanonize(TypeClassCallback* tcc = nullptr);
   ~TermCanonize() {}
 
-  /** Maps operators to an identifier, useful for ordering. */
-  int getIdForOperator(Node op);
-  /** Maps types to an identifier, useful for ordering. */
-  int getIdForType(TypeNode t);
   /** get term order
    *
-   * Returns true if a <= b in the term ordering used by this class. The
-   * term order is determined by the leftmost position in a and b whose
-   * operators o_a and o_b are distinct at that position. Then a <= b iff
-   * getIdForOperator( o_a ) <= getIdForOperator( o_b ).
+   * Returns true if a < b in the strict term ordering used by this class,
+   * and false if a and b are equal. This can be used as a comparator for
+   * std::sort.
+   *
+   * Bound variables precede all other nodes. Two bound variables are compared
+   * using the built-in node ordering.
+   *
+   * For all other nodes, compare their operators using the built-in node
+   * ordering, using the node itself when it has no operator (e.g. a constant
+   * or a free variable). If these are equal, the node with fewer children
+   * comes first. If the numbers of children are also equal, recursively
+   * compare the first pair of distinct children, from left to right. If all
+   * children are equal, return false.
    */
   bool getTermOrder(Node a, Node b);
-  /** get canonical free variable #i of type tn */
-  Node getCanonicalFreeVar(TypeNode tn, unsigned i);
+  /**
+   * Get canonical free variable #i of type tn and type class tc.
+   *
+   * @param tn The type of the variable.
+   * @param i The index of the variable within its type / type class pair.
+   * @param tc The type class identifier, as returned by TypeClassCallback.
+   * Different type classes have distinct canonical variables even for the
+   * same type and index. The default is 0, the type class used when no callback
+   * is provided.
+   */
+  Node getCanonicalFreeVar(TypeNode tn, size_t i, uint32_t tc = 0);
+  /**
+   * Return the range of the free variable in the above map, or 0 if it does not
+   * exist.
+   */
+  size_t getIndexForFreeVariable(Node v) const;
   /** get canonical term
    *
    * This returns a canonical (alpha-equivalent) version of n, where
@@ -65,41 +104,41 @@ class TermCanonize
   Node getCanonicalTerm(TNode n,
                         bool apply_torder = false,
                         bool doHoVar = true);
+  /**
+   * Same as above but tracks visited map, mapping subterms of n to their
+   * canonical forms.
+   */
+  Node getCanonicalTerm(TNode n,
+                        std::map<TNode, Node>& visited,
+                        bool apply_torder = false,
+                        bool doHoVar = true);
 
  private:
-  /** the number of ids we have allocated for operators */
-  int d_op_id_count;
-  /** map from operators to id */
-  std::map<Node, int> d_op_id;
-  /** the number of ids we have allocated for types */
-  int d_typ_id_count;
-  /** map from type to id */
-  std::map<TypeNode, int> d_typ_id;
-  /** free variables for each type */
-  std::map<TypeNode, std::vector<Node> > d_cn_free_var;
+  /** The (optional) type class callback */
+  TypeClassCallback* d_tcc;
+  /** free variables for each type / type class pair */
+  std::map<std::pair<TypeNode, uint32_t>, std::vector<Node> > d_cn_free_var;
   /**
    * Map from each free variable above to their index in their respective vector
    */
   std::map<Node, size_t> d_fvIndex;
-  /**
-   * Return the range of the free variable in the above map, or 0 if it does not
-   * exist.
-   */
-  size_t getIndexForFreeVariable(Node v) const;
+  /** Get type class */
+  uint32_t getTypeClass(TNode v);
   /** get canonical term
    *
    * This is a helper function for getCanonicalTerm above. We maintain a
    * counter of how many variables we have allocated for each type (var_count),
    * and a cache of visited nodes (visited).
    */
-  Node getCanonicalTerm(TNode n,
-                        bool apply_torder,
-                        bool doHoVar,
-                        std::map<TypeNode, unsigned>& var_count,
-                        std::map<TNode, Node>& visited);
+  Node getCanonicalTerm(
+      TNode n,
+      bool apply_torder,
+      bool doHoVar,
+      std::map<std::pair<TypeNode, uint32_t>, unsigned>& var_count,
+      std::map<TNode, Node>& visited);
 };
 
 }  // namespace expr
-}  // namespace CVC4
+}  // namespace cvc5::internal
 
-#endif /* CVC4__EXPR__TERM_CANONIZE_H */
+#endif /* CVC5__EXPR__TERM_CANONIZE_H */

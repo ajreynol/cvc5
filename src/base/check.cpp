@@ -1,25 +1,21 @@
-/*********************                                                        */
-/*! \file check.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Mathias Preiner, Morgan Deters, Tim King
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Assertion utility classes, functions and macros.
- **
- ** Implementation of assertion utility classes, functions and macros.
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Assertion utility classes, functions and macros.
+ */
 
 #include "base/check.h"
 
 #include <cstdlib>
 #include <iostream>
 
-namespace CVC4 {
+namespace cvc5::internal {
 
 FatalStream::FatalStream(const char* function, const char* file, int line)
 {
@@ -58,7 +54,7 @@ void AssertArgumentException::construct(const char* header,
   for (;;)
   {
     int size;
-    if (extra == NULL)
+    if (extra == nullptr)
     {
       size = snprintf(buf, n, "%s\n%s\n%s:%d\n", header, function, file, line);
     }
@@ -98,7 +94,7 @@ void AssertArgumentException::construct(const char* header,
 
   setMessage(std::string(buf));
 
-#ifdef CVC4_DEBUG
+#ifdef CVC5_DEBUG
   LastExceptionBuffer* buffer = LastExceptionBuffer::getCurrent();
   if (buffer != NULL)
   {
@@ -107,7 +103,7 @@ void AssertArgumentException::construct(const char* header,
       buffer->setContents(buf);
     }
   }
-#endif /* CVC4_DEBUG */
+#endif /* CVC5_DEBUG */
   delete[] buf;
 }
 
@@ -127,7 +123,7 @@ void AssertArgumentException::construct(const char* header,
     buf = new char[n];
 
     int size;
-    if (extra == NULL)
+    if (extra == nullptr)
     {
       size = snprintf(buf, n, "%s.\n%s\n%s:%d\n", header, function, file, line);
     }
@@ -157,7 +153,7 @@ void AssertArgumentException::construct(const char* header,
 
   setMessage(std::string(buf));
 
-#ifdef CVC4_DEBUG
+#ifdef CVC5_DEBUG
   LastExceptionBuffer* buffer = LastExceptionBuffer::getCurrent();
   if (buffer != NULL)
   {
@@ -166,7 +162,7 @@ void AssertArgumentException::construct(const char* header,
       buffer->setContents(buf);
     }
   }
-#endif /* CVC4_DEBUG */
+#endif /* CVC5_DEBUG */
   delete[] buf;
 }
 
@@ -209,4 +205,4 @@ AssertArgumentException::AssertArgumentException(const char* condStr,
             line);
 }
 
-}  // namespace CVC4
+}  // namespace cvc5::internal

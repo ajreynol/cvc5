@@ -1,34 +1,34 @@
-/*********************                                                        */
-/*! \file term_database_sygus.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds, Andres Noetzli, Morgan Deters
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief term database sygus class
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Term database sygus class.
+ */
 
-#include "cvc4_private.h"
+#include "cvc5_private.h"
 
-#ifndef CVC4__THEORY__QUANTIFIERS__TERM_DATABASE_SYGUS_H
-#define CVC4__THEORY__QUANTIFIERS__TERM_DATABASE_SYGUS_H
+#ifndef CVC5__THEORY__QUANTIFIERS__TERM_DATABASE_SYGUS_H
+#define CVC5__THEORY__QUANTIFIERS__TERM_DATABASE_SYGUS_H
 
 #include <unordered_set>
 
 #include "expr/dtype.h"
-#include "theory/evaluator.h"
+#include "expr/free_var_cache.h"
+#include "smt/env_obj.h"
 #include "theory/quantifiers/extended_rewrite.h"
 #include "theory/quantifiers/fun_def_evaluator.h"
+#include "theory/quantifiers/oracle_checker.h"
 #include "theory/quantifiers/sygus/sygus_eval_unfold.h"
 #include "theory/quantifiers/sygus/sygus_explain.h"
 #include "theory/quantifiers/sygus/type_info.h"
 #include "theory/quantifiers/term_database.h"
 
-namespace CVC4 {
+namespace cvc5::internal {
 namespace theory {
 namespace quantifiers {
 
@@ -52,12 +52,13 @@ enum EnumeratorRole
 std::ostream& operator<<(std::ostream& os, EnumeratorRole r);
 
 // TODO :issue #1235 split and document this class
-class TermDbSygus {
+class TermDbSygus : protected EnvObj
+{
  public:
-  TermDbSygus(QuantifiersEngine* qe,
-              QuantifiersState& qs,
-              QuantifiersInferenceManager& qim);
+  TermDbSygus(Env& env, QuantifiersState& qs);
   ~TermDbSygus() {}
+  /** Finish init, which sets the inference manager */
+  void finishInit(QuantifiersInferenceManager* qim);
   /** Reset this utility */
   bool reset(Theory::Effort e);
   /** Identify this utility */
@@ -77,14 +78,12 @@ class TermDbSygus {
   //------------------------------utilities
   /** get the explanation utility */
   SygusExplain* getExplain() { return d_syexp.get(); }
-  /** get the extended rewrite utility */
-  ExtendedRewriter* getExtRewriter() { return d_ext_rw.get(); }
-  /** get the evaluator */
-  Evaluator* getEvaluator() { return d_eval.get(); }
   /** (recursive) function evaluator utility */
   FunDefEvaluator* getFunDefEvaluator() { return d_funDefEval.get(); }
   /** evaluation unfolding utility */
   SygusEvalUnfold* getEvalUnfold() { return d_eval_unfold.get(); }
+  /** get the oracle checker */
+  OracleChecker* getOracleChecker() { return d_ochecker; }
   //------------------------------end utilities
 
   //------------------------------enumerators
@@ -190,24 +189,15 @@ class TermDbSygus {
    * This class caches a list of free variables for each type, which are
    * used, for instance, for constructing canonical forms of terms with free
    * variables. This function returns the i^th free variable for type tn.
-   * If useSygusType is true, then this function returns a variable of the
-   * analog type for sygus type tn (see d_fv for details).
    */
-  TNode getFreeVar(TypeNode tn, int i, bool useSygusType = false);
+  TNode getFreeVar(const TypeNode& tn, size_t i);
   /** get free variable and increment
    *
    * This function returns the next free variable for type tn, and increments
    * the counter in var_count for that type.
    */
-  TNode getFreeVarInc(TypeNode tn,
-                      std::map<TypeNode, int>& var_count,
-                      bool useSygusType = false);
-  /** returns true if n is a cached free variable (in d_fv). */
-  bool isFreeVar(Node n) const;
-  /** returns the identifier for a cached free variable. */
-  size_t getFreeVarId(Node n) const;
-  /** returns true if n has a cached free variable (in d_fv). */
-  bool hasFreeVar(Node n);
+  TNode getFreeVarInc(const TypeNode& tn,
+                      std::map<TypeNode, size_t>& var_count);
   /** get sygus proxy variable
    *
    * Returns a fresh variable of type tn with the SygusPrintProxyAttribute set
@@ -230,7 +220,7 @@ class TermDbSygus {
    */
   Node mkGeneric(const DType& dt,
                  unsigned c,
-                 std::map<TypeNode, int>& var_count,
+                 std::map<TypeNode, size_t>& var_count,
                  std::map<int, Node>& pre,
                  bool doBetaRed = true);
   /** same as above, but with empty var_count */
@@ -248,7 +238,7 @@ class TermDbSygus {
    * use the var_count map.
    */
   Node canonizeBuiltin(Node n);
-  Node canonizeBuiltin(Node n, std::map<TypeNode, int>& var_count);
+  Node canonizeBuiltin(Node n, std::map<TypeNode, size_t>& var_count);
   /** sygus to builtin
    *
    * Given a sygus datatype term n of type tn, this function returns its analog,
@@ -270,22 +260,6 @@ class TermDbSygus {
                        Node bn,
                        const std::vector<Node>& args,
                        bool tryEval = true);
-  /** evaluate with unfolding
-   *
-   * n is any term that may involve sygus evaluation functions. This function
-   * returns the result of unfolding the evaluation functions within n and
-   * rewriting the result. For example, if eval_A is the evaluation function
-   * for the datatype:
-   *   A -> C_0 | C_1 | C_x | C_+( C_A, C_A )
-   * corresponding to grammar:
-   *   A -> 0 | 1 | x | A + A
-   * then calling this function on eval( C_+( x, 1 ), 4 ) = y returns 5 = y.
-   * The node returned by this function is in (extended) rewritten form.
-   */
-  Node evaluateWithUnfolding(Node n);
-  /** same as above, but with a cache of visited nodes */
-  Node evaluateWithUnfolding(
-      Node n, std::unordered_map<Node, Node, NodeHashFunction>& visited);
   /** is evaluation point?
    *
    * Returns true if n is of the form eval( x, c1...cn ) for some variable x
@@ -306,7 +280,7 @@ class TermDbSygus {
   SygusTypeInfo& getTypeInfo(TypeNode tn);
   /**
    * Rewrite the given node using the utilities in this class. This may
-   * involve (recursive function) evaluation.
+   * involve (recursive function) evaluation, and oracle evaluation.
    */
   Node rewriteNode(Node n) const;
 
@@ -314,26 +288,22 @@ class TermDbSygus {
   static void toStreamSygus(const char* c, Node n);
   /** print to sygus stream n on output out */
   static void toStreamSygus(std::ostream& out, Node n);
-  
+
  private:
-  /** reference to the quantifiers engine */
-  QuantifiersEngine* d_quantEngine;
   /** Reference to the quantifiers state */
   QuantifiersState& d_qstate;
-  /** The quantifiers inference manager */
-  QuantifiersInferenceManager& d_qim;
+  /** Pointer to the quantifiers inference manager */
+  QuantifiersInferenceManager* d_qim;
 
   //------------------------------utilities
   /** sygus explanation */
   std::unique_ptr<SygusExplain> d_syexp;
-  /** extended rewriter */
-  std::unique_ptr<ExtendedRewriter> d_ext_rw;
-  /** evaluator */
-  std::unique_ptr<Evaluator> d_eval;
   /** (recursive) function evaluator utility */
   std::unique_ptr<FunDefEvaluator> d_funDefEval;
   /** evaluation function unfolding utility */
   std::unique_ptr<SygusEvalUnfold> d_eval_unfold;
+  /** Pointer to the oracle checker */
+  OracleChecker* d_ochecker;
   //------------------------------end utilities
 
   //------------------------------enumerators
@@ -341,7 +311,7 @@ class TermDbSygus {
    */
   std::map<Node, SynthConjecture*> d_enum_to_conjecture;
   /** mapping from enumerator terms to the function-to-synthesize they are
-   * associated with 
+   * associated with
    */
   std::map<Node, Node> d_enum_to_synth_fun;
   /** mapping from enumerator terms to the guard they are associated with
@@ -371,30 +341,14 @@ class TermDbSygus {
   //------------------------------end enumerators
 
   //-----------------------------conversion from sygus to builtin
-  /** a cache of fresh variables for each type
-   *
-   * We store two versions of this list:
-   *   index 0: mapping from builtin types to fresh variables of that type,
-   *   index 1: mapping from sygus types to fresh varaibles of the type they
-   *            encode.
-   */
-  std::map<TypeNode, std::vector<Node> > d_fv[2];
-  /** Maps free variables to the domain type they are associated with in d_fv */
-  std::map<Node, TypeNode> d_fv_stype;
-  /** Id count for free variables terms */
-  std::map<TypeNode, size_t> d_fvTypeIdCounter;
   /**
-   * Maps free variables to a unique identifier for their builtin type. Notice
-   * that, e.g. free variables of type Int and those that are of a sygus
-   * datatype type that encodes Int must have unique identifiers. This is
-   * to ensure that sygusToBuiltin for non-ground terms maps variables to
-   * unique variabales.
+   * A cache of fresh variables for each type
    */
-  std::map<Node, size_t> d_fvId;
-  /** recursive helper for hasFreeVar, visited stores nodes we have visited. */
-  bool hasFreeVar(Node n, std::map<Node, bool>& visited);
+  FreeVarCache d_fv;
   /** cache of getProxyVariable */
   std::map<TypeNode, std::map<Node, Node> > d_proxy_vars;
+  /** Get builtin free variable for sygus datatype variable v */
+  Node getBuiltinFreeVarFor(const Node& v);
   //-----------------------------end conversion from sygus to builtin
   // TODO :issue #1235 : below here needs refactor
  public:
@@ -403,8 +357,9 @@ class TermDbSygus {
 
  private:
   /** computes the map d_min_type_depth */
-  void computeMinTypeDepthInternal( TypeNode root_tn, TypeNode tn, unsigned type_depth );
-  bool involvesDivByZero( Node n, std::map< Node, bool >& visited );
+  void computeMinTypeDepthInternal(TypeNode root_tn,
+                                   TypeNode tn,
+                                   unsigned type_depth);
 
  private:
   /**
@@ -451,24 +406,19 @@ class TermDbSygus {
    * above to infer a kind is constructable. If this flag is false, we only
    * check if the kind is literally a constructor of the grammar.
    */
-  bool canConstructKind(TypeNode tn,
-                        Kind k,
-                        std::vector<TypeNode>& argts,
-                        bool aggr = false);
+  bool canConstructKind(TypeNode tn, Kind k, std::vector<TypeNode>& argts);
 
-  Node getSygusNormalized( Node n, std::map< TypeNode, int >& var_count, std::map< Node, Node >& subs );
+  Node getSygusNormalized(Node n,
+                          std::map<TypeNode, int>& var_count,
+                          std::map<Node, Node>& subs);
   Node getNormalized(TypeNode t, Node prog);
-  unsigned getSygusTermSize( Node n );
-  /** involves div-by-zero */
-  bool involvesDivByZero( Node n );
   /** get anchor */
-  static Node getAnchor( Node n );
-  static unsigned getAnchorDepth( Node n );
-
+  static Node getAnchor(Node n);
+  static unsigned getAnchorDepth(Node n);
 };
 
-}/* CVC4::theory::quantifiers namespace */
-}/* CVC4::theory namespace */
-}/* CVC4 namespace */
+}  // namespace quantifiers
+}  // namespace theory
+}  // namespace cvc5::internal
 
-#endif /* CVC4__THEORY__QUANTIFIERS__TERM_DATABASE_H */
+#endif /* CVC5__THEORY__QUANTIFIERS__TERM_DATABASE_H */

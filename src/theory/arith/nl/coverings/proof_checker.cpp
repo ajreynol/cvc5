@@ -1,0 +1,45 @@
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Implementation of CAD proof checker.
+ */
+
+#include "theory/arith/nl/coverings/proof_checker.h"
+
+#include "expr/sequence.h"
+#include "theory/rewriter.h"
+
+using namespace cvc5::internal::kind;
+
+namespace cvc5::internal {
+namespace theory {
+namespace arith {
+namespace nl {
+namespace coverings {
+
+CoveringsProofRuleChecker::CoveringsProofRuleChecker(NodeManager* nm)
+    : ProofRuleChecker(nm)
+{
+}
+
+void CoveringsProofRuleChecker::registerTo(CVC5_UNUSED ProofChecker* pc) {}
+
+Node CoveringsProofRuleChecker::checkInternal(
+    CVC5_UNUSED ProofRule id,
+    CVC5_UNUSED const std::vector<Node>& children,
+    CVC5_UNUSED const std::vector<Node>& args)
+{
+  return Node::null();
+}
+
+}  // namespace coverings
+}  // namespace nl
+}  // namespace arith
+}  // namespace theory
+}  // namespace cvc5::internal

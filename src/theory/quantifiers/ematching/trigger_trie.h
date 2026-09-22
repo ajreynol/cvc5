@@ -1,30 +1,28 @@
-/*********************                                                        */
-/*! \file trigger_trie.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds, Mathias Preiner, Morgan Deters
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief trigger trie class
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Trigger trie class.
+ */
 
-#include "cvc4_private.h"
+#include "cvc5_private.h"
 
-#ifndef CVC4__THEORY__QUANTIFIERS__TRIGGER_TRIE_H
-#define CVC4__THEORY__QUANTIFIERS__TRIGGER_TRIE_H
+#ifndef CVC5__THEORY__QUANTIFIERS__TRIGGER_TRIE_H
+#define CVC5__THEORY__QUANTIFIERS__TRIGGER_TRIE_H
 
 #include <vector>
 
 #include "expr/node.h"
 #include "theory/quantifiers/ematching/trigger.h"
 
-namespace CVC4 {
+namespace cvc5::internal {
 namespace theory {
-
+namespace quantifiers {
 namespace inst {
 
 /** A trie of triggers.
@@ -42,21 +40,23 @@ class TriggerTrie
   /**
    * This returns a Trigger t that is indexed by nodes, or nullptr otherwise.
    */
-  Trigger* getTrigger(std::vector<Node>& nodes);
+  Trigger* getTrigger(const std::vector<Node>& nodes);
   /**
    * This adds t to the trie, indexed by nodes. In typical use cases, nodes i
    * t->d_nodes.
    */
-  void addTrigger(std::vector<Node>& nodes, Trigger* t);
+  void addTrigger(const std::vector<Node>& nodes, Trigger* t);
+
  private:
   /** The trigger at this node in the trie. */
   std::vector<Trigger*> d_tr;
   /** The children of this node in the trie. */
-  std::map<TNode, TriggerTrie> d_children;
+  std::map<Node, TriggerTrie> d_children;
 }; /* class inst::Trigger::TriggerTrie */
 
 }  // namespace inst
+}  // namespace quantifiers
 }  // namespace theory
-}  // namespace CVC4
+}  // namespace cvc5::internal
 
-#endif /* CVC4__THEORY__QUANTIFIERS__TRIGGER_TRIE_H */
+#endif /* CVC5__THEORY__QUANTIFIERS__TRIGGER_TRIE_H */

@@ -1,73 +1,33 @@
-/*********************                                                        */
-/*! \file infer_info.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Mudathir Mohamed
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Inference information utility
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Inference information utility.
+ */
 
-#include "cvc4_private.h"
+#include "cvc5_private.h"
 
-#ifndef CVC4__THEORY__BAGS__INFER_INFO_H
-#define CVC4__THEORY__BAGS__INFER_INFO_H
+#ifndef CVC5__THEORY__BAGS__INFER_INFO_H
+#define CVC5__THEORY__BAGS__INFER_INFO_H
 
 #include <map>
 #include <vector>
 
 #include "expr/node.h"
+#include "theory/inference_id.h"
 #include "theory/theory_inference.h"
 
-namespace CVC4 {
+namespace cvc5::internal {
 namespace theory {
+
+class InferenceManagerBuffered;
+
 namespace bags {
-
-/**
- * Types of inferences used in the procedure
- */
-enum class Inference : uint32_t
-{
-  NONE,
-  BAG_NON_NEGATIVE_COUNT,
-  BAG_MK_BAG_SAME_ELEMENT,
-  BAG_MK_BAG,
-  BAG_EQUALITY,
-  BAG_DISEQUALITY,
-  BAG_EMPTY,
-  BAG_UNION_DISJOINT,
-  BAG_UNION_MAX,
-  BAG_INTERSECTION_MIN,
-  BAG_DIFFERENCE_SUBTRACT,
-  BAG_DIFFERENCE_REMOVE,
-  BAG_DUPLICATE_REMOVAL
-};
-
-/**
- * Converts an inference to a string. Note: This function is also used in
- * `safe_print()`. Changing this functions name or signature will result in
- * `safe_print()` printing "<unsupported>" instead of the proper strings for
- * the enum values.
- *
- * @param i The inference
- * @return The name of the inference
- */
-const char* toString(Inference i);
-
-/**
- * Writes an inference name to a stream.
- *
- * @param out The stream to write to
- * @param i The inference to write to the stream
- * @return The stream
- */
-std::ostream& operator<<(std::ostream& out, Inference i);
-
-class InferenceManager;
 
 /**
  * An inference. This is a class to track an unprocessed call to either
@@ -77,13 +37,13 @@ class InferenceManager;
 class InferInfo : public TheoryInference
 {
  public:
-  InferInfo();
+  InferInfo(InferenceManagerBuffered* im, InferenceId id);
   ~InferInfo() {}
-  /** Process this inference */
-  bool process(TheoryInferenceManager* im, bool asLemma) override;
-  /** The inference identifier */
-  Inference d_id;
-  /** The conclusions */
+  /** Process lemma */
+  TrustNode processLemma(LemmaProperty& p) override;
+  /** Pointer to the class used for processing this info */
+  InferenceManagerBuffered* d_im;
+  /** The conclusion */
   Node d_conclusion;
   /**
    * The premise(s) of the inference, interpreted conjunctively. These are
@@ -109,6 +69,10 @@ class InferInfo : public TheoryInference
    * engine with no new external premises (d_noExplain).
    */
   bool isFact() const;
+  /**
+   * @return the lemma for this InferInfo.
+   */
+  Node getLemma() const;
 };
 
 /**
@@ -122,6 +86,6 @@ std::ostream& operator<<(std::ostream& out, const InferInfo& ii);
 
 }  // namespace bags
 }  // namespace theory
-}  // namespace CVC4
+}  // namespace cvc5::internal
 
-#endif /* CVC4__THEORY__BAGS__INFER_INFO_H */
+#endif /* CVC5__THEORY__BAGS__INFER_INFO_H */

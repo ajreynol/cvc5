@@ -1,26 +1,24 @@
-/*********************                                                        */
-/*! \file monomial.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds, Tim King, Gereon Kremer
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Utilities for monomials
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Utilities for monomials.
+ */
 
-#ifndef CVC4__THEORY__ARITH__NL__EXT__MONOMIAL_H
-#define CVC4__THEORY__ARITH__NL__EXT__MONOMIAL_H
+#ifndef CVC5__THEORY__ARITH__NL__EXT__MONOMIAL_H
+#define CVC5__THEORY__ARITH__NL__EXT__MONOMIAL_H
 
 #include <map>
 #include <vector>
 
 #include "expr/node.h"
 
-namespace CVC4 {
+namespace cvc5::internal {
 namespace theory {
 namespace arith {
 namespace nl {
@@ -31,20 +29,34 @@ class NlModel;
 typedef std::map<Node, unsigned> NodeMultiset;
 typedef std::map<Node, NodeMultiset> MonomialExponentMap;
 
+/**
+ * Relationship between a queried monomial and the trie node currently being
+ * traversed in MonomialIndex.
+ */
+enum class MonomialRelation
+{
+  /** The queried monomial matches the current trie path exactly. */
+  EQUAL,
+  /** The queried monomial is a strict superset of the current trie path. */
+  SUPERSET,
+  /** The queried monomial is a strict subset of the current trie path. */
+  SUBSET,
+  /** The queried monomial can no longer match the current trie path. */
+  INVALID
+};
+
 /** An index data structure for node multisets (monomials) */
 class MonomialIndex
 {
  public:
   /**
    * Add term to this trie. The argument status indicates what the status
-   * of n is with respect to the current node in the trie, where:
-   *   0 : n is equal, -1 : n is superset, 1 : n is subset
-   * of the node described by the current path in the trie.
+   * of n is with respect to the current node in the trie.
    */
   void addTerm(Node n,
                const std::vector<Node>& reps,
                MonomialDb* nla,
-               int status = 0,
+               MonomialRelation status = MonomialRelation::EQUAL,
                unsigned argIndex = 0);
 
  private:
@@ -144,6 +156,6 @@ class MonomialDb
 }  // namespace nl
 }  // namespace arith
 }  // namespace theory
-}  // namespace CVC4
+}  // namespace cvc5::internal
 
-#endif /* CVC4__THEORY__ARITH__NL_MONOMIAL_H */
+#endif /* CVC5__THEORY__ARITH__NL_MONOMIAL_H */

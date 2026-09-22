@@ -1,17 +1,15 @@
-/*********************                                                        */
-/*! \file fun_def_evaluator.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds, Haniel Barbosa, Mathias Preiner
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Implementation of techniques for evaluating terms with recursively
- ** defined functions.
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Implementation of techniques for evaluating terms with recursively
+ * defined functions.
+ */
 
 #include "theory/quantifiers/fun_def_evaluator.h"
 
@@ -19,45 +17,107 @@
 #include "theory/quantifiers/quantifiers_attributes.h"
 #include "theory/rewriter.h"
 
-using namespace CVC4::kind;
+using namespace cvc5::internal::kind;
 
-namespace CVC4 {
+namespace cvc5::internal {
 namespace theory {
 namespace quantifiers {
 
-FunDefEvaluator::FunDefEvaluator() {}
+FunDefEvaluator::FunDefEvaluator(Env& env) : EnvObj(env) {}
 
-void FunDefEvaluator::assertDefinition(Node q)
+bool FunDefEvaluator::assertDefinition(Node q)
 {
   Trace("fd-eval") << "FunDefEvaluator: assertDefinition " << q << std::endl;
-  Node h = QuantAttributes::getFunDefHead(q);
-  if (h.isNull())
+  Node head = QuantAttributes::getFunDefHead(q);
+  if (head.isNull())
   {
+    size_t index;
+    if (getDefinitionIndex(q, index))
+    {
+      Assert(q[1].getKind() == Kind::EQUAL);
+      addDefinition(q[1][index], q[1][1 - index], q);
+      return true;
+    }
+    Trace("fd-eval") << "...not a definition" << std::endl;
     // not a function definition
-    return;
+    return false;
   }
+  Node body = QuantAttributes::getFunDefBody(q);
+  Assert(!body.isNull());
+  addDefinition(head, body, q);
+  return true;
+}
+
+bool FunDefEvaluator::isDefinition(const Node& q) const
+{
+  size_t index;
+  return getDefinitionIndex(q, index);
+}
+
+bool FunDefEvaluator::getDefinitionIndex(const Node& q, size_t& index) const
+{
+  Assert(q.getKind() == Kind::FORALL);
+  if (q[1].getKind() == Kind::EQUAL)
+  {
+    size_t nvars = q[0].getNumChildren();
+    // check if we are (f x) = t or t = (f x).
+    for (size_t i = 0; i < 2; i++)
+    {
+      size_t nchild = q[1][i].getNumChildren();
+      if (q[1][i].getKind() != Kind::APPLY_UF || nchild != nvars)
+      {
+        continue;
+      }
+      bool isMacro = true;
+      // if this side of the equality is (f x1 ... xn) where the quantified
+      // formula is (forall ((x1 T1) ... (xn Tn)) ...).
+      for (size_t j = 0; j < nvars; j++)
+      {
+        if (q[1][i][j] != q[0][j])
+        {
+          isMacro = false;
+          break;
+        }
+      }
+      if (isMacro)
+      {
+        index = i;
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+void FunDefEvaluator::addDefinition(const Node& head,
+                                    const Node& body,
+                                    const Node& q)
+{
   // h possibly with zero arguments?
-  Node f = h.hasOperator() ? h.getOperator() : h;
+  Node f = head.hasOperator() ? head.getOperator() : head;
   Assert(d_funDefMap.find(f) == d_funDefMap.end())
       << "FunDefEvaluator::assertDefinition: function already defined";
+  d_funDefs.push_back(q);
   FunDefInfo& fdi = d_funDefMap[f];
-  fdi.d_body = QuantAttributes::getFunDefBody(q);
-  Assert(!fdi.d_body.isNull());
+  fdi.d_quant = q;
+  fdi.d_body = body;
   fdi.d_args.insert(fdi.d_args.end(), q[0].begin(), q[0].end());
   Trace("fd-eval") << "FunDefEvaluator: function " << f << " is defined with "
                    << fdi.d_args << " / " << fdi.d_body << std::endl;
 }
 
-Node FunDefEvaluator::evaluate(Node n) const
+Node FunDefEvaluator::evaluateDefinitions(Node n) const
 {
   // should do standard rewrite before this call
-  Assert(Rewriter::rewrite(n) == n);
-  Trace("fd-eval") << "FunDefEvaluator: evaluate " << n << std::endl;
-  NodeManager* nm = NodeManager::currentNM();
-  std::unordered_map<TNode, unsigned, TNodeHashFunction> funDefCount;
-  std::unordered_map<TNode, unsigned, TNodeHashFunction>::iterator itCount;
-  std::unordered_map<TNode, Node, TNodeHashFunction> visited;
-  std::unordered_map<TNode, Node, TNodeHashFunction>::iterator it;
+  Assert(rewrite(n) == n);
+  Trace("fd-eval") << "FunDefEvaluator: evaluateDefinitions " << n << std::endl;
+  NodeManager* nm = nodeManager();
+  std::unordered_map<TNode, unsigned> funDefCount;
+  std::unordered_map<TNode, unsigned>::iterator itCount;
+  std::unordered_map<TNode, Node> visited;
+  std::unordered_map<TNode, Node>::iterator it;
+  // to ensure all nodes are ref counted
+  std::unordered_set<Node> keep;
   std::map<Node, FunDefInfo>::const_iterator itf;
   std::vector<TNode> visit;
   TNode cur;
@@ -78,7 +138,7 @@ Node FunDefEvaluator::evaluate(Node n) const
         Trace("fd-eval-debug") << "constant " << cur << std::endl;
         visited[cur] = cur;
       }
-      else if (cur.getKind() == ITE)
+      else if (cur.getKind() == Kind::ITE)
       {
         Trace("fd-eval-debug") << "ITE " << cur << std::endl;
         visited[cur] = Node::null();
@@ -108,11 +168,12 @@ Node FunDefEvaluator::evaluate(Node n) const
         Kind ck = cur.getKind();
         // If a parameterized node that is not APPLY_UF (which is handled below,
         // we add it to the children vector.
-        if (ck != APPLY_UF && cur.getMetaKind() == metakind::PARAMETERIZED)
+        if (ck != Kind::APPLY_UF
+            && cur.getMetaKind() == metakind::PARAMETERIZED)
         {
           children.push_back(cur.getOperator());
         }
-        else if (ck == ITE)
+        else if (ck == Kind::ITE)
         {
           // get evaluation of condition
           it = visited.find(cur[0]);
@@ -122,6 +183,9 @@ Node FunDefEvaluator::evaluate(Node n) const
           {
             Trace("fd-eval") << "FunDefEvaluator: couldn't reduce condition of "
                                 "ITE to const, FAIL\n";
+
+            Trace("fd-eval")
+                << "...failing eval was " << it->second << std::endl;
             return Node::null();
           }
           // pick child to evaluate depending on condition eval
@@ -139,7 +203,7 @@ Node FunDefEvaluator::evaluate(Node n) const
                                   << cur[childIdxToEval] << "\n";
           continue;
         }
-        unsigned child CVC4_UNUSED = 0;
+        unsigned child CVC5_UNUSED = 0;
         for (const Node& cn : cur)
         {
           it = visited.find(cn);
@@ -150,7 +214,7 @@ Node FunDefEvaluator::evaluate(Node n) const
           Trace("fd-eval-debug2") << "argument " << child++
                                   << " eval : " << it->second << std::endl;
         }
-        if (cur.getKind() == APPLY_UF)
+        if (cur.getKind() == Kind::APPLY_UF)
         {
           // need to evaluate it
           f = cur.getOperator();
@@ -164,7 +228,7 @@ Node FunDefEvaluator::evaluate(Node n) const
             itCount = funDefCount.find(f);
           }
           if (itf == d_funDefMap.end()
-              || itCount->second > options::sygusRecFunEvalLimit())
+              || itCount->second > options().quantifiers.sygusRecFunEvalLimit)
           {
             Trace("fd-eval")
                 << "FunDefEvaluator: "
@@ -182,8 +246,8 @@ Node FunDefEvaluator::evaluate(Node n) const
           if (!args.empty())
           {
             // invoke it on arguments using the evaluator
-            sbody = d_eval.eval(sbody, args, children);
-            if (Trace.isOn("fd-eval-debug2"))
+            sbody = evaluate(sbody, args, children);
+            if (TraceIsOn("fd-eval-debug2"))
             {
               Trace("fd-eval-debug2")
                   << "FunDefEvaluator: evaluation with args:\n";
@@ -196,6 +260,7 @@ Node FunDefEvaluator::evaluate(Node n) const
             }
             Assert(!sbody.isNull());
           }
+          keep.insert(sbody);
           // our result is the result of the body
           visited[cur] = sbody;
           // If its not constant, we push back self and the substituted body.
@@ -214,7 +279,8 @@ Node FunDefEvaluator::evaluate(Node n) const
           if (childChanged)
           {
             ret = nm->mkNode(cur.getKind(), children);
-            ret = Rewriter::rewrite(ret);
+            ret = rewrite(ret);
+            keep.insert(ret);
           }
           Trace("fd-eval-debug2") << "built from arguments " << ret << "\n";
           visited[cur] = ret;
@@ -238,8 +304,8 @@ Node FunDefEvaluator::evaluate(Node n) const
           Trace("fd-eval-debug2")
               << "eval with definition " << it->second << "\n";
           visited[cur] = it->second;
+        }
       }
-    }
     }
   } while (!visit.empty());
   Trace("fd-eval") << "FunDefEvaluator: return " << visited[n] << ", SUCCESS\n";
@@ -250,6 +316,32 @@ Node FunDefEvaluator::evaluate(Node n) const
 
 bool FunDefEvaluator::hasDefinitions() const { return !d_funDefMap.empty(); }
 
+const std::vector<Node>& FunDefEvaluator::getDefinitions() const
+{
+  return d_funDefs;
+}
+Node FunDefEvaluator::getDefinitionFor(Node f) const
+{
+  std::map<Node, FunDefInfo>::const_iterator it = d_funDefMap.find(f);
+  if (it != d_funDefMap.end())
+  {
+    return it->second.d_quant;
+  }
+  return Node::null();
+}
+Node FunDefEvaluator::getLambdaFor(Node f) const
+{
+  std::map<Node, FunDefInfo>::const_iterator it = d_funDefMap.find(f);
+  if (it != d_funDefMap.end())
+  {
+    NodeManager* nm = nodeManager();
+    return nm->mkNode(Kind::LAMBDA,
+                      nm->mkNode(Kind::BOUND_VAR_LIST, it->second.d_args),
+                      it->second.d_body);
+  }
+  return Node::null();
+}
+
 }  // namespace quantifiers
 }  // namespace theory
-}  // namespace CVC4
+}  // namespace cvc5::internal

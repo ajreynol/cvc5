@@ -1,16 +1,14 @@
-/*********************                                                        */
-/*! \file icp_solver.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Gereon Kremer, Andres Noetzli
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Implements a ICP-based solver for nonlinear arithmetic.
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Implements a ICP-based solver for nonlinear arithmetic.
+ */
 
 #include "theory/arith/nl/icp/icp_solver.h"
 
@@ -20,18 +18,20 @@
 #include "base/output.h"
 #include "expr/node_algorithm.h"
 #include "theory/arith/arith_msum.h"
+#include "theory/arith/inference_manager.h"
+#include "theory/arith/linear/normal_form.h"
 #include "theory/arith/nl/poly_conversion.h"
-#include "theory/arith/normal_form.h"
+#include "theory/arith/rewriter/rewrite_atom.h"
 #include "theory/rewriter.h"
 #include "util/poly_util.h"
 
-namespace CVC4 {
+namespace cvc5::internal {
 namespace theory {
 namespace arith {
 namespace nl {
 namespace icp {
 
-#ifdef CVC4_POLY_IMP
+#ifdef CVC5_POLY_IMP
 
 namespace {
 /** A simple wrapper to nicely print an interval assignment. */
@@ -40,6 +40,7 @@ struct IAWrapper
   const poly::IntervalAssignment& ia;
   const VariableMapper& vm;
 };
+
 inline std::ostream& operator<<(std::ostream& os, const IAWrapper& iaw)
 {
   os << "{ ";
@@ -56,16 +57,25 @@ inline std::ostream& operator<<(std::ostream& os, const IAWrapper& iaw)
       {
         os << ", ";
       }
-      os << v.first << " -> " << iaw.ia.get(v.first);
+      os << stream_variable(iaw.vm.polyCtx, v.first) << " -> "
+         << iaw.ia.get(v.first);
     }
   }
   return os << " }";
 }
 }  // namespace
 
+ICPSolver::ICPSolver(Env& env, InferenceManager& im)
+    : EnvObj(env),
+      d_mapper(nodeManager()->getPolyContext()),
+      d_im(im),
+      d_state(env, d_mapper)
+{
+}
+
 std::vector<Node> ICPSolver::collectVariables(const Node& n) const
 {
-  std::unordered_set<TNode, TNodeHashFunction> tmp;
+  std::unordered_set<Node> tmp;
   expr::getVariables(n, tmp);
   std::vector<Node> res;
   for (const auto& t : tmp)
@@ -77,12 +87,24 @@ std::vector<Node> ICPSolver::collectVariables(const Node& n) const
 
 std::vector<Candidate> ICPSolver::constructCandidates(const Node& n)
 {
-  Node tmp = Rewriter::rewrite(n);
+  Node tmp = rewrite(n);
+  if (tmp.getKind() == Kind::NOT && tmp[0].getKind() == Kind::EQUAL)
+  {
+    // Disequalities are not used for propagation. Note we return here, since a
+    // disequality cannot necessarily be parsed as a comparison below.
+    return {};
+  }
+  if (tmp.getKind() == Kind::EQUAL)
+  {
+    // Normalize the equality, so that it can be parsed as a comparison below,
+    // see rewriter::normalizeEquality.
+    tmp = rewriter::normalizeEquality(nodeManager(), tmp);
+  }
   if (tmp.isConst())
   {
     return {};
   }
-  auto comp = Comparison::parseNormalForm(tmp).decompose(false);
+  auto comp = linear::Comparison::parseNormalForm(tmp).decompose(false);
   Kind k = std::get<1>(comp);
   if (k == Kind::DISTINCT)
   {
@@ -91,7 +113,7 @@ std::vector<Candidate> ICPSolver::constructCandidates(const Node& n)
   auto poly = std::get<0>(comp);
 
   std::vector<Candidate> result;
-  std::unordered_set<TNode, TNodeHashFunction> vars;
+  std::unordered_set<Node> vars;
   expr::getVariables(n, vars);
   for (const auto& v : vars)
   {
@@ -102,6 +124,8 @@ std::vector<Candidate> ICPSolver::constructCandidates(const Node& n)
 
     Node veq_c;
     Node val;
+
+    const poly::Context& polyCtx = nodeManager()->getPolyContext();
 
     int isolated = ArithMSum::isolate(v, msum, veq_c, val, k);
     if (isolated == 1)
@@ -116,17 +140,22 @@ std::vector<Candidate> ICPSolver::constructCandidates(const Node& n)
         case Kind::DISTINCT: rel = poly::SignCondition::NE; break;
         case Kind::GT: rel = poly::SignCondition::GT; break;
         case Kind::GEQ: rel = poly::SignCondition::GE; break;
-        default: Assert(false) << "Unexpected kind: " << k;
+        default: DebugUnhandled() << "Unexpected kind: " << k;
       }
       poly::Rational rhsmult;
       poly::Polynomial rhs = as_poly_polynomial(val, d_mapper, rhsmult);
-      rhsmult = poly::Rational(1) / rhsmult;
       // only correct up to a constant (denominator is thrown away!)
       if (!veq_c.isNull())
       {
         rhsmult = poly_utils::toRational(veq_c.getConst<Rational>());
       }
-      Candidate res{lhs, rel, rhs, rhsmult, n, collectVariables(val)};
+      Candidate res{polyCtx,
+                    lhs,
+                    rel,
+                    rhs,
+                    poly::inverse(rhsmult),
+                    n,
+                    collectVariables(val)};
       Trace("nl-icp") << "\tAdded " << res << " from " << n << std::endl;
       result.emplace_back(res);
     }
@@ -142,16 +171,21 @@ std::vector<Candidate> ICPSolver::constructCandidates(const Node& n)
         case Kind::DISTINCT: rel = poly::SignCondition::NE; break;
         case Kind::GT: rel = poly::SignCondition::LT; break;
         case Kind::GEQ: rel = poly::SignCondition::LE; break;
-        default: Assert(false) << "Unexpected kind: " << k;
+        default: DebugUnhandled() << "Unexpected kind: " << k;
       }
       poly::Rational rhsmult;
       poly::Polynomial rhs = as_poly_polynomial(val, d_mapper, rhsmult);
-      rhsmult = poly::Rational(1) / rhsmult;
       if (!veq_c.isNull())
       {
         rhsmult = poly_utils::toRational(veq_c.getConst<Rational>());
       }
-      Candidate res{lhs, rel, rhs, rhsmult, n, collectVariables(val)};
+      Candidate res{polyCtx,
+                    lhs,
+                    rel,
+                    rhs,
+                    poly::inverse(rhsmult),
+                    n,
+                    collectVariables(val)};
       Trace("nl-icp") << "\tAdded " << res << " from " << n << std::endl;
       result.emplace_back(res);
     }
@@ -253,7 +287,7 @@ PropagationResult ICPSolver::doPropagationRound()
 
 std::vector<Node> ICPSolver::generateLemmas() const
 {
-  auto nm = NodeManager::currentNM();
+  auto nm = nodeManager();
   std::vector<Node> lemmas;
 
   for (const auto& vars : d_mapper.mVarCVCpoly)
@@ -269,7 +303,7 @@ std::vector<Node> ICPSolver::generateLemmas() const
       {
         Node premise = nm->mkAnd(d_state.d_origins.getOrigins(v));
         Trace("nl-icp") << premise << " => " << c << std::endl;
-        Node lemma = Rewriter::rewrite(nm->mkNode(Kind::IMPLIES, premise, c));
+        Node lemma = rewrite(nm->mkNode(Kind::IMPLIES, premise, c));
         if (lemma.isConst())
         {
           Assert(lemma == nm->mkConst<bool>(true));
@@ -289,7 +323,7 @@ std::vector<Node> ICPSolver::generateLemmas() const
       {
         Node premise = nm->mkAnd(d_state.d_origins.getOrigins(v));
         Trace("nl-icp") << premise << " => " << c << std::endl;
-        Node lemma = Rewriter::rewrite(nm->mkNode(Kind::IMPLIES, premise, c));
+        Node lemma = rewrite(nm->mkNode(Kind::IMPLIES, premise, c));
         if (lemma.isConst())
         {
           Assert(lemma == nm->mkConst<bool>(true));
@@ -348,11 +382,9 @@ void ICPSolver::check()
         {
           mis.emplace_back(n.negate());
         }
-        d_im.addPendingArithLemma(NodeManager::currentNM()->mkOr(mis),
-                                  InferenceId::NL_ICP_CONFLICT);
-        did_progress = true;
-        progress = false;
-        break;
+        d_im.addPendingLemma(nodeManager()->mkOr(mis),
+                             InferenceId::ARITH_NL_ICP_CONFLICT);
+        return;
     }
   } while (progress);
   if (did_progress)
@@ -360,27 +392,27 @@ void ICPSolver::check()
     std::vector<Node> lemmas = generateLemmas();
     for (const auto& l : lemmas)
     {
-      d_im.addPendingArithLemma(l, InferenceId::NL_ICP_PROPAGATION);
+      d_im.addPendingLemma(l, InferenceId::ARITH_NL_ICP_PROPAGATION);
     }
   }
 }
 
-#else /* CVC4_POLY_IMP */
+#else /* CVC5_POLY_IMP */
 
-void ICPSolver::reset(const std::vector<Node>& assertions)
+void ICPSolver::reset(CVC5_UNUSED const std::vector<Node>& assertions)
 {
-  Unimplemented() << "ICPSolver requires CVC4 to be configured with LibPoly";
+  Unimplemented() << "ICPSolver requires cvc5 to be configured with LibPoly";
 }
 
 void ICPSolver::check()
 {
-  Unimplemented() << "ICPSolver requires CVC4 to be configured with LibPoly";
+  Unimplemented() << "ICPSolver requires cvc5 to be configured with LibPoly";
 }
 
-#endif /* CVC4_POLY_IMP */
+#endif /* CVC5_POLY_IMP */
 
 }  // namespace icp
 }  // namespace nl
 }  // namespace arith
 }  // namespace theory
-}  // namespace CVC4
+}  // namespace cvc5::internal

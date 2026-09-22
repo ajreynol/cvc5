@@ -1,27 +1,25 @@
-/*********************                                                        */
-/*! \file inst_strategy_e_matching.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Morgan Deters, Andrew Reynolds, Mathias Preiner
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief E matching instantiation strategies
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * E-matching instantiation strategies.
+ */
 
-#include "cvc4_private.h"
+#include "cvc5_private.h"
 
-#ifndef CVC4__INST_STRATEGY_E_MATCHING_H
-#define CVC4__INST_STRATEGY_E_MATCHING_H
+#ifndef CVC5__INST_STRATEGY_E_MATCHING_H
+#define CVC5__INST_STRATEGY_E_MATCHING_H
 
 #include "theory/quantifiers/ematching/inst_strategy.h"
 #include "theory/quantifiers/ematching/trigger.h"
 #include "theory/quantifiers/quant_relevance.h"
 
-namespace CVC4 {
+namespace cvc5::internal {
 namespace theory {
 namespace quantifiers {
 
@@ -51,10 +49,8 @@ class InstStrategyAutoGenTriggers : public InstStrategy
   /** single, multi triggers for each quantifier */
   std::map<Node, std::vector<Node> > d_patTerms[2];
   std::map<Node, std::map<Node, bool> > d_patReqPol;
-  /** information about triggers */
-  std::map<Node, bool> d_is_single_trigger;
-  std::map<Node, bool> d_single_trigger_gen;
-  std::map<Node, bool> d_made_multi_trigger;
+  /** The set of quantified formulas we have already made triggers for */
+  std::unordered_set<Node> d_madeTriggers;
   // processed trigger this round
   std::map<Node, std::map<inst::Trigger*, bool> > d_processed_trigger;
   // instantiation no patterns
@@ -85,9 +81,13 @@ class InstStrategyAutoGenTriggers : public InstStrategy
   std::map<Node, bool> d_hasUserPatterns;
 
  public:
-  InstStrategyAutoGenTriggers(QuantifiersEngine* qe,
+  InstStrategyAutoGenTriggers(Env& env,
+                              inst::TriggerDatabase& td,
                               QuantifiersState& qs,
-                              QuantRelevance* qr);
+                              QuantifiersInferenceManager& qim,
+                              QuantifiersRegistry& qr,
+                              TermRegistry& tr,
+                              QuantRelevance* qrlv);
   ~InstStrategyAutoGenTriggers() {}
 
   /** get auto-generated trigger */
@@ -106,9 +106,14 @@ class InstStrategyAutoGenTriggers : public InstStrategy
    * owned by the instantiation engine that owns this class.
    */
   QuantRelevance* d_quant_rel;
+  /**
+   * If relevant triggers is enabled, sort terms in patTerms based on how often
+   * they occur.
+   */
+  void sortPatTermsByRelevance(std::vector<Node>& patTerms);
 }; /* class InstStrategyAutoGenTriggers */
-}
-}/* CVC4::theory namespace */
-}/* CVC4 namespace */
+}  // namespace quantifiers
+}  // namespace theory
+}  // namespace cvc5::internal
 
 #endif

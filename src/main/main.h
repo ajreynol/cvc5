@@ -1,33 +1,26 @@
-/*********************                                                        */
-/*! \file main.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Morgan Deters, Tim King, Mathias Preiner
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Header for main CVC4 driver
- **
- ** Header for main CVC4 driver.
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Header for main cvc5 driver.
+ */
 
-#include <exception>
+#include <cvc5/cvc5.h>
+
+#include <memory>
 #include <string>
 
-#include "base/exception.h"
-#include "cvc4autoconfig.h"
-#include "options/options.h"
-#include "util/statistics.h"
-#include "util/statistics_registry.h"
+#include "base/cvc5config.h"
 
-#ifndef CVC4__MAIN__MAIN_H
-#define CVC4__MAIN__MAIN_H
+#ifndef CVC5__MAIN__MAIN_H
+#define CVC5__MAIN__MAIN_H
 
-namespace CVC4 {
-namespace main {
+namespace cvc5::main {
 
 class CommandExecutor;
 
@@ -35,37 +28,21 @@ class CommandExecutor;
 extern const char* progPath;
 
 /** Just the basename component of argv[0] */
-extern const std::string* progName;
+extern std::string progName;
 
 /** A reference for use by the signal handlers to print statistics */
-extern CVC4::main::CommandExecutor* pExecutor;
-
-/** A reference for use by the signal handlers to print statistics */
-extern CVC4::TimerStat* pTotalTime;
+extern std::unique_ptr<CommandExecutor> pExecutor;
 
 /**
- * If true, will not spin on segfault even when CVC4_DEBUG is on.
+ * If true, will not spin on segfault even when CVC5_DEBUG is on.
  * Useful for nightly regressions, noninteractive performance runs
  * etc.  See util.cpp.
  */
 extern bool segvSpin;
 
-/** A pointer to the options in play */
-extern thread_local Options* pOptions;
+}  // namespace cvc5::main
 
-/** Initialize the driver.  Sets signal handlers for SIGINT and SIGSEGV.
- * This can throw a CVC4::Exception.
- */
-void cvc4_init();
+/** Actual cvc5 driver functions **/
+int runCvc5(int argc, char* argv[], std::unique_ptr<cvc5::Solver>&);
 
-/** Shutdown the driver. Frees memory for the signal handlers. */
-void cvc4_shutdown() noexcept;
-
-}/* CVC4::main namespace */
-}/* CVC4 namespace */
-
-/** Actual Cvc4 driver functions **/
-int runCvc4(int argc, char* argv[], CVC4::Options&);
-void printUsage(CVC4::Options&, bool full = false);
-
-#endif /* CVC4__MAIN__MAIN_H */
+#endif /* CVC5__MAIN__MAIN_H */

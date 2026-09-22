@@ -1,18 +1,14 @@
-/*********************                                                        */
-/*! \file cdo_black.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Aina Niemetz, Morgan Deters, Dejan Jovanovic
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Black box testing of CVC4::context::CDO<>.
- **
- ** Black box testing of CVC4::context::CDO<>.
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Black box testing of cvc5::context::CDO<>.
+ */
 
 #include <iostream>
 #include <vector>
@@ -22,17 +18,17 @@
 #include "context/cdo.h"
 #include "test_context.h"
 
-namespace CVC4 {
+namespace cvc5::internal {
 
 using namespace context;
 
 namespace test {
 
-class TestContextCDOBlack : public TestContext
+class TestContextBlackCDO : public TestContext
 {
 };
 
-TEST_F(TestContextCDOBlack, cdo)
+TEST_F(TestContextBlackCDO, cdo)
 {
   // Test that push/pop maintains the original value
   CDO<int> a1(d_context.get());
@@ -48,4 +44,4 @@ TEST_F(TestContextCDOBlack, cdo)
 }
 
 }  // namespace test
-}  // namespace CVC4
+}  // namespace cvc5::internal

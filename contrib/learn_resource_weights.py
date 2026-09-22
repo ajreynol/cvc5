@@ -1,4 +1,14 @@
 #!/usr/bin/env python3
+###############################################################################
+# This file is part of the cvc5 project.
+#
+# Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+# in the top-level source directory and their institutional affiliations.
+# All rights reserved.  See the file COPYING in the top-level source
+# directory for licensing information.
+# #############################################################################
+#
+##
 
 import argparse
 import glob
@@ -14,7 +24,7 @@ def parse_commandline():
     """Parse commandline arguments"""
     epilog = """
 This script can be used to compute good resource weights based on benchmark
-results. The resource weights are used by cvc4 to approximate the running time
+results. The resource weights are used by cvc5 to approximate the running time
 by the spent resources, multiplied with their weights.
 
 In the first stage ("parse") this script reads the output files of a benchmark

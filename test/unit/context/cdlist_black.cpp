@@ -1,18 +1,14 @@
-/*********************                                                        */
-/*! \file cdlist_black.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Aina Niemetz, Morgan Deters, Tim King
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Black box testing of CVC4::context::CDList<>.
- **
- ** Black box testing of CVC4::context::CDList<>.
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Black box testing of cvc5::context::CDList<>.
+ */
 
 #include <limits.h>
 
@@ -21,23 +17,33 @@
 
 #include "base/exception.h"
 #include "context/cdlist.h"
-#include "memory.h"
 #include "test_context.h"
 
-namespace CVC4 {
+namespace cvc5::internal {
 
 using namespace context;
 
 namespace test {
 
-struct DtorSensitiveObject
+class TestObject
 {
-  bool& d_dtorCalled;
-  DtorSensitiveObject(bool& dtorCalled) : d_dtorCalled(dtorCalled) {}
-  ~DtorSensitiveObject() { d_dtorCalled = true; }
+ public:
+  // Test support for elements without default constructor
+  TestObject() = delete;
+
+  TestObject(bool* cleanupCalled) : d_cleanupCalled(cleanupCalled) {}
+
+  bool* d_cleanupCalled;
 };
 
-class TestContextCDListBlack : public TestContext
+class TestCleanup
+{
+ public:
+  TestCleanup() {}
+  void operator()(TestObject& o) { (*o.d_cleanupCalled) = true; }
+};
+
+class TestContextBlackCDList : public TestContext
 {
  protected:
   void list_test(int n)
@@ -73,19 +79,19 @@ class TestContextCDListBlack : public TestContext
   }
 };
 
-TEST_F(TestContextCDListBlack, CDList10) { list_test(10); }
+TEST_F(TestContextBlackCDList, CDList10) { list_test(10); }
 
-TEST_F(TestContextCDListBlack, CDList15) { list_test(15); }
+TEST_F(TestContextBlackCDList, CDList15) { list_test(15); }
 
-TEST_F(TestContextCDListBlack, CDList20) { list_test(20); }
+TEST_F(TestContextBlackCDList, CDList20) { list_test(20); }
 
-TEST_F(TestContextCDListBlack, CDList35) { list_test(35); }
+TEST_F(TestContextBlackCDList, CDList35) { list_test(35); }
 
-TEST_F(TestContextCDListBlack, CDList50) { list_test(50); }
+TEST_F(TestContextBlackCDList, CDList50) { list_test(50); }
 
-TEST_F(TestContextCDListBlack, CDList99) { list_test(99); }
+TEST_F(TestContextBlackCDList, CDList99) { list_test(99); }
 
-TEST_F(TestContextCDListBlack, destructor_called)
+TEST_F(TestContextBlackCDList, destructor_called)
 {
   bool shouldRemainFalse = false;
   bool shouldFlipToTrue = false;
@@ -93,14 +99,14 @@ TEST_F(TestContextCDListBlack, destructor_called)
   bool shouldAlsoRemainFalse = false;
   bool aThirdFalse = false;
 
-  CDList<DtorSensitiveObject> listT(d_context.get(), true);
-  CDList<DtorSensitiveObject> listF(d_context.get(), false);
+  CDList<TestObject, TestCleanup> listT(d_context.get(), true, TestCleanup());
+  CDList<TestObject, TestCleanup> listF(d_context.get(), false, TestCleanup());
 
-  DtorSensitiveObject shouldRemainFalseDSO(shouldRemainFalse);
-  DtorSensitiveObject shouldFlipToTrueDSO(shouldFlipToTrue);
-  DtorSensitiveObject alsoFlipToTrueDSO(alsoFlipToTrue);
-  DtorSensitiveObject shouldAlsoRemainFalseDSO(shouldAlsoRemainFalse);
-  DtorSensitiveObject aThirdFalseDSO(aThirdFalse);
+  TestObject shouldRemainFalseDSO(&shouldRemainFalse);
+  TestObject shouldFlipToTrueDSO(&shouldFlipToTrue);
+  TestObject alsoFlipToTrueDSO(&alsoFlipToTrue);
+  TestObject shouldAlsoRemainFalseDSO(&shouldAlsoRemainFalse);
+  TestObject aThirdFalseDSO(&aThirdFalse);
 
   listT.push_back(shouldAlsoRemainFalseDSO);
   listF.push_back(shouldAlsoRemainFalseDSO);
@@ -129,38 +135,55 @@ TEST_F(TestContextCDListBlack, destructor_called)
   ASSERT_EQ(aThirdFalse, false);
 }
 
-TEST_F(TestContextCDListBlack, empty_iterator)
+TEST_F(TestContextBlackCDList, empty_iterator)
 {
   CDList<int>* list = new (true) CDList<int>(d_context.get());
   ASSERT_EQ(list->begin(), list->end());
   list->deleteSelf();
 }
 
-TEST_F(TestContextCDListBlack, out_of_memory)
-{
-#ifndef CVC4_MEMORY_LIMITING_DISABLED
-  CDList<uint32_t> list(d_context.get());
-  test::WithLimitedMemory wlm(1);
-
-  ASSERT_THROW(
-      {
-        // We cap it at UINT32_MAX, preferring to terminate with a
-        // failure than run indefinitely.
-        for (uint32_t i = 0; i < UINT32_MAX; ++i)
-        {
-          list.push_back(i);
-        }
-      },
-      std::bad_alloc);
-#endif
-}
-
-TEST_F(TestContextCDListBlack, pop_below_level_created)
+TEST_F(TestContextBlackCDList, pop_below_level_created)
 {
   d_context->push();
   CDList<int32_t> list(d_context.get());
   d_context->popto(0);
   list.push_back(42);
 }
+
+TEST_F(TestContextBlackCDList, emplace_back)
+{
+  int32_t n = 10;
+  int32_t start = 42;
+  CDList<std::unique_ptr<int32_t>> list(d_context.get());
+
+  for (int32_t i = 0; i < n; i++)
+  {
+    list.emplace_back(new int32_t(start + i));
+  }
+  for (int32_t i = 0; i < n; i++)
+  {
+    ASSERT_EQ(*list[i], start + i);
+  }
+  ASSERT_EQ(list.size(), n);
+
+  d_context->push();
+  for (int32_t i = 0; i < n; i++)
+  {
+    list.emplace_back(new int32_t(start + n + i));
+  }
+  for (int32_t i = 0; i < n * 2; i++)
+  {
+    ASSERT_EQ(*list[i], start + i);
+  }
+  ASSERT_EQ(list.size(), n * 2);
+  d_context->pop();
+
+  for (int32_t i = 0; i < n; i++)
+  {
+    ASSERT_EQ(*list[i], start + i);
+  }
+  ASSERT_EQ(list.size(), n);
+}
+
 }  // namespace test
-}  // namespace CVC4
+}  // namespace cvc5::internal

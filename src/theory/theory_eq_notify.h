@@ -1,27 +1,25 @@
-/*********************                                                        */
-/*! \file theory_eq_notify.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds, Mathias Preiner, Tim King
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief The theory equality notify utility.
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * The theory equality notify utility.
+ */
 
-#include "cvc4_private.h"
+#include "cvc5_private.h"
 
-#ifndef CVC4__THEORY__THEORY_EQ_NOTIFY_H
-#define CVC4__THEORY__THEORY_EQ_NOTIFY_H
+#ifndef CVC5__THEORY__THEORY_EQ_NOTIFY_H
+#define CVC5__THEORY__THEORY_EQ_NOTIFY_H
 
 #include "expr/node.h"
 #include "theory/theory_inference_manager.h"
 #include "theory/uf/equality_engine_notify.h"
 
-namespace CVC4 {
+namespace cvc5::internal {
 namespace theory {
 
 /**
@@ -43,7 +41,7 @@ class TheoryEqNotifyClass : public eq::EqualityEngineNotify
     }
     return d_im.propagateLit(predicate.notNode());
   }
-  bool eqNotifyTriggerTermEquality(TheoryId tag,
+  bool eqNotifyTriggerTermEquality(CVC5_UNUSED TheoryId tag,
                                    TNode t1,
                                    TNode t2,
                                    bool value) override
@@ -58,15 +56,17 @@ class TheoryEqNotifyClass : public eq::EqualityEngineNotify
   {
     d_im.conflictEqConstantMerge(t1, t2);
   }
-  void eqNotifyNewClass(TNode t) override
+  void eqNotifyNewClass(CVC5_UNUSED TNode t) override
   {
     // do nothing
   }
-  void eqNotifyMerge(TNode t1, TNode t2) override
+  void eqNotifyMerge(CVC5_UNUSED TNode t1, CVC5_UNUSED TNode t2) override
   {
     // do nothing
   }
-  void eqNotifyDisequal(TNode t1, TNode t2, TNode reason) override
+  void eqNotifyDisequal(CVC5_UNUSED TNode t1,
+                        CVC5_UNUSED TNode t2,
+                        CVC5_UNUSED TNode reason) override
   {
     // do nothing
   }
@@ -77,6 +77,6 @@ class TheoryEqNotifyClass : public eq::EqualityEngineNotify
 };
 
 }  // namespace theory
-}  // namespace CVC4
+}  // namespace cvc5::internal
 
 #endif

@@ -1,23 +1,19 @@
-/*********************                                                        */
-/*! \file type_properties_template.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Morgan Deters, Mathias Preiner
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Template for the Type properties header
- **
- ** Template for the Type properties header.
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Template for the Type properties header.
+ */
 
-#include "cvc4_private.h"
+#include "cvc5_private.h"
 
-#ifndef CVC4__TYPE_PROPERTIES_H
-#define CVC4__TYPE_PROPERTIES_H
+#ifndef CVC5__TYPE_PROPERTIES_H
+#define CVC5__TYPE_PROPERTIES_H
 
 #include <sstream>
 
@@ -27,9 +23,11 @@
 #include "expr/type_node.h"
 #include "options/language.h"
 
+// clang-format off
 ${type_properties_includes}
+// clang-format on
 
-namespace CVC4 {
+namespace cvc5::internal {
 namespace kind {
 
 /**
@@ -42,7 +40,9 @@ inline Cardinality getCardinality(TypeConstant tc)
 {
   switch (tc)
   {
+    // clang-format off
 ${type_constant_cardinalities}
+      // clang-format on
     default: InternalError() << "No cardinality known for type constant " << tc;
   }
 } /* getCardinality(TypeConstant) */
@@ -53,67 +53,58 @@ ${type_constant_cardinalities}
  * files, so includes contributions from each theory regarding that
  * theory's types.
  */
-inline Cardinality getCardinality(TypeNode typeNode) {
-  AssertArgument(!typeNode.isNull(), typeNode);
-  switch(Kind k = typeNode.getKind()) {
-  case TYPE_CONSTANT:
-    return getCardinality(typeNode.getConst<TypeConstant>());
-${type_cardinalities}
-  default:
-    InternalError() << "A theory kinds file did not provide a cardinality "
-                    << "or cardinality computer for type:\n"
-                    << typeNode << "\nof kind " << k;
-  }
-}/* getCardinality(TypeNode) */
-
-inline bool isWellFounded(TypeConstant tc) {
-  switch(tc) {
-${type_constant_wellfoundednesses}
-default:
-  InternalError() << "No well-foundedness status known for type constant: "
-                  << tc;
-  }
-}/* isWellFounded(TypeConstant) */
-
-inline bool isWellFounded(TypeNode typeNode) {
-  AssertArgument(!typeNode.isNull(), typeNode);
-  switch(Kind k = typeNode.getKind()) {
-  case TYPE_CONSTANT:
-    return isWellFounded(typeNode.getConst<TypeConstant>());
-${type_wellfoundednesses}
-  default:
-    InternalError() << "A theory kinds file did not provide a well-foundedness "
-                    << "or well-foundedness computer for type:\n"
-                    << typeNode << "\nof kind " << k;
-  }
-}/* isWellFounded(TypeNode) */
-
-inline Node mkGroundTerm(TypeConstant tc)
-{
-  switch (tc)
-  {
-${type_constant_groundterms}
-    default:
-      InternalError() << "No ground term known for type constant: " << tc;
-  }
-} /* mkGroundTerm(TypeConstant) */
-
-inline Node mkGroundTerm(TypeNode typeNode)
+inline Cardinality getCardinality(TypeNode typeNode)
 {
   AssertArgument(!typeNode.isNull(), typeNode);
   switch (Kind k = typeNode.getKind())
   {
-    case TYPE_CONSTANT:
-      return mkGroundTerm(typeNode.getConst<TypeConstant>());
-${type_groundterms}
+    case Kind::TYPE_CONSTANT:
+      return getCardinality(typeNode.getConst<TypeConstant>());
+      // clang-format off
+${type_cardinalities}
+      // clang-format on
     default:
-      InternalError() << "A theory kinds file did not provide a ground term "
-                      << "or ground term computer for type:\n"
+      InternalError() << "A theory kinds file did not provide a cardinality "
+                      << "or cardinality computer for type:\n"
                       << typeNode << "\nof kind " << k;
   }
-} /* mkGroundTerm(TypeNode) */
+} /* getCardinality(TypeNode) */
 
-}/* CVC4::kind namespace */
-}/* CVC4 namespace */
+inline bool isWellFounded(TypeConstant tc)
+{
+  switch (tc)
+  {
+    // clang-format off
+${type_constant_wellfoundednesses}
+    // clang-format on
+    default:
+      InternalError() << "No well-foundedness status known for type constant: "
+                      << tc;
+  }
+} /* isWellFounded(TypeConstant) */
 
-#endif /* CVC4__TYPE_PROPERTIES_H */
+inline bool isWellFounded(TypeNode typeNode)
+{
+  AssertArgument(!typeNode.isNull(), typeNode);
+  switch (Kind k = typeNode.getKind())
+  {
+    case Kind::TYPE_CONSTANT:
+      return isWellFounded(typeNode.getConst<TypeConstant>());
+      // clang-format off
+${type_wellfoundednesses}
+      // clang-format on
+    default:
+      InternalError()
+          << "A theory kinds file did not provide a well-foundedness "
+          << "or well-foundedness computer for type:\n"
+          << typeNode << "\nof kind " << k;
+  }
+} /* isWellFounded(TypeNode) */
+
+Node mkGroundTerm(NodeManager* nm, TypeConstant tc);
+Node mkGroundTerm(TypeNode typeNode);
+
+}  // namespace kind
+}  // namespace cvc5::internal
+
+#endif /* CVC5__TYPE_PROPERTIES_H */

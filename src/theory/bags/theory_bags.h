@@ -1,35 +1,34 @@
-/*********************                                                        */
-/*! \file theory_bags.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Mudathir Mohamed
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Bags theory.
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Bags theory.
+ */
 
-#include "cvc4_private.h"
+#include "cvc5_private.h"
 
-#ifndef CVC4__THEORY__BAGS__THEORY_BAGS_H
-#define CVC4__THEORY__BAGS__THEORY_BAGS_H
+#ifndef CVC5__THEORY__BAGS__THEORY_BAGS_H
+#define CVC5__THEORY__BAGS__THEORY_BAGS_H
 
-#include <memory>
-
+#include "theory/bags/bag_reduction.h"
 #include "theory/bags/bag_solver.h"
 #include "theory/bags/bags_rewriter.h"
 #include "theory/bags/bags_statistics.h"
 #include "theory/bags/inference_generator.h"
 #include "theory/bags/inference_manager.h"
 #include "theory/bags/solver_state.h"
+#include "theory/bags/strategy.h"
+#include "theory/bags/term_registry.h"
+#include "theory/care_pair_argument_callback.h"
 #include "theory/theory.h"
 #include "theory/theory_eq_notify.h"
-#include "theory/uf/equality_engine.h"
 
-namespace CVC4 {
+namespace cvc5::internal {
 namespace theory {
 namespace bags {
 
@@ -37,17 +36,14 @@ class TheoryBags : public Theory
 {
  public:
   /** Constructs a new instance of TheoryBags w.r.t. the provided contexts. */
-  TheoryBags(context::Context* c,
-             context::UserContext* u,
-             OutputChannel& out,
-             Valuation valuation,
-             const LogicInfo& logicInfo,
-             ProofNodeManager* pnm);
+  TheoryBags(Env& env, OutputChannel& out, Valuation valuation);
   ~TheoryBags() override;
 
   //--------------------------------- initialization
   /** get the official theory rewriter of this theory */
   TheoryRewriter* getTheoryRewriter() override;
+  /** get the proof checker of this theory */
+  ProofRuleChecker* getProofChecker() override;
   /**
    * Returns true if we need an equality engine. If so, we initialize the
    * information regarding how it should be setup. For details, see the
@@ -56,7 +52,19 @@ class TheoryBags : public Theory
   bool needsEqualityEngine(EeSetupInfo& esi) override;
   /** finish initialization */
   void finishInit() override;
+  /** preprocess rewrite */
+  TrustNode ppRewrite(TNode atom, std::vector<SkolemLemma>& lems) override;
   //--------------------------------- end initialization
+
+  /**
+   * initialize bag and count terms. This is the first step of the strategy,
+   * run at the beginning of each of its passes.
+   */
+  void initialize();
+  /**
+   * collect bags' representatives and all count terms.
+   */
+  void collectBagsAndCountTerms();
 
   //--------------------------------- standard check
   /** Post-check, called after the fact queue of the theory is processed. */
@@ -68,11 +76,14 @@ class TheoryBags : public Theory
   bool collectModelValues(TheoryModel* m,
                           const std::set<Node>& termSet) override;
   TrustNode explain(TNode) override;
-  Node getModelValue(TNode) override;
+  Node getCandidateModelValue(TNode) override;
   std::string identify() const override { return "THEORY_BAGS"; }
   void preRegisterTerm(TNode n) override;
-  TrustNode expandDefinition(Node n) override;
+
   void presolve() override;
+  void computeCareGraph() override;
+  void processCarePairArgs(TNode a, TNode b) override;
+  bool isCareArg(Node n, unsigned a);
 
  private:
   /** Functions to handle callbacks from equality engine */
@@ -92,6 +103,10 @@ class TheoryBags : public Theory
     TheoryBags& d_theory;
   };
 
+  /** expand the definition of the bag.choose operator */
+  TrustNode expandChooseOperator(const Node& node,
+                                 std::vector<SkolemLemma>& lems);
+
   /** The state of the bags solver at full effort */
   SolverState d_state;
   /** The inference manager */
@@ -109,6 +124,14 @@ class TheoryBags : public Theory
   /** the main solver for bags */
   BagSolver d_solver;
 
+  /** The care pair argument callback, used for theory combination */
+  CarePairArgumentCallback d_cpacb;
+  /** map kinds to their terms. It is cleared during post check */
+  std::map<Kind, std::vector<Node>> d_opMap;
+
+  /** The representation of the strategy */
+  Strategy d_strat;
+
   void eqNotifyNewClass(TNode n);
   void eqNotifyMerge(TNode n1, TNode n2);
   void eqNotifyDisequal(TNode t1, TNode t2, TNode reason);
@@ -116,6 +139,6 @@ class TheoryBags : public Theory
 
 }  // namespace bags
 }  // namespace theory
-}  // namespace CVC4
+}  // namespace cvc5::internal
 
-#endif /* CVC4__THEORY__BAGS__THEORY_BAGS_H */
+#endif /* CVC5__THEORY__BAGS__THEORY_BAGS_H */

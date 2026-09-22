@@ -1,32 +1,33 @@
-/*********************                                                        */
-/*! \file split_zero_check.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Gereon Kremer, Andrew Reynolds, Tim King
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Check for split zero lemma
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Check for split zero lemma.
+ */
 
-#ifndef CVC4__THEORY__ARITH__NL__EXT__SPLIT_ZERO_CHECK_H
-#define CVC4__THEORY__ARITH__NL__EXT__SPLIT_ZERO_CHECK_H
+#ifndef CVC5__THEORY__ARITH__NL__EXT__SPLIT_ZERO_CHECK_H
+#define CVC5__THEORY__ARITH__NL__EXT__SPLIT_ZERO_CHECK_H
 
+#include "context/cdhashset.h"
 #include "expr/node.h"
-#include "theory/arith/nl/ext/ext_state.h"
+#include "smt/env_obj.h"
 
-namespace CVC4 {
+namespace cvc5::internal {
 namespace theory {
 namespace arith {
 namespace nl {
 
-class SplitZeroCheck
+class ExtState;
+
+class SplitZeroCheck : protected EnvObj
 {
  public:
-  SplitZeroCheck(ExtState* data);
+  SplitZeroCheck(Env& env, ExtState* data);
 
   /** check split zero
    *
@@ -37,7 +38,7 @@ class SplitZeroCheck
   void check();
 
  private:
-  using NodeSet = context::CDHashSet<Node, NodeHashFunction>;
+  using NodeSet = context::CDHashSet<Node>;
 
   /** Basic data that is shared with other checks */
   ExtState* d_data;
@@ -48,6 +49,6 @@ class SplitZeroCheck
 }  // namespace nl
 }  // namespace arith
 }  // namespace theory
-}  // namespace CVC4
+}  // namespace cvc5::internal
 
 #endif

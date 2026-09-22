@@ -1,34 +1,285 @@
-#####################
-## FindPoly.cmake
-## Top contributors (to current version):
-##   Gereon Kremer
-## This file is part of the CVC4 project.
-## Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
-## in the top-level source directory and their institutional affiliations.
-## All rights reserved.  See the file COPYING in the top-level source
-## directory for licensing information.
-##
+###############################################################################
+# This file is part of the cvc5 project.
+#
+# Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+# in the top-level source directory and their institutional affiliations.
+# All rights reserved.  See the file COPYING in the top-level source
+# directory for licensing information.
+# #############################################################################
+#
 # Find LibPoly
-# POLY_FOUND - system has LibPoly
-# POLY_INCLUDE_DIR - the LibPoly include directory
-# POLY_LIBRARIES - Libraries needed to use LibPoly
+# Poly_FOUND - should always be true
+# Poly - target for the libpoly library
+# Polyxx - target for the C++ interface of libpoly, also links Poly
+##
 
-# Note: contrib/get-poly copies header files to deps/install/include/poly.
-# However, includes in LibPoly headers are not prefixed with "poly/" and therefore
-# we have to look for headers in include/poly instead of include/.
-find_path(POLY_INCLUDE_DIR NAMES poly/poly.h PATH_SUFFIXES poly)
-find_library(POLY_LIB NAMES poly)
-find_library(POLY_LIBXX NAMES polyxx)
-set(POLY_LIBRARIES "${POLY_LIBXX};${POLY_LIB}")
-unset(POLY_LIB CACHE)
-unset(POLY_LIBXX CACHE)
+include(deps-helper)
 
-include(FindPackageHandleStandardArgs)
-find_package_handle_standard_args(Poly
-  DEFAULT_MSG
-  POLY_INCLUDE_DIR POLY_LIBRARIES)
+# On Windows we always link LibPoly statically, even into a shared libcvc5.
+# A LibPoly DLL auto-exports the GMP symbols it statically embeds (MinGW
+# auto-export), and those re-exported symbols (e.g. __gmp_default_allocate)
+# then collide with cvc5's own static GMP when linking libcvc5.dll, which lld
+# rejects with "<sym> was replaced". A static (PIC) LibPoly has no export
+# table, so there is nothing to collide.
+if(BUILD_SHARED_LIBS AND NOT WIN32)
+  set(POLY_BUILD_SHARED ON)
+else()
+  set(POLY_BUILD_SHARED OFF)
+endif()
 
-mark_as_advanced(POLY_INCLUDE_DIR POLY_LIBRARIES)
-if(POLY_LIBRARIES)
-  message(STATUS "Found LibPoly: ${POLY_LIBRARIES}")
+find_path(Poly_INCLUDE_DIR NAMES poly/poly.h)
+if(POLY_BUILD_SHARED)
+  find_library(Poly_LIBRARIES NAMES poly)
+  find_library(PolyXX_LIBRARIES NAMES polyxx)
+else()
+  find_library(Poly_LIBRARIES NAMES picpoly)
+  find_library(PolyXX_LIBRARIES NAMES picpolyxx)
+endif()
+
+set(Poly_FOUND_SYSTEM FALSE)
+if(Poly_INCLUDE_DIR
+   AND Poly_LIBRARIES
+   AND PolyXX_LIBRARIES
+)
+  set(Poly_FOUND_SYSTEM TRUE)
+
+  file(STRINGS ${Poly_INCLUDE_DIR}/poly/version.h Poly_VERSION
+       REGEX "^#define[\t ]+LIBPOLY_VERSION [0-9+]+"
+  )
+  string(REGEX MATCH "[0-9.]+" Poly_VERSION "${Poly_VERSION}")
+
+  check_system_version("Poly")
+endif()
+
+if(NOT Poly_FOUND_SYSTEM)
+  check_ep_downloaded("Poly-EP")
+  if(NOT Poly-EP_DOWNLOADED)
+    check_auto_download("Poly" "--no-poly")
+  endif()
+
+  include(ExternalProject)
+
+  set(Poly_VERSION "0.2.1")
+
+  set(POLY_PATCH_KWD PATCH_COMMAND)
+  if (NO_GLOBAL_POLY_CTX)
+    find_program(PATCH_BIN patch)
+    if(NOT PATCH_BIN)
+      message(FATAL_ERROR "Can not patch LibPoly, missing binary for patch")
+    endif()
+    set(POLY_PATCH_CMD
+      ${POLY_PATCH_KWD}
+        patch -p1 -d <SOURCE_DIR>
+        -i ${CMAKE_CURRENT_LIST_DIR}/deps-utils/poly-global-ctx.patch
+    )
+    set(POLY_PATCH_KWD COMMAND)
+  endif()
+
+  check_if_cross_compiling(CCWIN "Windows" "")
+  if(CCWIN)
+    set(POLY_PATCH_CMD
+      ${POLY_PATCH_KWD}
+        ${PROJECT_SOURCE_DIR}/cmake/deps-utils/Poly-windows-patch.sh <SOURCE_DIR>
+    )
+    set(POLY_PATCH_KWD COMMAND)
+  endif()
+
+  # On Windows, CMake's default install action places DLLs into the runtime
+  # path (/bin) after doing the build with 'ExternalProject_Add'
+  if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+    set(BINARY_LIBRARY_DEST "bin")
+  else()
+    set(BINARY_LIBRARY_DEST "lib")
+  endif()
+
+  get_target_property(GMP_INCLUDE_DIR GMP INTERFACE_SYSTEM_INCLUDE_DIRECTORIES)
+  get_target_property(GMP_LIBRARY GMP IMPORTED_LOCATION)
+  get_filename_component(GMP_LIB_PATH "${GMP_LIBRARY}" DIRECTORY)
+
+  set(Poly_INCLUDE_DIR "${DEPS_BASE}/include/")
+
+  if(POLY_BUILD_SHARED)
+    set(POLY_BUILD_STATIC OFF)
+    set(POLY_TARGETS poly polyxx)
+    set(POLY_INSTALL_CMD
+      INSTALL_COMMAND 
+        ${CMAKE_MAKE_PROGRAM} install ${POLY_TARGETS}
+    )
+
+    if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+      set(POLY_BYPRODUCTS
+        <INSTALL_DIR>/lib/libpoly.0${CMAKE_SHARED_LIBRARY_SUFFIX}
+        <INSTALL_DIR>/lib/libpoly.${Poly_VERSION}${CMAKE_SHARED_LIBRARY_SUFFIX}
+        <INSTALL_DIR>/lib/libpolyxx.0${CMAKE_SHARED_LIBRARY_SUFFIX}
+        <INSTALL_DIR>/lib/libpolyxx.${Poly_VERSION}${CMAKE_SHARED_LIBRARY_SUFFIX}
+        <INSTALL_DIR>/lib/libpoly${CMAKE_SHARED_LIBRARY_SUFFIX}
+        <INSTALL_DIR>/lib/libpolyxx${CMAKE_SHARED_LIBRARY_SUFFIX}
+      )
+      set(Poly_LIBRARIES "${DEPS_BASE}/lib/libpoly${CMAKE_SHARED_LIBRARY_SUFFIX}")
+      set(PolyXX_LIBRARIES "${DEPS_BASE}/lib/libpolyxx${CMAKE_SHARED_LIBRARY_SUFFIX}")
+    elseif(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+      # For Windows builds, LibPoly installs the .dlls to the bin directory
+      set(POLY_BYPRODUCTS
+        <INSTALL_DIR>/bin/libpoly${CMAKE_SHARED_LIBRARY_SUFFIX}
+        <INSTALL_DIR>/bin/libpolyxx${CMAKE_SHARED_LIBRARY_SUFFIX}
+      )
+      set(Poly_LIBRARIES "${DEPS_BASE}/bin/libpoly${CMAKE_SHARED_LIBRARY_SUFFIX}")
+      set(PolyXX_LIBRARIES "${DEPS_BASE}/bin/libpolyxx${CMAKE_SHARED_LIBRARY_SUFFIX}")
+    else()
+      set(POLY_BYPRODUCTS
+        <INSTALL_DIR>/lib/libpoly${CMAKE_SHARED_LIBRARY_SUFFIX}.0
+        <INSTALL_DIR>/lib/libpoly${CMAKE_SHARED_LIBRARY_SUFFIX}.${Poly_VERSION}
+        <INSTALL_DIR>/lib/libpolyxx${CMAKE_SHARED_LIBRARY_SUFFIX}.0
+        <INSTALL_DIR>/lib/libpolyxx${CMAKE_SHARED_LIBRARY_SUFFIX}.${Poly_VERSION}
+        <INSTALL_DIR>/lib/libpoly${CMAKE_SHARED_LIBRARY_SUFFIX}
+        <INSTALL_DIR>/lib/libpolyxx${CMAKE_SHARED_LIBRARY_SUFFIX}
+      )
+      set(Poly_LIBRARIES "${DEPS_BASE}/lib/libpoly${CMAKE_SHARED_LIBRARY_SUFFIX}")
+      set(PolyXX_LIBRARIES "${DEPS_BASE}/lib/libpolyxx${CMAKE_SHARED_LIBRARY_SUFFIX}")
+    endif()
+  else()
+    # For static builds, we only build and install the `static_pic_poly` and
+    # `static_pic_polyxx` targets. We pass the full path of GMP to LibPoly
+    # below. If we are building a static version of cvc5, it is the static
+    # version of GMP, which does not work for building a shared version of
+    # LibPoly.
+    set(POLY_BUILD_STATIC ON)
+    set(POLY_TARGETS static_pic_poly static_pic_polyxx)
+    set(POLY_INSTALL_CMD
+      INSTALL_COMMAND 
+        ${CMAKE_MAKE_PROGRAM} install ${POLY_TARGETS}
+      COMMAND
+        ${CMAKE_COMMAND} -E copy
+          src/libpicpoly${CMAKE_STATIC_LIBRARY_SUFFIX}
+          <INSTALL_DIR>/lib/libpicpoly${CMAKE_STATIC_LIBRARY_SUFFIX}
+      COMMAND
+        ${CMAKE_COMMAND} -E copy
+          src/libpicpolyxx${CMAKE_STATIC_LIBRARY_SUFFIX}
+          <INSTALL_DIR>/lib/libpicpolyxx${CMAKE_STATIC_LIBRARY_SUFFIX}
+    )
+
+    # We only want to install the headers and the position-independent version
+    # of the static libraries, so remove the installation targets for the other
+    # versions of LibPoly
+    set(POLY_PATCH_CMD ${POLY_PATCH_CMD}
+      ${POLY_PATCH_KWD}
+        sed -ri.orig
+          "/TARGETS (poly|polyxx|static_poly|static_polyxx) /d"
+          <SOURCE_DIR>/src/CMakeLists.txt
+    )
+
+    set(POLY_BYPRODUCTS
+      <INSTALL_DIR>/lib/libpicpoly${CMAKE_STATIC_LIBRARY_SUFFIX}
+      <INSTALL_DIR>/lib/libpicpolyxx${CMAKE_STATIC_LIBRARY_SUFFIX}
+    )
+    set(Poly_LIBRARIES
+      "${DEPS_BASE}/lib/libpicpoly${CMAKE_STATIC_LIBRARY_SUFFIX}")
+    set(PolyXX_LIBRARIES
+      "${DEPS_BASE}/lib/libpicpolyxx${CMAKE_STATIC_LIBRARY_SUFFIX}")
+  endif()
+
+  # Disable a warning triggered by compilers (Emscripten, Apple Clang, etc.)
+  # due to deprecated literal operator syntax in a GMP header used by LibPoly.
+  set(POLY_CXX_FLAGS "")
+  set(_poly_cxx_flags "")
+  check_cxx_compiler_flag(-Wno-error=deprecated-literal-operator HAVE_CXX_FLAGWno_error_deprecated_literal_operator)
+  if(HAVE_CXX_FLAGWno_error_deprecated_literal_operator)
+    string(APPEND _poly_cxx_flags " -Wno-error=deprecated-literal-operator")
+  endif()
+  # See FindCaDiCaL.cmake: emcc's default -fignore-exceptions emits no
+  # landing pads, so destructors in LibPoly frames an exception unwinds
+  # through would be skipped.
+  if(EMSCRIPTEN)
+    string(APPEND _poly_cxx_flags " -fexceptions")
+  endif()
+  if(_poly_cxx_flags)
+    string(STRIP "${_poly_cxx_flags}" _poly_cxx_flags)
+    set(POLY_CXX_FLAGS "-DCMAKE_CXX_FLAGS=${_poly_cxx_flags}")
+  endif()
+  
+  # We pass the full path of GMP to LibPoly, s.t. we can ensure that LibPoly is
+  # able to find the correct version of GMP if we built it locally. This is
+  # primarily important for cross-compiling cvc5, because LibPoly's search
+  # paths make it impossible to find the locally built GMP library otherwise.
+  ExternalProject_Add(
+    Poly-EP
+    ${COMMON_EP_CONFIG}
+    URL https://github.com/SRI-CSL/libpoly/archive/refs/tags/v${Poly_VERSION}.tar.gz
+    URL_HASH SHA256=f9920afc876f998633348b9cbfcf180757ada48cc872040256c60ad0707b5a0f
+    ${POLY_PATCH_CMD}
+    CMAKE_ARGS -DCMAKE_BUILD_TYPE=Release
+               -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
+               -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}
+               -DLIBPOLY_BUILD_PYTHON_API=OFF
+               -DLIBPOLY_BUILD_STATIC=${POLY_BUILD_STATIC}
+               -DLIBPOLY_BUILD_STATIC_PIC=${POLY_BUILD_STATIC}
+               -DGMP_INCLUDE_DIR=${GMP_INCLUDE_DIR}
+               -DGMP_LIBRARY=${GMP_LIBRARIES}
+               -DCMAKE_SKIP_INSTALL_ALL_DEPENDENCY=TRUE
+               -DBUILD_TESTING=OFF
+               ${POLY_CXX_FLAGS}
+    BUILD_COMMAND ${CMAKE_MAKE_PROGRAM} ${POLY_TARGETS}
+    ${POLY_INSTALL_CMD}
+    BUILD_BYPRODUCTS ${POLY_BYPRODUCTS}
+  )
+  ExternalProject_Add_Step(
+    Poly-EP cleanup
+    DEPENDEES install
+    COMMAND ${CMAKE_COMMAND} -E remove_directory <BINARY_DIR>/test/
+  )
+  add_dependencies(Poly-EP GMP)
+endif()
+
+set(Poly_FOUND TRUE)
+
+
+if(POLY_BUILD_SHARED)
+  add_library(Poly SHARED IMPORTED GLOBAL)
+  add_library(Polyxx SHARED IMPORTED GLOBAL)
+  if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+    set_target_properties(Poly PROPERTIES IMPORTED_IMPLIB "${Poly_LIBRARIES}")
+    set_target_properties(Polyxx PROPERTIES IMPORTED_IMPLIB "${PolyXX_LIBRARIES}")
+  endif()
+else()
+  add_library(Poly STATIC IMPORTED GLOBAL)
+  add_library(Polyxx STATIC IMPORTED GLOBAL)
+endif()
+
+set_target_properties(Poly PROPERTIES
+  IMPORTED_LOCATION "${Poly_LIBRARIES}"
+  INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${Poly_INCLUDE_DIR}"
+)
+target_link_libraries(Poly INTERFACE GMP)
+set_target_properties(Polyxx PROPERTIES
+  IMPORTED_LOCATION "${PolyXX_LIBRARIES}"
+  INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${Poly_INCLUDE_DIR}"
+)
+
+mark_as_advanced(Poly_FOUND)
+mark_as_advanced(Poly_FOUND_SYSTEM)
+mark_as_advanced(Poly_INCLUDE_DIR)
+mark_as_advanced(Poly_LIBRARIES)
+mark_as_advanced(PolyXX_LIBRARIES)
+
+if(Poly_FOUND_SYSTEM)
+  message(STATUS "Found Poly ${Poly_VERSION}: ${Poly_LIBRARIES}, ${PolyXX_LIBRARIES}")
+else()
+  message(STATUS "Building Poly ${Poly_VERSION}: ${Poly_LIBRARIES}, ${PolyXX_LIBRARIES}")
+  add_dependencies(Poly Poly-EP)
+  add_dependencies(Polyxx Poly-EP)
+
+  ExternalProject_Get_Property(Poly-EP BUILD_BYPRODUCTS INSTALL_DIR)
+  string(REPLACE "<INSTALL_DIR>" "${INSTALL_DIR}" BUILD_BYPRODUCTS "${BUILD_BYPRODUCTS}")
+
+  # Static builds install the Poly static libraries.
+  # These libraries are required to compile a program that
+  # uses the cvc5 static library.
+  install(FILES ${BUILD_BYPRODUCTS} TYPE ${LIB_BUILD_TYPE})
+
+  if(NOT SKIP_SET_RPATH AND BUILD_SHARED_LIBS AND APPLE)
+    foreach(POLY_DYLIB ${BUILD_BYPRODUCTS})
+      get_filename_component(POLY_DYLIB_NAME ${POLY_DYLIB} NAME)
+      update_rpath_macos(${POLY_DYLIB_NAME})
+    endforeach()
+  endif()
 endif()

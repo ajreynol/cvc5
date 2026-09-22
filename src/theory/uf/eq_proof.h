@@ -1,23 +1,20 @@
-/*********************                                                        */
-/*! \file eq_proof.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Haniel Barbosa, Dejan Jovanovic, Morgan Deters
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief A proof as produced by the equality engine.
- **
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * A proof as produced by the equality engine.
+ */
 
-#include "cvc4_private.h"
+#include "cvc5_private.h"
 #include "expr/node.h"
 #include "theory/uf/equality_engine_types.h"
 
-namespace CVC4 {
+namespace cvc5::internal {
 
 class CDProof;
 
@@ -88,10 +85,9 @@ class EqProof
    * equalities)
    * @return the node that is the conclusion of the proof as added to p.
    */
-  Node addToProof(
-      CDProof* p,
-      std::unordered_map<Node, Node, NodeHashFunction>& visited,
-      std::unordered_set<Node, NodeHashFunction>& assumptions) const;
+  Node addToProof(CDProof* p,
+                  std::unordered_map<Node, Node>& visited,
+                  std::unordered_set<Node>& assumptions) const;
 
   /** Removes all reflexivity steps, i.e. (= t t), from premises. */
   void cleanReflPremises(std::vector<Node>& premises) const;
@@ -173,7 +169,7 @@ class EqProof
       Node conclusion,
       std::vector<Node>& premises,
       CDProof* p,
-      std::unordered_set<Node, NodeHashFunction>& assumptions) const;
+      std::unordered_set<Node>& assumptions) const;
 
   /** Expand coarse-grained transitivity steps for theory disequalities
    *
@@ -247,7 +243,7 @@ class EqProof
   bool buildTransitivityChain(Node conclusion,
                               std::vector<Node>& premises) const;
 
-  /** Reduce the a congruence EqProof into a transitivity matrix
+  /** Reduce a congruence EqProof into a transitivity matrix
    *
    * Given a congruence EqProof of (= (f a0 ... an-1) (f b0 ... bn-1)), reduce
    * its justification into a matrix
@@ -299,25 +295,26 @@ class EqProof
    *
    * where when the first child of CONG is a transitivity step
    * - the premises that are CONG steps are recursively reduced with *the same*
-       argument i
+   *   argument i
    * - the other premises are processed with addToProof and added to the i row
    *   in the matrix
    *
-   * In the above example the to which the transitivity matrix is
+   * In the above example the corresponding transitivity matrix is
    *   [0] -> (= a0 c), (= b0 c)
    *   [1] -> (= a1 b1)
    *
-   * The remaining complication is that when conclusion is an equality of n-ary
-   * applications of *different* arities, there is, necessarily, a transitivity
-   * step as a first child a CONG step whose conclusion is an equality of n-ary
-   * applications of different arities. For example
+   * The remaining complication is when the conclusion is an equality of n-ary
+   * applications of *different* arities. Then there necessarily is a
+   * transitivity step as a first child a CONG step whose conclusion is an
+   * equality of n-ary applications of different arities. For example
+   *
    *             P0                              P1
    * -------------------------- EQP::TRANS  -----------
    *     (= (f a0 a1) (f b0))                (= a2 b1)
    * -------------------------------------------------- EQP::CONG
    *              (= (f a0 a1 a2) (f b0 b1))
    *
-   * will be first reduced with i = 2 (maximal arity amorg the original
+   * will be first reduced with i = 2 (maximal arity among the original
    * conclusion's applications), adding (= a2 b1) to row 2 after processing
    * P1. The first child is reduced with i = 1. Since it is a TRANS step whose
    * conclusion is an equality of n-ary applications with mismatching arity, P0
@@ -347,12 +344,12 @@ class EqProof
       Node conclusion,
       std::vector<std::vector<Node>>& transitivityMatrix,
       CDProof* p,
-      std::unordered_map<Node, Node, NodeHashFunction>& visited,
-      std::unordered_set<Node, NodeHashFunction>& assumptions,
+      std::unordered_map<Node, Node>& visited,
+      std::unordered_set<Node>& assumptions,
       bool isNary) const;
 
 }; /* class EqProof */
 
 }  // Namespace eq
 }  // Namespace theory
-}  // Namespace CVC4
+}  // namespace cvc5::internal

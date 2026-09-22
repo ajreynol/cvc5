@@ -1,16 +1,14 @@
-/*********************                                                        */
-/*! \file inference_manager.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds, Andres Noetzli, Tianyi Liang
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Implementation of the inference manager for the theory of strings.
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Implementation of the inference manager for the theory of strings.
+ */
 
 #include "theory/strings/inference_manager.h"
 
@@ -19,59 +17,46 @@
 #include "theory/rewriter.h"
 #include "theory/strings/theory_strings_utils.h"
 #include "theory/strings/word.h"
+#include "util/rational.h"
 
 using namespace std;
-using namespace CVC4::context;
-using namespace CVC4::kind;
+using namespace cvc5::context;
+using namespace cvc5::internal::kind;
 
-namespace CVC4 {
+namespace cvc5::internal {
 namespace theory {
 namespace strings {
 
-InferenceManager::InferenceManager(Theory& t,
+InferenceManager::InferenceManager(Env& env,
+                                   Theory& t,
                                    SolverState& s,
                                    TermRegistry& tr,
                                    ExtTheory& e,
-                                   SequencesStatistics& statistics,
-                                   ProofNodeManager* pnm)
-    : InferenceManagerBuffered(t, s, pnm),
+                                   SequencesStatistics& statistics)
+    : InferenceManagerBuffered(env, t, s, "theory::strings::"),
       d_state(s),
       d_termReg(tr),
       d_extt(e),
       d_statistics(statistics),
-      d_ipc(pnm ? new InferProofCons(d_state.getSatContext(), pnm, d_statistics)
-                : nullptr)
+      d_ipc(isProofEnabled() ? new InferProofCons(env, context()) : nullptr),
+      d_ipcl(isProofEnabled() ? new InferProofCons(env, context()) : nullptr)
 {
-  NodeManager* nm = NodeManager::currentNM();
-  d_zero = nm->mkConst(Rational(0));
-  d_one = nm->mkConst(Rational(1));
+  NodeManager* nm = nodeManager();
+  d_zero = nm->mkConstInt(Rational(0));
+  d_one = nm->mkConstInt(Rational(1));
   d_true = nm->mkConst(true);
   d_false = nm->mkConst(false);
 }
 
-void InferenceManager::doPending()
-{
-  doPendingFacts();
-  if (d_state.isInConflict())
-  {
-    // just clear the pending vectors, nothing else to do
-    clearPendingLemmas();
-    clearPendingPhaseRequirements();
-    return;
-  }
-  doPendingLemmas();
-  doPendingPhaseRequirements();
-}
-
 bool InferenceManager::sendInternalInference(std::vector<Node>& exp,
                                              Node conc,
-                                             Inference infer)
+                                             InferenceId infer)
 {
-  if (conc.getKind() == AND
-      || (conc.getKind() == NOT && conc[0].getKind() == OR))
+  if (conc.getKind() == Kind::AND
+      || (conc.getKind() == Kind::NOT && conc[0].getKind() == Kind::OR))
   {
-    Node conj = conc.getKind() == AND ? conc : conc[0];
-    bool pol = conc.getKind() == AND;
+    Node conj = conc.getKind() == Kind::AND ? conc : conc[0];
+    bool pol = conc.getKind() == Kind::AND;
     bool ret = true;
     for (const Node& cc : conj)
     {
@@ -80,9 +65,9 @@ bool InferenceManager::sendInternalInference(std::vector<Node>& exp,
     }
     return ret;
   }
-  bool pol = conc.getKind() != NOT;
+  bool pol = conc.getKind() != Kind::NOT;
   Node lit = pol ? conc : conc[0];
-  if (lit.getKind() == EQUAL)
+  if (lit.getKind() == Kind::EQUAL)
   {
     for (unsigned i = 0; i < 2; i++)
     {
@@ -125,7 +110,7 @@ bool InferenceManager::sendInternalInference(std::vector<Node>& exp,
 bool InferenceManager::sendInference(const std::vector<Node>& exp,
                                      const std::vector<Node>& noExplain,
                                      Node eq,
-                                     Inference infer,
+                                     InferenceId infer,
                                      bool isRev,
                                      bool asLemma)
 {
@@ -133,14 +118,13 @@ bool InferenceManager::sendInference(const std::vector<Node>& exp,
   {
     eq = d_false;
   }
-  else if (Rewriter::rewrite(eq) == d_true)
+  else if (rewrite(eq) == d_true)
   {
     // if trivial, return
     return false;
   }
   // wrap in infer info and send below
-  InferInfo ii;
-  ii.d_id = infer;
+  InferInfo ii(infer);
   ii.d_idRev = isRev;
   ii.d_conc = eq;
   ii.d_premises = exp;
@@ -151,7 +135,7 @@ bool InferenceManager::sendInference(const std::vector<Node>& exp,
 
 bool InferenceManager::sendInference(const std::vector<Node>& exp,
                                      Node eq,
-                                     Inference infer,
+                                     InferenceId infer,
                                      bool isRev,
                                      bool asLemma)
 {
@@ -162,8 +146,12 @@ bool InferenceManager::sendInference(const std::vector<Node>& exp,
 void InferenceManager::sendInference(InferInfo& ii, bool asLemma)
 {
   Assert(!ii.isTrivial());
-  // set that this inference manager will be processing this inference
-  ii.d_sim = this;
+  // This inference manager will be processing the side effects of this
+  // inferences if the inference manager has not been marked already.
+  if (ii.d_sim == nullptr)
+  {
+    ii.d_sim = this;
+  }
   Trace("strings-infer-debug")
       << "sendInference: " << ii << ", asLemma = " << asLemma << std::endl;
   // check if we should send a conflict, lemma or a fact
@@ -171,55 +159,48 @@ void InferenceManager::sendInference(InferInfo& ii, bool asLemma)
   {
     Trace("strings-infer-debug") << "...as conflict" << std::endl;
     Trace("strings-lemma") << "Strings::Conflict: " << ii.d_premises << " by "
-                           << ii.d_id << std::endl;
-    Trace("strings-conflict") << "CONFLICT: inference conflict " << ii.d_premises << " by " << ii.d_id << std::endl;
+                           << ii.getId() << std::endl;
+    Trace("strings-conflict")
+        << "CONFLICT: inference conflict " << ii.d_premises << " by "
+        << ii.getId() << std::endl;
     ++(d_statistics.d_conflictsInfer);
     // process the conflict immediately
     processConflict(ii);
     return;
   }
-  else if (asLemma || options::stringInferAsLemmas() || !ii.isFact())
+  else if (asLemma || options().strings.stringInferAsLemmas || !ii.isFact())
   {
     Trace("strings-infer-debug") << "...as lemma" << std::endl;
     addPendingLemma(std::unique_ptr<InferInfo>(new InferInfo(ii)));
     return;
   }
-  if (options::stringInferSym())
+  if (options().strings.stringInferSym)
   {
-    std::vector<Node> vars;
-    std::vector<Node> subs;
     std::vector<Node> unproc;
     for (const Node& ac : ii.d_premises)
     {
-      d_termReg.inferSubstitutionProxyVars(ac, vars, subs, unproc);
+      d_termReg.removeProxyEqs(ac, unproc);
     }
     if (unproc.empty())
     {
-      Node eqs = ii.d_conc.substitute(
-          vars.begin(), vars.end(), subs.begin(), subs.end());
-      InferInfo iiSubsLem;
-      iiSubsLem.d_sim = this;
+      Node eqs = ii.d_conc;
       // keep the same id for now, since we are transforming the form of the
       // inference, not the root reason.
-      iiSubsLem.d_id = ii.d_id;
+      InferInfo iiSubsLem(ii.getId());
+      iiSubsLem.d_sim = this;
       iiSubsLem.d_conc = eqs;
-      if (Trace.isOn("strings-lemma-debug"))
+      if (TraceIsOn("strings-lemma-debug"))
       {
         Trace("strings-lemma-debug")
             << "Strings::Infer " << iiSubsLem << std::endl;
         Trace("strings-lemma-debug")
             << "Strings::Infer Alternate : " << eqs << std::endl;
-        for (unsigned i = 0, nvars = vars.size(); i < nvars; i++)
-        {
-          Trace("strings-lemma-debug")
-              << "  " << vars[i] << " -> " << subs[i] << std::endl;
-        }
       }
       Trace("strings-infer-debug") << "...as symbolic lemma" << std::endl;
       addPendingLemma(std::unique_ptr<InferInfo>(new InferInfo(iiSubsLem)));
       return;
     }
-    if (Trace.isOn("strings-lemma-debug"))
+    if (TraceIsOn("strings-lemma-debug"))
     {
       for (const Node& u : unproc)
       {
@@ -233,26 +214,22 @@ void InferenceManager::sendInference(InferInfo& ii, bool asLemma)
   addPendingFact(std::unique_ptr<InferInfo>(new InferInfo(ii)));
 }
 
-bool InferenceManager::sendSplit(Node a, Node b, Inference infer, bool preq)
+bool InferenceManager::sendSplit(Node a, Node b, InferenceId infer, bool preq)
 {
   Node eq = a.eqNode(b);
-  eq = Rewriter::rewrite(eq);
+  eq = rewrite(eq);
   if (eq.isConst())
   {
     return false;
   }
-  NodeManager* nm = NodeManager::currentNM();
-  InferInfo iiSplit;
+  NodeManager* nm = nodeManager();
+  InferInfo iiSplit(infer);
   iiSplit.d_sim = this;
-  iiSplit.d_id = infer;
-  iiSplit.d_conc = nm->mkNode(OR, eq, nm->mkNode(NOT, eq));
-  eq = Rewriter::rewrite(eq);
+  iiSplit.d_conc = nm->mkNode(Kind::OR, eq, nm->mkNode(Kind::NOT, eq));
   addPendingPhaseRequirement(eq, preq);
   addPendingLemma(std::unique_ptr<InferInfo>(new InferInfo(iiSplit)));
   return true;
 }
-
-void InferenceManager::setIncomplete() { d_out.setIncomplete(); }
 
 void InferenceManager::addToExplanation(Node a,
                                         Node b,
@@ -260,7 +237,14 @@ void InferenceManager::addToExplanation(Node a,
 {
   if (a != b)
   {
-    Debug("strings-explain")
+    // prefer having constants on the RHS, which helps proof reconstruction
+    if (a.isConst() && !b.isConst())
+    {
+      Node tmp = a;
+      a = b;
+      b = tmp;
+    }
+    Trace("strings-explain")
         << "Add to explanation : " << a << " == " << b << std::endl;
     Assert(d_state.areEqual(a, b));
     exp.push_back(a.eqNode(b));
@@ -276,102 +260,124 @@ void InferenceManager::addToExplanation(Node lit, std::vector<Node>& exp) const
   }
 }
 
-bool InferenceManager::hasProcessed() const
+void InferenceManager::markInactive(Node n, ExtReducedId id, bool contextDepend)
 {
-  return d_state.isInConflict() || hasPending();
-}
-
-void InferenceManager::markCongruent(Node a, Node b)
-{
-  Assert(a.getKind() == b.getKind());
-  if (d_extt.hasFunctionKind(a.getKind()))
-  {
-    d_extt.markCongruent(a, b);
-  }
-}
-
-void InferenceManager::markReduced(Node n, bool contextDepend)
-{
-  d_extt.markReduced(n, contextDepend);
+  d_extt.markInactive(n, id, contextDepend);
 }
 
 void InferenceManager::processConflict(const InferInfo& ii)
 {
   Assert(!d_state.isInConflict());
-  // setup the fact to reproduce the proof in the call below
-  d_statistics.d_inferences << ii.d_id;
-  if (d_ipc != nullptr)
+  if (ii.getId() == InferenceId::STRINGS_PREFIX_CONFLICT)
   {
-    d_ipc->notifyFact(ii);
+    bool isSuf = ii.d_idRev;
+    // The shape of prefix conflicts is P1? ^ P2? ^ (= x y)?
+    // where if applicable:
+    //   P1 implies a prefix on string x,
+    //   P2 implies a (conflicting) prefix on string y.
+    // See EqcInfo::mkMergeConflict.
+    Trace("strings-prefix-min") << "Minimize prefix conflict " << ii.d_premises
+                                << ", isSuf=" << isSuf << std::endl;
+    size_t npremises = ii.d_premises.size();
+    Node eq = ii.d_premises[npremises - 1];
+    // if we included an equality, we will try to minimize its explanation
+    if (eq.getKind() == Kind::EQUAL)
+    {
+      InferInfo iim(InferenceId::STRINGS_PREFIX_CONFLICT_MIN);
+      Node pft[2] = {eq[0], eq[1]};
+      for (size_t i = 0; i < (npremises - 1); i++)
+      {
+        if (ii.d_premises[i].getKind() == Kind::STRING_IN_REGEXP)
+        {
+          size_t eindex = ii.d_premises[i][0] == eq[0] ? 0 : 1;
+          Assert(ii.d_premises[i][0] == eq[eindex]);
+          // the basis of prefix for eq[eindex] is the RE of this premise
+          pft[eindex] = ii.d_premises[i][1];
+        }
+        // include it in the explanation
+        iim.d_premises.push_back(ii.d_premises[i]);
+      }
+      Trace("strings-prefix-min")
+          << "Prefix terms: " << pft[0] << " / " << pft[1] << std::endl;
+      Node pfv[2];
+      for (size_t i = 0; i < 2; i++)
+      {
+        pfv[i] = utils::getConstantEndpoint(pft[i], isSuf);
+      }
+      Trace("strings-prefix-min")
+          << "Prefixes: " << pfv[0] << " / " << pfv[1] << std::endl;
+      for (size_t i = 0; i < 2; i++)
+      {
+        if (pft[1 - i] == eq[1 - i] && pft[i] != eq[i])
+        {
+          // if the other side is justified by itself and we are justified
+          // externally, we can try to minimize the explanation of this
+          // get the minimal conflicting prefix
+          std::vector<TNode> assumptions;
+          explain(eq, assumptions);
+          std::map<TNode, TNode> emap = getExplanationMap(assumptions);
+          Node mexp =
+              mkPrefixExplainMin(eq[i], pfv[i], assumptions, emap, isSuf);
+          // if we minimized the conflict, process it
+          if (!mexp.isNull())
+          {
+            // must flatten here
+            utils::flattenOp(Kind::AND, mexp, iim.d_premises);
+            iim.d_conc = ii.d_conc;
+            processConflict(iim);
+            return;
+          }
+        }
+      }
+    }
+    // otherwise if we fail to minimize, process the original
+  }
+  // setup the fact to reproduce the proof in the call below
+  if (d_ipcl != nullptr)
+  {
+    d_ipcl->notifyLemma(ii);
   }
   // make the trust node
-  TrustNode tconf = mkConflictExp(ii.d_premises, d_ipc.get());
+  TrustNode tconf = mkConflictExp(ii.d_premises, d_ipcl.get());
   Assert(tconf.getKind() == TrustNodeKind::CONFLICT);
   Trace("strings-assert") << "(assert (not " << tconf.getNode()
-                          << ")) ; conflict " << ii.d_id << std::endl;
+                          << ")) ; conflict " << ii.getId() << std::endl;
   // send the trusted conflict
-  trustedConflict(tconf);
+  trustedConflict(tconf, ii.getId());
 }
 
-bool InferenceManager::processFact(InferInfo& ii)
+void InferenceManager::processFact(InferInfo& ii, ProofGenerator*& pg)
 {
-  // Get the fact(s). There are multiple facts if the conclusion is an AND
-  std::vector<Node> facts;
-  if (ii.d_conc.getKind() == AND)
-  {
-    for (const Node& cc : ii.d_conc)
-    {
-      facts.push_back(cc);
-    }
-  }
-  else
-  {
-    facts.push_back(ii.d_conc);
-  }
-  Trace("strings-assert") << "(assert (=> " << ii.getPremises() << " "
-                          << ii.d_conc << ")) ; fact " << ii.d_id << std::endl;
+  Trace("strings-assert") << "(assert (=> " << ii.getPremises(nodeManager())
+                          << " " << ii.d_conc << ")) ; fact " << ii.getId()
+                          << std::endl;
   Trace("strings-lemma") << "Strings::Fact: " << ii.d_conc << " from "
-                         << ii.getPremises() << " by " << ii.d_id
-                         << std::endl;
-  std::vector<Node> exp;
-  for (const Node& ec : ii.d_premises)
+                         << ii.getPremises(nodeManager()) << " by "
+                         << ii.getId() << std::endl;
+  if (d_ipc != nullptr)
   {
-    utils::flattenOp(AND, ec, exp);
+    // ensure the proof generator is ready to explain this fact in the
+    // current SAT context
+    d_ipc->notifyFact(ii);
+    pg = d_ipc.get();
   }
-  bool ret = false;
-  // convert for each fact
-  for (const Node& fact : facts)
+  // ensure facts are for rewritten terms
+  if (Configuration::isAssertionBuild())
   {
-    ii.d_conc = fact;
-    d_statistics.d_inferences << ii.d_id;
-    bool polarity = fact.getKind() != NOT;
-    TNode atom = polarity ? fact : fact[0];
-    bool curRet = false;
-    if (d_ipc != nullptr)
+    Node atom = ii.d_conc.getKind() == Kind::NOT ? ii.d_conc[0] : ii.d_conc;
+    if (atom.getKind() == Kind::EQUAL)
     {
-      // ensure the proof generator is ready to explain this fact in the
-      // current SAT context
-      d_ipc->notifyFact(ii);
-      // now, assert the internal fact with d_ipc as proof generator
-      curRet = assertInternalFact(atom, polarity, exp, d_ipc.get());
+      Assert(rewrite(atom[0]) == atom[0]);
+      Assert(rewrite(atom[1]) == atom[1]);
     }
     else
     {
-      Node cexp = utils::mkAnd(exp);
-      // without proof generator
-      curRet = assertInternalFact(atom, polarity, cexp);
-    }
-    ret = ret || curRet;
-    // may be in conflict
-    if (d_state.isInConflict())
-    {
-      break;
+      Assert(rewrite(atom) == atom);
     }
   }
-  return ret;
 }
 
-bool InferenceManager::processLemma(InferInfo& ii)
+TrustNode InferenceManager::processLemma(InferInfo& ii, LemmaProperty& p)
 {
   Assert(!ii.isTrivial());
   Assert(!ii.isConflict());
@@ -379,10 +385,10 @@ bool InferenceManager::processLemma(InferInfo& ii)
   std::vector<Node> exp;
   for (const Node& ec : ii.d_premises)
   {
-    utils::flattenOp(AND, ec, exp);
+    utils::flattenOp(Kind::AND, ec, exp);
   }
   std::vector<Node> noExplain;
-  if (!options::stringRExplainLemmas())
+  if (!options().strings.stringRExplainLemmas)
   {
     // if we aren't regressing the explanation, we add all literals to
     // noExplain and ignore ii.d_ant.
@@ -393,17 +399,16 @@ bool InferenceManager::processLemma(InferInfo& ii)
     // otherwise, the no-explain literals are those provided
     for (const Node& ecn : ii.d_noExplain)
     {
-      utils::flattenOp(AND, ecn, noExplain);
+      utils::flattenOp(Kind::AND, ecn, noExplain);
     }
   }
   // ensure that the proof generator is ready to explain the final conclusion
   // of the lemma (ii.d_conc).
-  d_statistics.d_inferences << ii.d_id;
-  if (d_ipc != nullptr)
+  if (d_ipcl != nullptr)
   {
-    d_ipc->notifyFact(ii);
+    d_ipcl->notifyLemma(ii);
   }
-  TrustNode tlem = mkLemmaExp(ii.d_conc, exp, noExplain, d_ipc.get());
+  TrustNode tlem = mkLemmaExp(ii.d_conc, exp, noExplain, d_ipcl.get());
   Trace("strings-pending") << "Process pending lemma : " << tlem.getNode()
                            << std::endl;
 
@@ -419,21 +424,137 @@ bool InferenceManager::processLemma(InferInfo& ii)
       d_termReg.registerTermAtomic(n, sks.first);
     }
   }
-  LemmaProperty p = LemmaProperty::NONE;
-  if (ii.d_id == Inference::REDUCTION)
+  if (ii.getId() == InferenceId::STRINGS_REDUCTION)
   {
     p |= LemmaProperty::NEEDS_JUSTIFY;
   }
+  // send phase requirements
+  for (const std::pair<const Node, bool>& pp : ii.d_pendingPhase)
+  {
+    Node ppr = rewrite(pp.first);
+    addPendingPhaseRequirement(ppr, pp.second);
+  }
   Trace("strings-assert") << "(assert " << tlem.getNode() << ") ; lemma "
-                          << ii.d_id << std::endl;
+                          << ii.getId() << std::endl;
   Trace("strings-lemma") << "Strings::Lemma: " << tlem.getNode() << " by "
-                         << ii.d_id << std::endl;
-  ++(d_statistics.d_lemmasInfer);
+                         << ii.getId() << std::endl;
+  return tlem;
+}
 
-  // call the trusted lemma, without caching
-  return trustedLemma(tlem, p, false);
+std::map<TNode, TNode> InferenceManager::getExplanationMap(
+    const std::vector<TNode>& assumptions)
+{
+  std::map<TNode, TNode> emap;
+  for (TNode e : assumptions)
+  {
+    if (e.getKind() != Kind::EQUAL)
+    {
+      // skip non-equalities, which could be included if we internally
+      // concluded an equality as a fact from a non-equality
+      continue;
+    }
+    for (size_t i = 0; i < 2; i++)
+    {
+      emap[e[i]] = e;
+    }
+  }
+  return emap;
+}
+Node InferenceManager::mkPrefixExplainMin(Node x,
+                                          Node prefix,
+                                          const std::vector<TNode>& assumptions,
+                                          const std::map<TNode, TNode>& emap,
+                                          bool isSuf)
+{
+  Assert(prefix.isConst());
+  Trace("strings-prefix-min")
+      << "mkPrefixExplainMin: " << x << " for " << (isSuf ? "suffix" : "prefix")
+      << " " << prefix << std::endl;
+  Trace("strings-prefix-min") << "- via: " << assumptions << std::endl;
+  std::vector<TNode> minAssumptions;
+  // the current node(s) we are looking at
+  std::vector<TNode> cc;
+  cc.push_back(x);
+  size_t pindex = 0;
+  std::vector<Node> pchars = Word::getChars(prefix);
+  std::map<TNode, TNode>::const_iterator it;
+  bool isConflict = false;
+  while (pindex < pchars.size() && !cc.empty())
+  {
+    Trace("strings-prefix-min")
+        << "  " << pindex << "/" << pchars.size() << ", " << cc << std::endl;
+    TNode c = cc.back();
+    cc.pop_back();
+    if (c.isConst())
+    {
+      // check for conflict
+      std::vector<Node> cchars = Word::getChars(c);
+      size_t cindex = 0;
+      while (pindex < pchars.size() && cindex < cchars.size())
+      {
+        size_t pii = isSuf ? (pchars.size() - 1) - pindex : pindex;
+        size_t cii = isSuf ? (cchars.size() - 1) - cindex : cindex;
+        if (cchars[cii] != pchars[pii])
+        {
+          Trace("strings-prefix-min") << "...conflict at " << pindex
+                                      << " while processing " << c << std::endl;
+          isConflict = true;
+          break;
+        }
+        pindex++;
+        cindex++;
+      }
+      if (isConflict)
+      {
+        break;
+      }
+      continue;
+    }
+    it = emap.find(c);
+    if (it != emap.end())
+    {
+      TNode ceq = it->second;
+      // do not continue if not already processed, which also avoids
+      // non-termination
+      if (std::find(minAssumptions.begin(), minAssumptions.end(), ceq)
+          == minAssumptions.end())
+      {
+        Assert(ceq.getKind() == Kind::EQUAL);
+        Assert(ceq[0] == c || ceq[1] == c);
+        // add to explanation and look at the term it is equal to
+        minAssumptions.push_back(ceq);
+        TNode oc = ceq[ceq[0] == c ? 1 : 0];
+        cc.push_back(oc);
+        continue;
+      }
+    }
+    // we don't know what it is equal to
+    // if it is a concatenation, try to recurse into children
+    if (c.getKind() == Kind::STRING_CONCAT)
+    {
+      for (size_t i = 0, nchild = c.getNumChildren(); i < nchild; i++)
+      {
+        // reverse if it is a prefix
+        size_t ii = isSuf ? i : (nchild - 1) - i;
+        cc.push_back(c[ii]);
+      }
+      continue;
+    }
+    Trace("strings-prefix-min") << "-> no explanation for " << c << std::endl;
+    break;
+  }
+  if (isConflict && minAssumptions.size() < assumptions.size())
+  {
+    Trace("strings-prefix-min")
+        << "-> min-explained: " << minAssumptions << std::endl;
+    Trace("strings-exp-min-stats")
+        << "Min-explain (prefix) " << minAssumptions.size() << " / "
+        << assumptions.size() << std::endl;
+    return nodeManager()->mkAnd(minAssumptions);
+  }
+  return Node::null();
 }
 
 }  // namespace strings
 }  // namespace theory
-}  // namespace CVC4
+}  // namespace cvc5::internal

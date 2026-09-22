@@ -1,36 +1,34 @@
-/*********************                                                        */
-/*! \file quant_relevance.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds, Morgan Deters, Mathias Preiner
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief quantifier relevance
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * quantifier relevance
+ */
 
-#include "cvc4_private.h"
+#include "cvc5_private.h"
 
-#ifndef CVC4__THEORY__QUANT_RELEVANCE_H
-#define CVC4__THEORY__QUANT_RELEVANCE_H
+#ifndef CVC5__THEORY__QUANT_RELEVANCE_H
+#define CVC5__THEORY__QUANT_RELEVANCE_H
 
 #include <map>
 
 #include "theory/quantifiers/quant_util.h"
 
-namespace CVC4 {
+namespace cvc5::internal {
 namespace theory {
 namespace quantifiers {
 
 /** QuantRelevance
  *
-* This class is used for implementing SinE-style heuristics
-* (e.g. see Hoder et al. CADE 2011)
-* This is enabled by the option --relevant-triggers.
-*/
+ * This class is used for implementing SinE-style heuristics
+ * (e.g. see Hoder et al. CADE 2011)
+ * This is enabled by the option --relevant-triggers.
+ */
 class QuantRelevance : public QuantifiersUtil
 {
  public:
@@ -39,10 +37,10 @@ class QuantRelevance : public QuantifiersUtil
    * if this is false, then all calls to getRelevance
    * return -1.
    */
-  QuantRelevance() {}
+  QuantRelevance(Env& env);
   ~QuantRelevance() {}
   /** reset */
-  bool reset(Theory::Effort e) override { return true; }
+  bool reset(CVC5_UNUSED Theory::Effort e) override { return true; }
   /** register quantifier */
   void registerQuantifier(Node q) override;
   /** identify */
@@ -61,8 +59,8 @@ class QuantRelevance : public QuantifiersUtil
   void computeSymbols(Node n, std::vector<Node>& syms);
 };
 
-} /* CVC4::theory::quantifiers namespace */
-} /* CVC4::theory namespace */
-} /* CVC4 namespace */
+}  // namespace quantifiers
+}  // namespace theory
+}  // namespace cvc5::internal
 
-#endif /* CVC4__THEORY__QUANT_RELEVANCE_H */
+#endif /* CVC5__THEORY__QUANT_RELEVANCE_H */

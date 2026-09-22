@@ -1,33 +1,33 @@
-/*********************                                                        */
-/*! \file type_info.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds, Mathias Preiner
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Implementation of sygus type info class
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Implementation of sygus type info class.
+ */
 
 #include "theory/quantifiers/sygus/type_info.h"
 
 #include "base/check.h"
 #include "expr/dtype.h"
-#include "expr/sygus_datatype.h"
+#include "expr/dtype_cons.h"
 #include "theory/datatypes/sygus_datatype_utils.h"
 #include "theory/quantifiers/sygus/term_database_sygus.h"
+#include "theory/quantifiers/sygus/type_node_id_trie.h"
 
-using namespace CVC4::kind;
+using namespace cvc5::internal::kind;
 
-namespace CVC4 {
+namespace cvc5::internal {
 namespace theory {
 namespace quantifiers {
 
 SygusTypeInfo::SygusTypeInfo()
     : d_hasIte(false),
+      d_hasBoolConnective(false),
       d_min_term_size(0),
       d_sym_cons_any_constant(-1),
       d_has_subterm_sym_cons(false)
@@ -97,8 +97,8 @@ void SygusTypeInfo::initialize(TermDbSygus* tds, TypeNode tn)
     Node sop = dt[i].getSygusOp();
     Assert(!sop.isNull());
     Trace("sygus-db") << "  Operator #" << i << " : " << sop;
-    Kind builtinKind = UNDEFINED_KIND;
-    if (sop.getKind() == kind::BUILTIN)
+    Kind builtinKind = Kind::UNDEFINED_KIND;
+    if (sop.getKind() == Kind::BUILTIN)
     {
       builtinKind = NodeManager::operatorToKind(sop);
       Trace("sygus-db") << ", kind = " << builtinKind;
@@ -109,7 +109,7 @@ void SygusTypeInfo::initialize(TermDbSygus* tds, TypeNode tn)
       d_consts[sop] = i;
       d_arg_const[i] = sop;
     }
-    else if (sop.getKind() == LAMBDA)
+    else if (sop.getKind() == Kind::LAMBDA)
     {
       // do type checking
       Assert(sop[0].getNumChildren() == dt[i].getNumArgs());
@@ -118,7 +118,7 @@ void SygusTypeInfo::initialize(TermDbSygus* tds, TypeNode tn)
         TypeNode ct = dt[i].getArgType(j);
         TypeNode cbt = tds->sygusToBuiltinType(ct);
         TypeNode lat = sop[0][j].getType();
-        AlwaysAssert(cbt.isSubtypeOf(lat))
+        AlwaysAssert(cbt == lat)
             << "In sygus datatype " << dt.getName()
             << ", argument to a lambda constructor is not " << lat << std::endl;
       }
@@ -136,25 +136,20 @@ void SygusTypeInfo::initialize(TermDbSygus* tds, TypeNode tn)
             if (sop[0][j] != sop[1][j])
             {
               // arguments not in order
-              builtinKind = UNDEFINED_KIND;
+              builtinKind = Kind::UNDEFINED_KIND;
               break;
             }
           }
         }
       }
     }
-    if (builtinKind != UNDEFINED_KIND)
+    if (builtinKind != Kind::UNDEFINED_KIND)
     {
       d_kinds[builtinKind] = i;
       d_arg_kind[i] = builtinKind;
-      if (builtinKind == ITE)
-      {
-        // mark that this type has an ITE
-        d_hasIte = true;
-      }
     }
     // symbolic constructors
-    if (sop.getAttribute(SygusAnyConstAttribute()))
+    if (dt[i].isSygusAnyConstant())
     {
       d_sym_cons_any_constant = i;
       d_has_subterm_sym_cons = true;
@@ -164,7 +159,7 @@ void SygusTypeInfo::initialize(TermDbSygus* tds, TypeNode tn)
     Trace("sygus-db") << std::endl;
     // We must properly catch type errors in sygus grammars for arguments of
     // builtin operators. The challenge is that we easily ask for expected
-    // argument types of builtin operators e.g. PLUS. Hence we use a call to
+    // argument types of builtin operators e.g. ADD. Hence we use a call to
     // mkGeneric below. This ensures that terms that this constructor encodes
     // are of the type specified in the datatype. This will fail if
     // e.g. bitvector-and is a constructor of an integer grammar. Our (version
@@ -172,10 +167,41 @@ void SygusTypeInfo::initialize(TermDbSygus* tds, TypeNode tn)
     // terms, so the term created by mkGeneric will also be well-typed here.
     Node g = tds->mkGeneric(dt, i);
     TypeNode gtn = g.getType();
-    AlwaysAssert(gtn.isSubtypeOf(btn))
+    AlwaysAssert(gtn == btn)
         << "Sygus datatype " << dt.getName()
-        << " encodes terms that are not of type " << btn << std::endl;
+        << " encodes terms that are not of type " << btn << std::endl
+        << "Due to " << g << " of type " << gtn << std::endl;
     Trace("sygus-db") << "...done register Operator #" << i << std::endl;
+    Kind gk = g.getKind();
+    if (gk == Kind::ITE)
+    {
+      // mark that this type has an ITE
+      d_hasIte = true;
+      if (g.getType().isBoolean())
+      {
+        d_hasBoolConnective = true;
+      }
+    }
+    else if (gk == Kind::AND || gk == Kind::OR || gk == Kind::IMPLIES
+             || gk == Kind::XOR
+             || (gk == Kind::EQUAL && g[0].getType().isBoolean()))
+    {
+      d_hasBoolConnective = true;
+    }
+    if (TraceIsOn("sygus-db"))
+    {
+      Node eop = datatypes::utils::getExpandedDefinitionForm(sop);
+      Trace("sygus-db") << "Expanded form: ";
+      if (eop == sop)
+      {
+        Trace("sygus-db") << "same";
+      }
+      else
+      {
+        Trace("sygus-db") << eop;
+      }
+      Trace("sygus-db") << std::endl;
+    }
   }
   // compute minimum type depth information
   computeMinTypeDepthInternal(tn, 0);
@@ -313,7 +339,7 @@ unsigned SygusTypeInfo::getMinTypeDepth(TypeNode tn) const
   std::map<TypeNode, unsigned>::const_iterator it = d_min_type_depth.find(tn);
   if (it != d_min_type_depth.end())
   {
-    Assert(false);
+    DebugUnhandled();
     return 0;
   }
   return it->second;
@@ -328,7 +354,7 @@ unsigned SygusTypeInfo::getMinConsTermSize(unsigned cindex)
   {
     return it->second;
   }
-  Assert(false);
+  DebugUnhandled();
   return 0;
 }
 
@@ -372,6 +398,7 @@ int SygusTypeInfo::getOpConsNum(Node n) const
 
 bool SygusTypeInfo::hasKind(Kind k) const { return getKindConsNum(k) != -1; }
 bool SygusTypeInfo::hasIte() const { return d_hasIte; }
+bool SygusTypeInfo::hasBoolConnective() const { return d_hasBoolConnective; }
 bool SygusTypeInfo::hasConst(Node n) const { return getConstConsNum(n) != -1; }
 bool SygusTypeInfo::hasOp(Node n) const { return getOpConsNum(n) != -1; }
 
@@ -402,12 +429,12 @@ Kind SygusTypeInfo::getConsNumKind(unsigned i) const
   {
     return itk->second;
   }
-  return UNDEFINED_KIND;
+  return Kind::UNDEFINED_KIND;
 }
 
 bool SygusTypeInfo::isKindArg(unsigned i) const
 {
-  return getConsNumKind(i) != UNDEFINED_KIND;
+  return getConsNumKind(i) != Kind::UNDEFINED_KIND;
 }
 
 bool SygusTypeInfo::isConstArg(unsigned i) const
@@ -430,7 +457,7 @@ unsigned SygusTypeInfo::getSubclassForVar(Node n) const
   std::map<Node, unsigned>::const_iterator itcc = d_var_subclass_id.find(n);
   if (itcc == d_var_subclass_id.end())
   {
-    Assert(false);
+    DebugUnhandled();
     return 0;
   }
   return itcc->second;
@@ -442,7 +469,7 @@ unsigned SygusTypeInfo::getNumSubclassVars(unsigned sc) const
       d_var_subclass_list.find(sc);
   if (itvv == d_var_subclass_list.end())
   {
-    Assert(false);
+    DebugUnhandled();
     return 0;
   }
   return itvv->second.size();
@@ -453,7 +480,7 @@ Node SygusTypeInfo::getVarSubclassIndex(unsigned sc, unsigned i) const
       d_var_subclass_list.find(sc);
   if (itvv == d_var_subclass_list.end() || i >= itvv->second.size())
   {
-    Assert(false);
+    DebugUnhandled();
     return Node::null();
   }
   return itvv->second[i];
@@ -486,4 +513,4 @@ bool SygusTypeInfo::isSubclassVarTrivial() const
 
 }  // namespace quantifiers
 }  // namespace theory
-}  // namespace CVC4
+}  // namespace cvc5::internal

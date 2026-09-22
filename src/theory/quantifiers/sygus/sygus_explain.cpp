@@ -1,27 +1,29 @@
-/*********************                                                        */
-/*! \file sygus_explain.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Implementation of techniques for sygus explanations
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Implementation of techniques for sygus explanations.
+ */
 
 #include "theory/quantifiers/sygus/sygus_explain.h"
 
 #include "expr/dtype.h"
+#include "expr/dtype_cons.h"
+#include "options/datatypes_options.h"
+#include "smt/logic_exception.h"
+#include "theory/datatypes/sygus_datatype_utils.h"
 #include "theory/datatypes/theory_datatypes_utils.h"
+#include "theory/quantifiers/sygus/sygus_invariance.h"
 #include "theory/quantifiers/sygus/term_database_sygus.h"
 
-using namespace CVC4::kind;
-using namespace std;
+using namespace cvc5::internal::kind;
 
-namespace CVC4 {
+namespace cvc5::internal {
 namespace theory {
 namespace quantifiers {
 
@@ -108,7 +110,11 @@ Node TermRecBuild::build(unsigned d)
     }
     children.push_back(nc);
   }
-  return NodeManager::currentNM()->mkNode(d_kind[d], children);
+  return d_nm->mkNode(d_kind[d], children);
+}
+
+SygusExplain::SygusExplain(Env& env, TermDbSygus* tdb) : EnvObj(env), d_tdb(tdb)
+{
 }
 
 void SygusExplain::getExplanationForEquality(Node n,
@@ -126,7 +132,7 @@ void SygusExplain::getExplanationForEquality(Node n,
 {
   // since builtin types occur in grammar, types are comparable but not
   // necessarily equal
-  Assert(n.getType().isComparableTo(n.getType()));
+  AssertEqual(n.getType(), vn.getType());
   if (n == vn)
   {
     return;
@@ -138,17 +144,17 @@ void SygusExplain::getExplanationForEquality(Node n,
     // abstractions only, hence we disregard this field
     return;
   }
-  Assert(vn.getKind() == kind::APPLY_CONSTRUCTOR);
+  Assert(vn.getKind() == Kind::APPLY_CONSTRUCTOR);
   const DType& dt = tn.getDType();
   int i = datatypes::utils::indexOf(vn.getOperator());
   Node tst = datatypes::utils::mkTester(n, i, dt);
   exp.push_back(tst);
-  for (unsigned j = 0; j < vn.getNumChildren(); j++)
+  bool shareSel = options().datatypes.dtSharedSelectors;
+  for (size_t j = 0, vnc = vn.getNumChildren(); j < vnc; j++)
   {
     if (cexc.find(j) == cexc.end())
     {
-      Node sel = NodeManager::currentNM()->mkNode(
-          kind::APPLY_SELECTOR_TOTAL, dt[i].getSelectorInternal(tn, j), n);
+      Node sel = datatypes::utils::applySelector(dt[i], j, shareSel, n);
       getExplanationForEquality(sel, vn[j], exp);
     }
   }
@@ -167,8 +173,7 @@ Node SygusExplain::getExplanationForEquality(Node n,
   std::vector<Node> exp;
   getExplanationForEquality(n, vn, exp, cexc);
   Assert(!exp.empty());
-  return exp.size() == 1 ? exp[0]
-                         : NodeManager::currentNM()->mkNode(kind::AND, exp);
+  return exp.size() == 1 ? exp[0] : nodeManager()->mkNode(Kind::AND, exp);
 }
 
 // we have ( n = vn => eval( n ) = bvr ) ^ vn != vnr , returns exp such that exp
@@ -177,14 +182,14 @@ void SygusExplain::getExplanationFor(TermRecBuild& trb,
                                      Node n,
                                      Node vn,
                                      std::vector<Node>& exp,
-                                     std::map<TypeNode, int>& var_count,
+                                     std::map<TypeNode, size_t>& var_count,
                                      SygusInvarianceTest& et,
                                      Node vnr,
                                      Node& vnr_exp,
                                      int& sz)
 {
   Assert(vnr.isNull() || vn != vnr);
-  Assert(n.getType().isComparableTo(vn.getType()));
+  AssertEqual(n.getType(), vn.getType());
   TypeNode ntn = n.getType();
   if (!ntn.isDatatype())
   {
@@ -197,10 +202,10 @@ void SygusExplain::getExplanationFor(TermRecBuild& trb,
     // constant constructors, since their explanation is not included here.
     return;
   }
-  Assert(vn.getKind() == APPLY_CONSTRUCTOR);
-  Assert(vnr.isNull() || vnr.getKind() == APPLY_CONSTRUCTOR);
+  Assert(vn.getKind() == Kind::APPLY_CONSTRUCTOR);
+  Assert(vnr.isNull() || vnr.getKind() == Kind::APPLY_CONSTRUCTOR);
   std::map<unsigned, bool> cexc;
-  // for each child, 
+  // for each child,
   // check whether replacing that child by a fresh variable
   // also satisfies the invariance test.
   for (unsigned i = 0; i < vn.getNumChildren(); i++)
@@ -209,14 +214,14 @@ void SygusExplain::getExplanationFor(TermRecBuild& trb,
     Node x = d_tdb->getFreeVarInc(xtn, var_count);
     trb.replaceChild(i, x);
     Node nvn = trb.build();
-    Assert(nvn.getKind() == kind::APPLY_CONSTRUCTOR);
+    Assert(nvn.getKind() == Kind::APPLY_CONSTRUCTOR);
     if (et.is_invariant(d_tdb, nvn, x))
     {
       cexc[i] = true;
       // we are tracking term size if positive
       if (sz >= 0)
       {
-        int s = d_tdb->getSygusTermSize(vn[i]);
+        int s = datatypes::utils::getSygusTermSize(vn[i]);
         sz = sz - s;
       }
     }
@@ -238,13 +243,13 @@ void SygusExplain::getExplanationFor(TermRecBuild& trb,
     if (vnr.getOperator() != vn.getOperator())
     {
       vnr = Node::null();
-      vnr_exp = NodeManager::currentNM()->mkConst(true);
+      vnr_exp = nodeManager()->mkConst(true);
     }
   }
-  for (unsigned i = 0; i < vn.getNumChildren(); i++)
+  bool shareSel = options().datatypes.dtSharedSelectors;
+  for (size_t i = 0, vnc = vn.getNumChildren(); i < vnc; i++)
   {
-    Node sel = NodeManager::currentNM()->mkNode(
-        kind::APPLY_SELECTOR_TOTAL, dt[cindex].getSelectorInternal(ntn, i), n);
+    Node sel = datatypes::utils::applySelector(dt[cindex], i, shareSel, n);
     Node vnr_c = vnr.isNull() ? vnr : (vn[i] == vnr[i] ? Node::null() : vnr[i]);
     if (cexc.find(i) == cexc.end())
     {
@@ -286,7 +291,7 @@ void SygusExplain::getExplanationFor(Node n,
                                      Node vnr,
                                      unsigned& sz)
 {
-  std::map<TypeNode, int> var_count;
+  std::map<TypeNode, size_t> var_count;
   return getExplanationFor(n, vn, exp, et, vnr, var_count, sz);
 }
 
@@ -295,14 +300,14 @@ void SygusExplain::getExplanationFor(Node n,
                                      std::vector<Node>& exp,
                                      SygusInvarianceTest& et,
                                      Node vnr,
-                                     std::map<TypeNode, int>& var_count,
+                                     std::map<TypeNode, size_t>& var_count,
                                      unsigned& sz)
 {
   // naive :
   // return getExplanationForEquality( n, vn, exp );
 
   // set up the recursion object;
-  TermRecBuild trb;
+  TermRecBuild trb(nodeManager());
   trb.init(vn);
   Node vnr_exp;
   int sz_use = sz;
@@ -322,7 +327,7 @@ void SygusExplain::getExplanationFor(Node n,
                                      SygusInvarianceTest& et,
                                      bool strict)
 {
-  std::map<TypeNode, int> var_count;
+  std::map<TypeNode, size_t> var_count;
   getExplanationFor(n, vn, exp, et, var_count, strict);
 }
 
@@ -330,7 +335,7 @@ void SygusExplain::getExplanationFor(Node n,
                                      Node vn,
                                      std::vector<Node>& exp,
                                      SygusInvarianceTest& et,
-                                     std::map<TypeNode, int>& var_count,
+                                     std::map<TypeNode, size_t>& var_count,
                                      bool strict)
 {
   if (!strict)
@@ -345,13 +350,13 @@ void SygusExplain::getExplanationFor(Node n,
     var_count[vtn]--;
   }
   int sz = -1;
-  TermRecBuild trb;
+  TermRecBuild trb(nodeManager());
   trb.init(vn);
   Node vnr;
   Node vnr_exp;
   getExplanationFor(trb, n, vn, exp, var_count, et, vnr, vnr_exp, sz);
 }
 
-} /* CVC4::theory::quantifiers namespace */
-} /* CVC4::theory namespace */
-} /* CVC4 namespace */
+}  // namespace quantifiers
+}  // namespace theory
+}  // namespace cvc5::internal

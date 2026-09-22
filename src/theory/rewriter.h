@@ -1,69 +1,49 @@
-/*********************                                                        */
-/*! \file rewriter.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Andres Noetzli, Andrew Reynolds, Dejan Jovanovic
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief The Rewriter class
- **
- ** The Rewriter class.
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * The Rewriter class.
+ */
 
-#include "cvc4_private.h"
+#include "cvc5_private.h"
 
 #pragma once
 
-#include "expr/node.h"
-#include "expr/term_conversion_proof_generator.h"
-#include "theory/theory_rewriter.h"
-#include "theory/trust_node.h"
-#include "util/unsafe_interrupt_exception.h"
+#include <cvc5/cvc5_proof_rule.h>
 
-namespace CVC4 {
+#include "expr/node.h"
+#include "theory/theory_rewriter.h"
+
+namespace cvc5::internal {
+
+class Env;
+class TConvProofGenerator;
+class ProofNodeManager;
+class TrustNode;
+
 namespace theory {
 
-namespace builtin {
-class BuiltinProofRuleChecker;
-}
-
-class RewriterInitializer;
-
-/**
- * The rewrite environment holds everything that the individual rewrites have
- * access to.
- */
-class RewriteEnvironment
-{
-};
-
-/**
- * The identity rewrite just returns the original node.
- *
- * @param re The rewrite environment
- * @param n The node to rewrite
- * @return The original node
- */
-RewriteResponse identityRewrite(RewriteEnvironment* re, TNode n);
+class Evaluator;
 
 /**
  * The main rewriter class.
  */
-class Rewriter {
-  friend builtin::BuiltinProofRuleChecker;
-
+class Rewriter
+{
+  friend class cvc5::internal::Env;  // to set the resource manager
  public:
-  Rewriter();
+  Rewriter(NodeManager* nm);
 
   /**
    * Rewrites the node using theoryOf() to determine which rewriter to
    * use on the node.
    */
-  static Node rewrite(TNode node);
+  Node rewrite(TNode node);
 
   /**
    * Rewrites the equality node using theoryOf() to determine which rewriter to
@@ -75,7 +55,20 @@ class Rewriter {
    * combination, which needs to guarantee that equalities between terms
    * can be communicated for all pairs of terms.
    */
-  static Node rewriteEqualityExt(TNode node);
+  Node rewriteEqualityExt(TNode node);
+
+  /**
+   * !!! Temporary until static access to rewriter is eliminated. This method
+   * should be moved to same place as evaluate (currently in Env).
+   *
+   * Extended rewrite of the given node. This method is implemented by a
+   * custom ExtendRewriter class that wraps this class to perform custom
+   * rewrites (usually those that are not useful for solving, but e.g. useful
+   * for SyGuS symmetry breaking).
+   * @param node The node to rewrite
+   * @param aggr Whether to perform aggressive rewrites.
+   */
+  Node extendedRewrite(TNode node, bool aggr = true);
 
   /**
    * Rewrite with proof production, which is managed by the term conversion
@@ -88,16 +81,10 @@ class Rewriter {
    * @return The trust node of kind TrustNodeKind::REWRITE that contains the
    * rewritten form of node.
    */
-  TrustNode rewriteWithProof(TNode node,
-                             bool isExtEq = false);
+  TrustNode rewriteWithProof(TNode node, bool isExtEq = false);
 
-  /** Set proof node manager */
-  void setProofNodeManager(ProofNodeManager* pnm);
-
-  /**
-   * Garbage collects the rewrite caches.
-   */
-  static void clearCaches();
+  /** Finish init, which sets up the proof manager if applicable */
+  void finishInit(Env& env);
 
   /**
    * Registers a theory rewriter with this rewriter. The rewriter does not own
@@ -106,56 +93,32 @@ class Rewriter {
    * @param tid The theory that the theory rewriter should be associated with.
    * @param trew The theory rewriter to register.
    */
-  static void registerTheoryRewriter(theory::TheoryId tid,
-                                     TheoryRewriter* trew);
+  void registerTheoryRewriter(theory::TheoryId tid, TheoryRewriter* trew);
+
+  /** Get the theory rewriter for the given id */
+  TheoryRewriter* getTheoryRewriter(theory::TheoryId theoryId);
 
   /**
-   * Register a prerewrite for a given kind.
-   *
-   * @param k The kind to register a rewrite for.
-   * @param fn The function that performs the rewrite.
+   * Rewrite n based on the proof rewrite rule id.
+   * @param id The rewrite rule.
+   * @param n The node to rewrite.
+   * @return The rewritten version of n based on id, or Node::null() if n
+   * cannot be rewritten.
    */
-  void registerPreRewrite(
-      Kind k, std::function<RewriteResponse(RewriteEnvironment*, TNode)> fn);
-
+  Node rewriteViaRule(ProofRewriteRule id, const Node& n);
   /**
-   * Register a postrewrite for a given kind.
-   *
-   * @param k The kind to register a rewrite for.
-   * @param fn The function that performs the rewrite.
+   * Find the rewrite that proves a == b, if one exists.
+   * If none can be found, return ProofRewriteRule::NONE.
+   * @param a The left hand side of the rewrite.
+   * @param b The right hand side of the rewrite.
+   * @param ctx The context for which we are finding the rule.
+   * @return An identifier, if one exists, that rewrites a to b. In particular,
+   * the returned rule is either ProofRewriteRule::NONE or is a rule id such
+   * that rewriteViaRule(id, a) returns b.
    */
-  void registerPostRewrite(
-      Kind k, std::function<RewriteResponse(RewriteEnvironment*, TNode)> fn);
-
-  /**
-   * Register a prerewrite for equalities belonging to a given theory.
-   *
-   * @param tid The theory to register a rewrite for.
-   * @param fn The function that performs the rewrite.
-   */
-  void registerPreRewriteEqual(
-      theory::TheoryId tid,
-      std::function<RewriteResponse(RewriteEnvironment*, TNode)> fn);
-
-  /**
-   * Register a postrewrite for equalities belonging to a given theory.
-   *
-   * @param tid The theory to register a rewrite for.
-   * @param fn The function that performs the rewrite.
-   */
-  void registerPostRewriteEqual(
-      theory::TheoryId tid,
-      std::function<RewriteResponse(RewriteEnvironment*, TNode)> fn);
+  ProofRewriteRule findRule(const Node& a, const Node& b, TheoryRewriteCtx ctx);
 
  private:
-  /**
-   * Get the rewriter associated with the SmtEngine in scope.
-   *
-   * TODO(#3468): Get rid of this function (it relies on there being an
-   * singleton with the current SmtEngine in scope)
-   */
-  static Rewriter* getInstance();
-
   /** Returns the appropriate cache for a node */
   Node getPreRewriteCache(theory::TheoryId theoryId, TNode node);
 
@@ -196,39 +159,34 @@ class Rewriter {
    */
   Node callRewriteEquality(theory::TheoryId theoryId, TNode equality);
 
-  void clearCachesInternal();
+  /**
+   * Has n been rewritten with proofs? This checks if n is in d_tpgNodes.
+   */
+  bool hasRewrittenWithProofs(TNode n) const;
+
+  /** Pointer to the node manager */
+  NodeManager* d_nm;
+
+  /** The resource manager, for tracking resource usage */
+  ResourceManager* d_resourceManager;
 
   /** Theory rewriters used by this rewriter instance */
   TheoryRewriter* d_theoryRewriters[theory::THEORY_LAST];
-
-  /** Rewriter table for prewrites. Maps kinds to rewriter function. */
-  std::function<RewriteResponse(RewriteEnvironment*, TNode)>
-      d_preRewriters[kind::LAST_KIND];
-  /** Rewriter table for postrewrites. Maps kinds to rewriter function. */
-  std::function<RewriteResponse(RewriteEnvironment*, TNode)>
-      d_postRewriters[kind::LAST_KIND];
-  /**
-   * Rewriter table for prerewrites of equalities. Maps theory to rewriter
-   * function.
-   */
-  std::function<RewriteResponse(RewriteEnvironment*, TNode)>
-      d_preRewritersEqual[theory::THEORY_LAST];
-  /**
-   * Rewriter table for postrewrites of equalities. Maps theory to rewriter
-   * function.
-   */
-  std::function<RewriteResponse(RewriteEnvironment*, TNode)>
-      d_postRewritersEqual[theory::THEORY_LAST];
-
-  RewriteEnvironment d_re;
+  /** No-op theory rewriters, used when theory does not provide a rewriter */
+  std::vector<std::unique_ptr<NoOpTheoryRewriter>> d_nullTr;
 
   /** The proof generator */
   std::unique_ptr<TConvProofGenerator> d_tpg;
-#ifdef CVC4_ASSERTIONS
-  std::unique_ptr<std::unordered_set<Node, NodeHashFunction>> d_rewriteStack =
-      nullptr;
-#endif /* CVC4_ASSERTIONS */
-};/* class Rewriter */
+  /**
+   * Nodes rewritten with proofs. Since d_tpg contains a reference to all
+   * nodes that have been rewritten with proofs, we can keep only a TNode
+   * here.
+   */
+  std::unordered_set<TNode> d_tpgNodes;
+#ifdef CVC5_ASSERTIONS
+  std::unique_ptr<std::unordered_set<Node>> d_rewriteStack = nullptr;
+#endif /* CVC5_ASSERTIONS */
+}; /* class Rewriter */
 
-}/* CVC4::theory namespace */
-}/* CVC4 namespace */
+}  // namespace theory
+}  // namespace cvc5::internal

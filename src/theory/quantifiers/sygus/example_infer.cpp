@@ -1,33 +1,27 @@
-/*********************                                                        */
-/*! \file example_infer.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds, Haniel Barbosa, Morgan Deters
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Implementation of utility for inferring whether a formula is in
- ** examples form (functions applied to concrete arguments only).
- **
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Implementation of utility for inferring whether a formula is in
+ * examples form (functions applied to concrete arguments only).
+ */
 #include "theory/quantifiers/sygus/example_infer.h"
 
 #include "theory/quantifiers/quant_util.h"
 
-using namespace CVC4;
-using namespace CVC4::kind;
+using namespace cvc5::internal;
+using namespace cvc5::internal::kind;
 
-namespace CVC4 {
+namespace cvc5::internal {
 namespace theory {
 namespace quantifiers {
 
-ExampleInfer::ExampleInfer(TermDbSygus* tds) : d_tds(tds)
-{
-  d_isExamples = false;
-}
+ExampleInfer::ExampleInfer(NodeManager* nm) : d_nm(nm) { d_isExamples = false; }
 
 ExampleInfer::~ExampleInfer() {}
 
@@ -41,8 +35,7 @@ bool ExampleInfer::initialize(Node n, const std::vector<Node>& candidates)
     d_examplesOut[v].clear();
     d_examplesTerm[v].clear();
   }
-  std::map<std::pair<bool, bool>, std::unordered_set<Node, NodeHashFunction>>
-      visited;
+  std::map<std::pair<bool, bool>, std::unordered_set<Node>> visited;
   // n is negated conjecture
   if (!collectExamples(n, visited, true, false))
   {
@@ -50,7 +43,7 @@ bool ExampleInfer::initialize(Node n, const std::vector<Node>& candidates)
     return false;
   }
 
-  if (Trace.isOn("ex-infer"))
+  if (TraceIsOn("ex-infer"))
   {
     for (unsigned i = 0; i < candidates.size(); i++)
     {
@@ -86,8 +79,7 @@ bool ExampleInfer::initialize(Node n, const std::vector<Node>& candidates)
 
 bool ExampleInfer::collectExamples(
     Node n,
-    std::map<std::pair<bool, bool>, std::unordered_set<Node, NodeHashFunction>>&
-        visited,
+    std::map<std::pair<bool, bool>, std::unordered_set<Node>>& visited,
     bool hasPol,
     bool pol)
 {
@@ -98,24 +90,23 @@ bool ExampleInfer::collectExamples(
     return true;
   }
   visited[cacheIndex].insert(n);
-  NodeManager* nm = NodeManager::currentNM();
   Node neval;
   Node n_output;
   bool neval_is_evalapp = false;
-  if (n.getKind() == DT_SYGUS_EVAL)
+  if (n.getKind() == Kind::DT_SYGUS_EVAL)
   {
     neval = n;
     if (hasPol)
     {
-      n_output = nm->mkConst(pol);
+      n_output = d_nm->mkConst(pol);
     }
     neval_is_evalapp = true;
   }
-  else if (n.getKind() == EQUAL && hasPol && pol)
+  else if (n.getKind() == Kind::EQUAL && hasPol && pol)
   {
     for (unsigned r = 0; r < 2; r++)
     {
-      if (n[r].getKind() == DT_SYGUS_EVAL)
+      if (n[r].getKind() == Kind::DT_SYGUS_EVAL)
       {
         neval = n[r];
         if (n[1 - r].isConst())
@@ -240,7 +231,7 @@ void ExampleInfer::getExample(Node f, unsigned i, std::vector<Node>& ex) const
   }
   else
   {
-    Assert(false);
+    DebugUnhandled();
   }
 }
 
@@ -264,7 +255,7 @@ Node ExampleInfer::getExampleOut(Node f, unsigned i) const
     Assert(i < it->second.size());
     return it->second[i];
   }
-  Assert(false);
+  DebugUnhandled();
   return Node::null();
 }
 
@@ -275,4 +266,4 @@ bool ExampleInfer::hasExamplesOut(Node f) const
 
 }  // namespace quantifiers
 }  // namespace theory
-}  // namespace CVC4
+}  // namespace cvc5::internal

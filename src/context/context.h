@@ -1,29 +1,23 @@
-/*********************                                                        */
-/*! \file context.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Clark Barrett, Morgan Deters, Tim King
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Context class and context manager.
- **
- ** Context class and context manager.
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Context class and context manager.
+ */
 
-#include "cvc4_private.h"
+#include "cvc5parser_public.h"
 
-#ifndef CVC4__CONTEXT__CONTEXT_H
-#define CVC4__CONTEXT__CONTEXT_H
+#ifndef CVC5__CONTEXT__CONTEXT_H
+#define CVC5__CONTEXT__CONTEXT_H
 
 #include <cstdlib>
-#include <cstring>
 #include <iostream>
 #include <memory>
-#include <new>
 #include <typeinfo>
 #include <vector>
 
@@ -31,9 +25,7 @@
 #include "base/output.h"
 #include "context/context_mm.h"
 
-
-namespace CVC4 {
-namespace context {
+namespace cvc5::context {
 
 class Context;
 class Scope;
@@ -67,8 +59,8 @@ std::ostream& operator<<(std::ostream&, const Scope&);
  * ContextMemoryManager.  A copy is stored in each Scope object for quick
  * access.
  */
-class Context {
-
+class CVC5_EXPORT Context
+{
   /**
    * Pointer to the ContextMemoryManager for this Context.
    */
@@ -97,8 +89,7 @@ class Context {
   Context(const Context&) = delete;
   Context& operator=(const Context&) = delete;
 
-public:
-
+ public:
   /**
    * A mechanism by which a "scoped" bit of contextual speculation can
    * be applied.  One might create a Context::ScopedPush in a function
@@ -124,23 +115,26 @@ public:
    * which does some speculation which isn't properly scoped inside the
    * first.
    */
-  class ScopedPush {
+  class ScopedPush
+  {
     Context* const d_context;
     const Scope* const d_scope;
-  public:
-    ScopedPush(Context* ctxt) :
-      d_context(ctxt),
-      d_scope(d_context->getTopScope()) {
+
+   public:
+    ScopedPush(Context* ctxt)
+        : d_context(ctxt), d_scope(d_context->getTopScope())
+    {
       d_context->push();
     }
-    ~ScopedPush() noexcept(false) {
+    ~ScopedPush() noexcept(false)
+    {
       d_context->pop();
       AlwaysAssert(d_context->getTopScope() == d_scope)
           << "Context::ScopedPush observed an uneven Context (at pop, "
              "top scope doesn't match what it was at the time the "
              "ScopedPush was applied)";
     }
-  };/* Context::ScopedPush */
+  }; /* Context::ScopedPush */
 
   /**
    * Constructor: create ContextMemoryManager and initial Scope
@@ -165,7 +159,7 @@ public:
   /**
    * Return the current Scope level.
    */
-  int getLevel() const { return d_scopeList.size() - 1; }
+  uint32_t getLevel() const;
 
   /**
    * Return the ContextMemoryManager associated with the context.
@@ -185,7 +179,7 @@ public:
   /**
    * Pop all the way back to given level
    */
-  void popto(int toLevel);
+  void popto(uint32_t toLevel);
 
   /**
    * Add pCNO to the list of objects notified before every pop
@@ -197,23 +191,23 @@ public:
    */
   void addNotifyObjPost(ContextNotifyObj* pCNO);
 
-};/* class Context */
-
+}; /* class Context */
 
 /**
  * A UserContext is different from a Context only because it's used for
  * different purposes---so separating the two types gives type errors where
  * appropriate.
  */
-class UserContext : public Context {
-private:
+class UserContext : public Context
+{
+ private:
   // disable copy, assignment
   UserContext(const UserContext&) = delete;
   UserContext& operator=(const UserContext&) = delete;
-public:
-  UserContext() {}
-};/* class UserContext */
 
+ public:
+  UserContext() {}
+}; /* class UserContext */
 
 /**
  * Conceptually, a Scope encapsulates that portion of the context that
@@ -230,8 +224,8 @@ public:
  * allocated by the Scope is allocated in a single region using the
  * ContextMemoryManager and released all at once when the Scope is popped.
  */
-class Scope {
-
+class Scope
+{
   /**
    * Context that created this Scope
    */
@@ -247,7 +241,7 @@ class Scope {
    * Scope level (total number of outstanding push() calls when this Scope was
    * created).
    */
-  int d_level;
+  uint32_t d_level;
 
   /**
    * Linked list of objects which changed in this scope,
@@ -261,7 +255,7 @@ class Scope {
    *
    * This is either nullptr or list owned by this scope.
    */
-  std::unique_ptr<std::vector<ContextObj*>> d_garbage;
+  std::vector<ContextObj*> d_garbage;
 
   friend std::ostream& operator<<(std::ostream&, const Scope&);
 
@@ -270,7 +264,7 @@ class Scope {
    * Constructor: Create a new Scope; set the level and the previous Scope
    * if any.
    */
-  Scope(Context* pContext, ContextMemoryManager* pCMM, int level)
+  Scope(Context* pContext, ContextMemoryManager* pCMM, uint32_t level)
       : d_pContext(pContext),
         d_pCMM(pCMM),
         d_level(level),
@@ -298,7 +292,7 @@ class Scope {
   /**
    * Get the level of the current Scope
    */
-  int getLevel() const { return d_level; }
+  uint32_t getLevel() const { return d_level; }
 
   /**
    * Return true iff this Scope is the current top Scope
@@ -318,7 +312,6 @@ class Scope {
    */
   static void* operator new(size_t size, ContextMemoryManager* pCMM)
   {
-    Trace("context_mm") << "Scope::new " << size << " in " << pCMM << std::endl;
     return pCMM->newData(size);
   }
 
@@ -335,13 +328,16 @@ class Scope {
    * called.  Include both placement and standard delete for
    * completeness.
    */
-  static void operator delete(void* pMem, ContextMemoryManager* pCMM) {}
-  static void operator delete(void* pMem) {}
+  static void operator delete(CVC5_UNUSED void* pMem,
+                              CVC5_UNUSED ContextMemoryManager* pCMM)
+  {
+  }
+  static void operator delete(CVC5_UNUSED void* pMem) {}
 
-  //FIXME:  //! Check for memory leaks
-  //  void check();
+  // FIXME:  //! Check for memory leaks
+  //   void check();
 
-};/* class Scope */
+}; /* class Scope */
 
 /**
  * This is an abstract base class from which all objects that are
@@ -427,7 +423,8 @@ class Scope {
  *    argument as the special constructor in this class (and pass it
  *    on to all ContextObj instances).
  */
-class ContextObj {
+class CVC5_EXPORT ContextObj
+{
   /**
    * Pointer to Scope in which this object was last modified.
    */
@@ -550,7 +547,7 @@ class ContextObj {
    * ContextObj-derived class needs to compare the level of its last
    * update with another ContextObj.
    */
-  int getLevel() const { return d_pScope->getLevel(); }
+  uint32_t getLevel() const { return d_pScope->getLevel(); }
 
   /**
    * Returns true if the object is "current"-- that is, updated in the
@@ -568,7 +565,8 @@ class ContextObj {
    * never be deleted.  Objects allocated with new(bool) should be deleted by
    * calling deleteSelf().
    */
-  static void operator delete(void* pMem) {
+  static void operator delete(CVC5_UNUSED void* pMem)
+  {
     AlwaysAssert(false) << "It is not allowed to delete a ContextObj this way!";
   }
 
@@ -580,8 +578,8 @@ class ContextObj {
    * operator never have their destructor called, so any clean-up has
    * to be done using the restore method.
    */
-  static void* operator new(size_t size, ContextMemoryManager* pCMM) {
-    Trace("context_mm") << "Context::new " << size << " in " << pCMM << std::endl;
+  static void* operator new(size_t size, ContextMemoryManager* pCMM)
+  {
     return pCMM->newData(size);
   }
 
@@ -592,7 +590,10 @@ class ContextObj {
    * ContextObj constructor throws an exception after a successful
    * call to the above new operator.
    */
-  static void operator delete(void* pMem, ContextMemoryManager* pCMM) {}
+  static void operator delete(CVC5_UNUSED void* pMem,
+                              CVC5_UNUSED ContextMemoryManager* pCMM)
+  {
+  }
 
   /**
    * Create a new ContextObj.  The initial scope is set to the bottom
@@ -604,17 +605,6 @@ class ContextObj {
   ContextObj(Context* context);
 
   /**
-   * Create a new ContextObj.  This constructor takes an argument that
-   * specifies whether this ContextObj is itself allocated in context
-   * memory.  If it is, it's invalid below the current scope level, so
-   * we don't put it in scope 0.
-   *
-   * WARNING: Read the notes above on "Gotchas when allocating
-   * contextual objects with non-standard allocators."
-   */
-  ContextObj(bool allocatedInCMM, Context* context);
-
-  /**
    * Destructor does nothing: subclass must explicitly call destroy() instead.
    */
   virtual ~ContextObj() {}
@@ -624,18 +614,14 @@ class ContextObj {
    * special new operator.  To free this memory, instead of
    * "delete p", use "p->deleteSelf()".
    */
-  static void* operator new(size_t size, bool) {
-    return ::operator new(size);
-  }
+  static void* operator new(size_t size, bool) { return ::operator new(size); }
 
   /**
    * Corresponding placement delete.  Note that this is provided for
    * the compiler in case the ContextObj constructor throws an
    * exception.  The client can't call it.
    */
-  static void operator delete(void* pMem, bool) {
-    ::operator delete(pMem);
-  }
+  static void operator delete(void* pMem, bool) { ::operator delete(pMem); }
 
   /**
    * Use this instead of delete to delete memory allocated using the special
@@ -643,8 +629,8 @@ class ContextObj {
    * function on memory allocated using the new that takes a
    * ContextMemoryManager as an argument.
    */
-  void deleteSelf() {
-    Debug("context") << "deleteSelf(" << this << ") " << typeid(*this).name() << std::endl;
+  void deleteSelf()
+  {
     this->~ContextObj();
     ::operator delete(this);
   }
@@ -655,7 +641,7 @@ class ContextObj {
    */
   void enqueueToGarbageCollect();
 
-};/* class ContextObj */
+}; /* class ContextObj */
 
 /**
  * For more flexible context-dependent behavior than that provided by
@@ -665,8 +651,8 @@ class ContextObj {
  * Context (you can choose to have notification come before or after
  * the ContextObj objects have been restored).
  */
-class ContextNotifyObj {
-
+class ContextNotifyObj
+{
   /**
    * Context is our friend so that when the Context is deleted, any
    * remaining ContextNotifyObj can be removed from the Context list.
@@ -703,8 +689,7 @@ class ContextNotifyObj {
    */
   virtual void contextNotifyPop() = 0;
 
-public:
-
+ public:
   /**
    * Constructor for ContextNotifyObj.  Parameters are the context to
    * which this notify object will be added, and a flag which, if
@@ -720,11 +705,12 @@ public:
    */
   virtual ~ContextNotifyObj();
 
-};/* class ContextNotifyObj */
+}; /* class ContextNotifyObj */
 
 inline void ContextObj::makeCurrent()
 {
-  if(!(d_pScope->isCurrent())) {
+  if (!(d_pScope->isCurrent()))
+  {
     update();
   }
 }
@@ -733,7 +719,8 @@ inline void ContextObj::makeSaveRestorePoint() { update(); }
 
 inline void Scope::addToChain(ContextObj* pContextObj)
 {
-  if(d_pContextObjList != NULL) {
+  if (d_pContextObjList != nullptr)
+  {
     d_pContextObjList->prev() = &pContextObj->next();
   }
 
@@ -742,7 +729,6 @@ inline void Scope::addToChain(ContextObj* pContextObj)
   d_pContextObjList = pContextObj;
 }
 
-}/* CVC4::context namespace */
-}/* CVC4 namespace */
+}  // namespace cvc5::context
 
-#endif /* CVC4__CONTEXT__CONTEXT_H */
+#endif /* CVC5__CONTEXT__CONTEXT_H */

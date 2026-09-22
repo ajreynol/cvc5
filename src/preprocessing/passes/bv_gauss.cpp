@@ -1,61 +1,59 @@
-/*********************                                                        */
-/*! \file bv_gauss.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Aina Niemetz, Mathias Preiner, Andrew Reynolds
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Gaussian Elimination preprocessing pass.
- **
- ** Simplify a given equation system modulo a (prime) number via Gaussian
- ** Elimination if possible.
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Gaussian Elimination preprocessing pass.
+ *
+ * Simplify a given equation system modulo a (prime) number via Gaussian
+ * Elimination if possible.
+ */
 
 #include "preprocessing/passes/bv_gauss.h"
 
+#include <unordered_map>
+#include <vector>
+
 #include "expr/node.h"
+#include "preprocessing/assertion_pipeline.h"
+#include "preprocessing/preprocessing_pass_context.h"
 #include "theory/bv/theory_bv_rewrite_rules_normalization.h"
 #include "theory/bv/theory_bv_utils.h"
 #include "theory/rewriter.h"
 #include "util/bitvector.h"
 
-#include <unordered_map>
-#include <vector>
+using namespace cvc5::internal;
+using namespace cvc5::internal::theory;
+using namespace cvc5::internal::theory::bv;
 
-
-using namespace CVC4;
-using namespace CVC4::theory;
-using namespace CVC4::theory::bv;
-
-namespace CVC4 {
+namespace cvc5::internal {
 namespace preprocessing {
 namespace passes {
 
-namespace {
-
-bool is_bv_const(Node n)
+bool BVGauss::is_bv_const(Node n)
 {
-  if (n.isConst()) { return true; }
-  return Rewriter::rewrite(n).getKind() == kind::CONST_BITVECTOR;
+  if (n.isConst())
+  {
+    return true;
+  }
+  return rewrite(n).getKind() == Kind::CONST_BITVECTOR;
 }
 
-Node get_bv_const(Node n)
+Node BVGauss::get_bv_const(Node n)
 {
   Assert(is_bv_const(n));
-  return Rewriter::rewrite(n);
+  return rewrite(n);
 }
 
-Integer get_bv_const_value(Node n)
+Integer BVGauss::get_bv_const_value(Node n)
 {
   Assert(is_bv_const(n));
   return get_bv_const(n).getConst<BitVector>().getValue();
 }
-
-}  // namespace
 
 /**
  * Determines if an overflow may occur in given 'expr'.
@@ -73,14 +71,15 @@ Integer get_bv_const_value(Node n)
  * will be handled via the default case, which is not incorrect but also not
  * necessarily the minimum.
  */
-unsigned BVGauss::getMinBwExpr(Node expr)
+uint32_t BVGauss::getMinBwExpr(Node expr)
 {
   std::vector<Node> visit;
   /* Maps visited nodes to the determined minimum bit-width required. */
-  std::unordered_map<Node, unsigned, NodeHashFunction> visited;
-  std::unordered_map<Node, unsigned, NodeHashFunction>::iterator it;
+  std::unordered_map<Node, unsigned> visited;
+  std::unordered_map<Node, unsigned>::iterator it;
 
   visit.push_back(expr);
+  NodeManager* nm = nodeManager();
   while (!visit.empty())
   {
     Node n = visit.back();
@@ -97,17 +96,20 @@ unsigned BVGauss::getMinBwExpr(Node expr)
       {
         visited[n] = 0;
         visit.push_back(n);
-        for (const Node &nn : n) { visit.push_back(nn); }
+        for (const Node& nn : n)
+        {
+          visit.push_back(nn);
+        }
       }
     }
     else if (it->second == 0)
     {
       Kind k = n.getKind();
-      Assert(k != kind::CONST_BITVECTOR);
+      Assert(k != Kind::CONST_BITVECTOR);
       Assert(!is_bv_const(n));
       switch (k)
       {
-        case kind::BITVECTOR_EXTRACT:
+        case Kind::BITVECTOR_EXTRACT:
         {
           const unsigned size = bv::utils::getSize(n);
           const unsigned low = bv::utils::getExtractLow(n);
@@ -118,13 +120,13 @@ unsigned BVGauss::getMinBwExpr(Node expr)
           break;
         }
 
-        case kind::BITVECTOR_ZERO_EXTEND:
+        case Kind::BITVECTOR_ZERO_EXTEND:
         {
           visited[n] = visited[n[0]];
           break;
         }
 
-        case kind::BITVECTOR_MULT:
+        case Kind::BITVECTOR_MULT:
         {
           Integer maxval = Integer(1);
           for (const Node& nn : n)
@@ -139,18 +141,24 @@ unsigned BVGauss::getMinBwExpr(Node expr)
             }
           }
           unsigned w = maxval.length();
-          if (w > bv::utils::getSize(n)) { return 0; } /* overflow */
+          if (w > bv::utils::getSize(n))
+          {
+            return 0;
+          } /* overflow */
           visited[n] = w;
           break;
         }
 
-        case kind::BITVECTOR_CONCAT:
+        case Kind::BITVECTOR_CONCAT:
         {
           unsigned i, wnz, nc;
           for (i = 0, wnz = 0, nc = n.getNumChildren() - 1; i < nc; ++i)
           {
             unsigned wni = bv::utils::getSize(n[i]);
-            if (n[i] != bv::utils::mkZero(wni)) { break; }
+            if (n[i] != bv::utils::mkZero(nm, wni))
+            {
+              break;
+            }
             /* sum of all bit-widths of leading zero concats */
             wnz += wni;
           }
@@ -158,28 +166,29 @@ unsigned BVGauss::getMinBwExpr(Node expr)
            * min bw of current concat is determined as
            *   min bw of first non-zero term
            *   plus actual bw of all subsequent terms */
-          visited[n] = bv::utils::getSize(n) + visited[n[i]]
-                       - bv::utils::getSize(n[i]) - wnz;
+          // Use nSize to ensure deterministic node ID assignments
+          unsigned nSize = bv::utils::getSize(n);
+          visited[n] = nSize + visited[n[i]] - bv::utils::getSize(n[i]) - wnz;
           break;
         }
 
-        case kind::BITVECTOR_UREM_TOTAL:
-        case kind::BITVECTOR_LSHR:
-        case kind::BITVECTOR_ASHR:
+        case Kind::BITVECTOR_UREM:
+        case Kind::BITVECTOR_LSHR:
+        case Kind::BITVECTOR_ASHR:
         {
           visited[n] = visited[n[0]];
           break;
         }
 
-        case kind::BITVECTOR_OR:
-        case kind::BITVECTOR_NOR:
-        case kind::BITVECTOR_XOR:
-        case kind::BITVECTOR_XNOR:
-        case kind::BITVECTOR_AND:
-        case kind::BITVECTOR_NAND:
+        case Kind::BITVECTOR_OR:
+        case Kind::BITVECTOR_NOR:
+        case Kind::BITVECTOR_XOR:
+        case Kind::BITVECTOR_XNOR:
+        case Kind::BITVECTOR_AND:
+        case Kind::BITVECTOR_NAND:
         {
           unsigned wmax = 0;
-          for (const Node &nn : n)
+          for (const Node& nn : n)
           {
             if (visited[nn] > wmax)
             {
@@ -190,7 +199,7 @@ unsigned BVGauss::getMinBwExpr(Node expr)
           break;
         }
 
-        case kind::BITVECTOR_PLUS:
+        case Kind::BITVECTOR_ADD:
         {
           Integer maxval = Integer(0);
           for (const Node& nn : n)
@@ -205,14 +214,17 @@ unsigned BVGauss::getMinBwExpr(Node expr)
             }
           }
           unsigned w = maxval.length();
-          if (w > bv::utils::getSize(n)) { return 0; } /* overflow */
+          if (w > bv::utils::getSize(n))
+          {
+            return 0;
+          } /* overflow */
           visited[n] = w;
           break;
         }
 
         default:
         {
-          /* BITVECTOR_UDIV_TOTAL (since x / 0 = -1)
+          /* BITVECTOR_UDIV (since x / 0 = -1)
            * BITVECTOR_NOT
            * BITVECTOR_NEG
            * BITVECTOR_SHL */
@@ -262,7 +274,7 @@ BVGauss::Result BVGauss::gaussElim(Integer prime,
   size_t nrows = lhs.size();
   size_t ncols = lhs[0].size();
 
-  #ifdef CVC4_ASSERTIONS
+#ifdef CVC5_ASSERTIONS
   for (size_t i = 1; i < nrows; ++i) Assert(lhs[i].size() == ncols);
 #endif
   /* (1) if element in pivot column is non-zero and != 1, divide row elements
@@ -283,7 +295,7 @@ BVGauss::Result BVGauss::gaussElim(Integer prime,
     /* lhs[j][pcol]: element in pivot column */
     for (size_t j = prow; j < nrows; ++j)
     {
-#ifdef CVC4_ASSERTIONS
+#ifdef CVC5_ASSERTIONS
       for (size_t k = 0; k < pcol; ++k)
       {
         Assert(lhs[j][k] == 0);
@@ -333,7 +345,10 @@ BVGauss::Result BVGauss::gaussElim(Integer prime,
             lhs[j][k] = lhs[j][k].modAdd(-lhs[prow][k], prime);
           }
           rhs[j] = rhs[j].modMultiply(inv, prime);
-          if (j > prow) { rhs[j] = rhs[j].modAdd(-rhs[prow], prime); }
+          if (j > prow)
+          {
+            rhs[j] = rhs[j].modAdd(-rhs[prow], prime);
+          }
         }
         /* (2) */
         else if (j != prow)
@@ -376,6 +391,15 @@ BVGauss::Result BVGauss::gaussElim(Integer prime,
       }
       continue;
     }
+    // Normalize rhs to a value modulo prime. Constants subtracted from the
+    // rhs while parsing the equations are not reduced modulo prime, and pivot
+    // rows with pivot element 1 are not modified during elimination. Hence the
+    // rhs may still be negative or exceed prime here.
+    // Note: Reducing modulo 2^width via, e.g., the BitVector constructor, would
+    //       yield an incorrect value, see euclidianDivideRemainder (Boute's
+    //       Euclidean definition), which always returns a non-negative
+    //       remainder in [0, prime).
+    rhs[i] = rhs[i].euclidianDivideRemainder(prime);
     for (size_t j = i; j < ncols; ++j)
     {
       if (lhs[i][j] >= prime || lhs[i][j] <= -prime)
@@ -419,28 +443,28 @@ BVGauss::Result BVGauss::gaussElim(Integer prime,
  * of the form 'unknown = mapped result' in applyInternal.
  */
 BVGauss::Result BVGauss::gaussElimRewriteForUrem(
-    const std::vector<Node>& equations,
-    std::unordered_map<Node, Node, NodeHashFunction>& res)
+    const std::vector<Node>& equations, std::unordered_map<Node, Node>& res)
 {
   Assert(res.empty());
 
   Node prime;
   Integer iprime;
-  std::unordered_map<Node, std::vector<Integer>, NodeHashFunction> vars;
+  std::unordered_map<Node, std::vector<Integer>> vars;
   size_t neqs = equations.size();
   std::vector<Integer> rhs;
   std::vector<std::vector<Integer>> lhs =
       std::vector<std::vector<Integer>>(neqs, std::vector<Integer>());
 
-  res = std::unordered_map<Node, Node, NodeHashFunction>();
+  res = std::unordered_map<Node, Node>();
 
+  NodeManager* nm = nodeManager();
   for (size_t i = 0; i < neqs; ++i)
   {
     Node eq = equations[i];
-    Assert(eq.getKind() == kind::EQUAL);
+    Assert(eq.getKind() == Kind::EQUAL);
     Node urem, eqrhs;
 
-    if (eq[0].getKind() == kind::BITVECTOR_UREM)
+    if (eq[0].getKind() == Kind::BITVECTOR_UREM)
     {
       urem = eq[0];
       Assert(is_bv_const(eq[1]));
@@ -448,12 +472,12 @@ BVGauss::Result BVGauss::gaussElimRewriteForUrem(
     }
     else
     {
-      Assert(eq[1].getKind() == kind::BITVECTOR_UREM);
+      Assert(eq[1].getKind() == Kind::BITVECTOR_UREM);
       urem = eq[1];
       Assert(is_bv_const(eq[0]));
       eqrhs = eq[0];
     }
-    if (getMinBwExpr(Rewriter::rewrite(urem[0])) == 0)
+    if (getMinBwExpr(rewrite(urem[0])) == 0)
     {
       Trace("bv-gauss-elim")
           << "Minimum required bit-width exceeds given bit-width, "
@@ -471,7 +495,7 @@ BVGauss::Result BVGauss::gaussElimRewriteForUrem(
       iprime = get_bv_const_value(prime);
     }
 
-    std::unordered_map<Node, Integer, NodeHashFunction> tmp;
+    std::unordered_map<Node, Integer> tmp;
     std::vector<Node> stack;
     stack.push_back(urem[0]);
     while (!stack.empty())
@@ -489,21 +513,24 @@ BVGauss::Result BVGauss::gaussElimRewriteForUrem(
 
       /* Split into matrix columns */
       Kind k = n.getKind();
-      if (k == kind::BITVECTOR_PLUS)
+      if (k == Kind::BITVECTOR_ADD)
       {
-        for (const Node& nn : n) { stack.push_back(nn); }
+        for (const Node& nn : n)
+        {
+          stack.push_back(nn);
+        }
       }
-      else if (k == kind::BITVECTOR_MULT)
+      else if (k == Kind::BITVECTOR_MULT)
       {
         Node n0, n1;
         /* Flatten mult expression. */
         n = RewriteRule<FlattenAssocCommut>::run<true>(n);
         /* Split operands into consts and non-consts */
-        NodeBuilder<> nb_consts(NodeManager::currentNM(), k);
-        NodeBuilder<> nb_nonconsts(NodeManager::currentNM(), k);
+        NodeBuilder nb_consts(nm, k);
+        NodeBuilder nb_nonconsts(nm, k);
         for (const Node& nn : n)
         {
-          Node nnrw = Rewriter::rewrite(nn);
+          Node nnrw = rewrite(nn);
           if (is_bv_const(nnrw))
           {
             nb_consts << nnrw;
@@ -518,7 +545,7 @@ BVGauss::Result BVGauss::gaussElimRewriteForUrem(
         unsigned nc = nb_consts.getNumChildren();
         if (nc > 1)
         {
-          n0 = Rewriter::rewrite(nb_consts.constructNode());
+          n0 = rewrite(nb_consts.constructNode());
         }
         else if (nc == 1)
         {
@@ -526,12 +553,12 @@ BVGauss::Result BVGauss::gaussElimRewriteForUrem(
         }
         else
         {
-          n0 = bv::utils::mkOne(bv::utils::getSize(n));
+          n0 = bv::utils::mkOne(nm, bv::utils::getSize(n));
         }
         /* n1 is a mult with non-const operands */
         if (nb_nonconsts.getNumChildren() > 1)
         {
-          n1 = Rewriter::rewrite(nb_nonconsts.constructNode());
+          n1 = rewrite(nb_nonconsts.constructNode());
         }
         else
         {
@@ -576,7 +603,7 @@ BVGauss::Result BVGauss::gaussElimRewriteForUrem(
     return BVGauss::Result::INVALID;
   }
   size_t nrows = vars.begin()->second.size();
-#ifdef CVC4_ASSERTIONS
+#ifdef CVC5_ASSERTIONS
   for (const auto& p : vars)
   {
     Assert(p.second.size() == nrows);
@@ -596,7 +623,7 @@ BVGauss::Result BVGauss::gaussElimRewriteForUrem(
     }
   }
 
-#ifdef CVC4_ASSERTIONS
+#ifdef CVC5_ASSERTIONS
   for (const auto& row : lhs)
   {
     Assert(row.size() == nvars);
@@ -615,11 +642,13 @@ BVGauss::Result BVGauss::gaussElimRewriteForUrem(
   if (ret != BVGauss::Result::NONE && ret != BVGauss::Result::INVALID)
   {
     std::vector<Node> vvars;
-    for (const auto& p : vars) { vvars.push_back(p.first); }
+    for (const auto& p : vars)
+    {
+      vvars.push_back(p.first);
+    }
     Assert(nvars == vvars.size());
     Assert(nrows == lhs.size());
     Assert(nrows == rhs.size());
-    NodeManager *nm = NodeManager::currentNM();
     if (ret == BVGauss::Result::UNIQUE)
     {
       for (size_t i = 0; i < nvars; ++i)
@@ -655,8 +684,8 @@ BVGauss::Result BVGauss::gaussElimRewriteForUrem(
           /* Normalize (no negative numbers, hence no subtraction)
            * e.g., x = 4 - 2y  --> x = 4 + 9y (modulo 11) */
           Integer m = iprime - lhs[prow][i];
-          Node bv = bv::utils::mkConst(bv::utils::getSize(vvars[i]), m);
-          Node mult = nm->mkNode(kind::BITVECTOR_MULT, vvars[i], bv);
+          Node bv = bv::utils::mkConst(nm, bv::utils::getSize(vvars[i]), m);
+          Node mult = nm->mkNode(Kind::BITVECTOR_MULT, vvars[i], bv);
           stack.push_back(mult);
         }
 
@@ -667,19 +696,19 @@ BVGauss::Result BVGauss::gaussElimRewriteForUrem(
         }
         else
         {
-          Node tmp = stack.size() == 1
-                         ? stack[0]
-                         : nm->mkNode(kind::BITVECTOR_PLUS, stack);
+          Node tmp = stack.size() == 1 ? stack[0]
+                                       : nm->mkNode(Kind::BITVECTOR_ADD, stack);
 
           if (rhs[prow] != 0)
           {
-            tmp = nm->mkNode(kind::BITVECTOR_PLUS,
-                             bv::utils::mkConst(
-                                 bv::utils::getSize(vvars[pcol]), rhs[prow]),
-                             tmp);
+            tmp =
+                nm->mkNode(Kind::BITVECTOR_ADD,
+                           bv::utils::mkConst(
+                               nm, bv::utils::getSize(vvars[pcol]), rhs[prow]),
+                           tmp);
           }
           Assert(!is_bv_const(tmp));
-          res[vvars[pcol]] = nm->mkNode(kind::BITVECTOR_UREM, tmp, prime);
+          res[vvars[pcol]] = nm->mkNode(Kind::BITVECTOR_UREM, tmp, prime);
         }
       }
     }
@@ -697,30 +726,30 @@ PreprocessingPassResult BVGauss::applyInternal(
     AssertionPipeline* assertionsToPreprocess)
 {
   std::vector<Node> assertions(assertionsToPreprocess->ref());
-  std::unordered_map<Node, std::vector<Node>, NodeHashFunction> equations;
+  std::unordered_map<Node, std::vector<Node>> equations;
 
   while (!assertions.empty())
   {
     Node a = assertions.back();
     assertions.pop_back();
-    CVC4::Kind k = a.getKind();
+    cvc5::internal::Kind k = a.getKind();
 
-    if (k == kind::AND)
+    if (k == Kind::AND)
     {
       for (const Node& aa : a)
       {
         assertions.push_back(aa);
       }
     }
-    else if (k == kind::EQUAL)
+    else if (k == Kind::EQUAL)
     {
       Node urem;
 
-      if (is_bv_const(a[1]) && a[0].getKind() == kind::BITVECTOR_UREM)
+      if (is_bv_const(a[1]) && a[0].getKind() == Kind::BITVECTOR_UREM)
       {
         urem = a[0];
       }
-      else if (is_bv_const(a[0]) && a[1].getKind() == kind::BITVECTOR_UREM)
+      else if (is_bv_const(a[0]) && a[1].getKind() == Kind::BITVECTOR_UREM)
       {
         urem = a[1];
       }
@@ -729,21 +758,24 @@ PreprocessingPassResult BVGauss::applyInternal(
         continue;
       }
 
-      if (urem[0].getKind() == kind::BITVECTOR_PLUS && is_bv_const(urem[1]))
+      if (urem[0].getKind() == Kind::BITVECTOR_ADD && is_bv_const(urem[1]))
       {
         equations[urem[1]].push_back(a);
       }
     }
   }
 
-  std::unordered_map<Node, Node, NodeHashFunction> subst;
+  std::unordered_map<Node, Node> subst;
 
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   for (const auto& eq : equations)
   {
-    if (eq.second.size() <= 1) { continue; }
+    if (eq.second.size() <= 1)
+    {
+      continue;
+    }
 
-    std::unordered_map<Node, Node, NodeHashFunction> res;
+    std::unordered_map<Node, Node> res;
     BVGauss::Result ret = gaussElimRewriteForUrem(eq.second, res);
     Trace("bv-gauss-elim") << "result: "
                            << (ret == BVGauss::Result::INVALID
@@ -758,9 +790,9 @@ PreprocessingPassResult BVGauss::applyInternal(
     {
       if (ret == BVGauss::Result::NONE)
       {
-        assertionsToPreprocess->clear();
         Node n = nm->mkConst<bool>(false);
-        assertionsToPreprocess->push_back(n);
+        assertionsToPreprocess->push_back(
+            n, false, nullptr, TrustId::PREPROCESS_BV_GUASS_LEMMA);
         return PreprocessingPassResult::CONFLICT;
       }
       else
@@ -772,10 +804,11 @@ PreprocessingPassResult BVGauss::applyInternal(
         /* add resulting constraints */
         for (const auto& p : res)
         {
-          Node a = nm->mkNode(kind::EQUAL, p.first, p.second);
+          Node a = nm->mkNode(Kind::EQUAL, p.first, p.second);
           Trace("bv-gauss-elim") << "added assertion: " << a << std::endl;
           // add new assertion
-          assertionsToPreprocess->push_back(a);
+          assertionsToPreprocess->push_back(
+              a, false, nullptr, TrustId::PREPROCESS_BV_GUASS_LEMMA);
         }
       }
     }
@@ -790,13 +823,13 @@ PreprocessingPassResult BVGauss::applyInternal(
       Node a = aref[i];
       Node as = a.substitute(subst.begin(), subst.end());
       // replace the assertion
-      assertionsToPreprocess->replace(i, as);
+      assertionsToPreprocess->replace(
+          i, as, nullptr, TrustId::PREPROCESS_BV_GUASS);
     }
   }
   return PreprocessingPassResult::NO_CONFLICT;
 }
 
-
 }  // namespace passes
 }  // namespace preprocessing
-}  // namespace CVC4
+}  // namespace cvc5::internal

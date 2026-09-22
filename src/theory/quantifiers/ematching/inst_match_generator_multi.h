@@ -1,29 +1,30 @@
-/*********************                                                        */
-/*! \file inst_match_generator_multi.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds, Morgan Deters, Tim King
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief multi inst match generator class
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * multi inst match generator class.
+ */
 
-#include "cvc4_private.h"
+#include "cvc5_private.h"
 
-#ifndef CVC4__THEORY__QUANTIFIERS__INST_MATCH_GENERATOR_MULTI_H
-#define CVC4__THEORY__QUANTIFIERS__INST_MATCH_GENERATOR_MULTI_H
+#ifndef CVC5__THEORY__QUANTIFIERS__INST_MATCH_GENERATOR_MULTI_H
+#define CVC5__THEORY__QUANTIFIERS__INST_MATCH_GENERATOR_MULTI_H
 
 #include <map>
 #include <vector>
+
 #include "expr/node_trie.h"
 #include "theory/quantifiers/ematching/inst_match_generator.h"
+#include "theory/quantifiers/inst_match_trie.h"
 
-namespace CVC4 {
+namespace cvc5::internal {
 namespace theory {
+namespace quantifiers {
 namespace inst {
 
 /** InstMatchGeneratorMulti
@@ -37,32 +38,31 @@ class InstMatchGeneratorMulti : public IMGenerator
 {
  public:
   /** constructors */
-  InstMatchGeneratorMulti(Node q,
-                          std::vector<Node>& pats,
-                          QuantifiersEngine* qe);
+  InstMatchGeneratorMulti(Env& env,
+                          Trigger* tparent,
+                          Node q,
+                          std::vector<Node>& pats);
   /** destructor */
   ~InstMatchGeneratorMulti() override;
 
   /** Reset instantiation round. */
-  void resetInstantiationRound(QuantifiersEngine* qe) override;
+  void resetInstantiationRound() override;
   /** Reset. */
-  bool reset(Node eqc, QuantifiersEngine* qe) override;
+  bool reset(Node eqc) override;
   /** Add instantiations. */
-  uint64_t addInstantiations(Node q,
-                             QuantifiersEngine* qe,
-                             Trigger* tparent) override;
+  uint64_t addInstantiations(InstMatch& m) override;
+  /** Get the inference id, for statistics. */
+  InferenceId getInferenceId() override;
 
  private:
   /** process new match
    *
    * Called during addInstantiations(...).
    * Indicates we produced a match m for child fromChildIndex
-   * addedLemmas is how many instantiations we succesfully send
+   * addedLemmas is how many instantiations we successfully send
    * via IMGenerator::sendInstantiation(...) calls.
    */
-  void processNewMatch(QuantifiersEngine* qe,
-                       Trigger* tparent,
-                       InstMatch& m,
+  void processNewMatch(InstMatch& m,
                        size_t fromChildIndex,
                        uint64_t& addedLemmas);
   /** helper for process new match
@@ -75,9 +75,7 @@ class InstMatchGeneratorMulti : public IMGenerator
    *                  computed by this function returns to.
    * modEq is whether we are matching modulo equality.
    */
-  void processNewInstantiations(QuantifiersEngine* qe,
-                                Trigger* tparent,
-                                InstMatch& m,
+  void processNewInstantiations(InstMatch& m,
                                 uint64_t& addedLemmas,
                                 InstMatchTrie* tr,
                                 size_t trieIndex,
@@ -107,7 +105,8 @@ class InstMatchGeneratorMulti : public IMGenerator
 };
 
 }  // namespace inst
+}  // namespace quantifiers
 }  // namespace theory
-}  // namespace CVC4
+}  // namespace cvc5::internal
 
 #endif

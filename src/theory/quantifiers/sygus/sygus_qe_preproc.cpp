@@ -1,43 +1,41 @@
-/*********************                                                        */
-/*! \file sygus_qe_preproc.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds, Mathias Preiner, Morgan Deters
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Sygus quantifier elimination preprocessor
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Sygus quantifier elimination preprocessor.
+ */
 
 #include "theory/quantifiers/sygus/sygus_qe_preproc.h"
 
 #include "expr/node_algorithm.h"
+#include "expr/skolem_manager.h"
 #include "theory/quantifiers/single_inv_partition.h"
-#include "theory/rewriter.h"
 #include "theory/smt_engine_subsolver.h"
 
-using namespace CVC4::kind;
+using namespace cvc5::internal::kind;
 
-namespace CVC4 {
+namespace cvc5::internal {
 namespace theory {
 namespace quantifiers {
 
-SygusQePreproc::SygusQePreproc(QuantifiersEngine* qe) {}
+SygusQePreproc::SygusQePreproc(Env& env) : EnvObj(env) {}
 
 Node SygusQePreproc::preprocess(Node q)
 {
   Node body = q[1];
-  if (body.getKind() == NOT && body[0].getKind() == FORALL)
+  if (body.getKind() == Kind::NOT && body[0].getKind() == Kind::FORALL)
   {
     body = body[0][1];
   }
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   Trace("cegqi-qep") << "Compute single invocation for " << q << "..."
                      << std::endl;
-  quantifiers::SingleInvocationPartition sip;
+  quantifiers::SingleInvocationPartition sip(d_env);
   std::vector<Node> funcs0;
   funcs0.insert(funcs0.end(), q[0].begin(), q[0].end());
   sip.init(funcs0, body);
@@ -49,8 +47,8 @@ Node SygusQePreproc::preprocess(Node q)
     return Node::null();
   }
   // create new smt engine to do quantifier elimination
-  std::unique_ptr<SmtEngine> smt_qe;
-  initializeSubsolver(smt_qe);
+  std::unique_ptr<SolverEngine> smt_qe;
+  initializeSubsolver(smt_qe, d_env);
   Trace("cegqi-qep") << "Property is non-ground single invocation, run "
                         "QE to obtain single invocation."
                      << std::endl;
@@ -84,8 +82,7 @@ Node SygusQePreproc::preprocess(Node q)
   // skolemize non-qe variables
   for (unsigned i = 0, size = nqe_vars.size(); i < size; i++)
   {
-    Node k = nm->mkSkolem(
-        "k", nqe_vars[i].getType(), "qe for non-ground single invocation");
+    Node k = NodeManager::mkDummySkolem("k", nqe_vars[i].getType());
     orig.push_back(nqe_vars[i]);
     subs.push_back(k);
     Trace("cegqi-qep") << "  subs : " << nqe_vars[i] << " -> " << k
@@ -100,8 +97,7 @@ Node SygusQePreproc::preprocess(Node q)
     Node fv = sip.getFirstOrderVariableForFunction(f);
     Assert(!fi.isNull());
     orig.push_back(fi);
-    Node k = nm->mkSkolem(
-        "k", fv.getType(), "qe for function in non-ground single invocation");
+    Node k = NodeManager::mkDummySkolem("k", fv.getType());
     subs.push_back(k);
     Trace("cegqi-qep") << "  subs : " << fi << " -> " << k << std::endl;
   }
@@ -111,11 +107,12 @@ Node SygusQePreproc::preprocess(Node q)
       orig.begin(), orig.end(), subs.begin(), subs.end());
   Assert(!qe_vars.empty());
   conj_se_ngsi_subs = nm->mkNode(
-      EXISTS, nm->mkNode(BOUND_VAR_LIST, qe_vars), conj_se_ngsi_subs.negate());
+      Kind::EXISTS,
+      {nm->mkNode(Kind::BOUND_VAR_LIST, qe_vars), conj_se_ngsi_subs.negate()});
 
   Trace("cegqi-qep") << "Run quantifier elimination on " << conj_se_ngsi_subs
                      << std::endl;
-  Node qeRes = smt_qe->getQuantifierElimination(conj_se_ngsi_subs, true, false);
+  Node qeRes = smt_qe->getQuantifierElimination(conj_se_ngsi_subs, true);
   Trace("cegqi-qep") << "Result : " << qeRes << std::endl;
 
   // create single invocation conjecture, if QE was successful
@@ -125,23 +122,22 @@ Node SygusQePreproc::preprocess(Node q)
         qeRes.substitute(subs.begin(), subs.end(), orig.begin(), orig.end());
     if (!nqe_vars.empty())
     {
-      qeRes = nm->mkNode(EXISTS, nm->mkNode(BOUND_VAR_LIST, nqe_vars), qeRes);
+      qeRes = nm->mkNode(
+          Kind::EXISTS, nm->mkNode(Kind::BOUND_VAR_LIST, nqe_vars), qeRes);
     }
     Assert(q.getNumChildren() == 3);
-    qeRes = nm->mkNode(FORALL, q[0], qeRes, q[2]);
+    qeRes = nm->mkNode(Kind::FORALL, q[0], qeRes, q[2]);
     Trace("cegqi-qep") << "Converted conjecture after QE : " << qeRes
                        << std::endl;
-    qeRes = Rewriter::rewrite(qeRes);
-    Node nq = qeRes;
-    // must assert it is equivalent to the original
-    Node lem = q.eqNode(nq);
-    Trace("cegqi-lemma") << "Cegqi::Lemma : qe-preprocess : " << lem
+    qeRes = rewrite(qeRes);
+    // it is equivalent to the original
+    Trace("cegqi-lemma") << "Cegqi::Lemma : qe-preprocess : " << qeRes
                          << std::endl;
-    return lem;
+    return qeRes;
   }
   return Node::null();
 }
 
 }  // namespace quantifiers
 }  // namespace theory
-}  // namespace CVC4
+}  // namespace cvc5::internal

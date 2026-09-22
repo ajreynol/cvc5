@@ -1,37 +1,41 @@
-/*********************                                                        */
-/*! \file term_registry.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds, Andres Noetzli, Tim King
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Term registry for the theory of strings.
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Term registry for the theory of strings.
+ */
 
-#include "cvc4_private.h"
+#include "cvc5_private.h"
 
-#ifndef CVC4__THEORY__STRINGS__TERM_REGISTRY_H
-#define CVC4__THEORY__STRINGS__TERM_REGISTRY_H
+#ifndef CVC5__THEORY__STRINGS__TERM_REGISTRY_H
+#define CVC5__THEORY__STRINGS__TERM_REGISTRY_H
 
 #include "context/cdhashset.h"
 #include "context/cdlist.h"
-#include "expr/proof_node_manager.h"
-#include "theory/eager_proof_generator.h"
+#include "proof/eager_proof_generator.h"
+#include "proof/proof_node_manager.h"
+#include "smt/env_obj.h"
 #include "theory/output_channel.h"
+#include "theory/strings/arith_entail.h"
 #include "theory/strings/infer_info.h"
 #include "theory/strings/sequences_stats.h"
 #include "theory/strings/skolem_cache.h"
 #include "theory/strings/solver_state.h"
 #include "theory/uf/equality_engine.h"
 
-namespace CVC4 {
+namespace cvc5::internal {
 namespace theory {
+
+class Theory;
+
 namespace strings {
 
+class InferenceManager;
 /**
  * This class manages all the (pre)registration tasks for terms. These tasks
  * include:
@@ -42,40 +46,24 @@ namespace strings {
  * (5) Maintaining a skolem cache. Notice that this skolem cache is the
  * official skolem cache that should be used by all modules in TheoryStrings.
  */
-class TermRegistry
+class TermRegistry : protected EnvObj
 {
-  typedef context::CDHashSet<Node, NodeHashFunction> NodeSet;
-  typedef context::CDHashSet<TypeNode, TypeNodeHashFunction> TypeNodeSet;
-  typedef context::CDHashMap<Node, Node, NodeHashFunction> NodeNodeMap;
+  typedef context::CDHashSet<Node> NodeSet;
+  typedef context::CDHashSet<TypeNode, std::hash<TypeNode>> TypeNodeSet;
+  typedef context::CDHashMap<Node, Node> NodeNodeMap;
 
  public:
-  TermRegistry(SolverState& s,
-               OutputChannel& out,
-               SequencesStatistics& statistics,
-               ProofNodeManager* pnm);
+  TermRegistry(Env& env, Theory& t, SolverState& s);
   ~TermRegistry();
-  /** The eager reduce routine
-   *
-   * Constructs a lemma for t that is incomplete, but communicates pertinent
-   * information about t. This is analogous to StringsPreprocess::reduce.
-   *
-   * In practice, we send this lemma eagerly, as soon as t is registered.
-   *
-   * @param t The node to reduce,
-   * @param sc The Skolem cache to use for new variables,
-   * @return The eager reduction for t.
-   */
-  static Node eagerReduce(Node t, SkolemCache* sc);
+  /** get the cardinality of the alphabet used, based on the options */
+  uint32_t getAlphabetCardinality() const;
+  /** Finish initialize, which sets the inference manager */
+  void finishInit(InferenceManager* im);
   /**
-   * Returns a lemma indicating that the length of a term t whose type is
-   * string-like has positive length. The exact form of this lemma depends
-   * on what works best in practice, currently:
-   *   (or (and (= (str.len t) 0) (= t "")) (> (str.len t) 0))
-   *
-   * @param t The node to reduce,
-   * @return The positive length lemma for t.
+   * Return a TrustNode of kind LEMMA that provides the eager reduction lemma
+   * for t, or the null trust node if it does not exist.
    */
-  static Node lengthPositive(Node t);
+  TrustNode eagerReduceTrusted(const Node& t);
   /**
    * Preregister term, called when TheoryStrings::preRegisterTerm(n) is called.
    * This does the following:
@@ -92,25 +80,25 @@ class TermRegistry
    * memberships).
    */
   void preRegisterTerm(TNode n);
+  /** Preregister input variable */
+  void preRegisterInputVar(TNode n);
   /** Register term
    *
-   * This performs SAT-context-independent registration for a term n, which
+   * This performs user-context-dependent registration for a term n, which
    * may cause lemmas to be sent on the output channel that involve
    * "initial refinement lemmas" for n. This includes introducing proxy
    * variables for string terms and asserting that str.code terms are within
    * proper bounds.
    *
-   * Effort is one of the following (TODO make enum #1881):
-   * 0 : upon preregistration or internal assertion
-   * 1 : upon occurrence in length term
-   * 2 : before normal form computation
-   * 3 : called on normal form terms
-   *
    * Based on the strategy, we may choose to add these initial refinement
    * lemmas at one of the following efforts, where if it is not the given
    * effort, the call to this method does nothing.
    */
-  void registerTerm(Node n, int effort);
+  void registerTerm(Node n);
+  /**
+   * Call `registerTerm` for each subterm of n
+   */
+  void registerSubterms(Node n);
   /** register length
    *
    * This method is called on non-constant string terms n that are "atomic"
@@ -126,7 +114,7 @@ class TermRegistry
    * If the status is LENGTH_SPLIT, we send a send a lemma of the form:
    *   ( n = "" ^ len( n ) = 0 ) OR len( n ) > 0
    * This method also ensures that, when applicable, the left branch is taken
-   * first via calls to requirePhase.
+   * first via calls to preferPhase.
    *
    * If the status is LENGTH_IGNORE, then no lemma is sent. This status is used
    * e.g. when the length of n is already implied by other constraints.
@@ -144,9 +132,17 @@ class TermRegistry
    * Get the "input variables", corresponding to the set of leaf nodes of
    * string-like type that have been preregistered as terms to this object.
    */
-  const context::CDHashSet<Node, NodeHashFunction>& getInputVars() const;
+  const context::CDHashSet<Node>& getInputVars() const;
   /** Returns true if any str.code terms have been preregistered */
   bool hasStringCode() const;
+  /**
+   * @return true if any seq.nth or seq.update terms have been preregistered
+   */
+  bool hasSeqUpdate() const;
+  /** is handled update or substring */
+  bool isHandledUpdateOrSubstr(Node n);
+  /** get base */
+  Node getUpdateBase(Node n);
   //---------------------------- end queries
   //---------------------------- proxy variables
   /** Get symbolic definition
@@ -176,57 +172,83 @@ class TermRegistry
    */
   Node ensureProxyVariableFor(Node n);
 
-  /** infer substitution proxy vars
+  /**
+   * This method attempts to (partially) remove trivial parts of an explanation
+   * n. It adds conjuncts of n that must be included in the explanation into
+   * unproc and drops the rest.
    *
-   * This method attempts to (partially) convert the formula n into a
-   * substitution of the form:
-   *   v1 -> s1, ..., vn -> sn
-   * where s1 ... sn are proxy variables and v1 ... vn are either variables
-   * or constants.
+   * For example, say that v1 was introduced as a proxy variable for "ABC".
    *
-   * This method ensures that P ^ v1 = s1 ^ ... ^ vn = sn ^ unproc is equivalent
-   * to P ^ n, where P is the conjunction of equalities corresponding to the
-   * definition of all proxy variables introduced by the theory of strings.
-   *
-   * For example, say that v1 was introduced as a proxy variable for "ABC", and
-   * v2 was introduced as a proxy variable for "AA".
-   *
-   * Given the input n := v1 = "ABC" ^ v2 = x ^ x = "AA", this method sets:
-   * vars = { x },
-   * subs = { v2 },
-   * unproc = {}.
+   * Given the input n := v1 = "ABC" ^ x = "AA", this method sets:
+   * unproc = { x = "AA" }.
    * In particular, this says that the information content of n is essentially
-   * x = v2. The first and third conjunctions can be dropped from the
-   * explanation since these equalities simply correspond to definitions
-   * of proxy variables.
+   * x = "AA". The first conjunct can be dropped from the explanation since
+   * that equality simply corresponds to definition of a proxy variable.
    *
    * This method is used as a performance heuristic. It can infer when the
-   * explanation of a fact depends only trivially on equalities corresponding
-   * to definitions of proxy variables, which can be omitted since they are
+   * explanation of a fact depends only on equalities corresponding to
+   * definitions of proxy variables, which can be omitted since they are
    * assumed to hold globally.
    */
-  void inferSubstitutionProxyVars(Node n,
-                                  std::vector<Node>& vars,
-                                  std::vector<Node>& subs,
-                                  std::vector<Node>& unproc) const;
+  void removeProxyEqs(Node n, std::vector<Node>& unproc) const;
   //---------------------------- end proxy variables
+  /**
+   * Returns the rewritten form of the string concatenation of n1 and n2.
+   */
+  Node mkNConcat(Node n1, Node n2) const;
+
+  /**
+   * Returns the rewritten form of the string concatenation of n1, n2 and n3.
+   */
+  Node mkNConcat(Node n1, Node n2, Node n3) const;
+
+  /**
+   * Returns the rewritten form of the concatenation from vector c of
+   * (string-like) type tn.
+   */
+  Node mkNConcat(const std::vector<Node>& c, TypeNode tn) const;
+
+  /**
+   * Called at the beginning of full effort checkby TheoryStrings.
+   * This computes relevant terms of the theory of strings (e.g. those that
+   * appear in assertions or in shared terms).
+   */
+  void notifyStartFullEffortCheck();
+  /**
+   * Called at the end of full effort check by TheoryStrings.
+   */
+  void notifyEndFullEffortCheck();
+  /**
+   * Get the relevant term set, returns the set computed by the above function.
+   * It is valid only during a full effort check.
+   *
+   * The relevant term set is all terms that belong to theory of strings that
+   * appear in the current set of assertions, or are marked as shared terms
+   * for the theory of strings.
+   */
+  const std::set<Node>& getRelevantTermSet() const;
+
  private:
+  /** Reference to theory of strings, for computing relevant terms */
+  Theory& d_theory;
   /** Common constants */
   Node d_zero;
   Node d_one;
   Node d_negOne;
   /** the cardinality of the alphabet */
-  uint32_t d_cardSize;
+  uint32_t d_alphaCard;
   /** Reference to the solver state of the theory of strings. */
   SolverState& d_state;
-  /** Reference to the output channel of the theory of strings. */
-  OutputChannel& d_out;
-  /** Reference to the statistics for the theory of strings/sequences. */
-  SequencesStatistics& d_statistics;
+  /** Pointer to the inference manager of the theory of strings. */
+  InferenceManager* d_im;
   /** have we asserted any str.code terms? */
   bool d_hasStrCode;
+  /** have we asserted any seq.update/seq.nth terms? */
+  bool d_hasSeqUpdate;
   /** The cache of all skolems, which is owned by this class. */
   SkolemCache d_skCache;
+  /** arithmetic entailment */
+  ArithEntail d_aent;
   /** All function terms that the theory has seen in the current SAT context */
   context::CDList<TNode> d_functionsTerms;
   /**
@@ -249,16 +271,20 @@ class TermRegistry
    * which rewrites to 3 = 3.
    * In the above example, we store "ABC" -> v_{"ABC"} in this map.
    */
-  std::map<Node, Node> d_proxyVar;
+  NodeNodeMap d_proxyVar;
   /**
    * Map from proxy variables to their normalized length. In the above example,
    * we store "ABC" -> 3.
    */
-  std::map<Node, Node> d_proxyVarToLength;
+  NodeNodeMap d_proxyVarToLength;
   /** List of terms that we have register length for */
   NodeSet d_lengthLemmaTermsCache;
   /** Proof generator, manages proofs for lemmas generated by this class */
   std::unique_ptr<EagerProofGenerator> d_epg;
+  /** Are we currently in a full effort check? */
+  bool d_inFullEffortCheck;
+  /** Set of terms that appear in the current assertions */
+  std::set<Node> d_relevantTerms;
   /** Register type
    *
    * Ensures the theory solver is setup to handle string-like type tn. In
@@ -287,10 +313,12 @@ class TermRegistry
   TrustNode getRegisterTermAtomicLemma(Node n,
                                        LengthStatus s,
                                        std::map<Node, bool>& reqPhase);
+  /** register term n, called when it is known n is not already registered */
+  void registerTermInternal(Node n);
 };
 
 }  // namespace strings
 }  // namespace theory
-}  // namespace CVC4
+}  // namespace cvc5::internal
 
-#endif /* CVC4__THEORY__STRINGS__TERM_REGISTRY_H */
+#endif /* CVC5__THEORY__STRINGS__TERM_REGISTRY_H */

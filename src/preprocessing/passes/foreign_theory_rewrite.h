@@ -1,35 +1,55 @@
-/*********************                                                        */
-/*! \file foreign_theory_rewrite.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Yoni Zohar
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief The foreign_theory_rewrite preprocessing pass
- ** 
- ** Simplifies nodes of one theory using rewrites from another.
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * The foreign_theory_rewrite preprocessing pass.
+ *
+ * Simplifies nodes of one theory using rewrites from another.
+ */
 
-#include "cvc4_private.h"
+#include "cvc5_private.h"
 
-#ifndef CVC4__PREPROCESSING__PASSES__FOREIGN_THEORY_REWRITE_H
-#define CVC4__PREPROCESSING__PASSES__FOREIGN_THEORY_REWRITE_H
+#ifndef CVC5__PREPROCESSING__PASSES__FOREIGN_THEORY_REWRITE_H
+#define CVC5__PREPROCESSING__PASSES__FOREIGN_THEORY_REWRITE_H
 
 #include "context/cdhashmap.h"
-#include "context/cdo.h"
-#include "context/context.h"
+#include "expr/node.h"
 #include "preprocessing/preprocessing_pass.h"
-#include "preprocessing/preprocessing_pass_context.h"
+#include "smt/env_obj.h"
 
-namespace CVC4 {
+namespace cvc5::internal {
 namespace preprocessing {
 namespace passes {
 
-using CDNodeMap = context::CDHashMap<Node, Node, NodeHashFunction>;
+using CDNodeMap = context::CDHashMap<Node, Node>;
+
+class ForeignTheoryRewriter : protected EnvObj
+{
+ public:
+  ForeignTheoryRewriter(Env& env);
+  /** the main function that simplifies n.
+   * does a traversal on n and call rewriting fucntions.
+   */
+  Node simplify(Node n);
+  /** invoke rewrite functions for n.
+   * based on the structure of n (typically its kind)
+   * we invoke rewrites from other theories.
+   * For example: when encountering a `>=` node,
+   * we invoke rewrites from the theory of strings.
+   */
+  Node foreignRewrite(Node n);
+  /** construct a node with the same operator as originalNode whose children are
+   * processedChildren
+   */
+  static Node reconstructNode(Node originalNode, std::vector<Node> newChildren);
+  /** A cache to store the simplified nodes */
+  CDNodeMap d_cache;
+};
 
 class ForeignTheoryRewrite : public PreprocessingPass
 {
@@ -39,31 +59,12 @@ class ForeignTheoryRewrite : public PreprocessingPass
  protected:
   PreprocessingPassResult applyInternal(
       AssertionPipeline* assertionsToPreprocess) override;
-  /** the main function that simplifies n.
-   * does a traversal on n and call rewriting fucntions.
-   */
-  Node simplify(Node n);
-  /** A specific simplification function specific for GEQ
-   * constraints in strings.
-   */
-  static Node rewriteStringsGeq(Node n);
-  /** invoke rewrite functions for n.
-   * based on the structure of n (typically its kind)
-   * we invoke rewrites from other theories.
-   * For example: when encountering a `>=` node,
-   * we invoke rewrites from the theory of strings.
-   */
-  static Node foreignRewrite(Node n);
-  /** construct a node with the same operator as originalNode whose children are
-   * processedChildren
-   */
-  static Node reconstructNode(Node originalNode, vector<Node> newChildren);
-  /** A cache to store the simplified nodes */
-  CDNodeMap d_cache;
+  /** Foreign theory rewriter */
+  ForeignTheoryRewriter d_ftr;
 };
 
 }  // namespace passes
 }  // namespace preprocessing
-}  // namespace CVC4
+}  // namespace cvc5::internal
 
-#endif /* CVC4__PREPROCESSING__PASSES__FOREIGN_THEORY_REWRITE_H */
+#endif /* CVC5__PREPROCESSING__PASSES__FOREIGN_THEORY_REWRITE_H */

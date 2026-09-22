@@ -1,23 +1,19 @@
-/*********************                                                        */
-/*! \file clock_gettime.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Morgan Deters, Mathias Preiner
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Replacement for clock_gettime() for systems without it (Windows)
- **
- ** Replacement for clock_gettime() for systems without it (Windows).
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Replacement for clock_gettime() for systems without it (Windows).
+ */
 
-#include "cvc4_private_library.h"
+#include "cvc5_private_library.h"
 
-#ifndef CVC4__LIB__CLOCK_GETTIME_H
-#define CVC4__LIB__CLOCK_GETTIME_H
+#ifndef CVC5__LIB__CLOCK_GETTIME_H
+#define CVC5__LIB__CLOCK_GETTIME_H
 
 #include "lib/replacements.h"
 
@@ -36,13 +32,14 @@
 extern "C" {
 #endif /* __cplusplus */
 
-struct timespec {
+struct timespec
+{
   uint64_t tv_sec;
   int32_t tv_nsec;
-};/* struct timespec */
+}; /* struct timespec */
 
 #ifdef __cplusplus
-}/* extern "C" */
+} /* extern "C" */
 #endif /* __cplusplus */
 
 #else /* !__WIN32__ || _W64 */
@@ -58,7 +55,8 @@ extern "C" {
 
 struct timespec;
 
-typedef enum {
+typedef enum
+{
   CLOCK_REALTIME,
   CLOCK_MONOTONIC,
   CLOCK_REALTIME_HR,
@@ -68,8 +66,8 @@ typedef enum {
 long clock_gettime(clockid_t which_clock, struct timespec* tp);
 
 #ifdef __cplusplus
-}/* extern "C" */
+} /* extern "C" */
 #endif /* __cplusplus */
 
 #endif /* HAVE_CLOCK_GETTIME */
-#endif /*CVC4__LIB__CLOCK_GETTIME_H */
+#endif /*CVC5__LIB__CLOCK_GETTIME_H */

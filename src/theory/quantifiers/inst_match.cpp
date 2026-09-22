@@ -1,29 +1,27 @@
-/*********************                                                        */
-/*! \file inst_match.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds, Morgan Deters, Francois Bobot
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Implementation of inst match class
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Implementation of inst match class.
+ */
 
 #include "theory/quantifiers/inst_match.h"
 
-#include "theory/quantifiers/instantiate.h"
-#include "theory/quantifiers/quant_util.h"
-#include "theory/quantifiers/term_database.h"
-#include "theory/quantifiers_engine.h"
+#include "options/quantifiers_options.h"
+#include "theory/quantifiers/quantifiers_state.h"
+#include "theory/quantifiers/term_registry.h"
 
-namespace CVC4 {
+namespace cvc5::internal {
 namespace theory {
-namespace inst {
+namespace quantifiers {
 
-InstMatch::InstMatch(TNode q)
+InstMatch::InstMatch(Env& env, QuantifiersState& qs, TermRegistry& tr, TNode q)
+    : EnvObj(env), d_qs(qs), d_tr(tr), d_quant(q), d_ieval(nullptr)
 {
   d_vals.resize(q[0].getNumChildren());
   Assert(!d_vals.empty());
@@ -31,49 +29,51 @@ InstMatch::InstMatch(TNode q)
   Assert(d_vals[0].isNull());
 }
 
-InstMatch::InstMatch( InstMatch* m ) {
-  d_vals.insert( d_vals.end(), m->d_vals.begin(), m->d_vals.end() );
+void InstMatch::setEvaluatorMode(ieval::TermEvaluatorMode tev)
+{
+  // should only do this if we are empty
+  Assert(empty());
+  // get the instantiation evaluator and reset it
+  d_ieval = d_tr.getEvaluator(d_quant, tev);
+  if (d_ieval != nullptr)
+  {
+    d_ieval->resetAll();
+  }
 }
 
-void InstMatch::add(InstMatch& m)
+void InstMatch::debugPrint(CVC5_UNUSED const char* c)
 {
   for (unsigned i = 0, size = d_vals.size(); i < size; i++)
   {
-    if( d_vals[i].isNull() ){
-      d_vals[i] = m.d_vals[i];
+    if (!d_vals[i].isNull())
+    {
+      Trace(c) << "   " << i << " -> " << d_vals[i] << std::endl;
     }
   }
 }
 
-bool InstMatch::merge( EqualityQuery* q, InstMatch& m ){
-  Assert(d_vals.size() == m.d_vals.size());
-  for (unsigned i = 0, size = d_vals.size(); i < size; i++)
+void InstMatch::toStream(std::ostream& out) const
+{
+  out << "INST_MATCH( ";
+  bool printed = false;
+  for (size_t i = 0, size = d_vals.size(); i < size; i++)
   {
-    if( !m.d_vals[i].isNull() ){
-      if( d_vals[i].isNull() ){
-        d_vals[i] = m.d_vals[i];
-      }else{
-        if( !q->areEqual( d_vals[i], m.d_vals[i]) ){
-          clear();
-          return false;
-        }
+    if (!d_vals[i].isNull())
+    {
+      if (printed)
+      {
+        out << ", ";
       }
+      out << i << " -> " << d_vals[i];
+      printed = true;
     }
   }
-  return true;
+  out << " )";
 }
 
-void InstMatch::debugPrint( const char* c ){
-  for (unsigned i = 0, size = d_vals.size(); i < size; i++)
-  {
-    if( !d_vals[i].isNull() ){
-      Debug( c ) << "   " << i << " -> " << d_vals[i] << std::endl;
-    }
-  }
-}
-
-bool InstMatch::isComplete() {
-  for (Node& v : d_vals)
+bool InstMatch::isComplete() const
+{
+  for (const Node& v : d_vals)
   {
     if (v.isNull())
     {
@@ -83,8 +83,9 @@ bool InstMatch::isComplete() {
   return true;
 }
 
-bool InstMatch::empty() {
-  for (Node& v : d_vals)
+bool InstMatch::empty() const
+{
+  for (const Node& v : d_vals)
   {
     if (!v.isNull())
     {
@@ -94,9 +95,16 @@ bool InstMatch::empty() {
   return true;
 }
 
-void InstMatch::clear() {
-  for( unsigned i=0; i<d_vals.size(); i++ ){
+void InstMatch::resetAll()
+{
+  for (size_t i = 0, nvals = d_vals.size(); i < nvals; i++)
+  {
     d_vals[i] = Node::null();
+  }
+  // clear information from the evaluator
+  if (d_ieval != nullptr)
+  {
+    d_ieval->resetAll();
   }
 }
 
@@ -106,27 +114,45 @@ Node InstMatch::get(size_t i) const
   return d_vals[i];
 }
 
-void InstMatch::setValue(size_t i, TNode n)
+bool InstMatch::set(size_t i, TNode n)
 {
   Assert(i < d_vals.size());
-  d_vals[i] = n;
-}
-bool InstMatch::set(EqualityQuery* q, size_t i, TNode n)
-{
-  Assert(i < d_vals.size());
-  if( !d_vals[i].isNull() ){
-    if (q->areEqual(d_vals[i], n))
+  if (!d_vals[i].isNull())
+  {
+    // if they are equal, we do nothing
+    return d_qs.areEqual(d_vals[i], n);
+  }
+  if (d_ieval != nullptr)
+  {
+    // if applicable, check if the instantiation evaluator is ok
+    if (!d_ieval->push(d_quant[0][i], n))
     {
-      return true;
-    }else{
       return false;
     }
-  }else{
-    d_vals[i] = n;
-    return true;
+    // The above checks may also have triggered a conflict due to term
+    // indexing, we fail in this case as well.
+    if (d_qs.isInConflict())
+    {
+      return false;
+    }
   }
+  // otherwise, we update the value
+  d_vals[i] = n;
+  return true;
 }
 
-}/* CVC4::theory::inst namespace */
-}/* CVC4::theory namespace */
-}/* CVC4 namespace */
+void InstMatch::reset(size_t i)
+{
+  Assert(!d_vals[i].isNull());
+  if (d_ieval != nullptr)
+  {
+    d_ieval->pop();
+  }
+  d_vals[i] = Node::null();
+}
+
+const std::vector<Node>& InstMatch::get() const { return d_vals; }
+
+}  // namespace quantifiers
+}  // namespace theory
+}  // namespace cvc5::internal

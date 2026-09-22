@@ -1,39 +1,33 @@
-/*********************                                                        */
-/*! \file integer_gmp_imp.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Aina Niemetz, Tim King, Gereon Kremer
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief A multiprecision integer constant; wraps a GMP multiprecision
- ** integer.
- **
- ** A multiprecision integer constant; wraps a GMP multiprecision integer.
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * A multiprecision integer constant; wraps a GMP multiprecision integer.
+ */
 
-#include "cvc4_public.h"
+#include "cvc5_public.h"
 
-#ifndef CVC4__INTEGER_H
-#define CVC4__INTEGER_H
+#ifndef CVC5__UTIL__INTEGER_GMP_H
+#define CVC5__UTIL__INTEGER_GMP_H
 
+#include <gmpxx.h>
+
+#include <functional>
 #include <iosfwd>
-#include <limits>
 #include <string>
 
-#include "base/exception.h"
-#include "util/gmp_util.h"
-
-namespace CVC4 {
+namespace cvc5::internal {
 
 class Rational;
 
-class CVC4_PUBLIC Integer
+class Integer
 {
-  friend class CVC4::Rational;
+  friend class cvc5::internal::Rational;
 
  public:
   /**
@@ -53,26 +47,18 @@ class CVC4_PUBLIC Integer
   explicit Integer(const char* s, unsigned base = 10);
   explicit Integer(const std::string& s, unsigned base = 10);
 
-  Integer(const Integer& q) : d_value(q.d_value) {}
-
   Integer(signed int z) : d_value(z) {}
   Integer(unsigned int z) : d_value(z) {}
   Integer(signed long int z) : d_value(z) {}
   Integer(unsigned long int z) : d_value(z) {}
 
-#ifdef CVC4_NEED_INT64_T_OVERLOADS
-  Integer(int64_t z) : d_value(static_cast<long>(z)) {}
-  Integer(uint64_t z) : d_value(static_cast<unsigned long>(z)) {}
-#endif /* CVC4_NEED_INT64_T_OVERLOADS */
-
-  /** Destructor. */
-  ~Integer() {}
+#ifdef CVC5_NEED_INT64_T_OVERLOADS
+  Integer(int64_t z);
+  Integer(uint64_t z);
+#endif /* CVC5_NEED_INT64_T_OVERLOADS */
 
   /** Returns a copy of d_value to enable public access of GMP data. */
   const mpz_class& getValue() const { return d_value; }
-
-  /** Overload copy assignment operator. */
-  Integer& operator=(const Integer& x);
 
   /** Overload equality comparison operator. */
   bool operator==(const Integer& y) const;
@@ -114,11 +100,8 @@ class CVC4_PUBLIC Integer
   /** Return this*(2^pow). */
   Integer multiplyByPow2(uint32_t pow) const;
 
-  /**
-   * Returns the Integer obtained by setting the ith bit of the
-   * current Integer to 1.
-   */
-  Integer setBit(uint32_t i, bool value) const;
+  /** Set the ith bit of the current Integer to 'value'.  */
+  void setBit(uint32_t i, bool value);
 
   /** Return true if bit at index 'i' is 1, and false otherwise. */
   bool isBitSet(uint32_t i) const;
@@ -210,7 +193,7 @@ class CVC4_PUBLIC Integer
   bool isNegativeOne() const;
 
   /** Raise this Integer to the power 'exp'. */
-  Integer pow(unsigned long int exp) const;
+  Integer pow(uint32_t exp) const;
 
   /** Return the greatest common divisor of this integer with another. */
   Integer gcd(const Integer& y) const;
@@ -262,17 +245,17 @@ class CVC4_PUBLIC Integer
   /** Return the unsigned int representation of this Integer. */
   unsigned int getUnsignedInt() const;
 
-  /** Return true if this Integer fits into a signed long. */
-  bool fitsSignedLong() const;
-
-  /** Return true if this Integer fits into an unsigned long. */
-  bool fitsUnsignedLong() const;
-
   /** Return the signed long representation of this Integer. */
   long getLong() const;
 
   /** Return the unsigned long representation of this Integer. */
   unsigned long getUnsignedLong() const;
+
+  /** Return the int64_t representation of this Integer. */
+  int64_t getSigned64() const;
+
+  /** Return the uint64_t representation of this Integer. */
+  uint64_t getUnsigned64() const;
 
   /**
    * Computes the hash of the node from the first word of the
@@ -301,6 +284,14 @@ class CVC4_PUBLIC Integer
   size_t length() const;
 
   /**
+   * Returns whether `x` is probably a prime.
+   *
+   * A false result is always accurate, but a true result may be inaccurate
+   * with small (approximately 2^{-60}) probability.
+   */
+  bool isProbablePrime() const;
+
+  /**
    * Return the greatest common divisor of a and b, and in addition set s and t
    * to coefficients satisfying a*s + b*t = g.
    *
@@ -317,6 +308,12 @@ class CVC4_PUBLIC Integer
   /** Returns a reference to the maximum of two integers. */
   static const Integer& max(const Integer& a, const Integer& b);
 
+  /**
+   * Returns a uniformly random non-negative Integer in [0, 2^nbits).
+   * Uses the cvc5 Random singleton.
+   */
+  static Integer mkRandom(uint32_t nbits);
+
  private:
   /**
    * Gets a reference to the gmp data that backs up the integer.
@@ -331,16 +328,19 @@ class CVC4_PUBLIC Integer
   mpz_class d_value;
 }; /* class Integer */
 
-struct IntegerHashFunction
-{
-  inline size_t operator()(const CVC4::Integer& i) const { return i.hash(); }
-}; /* struct IntegerHashFunction */
-
 inline std::ostream& operator<<(std::ostream& os, const Integer& n)
 {
   return os << n.toString();
 }
 
-}  // namespace CVC4
+}  // namespace cvc5::internal
 
-#endif /* CVC4__INTEGER_H */
+namespace std {
+template <>
+struct hash<cvc5::internal::Integer>
+{
+  size_t operator()(const cvc5::internal::Integer& i) const { return i.hash(); }
+};
+}  // namespace std
+
+#endif /* CVC5__UTIL__INTEGER_GMP_H */

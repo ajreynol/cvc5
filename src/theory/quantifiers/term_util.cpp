@@ -1,94 +1,75 @@
-/*********************                                                        */
-/*! \file term_util.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds, Morgan Deters, Tianyi Liang
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Implementation of term utilities class
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Implementation of term utilities class.
+ */
 
 #include "theory/quantifiers/term_util.h"
 
+#include "expr/array_store_all.h"
+#include "expr/function_array_const.h"
 #include "expr/node_algorithm.h"
-#include "options/base_options.h"
-#include "options/datatypes_options.h"
-#include "options/quantifiers_options.h"
-#include "options/uf_options.h"
+#include "expr/sequence.h"
+#include "expr/skolem_manager.h"
 #include "theory/arith/arith_msum.h"
 #include "theory/bv/theory_bv_utils.h"
 #include "theory/quantifiers/term_database.h"
 #include "theory/quantifiers/term_enumeration.h"
-#include "theory/quantifiers_engine.h"
+#include "theory/rewriter.h"
 #include "theory/strings/word.h"
-#include "theory/theory_engine.h"
+#include "util/bitvector.h"
+#include "util/rational.h"
 
-using namespace std;
-using namespace CVC4::kind;
-using namespace CVC4::context;
-using namespace CVC4::theory::inst;
+using namespace cvc5::internal::kind;
 
-namespace CVC4 {
+namespace cvc5::internal {
 namespace theory {
 namespace quantifiers {
 
-TermUtil::TermUtil()
+size_t TermUtil::getVariableNum(Node q, Node v)
 {
-  d_true = NodeManager::currentNM()->mkConst(true);
-  d_false = NodeManager::currentNM()->mkConst(false);
-  d_zero = NodeManager::currentNM()->mkConst(Rational(0));
-  d_one = NodeManager::currentNM()->mkConst(Rational(1));
+  Node::iterator it = std::find(q[0].begin(), q[0].end(), v);
+  Assert(it != q[0].end());
+  return it - q[0].begin();
 }
 
-TermUtil::~TermUtil(){
-
-}
-
-void TermUtil::registerQuantifier( Node q ){
-  if( d_inst_constants.find( q )==d_inst_constants.end() ){
-    Debug("quantifiers-engine") << "Instantiation constants for " << q << " : " << std::endl;
-    for( unsigned i=0; i<q[0].getNumChildren(); i++ ){
-      d_vars[q].push_back( q[0][i] );
-      d_var_num[q][q[0][i]] = i;
-      //make instantiation constants
-      Node ic = NodeManager::currentNM()->mkInstConstant( q[0][i].getType() );
-      d_inst_constants_map[ic] = q;
-      d_inst_constants[ q ].push_back( ic );
-      Debug("quantifiers-engine") << "  " << ic << std::endl;
-      //set the var number attribute
-      InstVarNumAttribute ivna;
-      ic.setAttribute( ivna, i );
-      InstConstantAttribute ica;
-      ic.setAttribute( ica, q );
-    }
-  }
-}
-
-Node TermUtil::getRemoveQuantifiers2( Node n, std::map< Node, Node >& visited ) {
-  std::map< Node, Node >::iterator it = visited.find( n );
-  if( it!=visited.end() ){
+Node TermUtil::getRemoveQuantifiers2(Node n, std::map<Node, Node>& visited)
+{
+  std::map<Node, Node>::iterator it = visited.find(n);
+  if (it != visited.end())
+  {
     return it->second;
-  }else{
+  }
+  else
+  {
     Node ret = n;
-    if( n.getKind()==FORALL ){
-      ret = getRemoveQuantifiers2( n[1], visited );
-    }else if( n.getNumChildren()>0 ){
-      std::vector< Node > children;
+    if (n.getKind() == Kind::FORALL)
+    {
+      ret = getRemoveQuantifiers2(n[1], visited);
+    }
+    else if (n.getNumChildren() > 0)
+    {
+      std::vector<Node> children;
       bool childrenChanged = false;
-      for( unsigned i=0; i<n.getNumChildren(); i++ ){
-        Node ni = getRemoveQuantifiers2( n[i], visited );
-        childrenChanged = childrenChanged || ni!=n[i];
-        children.push_back( ni );
+      for (unsigned i = 0; i < n.getNumChildren(); i++)
+      {
+        Node ni = getRemoveQuantifiers2(n[i], visited);
+        childrenChanged = childrenChanged || ni != n[i];
+        children.push_back(ni);
       }
-      if( childrenChanged ){
-        if( n.getMetaKind() == kind::metakind::PARAMETERIZED ){
-          children.insert( children.begin(), n.getOperator() );
+      if (childrenChanged)
+      {
+        if (n.getMetaKind() == kind::metakind::PARAMETERIZED)
+        {
+          children.insert(children.begin(), n.getOperator());
         }
-        ret = NodeManager::currentNM()->mkNode( n.getKind(), children );
+        ret = n.getNodeManager()->mkNode(n.getKind(), children);
       }
     }
     visited[n] = ret;
@@ -96,14 +77,23 @@ Node TermUtil::getRemoveQuantifiers2( Node n, std::map< Node, Node >& visited ) 
   }
 }
 
-Node TermUtil::getInstConstAttr( Node n ) {
-  if (!n.hasAttribute(InstConstantAttribute()) ){
+Node TermUtil::getInstConstAttr(Node n)
+{
+  if (!n.hasAttribute(InstConstantAttribute()))
+  {
     Node q;
-    if (n.hasOperator())
+    if (n.isVar())
     {
-      q = getInstConstAttr(n.getOperator());
+      // If it is a purification variable, it may correspond to a term
+      // with instantiation constants in it. We get the unpurified form here
+      // to handle this case.
+      Node un = SkolemManager::getUnpurifiedForm(n);
+      if (!un.isNull() && un != n)
+      {
+        q = getInstConstAttr(un);
+      }
     }
-    if (q.isNull())
+    else
     {
       for (const Node& nc : n)
       {
@@ -113,6 +103,13 @@ Node TermUtil::getInstConstAttr( Node n ) {
           break;
         }
       }
+      if (q.isNull())
+      {
+        if (n.hasOperator())
+        {
+          q = getInstConstAttr(n.getOperator());
+        }
+      }
     }
     InstConstantAttribute ica;
     n.setAttribute(ica, q);
@@ -120,178 +117,24 @@ Node TermUtil::getInstConstAttr( Node n ) {
   return n.getAttribute(InstConstantAttribute());
 }
 
-bool TermUtil::hasInstConstAttr( Node n ) {
+bool TermUtil::hasInstConstAttr(Node n)
+{
   return !getInstConstAttr(n).isNull();
 }
 
-Node TermUtil::getBoundVarAttr( Node n ) {
-  if (!n.hasAttribute(BoundVarAttribute()) ){
-    Node bv;
-    if( n.getKind()==BOUND_VARIABLE ){
-      bv = n;
-    }else{
-      for( unsigned i=0; i<n.getNumChildren(); i++ ){
-        bv = getBoundVarAttr(n[i]);
-        if( !bv.isNull() ){
-          break;
-        }
-      }
-    }
-    BoundVarAttribute bva;
-    n.setAttribute(bva, bv);
-  }
-  return n.getAttribute(BoundVarAttribute());
-}
-
-bool TermUtil::hasBoundVarAttr( Node n ) {
-  return !getBoundVarAttr(n).isNull();
-}
-
-//remove quantifiers
-Node TermUtil::getRemoveQuantifiers( Node n ) {
-  std::map< Node, Node > visited;
-  return getRemoveQuantifiers2( n, visited );
-}
-
-//quantified simplify
-Node TermUtil::getQuantSimplify( Node n ) {
-  std::unordered_set<Node, NodeHashFunction> fvs;
-  expr::getFreeVariables(n, fvs);
-  if (fvs.empty())
-  {
-    return Rewriter::rewrite( n );
-  }
-  std::vector<Node> bvs;
-  bvs.insert(bvs.end(), fvs.begin(), fvs.end());
-  NodeManager* nm = NodeManager::currentNM();
-  Node q = nm->mkNode(FORALL, nm->mkNode(BOUND_VAR_LIST, bvs), n);
-  q = Rewriter::rewrite(q);
-  return getRemoveQuantifiers(q);
-}
-
-/** get the i^th instantiation constant of q */
-Node TermUtil::getInstantiationConstant( Node q, int i ) const {
-  std::map< Node, std::vector< Node > >::const_iterator it = d_inst_constants.find( q );
-  if( it!=d_inst_constants.end() ){
-    return it->second[i];
-  }else{
-    return Node::null();
-  }
-}
-
-/** get number of instantiation constants for q */
-unsigned TermUtil::getNumInstantiationConstants( Node q ) const {
-  std::map< Node, std::vector< Node > >::const_iterator it = d_inst_constants.find( q );
-  if( it!=d_inst_constants.end() ){
-    return it->second.size();
-  }else{
-    return 0;
-  }
-}
-
-Node TermUtil::getInstConstantBody( Node q ){
-  std::map< Node, Node >::iterator it = d_inst_const_body.find( q );
-  if( it==d_inst_const_body.end() ){
-    Node n = substituteBoundVariablesToInstConstants(q[1], q);
-    d_inst_const_body[ q ] = n;
-    return n;
-  }else{
-    return it->second;
-  }
-}
-
-Node TermUtil::substituteBoundVariablesToInstConstants(Node n, Node q)
+// remove quantifiers
+Node TermUtil::getRemoveQuantifiers(Node n)
 {
-  registerQuantifier( q );
-  return n.substitute( d_vars[q].begin(), d_vars[q].end(), d_inst_constants[q].begin(), d_inst_constants[q].end() );
-}
-
-Node TermUtil::substituteInstConstantsToBoundVariables(Node n, Node q)
-{
-  registerQuantifier( q );
-  return n.substitute( d_inst_constants[q].begin(), d_inst_constants[q].end(), d_vars[q].begin(), d_vars[q].end() );
-}
-
-Node TermUtil::substituteBoundVariables(Node n,
-                                        Node q,
-                                        std::vector<Node>& terms)
-{
-  registerQuantifier(q);
-  Assert(d_vars[q].size() == terms.size());
-  return n.substitute( d_vars[q].begin(), d_vars[q].end(), terms.begin(), terms.end() );
-}
-
-Node TermUtil::substituteInstConstants(Node n, Node q, std::vector<Node>& terms)
-{
-  registerQuantifier(q);
-  Assert(d_inst_constants[q].size() == terms.size());
-  return n.substitute(d_inst_constants[q].begin(),
-                      d_inst_constants[q].end(),
-                      terms.begin(),
-                      terms.end());
-}
-
-void TermUtil::computeInstConstContains(Node n, std::vector<Node>& ics)
-{
-  computeVarContainsInternal(n, INST_CONSTANT, ics);
-}
-
-void TermUtil::computeVarContains(Node n, std::vector<Node>& vars)
-{
-  computeVarContainsInternal(n, BOUND_VARIABLE, vars);
-}
-
-void TermUtil::computeQuantContains(Node n, std::vector<Node>& quants)
-{
-  computeVarContainsInternal(n, FORALL, quants);
-}
-
-void TermUtil::computeVarContainsInternal(Node n,
-                                          Kind k,
-                                          std::vector<Node>& vars)
-{
-  std::unordered_set<TNode, TNodeHashFunction> visited;
-  std::unordered_set<TNode, TNodeHashFunction>::iterator it;
-  std::vector<TNode> visit;
-  TNode cur;
-  visit.push_back(n);
-  do
-  {
-    cur = visit.back();
-    visit.pop_back();
-    it = visited.find(cur);
-
-    if (it == visited.end())
-    {
-      visited.insert(cur);
-      if (cur.getKind() == k)
-      {
-        if (std::find(vars.begin(), vars.end(), cur) == vars.end())
-        {
-          vars.push_back(cur);
-        }
-      }
-      else
-      {
-        if (cur.hasOperator())
-        {
-          visit.push_back(cur.getOperator());
-        }
-        for (const Node& cn : cur)
-        {
-          visit.push_back(cn);
-        }
-      }
-    }
-  } while (!visit.empty());
+  std::map<Node, Node> visited;
+  return getRemoveQuantifiers2(n, visited);
 }
 
 void TermUtil::computeInstConstContainsForQuant(Node q,
                                                 Node n,
                                                 std::vector<Node>& vars)
 {
-  std::vector<Node> ics;
-  computeInstConstContains(n, ics);
+  std::unordered_set<Node> ics;
+  expr::getSubtermsKind(Kind::INST_CONSTANT, n, ics);
   for (const Node& v : ics)
   {
     if (v.getAttribute(InstConstantAttribute()) == q)
@@ -304,51 +147,87 @@ void TermUtil::computeInstConstContainsForQuant(Node q,
   }
 }
 
-int TermUtil::getTermDepth( Node n ) {
-  if (!n.hasAttribute(TermDepthAttribute()) ){
+int TermUtil::getTermDepth(Node n)
+{
+  if (!n.hasAttribute(TermDepthAttribute()))
+  {
     int maxDepth = -1;
-    for( unsigned i=0; i<n.getNumChildren(); i++ ){
-      int depth = getTermDepth( n[i] );
-      if( depth>maxDepth ){
+    for (unsigned i = 0; i < n.getNumChildren(); i++)
+    {
+      int depth = getTermDepth(n[i]);
+      if (depth > maxDepth)
+      {
         maxDepth = depth;
       }
     }
     TermDepthAttribute tda;
-    n.setAttribute(tda,1+maxDepth);
+    n.setAttribute(tda, 1 + maxDepth);
   }
   return n.getAttribute(TermDepthAttribute());
 }
 
-bool TermUtil::containsUninterpretedConstant( Node n ) {
-  if (!n.hasAttribute(ContainsUConstAttribute()) ){
-    bool ret = false;
-    if( n.getKind()==UNINTERPRETED_CONSTANT ){
-      ret = true;
-    }else{ 
-      for( unsigned i=0; i<n.getNumChildren(); i++ ){
-        if( containsUninterpretedConstant( n[i] ) ){
-          ret = true;
-          break;
-        }
+bool TermUtil::containsUninterpretedConstant(Node n)
+{
+  if (n.hasAttribute(ContainsUConstAttribute()))
+  {
+    return n.getAttribute(ContainsUConstAttribute()) != 0;
+  }
+  bool ret = false;
+  Kind k = n.getKind();
+  if (k == Kind::UNINTERPRETED_SORT_VALUE)
+  {
+    Assert(n.getType().isUninterpretedSort());
+    ret = true;
+  }
+  else if (k == Kind::STORE_ALL)
+  {
+    ret = containsUninterpretedConstant(n.getConst<ArrayStoreAll>().getValue());
+  }
+  else if (k == Kind::FUNCTION_ARRAY_CONST)
+  {
+    ret = containsUninterpretedConstant(
+        n.getConst<FunctionArrayConst>().getArrayValue());
+  }
+  else if (k == Kind::CONST_SEQUENCE)
+  {
+    const std::vector<Node>& charVec = n.getConst<Sequence>().getVec();
+    for (const Node& nc : charVec)
+    {
+      if (containsUninterpretedConstant(nc))
+      {
+        ret = true;
+        break;
       }
     }
-    ContainsUConstAttribute cuca;
-    n.setAttribute(cuca, ret ? 1 : 0);
   }
-  return n.getAttribute(ContainsUConstAttribute())!=0;
+  else
+  {
+    for (const Node& nc : n)
+    {
+      if (containsUninterpretedConstant(nc))
+      {
+        ret = true;
+        break;
+      }
+    }
+  }
+  ContainsUConstAttribute cuca;
+  n.setAttribute(cuca, ret ? 1 : 0);
+  return ret;
 }
 
 Node TermUtil::simpleNegate(Node n)
 {
   Assert(n.getType().isBoolean());
-  NodeManager* nm = NodeManager::currentNM();
-  if( n.getKind()==OR || n.getKind()==AND ){
-    std::vector< Node > children;
+  NodeManager* nm = n.getNodeManager();
+  if (n.getKind() == Kind::OR || n.getKind() == Kind::AND)
+  {
+    std::vector<Node> children;
     for (const Node& cn : n)
     {
       children.push_back(simpleNegate(cn));
     }
-    return nm->mkNode(n.getKind() == OR ? AND : OR, children);
+    return nm->mkNode(n.getKind() == Kind::OR ? Kind::AND : Kind::OR, children);
   }
   else if (n.isConst())
   {
@@ -363,92 +242,92 @@ Node TermUtil::mkNegate(Kind notk, Node n)
   {
     return n[0];
   }
-  return NodeManager::currentNM()->mkNode(notk, n);
+  return NodeManager::mkNode(notk, n);
 }
 
 bool TermUtil::isNegate(Kind k)
 {
-  return k == NOT || k == BITVECTOR_NOT || k == BITVECTOR_NEG || k == UMINUS;
+  return k == Kind::NOT || k == Kind::BITVECTOR_NOT || k == Kind::BITVECTOR_NEG
+         || k == Kind::NEG;
 }
 
 bool TermUtil::isAssoc(Kind k, bool reqNAry)
 {
   if (reqNAry)
   {
-    if (k == UNION || k == INTERSECTION)
+    if (k == Kind::SET_UNION || k == Kind::SET_INTER)
     {
       return false;
     }
   }
-  return k == PLUS || k == MULT || k == NONLINEAR_MULT || k == AND || k == OR
-         || k == XOR || k == BITVECTOR_PLUS || k == BITVECTOR_MULT
-         || k == BITVECTOR_AND || k == BITVECTOR_OR || k == BITVECTOR_XOR
-         || k == BITVECTOR_XNOR || k == BITVECTOR_CONCAT || k == STRING_CONCAT
-         || k == UNION || k == INTERSECTION || k == JOIN || k == PRODUCT
-         || k == SEP_STAR;
+  return k == Kind::ADD || k == Kind::MULT || k == Kind::NONLINEAR_MULT
+         || k == Kind::AND || k == Kind::OR || k == Kind::XOR
+         || k == Kind::BITVECTOR_ADD || k == Kind::BITVECTOR_MULT
+         || k == Kind::BITVECTOR_AND || k == Kind::BITVECTOR_OR
+         || k == Kind::BITVECTOR_XOR || k == Kind::BITVECTOR_XNOR
+         || k == Kind::BITVECTOR_CONCAT || k == Kind::STRING_CONCAT
+         || k == Kind::SET_UNION || k == Kind::SET_INTER
+         || k == Kind::RELATION_JOIN || k == Kind::RELATION_TABLE_JOIN
+         || k == Kind::RELATION_PRODUCT || k == Kind::SEP_STAR;
 }
 
 bool TermUtil::isComm(Kind k, bool reqNAry)
 {
   if (reqNAry)
   {
-    if (k == UNION || k == INTERSECTION)
+    if (k == Kind::SET_UNION || k == Kind::SET_INTER)
     {
       return false;
     }
   }
-  return k == EQUAL || k == PLUS || k == MULT || k == NONLINEAR_MULT || k == AND
-         || k == OR || k == XOR || k == BITVECTOR_PLUS || k == BITVECTOR_MULT
-         || k == BITVECTOR_AND || k == BITVECTOR_OR || k == BITVECTOR_XOR
-         || k == BITVECTOR_XNOR || k == UNION || k == INTERSECTION
-         || k == SEP_STAR;
+  return k == Kind::EQUAL || k == Kind::ADD || k == Kind::MULT
+         || k == Kind::NONLINEAR_MULT || k == Kind::AND || k == Kind::OR
+         || k == Kind::XOR || k == Kind::BITVECTOR_ADD
+         || k == Kind::BITVECTOR_MULT || k == Kind::BITVECTOR_AND
+         || k == Kind::BITVECTOR_OR || k == Kind::BITVECTOR_XOR
+         || k == Kind::BITVECTOR_XNOR || k == Kind::SET_UNION
+         || k == Kind::SET_INTER || k == Kind::SEP_STAR;
 }
 
-bool TermUtil::isNonAdditive( Kind k ) {
-  return k==AND || k==OR || k==BITVECTOR_AND || k==BITVECTOR_OR;
-}
-
-bool TermUtil::isBoolConnective( Kind k ) {
-  return k==OR || k==AND || k==EQUAL || k==ITE || k==FORALL || k==NOT || k==SEP_STAR;
-}
-
-bool TermUtil::isBoolConnectiveTerm( TNode n ) {
-  return isBoolConnective( n.getKind() ) &&
-         ( n.getKind()!=EQUAL || n[0].getType().isBoolean() ) && 
-         ( n.getKind()!=ITE || n.getType().isBoolean() );
-}
-
-Node TermUtil::getTypeValue(TypeNode tn, int val)
+bool TermUtil::isNonAdditive(Kind k)
 {
-  std::unordered_map<int, Node>::iterator it = d_type_value[tn].find(val);
-  if (it == d_type_value[tn].end())
-  {
-    Node n = mkTypeValue(tn, val);
-    d_type_value[tn][val] = n;
-    return n;
-  }
-  return it->second;
+  return k == Kind::AND || k == Kind::OR || k == Kind::BITVECTOR_AND
+         || k == Kind::BITVECTOR_OR;
 }
 
-Node TermUtil::mkTypeValue(TypeNode tn, int val)
+bool TermUtil::isBoolConnective(Kind k)
+{
+  return k == Kind::OR || k == Kind::AND || k == Kind::EQUAL || k == Kind::ITE
+         || k == Kind::FORALL || k == Kind::NOT || k == Kind::SEP_STAR;
+}
+
+bool TermUtil::isBoolConnectiveTerm(TNode n)
+{
+  return isBoolConnective(n.getKind())
+         && (n.getKind() != Kind::EQUAL || n[0].getType().isBoolean())
+         && (n.getKind() != Kind::ITE || n.getType().isBoolean());
+}
+
+Node TermUtil::mkTypeValue(TypeNode tn, int32_t val)
 {
   Node n;
-  if (tn.isInteger() || tn.isReal())
+  if (tn.isRealOrInt())
   {
     Rational c(val);
-    n = NodeManager::currentNM()->mkConst(c);
+    n = tn.getNodeManager()->mkConstRealOrInt(tn, c);
   }
   else if (tn.isBitVector())
   {
-    unsigned int uv = val;
+    // cast to unsigned
+    uint32_t uv = static_cast<uint32_t>(val);
     BitVector bval(tn.getConst<BitVectorSize>(), uv);
-    n = NodeManager::currentNM()->mkConst<BitVector>(bval);
+    n = tn.getNodeManager()->mkConst<BitVector>(bval);
   }
   else if (tn.isBoolean())
   {
     if (val == 0)
     {
-      n = NodeManager::currentNM()->mkConst(false);
+      n = tn.getNodeManager()->mkConst(false);
     }
   }
   else if (tn.isStringLike())
@@ -461,66 +340,44 @@ Node TermUtil::mkTypeValue(TypeNode tn, int val)
   return n;
 }
 
-Node TermUtil::getTypeMaxValue(TypeNode tn)
-{
-  std::unordered_map<TypeNode, Node, TypeNodeHashFunction>::iterator it =
-      d_type_max_value.find(tn);
-  if (it == d_type_max_value.end())
-  {
-    Node n = mkTypeMaxValue(tn);
-    d_type_max_value[tn] = n;
-    return n;
-  }
-  return it->second;
-}
-
 Node TermUtil::mkTypeMaxValue(TypeNode tn)
 {
   Node n;
+  NodeManager* nm = tn.getNodeManager();
   if (tn.isBitVector())
   {
-    n = bv::utils::mkOnes(tn.getConst<BitVectorSize>());
+    n = bv::utils::mkOnes(nm, tn.getConst<BitVectorSize>());
   }
   else if (tn.isBoolean())
   {
-    n = NodeManager::currentNM()->mkConst(true);
+    n = nm->mkConst(true);
   }
   return n;
 }
 
-Node TermUtil::getTypeValueOffset(TypeNode tn,
-                                  Node val,
-                                  int offset,
-                                  int& status)
+Node TermUtil::mkTypeValueOffset(TypeNode tn,
+                                 Node val,
+                                 int32_t offset,
+                                 int32_t& status)
 {
-  std::unordered_map<int, Node>::iterator it =
-      d_type_value_offset[tn][val].find(offset);
-  if (it == d_type_value_offset[tn][val].end())
+  Assert(val.isConst() && val.getType() == tn);
+  Node val_o;
+  status = -1;
+  if (tn.isRealOrInt())
   {
-    Node val_o;
-    Node offset_val = getTypeValue(tn, offset);
-    status = -1;
-    if (!offset_val.isNull())
-    {
-      if (tn.isInteger() || tn.isReal())
-      {
-        val_o = Rewriter::rewrite(
-            NodeManager::currentNM()->mkNode(PLUS, val, offset_val));
-        status = 0;
-      }
-      else if (tn.isBitVector())
-      {
-        val_o = Rewriter::rewrite(
-            NodeManager::currentNM()->mkNode(BITVECTOR_PLUS, val, offset_val));
-        // TODO : enable?  watch for overflows
-      }
-    }
-    d_type_value_offset[tn][val][offset] = val_o;
-    d_type_value_offset_status[tn][val][offset] = status;
-    return val_o;
+    Rational vval = val.getConst<Rational>();
+    Rational oval(offset);
+    status = 0;
+    return NodeManager::mkConstRealOrInt(tn, vval + oval);
   }
-  status = d_type_value_offset_status[tn][val][offset];
-  return it->second;
+  else if (tn.isBitVector())
+  {
+    BitVector vval = val.getConst<BitVector>();
+    uint32_t uv = static_cast<uint32_t>(offset);
+    BitVector oval(tn.getConst<BitVectorSize>(), uv);
+    return tn.getNodeManager()->mkConst(vval + oval);
+  }
+  return val_o;
 }
 
 Node TermUtil::mkTypeConst(TypeNode tn, bool pol)
@@ -530,34 +387,34 @@ Node TermUtil::mkTypeConst(TypeNode tn, bool pol)
 
 bool TermUtil::isAntisymmetric(Kind k, Kind& dk)
 {
-  if (k == GT)
+  if (k == Kind::GT)
   {
-    dk = LT;
+    dk = Kind::LT;
     return true;
   }
-  else if (k == GEQ)
+  else if (k == Kind::GEQ)
   {
-    dk = LEQ;
+    dk = Kind::LEQ;
     return true;
   }
-  else if (k == BITVECTOR_UGT)
+  else if (k == Kind::BITVECTOR_UGT)
   {
-    dk = BITVECTOR_ULT;
+    dk = Kind::BITVECTOR_ULT;
     return true;
   }
-  else if (k == BITVECTOR_UGE)
+  else if (k == Kind::BITVECTOR_UGE)
   {
-    dk = BITVECTOR_ULE;
+    dk = Kind::BITVECTOR_ULE;
     return true;
   }
-  else if (k == BITVECTOR_SGT)
+  else if (k == Kind::BITVECTOR_SGT)
   {
-    dk = BITVECTOR_SLT;
+    dk = Kind::BITVECTOR_SLT;
     return true;
   }
-  else if (k == BITVECTOR_SGE)
+  else if (k == Kind::BITVECTOR_SGE)
   {
-    dk = BITVECTOR_SLE;
+    dk = Kind::BITVECTOR_SLE;
     return true;
   }
   return false;
@@ -569,44 +426,39 @@ bool TermUtil::isIdempotentArg(Node n, Kind ik, int arg)
   // Assert( ik!=DIVISION && ik!=INTS_DIVISION && ik!=INTS_MODULUS &&
   // ik!=BITVECTOR_UDIV );
   TypeNode tn = n.getType();
-  if (n == getTypeValue(tn, 0))
+  if (n == mkTypeValue(tn, 0))
   {
-    if (ik == PLUS || ik == OR || ik == XOR || ik == BITVECTOR_PLUS
-        || ik == BITVECTOR_OR
-        || ik == BITVECTOR_XOR
-        || ik == STRING_CONCAT)
+    if (ik == Kind::ADD || ik == Kind::OR || ik == Kind::XOR
+        || ik == Kind::BITVECTOR_ADD || ik == Kind::BITVECTOR_OR
+        || ik == Kind::BITVECTOR_XOR || ik == Kind::STRING_CONCAT)
     {
       return true;
     }
-    else if (ik == MINUS || ik == BITVECTOR_SHL || ik == BITVECTOR_LSHR
-             || ik == BITVECTOR_ASHR
-             || ik == BITVECTOR_SUB
-             || ik == BITVECTOR_UREM
-             || ik == BITVECTOR_UREM_TOTAL)
+    else if (ik == Kind::SUB || ik == Kind::BITVECTOR_SHL
+             || ik == Kind::BITVECTOR_LSHR || ik == Kind::BITVECTOR_ASHR
+             || ik == Kind::BITVECTOR_SUB || ik == Kind::BITVECTOR_UREM)
     {
       return arg == 1;
     }
   }
-  else if (n == getTypeValue(tn, 1))
+  else if (n == mkTypeValue(tn, 1))
   {
-    if (ik == MULT || ik == BITVECTOR_MULT)
+    if (ik == Kind::MULT || ik == Kind::BITVECTOR_MULT)
     {
       return true;
     }
-    else if (ik == DIVISION || ik == DIVISION_TOTAL || ik == INTS_DIVISION
-             || ik == INTS_DIVISION_TOTAL
-             || ik == INTS_MODULUS
-             || ik == INTS_MODULUS_TOTAL
-             || ik == BITVECTOR_UDIV_TOTAL
-             || ik == BITVECTOR_UDIV
-             || ik == BITVECTOR_SDIV)
+    else if (ik == Kind::DIVISION || ik == Kind::DIVISION_TOTAL
+             || ik == Kind::INTS_DIVISION || ik == Kind::INTS_DIVISION_TOTAL
+             || ik == Kind::INTS_MODULUS || ik == Kind::INTS_MODULUS_TOTAL
+             || ik == Kind::BITVECTOR_UDIV || ik == Kind::BITVECTOR_SDIV)
     {
       return arg == 1;
     }
   }
-  else if (n == getTypeMaxValue(tn))
+  else if (n == mkTypeMaxValue(tn))
   {
-    if (ik == EQUAL || ik == BITVECTOR_AND || ik == BITVECTOR_XNOR)
+    if (ik == Kind::EQUAL || ik == Kind::BITVECTOR_AND
+        || ik == Kind::BITVECTOR_XNOR)
     {
       return true;
     }
@@ -617,23 +469,22 @@ bool TermUtil::isIdempotentArg(Node n, Kind ik, int arg)
 Node TermUtil::isSingularArg(Node n, Kind ik, unsigned arg)
 {
   TypeNode tn = n.getType();
-  if (n == getTypeValue(tn, 0))
+  if (n == mkTypeValue(tn, 0))
   {
-    if (ik == AND || ik == MULT || ik == BITVECTOR_AND || ik == BITVECTOR_MULT)
+    if (ik == Kind::AND || ik == Kind::MULT || ik == Kind::BITVECTOR_AND
+        || ik == Kind::BITVECTOR_MULT)
     {
       return n;
     }
-    else if (ik == BITVECTOR_SHL || ik == BITVECTOR_LSHR || ik == BITVECTOR_ASHR
-             || ik == BITVECTOR_UREM
-             || ik == BITVECTOR_UREM_TOTAL)
+    else if (ik == Kind::BITVECTOR_SHL || ik == Kind::BITVECTOR_LSHR
+             || ik == Kind::BITVECTOR_ASHR || ik == Kind::BITVECTOR_UREM)
     {
       if (arg == 0)
       {
         return n;
       }
     }
-    else if (ik == BITVECTOR_UDIV_TOTAL || ik == BITVECTOR_UDIV
-             || ik == BITVECTOR_SDIV)
+    else if (ik == Kind::BITVECTOR_UDIV || ik == Kind::BITVECTOR_SDIV)
     {
       if (arg == 0)
       {
@@ -641,20 +492,19 @@ Node TermUtil::isSingularArg(Node n, Kind ik, unsigned arg)
       }
       else if (arg == 1)
       {
-        return getTypeMaxValue(tn);
+        return mkTypeMaxValue(tn);
       }
     }
-    else if (ik == DIVISION || ik == DIVISION_TOTAL || ik == INTS_DIVISION
-             || ik == INTS_DIVISION_TOTAL
-             || ik == INTS_MODULUS
-             || ik == INTS_MODULUS_TOTAL)
+    else if (ik == Kind::DIVISION || ik == Kind::DIVISION_TOTAL
+             || ik == Kind::INTS_DIVISION || ik == Kind::INTS_DIVISION_TOTAL
+             || ik == Kind::INTS_MODULUS || ik == Kind::INTS_MODULUS_TOTAL)
     {
       if (arg == 0)
       {
         return n;
       }
     }
-    else if (ik == STRING_SUBSTR)
+    else if (ik == Kind::STRING_SUBSTR)
     {
       if (arg == 0)
       {
@@ -662,44 +512,44 @@ Node TermUtil::isSingularArg(Node n, Kind ik, unsigned arg)
       }
       else if (arg == 2)
       {
-        return getTypeValue(NodeManager::currentNM()->stringType(), 0);
+        return mkTypeValue(n.getNodeManager()->stringType(), 0);
       }
     }
-    else if (ik == STRING_STRIDOF)
+    else if (ik == Kind::STRING_INDEXOF)
     {
       if (arg == 0 || arg == 1)
       {
-        return getTypeValue(NodeManager::currentNM()->integerType(), -1);
+        return mkTypeValue(n.getNodeManager()->integerType(), -1);
       }
     }
   }
-  else if (n == getTypeValue(tn, 1))
+  else if (n == mkTypeValue(tn, 1))
   {
-    if (ik == BITVECTOR_UREM_TOTAL)
+    if (ik == Kind::BITVECTOR_UREM)
     {
-      return getTypeValue(tn, 0);
+      return mkTypeValue(tn, 0);
     }
   }
-  else if (n == getTypeMaxValue(tn))
+  else if (n == mkTypeMaxValue(tn))
   {
-    if (ik == OR || ik == BITVECTOR_OR)
+    if (ik == Kind::OR || ik == Kind::BITVECTOR_OR)
     {
       return n;
     }
   }
   else
   {
-    if (n.getType().isReal() && n.getConst<Rational>().sgn() < 0)
+    if (n.getType().isInteger() && n.getConst<Rational>().sgn() < 0)
     {
       // negative arguments
-      if (ik == STRING_SUBSTR || ik == STRING_CHARAT)
+      if (ik == Kind::STRING_SUBSTR || ik == Kind::STRING_CHARAT)
       {
-        return getTypeValue(NodeManager::currentNM()->stringType(), 0);
+        return mkTypeValue(n.getNodeManager()->stringType(), 0);
       }
-      else if (ik == STRING_STRIDOF)
+      else if (ik == Kind::STRING_INDEXOF)
       {
         Assert(arg == 2);
-        return getTypeValue(NodeManager::currentNM()->integerType(), -1);
+        return mkTypeValue(n.getNodeManager()->integerType(), -1);
       }
     }
   }
@@ -708,30 +558,48 @@ Node TermUtil::isSingularArg(Node n, Kind ik, unsigned arg)
 
 bool TermUtil::hasOffsetArg(Kind ik, int arg, int& offset, Kind& ok)
 {
-  if (ik == LT)
+  if (ik == Kind::LT)
   {
     Assert(arg == 0 || arg == 1);
     offset = arg == 0 ? 1 : -1;
-    ok = LEQ;
+    ok = Kind::LEQ;
     return true;
   }
-  else if (ik == BITVECTOR_ULT)
+  else if (ik == Kind::BITVECTOR_ULT)
   {
     Assert(arg == 0 || arg == 1);
     offset = arg == 0 ? 1 : -1;
-    ok = BITVECTOR_ULE;
+    ok = Kind::BITVECTOR_ULE;
     return true;
   }
-  else if (ik == BITVECTOR_SLT)
+  else if (ik == Kind::BITVECTOR_SLT)
   {
     Assert(arg == 0 || arg == 1);
     offset = arg == 0 ? 1 : -1;
-    ok = BITVECTOR_SLE;
+    ok = Kind::BITVECTOR_SLE;
     return true;
   }
   return false;
 }
 
-}/* CVC4::theory::quantifiers namespace */
-}/* CVC4::theory namespace */
-}/* CVC4 namespace */
+Node TermUtil::ensureType(Node n, TypeNode tn)
+{
+  TypeNode ntn = n.getType();
+  if (ntn == tn)
+  {
+    return n;
+  }
+  if (tn.isInteger())
+  {
+    return NodeManager::mkNode(Kind::TO_INTEGER, n);
+  }
+  else if (tn.isReal())
+  {
+    return NodeManager::mkNode(Kind::TO_REAL, n);
+  }
+  return Node::null();
+}
+
+}  // namespace quantifiers
+}  // namespace theory
+}  // namespace cvc5::internal

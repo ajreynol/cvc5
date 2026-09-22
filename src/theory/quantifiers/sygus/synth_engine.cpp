@@ -1,49 +1,45 @@
-/*********************                                                        */
-/*! \file synth_engine.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds, Haniel Barbosa
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Implementation of the quantifiers module for managing all approaches
- ** to synthesis, in particular, those described in Reynolds et al CAV 2015.
- **
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Implementation of the quantifiers module for managing all approaches
+ * to synthesis, in particular, those described in Reynolds et al CAV 2015.
+ */
 #include "theory/quantifiers/sygus/synth_engine.h"
 
-#include "expr/node_algorithm.h"
 #include "options/quantifiers_options.h"
 #include "theory/quantifiers/quantifiers_attributes.h"
 #include "theory/quantifiers/sygus/term_database_sygus.h"
-#include "theory/quantifiers/term_util.h"
-#include "theory/quantifiers_engine.h"
-#include "theory/theory_engine.h"
+#include "theory/quantifiers/term_registry.h"
 
-using namespace CVC4::kind;
-using namespace std;
+using namespace cvc5::internal::kind;
 
-namespace CVC4 {
+namespace cvc5::internal {
 namespace theory {
 namespace quantifiers {
 
-SynthEngine::SynthEngine(QuantifiersEngine* qe,
+SynthEngine::SynthEngine(Env& env,
                          QuantifiersState& qs,
-                         QuantifiersInferenceManager& qim)
-    : QuantifiersModule(qs, qim, qe),
-      d_tds(qe->getTermDatabaseSygus()),
+                         QuantifiersInferenceManager& qim,
+                         QuantifiersRegistry& qr,
+                         TermRegistry& tr)
+    : QuantifiersModule(env, qs, qim, qr, tr),
       d_conj(nullptr),
-      d_sqp(qe)
+      d_statistics(statisticsRegistry())
 {
   d_conjs.push_back(std::unique_ptr<SynthConjecture>(
-      new SynthConjecture(d_quantEngine, qs, d_statistics)));
+      new SynthConjecture(env, qs, qim, qr, tr, d_statistics)));
   d_conj = d_conjs.back().get();
 }
 
 SynthEngine::~SynthEngine() {}
+
+std::string SynthEngine::identify() const { return "SynthEngine"; }
 
 void SynthEngine::presolve()
 {
@@ -60,41 +56,22 @@ bool SynthEngine::needsCheck(Theory::Effort e)
   return e >= Theory::EFFORT_LAST_CALL;
 }
 
-QuantifiersModule::QEffort SynthEngine::needsModel(Theory::Effort e)
+QuantifiersModule::QEffort SynthEngine::needsModel(CVC5_UNUSED Theory::Effort e)
 {
   return QEFFORT_MODEL;
 }
 
-void SynthEngine::check(Theory::Effort e, QEffort quant_e)
+void SynthEngine::check(CVC5_UNUSED Theory::Effort e, QEffort quant_e)
 {
   // are we at the proper effort level?
   if (quant_e != QEFFORT_MODEL)
   {
     return;
   }
-
-  // if we are waiting to assign the conjecture, do it now
-  bool assigned = !d_waiting_conj.empty();
-  while (!d_waiting_conj.empty())
-  {
-    Node q = d_waiting_conj.back();
-    d_waiting_conj.pop_back();
-    Trace("sygus-engine") << "--- Conjecture waiting to assign: " << q
-                          << std::endl;
-    assignConjecture(q);
-  }
-  if (assigned)
-  {
-    // assign conjecture always uses the output channel, either by reducing a
-    // quantified formula to another, or adding initial lemmas during
-    // SynthConjecture::assign. Thus, we return here and re-check.
-    return;
-  }
-
   Trace("sygus-engine") << "---Counterexample Guided Instantiation Engine---"
                         << std::endl;
   Trace("sygus-engine-debug") << std::endl;
-  Valuation& valuation = d_quantEngine->getValuation();
+  Valuation& valuation = d_qstate.getValuation();
   std::vector<SynthConjecture*> activeCheckConj;
   for (unsigned i = 0, size = d_conjs.size(); i < size; i++)
   {
@@ -107,8 +84,8 @@ void SynthEngine::check(Theory::Effort e, QEffort quant_e)
     }
     else
     {
-      Trace("sygus-engine-debug") << "...no value for quantified formula."
-                                  << std::endl;
+      Trace("sygus-engine-debug")
+          << "...no value for quantified formula." << std::endl;
     }
     Trace("sygus-engine-debug")
         << "Current conjecture status : active : " << active << std::endl;
@@ -118,8 +95,10 @@ void SynthEngine::check(Theory::Effort e, QEffort quant_e)
     }
   }
   std::vector<SynthConjecture*> acnext;
+  ResourceManager* rm = d_env.getResourceManager();
   do
   {
+    rm->spendResource(Resource::SygusCheckStep);
     Trace("sygus-engine-debug") << "Checking " << activeCheckConj.size()
                                 << " active conjectures..." << std::endl;
     for (unsigned i = 0, size = activeCheckConj.size(); i < size; i++)
@@ -127,16 +106,14 @@ void SynthEngine::check(Theory::Effort e, QEffort quant_e)
       SynthConjecture* sc = activeCheckConj[i];
       if (!checkConjecture(sc))
       {
-        if (!sc->needsRefinement())
-        {
-          acnext.push_back(sc);
-        }
+        acnext.push_back(sc);
       }
     }
     activeCheckConj.clear();
     activeCheckConj = acnext;
     acnext.clear();
-  } while (!activeCheckConj.empty() && !d_qstate.getValuation().needCheck());
+  } while (!activeCheckConj.empty() && !d_qstate.getValuation().needCheck()
+           && !rm->out());
   Trace("sygus-engine")
       << "Finished Counterexample Guided Instantiation engine." << std::endl;
 }
@@ -144,118 +121,97 @@ void SynthEngine::check(Theory::Effort e, QEffort quant_e)
 void SynthEngine::assignConjecture(Node q)
 {
   Trace("sygus-engine") << "SynthEngine::assignConjecture " << q << std::endl;
-  if (options::sygusQePreproc())
-  {
-    Node lem = d_sqp.preprocess(q);
-    if (!lem.isNull())
-    {
-      Trace("cegqi-lemma") << "Cegqi::Lemma : qe-preprocess : " << lem
-                           << std::endl;
-      d_quantEngine->getOutputChannel().lemma(lem);
-      // we've reduced the original to a preprocessed version, return
-      return;
-    }
-  }
   // allocate a new synthesis conjecture if not assigned
   if (d_conjs.back()->isAssigned())
   {
-    d_conjs.push_back(std::unique_ptr<SynthConjecture>(
-        new SynthConjecture(d_quantEngine, d_qstate, d_statistics)));
+    d_conjs.push_back(std::unique_ptr<SynthConjecture>(new SynthConjecture(
+        d_env, d_qstate, d_qim, d_qreg, d_treg, d_statistics)));
   }
   d_conjs.back()->assign(q);
+}
+
+void SynthEngine::checkOwnership(Node q)
+{
+  // take ownership of quantified formulas with sygus attribute, and function
+  // definitions when the sygusRecFun option is true.
+  QuantAttributes& qa = d_qreg.getQuantAttributes();
+  if (qa.isSygus(q))
+  {
+    d_qreg.setOwner(q, this, 2);
+    return;
+  }
+  if (options().quantifiers.sygusRecFun)
+  {
+    // see if we should try to infer that it is a recursive function
+    if (qa.isFunDef(q) || options().quantifiers.sygusRecFunInfer)
+    {
+      FunDefEvaluator* fde =
+          d_treg.getTermDatabaseSygus()->getFunDefEvaluator();
+      // if it can be inferred as a recursive function definition, we take
+      // ownership
+      if (fde->isDefinition(q))
+      {
+        d_qreg.setOwner(q, this, 2);
+        return;
+      }
+    }
+  }
+  Trace("sygus-quant") << "Free quantified formula: " << q << std::endl;
 }
 
 void SynthEngine::registerQuantifier(Node q)
 {
   Trace("cegqi-debug") << "SynthEngine: Register quantifier : " << q
                        << std::endl;
-  if (d_quantEngine->getOwner(q) != this)
+  // if we did not take ownership above, ignore
+  if (d_qreg.getOwner(q) != this)
   {
     return;
   }
-  if (d_quantEngine->getQuantAttributes()->isFunDef(q))
+  QuantAttributes& qa = d_qreg.getQuantAttributes();
+  if (qa.isSygus(q))
   {
-    Assert(options::sygusRecFun());
-    // If it is a recursive function definition, add it to the function
-    // definition evaluator class.
-    Trace("cegqi") << "Registering function definition : " << q << "\n";
-    FunDefEvaluator* fde = d_tds->getFunDefEvaluator();
-    fde->assertDefinition(q);
-    return;
-  }
-  Trace("cegqi") << "Register conjecture : " << q << std::endl;
-  if (options::sygusQePreproc())
-  {
-    d_waiting_conj.push_back(q);
-  }
-  else
-  {
+    Trace("cegqi") << "Register conjecture : " << q << std::endl;
     // assign it now
     assignConjecture(q);
+    return;
   }
+  // otherwise it should be a recursive function definition
+  Assert(options().quantifiers.sygusRecFun);
+  // If it is a recursive function definition, add it to the function
+  // definition evaluator class.
+  Trace("cegqi") << "Registering function definition : " << q << "\n";
+  FunDefEvaluator* fde = d_treg.getTermDatabaseSygus()->getFunDefEvaluator();
+  fde->assertDefinition(q);
 }
 
 bool SynthEngine::checkConjecture(SynthConjecture* conj)
 {
-  if (Trace.isOn("sygus-engine-debug"))
+  if (TraceIsOn("sygus-engine-debug"))
   {
     conj->debugPrint("sygus-engine-debug");
     Trace("sygus-engine-debug") << std::endl;
   }
-
-  if (!conj->needsRefinement())
+  Trace("sygus-engine-debug") << "Do conjecture check..." << std::endl;
+  Trace("sygus-engine-debug") << "  *** Check candidate phase..." << std::endl;
+  size_t prevPending = d_qim.numPendingLemmas();
+  bool ret = conj->doCheck();
+  // if we added a lemma, return true
+  if (d_qim.numPendingLemmas() > prevPending)
   {
-    Trace("sygus-engine-debug") << "Do conjecture check..." << std::endl;
     Trace("sygus-engine-debug")
-        << "  *** Check candidate phase..." << std::endl;
-    std::vector<Node> cclems;
-    bool ret = conj->doCheck(cclems);
-    bool addedLemma = false;
-    for (const Node& lem : cclems)
-    {
-      if (d_quantEngine->addLemma(lem))
-      {
-        ++(d_statistics.d_cegqi_lemmas_ce);
-        addedLemma = true;
-      }
-      else
-      {
-        // this may happen if we eagerly unfold, simplify to true
-        Trace("sygus-engine-debug")
-            << "  ...FAILED to add candidate!" << std::endl;
-      }
-    }
-    if (addedLemma)
-    {
-      Trace("sygus-engine-debug")
-          << "  ...check for counterexample." << std::endl;
-      return true;
-    }
-    if (!conj->needsRefinement())
-    {
-      return ret;
-    }
-    // otherwise, immediately go to refine candidate
+        << "  ...check for counterexample." << std::endl;
+    return true;
   }
-  Trace("sygus-engine-debug") << "  *** Refine candidate phase..." << std::endl;
-  return conj->doRefine();
-}
-
-void SynthEngine::printSynthSolution(std::ostream& out)
-{
-  Assert(!d_conjs.empty());
-  for (unsigned i = 0, size = d_conjs.size(); i < size; i++)
-  {
-    if (d_conjs[i]->isAssigned())
-    {
-      d_conjs[i]->printSynthSolution(out);
-    }
-  }
+  return ret;
 }
 
 bool SynthEngine::getSynthSolutions(
     std::map<Node, std::map<Node, Node> >& sol_map)
 {
+  // Note that d_conjs should be size one. If it has not been assigned,
+  // by convention we return true for this method, which may correspond to
+  // a case where all functions-to-synthesize were unconstrained.
   bool ret = true;
   for (unsigned i = 0, size = d_conjs.size(); i < size; i++)
   {
@@ -272,17 +228,20 @@ bool SynthEngine::getSynthSolutions(
   return ret;
 }
 
-void SynthEngine::preregisterAssertion(Node n)
+void SynthEngine::ppNotifyAssertions(const std::vector<Node>& assertions)
 {
-  // check if it sygus conjecture
-  if (QuantAttributes::checkSygusConjecture(n))
+  for (const Node& n : assertions)
   {
-    // this is a sygus conjecture
-    Trace("cegqi") << "Preregister sygus conjecture : " << n << std::endl;
-    d_conj->preregisterConjecture(n);
+    // check if it sygus conjecture
+    if (QuantAttributes::checkSygusConjecture(n))
+    {
+      // this is a sygus conjecture
+      Trace("cegqi") << "Preregister sygus conjecture : " << n << std::endl;
+      d_conj->ppNotifyConjecture(n);
+    }
   }
 }
 
 }  // namespace quantifiers
 }  // namespace theory
-} /* namespace CVC4 */
+}  // namespace cvc5::internal

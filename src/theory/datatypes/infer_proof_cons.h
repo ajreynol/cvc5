@@ -1,51 +1,48 @@
-/*********************                                                        */
-/*! \file infer_proof_cons.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Inference to proof conversion for datatypes
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Inference to proof conversion for datatypes.
+ */
 
-#include "cvc4_private.h"
+#include "cvc5_private.h"
 
-#ifndef CVC4__THEORY__DATATYPES__INFER_PROOF_CONS_H
-#define CVC4__THEORY__DATATYPES__INFER_PROOF_CONS_H
+#ifndef CVC5__THEORY__DATATYPES__INFER_PROOF_CONS_H
+#define CVC5__THEORY__DATATYPES__INFER_PROOF_CONS_H
 
-#include <vector>
-
+#include "context/cdhashmap.h"
 #include "expr/node.h"
-#include "expr/proof_generator.h"
+#include "proof/proof.h"
+#include "proof/proof_generator.h"
+#include "smt/env_obj.h"
 #include "theory/datatypes/inference.h"
-#include "theory/theory_proof_step_buffer.h"
 
-namespace CVC4 {
+namespace cvc5::internal {
 namespace theory {
 namespace datatypes {
 
 /**
  * Converts between the datatype-specific (untrustworthy) DatatypesInference
  * class and information about how to construct a trustworthy proof step
- * (PfRule, children, args). It acts as a (lazy) proof generator where the
+ * (ProofRule, children, args). It acts as a (lazy) proof generator where the
  * former is registered via notifyFact and the latter is asked for in
  * getProofFor, typically by the proof equality engine.
  *
  * The main (private) method of this class is convert below, which is
  * called when we need to construct a proof node from an InferInfo.
  */
-class InferProofCons : public ProofGenerator
+class InferProofCons : protected EnvObj, public ProofGenerator
 {
-  typedef context::
-      CDHashMap<Node, std::shared_ptr<DatatypesInference>, NodeHashFunction>
-          NodeDatatypesInferenceMap;
+  typedef context::CDHashMap<Node, std::shared_ptr<DatatypesInference>>
+      NodeDatatypesInferenceMap;
 
  public:
-  InferProofCons(context::Context* c, ProofNodeManager* pnm);
+  InferProofCons(Env& env, context::Context* c);
   ~InferProofCons() {}
   /**
    * This is called to notify that di is an inference that may need a proof
@@ -83,17 +80,28 @@ class InferProofCons : public ProofGenerator
    * step(s) are for concluding the conclusion of the inference. This
    * information is stored in cdp.
    */
-  void convert(InferId infer, TNode conc, TNode exp, CDProof* cdp);
+  void convert(InferenceId infer, TNode conc, TNode exp, CDProof* cdp);
+  /**
+   * Add a step a=b to cdp using ProofRewriteRule rule r if possible, or a
+   * trust step otherwise.
+   */
+  void tryRewriteRule(TNode a, TNode b, ProofRewriteRule r, CDProof* cdp);
+  /**
+   * Adds a step concluding t_i = s_i from C(t_1 ... t_n) = C(s_1 ... s_n),
+   * where i is stored in the node narg.
+   */
+  void addDtUnif(CDProof* cdp,
+                 const Node& conc,
+                 const Node& exp,
+                 const Node& narg);
   /** A dummy context used by this class if none is provided */
   context::Context d_context;
-  /** the proof node manager */
-  ProofNodeManager* d_pnm;
   /** The lazy fact map */
   NodeDatatypesInferenceMap d_lazyFactMap;
 };
 
 }  // namespace datatypes
 }  // namespace theory
-}  // namespace CVC4
+}  // namespace cvc5::internal
 
-#endif /* CVC4__THEORY__DATATYPES__INFER_PROOF_CONS_H */
+#endif /* CVC5__THEORY__DATATYPES__INFER_PROOF_CONS_H */

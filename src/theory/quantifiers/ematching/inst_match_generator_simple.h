@@ -1,21 +1,19 @@
-/*********************                                                        */
-/*! \file inst_match_generator_simple.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds, Morgan Deters, Tim King
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief simple inst match generator class
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Simple inst match generator class.
+ */
 
-#include "cvc4_private.h"
+#include "cvc5_private.h"
 
-#ifndef CVC4__THEORY__QUANTIFIERS__INST_MATCH_GENERATOR_SIMPLE_H
-#define CVC4__THEORY__QUANTIFIERS__INST_MATCH_GENERATOR_SIMPLE_H
+#ifndef CVC5__THEORY__QUANTIFIERS__INST_MATCH_GENERATOR_SIMPLE_H
+#define CVC5__THEORY__QUANTIFIERS__INST_MATCH_GENERATOR_SIMPLE_H
 
 #include <map>
 #include <vector>
@@ -23,8 +21,9 @@
 #include "expr/node_trie.h"
 #include "theory/quantifiers/ematching/inst_match_generator.h"
 
-namespace CVC4 {
+namespace cvc5::internal {
 namespace theory {
+namespace quantifiers {
 namespace inst {
 
 /** InstMatchGeneratorSimple class
@@ -40,25 +39,21 @@ namespace inst {
  * The implementation traverses the term indices in TermDatabase for adding
  * instantiations, which is more efficient than the techniques required for
  * handling non-simple single triggers.
- *
- * In contrast to other instantiation generators, it does not call
- * IMGenerator::sendInstantiation and for performance reasons instead calls
- * qe->getInstantiate()->addInstantiation(...) directly.
  */
 class InstMatchGeneratorSimple : public IMGenerator
 {
  public:
   /** constructors */
-  InstMatchGeneratorSimple(Node q, Node pat, QuantifiersEngine* qe);
+  InstMatchGeneratorSimple(Env& env, Trigger* tparent, Node q, Node pat);
 
   /** Reset instantiation round. */
-  void resetInstantiationRound(QuantifiersEngine* qe) override;
+  void resetInstantiationRound() override;
   /** Add instantiations. */
-  uint64_t addInstantiations(Node q,
-                             QuantifiersEngine* qe,
-                             Trigger* tparent) override;
+  uint64_t addInstantiations(InstMatch& m) override;
   /** Get active score. */
-  int getActiveScore(QuantifiersEngine* qe) override;
+  int getActiveScore() override;
+  /** Get the inference id, for statistics. */
+  InferenceId getInferenceId() override;
 
  private:
   /** quantified formula for the trigger term */
@@ -89,22 +84,22 @@ class InstMatchGeneratorSimple : public IMGenerator
   std::map<size_t, int> d_var_num;
   /** add instantiations, helper function.
    *
-   * m is the current match we are building,
-   * addedLemmas is the number of lemmas we have added via calls to
-   *                qe->getInstantiate()->aaddInstantiation(...),
-   * argIndex is the argument index in d_match_pattern we are currently
-   *              matching,
-   * tat is the term index we are currently traversing.
+   * @param m the current match we are building,
+   * @param addedLemmas the number of lemmas we have added via calls to
+   * Instantiate::addInstantiation(...),
+   * @param argIndex the argument index in d_match_pattern we are currently
+   * matching,
+   * @param tat the term index we are currently traversing.
    */
   void addInstantiations(InstMatch& m,
-                         QuantifiersEngine* qe,
                          uint64_t& addedLemmas,
                          size_t argIndex,
                          TNodeTrie* tat);
 };
 
 }  // namespace inst
+}  // namespace quantifiers
 }  // namespace theory
-}  // namespace CVC4
+}  // namespace cvc5::internal
 
 #endif

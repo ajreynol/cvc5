@@ -1,28 +1,31 @@
-/*********************                                                        */
-/*! \file strings_entail.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds, Andres Noetzli
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Entailment tests involving strings
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Entailment tests involving strings.
+ */
 
-#include "cvc4_private.h"
+#include "cvc5_private.h"
 
-#ifndef CVC4__THEORY__STRINGS__STRING_ENTAIL_H
-#define CVC4__THEORY__STRINGS__STRING_ENTAIL_H
+#ifndef CVC5__THEORY__STRINGS__STRING_ENTAIL_H
+#define CVC5__THEORY__STRINGS__STRING_ENTAIL_H
 
 #include <vector>
 
 #include "expr/node.h"
+#include "theory/strings/arith_entail.h"
+#include "theory/strings/rewrites.h"
 
-namespace CVC4 {
+namespace cvc5::internal {
 namespace theory {
+
+class Rewriter;
+
 namespace strings {
 
 class SequencesRewriter;
@@ -34,8 +37,10 @@ class SequencesRewriter;
  */
 class StringsEntail
 {
+  friend class SequencesRewriter;
+
  public:
-  StringsEntail(SequencesRewriter& rewriter);
+  StringsEntail(Rewriter* r, ArithEntail& aent);
 
   /** can constant contain list
    * return true if constant c can contain the list l in order
@@ -63,7 +68,7 @@ class StringsEntail
   /** can constant contain concat
    * same as above but with n = str.++( l ) instead of l
    */
-  static bool canConstantContainConcat(Node c, Node n, int& firstc, int& lastc);
+  bool canConstantContainConcat(Node c, Node n, int& firstc, int& lastc);
 
   /** strip symbolic length
    *
@@ -105,11 +110,11 @@ class StringsEntail
    *    nr is updated to { "abc", y }
    *    curr is updated to str.len(y)+1
    */
-  static bool stripSymbolicLength(std::vector<Node>& n1,
-                                  std::vector<Node>& nr,
-                                  int dir,
-                                  Node& curr,
-                                  bool strict = false);
+  bool stripSymbolicLength(std::vector<Node>& n1,
+                           std::vector<Node>& nr,
+                           int dir,
+                           Node& curr,
+                           bool strict = false);
   /** component contains
    * This function is used when rewriting str.contains( t1, t2 ), where
    * n1 is the vector form of t1
@@ -158,6 +163,17 @@ class StringsEntail
    *   returns 1,
    *   n1 is updated to { "c", x, "def" },
    *   nb is updated to { y, "ab" }
+   *
+   * Note that when computeRemainder is true, this check is less aggressive.
+   * In particular, the only terms we add to nb and ne are terms from n1 or
+   * substrings of words that appear in n1. If we would require constructing
+   * a (symbolic) substring term, we fail instead. For example:
+   *
+   * componentContains({ y }, { substr(y,0,1) }, {}, false, 1) returns 1,
+   * while componentContains({ y }, { substr(y,0,1) }, {}, true, 1) returns 0;
+   * it does not return 1 updating nb/ne to
+   * { substr(y,0,1) } / { substr(y,1,len(y)-1) }. This is to avoid
+   * non-termination in the rewriter.
    */
   int componentContains(std::vector<Node>& n1,
                         std::vector<Node>& n2,
@@ -165,6 +181,16 @@ class StringsEntail
                         std::vector<Node>& ne,
                         bool computeRemainder = false,
                         int remainderDir = 0);
+  /**
+   * Same as above, but with more advanced reasoning, e.g. to infer prefixes
+   * and suffixes.
+   */
+  int componentContainsExt(std::vector<Node>& n1,
+                           std::vector<Node>& n2,
+                           std::vector<Node>& nb,
+                           std::vector<Node>& ne,
+                           bool computeRemainder = false,
+                           int remainderDir = 0);
   /** strip constant endpoints
    * This function is used when rewriting str.contains( t1, t2 ), where
    * n1 is the vector form of t1
@@ -209,19 +235,17 @@ class StringsEntail
    *
    * @param a The string that is checked whether it contains `b`
    * @param b The string that is checked whether it is contained in `a`
-   * @param fullRewriter Determines whether the function can use the full
-   * rewriter or only `rewriteContains()` (useful for avoiding loops)
    * @return true node if it can be shown that `a` contains `b`, false node if
    * it can be shown that `a` does not contain `b`, null node otherwise
    */
-  Node checkContains(Node a, Node b, bool fullRewriter = true);
+  Node checkContains(Node a, Node b);
 
   /** entail non-empty
    *
    * Checks whether string a is entailed to be non-empty. Is equivalent to
    * the call checkArithEntail( len( a ), true ).
    */
-  static bool checkNonEmpty(Node a);
+  bool checkNonEmpty(Node a);
 
   /**
    * Checks whether string has at most/exactly length one. Length one strings
@@ -233,7 +257,7 @@ class StringsEntail
    * at most length one
    * @return True if the string has at most/exactly length one, false otherwise
    */
-  static bool checkLengthOne(Node s, bool strict = false);
+  bool checkLengthOne(Node s, bool strict = false);
 
   /**
    * Checks whether it is always true that `a` is a strict subset of `b` in the
@@ -281,12 +305,12 @@ class StringsEntail
    * getStringOrEmpty( (str.substr "ABC" x y) ) --> (str.substr "ABC" x y)
    * because the function could not compute a simpler
    */
-  static Node getStringOrEmpty(Node n);
+  Node getStringOrEmpty(Node n);
 
   /**
    * Infers a conjunction of equalities that correspond to (str.contains x y)
    * if it can show that the length of y is greater or equal to the length of
-   * x. If y is a concatentation, we get x = y1 ++ ... ++ yn, the conjunction
+   * x. If y is a concatenation, we get x = y1 ++ ... ++ yn, the conjunction
    * is of the form:
    *
    * (and (= x (str.++ y1' ... ym')) (= y1'' "") ... (= yk'' ""))
@@ -297,9 +321,39 @@ class StringsEntail
    * y) if the function can infer that str.len(y) >= str.len(x) but cannot
    * infer that any of the yi must be empty.
    */
-  static Node inferEqsFromContains(Node x, Node y);
+  Node inferEqsFromContains(Node x, Node y);
+  /**
+   * Rewrite for MACRO_SUBSTR_STRIP_SYM_LENGTH.
+   * @param node The node to rewrite, which should be of the form (str.substr s
+   * n m).
+   * @param rule If we rewrite via this method, this is updated to the internal
+   * rewrite identifier (strings/rewrites.h) that was used.
+   * @param ch1 Along with ch2, this stores how the argument s of node was
+   * partitioned. In particular, s is equivalent to (str.++ ch1 ch2)
+   * (respectively (str.++ ch2 ch1) if rule was set to
+   * Rewrite::SS_STRIP_END_PT), and we have determined based on n and m that
+   * ch1/ch2 are in separate parts of the computation of the substring, e.g.
+   * ch1 is what is contained in the substring, and ch2 is not contained, or
+   * vice versa.
+   * @param ch2 The second part of the partition of s.
+   * @return The rewritten form of node.
+   */
+  Node rewriteViaMacroSubstrStripSymLength(const Node& node,
+                                           Rewrite& rule,
+                                           std::vector<Node>& ch1,
+                                           std::vector<Node>& ch2);
 
  private:
+  /**
+   * Helper method for componentContains / componentContainsExt.
+   */
+  int componentContainsInternal(bool isExt,
+                                std::vector<Node>& n1,
+                                std::vector<Node>& n2,
+                                std::vector<Node>& nb,
+                                std::vector<Node>& ne,
+                                bool computeRemainder = false,
+                                int remainderDir = 0);
   /** component contains base
    *
    * This function is a helper for the above function.
@@ -349,11 +403,16 @@ class StringsEntail
    *               str.substr(y,x,z),
    *               ite( x+z < 0 OR x < 0, y, str.substr(y,x+z,len(y)) ) )
    *
-   * Since we do not wish to introduce ITE terms in the rewriter, we instead
-   * return false, indicating that we cannot compute the remainder.
+   * Since we do not wish to introduce new (symbolic) terms, we
+   * instead return false, indicating that we cannot compute the remainder.
    */
-  bool componentContainsBase(
-      Node n1, Node n2, Node& n1rb, Node& n1re, int dir, bool computeRemainder);
+  bool componentContainsBase(bool isExt,
+                             Node n1,
+                             Node n2,
+                             Node& n1rb,
+                             Node& n1re,
+                             int dir,
+                             bool computeRemainder);
   /**
    * Simplifies a given node `a` s.t. the result is a concatenation of string
    * terms that can be interpreted as a multiset and which contains all
@@ -370,15 +429,19 @@ class StringsEntail
   static Node getMultisetApproximation(Node a);
 
  private:
+  /** Pointer to the full rewriter */
+  Rewriter* d_rr;
+  /** The arithmetic entailment module */
+  ArithEntail& d_arithEntail;
   /**
    * Reference to the sequences rewriter that owns this `StringsEntail`
    * instance.
    */
-  SequencesRewriter& d_rewriter;
+  SequencesRewriter* d_rewriter;
 };
 
 }  // namespace strings
 }  // namespace theory
-}  // namespace CVC4
+}  // namespace cvc5::internal
 
-#endif /* CVC4__THEORY__STRINGS__STRING_ENTAIL_H */
+#endif /* CVC5__THEORY__STRINGS__STRING_ENTAIL_H */

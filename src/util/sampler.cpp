@@ -1,26 +1,27 @@
-/*********************                                                        */
-/*! \file sampler.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Andres Noetzli
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Sampler class that generates random values of different sorts
- **
- ** The Sampler class can be used to generate random values of different sorts
- ** with biased and unbiased distributions.
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Sampler class that generates random values of different sorts
+ *
+ * The Sampler class can be used to generate random values of different sorts
+ * with biased and unbiased distributions.
+ */
 
 #include "util/sampler.h"
 
+#include <sstream>
+
 #include "base/check.h"
 #include "util/bitvector.h"
+#include "util/random.h"
 
-namespace CVC4 {
+namespace cvc5::internal {
 
 BitVector Sampler::pickBvUniform(unsigned sz)
 {
@@ -60,7 +61,7 @@ FloatingPoint Sampler::pickFpBiased(unsigned e, unsigned s)
   {
     // Generate special values
 
-    uint64_t type = rnd.pick(0, 12);
+    uint64_t type = rnd.pick<uint64_t>(0, 12);
     switch (type)
     {
       // NaN
@@ -73,27 +74,27 @@ FloatingPoint Sampler::pickFpBiased(unsigned e, unsigned s)
 
       // +/- inf
       // sign = x, exp = 11...11, sig = 00...00
-      case 1: sign = one; CVC4_FALLTHROUGH;
+      case 1: sign = one; CVC5_FALLTHROUGH;
       case 2: exp = BitVector::mkOnes(e); break;
 
       // +/- zero
       // sign = x, exp = 00...00, sig = 00...00
-      case 3: sign = one; CVC4_FALLTHROUGH;
+      case 3: sign = one; CVC5_FALLTHROUGH;
       case 4: break;
 
       // +/- max subnormal
       // sign = x, exp = 00...00, sig = 11...11
-      case 5: sign = one; CVC4_FALLTHROUGH;
+      case 5: sign = one; CVC5_FALLTHROUGH;
       case 6: sig = BitVector::mkOnes(s - 1); break;
 
       // +/- min subnormal
       // sign = x, exp = 00...00, sig = 00...01
-      case 7: sign = one; CVC4_FALLTHROUGH;
+      case 7: sign = one; CVC5_FALLTHROUGH;
       case 8: sig = BitVector(s - 1, static_cast<unsigned int>(1)); break;
 
       // +/- max normal
       // sign = x, exp = 11...10, sig = 11...11
-      case 9: sign = one; CVC4_FALLTHROUGH;
+      case 9: sign = one; CVC5_FALLTHROUGH;
       case 10:
         exp = BitVector::mkOnes(e) - BitVector(e, static_cast<unsigned int>(1));
         sig = BitVector::mkOnes(s - 1);
@@ -101,7 +102,7 @@ FloatingPoint Sampler::pickFpBiased(unsigned e, unsigned s)
 
       // +/- min normal
       // sign = x, exp = 00...01, sig = 00...00
-      case 11: sign = one; CVC4_FALLTHROUGH;
+      case 11: sign = one; CVC5_FALLTHROUGH;
       case 12: exp = BitVector(e, static_cast<unsigned int>(1)); break;
 
       default: Unreachable();
@@ -117,7 +118,7 @@ FloatingPoint Sampler::pickFpBiased(unsigned e, unsigned s)
       sign = one;
     }
 
-    uint64_t pattern = rnd.pick(0, 5);
+    uint64_t pattern = rnd.pick<uint64_t>(0, 5);
     switch (pattern)
     {
       case 0:
@@ -152,7 +153,8 @@ FloatingPoint Sampler::pickFpBiased(unsigned e, unsigned s)
       case 5:
       {
         // sign = x, exp = xx...xx0xx...xx, sig = xx...xx
-        uint64_t lsbSize = rnd.pick(1, e - 2);
+        Assert(e > 2);
+        uint64_t lsbSize = rnd.pick<uint64_t>(1, e - 2);
         uint64_t msbSize = e - lsbSize - 1;
         BitVector lsb = pickBvUniform(lsbSize);
         BitVector msb = pickBvUniform(msbSize);
@@ -169,4 +171,4 @@ FloatingPoint Sampler::pickFpBiased(unsigned e, unsigned s)
   return FloatingPoint(e, s, bv);
 }
 
-}  // namespace CVC4
+}  // namespace cvc5::internal

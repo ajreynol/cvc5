@@ -1,48 +1,43 @@
-/*********************                                                        */
-/*! \file theory_builtin.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds, Mudathir Mohamed, Morgan Deters
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Implementation of the builtin theory.
- **
- ** Implementation of the builtin theory.
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Implementation of the builtin theory.
+ */
 
 #include "theory/builtin/theory_builtin.h"
 
 #include "expr/kind.h"
-#include "expr/proof_node_manager.h"
+#include "proof/proof_node_manager.h"
 #include "theory/builtin/theory_builtin_rewriter.h"
 #include "theory/theory_model.h"
+#include "theory/uf/theory_uf_rewriter.h"
 #include "theory/valuation.h"
 
-using namespace std;
-
-namespace CVC4 {
+namespace cvc5::internal {
 namespace theory {
 namespace builtin {
 
-TheoryBuiltin::TheoryBuiltin(context::Context* c,
-                             context::UserContext* u,
-                             OutputChannel& out,
-                             Valuation valuation,
-                             const LogicInfo& logicInfo,
-                             ProofNodeManager* pnm)
-    : Theory(THEORY_BUILTIN, c, u, out, valuation, logicInfo, pnm)
+TheoryBuiltin::TheoryBuiltin(Env& env, OutputChannel& out, Valuation valuation)
+    : Theory(THEORY_BUILTIN, env, out, valuation),
+      d_rewriter(env.getNodeManager()),
+      d_checker(env.getNodeManager(), env.getRewriter(), env),
+      d_state(env, valuation),
+      d_im(env, *this, d_state, "theory::builtin::")
 {
-  ProofChecker* pc = pnm != nullptr ? pnm->getChecker() : nullptr;
-  if (pc != nullptr)
-  {
-    // add checkers
-    d_bProofChecker.registerTo(pc);
-  }
+  // indicate we are using the default theory state and inference managers
+  d_theoryState = &d_state;
+  d_inferManager = &d_im;
 }
+
+TheoryRewriter* TheoryBuiltin::getTheoryRewriter() { return &d_rewriter; }
+
+ProofRuleChecker* TheoryBuiltin::getProofChecker() { return &d_checker; }
 
 std::string TheoryBuiltin::identify() const
 {
@@ -60,6 +55,16 @@ void TheoryBuiltin::finishInit()
   // present.
 }
 
+TrustNode TheoryBuiltin::ppStaticRewrite(TNode n)
+{
+  if (n.getKind() == Kind::DISTINCT)
+  {
+    Node bn = uf::TheoryUfRewriter::blastDistinct(nodeManager(), n);
+    return TrustNode::mkTrustRewrite(n, bn);
+  }
+  return TrustNode::null();
+}
+
 }  // namespace builtin
 }  // namespace theory
-}  // namespace CVC4
+}  // namespace cvc5::internal

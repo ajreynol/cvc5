@@ -1,39 +1,39 @@
-/*********************                                                        */
-/*! \file template_infer.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds, Mathias Preiner
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief utility for processing single invocation synthesis conjectures
- **
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Utility for processing single invocation synthesis conjectures.
+ */
 #include "theory/quantifiers/sygus/template_infer.h"
 
+#include "expr/skolem_manager.h"
 #include "options/quantifiers_options.h"
-#include "theory/quantifiers/sygus/sygus_grammar_cons.h"
+#include "theory/quantifiers/sygus/embedding_converter.h"
 #include "theory/quantifiers/sygus/sygus_utils.h"
 #include "theory/quantifiers/term_util.h"
 
-using namespace CVC4::kind;
+using namespace cvc5::internal::kind;
 
-namespace CVC4 {
+namespace cvc5::internal {
 namespace theory {
 namespace quantifiers {
+
+SygusTemplateInfer::SygusTemplateInfer(Env& env) : EnvObj(env), d_ti(env) {}
 
 void SygusTemplateInfer::initialize(Node q)
 {
   Assert(d_quant.isNull());
-  Assert(q.getKind() == FORALL);
+  Assert(q.getKind() == Kind::FORALL);
   d_quant = q;
   // We are processing without single invocation techniques, now check if
   // we should fix an invariant template (post-condition strengthening or
   // pre-condition weakening).
-  options::SygusInvTemplMode tmode = options::sygusInvTemplMode();
+  options::SygusInvTemplMode tmode = options().quantifiers.sygusInvTemplMode;
   if (tmode != options::SygusInvTemplMode::NONE)
   {
     // currently only works for single predicate synthesis
@@ -41,10 +41,10 @@ void SygusTemplateInfer::initialize(Node q)
     {
       tmode = options::SygusInvTemplMode::NONE;
     }
-    else if (!options::sygusInvTemplWhenSyntax())
+    else if (!options().quantifiers.sygusInvTemplWhenSyntax)
     {
       // only use invariant templates if no syntactic restrictions
-      if (CegGrammarConstructor::hasSyntaxRestrictions(q))
+      if (EmbeddingConverter::hasSyntaxRestrictions(q))
       {
         tmode = options::SygusInvTemplMode::NONE;
       }
@@ -58,7 +58,7 @@ void SygusTemplateInfer::initialize(Node q)
   }
 
   Node qq;
-  if (q[1].getKind() == NOT && q[1][0].getKind() == FORALL)
+  if (q[1].getKind() == Kind::NOT && q[1][0].getKind() == Kind::FORALL)
   {
     qq = q[1][0][1];
   }
@@ -83,7 +83,7 @@ void SygusTemplateInfer::initialize(Node q)
     return;
   }
   Assert(prog == q[0][0]);
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   // map the program back via non-single invocation map
   std::vector<Node> prog_templ_vars;
   d_ti.getVariables(prog_templ_vars);
@@ -98,11 +98,11 @@ void SygusTemplateInfer::initialize(Node q)
   {
     atn = atn.getRangeType();
   }
-  d_templ_arg[prog] = nm->mkSkolem("I", atn);
+  d_templ_arg[prog] = NodeManager::mkDummySkolem("I", atn);
 
   // construct template
   Node templ;
-  if (options::sygusInvAutoUnfold())
+  if (options().quantifiers.sygusInvAutoUnfold)
   {
     if (d_ti.isComplete())
     {
@@ -136,7 +136,7 @@ void SygusTemplateInfer::initialize(Node q)
                              << std::endl;
           Trace("cegqi-inv") << "   " << templ << std::endl;
           // this should be unnecessary
-          templ = nm->mkNode(AND, templ, d_templ_arg[prog]);
+          templ = nm->mkNode(Kind::AND, templ, d_templ_arg[prog]);
         }
       }
       else
@@ -151,12 +151,12 @@ void SygusTemplateInfer::initialize(Node q)
   {
     if (tmode == options::SygusInvTemplMode::PRE)
     {
-      templ = nm->mkNode(OR, d_trans_pre[prog], d_templ_arg[prog]);
+      templ = nm->mkNode(Kind::OR, d_trans_pre[prog], d_templ_arg[prog]);
     }
     else
     {
       Assert(tmode == options::SygusInvTemplMode::POST);
-      templ = nm->mkNode(AND, d_trans_post[prog], d_templ_arg[prog]);
+      templ = nm->mkNode(Kind::AND, d_trans_post[prog], d_templ_arg[prog]);
     }
   }
   Trace("cegqi-inv") << "       template (pre-substitution) : " << templ
@@ -164,7 +164,7 @@ void SygusTemplateInfer::initialize(Node q)
   Assert(!templ.isNull());
 
   // get the variables
-  Node sfvl = SygusUtils::getSygusArgumentListForSynthFun(prog);
+  Node sfvl = SygusUtils::getOrMkSygusArgumentList(prog);
   if (!sfvl.isNull())
   {
     std::vector<Node> prog_vars(sfvl.begin(), sfvl.end());
@@ -203,4 +203,4 @@ Node SygusTemplateInfer::getTemplateArg(Node prog) const
 
 }  // namespace quantifiers
 }  // namespace theory
-}  // namespace CVC4
+}  // namespace cvc5::internal

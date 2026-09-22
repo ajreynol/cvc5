@@ -1,83 +1,98 @@
-/*********************                                                        */
-/*! \file bv_solver.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Mathias Preiner, Andrew Reynolds
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Bit-vector solver interface.
- **
- ** Describes the interface for the internal bit-vector solver of TheoryBV.
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Bit-vector solver interface.
+ *
+ * Describes the interface for the internal bit-vector solver of TheoryBV.
+ */
 
-#include "cvc4_private.h"
+#include "cvc5_private.h"
 
-#ifndef CVC4__THEORY__BV__BV_SOLVER_H
-#define CVC4__THEORY__BV__BV_SOLVER_H
+#ifndef CVC5__THEORY__BV__BV_SOLVER_H
+#define CVC5__THEORY__BV__BV_SOLVER_H
 
+#include "smt/env_obj.h"
 #include "theory/theory.h"
 
-namespace CVC4 {
+namespace cvc5::internal {
 namespace theory {
 namespace bv {
 
-class BVSolver
+class BVSolver : protected EnvObj
 {
  public:
-  BVSolver(TheoryState& state, TheoryInferenceManager& inferMgr)
-      : d_state(state), d_inferManager(inferMgr){};
+  BVSolver(Env& env, TheoryState& state, TheoryInferenceManager& inferMgr)
+      : EnvObj(env), d_state(state), d_im(inferMgr) {};
 
-  virtual ~BVSolver(){};
+  virtual ~BVSolver() {}
 
   /**
    * Returns true if we need an equality engine. If so, we initialize the
    * information regarding how it should be setup. For details, see the
    * documentation in Theory::needsEqualityEngine.
    */
-  virtual bool needsEqualityEngine(EeSetupInfo& esi) { return false; }
+  virtual bool needsEqualityEngine(CVC5_UNUSED EeSetupInfo& esi)
+  {
+    return false;
+  }
 
-  virtual void finishInit(){};
+  virtual void finishInit() {};
 
   virtual void preRegisterTerm(TNode n) = 0;
 
   /**
    * Forwarded from TheoryBV::preCheck().
    */
-  virtual bool preCheck(Theory::Effort level = Theory::Effort::EFFORT_FULL)
+  virtual bool preCheck(
+      CVC5_UNUSED Theory::Effort level = Theory::Effort::EFFORT_FULL)
   {
     return false;
   }
   /**
    * Forwarded from TheoryBV::postCheck().
    */
-  virtual void postCheck(Theory::Effort level = Theory::Effort::EFFORT_FULL){};
+  virtual void postCheck(
+      CVC5_UNUSED Theory::Effort level = Theory::Effort::EFFORT_FULL) {};
   /**
    * Forwarded from TheoryBV:preNotifyFact().
    */
-  virtual bool preNotifyFact(
-      TNode atom, bool pol, TNode fact, bool isPrereg, bool isInternal)
+  virtual bool preNotifyFact(CVC5_UNUSED TNode atom,
+                             CVC5_UNUSED bool pol,
+                             CVC5_UNUSED TNode fact,
+                             CVC5_UNUSED bool isPrereg,
+                             CVC5_UNUSED bool isInternal)
   {
     return false;
   }
   /**
    * Forwarded from TheoryBV::notifyFact().
    */
-  virtual void notifyFact(TNode atom, bool pol, TNode fact, bool isInternal) {}
+  virtual void notifyFact(CVC5_UNUSED TNode atom,
+                          CVC5_UNUSED bool pol,
+                          CVC5_UNUSED TNode fact,
+                          CVC5_UNUSED bool isInternal)
+  {
+  }
 
   virtual bool needsCheckLastEffort() { return false; }
 
-  virtual void propagate(Theory::Effort e){};
+  virtual void propagate(CVC5_UNUSED Theory::Effort e) {}
 
-  virtual TrustNode explain(TNode n)
+  virtual TrustNode explain(CVC5_UNUSED TNode n)
   {
     Unimplemented() << "BVSolver propagated a node but doesn't implement the "
                        "BVSolver::explain() interface!";
     return TrustNode::null();
   }
+
+  /** Additionally collect terms relevant for collecting model values. */
+  virtual void computeRelevantTerms(CVC5_UNUSED std::set<Node>& termSet) {}
 
   /** Collect model values in m based on the relevant terms given by termSet */
   virtual bool collectModelValues(TheoryModel* m,
@@ -85,38 +100,47 @@ class BVSolver
 
   virtual std::string identify() const = 0;
 
-  virtual Theory::PPAssertStatus ppAssert(
-      TrustNode in, TrustSubstitutionMap& outSubstitutions) = 0;
+  virtual TrustNode ppRewrite(CVC5_UNUSED TNode t) { return TrustNode::null(); }
 
-  virtual TrustNode ppRewrite(TNode t) { return TrustNode::null(); };
+  virtual void ppStaticLearn(CVC5_UNUSED TNode in,
+                             CVC5_UNUSED std::vector<TrustNode>& learned)
+  {
+  }
 
-  virtual void ppStaticLearn(TNode in, NodeBuilder<>& learned){};
+  virtual void presolve() {}
 
-  virtual void presolve(){};
+  virtual void notifySharedTerm(CVC5_UNUSED TNode t) {}
 
-  virtual void notifySharedTerm(TNode t) {}
-
-  virtual EqualityStatus getEqualityStatus(TNode a, TNode b)
+  virtual EqualityStatus getEqualityStatus(CVC5_UNUSED TNode a,
+                                           CVC5_UNUSED TNode b)
   {
     return EqualityStatus::EQUALITY_UNKNOWN;
   }
 
-  /** Called by abstraction preprocessing pass. */
-  virtual bool applyAbstraction(const std::vector<Node>& assertions,
-                                std::vector<Node>& new_assertions)
+  /**
+   * Get the current value of `node`.
+   *
+   * The `initialize` flag indicates whether bits should be zero-initialized
+   * if they don't have a value yet.
+   */
+  virtual Node getValue(CVC5_UNUSED TNode node, CVC5_UNUSED bool initialize)
   {
-    new_assertions.insert(
-        new_assertions.end(), assertions.begin(), assertions.end());
-    return false;
-  };
+    return Node::null();
+  }
+
+  /**
+   * @return True if current model is consistent.
+   * @note Can only ever be inconsistent in the case of abstraction.
+   */
+  virtual bool isModelConsistent() const { return true; }
 
  protected:
   TheoryState& d_state;
-  TheoryInferenceManager& d_inferManager;
+  TheoryInferenceManager& d_im;
 };
 
 }  // namespace bv
 }  // namespace theory
-}  // namespace CVC4
+}  // namespace cvc5::internal
 
-#endif /* CVC4__THEORY__BV__BV_SOLVER_H */
+#endif /* CVC5__THEORY__BV__BV_SOLVER_H */

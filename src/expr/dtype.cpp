@@ -1,30 +1,35 @@
-/*********************                                                        */
-/*! \file dtype.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds, Morgan Deters, Tim King
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief A class representing a datatype definition
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * A class representing a datatype definition.
+ */
 #include "expr/dtype.h"
 
+#include <sstream>
+
+#include "expr/dtype_cons.h"
 #include "expr/node_algorithm.h"
+#include "expr/skolem_manager.h"
+#include "expr/sort_to_term.h"
 #include "expr/type_matcher.h"
+#include "util/rational.h"
 
-using namespace CVC4::kind;
+using namespace cvc5::internal::kind;
 
-namespace CVC4 {
+namespace cvc5::internal {
 
 DType::DType(std::string name, bool isCo)
     : d_name(name),
       d_params(),
       d_isCo(isCo),
       d_isTuple(false),
+      d_isNullable(false),
       d_isRecord(false),
       d_constructors(),
       d_resolved(false),
@@ -44,6 +49,7 @@ DType::DType(std::string name, const std::vector<TypeNode>& params, bool isCo)
       d_params(params),
       d_isCo(isCo),
       d_isTuple(false),
+      d_isNullable(false),
       d_isRecord(false),
       d_constructors(),
       d_resolved(false),
@@ -84,6 +90,8 @@ bool DType::isSygus() const { return !d_sygusType.isNull(); }
 
 bool DType::isTuple() const { return d_isTuple; }
 
+bool DType::isNullable() const { return d_isNullable; }
+
 bool DType::isRecord() const { return d_isRecord; }
 
 bool DType::isResolved() const { return d_resolved; }
@@ -93,9 +101,10 @@ const DType& DType::datatypeOf(Node item)
   TypeNode t = item.getType();
   switch (t.getKind())
   {
-    case CONSTRUCTOR_TYPE: return t[t.getNumChildren() - 1].getDType();
-    case SELECTOR_TYPE:
-    case TESTER_TYPE: return t[0].getDType();
+    case Kind::CONSTRUCTOR_TYPE: return t[t.getNumChildren() - 1].getDType();
+    case Kind::SELECTOR_TYPE:
+    case Kind::TESTER_TYPE:
+    case Kind::UPDATER_TYPE: return t[0].getDType();
     default:
       Unhandled() << "arg must be a datatype constructor, selector, or tester";
   }
@@ -103,14 +112,16 @@ const DType& DType::datatypeOf(Node item)
 
 size_t DType::indexOf(Node item)
 {
-  Assert(item.getType().isConstructor() || item.getType().isTester()
-         || item.getType().isSelector());
+  Assert(item.getType().isDatatypeConstructor()
+         || item.getType().isDatatypeTester()
+         || item.getType().isDatatypeSelector()
+         || item.getType().isDatatypeUpdater());
   return indexOfInternal(item);
 }
 
 size_t DType::indexOfInternal(Node item)
 {
-  if (item.getKind() == APPLY_TYPE_ASCRIPTION)
+  if (item.getKind() == Kind::APPLY_TYPE_ASCRIPTION)
   {
     return indexOf(item[0]);
   }
@@ -120,17 +131,64 @@ size_t DType::indexOfInternal(Node item)
 
 size_t DType::cindexOf(Node item)
 {
-  Assert(item.getType().isSelector());
+  Assert(item.getType().isDatatypeSelector()
+         || item.getType().isDatatypeUpdater());
   return cindexOfInternal(item);
 }
 size_t DType::cindexOfInternal(Node item)
 {
-  if (item.getKind() == APPLY_TYPE_ASCRIPTION)
+  if (item.getKind() == Kind::APPLY_TYPE_ASCRIPTION)
   {
     return cindexOf(item[0]);
   }
   Assert(item.hasAttribute(DTypeConsIndexAttr()));
   return item.getAttribute(DTypeConsIndexAttr());
+}
+
+void DType::collectUnresolvedDatatypeTypes(std::set<TypeNode>& unresTypes) const
+{
+  // Scan the arguments of all constructors and collect their types. To be
+  // robust to datatypes with nested recursion, we collect the *component*
+  // types of all subfield types and store them in csfTypes. In other words, we
+  // search for unresolved datatypes that occur possibly as parameters to
+  // other parametric types.
+  std::unordered_set<TypeNode> csfTypes;
+  for (const std::shared_ptr<DTypeConstructor>& ctor : d_constructors)
+  {
+    for (size_t i = 0, nargs = ctor->getNumArgs(); i < nargs; i++)
+    {
+      Node sel = (*ctor)[i].d_selector;
+      if (sel.isNull())
+      {
+        // we currently permit null selector for representing self selectors,
+        // skip these.
+        continue;
+      }
+      // The selector has *not* been initialized to a variable of selector type,
+      // which is done during resolve. Instead, we get the raw type of sel
+      // and compute its component types.
+      expr::getComponentTypes(sel.getType(), csfTypes);
+    }
+  }
+  // Now, process each component type
+  for (const TypeNode& arg : csfTypes)
+  {
+    if (arg.isUnresolvedDatatype())
+    {
+      // it is an unresolved datatype
+      unresTypes.insert(arg);
+    }
+    else if (arg.isInstantiatedUninterpretedSort())
+    {
+      // it might be an instantiated sort constructor corresponding to a
+      // unresolved parametric datatype, in which case we extract its operator
+      TypeNode argc = arg.getUninterpretedSortConstructor();
+      if (argc.isUnresolvedDatatype())
+      {
+        unresTypes.insert(argc);
+      }
+    }
+  }
 }
 
 bool DType::resolve(const std::map<std::string, TypeNode>& resolutions,
@@ -187,7 +245,7 @@ bool DType::resolve(const std::map<std::string, TypeNode>& resolutions,
   {
     // all datatype constructors should be sygus and have sygus operators whose
     // free variables are subsets of sygus bound var list.
-    std::unordered_set<Node, NodeHashFunction> svs;
+    std::unordered_set<Node> svs;
     for (const Node& sv : d_sygusBvl)
     {
       svs.insert(sv);
@@ -197,7 +255,7 @@ bool DType::resolve(const std::map<std::string, TypeNode>& resolutions,
       Node sop = d_constructors[i]->getSygusOp();
       Assert(!sop.isNull())
           << "Sygus datatype contains a non-sygus constructor";
-      std::unordered_set<Node, NodeHashFunction> fvs;
+      std::unordered_set<Node> fvs;
       expr::getFreeVariables(sop, fvs);
       for (const Node& v : fvs)
       {
@@ -253,10 +311,9 @@ void DType::setSygus(TypeNode st, Node bvl, bool allowConst, bool allowAll)
   // Notice we only want to do this for sygus datatypes that are user-provided.
   // At the moment, the condition !allow_all implies the grammar is
   // user-provided and hence may require a default constant.
-  // TODO (https://github.com/CVC4/cvc4-projects/issues/38):
-  // In an API for SyGuS, it probably makes more sense for the user to
-  // explicitly add the "any constant" constructor with a call instead of
-  // passing a flag. This would make the block of code unnecessary.
+  // For the SyGuS API, we could consider requiring the user to explicitly add
+  // the "any constant" constructor with a call instead of passing a flag. This
+  // would make the block of code unnecessary.
   if (allowConst && !allowAll)
   {
     // if I don't already have a constant (0-ary constructor)
@@ -272,7 +329,7 @@ void DType::setSygus(TypeNode st, Node bvl, bool allowConst, bool allowAll)
     if (!hasConstant)
     {
       // add an arbitrary one
-      Node op = st.mkGroundTerm();
+      Node op = NodeManager::mkGroundTerm(st);
       // use same naming convention as SygusDatatype
       std::stringstream ss;
       ss << getName() << "_" << getNumConstructors() << "_" << op;
@@ -294,6 +351,12 @@ void DType::setTuple()
 {
   Assert(!d_resolved);
   d_isTuple = true;
+}
+
+void DType::setNullable()
+{
+  Assert(!d_resolved);
+  d_isNullable = true;
 }
 
 void DType::setRecord()
@@ -356,7 +419,7 @@ bool DType::isRecursiveSingleton(TypeNode t) const
     if (computeCardinalityRecSingleton(t, processing, d_cardUAssume[t]))
     {
       d_cardRecSingleton[t] = 1;
-      if (Trace.isOn("dt-card"))
+      if (TraceIsOn("dt-card"))
       {
         Trace("dt-card") << "DType " << getName()
                          << " is recursive singleton, dependent upon "
@@ -439,7 +502,7 @@ bool DType::computeCardinalityRecSingleton(
       TypeNode tc = d_constructors[0]->getArgType(i);
       // if it is an uninterpreted sort, then we depend on it having cardinality
       // one
-      if (tc.isSort())
+      if (tc.isUninterpretedSort())
       {
         if (std::find(u_assume.begin(), u_assume.end(), tc) == u_assume.end())
         {
@@ -483,64 +546,50 @@ bool DType::computeCardinalityRecSingleton(
   return true;
 }
 
-bool DType::isFinite(TypeNode t) const
+CardinalityClass DType::getCardinalityClass(TypeNode t) const
 {
   Trace("datatypes-init") << "DType::isFinite " << std::endl;
   Assert(isResolved());
   Assert(t.isDatatype() && t.getDType().getTypeNode() == d_self);
 
   // is this already in the cache ?
-  if (d_self.getAttribute(DTypeFiniteComputedAttr()))
+  std::map<TypeNode, CardinalityClass>::const_iterator it = d_cardClass.find(t);
+  if (it != d_cardClass.end())
   {
-    return d_self.getAttribute(DTypeFiniteAttr());
+    return it->second;
   }
+  // it is the max cardinality class of a constructor, with base case ONE
+  // if we have one constructor and FINITE otherwise.
+  CardinalityClass c = d_constructors.size() == 1 ? CardinalityClass::ONE
+                                                  : CardinalityClass::FINITE;
+  Trace("datatypes-card-class")
+      << "Compute cardinality class of " << t << "..." << std::endl;
   for (std::shared_ptr<DTypeConstructor> ctor : d_constructors)
   {
-    if (!ctor->isFinite(t))
-    {
-      d_self.setAttribute(DTypeFiniteComputedAttr(), true);
-      d_self.setAttribute(DTypeFiniteAttr(), false);
-      return false;
-    }
+    CardinalityClass cc = ctor->getCardinalityClass(t);
+    Trace("datatypes-card-class")
+        << "- constructor " << ctor->getName() << " is " << cc << std::endl;
+    c = maxCardinalityClass(c, cc);
   }
-  d_self.setAttribute(DTypeFiniteComputedAttr(), true);
-  d_self.setAttribute(DTypeFiniteAttr(), true);
-  return true;
+  Trace("datatypes-card-class")
+      << "Cardinality class of " << t << " is " << c << std::endl;
+  d_cardClass[t] = c;
+  return c;
 }
-bool DType::isFinite() const
+CardinalityClass DType::getCardinalityClass() const
 {
   Assert(isResolved() && !isParametric());
-  return isFinite(d_self);
+  return getCardinalityClass(d_self);
 }
 
-bool DType::isInterpretedFinite(TypeNode t) const
+bool DType::isFinite(TypeNode t, bool fmfEnabled) const
 {
-  Trace("datatypes-init") << "DType::isInterpretedFinite " << std::endl;
-  Assert(isResolved());
-  Assert(t.isDatatype() && t.getDType().getTypeNode() == d_self);
-  // is this already in the cache ?
-  if (d_self.getAttribute(DTypeUFiniteComputedAttr()))
-  {
-    return d_self.getAttribute(DTypeUFiniteAttr());
-  }
-  // start by assuming it is not
-  d_self.setAttribute(DTypeUFiniteComputedAttr(), true);
-  d_self.setAttribute(DTypeUFiniteAttr(), false);
-  for (std::shared_ptr<DTypeConstructor> ctor : d_constructors)
-  {
-    if (!ctor->isInterpretedFinite(t))
-    {
-      return false;
-    }
-  }
-  d_self.setAttribute(DTypeUFiniteComputedAttr(), true);
-  d_self.setAttribute(DTypeUFiniteAttr(), true);
-  return true;
+  return isCardinalityClassFinite(getCardinalityClass(t), fmfEnabled);
 }
-bool DType::isInterpretedFinite() const
+
+bool DType::isFinite(bool fmfEnabled) const
 {
-  Assert(isResolved() && !isParametric());
-  return isInterpretedFinite(d_self);
+  return isFinite(d_self, fmfEnabled);
 }
 
 bool DType::isWellFounded() const
@@ -640,10 +689,9 @@ Node DType::mkGroundTermInternal(TypeNode t, bool isValue) const
   return groundTerm;
 }
 
-void DType::getAlienSubfieldTypes(
-    std::unordered_set<TypeNode, TypeNodeHashFunction>& types,
-    std::map<TypeNode, bool>& processed,
-    bool isAlienPos) const
+void DType::getAlienSubfieldTypes(std::unordered_set<TypeNode>& types,
+                                  std::map<TypeNode, bool>& processed,
+                                  bool isAlienPos) const
 {
   std::map<TypeNode, bool>::iterator it = processed.find(d_self);
   if (it != processed.end())
@@ -723,10 +771,10 @@ bool DType::hasNestedRecursion() const
   Trace("datatypes-init") << "Compute simply recursive for " << getName()
                           << std::endl;
   // get the alien subfield types of this datatype
-  std::unordered_set<TypeNode, TypeNodeHashFunction> types;
+  std::unordered_set<TypeNode> types;
   std::map<TypeNode, bool> processed;
   getAlienSubfieldTypes(types, processed, false);
-  if (Trace.isOn("datatypes-init"))
+  if (TraceIsOn("datatypes-init"))
   {
     Trace("datatypes-init") << "Alien subfield types: " << std::endl;
     for (const TypeNode& t : types)
@@ -847,7 +895,7 @@ TypeNode DType::getTypeNode(const std::vector<TypeNode>& params) const
 {
   Assert(isResolved());
   Assert(!d_self.isNull() && d_self.isParametricDatatype());
-  return d_self.instantiateParametricDatatype(params);
+  return d_self.instantiate(params);
 }
 
 const DTypeConstructor& DType::operator[](size_t index) const
@@ -876,13 +924,15 @@ Node DType::getSharedSelector(TypeNode dtt, TypeNode t, size_t index) const
   }
   // make the shared selector
   Node s;
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = dtt.getNodeManager();
   std::stringstream ss;
   ss << "sel_" << index;
-  s = nm->mkSkolem(ss.str(),
-                   nm->mkSelectorType(dtt, t),
-                   "is a shared selector",
-                   NodeManager::SKOLEM_NO_NOTIFY);
+  SkolemManager* sm = nm->getSkolemManager();
+  std::vector<Node> cacheVals;
+  cacheVals.push_back(nm->mkConst(SortToTerm(dtt)));
+  cacheVals.push_back(nm->mkConst(SortToTerm(t)));
+  cacheVals.push_back(nm->mkConstInt(Rational(index)));
+  s = sm->mkSkolemFunction(SkolemId::SHARED_SELECTOR, cacheVals);
   d_sharedSel[dtt][t][index] = s;
   Trace("dt-shared-sel") << "Made " << s << " of type " << dtt << " -> " << t
                          << std::endl;
@@ -907,10 +957,21 @@ const std::vector<std::shared_ptr<DTypeConstructor> >& DType::getConstructors()
   return d_constructors;
 }
 
+std::unordered_set<TypeNode> DType::getSubfieldTypes() const
+{
+  std::unordered_set<TypeNode> subFieldTypes;
+  for (std::shared_ptr<DTypeConstructor> ctor : d_constructors)
+  {
+    for (size_t i = 0, nargs = ctor->getNumArgs(); i < nargs; i++)
+    {
+      subFieldTypes.insert(ctor->getArgType(i));
+    }
+  }
+  return subFieldTypes;
+}
+
 std::ostream& operator<<(std::ostream& os, const DType& dt)
 {
-  // can only output datatypes in the CVC4 native language
-  language::SetLanguage::Scope ls(os, language::output::LANG_CVC4);
   dt.toStream(os);
   return os;
 }
@@ -945,10 +1006,12 @@ void DType::toStream(std::ostream& out) const
   out << " END;" << std::endl;
 }
 
-DTypeIndexConstant::DTypeIndexConstant(size_t index) : d_index(index) {}
-std::ostream& operator<<(std::ostream& out, const DTypeIndexConstant& dic)
-{
-  return out << "index_" << dic.getIndex();
-}
+}  // namespace cvc5::internal
 
-}  // namespace CVC4
+namespace std {
+size_t hash<cvc5::internal::DType>::operator()(
+    const cvc5::internal::DType& dt) const
+{
+  return std::hash<std::string>()(dt.getName());
+}
+}  // namespace std

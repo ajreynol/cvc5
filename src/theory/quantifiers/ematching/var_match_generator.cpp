@@ -1,44 +1,48 @@
-/*********************                                                        */
-/*! \file var_match_generator.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds, Morgan Deters, Mathias Preiner
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Implementation of variable match generator class
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Implementation of variable match generator class.
+ */
 #include "theory/quantifiers/ematching/var_match_generator.h"
 
-#include "theory/quantifiers_engine.h"
+#include "theory/quantifiers/term_util.h"
+#include "theory/rewriter.h"
 
-using namespace CVC4::kind;
+using namespace cvc5::internal::kind;
 
-namespace CVC4 {
+namespace cvc5::internal {
 namespace theory {
+namespace quantifiers {
 namespace inst {
 
-VarMatchGeneratorTermSubs::VarMatchGeneratorTermSubs(Node var, Node subs)
-    : InstMatchGenerator(), d_var(var), d_subs(subs), d_rm_prev(false)
+VarMatchGeneratorTermSubs::VarMatchGeneratorTermSubs(Env& env,
+                                                     Trigger* tparent,
+                                                     Node var,
+                                                     Node subs)
+    : InstMatchGenerator(env, tparent, Node::null()),
+      d_var(var),
+      d_subs(subs),
+      d_rm_prev(false)
 {
   d_children_types.push_back(d_var.getAttribute(InstVarNumAttribute()));
   d_var_type = d_var.getType();
 }
 
-bool VarMatchGeneratorTermSubs::reset(Node eqc, QuantifiersEngine* qe)
+bool VarMatchGeneratorTermSubs::reset(Node eqc)
 {
   d_eq_class = eqc;
   return true;
 }
 
-int VarMatchGeneratorTermSubs::getNextMatch(Node q,
-                                            InstMatch& m,
-                                            QuantifiersEngine* qe,
-                                            Trigger* tparent)
+int VarMatchGeneratorTermSubs::getNextMatch(InstMatch& m)
 {
+  size_t index = d_children_types[0];
   int ret_val = -1;
   if (!d_eq_class.isNull())
   {
@@ -46,19 +50,18 @@ int VarMatchGeneratorTermSubs::getNextMatch(Node q,
                                   << d_var << " in " << d_subs << std::endl;
     TNode tvar = d_var;
     Node s = d_subs.substitute(tvar, d_eq_class);
-    s = Rewriter::rewrite(s);
+    s = rewrite(s);
     Trace("var-trigger-matching")
         << "...got " << s << ", " << s.getKind() << std::endl;
     d_eq_class = Node::null();
-    // if( s.getType().isSubtypeOf( d_var_type ) ){
-    d_rm_prev = m.get(d_children_types[0]).isNull();
-    if (!m.set(qe->getEqualityQuery(), d_children_types[0], s))
+    d_rm_prev = m.get(index).isNull();
+    if (!m.set(index, s))
     {
       return -1;
     }
     else
     {
-      ret_val = continueNextMatch(q, m, qe, tparent);
+      ret_val = continueNextMatch(m);
       if (ret_val > 0)
       {
         return ret_val;
@@ -67,12 +70,18 @@ int VarMatchGeneratorTermSubs::getNextMatch(Node q,
   }
   if (d_rm_prev)
   {
-    m.d_vals[d_children_types[0]] = Node::null();
+    m.reset(index);
     d_rm_prev = false;
   }
   return -1;
 }
 
+InferenceId VarMatchGeneratorTermSubs::getInferenceId()
+{
+  return InferenceId::QUANTIFIERS_INST_E_MATCHING_VAR_GEN;
+}
+
 }  // namespace inst
+}  // namespace quantifiers
 }  // namespace theory
-}  // namespace CVC4
+}  // namespace cvc5::internal

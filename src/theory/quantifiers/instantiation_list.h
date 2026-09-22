@@ -1,40 +1,51 @@
-/*********************                                                        */
-/*! \file instantiation_list.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief list of instantiations
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * List of instantiations.
+ */
 
-#include "cvc4_private.h"
+#include "cvc5_private.h"
 
-#ifndef CVC4__THEORY__QUANTIFIERS__INSTANTIATION_LIST_H
-#define CVC4__THEORY__QUANTIFIERS__INSTANTIATION_LIST_H
+#ifndef CVC5__THEORY__QUANTIFIERS__INSTANTIATION_LIST_H
+#define CVC5__THEORY__QUANTIFIERS__INSTANTIATION_LIST_H
 
 #include <iosfwd>
 #include <vector>
 
 #include "expr/node.h"
+#include "theory/inference_id.h"
 
-namespace CVC4 {
+namespace cvc5::internal {
+
+struct InstantiationVec
+{
+ public:
+  InstantiationVec(const std::vector<Node>& vec,
+                   theory::InferenceId id = theory::InferenceId::UNKNOWN,
+                   Node pfArg = Node::null());
+  /** The vector of terms */
+  std::vector<Node> d_vec;
+  /** The inference id */
+  theory::InferenceId d_id;
+  /** The proof argument */
+  Node d_pfArg;
+};
 
 /** A list of instantiations for a quantified formula */
 struct InstantiationList
 {
-  InstantiationList(Node q, const std::vector<std::vector<Node> >& inst)
-      : d_quant(q), d_inst(inst)
-  {
-  }
+  /** Initialize */
+  void initialize(Node q);
   /** The quantified formula */
   Node d_quant;
   /** The instantiation list */
-  std::vector<std::vector<Node> > d_inst;
+  std::vector<InstantiationVec> d_inst;
 };
 
 /** Print the instantiation list to stream out */
@@ -53,6 +64,6 @@ struct SkolemList
 /** Print the skolem list to stream out */
 std::ostream& operator<<(std::ostream& out, const SkolemList& skl);
 
-}  // namespace CVC4
+}  // namespace cvc5::internal
 
-#endif /* CVC4__THEORY__QUANTIFIERS__INSTANTIATION_LIST_H */
+#endif /* CVC5__THEORY__QUANTIFIERS__INSTANTIATION_LIST_H */

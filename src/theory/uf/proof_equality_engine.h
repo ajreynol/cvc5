@@ -1,38 +1,41 @@
-/*********************                                                        */
-/*! \file proof_equality_engine.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds, Haniel Barbosa
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief The proof-producing equality engine
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * The proof-producing equality engine.
+ */
 
-#include "cvc4_private.h"
+#include "cvc5_private.h"
 
-#ifndef CVC4__THEORY__UF__PROOF_EQUALITY_ENGINE_H
-#define CVC4__THEORY__UF__PROOF_EQUALITY_ENGINE_H
+#ifndef CVC5__THEORY__UF__PROOF_EQUALITY_ENGINE_H
+#define CVC5__THEORY__UF__PROOF_EQUALITY_ENGINE_H
 
-#include <map>
 #include <vector>
 
 #include "context/cdhashmap.h"
 #include "context/cdhashset.h"
-#include "expr/buffered_proof_generator.h"
-#include "expr/lazy_proof.h"
 #include "expr/node.h"
-#include "expr/proof_node.h"
-#include "expr/proof_node_manager.h"
-#include "theory/eager_proof_generator.h"
-#include "theory/uf/equality_engine.h"
+#include "proof/assumption_proof_generator.h"
+#include "proof/buffered_proof_generator.h"
+#include "proof/eager_proof_generator.h"
+#include "proof/lazy_proof.h"
+#include "smt/env_obj.h"
 
-namespace CVC4 {
+namespace cvc5::internal {
+
+class Env;
+class ProofNode;
+class ProofNodeManager;
+
 namespace theory {
 namespace eq {
+
+class EqualityEngine;
 
 /**
  * A layer on top of an EqualityEngine. The goal of this class is manage the
@@ -58,7 +61,7 @@ namespace eq {
  * in a SAT-context dependent manner in a context-dependent (CDProof) object.
  * It furthermore maintains an internal FactProofGenerator class for managing
  * proofs of facts whose steps are explicitly provided (those that are given
- * concrete PfRule, children, and args). Call these "simple facts".
+ * concrete ProofRule, children, and args). Call these "simple facts".
  *
  * Overall, this class is an eager proof generator (theory/proof_generator.h),
  * in that it stores (copies) of proofs for lemmas at the moment they are sent
@@ -77,15 +80,15 @@ namespace eq {
  */
 class ProofEqEngine : public EagerProofGenerator
 {
-  typedef context::CDHashSet<Node, NodeHashFunction> NodeSet;
-  typedef context::CDHashMap<Node, std::shared_ptr<ProofNode>, NodeHashFunction>
-      NodeProofMap;
+  typedef context::CDHashSet<Node> NodeSet;
+  typedef context::CDHashMap<Node, std::shared_ptr<ProofNode>> NodeProofMap;
 
  public:
-  ProofEqEngine(context::Context* c,
-                context::UserContext* u,
-                EqualityEngine& ee,
-                ProofNodeManager* pnm);
+  /**
+   * @param env The environment
+   * @param ee The equality engine this is layered on
+   */
+  ProofEqEngine(Env& env, EqualityEngine& ee);
   ~ProofEqEngine() {}
   //-------------------------- assert fact
   /**
@@ -101,11 +104,14 @@ class ProofEqEngine : public EagerProofGenerator
    * holds in the equality engine, this method returns false.
    */
   bool assertFact(Node lit,
-                  PfRule id,
+                  ProofRule id,
                   const std::vector<Node>& exp,
                   const std::vector<Node>& args);
   /** Same as above but where exp is (conjunctive) node */
-  bool assertFact(Node lit, PfRule id, Node exp, const std::vector<Node>& args);
+  bool assertFact(Node lit,
+                  ProofRule id,
+                  Node exp,
+                  const std::vector<Node>& args);
   /**
    * Multi-step version of assert fact via a proof step buffer. This method
    * is similar to above, but the justification for lit may have multiple steps.
@@ -165,7 +171,7 @@ class ProofEqEngine : public EagerProofGenerator
    * internally so that this class may respond to a call to
    * ProofGenerator::getProof(...).
    */
-  TrustNode assertConflict(PfRule id,
+  TrustNode assertConflict(ProofRule id,
                            const std::vector<Node>& exp,
                            const std::vector<Node>& args);
   /** Generator version, where pg has a proof of false from assumptions exp */
@@ -209,7 +215,7 @@ class ProofEqEngine : public EagerProofGenerator
    * The formula can be queried via TrustNode::getProven in the standard way.
    */
   TrustNode assertLemma(Node conc,
-                        PfRule id,
+                        ProofRule id,
                         const std::vector<Node>& exp,
                         const std::vector<Node>& noExplain,
                         const std::vector<Node>& args);
@@ -276,11 +282,11 @@ class ProofEqEngine : public EagerProofGenerator
   eq::EqualityEngine& d_ee;
   /** The default proof generator (for simple facts) */
   BufferedProofGenerator d_factPg;
+  /** The no-explain proof generator */
+  AssumptionProofGenerator d_assumpPg;
   /** common nodes */
   Node d_true;
   Node d_false;
-  /** the proof node manager */
-  ProofNodeManager* d_pnm;
   /** The SAT-context-dependent proof object */
   LazyCDProof d_proof;
   /**
@@ -294,6 +300,6 @@ class ProofEqEngine : public EagerProofGenerator
 
 }  // namespace eq
 }  // namespace theory
-}  // namespace CVC4
+}  // namespace cvc5::internal
 
-#endif /* CVC4__THEORY__STRINGS__PROOF_MANAGER_H */
+#endif /* CVC5__THEORY__STRINGS__PROOF_MANAGER_H */

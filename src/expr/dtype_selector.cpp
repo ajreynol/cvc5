@@ -1,37 +1,47 @@
-/*********************                                                        */
-/*! \file dtype_selector.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds, Tim King, Morgan Deters
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief A class representing a datatype selector.
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * A class representing a datatype selector.
+ */
 
 #include "expr/dtype_selector.h"
 
-#include "options/set_language.h"
+using namespace cvc5::internal::kind;
 
-using namespace CVC4::kind;
+namespace cvc5::internal {
 
-namespace CVC4 {
-
-DTypeSelector::DTypeSelector(std::string name, Node selector)
-    : d_name(name), d_selector(selector), d_resolved(false)
+DTypeSelector::DTypeSelector(std::string name, Node selector, Node updater)
+    : d_name(name), d_selector(selector), d_updater(updater), d_resolved(false)
 {
   Assert(name != "");
 }
 
-const std::string& DTypeSelector::getName() const { return d_name; }
+std::string DTypeSelector::getName() const
+{
+  // may have a null byte at the end for self selectors, cut off
+  size_t pos = d_name.find('\0');
+  if (pos != std::string::npos)
+  {
+    return d_name.substr(0, pos);
+  }
+  return d_name;
+}
 
 Node DTypeSelector::getSelector() const
 {
   Assert(d_resolved);
   return d_selector;
+}
+Node DTypeSelector::getUpdater() const
+{
+  Assert(d_resolved);
+  return d_updater;
 }
 
 Node DTypeSelector::getConstructor() const
@@ -40,7 +50,11 @@ Node DTypeSelector::getConstructor() const
   return d_constructor;
 }
 
-TypeNode DTypeSelector::getType() const { return d_selector.getType(); }
+TypeNode DTypeSelector::getType() const
+{
+  Assert(!d_selector.isNull());
+  return d_selector.getType();
+}
 
 TypeNode DTypeSelector::getRangeType() const
 {
@@ -77,10 +91,16 @@ void DTypeSelector::toStream(std::ostream& out) const
 
 std::ostream& operator<<(std::ostream& os, const DTypeSelector& arg)
 {
-  // can only output datatypes in the CVC4 native language
-  language::SetLanguage::Scope ls(os, language::output::LANG_CVC4);
   arg.toStream(os);
   return os;
 }
 
-}  // namespace CVC4
+}  // namespace cvc5::internal
+
+namespace std {
+size_t hash<cvc5::internal::DTypeSelector>::operator()(
+    const cvc5::internal::DTypeSelector& sel) const
+{
+  return std::hash<std::string>()(sel.getName());
+}
+}  // namespace std

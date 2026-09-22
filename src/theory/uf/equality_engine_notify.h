@@ -1,25 +1,23 @@
-/*********************                                                        */
-/*! \file equality_engine_notify.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds, Morgan Deters, Dejan Jovanovic
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief The virtual class for notifications from the equality engine.
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * The virtual class for notifications from the equality engine.
+ */
 
-#include "cvc4_private.h"
+#include "cvc5_private.h"
 
-#ifndef CVC4__THEORY__UF__EQUALITY_ENGINE_NOTIFY_H
-#define CVC4__THEORY__UF__EQUALITY_ENGINE_NOTIFY_H
+#ifndef CVC5__THEORY__UF__EQUALITY_ENGINE_NOTIFY_H
+#define CVC5__THEORY__UF__EQUALITY_ENGINE_NOTIFY_H
 
 #include "expr/node.h"
 
-namespace CVC4 {
+namespace cvc5::internal {
 namespace theory {
 namespace eq {
 
@@ -30,7 +28,7 @@ namespace eq {
 class EqualityEngineNotify
 {
  public:
-  virtual ~EqualityEngineNotify(){};
+  virtual ~EqualityEngineNotify() {};
 
   /**
    * Notifies about a trigger predicate that became true or false. Notice that
@@ -96,25 +94,33 @@ class EqualityEngineNotify
 class EqualityEngineNotifyNone : public EqualityEngineNotify
 {
  public:
-  bool eqNotifyTriggerPredicate(TNode predicate, bool value) override
+  bool eqNotifyTriggerPredicate(CVC5_UNUSED TNode predicate,
+                                CVC5_UNUSED bool value) override
   {
     return true;
   }
-  bool eqNotifyTriggerTermEquality(TheoryId tag,
-                                   TNode t1,
-                                   TNode t2,
-                                   bool value) override
+  bool eqNotifyTriggerTermEquality(CVC5_UNUSED TheoryId tag,
+                                   CVC5_UNUSED TNode t1,
+                                   CVC5_UNUSED TNode t2,
+                                   CVC5_UNUSED bool value) override
   {
     return true;
   }
-  void eqNotifyConstantTermMerge(TNode t1, TNode t2) override {}
-  void eqNotifyNewClass(TNode t) override {}
-  void eqNotifyMerge(TNode t1, TNode t2) override {}
-  void eqNotifyDisequal(TNode t1, TNode t2, TNode reason) override {}
+  void eqNotifyConstantTermMerge(CVC5_UNUSED TNode t1,
+                                 CVC5_UNUSED TNode t2) override
+  {
+  }
+  void eqNotifyNewClass(CVC5_UNUSED TNode t) override {}
+  void eqNotifyMerge(CVC5_UNUSED TNode t1, CVC5_UNUSED TNode t2) override {}
+  void eqNotifyDisequal(CVC5_UNUSED TNode t1,
+                        CVC5_UNUSED TNode t2,
+                        CVC5_UNUSED TNode reason) override
+  {
+  }
 }; /* class EqualityEngineNotifyNone */
 
 }  // Namespace eq
 }  // Namespace theory
-}  // Namespace CVC4
+}  // namespace cvc5::internal
 
 #endif

@@ -1,70 +1,75 @@
-/*********************                                                        */
-/*! \file type_enumerator.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Morgan Deters, Tim King, Mathias Preiner
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief An enumerator for Booleans
- **
- ** An enumerator for Booleans.
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * An enumerator for Booleans.
+ */
 
-#include "cvc4_private.h"
+#include "cvc5_private.h"
 
-#ifndef CVC4__THEORY__BOOLEANS__TYPE_ENUMERATOR_H
-#define CVC4__THEORY__BOOLEANS__TYPE_ENUMERATOR_H
+#ifndef CVC5__THEORY__BOOLEANS__TYPE_ENUMERATOR_H
+#define CVC5__THEORY__BOOLEANS__TYPE_ENUMERATOR_H
 
-#include "theory/type_enumerator.h"
-#include "expr/type_node.h"
 #include "expr/kind.h"
+#include "expr/type_node.h"
+#include "theory/type_enumerator.h"
 
-namespace CVC4 {
+namespace cvc5::internal {
 namespace theory {
 namespace booleans {
 
-class BooleanEnumerator : public TypeEnumeratorBase<BooleanEnumerator> {
-  enum { FALSE, TRUE, DONE } d_value;
+class BooleanEnumerator : public TypeEnumeratorBase<BooleanEnumerator>
+{
+  enum
+  {
+    FALSE,
+    TRUE,
+    DONE
+  } d_value;
 
  public:
-  BooleanEnumerator(TypeNode type, TypeEnumeratorProperties* tep = nullptr)
+  BooleanEnumerator(TypeNode type,
+                    CVC5_UNUSED TypeEnumeratorProperties* tep = nullptr)
       : TypeEnumeratorBase<BooleanEnumerator>(type), d_value(FALSE)
   {
-    Assert(type.getKind() == kind::TYPE_CONSTANT
+    Assert(type.getKind() == Kind::TYPE_CONSTANT
            && type.getConst<TypeConstant>() == BOOLEAN_TYPE);
   }
 
-  Node operator*() override {
-    switch(d_value) {
-    case FALSE:
-      return NodeManager::currentNM()->mkConst(false);
-    case TRUE:
-      return NodeManager::currentNM()->mkConst(true);
-    default:
-      throw NoMoreValuesException(getType());
+  Node operator*() override
+  {
+    switch (d_value)
+    {
+      case FALSE: return getType().getNodeManager()->mkConst(false);
+      case TRUE: return getType().getNodeManager()->mkConst(true);
+      default: throw NoMoreValuesException(getType());
     }
   }
 
   BooleanEnumerator& operator++() override
   {
     // sequence is FALSE, TRUE
-    if(d_value == FALSE) {
+    if (d_value == FALSE)
+    {
       d_value = TRUE;
-    } else {
+    }
+    else
+    {
       d_value = DONE;
     }
     return *this;
   }
 
   bool isFinished() override { return d_value == DONE; }
-};/* class BooleanEnumerator */
+}; /* class BooleanEnumerator */
 
-}/* CVC4::theory::booleans namespace */
-}/* CVC4::theory namespace */
-}/* CVC4 namespace */
+}  // namespace booleans
+}  // namespace theory
+}  // namespace cvc5::internal
 
-#endif /* CVC4__THEORY__BOOLEANS__TYPE_ENUMERATOR_H */
+#endif /* CVC5__THEORY__BOOLEANS__TYPE_ENUMERATOR_H */

@@ -1,0 +1,16 @@
+; REQUIRES: no-competition
+; COMMAND-LINE: -o sygus-grammar
+; SCRUBBER: sed -E 's/_[0-9]+/_N/g'
+; EXPECT: (sygus-grammar f ((A_Int_N Int) (A_Bool_N Bool) )((A_Int_N Int (x y 0 1 (+ A_Int_N A_Int_N) (- A_Int_N A_Int_N) (ite A_Bool_N A_Int_N A_Int_N)))(A_Bool_N Bool (true false (= A_Int_N A_Int_N) (<= A_Int_N A_Int_N) (not A_Bool_N) (and A_Bool_N A_Bool_N) (or A_Bool_N A_Bool_N)))))
+; EXPECT: (
+; EXPECT: (define-fun f ((x Int) (y Int)) Int 0)
+; EXPECT: )
+
+(set-logic LIA)
+
+(synth-fun f ((x Int) (y Int)) Int)
+
+(declare-var x Int)
+(declare-var y Int)
+(constraint (= (f x y) 0))
+(check-synth)

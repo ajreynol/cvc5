@@ -1,31 +1,32 @@
-/*********************                                                        */
-/*! \file split_zero_check.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Gereon Kremer
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Implementation of split zero check
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Implementation of split zero check.
+ */
 
 #include "theory/arith/nl/ext/split_zero_check.h"
 
 #include "expr/node.h"
-#include "theory/arith/arith_msum.h"
+#include "proof/proof.h"
+#include "theory/arith/arith_utilities.h"
 #include "theory/arith/inference_manager.h"
+#include "theory/arith/nl/ext/ext_state.h"
 #include "theory/arith/nl/nl_model.h"
+#include "theory/rewriter.h"
 
-namespace CVC4 {
+namespace cvc5::internal {
 namespace theory {
 namespace arith {
 namespace nl {
 
-SplitZeroCheck::SplitZeroCheck(ExtState* data)
-    : d_data(data), d_zero_split(d_data->d_ctx)
+SplitZeroCheck::SplitZeroCheck(Env& env, ExtState* data)
+    : EnvObj(env), d_data(data), d_zero_split(userContext())
 {
 }
 
@@ -36,16 +37,17 @@ void SplitZeroCheck::check()
     Node v = d_data->d_ms_vars[i];
     if (d_zero_split.insert(v))
     {
-      Node eq = Rewriter::rewrite(v.eqNode(d_data->d_zero));
+      Node eq = rewrite(v.eqNode(mkZero(v.getType())));
       Node lem = eq.orNode(eq.negate());
       CDProof* proof = nullptr;
       if (d_data->isProofEnabled())
       {
         proof = d_data->getProof();
-        proof->addStep(lem, PfRule::SPLIT, {}, {eq});
+        proof->addStep(lem, ProofRule::SPLIT, {}, {eq});
       }
       d_data->d_im.addPendingPhaseRequirement(eq, true);
-      d_data->d_im.addPendingArithLemma(lem, InferenceId::NL_SPLIT_ZERO, proof);
+      d_data->d_im.addPendingLemma(
+          lem, InferenceId::ARITH_NL_SPLIT_ZERO, proof);
     }
   }
 }
@@ -53,4 +55,4 @@ void SplitZeroCheck::check()
 }  // namespace nl
 }  // namespace arith
 }  // namespace theory
-}  // namespace CVC4
+}  // namespace cvc5::internal
