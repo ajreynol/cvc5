@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Gereon Kremer, Hans-Joerg Schurr, Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -31,9 +28,9 @@ namespace {
 
 /** Shorthand to create a Node from a constant number */
 template <typename T>
-Node mkInt(T val)
+Node mkInt(NodeManager* nm, T val)
 {
-  return NodeManager::currentNM()->mkConstInt(Rational(val));
+  return nm->mkConstInt(Rational(val));
 }
 
 /**
@@ -58,8 +55,9 @@ inline std::vector<Node> collectButHoldout(TNode parent,
 
 }  // namespace
 
-ProofCircuitPropagator::ProofCircuitPropagator(ProofNodeManager* pnm)
-    : d_pnm(pnm)
+ProofCircuitPropagator::ProofCircuitPropagator(NodeManager* nm,
+                                               ProofNodeManager* pnm)
+    : d_nm(nm), d_pnm(pnm)
 {
 }
 
@@ -270,7 +268,6 @@ std::shared_ptr<ProofNode> ProofCircuitPropagator::mkCResolution(
     const std::vector<Node>& lits,
     const std::vector<bool>& polarity)
 {
-  auto* nm = NodeManager::currentNM();
   std::vector<std::shared_ptr<ProofNode>> children = {clause};
   std::vector<Node> cpols;
   std::vector<Node> clits;
@@ -296,12 +293,12 @@ std::shared_ptr<ProofNode> ProofCircuitPropagator::mkCResolution(
     {
       children.emplace_back(assume(lit));
     }
-    cpols.emplace_back(nm->mkConst(pol));
+    cpols.emplace_back(d_nm->mkConst(pol));
     clits.emplace_back(lit);
   }
   std::vector<Node> args;
-  args.push_back(nm->mkNode(Kind::SEXPR, cpols));
-  args.push_back(nm->mkNode(Kind::SEXPR, clits));
+  args.push_back(d_nm->mkNode(Kind::SEXPR, cpols));
+  args.push_back(d_nm->mkNode(Kind::SEXPR, clits));
   return mkProof(ProofRule::CHAIN_RESOLUTION, children, args);
 }
 
@@ -316,21 +313,20 @@ std::shared_ptr<ProofNode> ProofCircuitPropagator::mkCResolution(
 std::shared_ptr<ProofNode> ProofCircuitPropagator::mkResolution(
     const std::shared_ptr<ProofNode>& clause, const Node& lit, bool polarity)
 {
-  auto* nm = NodeManager::currentNM();
+  // Use t_true and t_false to ensure deterministic node ID assignments
+  Node t_true = d_nm->mkConst<bool>(true);
+  Node t_false = d_nm->mkConst<bool>(false);
   if (polarity)
   {
     if (lit.getKind() == Kind::NOT)
     {
-      return mkProof(ProofRule::RESOLUTION,
-                     {clause, assume(lit[0])},
-                     {nm->mkConst(false), lit[0]});
+      return mkProof(
+          ProofRule::RESOLUTION, {clause, assume(lit[0])}, {t_false, lit[0]});
     }
-    return mkProof(ProofRule::RESOLUTION,
-                   {clause, assume(lit.notNode())},
-                   {nm->mkConst(true), lit});
+    return mkProof(
+        ProofRule::RESOLUTION, {clause, assume(lit.notNode())}, {t_true, lit});
   }
-  return mkProof(
-      ProofRule::RESOLUTION, {clause, assume(lit)}, {nm->mkConst(false), lit});
+  return mkProof(ProofRule::RESOLUTION, {clause, assume(lit)}, {t_false, lit});
 }
 
 std::shared_ptr<ProofNode> ProofCircuitPropagator::mkNot(
@@ -345,8 +341,8 @@ std::shared_ptr<ProofNode> ProofCircuitPropagator::mkNot(
 }
 
 ProofCircuitPropagatorBackward::ProofCircuitPropagatorBackward(
-    ProofNodeManager* pnm, TNode parent, bool parentAssignment)
-    : ProofCircuitPropagator(pnm),
+    NodeManager* nm, ProofNodeManager* pnm, TNode parent, bool parentAssignment)
+    : ProofCircuitPropagator(nm, pnm),
       d_parent(parent),
       d_parentAssignment(parentAssignment)
 {
@@ -359,8 +355,9 @@ std::shared_ptr<ProofNode> ProofCircuitPropagatorBackward::andTrue(
   {
     return nullptr;
   }
-  return mkProof(
-      ProofRule::AND_ELIM, {assume(d_parent)}, {mkInt(i - d_parent.begin())});
+  return mkProof(ProofRule::AND_ELIM,
+                 {assume(d_parent)},
+                 {mkInt(d_nm, i - d_parent.begin())});
 }
 
 std::shared_ptr<ProofNode> ProofCircuitPropagatorBackward::orFalse(
@@ -372,7 +369,7 @@ std::shared_ptr<ProofNode> ProofCircuitPropagatorBackward::orFalse(
   }
   return mkNot(mkProof(ProofRule::NOT_OR_ELIM,
                        {assume(d_parent.notNode())},
-                       {mkInt(i - d_parent.begin())}));
+                       {mkInt(d_nm, i - d_parent.begin())}));
 }
 
 std::shared_ptr<ProofNode> ProofCircuitPropagatorBackward::iteC(bool c)
@@ -437,11 +434,8 @@ std::shared_ptr<ProofNode> ProofCircuitPropagatorBackward::impliesNegY()
 }
 
 ProofCircuitPropagatorForward::ProofCircuitPropagatorForward(
-    ProofNodeManager* pnm, Node child, bool childAssignment, Node parent)
-    : ProofCircuitPropagator{pnm},
-      d_child(child),
-      d_childAssignment(childAssignment),
-      d_parent(parent)
+    NodeManager* nm, ProofNodeManager* pnm, Node child, Node parent)
+    : ProofCircuitPropagator{nm, pnm}, d_child(child), d_parent(parent)
 {
 }
 
@@ -466,11 +460,11 @@ std::shared_ptr<ProofNode> ProofCircuitPropagatorForward::andOneFalse()
     return nullptr;
   }
   auto it = std::find(d_parent.begin(), d_parent.end(), d_child);
-  return mkResolution(
-      mkProof(
-          ProofRule::CNF_AND_POS, {}, {d_parent, mkInt(it - d_parent.begin())}),
-      d_child,
-      true);
+  return mkResolution(mkProof(ProofRule::CNF_AND_POS,
+                              {},
+                              {d_parent, mkInt(d_nm, it - d_parent.begin())}),
+                      d_child,
+                      true);
 }
 
 std::shared_ptr<ProofNode> ProofCircuitPropagatorForward::orOneTrue()
@@ -480,11 +474,12 @@ std::shared_ptr<ProofNode> ProofCircuitPropagatorForward::orOneTrue()
     return nullptr;
   }
   auto it = std::find(d_parent.begin(), d_parent.end(), d_child);
-  return mkNot(mkResolution(
-      mkProof(
-          ProofRule::CNF_OR_NEG, {}, {d_parent, mkInt(it - d_parent.begin())}),
-      d_child,
-      false));
+  return mkNot(
+      mkResolution(mkProof(ProofRule::CNF_OR_NEG,
+                           {},
+                           {d_parent, mkInt(d_nm, it - d_parent.begin())}),
+                   d_child,
+                   false));
 }
 
 std::shared_ptr<ProofNode> ProofCircuitPropagatorForward::orFalse()

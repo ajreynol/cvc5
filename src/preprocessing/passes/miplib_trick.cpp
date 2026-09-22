@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Mathias Preiner, Gereon Kremer, Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -78,9 +75,7 @@ MipLibTrick::MipLibTrick(PreprocessingPassContext* preprocContext)
 {
 }
 
-MipLibTrick::~MipLibTrick()
-{
-}
+MipLibTrick::~MipLibTrick() {}
 
 /**
  * Remove conjuncts in toRemove from conjunction n. Return # of removed
@@ -100,7 +95,7 @@ size_t MipLibTrick::removeFromConjunction(
         || (sub.getKind() == Kind::AND
             && (subremovals = removeFromConjunction(sub, toRemove)) > 0))
     {
-      NodeBuilder b(Kind::AND);
+      NodeBuilder b(nodeManager(), Kind::AND);
       b.append(n.begin(), j);
       if (subremovals > 0)
       {
@@ -209,7 +204,6 @@ PreprocessingPassResult MipLibTrick::applyInternal(
   SubstitutionMap& top_level_substs = tlsm.get();
 
   NodeManager* nm = nodeManager();
-  SkolemManager* sm = nm->getSkolemManager();
   Node zero = nm->mkConstInt(Rational(0)), one = nm->mkConstInt(Rational(1));
   Node trueNode = nm->mkConst(true);
 
@@ -523,10 +517,8 @@ PreprocessingPassResult MipLibTrick::applyInternal(
             {
               stringstream ss;
               ss << "mipvar_" << *ii;
-              Node newVar = sm->mkDummySkolem(
-                  ss.str(),
-                  nm->integerType(),
-                  "a variable introduced due to scrubbing a miplib encoding");
+              Node newVar =
+                  NodeManager::mkDummySkolem(ss.str(), nm->integerType());
               Node geq = rewrite(nm->mkNode(Kind::GEQ, newVar, zero));
               Node leq = rewrite(nm->mkNode(Kind::LEQ, newVar, one));
               TrustNode tgeq = TrustNode::mkTrustLemma(geq, nullptr);
@@ -537,15 +529,13 @@ PreprocessingPassResult MipLibTrick::applyInternal(
                   n, false, nullptr, TrustId::PREPROCESS_MIPLIB_TRICK_LEMMA);
               TrustSubstitutionMap tnullMap(d_env, &fakeContext);
               CVC5_UNUSED SubstitutionMap& nullMap = tnullMap.get();
-              Theory::PPAssertStatus status CVC5_UNUSED;  // just for assertions
+              bool status CVC5_UNUSED;  // just for assertions
               status = te->solve(tgeq, tnullMap);
-              Assert(status == Theory::PP_ASSERT_STATUS_UNSOLVED)
-                  << "unexpected solution from arith's ppAssert()";
+              Assert(!status) << "unexpected solution from arith's ppAssert()";
               Assert(nullMap.empty())
                   << "unexpected substitution from arith's ppAssert()";
               status = te->solve(tleq, tnullMap);
-              Assert(status == Theory::PP_ASSERT_STATUS_UNSOLVED)
-                  << "unexpected solution from arith's ppAssert()";
+              Assert(!status) << "unexpected solution from arith's ppAssert()";
               Assert(nullMap.empty())
                   << "unexpected substitution from arith's ppAssert()";
               newVars.push_back(newVar);
@@ -559,7 +549,7 @@ PreprocessingPassResult MipLibTrick::applyInternal(
           Node sum;
           if (pos.getKind() == Kind::AND)
           {
-            NodeBuilder sumb(Kind::ADD);
+            NodeBuilder sumb(nodeManager(), Kind::ADD);
             for (size_t jj = 0; jj < pos.getNumChildren(); ++jj)
             {
               sumb << nm->mkNode(
@@ -660,10 +650,9 @@ PreprocessingPassResult MipLibTrick::applyInternal(
 
 MipLibTrick::Statistics::Statistics(StatisticsRegistry& reg)
     : d_numMiplibAssertionsRemoved(reg.registerInt(
-        "preprocessing::passes::MipLibTrick::numMiplibAssertionsRemoved"))
+          "preprocessing::passes::MipLibTrick::numMiplibAssertionsRemoved"))
 {
 }
-
 
 }  // namespace passes
 }  // namespace preprocessing

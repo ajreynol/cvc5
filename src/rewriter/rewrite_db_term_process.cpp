@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Aina Niemetz
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -15,10 +12,10 @@
 
 #include "rewriter/rewrite_db_term_process.h"
 
+#include "expr/aci_norm.h"
 #include "expr/attribute.h"
 #include "expr/dtype.h"
 #include "expr/dtype_cons.h"
-#include "expr/nary_term_util.h"
 #include "proof/conv_proof_generator.h"
 #include "theory/builtin/generic_op.h"
 #include "theory/bv/theory_bv_utils.h"
@@ -47,7 +44,6 @@ Node RewriteDbNodeConverter::postConvert(Node n)
   Kind k = n.getKind();
   if (k == Kind::CONST_STRING)
   {
-    NodeManager* nm = NodeManager::currentNM();
     // "ABC" is (str.++ "A" "B" "C")
     const std::vector<unsigned>& vec = n.getConst<String>().getVec();
     if (vec.size() <= 1)
@@ -59,9 +55,9 @@ Node RewriteDbNodeConverter::postConvert(Node n)
     {
       std::vector<unsigned> tmp;
       tmp.push_back(c);
-      children.push_back(nm->mkConst(String(tmp)));
+      children.push_back(d_nm->mkConst(String(tmp)));
     }
-    Node ret = nm->mkNode(Kind::STRING_CONCAT, children);
+    Node ret = d_nm->mkNode(Kind::STRING_CONCAT, children);
     recordProofStep(n, ret, ProofRule::EVALUATE);
     return ret;
   }
@@ -71,15 +67,23 @@ Node RewriteDbNodeConverter::postConvert(Node n)
     recordProofStep(n, ret, ProofRule::ENCODE_EQ_INTRO);
     return ret;
   }
+  else if (k == Kind::NONLINEAR_MULT)
+  {
+    // NONLINEAR_MULT and MULT are the same
+    std::vector<Node> children(n.begin(), n.end());
+    Node ret = d_nm->mkNode(Kind::MULT, children);
+    recordProofStep(n, ret, ProofRule::ENCODE_EQ_INTRO);
+    return ret;
+  }
   else if (k == Kind::CONST_BITVECTOR)
   {
     // (_ bv N M) is (bv N M)
-    NodeManager* nm = NodeManager::currentNM();
     std::vector<Node> children;
     children.push_back(
-        nm->mkConstInt(Rational(n.getConst<BitVector>().toInteger())));
-    children.push_back(nm->mkConstInt(Rational(theory::bv::utils::getSize(n))));
-    Node ret = nm->mkNode(Kind::CONST_BITVECTOR_SYMBOLIC, children);
+        d_nm->mkConstInt(Rational(n.getConst<BitVector>().toInteger())));
+    children.push_back(
+        d_nm->mkConstInt(Rational(theory::bv::utils::getSize(n))));
+    Node ret = d_nm->mkNode(Kind::CONST_BITVECTOR_SYMBOLIC, children);
     recordProofStep(n, ret, ProofRule::EVALUATE);
     return ret;
   }
@@ -87,16 +91,14 @@ Node RewriteDbNodeConverter::postConvert(Node n)
   {
     Node ret = theory::uf::FunctionConst::toLambda(n);
     recordProofStep(n, ret, ProofRule::ENCODE_EQ_INTRO);
-    // must convert again
-    return convert(ret);
+    return ret;
   }
   else if (k == Kind::FORALL)
   {
     // ignore annotation
     if (n.getNumChildren() == 3)
     {
-      NodeManager* nm = NodeManager::currentNM();
-      Node ret = nm->mkNode(Kind::FORALL, n[0], n[1]);
+      Node ret = d_nm->mkNode(Kind::FORALL, n[0], n[1]);
       recordProofStep(n, ret, ProofRule::ENCODE_EQ_INTRO);
       return ret;
     }
@@ -136,19 +138,18 @@ Node RewriteDbNodeConverter::postConvert(Node n)
   // convert indexed operators to symbolic
   if (GenericOp::isNumeralIndexedOperatorKind(k))
   {
-    NodeManager* nm = NodeManager::currentNM();
     std::vector<Node> indices =
         GenericOp::getIndicesForOperator(k, n.getOperator());
-    indices.insert(indices.begin(), nm->mkConst(GenericOp(k)));
+    indices.insert(indices.begin(), d_nm->mkConst(GenericOp(k)));
     indices.insert(indices.end(), n.begin(), n.end());
-    Node ret = nm->mkNode(Kind::APPLY_INDEXED_SYMBOLIC, indices);
+    Node ret = d_nm->mkNode(Kind::APPLY_INDEXED_SYMBOLIC, indices);
     recordProofStep(n, ret, ProofRule::ENCODE_EQ_INTRO);
     return ret;
   }
   // since string constants are converted to concatenation terms, we ensure
   // these are flattened using ACI_NORM. This ensures (str.++ "AB" x) is
   // handled as (str.++ "A" "B" x), not (str.++ (str.++ "A" "B") x).
-  if (k==Kind::STRING_CONCAT)
+  if (k == Kind::STRING_CONCAT)
   {
     Node nacc = expr::getACINormalForm(n);
     recordProofStep(n, nacc, ProofRule::ACI_NORM);
@@ -199,13 +200,14 @@ void RewriteDbNodeConverter::recordProofStep(const Node& n,
 
 ProofRewriteDbNodeConverter::ProofRewriteDbNodeConverter(Env& env)
     : EnvObj(env),
+      d_wktc(Kind::INST_PATTERN_LIST),
       // must rewrite within operators
       d_tpg(env,
             nullptr,
             TConvPolicy::FIXPOINT,
             TConvCachePolicy::NEVER,
             "ProofRewriteDb",
-            nullptr,
+            &d_wktc,
             true),
       d_proof(env)
 {
