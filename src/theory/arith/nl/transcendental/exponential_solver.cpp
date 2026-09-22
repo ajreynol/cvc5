@@ -46,7 +46,7 @@ void ExponentialSolver::doPurification(TNode a, TNode new_a)
   Assert(TranscendentalState::isSimplePurify(a));
   NodeManager* nm = nodeManager();
   // do both equalities to ensure that new_a becomes a preregistered term
-  Node lem = nm->mkNode(Kind::AND, a.eqNode(new_a), a[0].eqNode(new_a[0]));
+  Node lem = nm->mkNode(Kind::AND, {a.eqNode(new_a), a[0].eqNode(new_a[0])});
   // note we must do preprocess on this lemma
   Trace("nl-ext-lemma") << "NonlinearExtension::Lemma : purify : " << lem
                         << std::endl;
@@ -100,7 +100,7 @@ void ExponentialSolver::checkInitialRefine()
           Node rone = nm->mkConstReal(Rational(1));
           // exp at zero: (t = 0.0) <=> (exp(t) = 1.0)
           Node lem =
-              nm->mkNode(Kind::EQUAL, t[0].eqNode(rzero), t.eqNode(rone));
+              nm->mkNode(Kind::EQUAL, {t[0].eqNode(rzero), t.eqNode(rone)});
           CDProof* proof = nullptr;
           if (d_data->isProofEnabled())
           {
@@ -112,9 +112,9 @@ void ExponentialSolver::checkInitialRefine()
         }
         {
           // exp on negative values: (t < 0) <=> (exp(t) < 1)
-          Node lem = nm->mkNode(Kind::EQUAL,
-                                nm->mkNode(Kind::LT, t[0], zero),
-                                nm->mkNode(Kind::LT, t, one));
+          Node lem = nm->mkNode(
+              Kind::EQUAL,
+              {nm->mkNode(Kind::LT, t[0], zero), nm->mkNode(Kind::LT, t, one)});
           CDProof* proof = nullptr;
           if (d_data->isProofEnabled())
           {
@@ -128,8 +128,8 @@ void ExponentialSolver::checkInitialRefine()
           // exp on positive values: (t <= 0) or (exp(t) > t+1)
           Node lem = nm->mkNode(
               Kind::OR,
-              nm->mkNode(Kind::LEQ, t[0], zero),
-              nm->mkNode(Kind::GT, t, nm->mkNode(Kind::ADD, t[0], one)));
+              {nm->mkNode(Kind::LEQ, t[0], zero),
+               nm->mkNode(Kind::GT, t, nm->mkNode(Kind::ADD, t[0], one))});
           CDProof* proof = nullptr;
           if (d_data->isProofEnabled())
           {
@@ -164,11 +164,14 @@ void ExponentialSolver::checkMonotonic()
   for (const Node& tf : it->second)
   {
     Node mva = d_data->d_model.computeAbstractModelValue(tf);
-    if (mva == tf)
+    if (!mva.isConst())
     {
-      // if it was not assigned a model value by the linear solver, it is
-      // not a relevant term. This can happen for terms like (exp (exp 1.0)),
+      // If it was not assigned a model value by the linear solver, it is not
+      // a relevant term. This can happen for terms like (exp (exp 1.0)),
       // where (exp 1.0) is not relevant until we purify (exp (exp 1.0)).
+      // Note that the abstract model value of such a term is not necessarily
+      // the term itself: it is computed from the model values of its
+      // arguments, e.g. (exp c) for a constant c, which does not evaluate.
       continue;
     }
     Node a = tf[0];
@@ -200,15 +203,15 @@ void ExponentialSolver::checkMonotonic()
                            << s;
 
     // store the concavity region
-    d_data->d_tf_region[s] = 1;
+    d_data->d_tf_region[s] = TranscendentalRegion::EXPONENTIAL;
     Trace("nl-ext-concavity") << ", arg model value = " << sargval << std::endl;
 
     if (!tval.isNull() && sval.getConst<Rational>() > tval.getConst<Rational>())
     {
       NodeManager* nm = nodeManager();
-      Node mono_lem = nm->mkNode(Kind::IMPLIES,
-                                 nm->mkNode(Kind::GEQ, targ, sarg),
-                                 nm->mkNode(Kind::GEQ, t, s));
+      Node mono_lem = nm->mkNode(
+          Kind::IMPLIES,
+          {nm->mkNode(Kind::GEQ, targ, sarg), nm->mkNode(Kind::GEQ, t, s)});
       Trace("nl-ext-exp") << "Monotonicity lemma : " << mono_lem << std::endl;
 
       d_data->d_im.addPendingLemma(mono_lem,
@@ -233,9 +236,9 @@ void ExponentialSolver::doTangentLemma(TNode e,
   // We use zero slope tangent planes, since the concavity of the Taylor
   // approximation cannot be easily established.
   // Tangent plane is valid in the interval [c,u).
-  Node lem = nm->mkNode(Kind::IMPLIES,
-                        nm->mkNode(Kind::GEQ, e[0], c),
-                        nm->mkNode(Kind::GEQ, e, poly_approx));
+  Node lem = nm->mkNode(
+      Kind::IMPLIES,
+      {nm->mkNode(Kind::GEQ, e[0], c), nm->mkNode(Kind::GEQ, e, poly_approx)});
   Trace("nl-ext-exp") << "*** Tangent plane lemma (pre-rewrite): " << lem
                       << std::endl;
   Assert(d_data->d_model.computeAbstractModelValue(lem) == d_data->d_false);

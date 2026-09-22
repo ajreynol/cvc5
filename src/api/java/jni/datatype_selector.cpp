@@ -93,10 +93,8 @@ JNIEXPORT jlong JNICALL Java_io_github_cvc5_DatatypeSelector_getUpdaterTerm(
  * Method:    getCodomainSort
  * Signature: (J)J
  */
-JNIEXPORT jlong JNICALL
-Java_io_github_cvc5_DatatypeSelector_getCodomainSort(JNIEnv* env,
-                                                         jobject,
-                                                         jlong pointer)
+JNIEXPORT jlong JNICALL Java_io_github_cvc5_DatatypeSelector_getCodomainSort(
+    JNIEnv* env, jobject, jlong pointer)
 {
   CVC5_JAVA_API_TRY_CATCH_BEGIN;
   DatatypeSelector* current = (DatatypeSelector*)pointer;
@@ -110,8 +108,8 @@ Java_io_github_cvc5_DatatypeSelector_getCodomainSort(JNIEnv* env,
  * Method:    isNull
  * Signature: (J)Z
  */
-JNIEXPORT jboolean JNICALL Java_io_github_cvc5_DatatypeSelector_isNull(
-    JNIEnv* env, jobject, jlong pointer)
+JNIEXPORT jboolean JNICALL
+Java_io_github_cvc5_DatatypeSelector_isNull(JNIEnv* env, jobject, jlong pointer)
 {
   CVC5_JAVA_API_TRY_CATCH_BEGIN;
   DatatypeSelector* current = (DatatypeSelector*)pointer;
@@ -136,13 +134,13 @@ JNIEXPORT jstring JNICALL Java_io_github_cvc5_DatatypeSelector_toString(
 /*
  * Class:     io_github_cvc5_DatatypeSelector
  * Method:    hashCode
- * Signature: (J)I
+ * Signature: (J)J
  */
-JNIEXPORT jint JNICALL Java_io_github_cvc5_DatatypeSelector_hashCode(
+JNIEXPORT jlong JNICALL Java_io_github_cvc5_DatatypeSelector_hashCode(
     JNIEnv* env, jobject, jlong pointer)
 {
   CVC5_JAVA_API_TRY_CATCH_BEGIN;
   DatatypeSelector* result = reinterpret_cast<DatatypeSelector*>(pointer);
-  return static_cast<jint>(std::hash<cvc5::DatatypeSelector>()(*result));
+  return static_cast<jlong>(std::hash<cvc5::DatatypeSelector>()(*result));
   CVC5_JAVA_API_TRY_CATCH_END_RETURN(env, 0);
 }

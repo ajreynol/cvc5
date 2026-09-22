@@ -26,6 +26,8 @@ const char* toString(IncompleteId i)
     case IncompleteId::NONE: return "NONE";
     case IncompleteId::ARITH_NL_DISABLED: return "ARITH_NL_DISABLED";
     case IncompleteId::ARITH_NL: return "ARITH_NL";
+    case IncompleteId::FP_ABSTRACTION_REFINEMENT:
+      return "FP_ABSTRACTION_REFINEMENT";
     case IncompleteId::QUANTIFIERS: return "QUANTIFIERS";
     case IncompleteId::QUANTIFIERS_SYGUS_NO_VERIFY:
       return "QUANTIFIERS_SYGUS_NO_VERIFY";
@@ -59,7 +61,8 @@ const char* toString(IncompleteId i)
     case IncompleteId::PREPROCESSING: return "PREPROCESSING";
     case IncompleteId::UNKNOWN: return "UNKNOWN";
     default:
-      DebugUnhandled() << "No print for incomplete id " << static_cast<size_t>(i);
+      DebugUnhandled() << "No print for incomplete id "
+                       << static_cast<size_t>(i);
       return "?IncompleteId?";
   }
 }

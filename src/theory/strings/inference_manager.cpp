@@ -48,20 +48,6 @@ InferenceManager::InferenceManager(Env& env,
   d_false = nm->mkConst(false);
 }
 
-void InferenceManager::doPending()
-{
-  doPendingFacts();
-  if (d_state.isInConflict())
-  {
-    // just clear the pending vectors, nothing else to do
-    clearPendingLemmas();
-    clearPendingPhaseRequirements();
-    return;
-  }
-  doPendingLemmas();
-  doPendingPhaseRequirements();
-}
-
 bool InferenceManager::sendInternalInference(std::vector<Node>& exp,
                                              Node conc,
                                              InferenceId infer)
@@ -174,7 +160,9 @@ void InferenceManager::sendInference(InferInfo& ii, bool asLemma)
     Trace("strings-infer-debug") << "...as conflict" << std::endl;
     Trace("strings-lemma") << "Strings::Conflict: " << ii.d_premises << " by "
                            << ii.getId() << std::endl;
-    Trace("strings-conflict") << "CONFLICT: inference conflict " << ii.d_premises << " by " << ii.getId() << std::endl;
+    Trace("strings-conflict")
+        << "CONFLICT: inference conflict " << ii.d_premises << " by "
+        << ii.getId() << std::endl;
     ++(d_statistics.d_conflictsInfer);
     // process the conflict immediately
     processConflict(ii);
@@ -270,11 +258,6 @@ void InferenceManager::addToExplanation(Node lit, std::vector<Node>& exp) const
     Assert(!lit.isConst());
     exp.push_back(lit);
   }
-}
-
-bool InferenceManager::hasProcessed() const
-{
-  return d_state.isInConflict() || hasPending();
 }
 
 void InferenceManager::markInactive(Node n, ExtReducedId id, bool contextDepend)
@@ -384,12 +367,12 @@ void InferenceManager::processFact(InferInfo& ii, ProofGenerator*& pg)
     Node atom = ii.d_conc.getKind() == Kind::NOT ? ii.d_conc[0] : ii.d_conc;
     if (atom.getKind() == Kind::EQUAL)
     {
-      Assert(rewrite(atom[0])==atom[0]);
-      Assert(rewrite(atom[1])==atom[1]);
+      Assert(rewrite(atom[0]) == atom[0]);
+      Assert(rewrite(atom[1]) == atom[1]);
     }
     else
     {
-      Assert(rewrite(atom)==atom);
+      Assert(rewrite(atom) == atom);
     }
   }
 }
