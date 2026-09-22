@@ -1,5 +1,57 @@
+###############################################################################
+# This file is part of the cvc5 project.
+#
+# Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+# in the top-level source directory and their institutional affiliations.
+# All rights reserved.  See the file COPYING in the top-level source
+# directory for licensing information.
+# #############################################################################
+##
+
 include(CheckCCompilerFlag)
 include(CheckCXXCompilerFlag)
+
+function(check_min_compiler_version id min_version)
+  if(CMAKE_CXX_COMPILER_ID STREQUAL "${id}")
+    if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS "${min_version}")
+      message(FATAL_ERROR "${id} version must be at least ${min_version}")
+    endif()
+  endif()
+endfunction()
+
+if(NOT WIN32)
+  string(ASCII 27 Esc)
+  set(Yellow "${Esc}[33m")
+  set(ResetColor "${Esc}[m")
+endif()
+
+# Build triplet used when compiling GMP, CLN, and GLPK to ensure that
+# optimizations using very specific CPU instructions are not enabled.
+# This makes the binary more portable.
+set(BUILD_TRIPLET "${CMAKE_HOST_SYSTEM_PROCESSOR}")
+if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux")
+  if(CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "x86_64")
+    set(BUILD_TRIPLET "x86_64-linux-gnu")
+  elseif(CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "aarch64")
+    set(BUILD_TRIPLET "aarch64-linux-gnu")
+  endif()
+elseif(CMAKE_HOST_SYSTEM_NAME STREQUAL "Darwin")
+  if(CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "x86_64")
+    set(BUILD_TRIPLET "x86_64-apple-darwin")
+  elseif(CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "arm64")
+    set(BUILD_TRIPLET "aarch64-apple-darwin")
+  endif()
+elseif(CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows")
+  if(CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "x86_64"
+      OR CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "AMD64")
+    set(BUILD_TRIPLET "x86_64-w64-mingw32")
+  elseif(CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "aarch64"
+      OR CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "ARM64")
+    # CMake derives the host processor on Windows from PROCESSOR_ARCHITECTURE,
+    # which reports "ARM64"; "aarch64" only shows up when uname is used.
+    set(BUILD_TRIPLET "aarch64-w64-mingw32")
+  endif()
+endif()
 
 # Add a C flag to the global list of C flags.
 macro(add_c_flag flag)
@@ -27,21 +79,35 @@ macro(add_c_cxx_flag flag)
   add_cxx_flag(${flag})
 endmacro()
 
-# Check if C flag is supported and add to global list of C flags.
+# Check if C flag is supported and add to global list of C flags or to the specified files only.
+# Warning: `add_check_c_flag("-v" ${LIST})` will create a global flag if `${LIST}` is empty.
 macro(add_check_c_flag flag)
   string(REGEX REPLACE "[-=]" "_" flagname ${flag})
-  check_c_compiler_flag("${flag}" HAVE_FLAG${flagname})
-  if(HAVE_FLAG${flagname})
-    add_c_flag(${flag})
+  check_c_compiler_flag("${flag}" HAVE_C_FLAG${flagname})
+  if(HAVE_C_FLAG${flagname})
+    if(ARGN)
+      # add the flag only to the provided files
+      set_source_files_properties(${ARGN} PROPERTIES COMPILE_OPTIONS "${flag}")
+    else()
+      # add the flag to all files
+      add_c_flag(${flag})
+    endif()
   endif()
 endmacro()
 
-# Check if CXX flag is supported and add to global list of CXX flags.
+# Check if CXX flag is supported and add to global list of CXX flags or to the specified files only.
+# Warning: `add_check_cxx_flag("-v" ${LIST})` will create a global flag if `${LIST}` is empty.
 macro(add_check_cxx_flag flag)
   string(REGEX REPLACE "[-=]" "_" flagname ${flag})
-  check_cxx_compiler_flag("${flag}" HAVE_FLAG${flagname})
-  if(HAVE_FLAG${flagname})
-    add_cxx_flag(${flag})
+  check_cxx_compiler_flag("${flag}" HAVE_CXX_FLAG${flagname})
+  if(HAVE_CXX_FLAG${flagname})
+    if(ARGN)
+      # add the flag only to the provided files
+      set_source_files_properties(${ARGN} PROPERTIES COMPILE_OPTIONS "${flag}")
+    else()
+      # add the flag to all files
+      add_cxx_flag(${flag})
+    endif()
   endif()
 endmacro()
 
@@ -51,12 +117,47 @@ macro(add_check_c_cxx_flag flag)
   add_check_cxx_flag(${flag})
 endmacro()
 
+# Check if C warning suppression flag is supported and add to global list of C
+# flags.
+macro(add_check_c_suppression_flag suppression_flag)
+  # Obtain the non-suppression warning flag name
+  string(REGEX REPLACE "^-Wno-" "-W" warning_flag ${suppression_flag})
+  string(REGEX REPLACE "[-=]" "_" warning_flagname ${warning_flag})
+  # Check if we have the warning flag
+  check_c_compiler_flag("${warning_flag}" HAVE_C_FLAG${warning_flagname})
+  # Only add the suppression flag if we have the warning flag
+  if(HAVE_C_FLAG${warning_flagname})
+    add_c_flag(${suppression_flag})
+  endif()
+endmacro()
+
+# Check if CXX warning suppression flag is supported and add to global list of
+# CXX flags.
+macro(add_check_cxx_suppression_flag suppression_flag)
+  # Obtain the non-suppression warning flag name
+  string(REGEX REPLACE "^-Wno-" "-W" warning_flag ${suppression_flag})
+  string(REGEX REPLACE "[-=]" "_" warning_flagname ${warning_flag})
+  # Check if we have the warning flag
+  check_cxx_compiler_flag("${warning_flag}" HAVE_CXX_FLAG${warning_flagname})
+  # Only add the suppression flag if we have the warning flag
+  if(HAVE_CXX_FLAG${warning_flagname})
+    add_cxx_flag(${suppression_flag})
+  endif()
+endmacro()
+
+# Check if C/CXX warning suppression flag is supported and add to global list of
+# C/CXX flags.
+macro(add_check_c_cxx_suppression_flag suppression_flag)
+  add_check_c_suppression_flag(${suppression_flag})
+  add_check_cxx_suppression_flag(${suppression_flag})
+endmacro()
+
 # Add required CXX flag. Configuration fails if the CXX flag is not supported
 # by the compiler.
 macro(add_required_cxx_flag flag)
   string(REGEX REPLACE "[-=]" "_" flagnamename ${flag})
-  check_cxx_compiler_flag("${flag}" HAVE_FLAG${flagname})
-  if (NOT HAVE_FLAG${flagname})
+  check_cxx_compiler_flag("${flag}" HAVE_C_FLAG${flagname})
+  if (NOT HAVE_C_FLAG${flagname})
     message(FATAL_ERROR "Required compiler flag ${flag} not supported")
   endif()
   add_cxx_flag(${flag})
@@ -66,8 +167,8 @@ endmacro()
 # the compiler.
 macro(add_required_c_flag flag)
   string(REGEX REPLACE "[-=]" "_" flagname ${flag})
-  check_c_compiler_flag("${flag}" HAVE_FLAG${flagname})
-  if (NOT HAVE_FLAG${flagname})
+  check_c_compiler_flag("${flag}" HAVE_CXX_FLAG${flagname})
+  if (NOT HAVE_CXX_FLAG${flagname})
     message(FATAL_ERROR "Required compiler flag ${flag} not supported")
   endif()
   add_c_flag(${flag})
@@ -80,20 +181,20 @@ macro(add_required_c_cxx_flag flag)
   add_required_cxx_flag(${flag})
 endmacro()
 
-# CVC4 Boolean options are three-valued to detect if an option was set by the
+# cvc5 Boolean options are three-valued to detect if an option was set by the
 # user. The available values are: IGNORE (default), ON, OFF
 # Default options do not override options that were set by the user, i.e.,
-# cvc4_set_option only sets an option if it's value is still IGNORE.
+# cvc5_set_option only sets an option if it's value is still IGNORE.
 # This e.g., allows the user to disable proofs for debug builds (where proofs
 # are enabled by default).
-macro(cvc4_option var description)
+macro(cvc5_option var description)
   set(${var} IGNORE CACHE STRING "${description}")
   # Provide drop down menu options in cmake-gui
   set_property(CACHE ${var} PROPERTY STRINGS IGNORE ON OFF)
 endmacro()
 
 # Only set option if the user did not set an option.
-macro(cvc4_set_option var value)
+macro(cvc5_set_option var value)
   if(${var} STREQUAL "IGNORE")
     set(${var} ${value})
   endif()
@@ -108,24 +209,45 @@ function(list_prepend in_list prepand_value out_list)
   set(${out_list} ${${out_list}} PARENT_SCOPE)
 endfunction()
 
-# Helper to print the configuration of a 2-valued or 3-valued option 'var'
-# with prefix 'str'.
-macro(print_config str var)
-  if(${var} STREQUAL "ON")
-    set(OPT_VAL_STR "on")
-  else()
-    set(OPT_VAL_STR "off")
-  endif()
-  message("${str} ${OPT_VAL_STR}")
+macro(print_info msg)
+  message("${Blue}${msg}${ResetColor}")
 endmacro()
 
+# Helper to print the configuration of a 2-valued or 3-valued option 'var' with
+# prefix 'str'. Optionally takes a `FOUND_SYSTEM` argument that is used to
+# indicate when a given dependency is built as part of the cvc5 build.
+function(print_config str var)
+  set(options)
+  set(oneValueArgs FOUND_SYSTEM)
+  set(multiValueArgs)
+  cmake_parse_arguments(ARGS "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
 
-# Collect all source files that are required to build libcvc4 in LIBCVC4_SRCS
-# or LIBCVC4_GEN_SRCS. If GENERATED is the first argument the sources are
-# added to LIBCVC4_GEN_SRCS. All sources are prepended with the absolute
+  if("${var}" STREQUAL "ON")
+    set(OPT_VAL_STR "on")
+  elseif("${var}" STREQUAL "OFF" OR "${var}" STREQUAL "IGNORE")
+    set(OPT_VAL_STR "off")
+  else()
+    set(OPT_VAL_STR "${var}")
+  endif()
+
+  if("${ARGS_FOUND_SYSTEM}" STREQUAL "TRUE")
+    set(OPT_FOUND_SYSTEM_STR " (system)")
+  elseif("${ARGS_FOUND_SYSTEM}" STREQUAL "FALSE")
+    set(OPT_FOUND_SYSTEM_STR " (local)")
+  else()
+    set(OPT_FOUND_SYSTEM_STR "")
+  endif()
+
+  message("${Blue}${str}: ${Green}${OPT_VAL_STR}${OPT_FOUND_SYSTEM_STR}${ResetColor}")
+endfunction()
+
+
+# Collect all source files that are required to build libcvc5 in LIBCVC5_SRCS
+# or LIBCVC5_GEN_SRCS. If GENERATED is the first argument the sources are
+# added to LIBCVC5_GEN_SRCS. All sources are prepended with the absolute
 # current path path. CMAKE_CURRENT_BINARY_DIR is prepended
 # to generated source files.
-macro(libcvc4_add_sources)
+macro(libcvc5_add_sources)
   set(_sources ${ARGV})
 
   # Check if the first argument is GENERATED.
@@ -133,10 +255,10 @@ macro(libcvc4_add_sources)
   if(${_generated} STREQUAL "GENERATED")
     list(REMOVE_AT _sources 0)
     set(_cur_path ${CMAKE_CURRENT_BINARY_DIR})
-    set(_append_to LIBCVC4_GEN_SRCS)
+    set(_append_to LIBCVC5_GEN_SRCS)
   else()
     set(_cur_path ${CMAKE_CURRENT_SOURCE_DIR})
-    set(_append_to LIBCVC4_SRCS)
+    set(_append_to LIBCVC5_SRCS)
   endif()
 
   # Prepend source files with current path.
@@ -154,4 +276,61 @@ macro(libcvc4_add_sources)
   if(_rel_path)
     set(${_append_to} ${${_append_to}} PARENT_SCOPE)
   endif()
+endmacro()
+
+# Check if given Python module is installed and raises a FATAL_ERROR error
+# if the module cannot be found.
+function(check_python_module module)
+  execute_process(
+    COMMAND
+    ${Python_EXECUTABLE} -c "import ${module}"
+    RESULT_VARIABLE
+      RET_MODULE_TEST
+    ERROR_QUIET
+  )
+  set(module_name ${ARGN})
+  if(NOT module_name)
+    set(module_name ${module})
+  endif()
+
+  if(RET_MODULE_TEST)
+    if(ENABLE_AUTO_DOWNLOAD)
+      message(STATUS "Installing Python module ${module_name}")
+      execute_process(
+        COMMAND
+        ${Python_EXECUTABLE} -m pip install ${module_name}
+        RESULT_VARIABLE PYTHON_MODULE_INSTALL_CMD_EXIT_CODE
+      )
+      if(PYTHON_MODULE_INSTALL_CMD_EXIT_CODE)
+        message(FATAL_ERROR "Could not install Python module ${module_name}")
+      endif()
+    else()
+      message(FATAL_ERROR
+        "Could not find module ${module_name} for Python "
+        "version ${Python_VERSION_MAJOR}.${Python_VERSION_MINOR}. "
+        "Make sure to install ${module_name} for this Python version "
+        "via \n`${Python_EXECUTABLE} -m pip install ${module_name}',\n"
+        "or use --auto-download to let us install it for you.\n"
+        "Note: You need to have pip installed for this Python version.")
+    endif()
+  endif()
+endfunction()
+
+macro(copy_file_from_src filename)
+  add_custom_command(
+    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${filename}
+    COMMAND ${CMAKE_COMMAND} -E copy
+      ${CMAKE_CURRENT_SOURCE_DIR}/${filename}
+      ${CMAKE_CURRENT_BINARY_DIR}/${filename}
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${filename}
+  )
+endmacro()
+
+macro(update_rpath_macos dylibname)
+  install(CODE "execute_process(COMMAND \${CMAKE_COMMAND}
+    -DRPATH=@loader_path
+    -DINSTALL_NAME_TOOL=${CMAKE_INSTALL_NAME_TOOL}
+    -DDYLIB_PATH=\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}/${dylibname}
+    -DDEPS_BASE=${DEPS_BASE}
+    -P ${PROJECT_SOURCE_DIR}/cmake/update_rpath_macos.cmake)")
 endmacro()

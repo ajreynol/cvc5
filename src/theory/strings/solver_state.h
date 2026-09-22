@@ -1,81 +1,37 @@
-/*********************                                                        */
-/*! \file solver_state.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2019 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief The solver state of the theory of strings
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * The solver state of the theory of strings.
+ */
 
-#include "cvc4_private.h"
+#include "cvc5_private.h"
 
-#ifndef CVC4__THEORY__STRINGS__SOLVER_STATE_H
-#define CVC4__THEORY__STRINGS__SOLVER_STATE_H
+#ifndef CVC5__THEORY__STRINGS__SOLVER_STATE_H
+#define CVC5__THEORY__STRINGS__SOLVER_STATE_H
 
 #include <map>
 
-#include "context/cdo.h"
+#include "context/cdlist.h"
 #include "context/context.h"
 #include "expr/node.h"
-#include "options/theory_options.h"
+#include "theory/strings/eqc_info.h"
+#include "theory/strings/infer_info.h"
+#include "theory/theory_model.h"
+#include "theory/theory_state.h"
 #include "theory/uf/equality_engine.h"
 #include "theory/valuation.h"
 
-namespace CVC4 {
+namespace cvc5::internal {
 namespace theory {
 namespace strings {
 
-/**
- * SAT-context-dependent information about an equivalence class. This
- * information is updated eagerly as assertions are processed by the theory of
- * strings at standard effort.
- */
-class EqcInfo
-{
- public:
-  EqcInfo(context::Context* c);
-  ~EqcInfo() {}
-  /** add prefix constant
-   *
-   * This informs this equivalence class info that a term t in its
-   * equivalence class has a constant prefix (if isSuf=true) or suffix
-   * (if isSuf=false). The constant c (if non-null) is the value of that
-   * constant, if it has been computed already.
-   *
-   * If this method returns a non-null node ret, then ret is a conjunction
-   * corresponding to a conflict that holds in the current context.
-   */
-  Node addEndpointConst(Node t, Node c, bool isSuf);
-  /**
-   * If non-null, this is a term x from this eq class such that str.len( x )
-   * occurs as a term in this SAT context.
-   */
-  context::CDO<Node> d_lengthTerm;
-  /**
-   * If non-null, this is a term x from this eq class such that str.code( x )
-   * occurs as a term in this SAT context.
-   */
-  context::CDO<Node> d_codeTerm;
-  context::CDO<unsigned> d_cardinalityLemK;
-  context::CDO<Node> d_normalizedLength;
-  /**
-   * A node that explains the longest constant prefix known of this
-   * equivalence class. This can either be:
-   * (1) A term from this equivalence class, including a constant "ABC" or
-   * concatenation term (str.++ "ABC" ...), or
-   * (2) A membership of the form (str.in.re x R) where x is in this
-   * equivalence class and R is a regular expression of the form
-   * (str.to.re "ABC") or (re.++ (str.to.re "ABC") ...).
-   */
-  context::CDO<Node> d_prefixC;
-  /** same as above, for suffix. */
-  context::CDO<Node> d_suffixC;
-};
+class ModelCons;
 
 /**
  * Solver state for strings.
@@ -86,44 +42,29 @@ class EqcInfo
  * (2) Whether the set of assertions is in conflict.
  * (3) Equivalence class information as in the class above.
  */
-class SolverState
+class SolverState : public TheoryState
 {
+  typedef context::CDList<Node> NodeList;
+
  public:
-  SolverState(context::Context* c, eq::EqualityEngine& ee, Valuation& v);
+  SolverState(Env& env, Valuation& v);
   ~SolverState();
-  //-------------------------------------- equality information
+  //-------------------------------------- disequality information
   /**
-   * Get the representative of t in the equality engine of this class, or t
-   * itself if it is not registered as a term.
+   * Get the list of disequalities that are currently asserted to the equality
+   * engine.
    */
-  Node getRepresentative(Node t) const;
-  /** Is t registered as a term in the equality engine of this class? */
-  bool hasTerm(Node a) const;
+  const context::CDList<Node>& getDisequalityList() const;
   /**
-   * Are a and b equal according to the equality engine of this class? Also
-   * returns true if a and b are identical.
+   * notify the state that disequality (not (= t1 t2)) holds in the current
+   * context. This will be included in the return of the above method.
    */
-  bool areEqual(Node a, Node b) const;
-  /**
-   * Are a and b disequal according to the equality engine of this class? Also
-   * returns true if the representative of a and b are distinct constants.
-   */
-  bool areDisequal(Node a, Node b) const;
-  /** get equality engine */
-  eq::EqualityEngine* getEqualityEngine() const;
-  //-------------------------------------- end equality information
+  void addDisequality(TNode t1, TNode t2);
+  //-------------------------------------- end disequality information
   //------------------------------------------ conflicts
-  /**
-   * Set that the current state of the solver is in conflict. This should be
-   * called immediately after a call to conflict(...) on the output channel of
-   * the theory of strings.
-   */
-  void setConflict();
-  /** Are we currently in conflict? */
-  bool isInConflict() const;
-  /** set pending conflict
+  /** set pending merge conflict
    *
-   * If conf is non-null, this is called when conf is a conjunction of literals
+   * This is called when conf is a conjunction of literals
    * that hold in the current context that are unsatisfiable. It is set as the
    * "pending conflict" to be processed as a conflict lemma on the output
    * channel of this class. It is not sent out immediately since it may require
@@ -131,75 +72,115 @@ class SolverState
    * during a merge operation, when the equality engine is not in a state to
    * provide explanations.
    */
-  void setPendingConflictWhen(Node conf);
+  void setPendingMergeConflict(Node conf, InferenceId id, bool rev = false);
+  /**
+   * Set pending conflict, infer info version. Called when we are in conflict
+   * based on the inference ii. This generalizes the above method.
+   */
+  void setPendingConflict(InferInfo& ii);
+  /** return true if we have a pending conflict */
+  bool hasPendingConflict() const;
   /** get the pending conflict, or null if none exist */
-  Node getPendingConflict() const;
+  bool getPendingConflict(InferInfo& ii) const;
   //------------------------------------------ end conflicts
   /** get length with explanation
    *
    * If possible, this returns an arithmetic term that exists in the current
    * context that is equal to the length of te, or otherwise returns the
-   * length of t. It adds to exp literals that hold in the current context that
+   * length of t. This is typically the length term of the equivalence class
+   * of t.
+   *
+   * It adds to exp literals that hold in the current context that
    * explain why that term is equal to the length of t. For example, if
    * we have assertions:
    *   len( x ) = 5 ^ z = x ^ x = y,
-   * then getLengthExp( z, exp, y ) returns len( x ) and adds { z = x } to
+   * then getLengthExp( z, exp, y ) returns len( x ) and adds { y = x } to
    * exp. On the other hand, getLengthExp( z, exp, x ) returns len( x ) and
    * adds nothing to exp.
+   *
+   * @param t The representative
+   * @param exp The explanation vector to add to
+   * @param te The explain target term
+   * @param minExp Whether we attempt to return the length of te directly
    */
-  Node getLengthExp(Node t, std::vector<Node>& exp, Node te);
-  /** shorthand for getLengthExp(t, exp, t) */
-  Node getLength(Node t, std::vector<Node>& exp);
+  Node getLengthExp(Node t,
+                    std::vector<Node>& exp,
+                    Node te,
+                    bool minExp = true);
+  /** shorthand for getLengthExp(t, exp, t, minExp) */
+  Node getLength(Node t, std::vector<Node>& exp, bool minExp = true);
+  /** explain non-empty
+   *
+   * This returns an explanation of why string-like term is non-empty in the
+   * current context, if such an explanation exists. Otherwise, this returns
+   * the null node.
+   *
+   * Note that an explanation is a (conjunction of) literals that currently hold
+   * in the equality engine.
+   */
+  Node explainNonEmpty(Node s);
+  /**
+   * Is equal empty word? Returns true if s is equal to the empty word (of
+   * its type). If this method returns true, it updates emps to be that word.
+   * This is an optimization so that the relevant empty word does not need to
+   * be constructed to check if s is equal to the empty word.
+   */
+  bool isEqualEmptyWord(Node s, Node& emps);
   /**
    * Get the above information for equivalence class eqc. If doMake is true,
    * we construct a new information class if one does not exist. The term eqc
    * should currently be a representative of the equality engine of this class.
    */
   EqcInfo* getOrMakeEqcInfo(Node eqc, bool doMake = true);
-
-  /** add endpoints to eqc info
-   *
-   * This method is called when term t is the explanation for why equivalence
-   * class eqc may have a constant endpoint due to a concatentation term concat.
-   * For example, we may call this method on:
-   *   t := (str.++ x y), concat := (str.++ x y), eqc
-   * for some eqc that is currently equal to t. Another example is:
-   *   t := (str.in.re z (re.++ r s)), concat := (re.++ r s), eqc
-   * for some eqc that is currently equal to z.
-   */
-  void addEndpointsToEqcInfo(Node t, Node concat, Node eqc);
+  /** Get pointer to the model object of the Valuation object */
+  TheoryModel* getModel();
   /** Entailment check
    *
    * This calls entailmentCheck on the Valuation object of theory of strings.
    */
   std::pair<bool, Node> entailmentCheck(options::TheoryOfMode mode, TNode lit);
+  //------------------------------ for model construction
   /** Separate by length
    *
    * Separate the string representatives in argument n into a partition cols
    * whose collections have equal length. The i^th vector in cols has length
-   * lts[i] for all elements in col.
+   * lts[i] for all elements in col. These vectors are furthmore separated
+   * by string-like type.
    */
+  void separateByLengthTyped(
+      const std::vector<Node>& n,
+      std::map<TypeNode, std::vector<std::vector<Node>>>& cols,
+      std::map<TypeNode, std::vector<Node>>& lts);
+  /** Same as separateByLengthTyped, but with a fixed type */
   void separateByLength(const std::vector<Node>& n,
-                        std::vector<std::vector<Node> >& cols,
+                        std::vector<std::vector<Node>>& cols,
                         std::vector<Node>& lts);
+  /** Set the model constructor */
+  void setModelConstructor(ModelCons* mc);
+  /** Get the model constructor */
+  ModelCons* getModelConstructor();
 
  private:
-  /** Pointer to the SAT context object used by the theory of strings. */
-  context::Context* d_context;
-  /** Reference to equality engine of the theory of strings. */
-  eq::EqualityEngine& d_ee;
-  /** Reference to the valuation of the theory of strings */
-  Valuation& d_valuation;
-  /** Are we in conflict? */
-  context::CDO<bool> d_conflict;
+  /** Common constants */
+  Node d_zero;
+  Node d_false;
+  /**
+   * The (SAT-context-dependent) list of disequalities that have been asserted
+   * to the equality engine above.
+   */
+  NodeList d_eeDisequalities;
   /** The pending conflict if one exists */
-  context::CDO<Node> d_pendingConflict;
+  context::CDO<bool> d_pendingConflictSet;
+  /** The pending conflict, valid if the above flag is true */
+  InferInfo d_pendingConflict;
   /** Map from representatives to their equivalence class information */
   std::map<Node, EqcInfo*> d_eqcInfo;
-}; /* class TheoryStrings */
+  /** The model constructor */
+  ModelCons* d_modelCons;
+};
 
 }  // namespace strings
 }  // namespace theory
-}  // namespace CVC4
+}  // namespace cvc5::internal
 
-#endif /* CVC4__THEORY__STRINGS__THEORY_STRINGS_H */
+#endif /* CVC5__THEORY__STRINGS__SOLVER_STATE_H */

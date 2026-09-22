@@ -1,32 +1,30 @@
-/*********************                                                        */
-/*! \file dtype.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2019 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief A class representing a datatype definition
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * A class representing a datatype definition.
+ */
 
-#include "cvc4_private.h"
+#include "cvc5_private.h"
 
-#ifndef CVC4__EXPR__DTYPE_H
-#define CVC4__EXPR__DTYPE_H
+#ifndef CVC5__EXPR__DTYPE_H
+#define CVC5__EXPR__DTYPE_H
 
 #include <map>
 #include <string>
 #include <vector>
-#include "expr/dtype_cons.h"
-#include "expr/dtype_selector.h"
-#include "expr/node.h"
-#include "expr/node_manager_attributes.h"
-#include "expr/type_node.h"
 
-namespace CVC4 {
+#include "expr/attribute.h"
+#include "expr/node.h"
+#include "expr/type_node.h"
+#include "util/cardinality.h"
+
+namespace cvc5::internal {
 
 // ----------------------- datatype attributes
 /**
@@ -48,37 +46,9 @@ struct DTypeConsIndexTag
 {
 };
 typedef expr::Attribute<DTypeConsIndexTag, size_t> DTypeConsIndexAttr;
-/** Attribute true for datatype types that are finite. */
-struct DTypeFiniteTag
-{
-};
-typedef expr::Attribute<DTypeFiniteTag, bool> DTypeFiniteAttr;
-/** Attribute true when we have computed whether a datatype type is finite */
-struct DTypeFiniteComputedTag
-{
-};
-typedef expr::Attribute<DTypeFiniteComputedTag, bool> DTypeFiniteComputedAttr;
-/**
- * Attribute true for datatype types that are interpreted as finite (see
- * TypeNode::isInterpretedFinite).
- */
-struct DTypeUFiniteTag
-{
-};
-typedef expr::Attribute<DTypeUFiniteTag, bool> DTypeUFiniteAttr;
-/**
- * Attribute true when we have computed whether a datatype type is interpreted
- * as finite.
- */
-struct DTypeUFiniteComputedTag
-{
-};
-typedef expr::Attribute<DTypeUFiniteComputedTag, bool> DTypeUFiniteComputedAttr;
 // ----------------------- end datatype attributes
 
-class NodeManager;
-
-class Datatype;
+class DTypeConstructor;
 
 /**
  * The Node-level representation of an inductive datatype, which currently
@@ -119,7 +89,7 @@ class Datatype;
  * allow the datatype to construct the necessary testers and selectors.
  *
  * An additional point to make is that we want to ease the burden on
- * both the parser AND the users of the CVC4 API, so this class takes
+ * both the parser AND the users of the cvc5 API, so this class takes
  * on the task of generating its own selectors and testers, for
  * instance.  That means that, after reifying the DType with the
  * NodeManager, the parser needs to go through the (now-resolved)
@@ -142,7 +112,6 @@ class Datatype;
  */
 class DType
 {
-  friend class Datatype;
   friend class DTypeConstructor;
   friend class NodeManager;  // for access to resolve()
 
@@ -150,7 +119,7 @@ class DType
   /**
    * Get the datatype of a constructor, selector, or tester operator.
    */
-  static const DType& datatypeOf(Node item);
+  CVC5_NO_DANGLING static const DType& datatypeOf(Node item);
 
   /**
    * Get the index of a constructor or tester in its datatype, or the
@@ -191,6 +160,31 @@ class DType
    * be unique; they are for convenience and pretty-printing only.
    */
   void addConstructor(std::shared_ptr<DTypeConstructor> c);
+  /** add sygus constructor
+   *
+   * This adds a sygus constructor to this datatype, where
+   * this datatype should be currently unresolved. Note this method is
+   * syntactic sugar for adding a normal constructor and setting it to be a
+   * sygus constructor, and following a naming convention that avoids
+   * constructors with the same name.
+   *
+   * @param op : the builtin operator, constant, or variable that this
+   * constructor encodes
+   * @param cname the name of the constructor (for printing only)
+   * @param cargs the arguments of the constructor.
+   * It should be the case that cargs are sygus datatypes that
+   * encode the arguments of op. For example, a sygus constructor
+   * with op = ADD should be such that cargs.size()>=2 and
+   * the sygus type of cargs[i] is Real/Int for each i.
+   * @param weight denotes the value added by the constructor when computing the
+   * size of datatype terms. Passing a value < 0 denotes the default weight for
+   * the constructor, which is 0 for nullary constructors and 1 for non-nullary
+   * constructors.
+   */
+  void addSygusConstructor(Node op,
+                           const std::string& cname,
+                           const std::vector<TypeNode>& cargs,
+                           int weight = -1);
 
   /** set sygus
    *
@@ -215,6 +209,12 @@ class DType
 
   /** set that this datatype is a tuple */
   void setTuple();
+
+  /** set that this datatype is a nullable */
+  void setNullable();
+
+  /** set that this datatype is a record */
+  void setRecord();
 
   /** Get the name of this DType. */
   std::string getName() const;
@@ -243,8 +243,11 @@ class DType
   /** is this a tuple datatype? */
   bool isTuple() const;
 
-  /** get the record representation for this datatype */
-  Record* getRecord() const;
+  /** is this a nullable datatype? */
+  bool isNullable() const;
+
+  /** is this a record datatype? */
+  bool isRecord() const;
 
   /**
    * Return the cardinality of this datatype.
@@ -258,6 +261,17 @@ class DType
   Cardinality getCardinality() const;
 
   /**
+   * Return the cardinality class of the datatype. The
+   * DType must be resolved or an assertion is violated.
+   *
+   * The version of this method that takes type t is required
+   * for parametric datatypes, where t is an instantiated
+   * parametric datatype type whose datatype is this class.
+   */
+  CardinalityClass getCardinalityClass(TypeNode t) const;
+  CardinalityClass getCardinalityClass() const;
+
+  /**
    * Return true iff this DType has finite cardinality. If the
    * datatype is not well-founded, this method returns false. The
    * DType must be resolved or an assertion is violated.
@@ -265,23 +279,13 @@ class DType
    * The version of this method that takes type t is required
    * for parametric datatypes, where t is an instantiated
    * parametric datatype type whose datatype is this class.
-   */
-  bool isFinite(TypeNode t) const;
-  bool isFinite() const;
-
-  /**
-   * Return true iff this  DType is finite (all constructors are
-   * finite, i.e., there  are finitely  many ground terms) under the
-   * assumption that unintepreted sorts are finite. If the
-   * datatype is  not well-founded, this method returns false.  The
-   * DType must be resolved or an assertion is violated.
    *
-   * The versions of these methods that takes type t is required
-   * for parametric datatypes, where t is an instantiated
-   * parametric datatype type whose datatype is this class.
+   * @param t The (instantiated) datatype type we are computing finiteness for
+   * @param fmfEnabled Whether finite model finding is enabled
+   * @return true if finite model finding is enabled
    */
-  bool isInterpretedFinite(TypeNode t) const;
-  bool isInterpretedFinite() const;
+  bool isFinite(TypeNode t, bool fmfEnabled = false) const;
+  bool isFinite(bool fmfEnabled = false) const;
 
   /** is well-founded
    *
@@ -290,6 +294,16 @@ class DType
    * violated.
    */
   bool isWellFounded() const;
+  /**
+   * Does this datatype have nested recursion? This is true if this datatype
+   * definition contains itself as an alien subfield type, or a variant
+   * of itself as an alien subfield type (if this datatype is parametric).
+   * For details see getAlienSubfieldTypes below.
+   *
+   * Notice that a type having no nested recursion may have a subfield type that
+   * has nested recursion.
+   */
+  bool hasNestedRecursion() const;
 
   /** is recursive singleton
    *
@@ -414,10 +428,24 @@ class DType
   const std::vector<std::shared_ptr<DTypeConstructor> >& getConstructors()
       const;
 
+  /**
+   * Return the subfield types of this datatype. This is the set of all types T
+   * for which there exists an argument to a constructor of type T.
+   */
+  std::unordered_set<TypeNode> getSubfieldTypes() const;
+
   /** prints this datatype to stream */
   void toStream(std::ostream& out) const;
 
  private:
+  /**
+   * Collect unresolved datatype types. This is called by NodeManager when
+   * constructing datatypes from datatype declarations. This adds all
+   * unresolved datatype types to unresTypes, which are then considered
+   * when constructing the datatype (for details, see
+   * NodeManager::mkMutualDatatypeTypesInternal).
+   */
+  void collectUnresolvedDatatypeTypes(std::set<TypeNode>& unresTypes) const;
   /**
    * DTypes refer to themselves, recursively, and we have a
    * chicken-and-egg problem.  The TypeNode around the DType
@@ -492,6 +520,50 @@ class DType
    * Helper for mkGroundTerm and mkGroundValue above.
    */
   Node mkGroundTermInternal(TypeNode t, bool isValue) const;
+  /**
+   * This method is used to get alien subfield types of this datatype.
+   *
+   * A subfield type T of a datatype type D is a type such that a value of
+   * type T may appear as a subterm of a value of type D.
+   *
+   * An *alien* subfield type T of a datatype type D is a type such that a
+   * value v of type T may appear as a subterm of a value of D, and moreover
+   * v occurs as a strict subterm of a non-datatype term in that value.
+   *
+   * For example, the alien subfield types of T in:
+   *   T -> Emp | Container(s : (Set List))
+   *   List -> nil | cons( head : Int, tail: List)
+   * are { List, Int }. Notice that Int is an alien subfield type since it
+   * appears as a subfield type of List, and List is an alien subfield type
+   * of T. In other words, Int is an alien subfield type due to the above
+   * definition due to the term (Container (singleton (cons 0 nil))), where
+   * 0 occurs as a subterm of (singleton (cons 0 nil)). The non-strict
+   * subfield types of T in this example are { (Set List) }.
+   *
+   * For example, the alien subfield types of T in:
+   *   T -> Emp | Container(s : List)
+   *   List -> nil | cons( head : (Set T), tail: List)
+   * are { T, List, (Set T) }. Notice that T is an alien subfield type of itself
+   * since List is a subfield type of T and T is an alien subfield type of List.
+   * Furthermore, List and (Set T) are also alien subfield types of T since
+   * List is a subfield type of T and T is an alien subfield type of itself.
+   *
+   * For example, the alien subfield types of T in:
+   *   T -> Emp | Container(s : (Array Int T))
+   * are { T, Int }, where we assume that values of (Array U1 U2) are
+   * constructed from values of U1 and U2, for all types U1, U2. The non-strict
+   * subfield types of T in this example are { (Array Int T) }.
+   *
+   * @param types The set of types to append the alien subfield types to,
+   * @param processed The datatypes (cached using d_self) we have processed. If
+   * the range of this map is true, we have processed the datatype with
+   * isAlienPos = true.
+   * @param isAlienPos Whether we are in an alien subfield type position. This
+   * flag is true if we have traversed beneath a non-datatype type constructor.
+   */
+  void getAlienSubfieldTypes(std::unordered_set<TypeNode>& types,
+                             std::map<TypeNode, bool>& processed,
+                             bool isAlienPos) const;
   /** name of this datatype */
   std::string d_name;
   /** the type parameters of this datatype (if this is a parametric datatype)
@@ -501,6 +573,10 @@ class DType
   bool d_isCo;
   /** whether the datatype is a tuple */
   bool d_isTuple;
+  /** whether the datatype is a nullable */
+  bool d_isNullable;
+  /** whether the datatype is a record */
+  bool d_isRecord;
   /** the constructors of this datatype */
   std::vector<std::shared_ptr<DTypeConstructor> > d_constructors;
   /** whether this datatype has been resolved */
@@ -546,6 +622,12 @@ class DType
    * not.
    */
   mutable int d_wellFounded;
+  /**
+   * Cache of whether this datatype has nested recursion, where 0 means we have
+   * not computed this information, 1 means it has nested recursion, -1 means it
+   * does not.
+   */
+  mutable int d_nestedRecursion;
   /** cache of ground term for this datatype */
   mutable std::map<TypeNode, Node> d_groundTerm;
   /** cache of ground values for this datatype */
@@ -553,63 +635,23 @@ class DType
   /** cache of shared selectors for this datatype */
   mutable std::map<TypeNode, std::map<TypeNode, std::map<unsigned, Node> > >
       d_sharedSel;
+  /**  A cache for getCardinalityClass. */
+  mutable std::map<TypeNode, CardinalityClass> d_cardClass;
 }; /* class DType */
-
-/**
- * A hash function for DTypes.  Needed to store them in hash sets
- * and hash maps.
- */
-struct DTypeHashFunction
-{
-  size_t operator()(const DType& dt) const
-  {
-    return std::hash<std::string>()(dt.getName());
-  }
-  size_t operator()(const DType* dt) const
-  {
-    return std::hash<std::string>()(dt->getName());
-  }
-}; /* struct DTypeHashFunction */
-
-/* stores an index to DType residing in NodeManager */
-class DTypeIndexConstant
-{
- public:
-  DTypeIndexConstant(size_t index);
-
-  size_t getIndex() const { return d_index; }
-  bool operator==(const DTypeIndexConstant& uc) const
-  {
-    return d_index == uc.d_index;
-  }
-  bool operator!=(const DTypeIndexConstant& uc) const { return !(*this == uc); }
-  bool operator<(const DTypeIndexConstant& uc) const
-  {
-    return d_index < uc.d_index;
-  }
-  bool operator<=(const DTypeIndexConstant& uc) const
-  {
-    return d_index <= uc.d_index;
-  }
-  bool operator>(const DTypeIndexConstant& uc) const { return !(*this <= uc); }
-  bool operator>=(const DTypeIndexConstant& uc) const { return !(*this < uc); }
-
- private:
-  const size_t d_index;
-}; /* class DTypeIndexConstant */
-
-std::ostream& operator<<(std::ostream& out, const DTypeIndexConstant& dic);
-
-struct DTypeIndexConstantHashFunction
-{
-  size_t operator()(const DTypeIndexConstant& dic) const
-  {
-    return IntegerHashFunction()(dic.getIndex());
-  }
-}; /* struct DTypeIndexConstantHashFunction */
 
 std::ostream& operator<<(std::ostream& os, const DType& dt);
 
-}  // namespace CVC4
+}  // namespace cvc5::internal
+
+namespace std {
+/**
+ * A hash function for DTypes.
+ */
+template <>
+struct hash<cvc5::internal::DType>
+{
+  size_t operator()(const cvc5::internal::DType& dt) const;
+};
+}  // namespace std
 
 #endif

@@ -1,222 +1,87 @@
-/*********************                                                        */
-/*! \file decision_engine.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Kshitij Bansal, Morgan Deters, Tim King
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2019 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Decision engine
- **
- ** Decision engine
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Decision engine.
+ */
 
-#include "cvc4_private.h"
+#include "cvc5_private.h"
 
-#ifndef CVC4__DECISION__DECISION_ENGINE_H
-#define CVC4__DECISION__DECISION_ENGINE_H
+#ifndef CVC5__DECISION__DECISION_ENGINE_H
+#define CVC5__DECISION__DECISION_ENGINE_H
 
-#include <vector>
-
-#include "base/output.h"
-#include "decision/decision_strategy.h"
 #include "expr/node.h"
-#include "preprocessing/assertion_pipeline.h"
 #include "prop/cnf_stream.h"
-#include "prop/prop_engine.h"
+#include "prop/sat_solver.h"
 #include "prop/sat_solver_types.h"
-#include "smt/smt_engine_scope.h"
-#include "smt/term_formula_removal.h"
+#include "smt/env_obj.h"
 
-using namespace std;
-using namespace CVC4::prop;
-using namespace CVC4::decision;
+namespace cvc5::internal {
+namespace decision {
 
-namespace CVC4 {
-
-class DecisionEngine {
-
-  vector <DecisionStrategy* > d_enabledStrategies;
-  vector <ITEDecisionStrategy* > d_needIteSkolemMap;
-  RelevancyStrategy* d_relevancyStrategy;
-
-  typedef context::CDList<Node> AssertionsList;
-  AssertionsList d_assertions;
-
-  // PropEngine* d_propEngine;
-  CnfStream* d_cnfStream;
-  DPLLSatSolverInterface* d_satSolver;
-
-  context::Context* d_satContext;
-  context::UserContext* d_userContext;
-
-  // Does decision engine know the answer?
-  context::CDO<SatValue> d_result;
-
-  // Disable creating decision engine without required parameters
-  DecisionEngine();
-
-  // init/shutdown state
-  unsigned d_engineState;    // 0=pre-init; 1=init,pre-shutdown; 2=shutdown
-public:
-  // Necessary functions
-
+class DecisionEngine : protected EnvObj
+{
+ public:
   /** Constructor */
-  DecisionEngine(context::Context *sc, context::UserContext *uc);
+  DecisionEngine(Env& env, prop::CDCLTSatSolver* ss, prop::CnfStream* cs);
+  virtual ~DecisionEngine() {}
 
-  /** Destructor, currently does nothing */
-  ~DecisionEngine() {
-    Trace("decision") << "Destroying decision engine" << std::endl;
-  }
-
-  // void setPropEngine(PropEngine* pe) {
-  //   // setPropEngine should not be called more than once
-  //   Assert(d_propEngine == NULL);
-  //   Assert(pe != NULL);
-  //   d_propEngine = pe;
-  // }
-
-  void setSatSolver(DPLLSatSolverInterface* ss) {
-    // setPropEngine should not be called more than once
-    Assert(d_satSolver == NULL);
-    Assert(ss != NULL);
-    d_satSolver = ss;
-  }
-
-  void setCnfStream(CnfStream* cs) {
-    // setPropEngine should not be called more than once
-    Assert(d_cnfStream == NULL);
-    Assert(cs != NULL);
-    d_cnfStream = cs;
-  }
-
-  /* enables decision stragies based on options */
-  void init();
-
-  /* clears all of the strategies */
-  void clearStrategies();
-
+  /** Presolve, called at the beginning of each check-sat call */
+  virtual void presolve() {}
 
   /**
-   * This is called by SmtEngine, at shutdown time, just before
-   * destruction.  It is important because there are destruction
-   * ordering issues between some parts of the system.
+   * Gets the next decision based on strategies that are enabled. This sets
+   * stopSearch to true if no further SAT variables need to be assigned in
+   * this SAT context.
    */
-  void shutdown() {
-    Assert(d_engineState == 1);
-    d_engineState = 2;
-
-    Trace("decision") << "Shutting down decision engine" << std::endl;
-    clearStrategies();
-  }
-
-  // Interface for External World to use our services
-
-  /** Gets the next decision based on strategies that are enabled */
-  SatLiteral getNext(bool &stopSearch) {
-    NodeManager::currentResourceManager()->spendResource(options::decisionStep());
-    Assert(d_cnfStream != NULL)
-        << "Forgot to set cnfStream for decision engine?";
-    Assert(d_satSolver != NULL)
-        << "Forgot to set satSolver for decision engine?";
-
-    SatLiteral ret = undefSatLiteral;
-    for(unsigned i = 0;
-        i < d_enabledStrategies.size()
-          and ret == undefSatLiteral
-          and stopSearch == false; ++i) {
-      ret = d_enabledStrategies[i]->getNext(stopSearch);
-    }
-    return ret;
-  }
-
-  /** Is a sat variable relevant */
-  bool isRelevant(SatVariable var);
-
-  /**
-   * Try to get tell SAT solver what polarity to try for a
-   * decision. Return SAT_VALUE_UNKNOWN if it can't help
-   */
-  SatValue getPolarity(SatVariable var);
+  prop::SatLiteral getNext(bool& stopSearch);
 
   /** Is the DecisionEngine in a state where it has solved everything? */
-  bool isDone() {
-    Trace("decision") << "DecisionEngine::isDone() returning "
-                      << (d_result != SAT_VALUE_UNKNOWN)
-                      << (d_result != SAT_VALUE_UNKNOWN ? "true" : "false")
-                      << std::endl;
-    return (d_result != SAT_VALUE_UNKNOWN);
-  }
-
-  /** */
-  Result getResult() {
-    switch(d_result.get()) {
-    case SAT_VALUE_TRUE: return Result(Result::SAT);
-    case SAT_VALUE_FALSE: return Result(Result::UNSAT);
-    case SAT_VALUE_UNKNOWN: return Result(Result::SAT_UNKNOWN, Result::UNKNOWN_REASON);
-    default: Assert(false) << "d_result is garbage";
-    }
-    return Result();
-  }
-
-  /** */
-  void setResult(SatValue val) {
-    d_result = val;
-  }
-
-  // External World helping us help the Strategies
-
-  /** If one of the enabled strategies needs them  */
-  /* bool needIteSkolemMap() { */
-  /*   return d_needIteSkolemMap.size() > 0; */
-  /* } */
-
+  virtual bool isDone() = 0;
   /**
-   * Add a list of assertions from an AssertionPipeline.
+   * Adds assertions lems to satisfy that persist in the user context.
+   * All input assertions and relevant lemmas are added via this call.
+   * @param lems The lemmas to add.
    */
-  void addAssertions(const preprocessing::AssertionPipeline& assertions);
-
-  // Interface for Strategies to use stuff stored in Decision Engine
-  // (which was possibly requested by them on initialization)
-
+  virtual void addAssertions(const std::vector<TNode>& lems) = 0;
   /**
-   * Get the assertions. Strategies are notified when these are available.
+   * Adds assertions lems to satisfy that persist in the SAT context.
+   * By default, only skolem definitions from input and lemmas are added via
+   * this call.
+   * @param lems The lemmas to add.
    */
-  AssertionsList& getAssertions() {
-    return d_assertions;
-  }
+  virtual void addLocalAssertions(CVC5_UNUSED const std::vector<TNode>& lems) {}
 
+ protected:
+  /** Get next internal, the engine-specific implementation of getNext */
+  virtual prop::SatLiteral getNextInternal(bool& stopSearch) = 0;
+  /** Pointer to the SAT solver */
+  prop::CDCLTSatSolver* d_satSolver;
+  /** Pointer to the CNF stream */
+  prop::CnfStream* d_cnfStream;
+};
 
-  // Interface for Strategies to get information about External World
+/**
+ * Instance of the above class which does nothing. This is used when
+ * the decision mode is set to internal.
+ */
+class DecisionEngineEmpty : public DecisionEngine
+{
+ public:
+  DecisionEngineEmpty(Env& env);
+  bool isDone() override;
+  void addAssertions(const std::vector<TNode>& lems) override;
 
-  bool hasSatLiteral(TNode n) {
-    return d_cnfStream->hasLiteral(n);
-  }
-  SatLiteral getSatLiteral(TNode n) {
-    return d_cnfStream->getLiteral(n);
-  }
-  SatValue getSatValue(SatLiteral l) {
-    return d_satSolver->value(l);
-  }
-  SatValue getSatValue(TNode n) {
-    return getSatValue(getSatLiteral(n));
-  }
-  Node getNode(SatLiteral l) {
-    return d_cnfStream->getNode(l);
-  }
+ protected:
+  prop::SatLiteral getNextInternal(bool& stopSearch) override;
+};
 
-private:
-  /**
-   * Enable a particular decision strategy, also updating
-   * corresponding vector<DecisionStrategy*>-s is the engine
-   */
-  void enableStrategy(DecisionStrategy* ds);
+}  // namespace decision
+}  // namespace cvc5::internal
 
-};/* DecisionEngine class */
-
-}/* CVC4 namespace */
-
-#endif /* CVC4__DECISION__DECISION_ENGINE_H */
+#endif /* CVC5__DECISION__DECISION_ENGINE_H */

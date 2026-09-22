@@ -1,0 +1,11 @@
+; REQUIRES: unrestricted-mode
+(set-logic QF_ALL)
+(set-info :status unsat)
+(set-option :sets-exp true)
+(declare-datatype Unit ((mkUnit)))
+
+(declare-fun S () (Set (Array Int Unit)))
+
+(assert (> (set.card S) 1))
+
+(check-sat)

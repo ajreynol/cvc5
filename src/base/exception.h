@@ -1,35 +1,30 @@
-/*********************                                                        */
-/*! \file exception.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Morgan Deters, Tim King, Andres Noetzli
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2019 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief CVC4's exception base class and some associated utilities
- **
- ** CVC4's exception base class and some associated utilities.
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * cvc5's exception base class and some associated utilities.
+ */
 
-#include "cvc4_public.h"
+#include "cvc5_public.h"
 
-#ifndef CVC4__EXCEPTION_H
-#define CVC4__EXCEPTION_H
+#ifndef CVC5__EXCEPTION_H
+#define CVC5__EXCEPTION_H
 
-#include <cstdarg>
-#include <cstdlib>
+#include <cvc5/cvc5_export.h>
+
 #include <exception>
 #include <iosfwd>
-#include <sstream>
-#include <stdexcept>
 #include <string>
 
-namespace CVC4 {
+namespace cvc5::internal {
 
-class CVC4_PUBLIC Exception : public std::exception {
+class CVC5_EXPORT Exception : public std::exception
+{
  protected:
   std::string d_msg;
 
@@ -61,47 +56,48 @@ class CVC4_PUBLIC Exception : public std::exception {
    * toString(), there is no stream, so the parameters are default
    * and you'll get exprs and types printed using the AST language.
    */
-  std::string toString() const
-  {
-    std::stringstream ss;
-    toStream(ss);
-    return ss.str();
-  }
+  std::string toString() const;
 
   /**
    * Printing: feel free to redefine toStream().  When overridden in
    * a derived class, it's recommended that this method print the
    * type of exception before the actual message.
    */
-  virtual void toStream(std::ostream& os) const { os << d_msg; }
+  virtual void toStream(std::ostream& os) const;
 
-};/* class Exception */
+}; /* class Exception */
 
-class CVC4_PUBLIC IllegalArgumentException : public Exception {
-protected:
+class CVC5_EXPORT IllegalArgumentException : public Exception
+{
+ protected:
   IllegalArgumentException() : Exception() {}
 
-  void construct(const char* header, const char* extra,
-                 const char* function, const char* tail);
+  void construct(const char* header,
+                 const char* extra,
+                 const char* function,
+                 const char* tail);
 
-  void construct(const char* header, const char* extra,
-                 const char* function);
+  void construct(const char* header, const char* extra, const char* function);
 
   static std::string format_extra(const char* condStr, const char* argDesc);
 
   static const char* s_header;
 
-public:
-
-  IllegalArgumentException(const char* condStr, const char* argDesc,
-                           const char* function, const char* tail) :
-    Exception() {
+ public:
+  IllegalArgumentException(const char* condStr,
+                           const char* argDesc,
+                           const char* function,
+                           const char* tail)
+      : Exception()
+  {
     construct(s_header, format_extra(condStr, argDesc).c_str(), function, tail);
   }
 
-  IllegalArgumentException(const char* condStr, const char* argDesc,
-                           const char* function) :
-    Exception() {
+  IllegalArgumentException(const char* condStr,
+                           const char* argDesc,
+                           const char* function)
+      : Exception()
+  {
     construct(s_header, format_extra(condStr, argDesc).c_str(), function);
   }
 
@@ -113,34 +109,41 @@ public:
    */
   static std::string formatVariadic();
   static std::string formatVariadic(const char* format, ...);
-};/* class IllegalArgumentException */
+}; /* class IllegalArgumentException */
 
-inline std::ostream& operator<<(std::ostream& os,
-                                const Exception& e) CVC4_PUBLIC;
+inline std::ostream& operator<<(std::ostream& os, const Exception& e);
 inline std::ostream& operator<<(std::ostream& os, const Exception& e)
 {
   e.toStream(os);
   return os;
 }
 
-template <class T> inline void CheckArgument(bool cond, const T& arg,
-                                             const char* tail) CVC4_PUBLIC;
-template <class T> inline void CheckArgument(bool cond, const T& arg CVC4_UNUSED,
-                                             const char* tail CVC4_UNUSED) {
-  if(__builtin_expect( ( !cond ), false )) { \
-    throw ::CVC4::IllegalArgumentException("", "", tail); \
-  } \
+template <class T>
+inline void CheckArgument(bool cond, const T& arg, const char* tail);
+template <class T>
+inline void CheckArgument(bool cond,
+                          const T& arg CVC5_UNUSED,
+                          const char* tail CVC5_UNUSED)
+{
+  if (__builtin_expect((!cond), false))
+  {
+    throw cvc5::internal::IllegalArgumentException("", "", tail);
+  }
 }
-template <class T> inline void CheckArgument(bool cond, const T& arg)
-  CVC4_PUBLIC;
-template <class T> inline void CheckArgument(bool cond, const T& arg CVC4_UNUSED) {
-  if(__builtin_expect( ( !cond ), false )) { \
-    throw ::CVC4::IllegalArgumentException("", "", ""); \
-  } \
+template <class T>
+inline void CheckArgument(bool cond, const T& arg);
+template <class T>
+inline void CheckArgument(bool cond, const T& arg CVC5_UNUSED)
+{
+  if (__builtin_expect((!cond), false))
+  {
+    throw cvc5::internal::IllegalArgumentException("", "", "");
+  }
 }
 
-class CVC4_PUBLIC LastExceptionBuffer {
-public:
+class LastExceptionBuffer
+{
+ public:
   LastExceptionBuffer();
   ~LastExceptionBuffer();
 
@@ -148,13 +151,17 @@ public:
   const char* getContents() const { return d_contents; }
 
   static LastExceptionBuffer* getCurrent() { return s_currentBuffer; }
-  static void setCurrent(LastExceptionBuffer* buffer) { s_currentBuffer = buffer; }
-
-  static const char* currentContents() {
-    return (getCurrent() == NULL) ? NULL : getCurrent()->getContents();
+  static void setCurrent(LastExceptionBuffer* buffer)
+  {
+    s_currentBuffer = buffer;
   }
 
-private:
+  static const char* currentContents()
+  {
+    return (getCurrent() == nullptr) ? nullptr : getCurrent()->getContents();
+  }
+
+ private:
   /* Disallow copies */
   LastExceptionBuffer(const LastExceptionBuffer&) = delete;
   LastExceptionBuffer& operator=(const LastExceptionBuffer&) = delete;
@@ -164,6 +171,6 @@ private:
   static thread_local LastExceptionBuffer* s_currentBuffer;
 }; /* class LastExceptionBuffer */
 
-}/* CVC4 namespace */
+}  // namespace cvc5::internal
 
-#endif /* CVC4__EXCEPTION_H */
+#endif /* CVC5__EXCEPTION_H */

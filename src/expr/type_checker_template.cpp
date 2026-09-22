@@ -1,63 +1,81 @@
-/*********************                                                        */
-/*! \file type_checker_template.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Morgan Deters, Tim King, Dejan Jovanovic
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2019 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief TypeChecker implementation
- **
- ** TypeChecker implementation.
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * TypeChecker implementation.
+ */
 
-#line 18 "${template}"
+#include <sstream>
 
 #include "expr/node_manager.h"
 #include "expr/node_manager_attributes.h"
 #include "expr/type_checker.h"
 #include "expr/type_checker_util.h"
 
+// clang-format off
 ${typechecker_includes}
+// clang-format on
 
-#line 27 "${template}"
-
-namespace CVC4 {
+namespace cvc5::internal {
 namespace expr {
 
-TypeNode TypeChecker::computeType(NodeManager* nodeManager, TNode n, bool check)
+TypeNode TypeChecker::preComputeType(NodeManager* nodeManager, TNode n)
 {
   TypeNode typeNode;
 
   // Infer the type
-  switch(n.getKind()) {
-  case kind::VARIABLE:
-  case kind::SKOLEM:
-    typeNode = nodeManager->getAttribute(n, TypeAttr());
-    break;
-  case kind::BUILTIN:
-    typeNode = nodeManager->builtinOperatorType();
-    break;
+  switch (n.getKind())
+  {
+    case Kind::VARIABLE:
+    case Kind::SKOLEM:
+    case Kind::BOUND_VARIABLE:
+    case Kind::INST_CONSTANT:
+    case Kind::RAW_SYMBOL:
+      // variable kinds have their type marked as an attribute upon construction
+      typeNode = nodeManager->getAttribute(n, TypeAttr());
+      break;
+    case Kind::BUILTIN:
+      typeNode = nodeManager->builtinOperatorType();
+      break;
 
-${typerules}
+      // clang-format off
+${pretyperules}
+      // clang-format on
 
-#line 48 "${template}"
-
-  default:
-    Debug("getType") << "FAILURE" << std::endl;
-    Unhandled() << n.getKind();
+    default:
+      // not handled
+      break;
   }
+  return typeNode;
+}
 
-  nodeManager->setAttribute(n, TypeAttr(), typeNode);
-  nodeManager->setAttribute(n, TypeCheckedAttr(),
-                            check || nodeManager->getAttribute(n, TypeCheckedAttr()));
+TypeNode TypeChecker::computeType(NodeManager* nodeManager,
+                                  TNode n,
+                                  bool check,
+                                  std::ostream* errOut)
+{
+  TypeNode typeNode;
+
+  // Infer the type
+  switch (n.getKind())
+  {
+    // clang-format off
+${typerules}
+      // clang-format on
+
+    default:
+      Trace("getType") << "FAILURE" << std::endl;
+      Unhandled() << " " << n.getKind();
+  }
 
   return typeNode;
 
-}/* TypeChecker::computeType */
+} /* TypeChecker::computeType */
 
 bool TypeChecker::computeIsConst(NodeManager* nodeManager, TNode n)
 {
@@ -65,17 +83,18 @@ bool TypeChecker::computeIsConst(NodeManager* nodeManager, TNode n)
          || n.getMetaKind() == kind::metakind::PARAMETERIZED
          || n.getMetaKind() == kind::metakind::NULLARY_OPERATOR);
 
-  switch(n.getKind()) {
+  switch (n.getKind())
+  {
+    // clang-format off
 ${construles}
-
-#line 72 "${template}"
+      // clang-format on
 
     default:;
   }
 
   return false;
 
-}/* TypeChecker::computeIsConst */
+} /* TypeChecker::computeIsConst */
 
-}/* CVC4::expr namespace */
-}/* CVC4 namespace */
+}  // namespace expr
+}  // namespace cvc5::internal

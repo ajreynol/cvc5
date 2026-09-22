@@ -1,9 +1,20 @@
-#-----------------------------------------------------------------------------#
-# Add unit tests
+###############################################################################
+# This file is part of the cvc5 project.
+#
+# Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+# in the top-level source directory and their institutional affiliations.
+# All rights reserved.  See the file COPYING in the top-level source
+# directory for licensing information.
+# #############################################################################
+#
+# The build system configuration.
+##
 
-cvc4_add_unit_test_black(datatype_api_black api)
-cvc4_add_unit_test_black(op_black api)
-cvc4_add_unit_test_black(result_black api)
-cvc4_add_unit_test_black(solver_black api)
-cvc4_add_unit_test_black(sort_black api)
-cvc4_add_unit_test_black(term_black api)
+add_subdirectory(c)
+add_subdirectory(cpp)
+if (BUILD_BINDINGS_PYTHON)
+  add_subdirectory(python)
+endif()
+if (BUILD_BINDINGS_JAVA)
+  add_subdirectory(java)
+endif()

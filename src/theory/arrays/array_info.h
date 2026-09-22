@@ -1,53 +1,48 @@
-/*********************                                                        */
-/*! \file array_info.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Morgan Deters, Clark Barrett, Tim King
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2019 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Contains additional classes to store context dependent information
- ** for each term of type array
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Contains additional classes to store context dependent information
+ * for each term of type array.
+ */
 
-#include "cvc4_private.h"
+#include "cvc5_private.h"
 
-#ifndef CVC4__THEORY__ARRAYS__ARRAY_INFO_H
-#define CVC4__THEORY__ARRAYS__ARRAY_INFO_H
+#ifndef CVC5__THEORY__ARRAYS__ARRAY_INFO_H
+#define CVC5__THEORY__ARRAYS__ARRAY_INFO_H
 
-#include <iostream>
-#include <map>
 #include <tuple>
 #include <unordered_map>
 
-#include "context/backtrackable.h"
 #include "context/cdlist.h"
-#include "context/cdhashmap.h"
+#include "context/cdo.h"
 #include "expr/node.h"
-#include "util/statistics_registry.h"
+#include "util/statistics_stats.h"
 
-namespace CVC4 {
+namespace cvc5::internal {
 namespace theory {
 namespace arrays {
 
 typedef context::CDList<TNode> CTNodeList;
 using RowLemmaType = std::tuple<TNode, TNode, TNode, TNode>;
 
-struct RowLemmaTypeHashFunction {
-  size_t operator()(const RowLemmaType& q) const {
+struct RowLemmaTypeHashFunction
+{
+  size_t operator()(const RowLemmaType& q) const
+  {
     TNode n1, n2, n3, n4;
     std::tie(n1, n2, n3, n4) = q;
-    return (size_t) (n1.getId()*0x9e3779b9 + n2.getId()*0x30000059 +
-        n3.getId()*0x60000005 + n4.getId()*0x07FFFFFF);
-
+    return (size_t)(n1.getId() * 0x9e3779b9 + n2.getId() * 0x30000059
+                    + n3.getId() * 0x60000005 + n4.getId() * 0x07FFFFFF);
   }
-};/* struct RowLemmaTypeHashFunction */
+}; /* struct RowLemmaTypeHashFunction */
 
-void printList (CTNodeList* list);
-void printList( List<TNode>* list);
+void printList(CTNodeList* list);
 
 bool inList(const CTNodeList* l, const TNode el);
 
@@ -57,8 +52,9 @@ bool inList(const CTNodeList* l, const TNode el);
  * call the destructor.
  */
 
-class Info {
-public:
+class Info
+{
+ public:
   context::CDO<bool> isNonLinear;
   context::CDO<bool> rIntro1Applied;
   context::CDO<TNode> modelRep;
@@ -71,25 +67,25 @@ public:
   CTNodeList* stores;
   CTNodeList* in_stores;
 
-  Info(context::Context* c, Backtracker<TNode>* bck);
+  Info(context::Context* c);
   ~Info();
 
   /**
    * prints the information
    */
-  void print() const {
-    Assert(indices != NULL && stores != NULL && in_stores != NULL);
-    Trace("arrays-info")<<"  indices   ";
+  void print() const
+  {
+    Assert(indices != nullptr && stores != nullptr && in_stores != nullptr);
+    Trace("arrays-info") << "  indices   ";
     printList(indices);
-    Trace("arrays-info")<<"  stores ";
+    Trace("arrays-info") << "  stores ";
     printList(stores);
-    Trace("arrays-info")<<"  in_stores ";
+    Trace("arrays-info") << "  in_stores ";
     printList(in_stores);
   }
-};/* class Info */
+}; /* class Info */
 
-
-typedef std::unordered_map<Node, Info*, NodeHashFunction> CNodeInfoMap;
+typedef std::unordered_map<Node, Info*> CNodeInfoMap;
 
 /**
  * Class keeping track of the following information for canonical
@@ -100,10 +96,10 @@ typedef std::unordered_map<Node, Info*, NodeHashFunction> CNodeInfoMap;
  *    stores in which it appears (terms of the form STORE a _ _ )
  *
  */
-class ArrayInfo {
-private:
+class ArrayInfo
+{
+ private:
   context::Context* ct;
-  Backtracker<TNode>* bck;
   CNodeInfoMap info_map;
 
   CTNodeList* emptyList;
@@ -118,7 +114,7 @@ private:
   IntStat d_listsCount;
   IntStat d_callsMergeInfo;
   IntStat d_maxList;
-  SizeStat<CNodeInfoMap > d_tableSize;
+  SizeStat<CNodeInfoMap> d_tableSize;
 
   /**
    * checks if a certain element is in the list l
@@ -131,29 +127,12 @@ private:
    */
   void mergeLists(CTNodeList* la, const CTNodeList* lb) const;
 
-public:
+ public:
   const Info* emptyInfo;
-/*
-  ArrayInfo(): ct(NULl), info
-    d_mergeInfoTimer("theory::arrays::mergeInfoTimer"),
-    d_avgIndexListLength("theory::arrays::avgIndexListLength"),
-    d_avgStoresListLength("theory::arrays::avgStoresListLength"),
-    d_avgInStoresListLength("theory::arrays::avgInStoresListLength"),
-    d_listsCount("theory::arrays::listsCount",0),
-    d_callsMergeInfo("theory::arrays::callsMergeInfo",0),
-    d_maxList("theory::arrays::maxList",0),
-    d_tableSize("theory::arrays::infoTableSize", info_map) {
-  currentStatisticsRegistry()->registerStat(&d_mergeInfoTimer);
-  currentStatisticsRegistry()->registerStat(&d_avgIndexListLength);
-  currentStatisticsRegistry()->registerStat(&d_avgStoresListLength);
-  currentStatisticsRegistry()->registerStat(&d_avgInStoresListLength);
-  currentStatisticsRegistry()->registerStat(&d_listsCount);
-  currentStatisticsRegistry()->registerStat(&d_callsMergeInfo);
-  currentStatisticsRegistry()->registerStat(&d_maxList);
-  currentStatisticsRegistry()->registerStat(&d_tableSize);
-  }*/
 
-  ArrayInfo(context::Context* c, Backtracker<TNode>* b, std::string statisticsPrefix = "");
+  ArrayInfo(StatisticsRegistry& sr,
+            context::Context* c,
+            std::string statisticsPrefix = "");
 
   ~ArrayInfo();
 
@@ -180,9 +159,9 @@ public:
 
   const Info* getInfo(const TNode a) const;
 
-  const bool isNonLinear(const TNode a) const;
+  bool isNonLinear(const TNode a) const;
 
-  const bool rIntro1Applied(const TNode a) const;
+  bool rIntro1Applied(const TNode a) const;
 
   const TNode getModelRep(const TNode a) const;
 
@@ -205,10 +184,10 @@ public:
    *  a should be the canonical representative of b
    */
   void mergeInfo(const TNode a, const TNode b);
-};/* class ArrayInfo */
+}; /* class ArrayInfo */
 
-}/* CVC4::theory::arrays namespace */
-}/* CVC4::theory namespace */
-}/* CVC4 namespace */
+}  // namespace arrays
+}  // namespace theory
+}  // namespace cvc5::internal
 
-#endif /* CVC4__THEORY__ARRAYS__ARRAY_INFO_H */
+#endif /* CVC5__THEORY__ARRAYS__ARRAY_INFO_H */

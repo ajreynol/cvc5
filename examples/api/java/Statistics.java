@@ -1,45 +1,67 @@
-/*********************                                                        */
-/*! \file Statistics.java
- ** \verbatim
- ** Top contributors (to current version):
- **   Andres Noetzli
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2019 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief An example of accessing CVC4's statistics using the Java API
- **
- ** An example of accessing CVC4's statistics using the Java API.
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * An example of accessing cvc5's statistics using the Java API.
+ */
 
-import edu.nyu.acsys.CVC4.*;
-import java.util.Iterator;
+import static io.github.cvc5.Kind.*;
 
-public class Statistics {
-  public static void main(String[] args) {
-    System.loadLibrary("cvc4jni");
+import io.github.cvc5.*;
+import java.util.List;
+import java.util.Map;
 
-    ExprManager em = new ExprManager();
-    SmtEngine smt = new SmtEngine(em);
+public class Statistics
+{
+  public static void main(String[] args)
+  {
+    TermManager tm = new TermManager();
+    Solver solver = new Solver(tm);
+    {
+      // Get the statistics from the `Solver` and iterate over them. The
+      // `Statistics` class implements the `Iterable<Pair<String, Stat>>` interface.
+      io.github.cvc5.Statistics stats = solver.getStatistics();
+      // short version
+      System.out.println("Short version:");
+      System.out.println(stats);
 
-    Type boolType = em.booleanType();
-    Expr a = em.mkVar("A", boolType);
-    Expr b = em.mkVar("B", boolType);
+      System.out.println("-------------------------------------------------------");
 
-    // A ^ B
-    smt.assertFormula(em.mkExpr(Kind.AND, a, b));
+      System.out.println("Long version:");
 
-    Result res = smt.checkSat();
-
-    // Get the statistics from the `SmtEngine` and iterate over them. The
-    // `Statistics` class implements the `Iterable<Statistic>` interface. A
-    // `Statistic` is a pair that consists of a name and an `SExpr` that stores
-    // the value of the statistic.
-    edu.nyu.acsys.CVC4.Statistics stats = smt.getStatistics();
-    for (Statistic stat : stats) {
-      System.out.println(stat.getFirst() + " = " + stat.getSecond());
+      // long version
+      for (Map.Entry<String, Stat> pair : stats)
+      {
+        Stat stat = pair.getValue();
+        if (stat.isInt())
+        {
+          System.out.println(pair.getKey() + " = " + stat.getInt());
+        }
+        else if (stat.isDouble())
+        {
+          System.out.println(pair.getKey() + " = " + stat.getDouble());
+        }
+        else if (stat.isString())
+        {
+          System.out.println(pair.getKey() + " = " + stat.getString());
+        }
+        else if (stat.isHistogram())
+        {
+          System.out.println("-------------------------------------------------------");
+          System.out.println(pair.getKey() + " : Map");
+          for (Map.Entry<String, Long> entry : stat.getHistogram().entrySet())
+          {
+            System.out.println(entry.getKey() + " = " + entry.getValue());
+          }
+          System.out.println("-------------------------------------------------------");
+        }
+      }
     }
+    Context.deletePointers();
   }
 }

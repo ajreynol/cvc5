@@ -1,43 +1,43 @@
-/*********************                                                        */
-/*! \file valuation.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Morgan Deters, Dejan Jovanovic, Andrew Reynolds
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2019 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief A "valuation" proxy for TheoryEngine
- **
- ** A "valuation" proxy for TheoryEngine.  This class breaks the dependence
- ** of theories' getValue() implementations on TheoryEngine.  getValue()
- ** takes a Valuation, which delegates to TheoryEngine.
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * A "valuation" proxy for TheoryEngine
+ *
+ * A "valuation" proxy for TheoryEngine.  This class breaks the dependence
+ * of theories' getValue() implementations on TheoryEngine.  getValue()
+ * takes a Valuation, which delegates to TheoryEngine.
+ */
 
-#include "cvc4_private.h"
+#include "cvc5_private.h"
 
-#ifndef CVC4__THEORY__VALUATION_H
-#define CVC4__THEORY__VALUATION_H
+#ifndef CVC5__THEORY__VALUATION_H
+#define CVC5__THEORY__VALUATION_H
 
+#include "context/cdlist.h"
 #include "expr/node.h"
 #include "options/theory_options.h"
 
-namespace CVC4 {
+namespace cvc5::internal {
 
 class TheoryEngine;
 
 namespace theory {
 
-class EntailmentCheckParameters;
-class EntailmentCheckSideEffects;
+struct Assertion;
 class TheoryModel;
+class SortInference;
 
 /**
  * The status of an equality in the current context.
  */
-enum EqualityStatus {
+enum EqualityStatus
+{
   /** The equality is known to be true and has been propagated */
   EQUALITY_TRUE_AND_PROPAGATED,
   /** The equality is known to be false and has been propagated */
@@ -52,7 +52,7 @@ enum EqualityStatus {
   EQUALITY_FALSE_IN_MODEL,
   /** The equality is completely unknown */
   EQUALITY_UNKNOWN
-};/* enum EqualityStatus */
+}; /* enum EqualityStatus */
 
 std::ostream& operator<<(std::ostream& os, EqualityStatus s);
 
@@ -62,12 +62,12 @@ std::ostream& operator<<(std::ostream& os, EqualityStatus s);
  */
 bool equalityStatusCompatible(EqualityStatus s1, EqualityStatus s2);
 
-class Valuation {
+class Valuation
+{
   TheoryEngine* d_engine;
-public:
-  Valuation(TheoryEngine* engine) :
-    d_engine(engine) {
-  }
+
+ public:
+  Valuation(TheoryEngine* engine) : d_engine(engine) {}
 
   /**
    * Return true if n has an associated SAT literal
@@ -96,41 +96,103 @@ public:
    * argument is unmodified.
    */
   bool hasSatValue(TNode n, bool& value) const;
+  /**
+   * Same as above, without setting the value.
+   */
+  bool hasSatValue(TNode n) const;
 
   /**
-   * Returns the equality status of the two terms, from the theory that owns the domain type.
-   * The types of a and b must be the same.
+   * Returns the equality status of the two terms, from the theory that owns the
+   * domain type. The types of a and b must be the same.
    */
   EqualityStatus getEqualityStatus(TNode a, TNode b);
 
   /**
-   * Returns the model value of the shared term (or null if not available).
+   * Returns the candidate model value of the shared term (or null if not
+   * available). A candidate model value is one computed at full effort,
+   * prior to running theory combination and final model construction.
    */
-  Node getModelValue(TNode var);
+  Node getCandidateModelValue(TNode var);
 
   /**
-   * Returns pointer to model.
+   * Returns pointer to model. This model is only valid during last call effort
+   * check.
    */
   TheoryModel* getModel();
-  
+  /**
+   * Returns a pointer to the sort inference module, which lives in TheoryEngine
+   * and is non-null when options::sortInference is true.
+   */
+  SortInference* getSortInference();
+
+  //-------------------------------------- static configuration of the model
+  /**
+   * Set that k is an unevaluated kind in the TheoryModel, if it exists.
+   * See TheoryModel::setUnevaluatedKind for details.
+   */
+  void setUnevaluatedKind(Kind k);
+  /**
+   * Set that k is an unevaluated kind in the TheoryModel, if it exists.
+   * See TheoryModel::setSemiEvaluatedKind for details.
+   */
+  void setSemiEvaluatedKind(Kind k);
+  /**
+   * Set that k is an irrelevant kind in the TheoryModel, if it exists.
+   * See TheoryModel::setIrrelevantKind for details.
+   */
+  void setIrrelevantKind(Kind k);
+  //-------------------------------------- end static configuration of the model
+
   /**
    * Ensure that the given node will have a designated SAT literal
    * that is definitionally equal to it.  The result of this function
    * is a Node that can be queried via getSatValue().
    *
+   * Note that this call may add lemmas to the SAT solver corresponding to the
+   * definition of subterms eliminated by preprocessing.
+   *
    * @return the actual node that's been "literalized," which may
    * differ from the input due to theory-rewriting and preprocessing,
    * as well as CNF conversion
    */
-  Node ensureLiteral(TNode n) CVC4_WARN_UNUSED_RESULT;
+  CVC5_WARN_UNUSED_RESULT Node ensureLiteral(TNode n);
+
+  /**
+   * This returns the theory-preprocessed form of term n. The theory
+   * preprocessed form of a term t is one returned by
+   * TheoryPreprocess::preprocess (see theory/theory_preprocess.h). In
+   * particular, the returned term has syntax sugar symbols eliminated
+   * (e.g. div, mod, partial datatype selectors), has term formulas (e.g. ITE
+   * terms eliminated) and has been rewritten.
+   *
+   * Note that this call may add lemmas to the SAT solver corresponding to the
+   * definition of subterms eliminated by preprocessing.
+   *
+   * @param n The node to preprocess
+   * @return The preprocessed form of n
+   */
+  Node getPreprocessedTerm(TNode n);
+  /**
+   * Same as above, but also tracks the skolems and their corresponding
+   * definitions in sks and skAsserts respectively.
+   */
+  Node getPreprocessedTerm(TNode n,
+                           std::vector<Node>& skAsserts,
+                           std::vector<Node>& sks);
 
   /**
    * Returns whether the given lit (which must be a SAT literal) is a decision
-   * literal or not.  Throws an exception if lit is not a SAT literal.  "lit" may
-   * be in either phase; that is, if "lit" is a SAT literal, this function returns
-   * true both for lit and the negation of lit.
+   * literal or not.  Throws an exception if lit is not a SAT literal.  "lit"
+   * may be in either phase; that is, if "lit" is a SAT literal, this function
+   * returns true both for lit and the negation of lit.
    */
   bool isDecision(Node lit) const;
+
+  /**
+   * Return whether lit has a fixed SAT assignment (i.e., implied by input
+   * assertions).
+   */
+  bool isFixed(TNode lit) const;
 
   /**
    * Get the assertion level of the SAT solver.
@@ -141,18 +203,55 @@ public:
    * Request an entailment check according to the given theoryOfMode.
    * See theory.h for documentation on entailmentCheck().
    */
-  std::pair<bool, Node> entailmentCheck(
-      options::TheoryOfMode mode,
-      TNode lit,
-      const theory::EntailmentCheckParameters* params = NULL,
-      theory::EntailmentCheckSideEffects* out = NULL);
+  std::pair<bool, Node> entailmentCheck(options::TheoryOfMode mode, TNode lit);
 
   /** need check ? */
   bool needCheck() const;
-  
-};/* class Valuation */
 
-}/* CVC4::theory namespace */
-}/* CVC4 namespace */
+  /**
+   * Has some theory determined that the model cannot be trusted, i.e., called
+   * TheoryInferenceManager::setModelUnsound() in the current SAT context?
+   */
+  bool isModelUnsound() const;
 
-#endif /* CVC4__THEORY__VALUATION_H */
+  /**
+   * Is the literal lit (possibly) critical for satisfying the input formula in
+   * the current context? This call is applicable only during collectModelInfo
+   * or during LAST_CALL effort.
+   */
+  bool isRelevant(Node lit) const;
+
+  /** is legal elimination
+   *
+   * Returns true if x -> val is a legal elimination of variable x. This is
+   * useful for ppAssert, when x = val is an entailed equality. This function
+   * determines whether indeed x can be eliminated from the problem via the
+   * substitution x -> val.
+   *
+   * The following criteria imply that x -> val is *not* a legal elimination:
+   * (1) If x is contained in val,
+   * (2) If the type of val is not the same as the type of x,
+   * (3) If val contains an operator that cannot be evaluated, and
+   * produceModels is true. For example, x -> sqrt(2) is not a legal
+   * elimination if we are producing models. This is because we care about the
+   * value of x, and its value must be computed (approximated) by the
+   * non-linear solver.
+   */
+  bool isLegalElimination(TNode x, TNode val);
+
+  //------------------------------------------- access methods for assertions
+  /**
+   * The following methods are intended only to be used in limited use cases,
+   * for cases where a theory (e.g. quantifiers) requires knowing about the
+   * assertions from other theories.
+   */
+  /** The beginning iterator of facts for theory tid.*/
+  context::CDList<Assertion>::const_iterator factsBegin(TheoryId tid);
+  /** The beginning iterator of facts for theory tid.*/
+  context::CDList<Assertion>::const_iterator factsEnd(TheoryId tid);
+}; /* class Valuation */
+
+}  // namespace theory
+}  // namespace cvc5::internal
+
+#endif /* CVC5__THEORY__VALUATION_H */

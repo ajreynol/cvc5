@@ -1,33 +1,33 @@
-/*********************                                                        */
-/*! \file bounded_integers.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds, Mathias Preiner
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2019 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** [[ Add lengthier description here ]]
- ** \todo document this file
-**/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Bounded integers module
+ */
 
-#include "cvc4_private.h"
+#include "cvc5_private.h"
 
-#ifndef CVC4__BOUNDED_INTEGERS_H
-#define CVC4__BOUNDED_INTEGERS_H
-
-#include "theory/quantifiers/quant_util.h"
+#ifndef CVC5__BOUNDED_INTEGERS_H
+#define CVC5__BOUNDED_INTEGERS_H
 
 #include "context/cdhashmap.h"
 #include "context/context.h"
 #include "expr/attribute.h"
+#include "smt/env_obj.h"
+#include "theory/decision_strategy.h"
+#include "theory/quantifiers/quant_bound_inference.h"
+#include "theory/quantifiers/quant_module.h"
 
-namespace CVC4 {
+namespace cvc5::internal {
 namespace theory {
 
 class RepSetIterator;
+class DecisionManager;
 
 /**
  * Attribute set to 1 for literals that comprise the bounds of a quantified
@@ -44,14 +44,15 @@ namespace quantifiers {
 
 class BoundedIntegers : public QuantifiersModule
 {
-  typedef context::CDHashMap<Node, bool, NodeHashFunction> NodeBoolMap;
-  typedef context::CDHashMap<Node, int, NodeHashFunction> NodeIntMap;
-  typedef context::CDHashMap<Node, Node, NodeHashFunction> NodeNodeMap;
+  typedef context::CDHashMap<Node, bool> NodeBoolMap;
+  typedef context::CDHashMap<Node, int> NodeIntMap;
+  typedef context::CDHashMap<Node, Node> NodeNodeMap;
   typedef context::CDHashMap<int, bool> IntBoolMap;
-private:
-  //for determining bounds
-  bool hasNonBoundVar( Node f, Node b, std::map< Node, bool >& visited );
-  bool hasNonBoundVar( Node f, Node b );
+
+ private:
+  // for determining bounds
+  bool hasNonBoundVar(Node f, Node b, std::map<Node, bool>& visited);
+  bool hasNonBoundVar(Node f, Node b);
   /** The bound type for each quantified formula, variable pair */
   std::map<Node, std::map<Node, BoundVarType>> d_bound_type;
   /**
@@ -59,108 +60,126 @@ private:
    * formulas. Variables that occur later in this list may depend on having
    * finite bounds for variables earlier in this list.
    */
-  std::map< Node, std::vector< Node > > d_set;
-  std::map< Node, std::map< Node, int > > d_set_nums;
-  std::map< Node, std::map< Node, Node > > d_range;
-  std::map< Node, std::map< Node, Node > > d_nground_range;
-  //integer lower/upper bounds
-  std::map< Node, std::map< Node, Node > > d_bounds[2];
-  //set membership range
-  std::map< Node, std::map< Node, Node > > d_setm_range;
-  std::map< Node, std::map< Node, Node > > d_setm_range_lit;
+  std::map<Node, std::vector<Node>> d_set;
+  std::map<Node, std::map<Node, int>> d_set_nums;
+  std::map<Node, std::map<Node, Node>> d_range;
+  std::map<Node, std::map<Node, Node>> d_nground_range;
+  // integer lower/upper bounds
+  std::map<Node, std::map<Node, Node>> d_bounds[2];
+  // set membership range
+  std::map<Node, std::map<Node, Node>> d_setm_range;
+  std::map<Node, std::map<Node, Node>> d_setm_range_lit;
   /** set membership element choice functions
    *
    * For each set S and integer n, d_setm_choice[S][n] is the canonical
    * representation for the (n+1)^th member of set S. It is of the form:
-   * choice x. (|S| <= n OR ( x in S AND
+   * witness x. (|S| <= n OR ( x in S AND
    *   distinct( x, d_setm_choice[S][0], ..., d_setm_choice[S][n-1] ) ) )
    */
-  std::map<Node, std::vector<Node> > d_setm_choice;
-  //fixed finite set range
-  std::map< Node, std::map< Node, std::vector< Node > > > d_fixed_set_gr_range;
-  std::map< Node, std::map< Node, std::vector< Node > > > d_fixed_set_ngr_range;
-  void process( Node q, Node n, bool pol,
-                std::map< Node, unsigned >& bound_lit_type_map,
-                std::map< int, std::map< Node, Node > >& bound_lit_map,
-                std::map< int, std::map< Node, bool > >& bound_lit_pol_map,
-                std::map< int, std::map< Node, Node > >& bound_int_range_term,
-                std::map< Node, std::vector< Node > >& bound_fixed_set );
-  bool processEqDisjunct( Node q, Node n, Node& v, std::vector< Node >& v_cases );
-  void processMatchBoundVars( Node q, Node n, std::vector< Node >& bvs, std::map< Node, bool >& visited );
-  std::vector< Node > d_bound_quants;
-private:
- /**
-  * This decision strategy is used for minimizing the value of an integer
-  * arithmetic term t. It decides positively on literals of the form
-  * t < 0, t <= 0, t <= 1, t <=2, and so on.
-  */
- class IntRangeDecisionHeuristic : public DecisionStrategyFmf
- {
-  public:
-   IntRangeDecisionHeuristic(Node r,
-                             context::Context* c,
-                             context::Context* u,
-                             Valuation valuation,
-                             bool isProxy);
-   /** make the n^th literal of this strategy */
-   Node mkLiteral(unsigned n) override;
-   /** identify */
-   std::string identify() const override
-   {
-     return std::string("bound_int_range");
-   }
-   /** Returns the current proxy lemma if one exists (see below). */
-   Node proxyCurrentRangeLemma();
+  std::map<Node, std::vector<Node>> d_setm_choice;
+  // fixed finite set range
+  std::map<Node, std::map<Node, std::vector<Node>>> d_fixed_set_gr_range;
+  std::map<Node, std::map<Node, std::vector<Node>>> d_fixed_set_ngr_range;
+  void process(Node q,
+               Node n,
+               bool pol,
+               std::map<Node, unsigned>& bound_lit_type_map,
+               std::map<int, std::map<Node, Node>>& bound_lit_map,
+               std::map<int, std::map<Node, bool>>& bound_lit_pol_map,
+               std::map<int, std::map<Node, Node>>& bound_int_range_term,
+               std::map<Node, std::vector<Node>>& bound_fixed_set);
+  bool processEqDisjunct(Node q, Node n, Node& v, std::vector<Node>& v_cases);
+  void processMatchBoundVars(Node q,
+                             Node n,
+                             std::vector<Node>& bvs,
+                             std::map<Node, bool>& visited);
+  std::vector<Node> d_bound_quants;
 
-  private:
-   /** The range we are minimizing */
-   Node d_range;
-   /** a proxy of the range
-    *
-    * When option::fmfBoundLazy is enabled, this class uses a lazy strategy
-    * for enforcing the bounds on term t by using a fresh variable x of type
-    * integer. The point of this variable is to serve as a proxy for t, so
-    * that we can decide on literals of the form x <= c instead of t <= c. The
-    * advantage of this is that we avoid unfairness, say, if t is constrained
-    * to be strictly greater c. Then, at full effort check, we add "proxy
-    * lemmas" of the form: (t <= c) <=> (x <= c) for the current minimal
-    * upper bound c for x.
-    */
-   Node d_proxy_range;
-   /** ranges that have been proxied
-    *
-    * This is a user-context-dependent cache that stores which value we have
-    * added proxy lemmas for.
-    */
-   IntBoolMap d_ranges_proxied;
+ private:
+  /**
+   * This decision strategy is used for minimizing the value of an integer
+   * arithmetic term t. It decides positively on literals of the form
+   * t < 0, t <= 0, t <= 1, t <=2, and so on.
+   */
+  class IntRangeDecisionHeuristic : public DecisionStrategyFmf
+  {
+   public:
+    IntRangeDecisionHeuristic(Env& env,
+                              Node r,
+                              Valuation valuation,
+                              bool isProxy);
+    /** make the n^th literal of this strategy */
+    Node mkLiteral(unsigned n) override;
+    /** identify */
+    std::string identify() const override
+    {
+      return std::string("bound_int_range");
+    }
+    /** Returns the current proxy lemma if one exists (see below). */
+    Node proxyCurrentRangeLemma();
+
+   private:
+    /** The range we are minimizing */
+    Node d_range;
+    /** a proxy of the range
+     *
+     * When option::fmfBoundLazy is enabled, this class uses a lazy strategy
+     * for enforcing the bounds on term t by using a fresh variable x of type
+     * integer. The point of this variable is to serve as a proxy for t, so
+     * that we can decide on literals of the form x <= c instead of t <= c. The
+     * advantage of this is that we avoid unfairness, say, if t is constrained
+     * to be strictly greater c. Then, at full effort check, we add "proxy
+     * lemmas" of the form: (t <= c) <=> (x <= c) for the current minimal
+     * upper bound c for x.
+     */
+    Node d_proxy_range;
+    /** ranges that have been proxied
+     *
+     * This is a user-context-dependent cache that stores which value we have
+     * added proxy lemmas for.
+     */
+    IntBoolMap d_ranges_proxied;
   };
-private:
-  //information for minimizing ranges
-  std::vector< Node > d_ranges;
+
+ private:
+  // information for minimizing ranges
+  std::vector<Node> d_ranges;
   /** Decision heuristics for each integer range */
   std::map<Node, std::unique_ptr<IntRangeDecisionHeuristic>> d_rms;
 
  private:
-  //class to store whether bounding lemmas have been added
+  // class to store whether bounding lemmas have been added
   class BoundInstTrie
   {
-  public:
-    std::map< Node, BoundInstTrie > d_children;
-    bool hasInstantiated( std::vector< Node > & vals, int index = 0, bool madeNew = false ){
-      if( index>=(int)vals.size() ){
+   public:
+    std::map<Node, BoundInstTrie> d_children;
+    bool hasInstantiated(std::vector<Node>& vals,
+                         int index = 0,
+                         bool madeNew = false)
+    {
+      if (index >= (int)vals.size())
+      {
         return !madeNew;
-      }else{
+      }
+      else
+      {
         Node n = vals[index];
-        if( d_children.find(n)==d_children.end() ){
+        if (d_children.find(n) == d_children.end())
+        {
           madeNew = true;
         }
-        return d_children[n].hasInstantiated(vals,index+1,madeNew);
+        return d_children[n].hasInstantiated(vals, index + 1, madeNew);
       }
     }
   };
-  std::map< Node, std::map< Node, BoundInstTrie > > d_bnd_it;
-public:
-  BoundedIntegers( context::Context* c, QuantifiersEngine* qe );
+  std::map<Node, std::map<Node, BoundInstTrie>> d_bnd_it;
+
+ public:
+  BoundedIntegers(Env& env,
+                  QuantifiersState& qs,
+                  QuantifiersInferenceManager& qim,
+                  QuantifiersRegistry& qr,
+                  TermRegistry& tr);
   virtual ~BoundedIntegers();
 
   void presolve() override;
@@ -185,7 +204,7 @@ public:
    * bound, z has a finite bound assuming x has a finite bound, and y does not
    * have a finite bound.
    */
-  void getBoundVarIndices(Node q, std::vector<unsigned>& indices) const;
+  void getBoundVarIndices(Node q, std::vector<size_t>& indices) const;
   /**
    * Get bound elements
    *
@@ -209,28 +228,57 @@ public:
   /** Identify this module */
   std::string identify() const override { return "BoundedIntegers"; }
 
+  /**
+   * Make internal quantified formula with bound variable list bvl and body.
+   * Internally, we get a node corresponding to marking a quantified formula as
+   * a "bounded quantified formula". This node is provided as the third argument
+   * of the FORALL returned by this method. This ensures that E-matching is not
+   * applied to the quantified formula, and that this module is the one that
+   * handles it.
+   */
+  static Node mkBoundedForall(NodeManager* nm, Node bvl, Node body);
+  /**
+   * Has this node been marked as an annotation for a bounded quantified
+   * formula? This is true for the annotation in the formula returned by the
+   * above method.
+   */
+  static bool isBoundedForallAttribute(Node var);
+
  private:
   /**
    * Set that variable v of quantified formula q has a finite bound, where
    * bound_type indicates how that bound was inferred.
    */
   void setBoundedVar(Node f, Node v, BoundVarType bound_type);
-  //for integer range
-  Node getLowerBound( Node q, Node v ){ return d_bounds[0][q][v]; }
-  Node getUpperBound( Node q, Node v ){ return d_bounds[1][q][v]; }
-  void getBounds( Node f, Node v, RepSetIterator * rsi, Node & l, Node & u );
-  void getBoundValues( Node f, Node v, RepSetIterator * rsi, Node & l, Node & u );
+  // for integer range
+  Node getLowerBound(Node q, Node v) { return d_bounds[0][q][v]; }
+  Node getUpperBound(Node q, Node v) { return d_bounds[1][q][v]; }
+  void getBounds(Node f, Node v, RepSetIterator* rsi, Node& l, Node& u);
+  void getBoundValues(Node f, Node v, RepSetIterator* rsi, Node& l, Node& u);
   bool isGroundRange(Node f, Node v);
-  //for set range
-  Node getSetRange( Node q, Node v, RepSetIterator * rsi );
-  Node getSetRangeValue( Node q, Node v, RepSetIterator * rsi );
-  Node matchBoundVar( Node v, Node t, Node e );
-  
-  bool getRsiSubsitution( Node q, Node v, std::vector< Node >& vars, std::vector< Node >& subs, RepSetIterator * rsi );
+  /**
+   * Get the current value for set variable v of quantified formula q based
+   * on the current iterator rsi.
+   */
+  Node getSetRange(Node q, Node v, RepSetIterator* rsi);
+  /**
+   * Get the current value for set variable v of quantified formula q based
+   * on the current iterator rsi. Additionally transforms the model value for
+   * v based on the set_choose operator for the purposes of instantiating with
+   * symbolic elements of the model of v.
+   */
+  Node getSetRangeValue(Node q, Node v, RepSetIterator* rsi);
+  Node matchBoundVar(Node v, Node t, Node e);
+
+  bool getRsiSubsitution(Node q,
+                         Node v,
+                         std::vector<Node>& vars,
+                         std::vector<Node>& subs,
+                         RepSetIterator* rsi);
 };
 
-}
-}
-}
+}  // namespace quantifiers
+}  // namespace theory
+}  // namespace cvc5::internal
 
 #endif

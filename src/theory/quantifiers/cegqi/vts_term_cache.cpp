@@ -1,33 +1,34 @@
-/*********************                                                        */
-/*! \file vts_term_cache.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2019 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Implementation of virtual term substitution term cache.
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Implementation of virtual term substitution term cache.
+ */
 
 #include "theory/quantifiers/cegqi/vts_term_cache.h"
 
 #include "expr/node_algorithm.h"
+#include "expr/skolem_manager.h"
+#include "expr/sort_to_term.h"
 #include "theory/arith/arith_msum.h"
-#include "theory/quantifiers_engine.h"
+#include "theory/quantifiers/quantifiers_inference_manager.h"
+#include "theory/rewriter.h"
+#include "util/rational.h"
 
-using namespace CVC4::kind;
+using namespace cvc5::internal::kind;
 
-namespace CVC4 {
+namespace cvc5::internal {
 namespace theory {
 namespace quantifiers {
 
-VtsTermCache::VtsTermCache(QuantifiersEngine* qe) : d_qe(qe)
-{
-  d_zero = NodeManager::currentNM()->mkConst(Rational(0));
-}
+VtsTermCache::VtsTermCache(Env& env) : EnvObj(env), d_hasAllocated(false) {}
+
+bool VtsTermCache::hasAllocated() const { return d_hasAllocated; }
 
 void VtsTermCache::getVtsTerms(std::vector<Node>& t,
                                bool isFree,
@@ -42,7 +43,7 @@ void VtsTermCache::getVtsTerms(std::vector<Node>& t,
       t.push_back(delta);
     }
   }
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   for (unsigned r = 0; r < 2; r++)
   {
     TypeNode tn = r == 0 ? nm->realType() : nm->integerType();
@@ -58,20 +59,17 @@ Node VtsTermCache::getVtsDelta(bool isFree, bool create)
 {
   if (create)
   {
-    NodeManager* nm = NodeManager::currentNM();
+    NodeManager* nm = nodeManager();
+    SkolemManager* sm = nm->getSkolemManager();
     if (d_vts_delta_free.isNull())
     {
-      d_vts_delta_free =
-          nm->mkSkolem("delta_free",
-                       nm->realType(),
-                       "free delta for virtual term substitution");
-      Node delta_lem = nm->mkNode(GT, d_vts_delta_free, d_zero);
-      d_qe->getOutputChannel().lemma(delta_lem);
+      d_hasAllocated = true;
+      d_vts_delta_free = sm->mkSkolemFunction(SkolemId::ARITH_VTS_DELTA_FREE);
     }
     if (d_vts_delta.isNull())
     {
-      d_vts_delta = nm->mkSkolem(
-          "delta", nm->realType(), "delta for virtual term substitution");
+      d_hasAllocated = true;
+      d_vts_delta = sm->mkSkolemFunction(SkolemId::ARITH_VTS_DELTA);
       // mark as a virtual term
       VirtualTermSkolemAttribute vtsa;
       d_vts_delta.setAttribute(vtsa, true);
@@ -82,18 +80,22 @@ Node VtsTermCache::getVtsDelta(bool isFree, bool create)
 
 Node VtsTermCache::getVtsInfinity(TypeNode tn, bool isFree, bool create)
 {
+  Assert(tn.isRealOrInt());
   if (create)
   {
-    NodeManager* nm = NodeManager::currentNM();
+    NodeManager* nm = nodeManager();
+    SkolemManager* sm = nm->getSkolemManager();
+    Node stt = nm->mkConst(SortToTerm(tn));
     if (d_vts_inf_free[tn].isNull())
     {
-      d_vts_inf_free[tn] = nm->mkSkolem(
-          "inf_free", tn, "free infinity for virtual term substitution");
+      d_hasAllocated = true;
+      d_vts_inf_free[tn] =
+          sm->mkSkolemFunction(SkolemId::ARITH_VTS_INFINITY_FREE, stt);
     }
     if (d_vts_inf[tn].isNull())
     {
-      d_vts_inf[tn] =
-          nm->mkSkolem("inf", tn, "infinity for virtual term substitution");
+      d_hasAllocated = true;
+      d_vts_inf[tn] = sm->mkSkolemFunction(SkolemId::ARITH_VTS_INFINITY, stt);
       // mark as a virtual term
       VirtualTermSkolemAttribute vtsa;
       d_vts_inf[tn].setAttribute(vtsa, true);
@@ -119,8 +121,9 @@ Node VtsTermCache::substituteVtsFreeTerms(Node n)
 
 Node VtsTermCache::rewriteVtsSymbols(Node n)
 {
-  NodeManager* nm = NodeManager::currentNM();
-  if ((n.getKind() == EQUAL || n.getKind() == GEQ))
+  NodeManager* nm = nodeManager();
+  if (((n.getKind() == Kind::EQUAL && n[0].getType().isRealOrInt())
+       || n.getKind() == Kind::GEQ))
   {
     Trace("quant-vts-debug") << "VTS : process " << n << std::endl;
     Node rew_vts_inf;
@@ -144,12 +147,12 @@ Node VtsTermCache::rewriteVtsSymbols(Node n)
           std::vector<Node> subs_lhs;
           subs_lhs.push_back(inf);
           std::vector<Node> subs_rhs;
-          subs_lhs.push_back(rew_vts_inf);
+          subs_rhs.push_back(rew_vts_inf);
           n = n.substitute(subs_lhs.begin(),
                            subs_lhs.end(),
                            subs_rhs.begin(),
                            subs_rhs.end());
-          n = Rewriter::rewrite(n);
+          n = rewrite(n);
           // may have cancelled
           if (!expr::hasSubterm(n, rew_vts_inf))
           {
@@ -170,7 +173,7 @@ Node VtsTermCache::rewriteVtsSymbols(Node n)
       std::map<Node, Node> msum;
       if (ArithMSum::getMonomialSumLit(n, msum))
       {
-        if (Trace.isOn("quant-vts-debug"))
+        if (TraceIsOn("quant-vts-debug"))
         {
           Trace("quant-vts-debug") << "VTS got monomial sum : " << std::endl;
           ArithMSum::debugPrintMonomialSum(msum, "quant-vts-debug");
@@ -200,22 +203,26 @@ Node VtsTermCache::rewriteVtsSymbols(Node n)
           {
             if (!rew_vts_inf.isNull())
             {
-              nlit = nm->mkConst(n.getKind() == GEQ && res == 1);
+              nlit = nm->mkConst(n.getKind() == Kind::GEQ && res == 1);
             }
             else
             {
               Assert(iso_n[res == 1 ? 0 : 1] == d_vts_delta);
-              if (n.getKind() == EQUAL)
+              if (n.getKind() == Kind::EQUAL)
               {
                 nlit = nm->mkConst(false);
               }
-              else if (res == 1)
-              {
-                nlit = nm->mkNode(GEQ, d_zero, slv);
-              }
               else
               {
-                nlit = nm->mkNode(GT, slv, d_zero);
+                Node zero = nm->mkConstRealOrInt(slv.getType(), Rational(0));
+                if (res == 1)
+                {
+                  nlit = nm->mkNode(Kind::GEQ, zero, slv);
+                }
+                else
+                {
+                  nlit = nm->mkNode(Kind::GT, slv, zero);
+                }
               }
             }
           }
@@ -236,7 +243,7 @@ Node VtsTermCache::rewriteVtsSymbols(Node n)
     }
     return n;
   }
-  else if (n.getKind() == FORALL)
+  else if (n.getKind() == Kind::FORALL)
   {
     // cannot traverse beneath quantifiers
     return substituteVtsFreeTerms(n);
@@ -295,4 +302,4 @@ bool VtsTermCache::containsVtsInfinity(Node n, bool isFree)
 
 }  // namespace quantifiers
 }  // namespace theory
-}  // namespace CVC4
+}  // namespace cvc5::internal

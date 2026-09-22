@@ -1,37 +1,35 @@
-/*********************                                                        */
-/*! \file substitutions.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Morgan Deters, Dejan Jovanovic, Clark Barrett
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2019 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief A substitution mapping for theory simplification
- **
- ** A substitution mapping for theory simplification.
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * A substitution mapping for theory simplification.
+ */
 
-#include "cvc4_private.h"
+#include "cvc5_private.h"
 
-#ifndef CVC4__THEORY__SUBSTITUTIONS_H
-#define CVC4__THEORY__SUBSTITUTIONS_H
+#ifndef CVC5__THEORY__SUBSTITUTIONS_H
+#define CVC5__THEORY__SUBSTITUTIONS_H
 
-//#include <algorithm>
+// #include <algorithm>
+#include <unordered_map>
 #include <utility>
 #include <vector>
-#include <unordered_map>
 
-#include "expr/node.h"
-#include "context/context.h"
-#include "context/cdo.h"
 #include "context/cdhashmap.h"
+#include "context/cdo.h"
+#include "context/context.h"
+#include "expr/node.h"
 #include "util/hash.h"
 
-namespace CVC4 {
+namespace cvc5::internal {
 namespace theory {
+
+class Rewriter;
 
 /**
  * The type for the Substitutions mapping output by
@@ -41,18 +39,24 @@ namespace theory {
  *
  * This map is context-dependent.
  */
-class SubstitutionMap {
-
-public:
-
-  typedef context::CDHashMap<Node, Node, NodeHashFunction> NodeMap;
+class SubstitutionMap
+{
+ public:
+  typedef context::CDHashMap<Node, Node> NodeMap;
 
   typedef NodeMap::iterator iterator;
   typedef NodeMap::const_iterator const_iterator;
 
-private:
+  struct ShouldTraverseCallback
+  {
+    virtual bool operator()(TNode n) const = 0;
+    virtual ~ShouldTraverseCallback() {}
+  };
 
-  typedef std::unordered_map<Node, Node, NodeHashFunction> NodeCache;
+ private:
+  typedef std::unordered_map<Node, Node> NodeCache;
+  /** A dummy context used by this class if none is provided */
+  context::Context d_context;
 
   /** The variables, in order of addition */
   NodeMap d_substitutions;
@@ -60,31 +64,34 @@ private:
   /** Cache of the already performed substitutions */
   NodeCache d_substitutionCache;
 
-  /** Whether or not to substitute under quantifiers */
-  bool d_substituteUnderQuantifiers;
-
   /** Has the cache been invalidated? */
   bool d_cacheInvalidated;
 
-  /** Whether to keep substitutions in solved form */
-  bool d_solvedForm;
+  /** Are we using substitution compression */
+  bool d_compress;
 
   /** Internal method that performs substitution */
-  Node internalSubstitute(TNode t, NodeCache& cache);
+  Node internalSubstitute(TNode t,
+                          NodeCache& cache,
+                          std::set<TNode>* tracker,
+                          const ShouldTraverseCallback* stc);
 
   /** Helper class to invalidate cache on user pop */
-  class CacheInvalidator : public context::ContextNotifyObj {
+  class CacheInvalidator : public context::ContextNotifyObj
+  {
     bool& d_cacheInvalidated;
-  protected:
-   void contextNotifyPop() override { d_cacheInvalidated = true; }
 
-  public:
-    CacheInvalidator(context::Context* context, bool& cacheInvalidated) :
-      context::ContextNotifyObj(context),
-      d_cacheInvalidated(cacheInvalidated) {
+   protected:
+    void contextNotifyPop() override { d_cacheInvalidated = true; }
+
+   public:
+    CacheInvalidator(context::Context* context, bool& cacheInvalidated)
+        : context::ContextNotifyObj(context),
+          d_cacheInvalidated(cacheInvalidated)
+    {
     }
 
-  };/* class SubstitutionMap::CacheInvalidator */
+  }; /* class SubstitutionMap::CacheInvalidator */
 
   /**
    * This object is notified on user pop and marks the SubstitutionMap's
@@ -92,18 +99,22 @@ private:
    */
   CacheInvalidator d_cacheInvalidator;
 
-public:
+ public:
+  /**
+   * @param context The context this substitution depends on.
+   * @param compress If true, we may update the range of substitutions based
+   * on further substitutions. For example, if we add {y -> f(x)} and later
+   * add {x -> a}, then we may update the substitution to {y -> f(a), x -> a}.
+   */
+  SubstitutionMap(context::Context* context = nullptr, bool compress = true);
 
-  SubstitutionMap(context::Context* context, bool substituteUnderQuantifiers = true, bool solvedForm = false) :
-    d_substitutions(context),
-    d_substitutionCache(),
-    d_substituteUnderQuantifiers(substituteUnderQuantifiers),
-    d_cacheInvalidated(false),
-    d_solvedForm(solvedForm),
-    d_cacheInvalidator(context, d_cacheInvalidated)
-    {
-  }
-
+  /** Get substitutions in this object as a raw map */
+  std::unordered_map<Node, Node> getSubstitutions() const;
+  /**
+   * Return a formula that is equivalent to this substitution, e.g. for
+   * [x -> t, y -> s], we return (and (= x t) (= y s)).
+   */
+  Node toFormula(NodeManager* nm) const;
   /**
    * Adds a substitution from x to t.
    */
@@ -115,9 +126,23 @@ public:
   void addSubstitutions(SubstitutionMap& subMap, bool invalidateCache = true);
 
   /**
+   * Erase substitution. This erases x from the domain of this substitution.
+   * This method should only be called if compression is disabled, since
+   * if compression is enabled, then the substituion of x may have been
+   * applied to the range of other substitutions in this class, and erasing
+   * the entry for x would not undo those changes.
+   * @param x The variable to erase.
+   * @param invalidateCache If true, we clear the cache.
+   */
+  void eraseSubstitution(TNode x, bool invalidateCache = true);
+
+  /** Size of the substitutions */
+  size_t size() const { return d_substitutions.size(); }
+  /**
    * Returns true iff x is in the substitution map
    */
-  bool hasSubstitution(TNode x) const {
+  bool hasSubstitution(TNode x) const
+  {
     return d_substitutions.find(x) != d_substitutions.end();
   }
 
@@ -129,74 +154,62 @@ public:
    * is mainly intended for constructing assertions about what has
    * already been put in the map.
    */
-  TNode getSubstitution(TNode x) const {
-    AssertArgument(hasSubstitution(x), x, "element not in this substitution map");
+  TNode getSubstitution(TNode x) const
+  {
+    AssertArgument(
+        hasSubstitution(x), x, "element not in this substitution map");
     return (*d_substitutions.find(x)).second;
   }
 
   /**
-   * Apply the substitutions to the node.
+   * Apply the substitutions to the node, optionally rewrite if a non-null
+   * Rewriter pointer is passed.
    */
-  Node apply(TNode t);
+  Node apply(TNode t,
+             Rewriter* r = nullptr,
+             std::set<TNode>* tracker = nullptr,
+             const ShouldTraverseCallback* stc = nullptr);
 
   /**
    * Apply the substitutions to the node.
    */
-  Node apply(TNode t) const {
-    return const_cast<SubstitutionMap*>(this)->apply(t);
+  Node apply(TNode t, Rewriter* r = nullptr) const
+  {
+    return const_cast<SubstitutionMap*>(this)->apply(t, r);
   }
 
-  iterator begin() {
-    return d_substitutions.begin();
-  }
+  iterator begin() { return d_substitutions.begin(); }
 
-  iterator end() {
-    return d_substitutions.end();
-  }
+  iterator end() { return d_substitutions.end(); }
 
-  const_iterator begin() const {
-    return d_substitutions.begin();
-  }
+  const_iterator begin() const { return d_substitutions.begin(); }
 
-  const_iterator end() const {
-    return d_substitutions.end();
-  }
+  const_iterator end() const { return d_substitutions.end(); }
 
-  bool empty() const {
-    return d_substitutions.empty();
-  }
-
-  // NOTE [MGD]: removed clear() and swap() from the interface
-  // when this data structure became context-dependent
-  // because they weren't used---and it's not clear how they
-  // should best interact with cache invalidation on context
-  // pops.
-
-  // Simplify right-hand sides of current map using the given substitutions
-  void simplifyRHS(const SubstitutionMap& subMap);
-
-  // Simplify right-hand sides of current map with lhs -> rhs
-  void simplifyRHS(TNode lhs, TNode rhs);
-
-  bool isSolvedForm() const { return d_solvedForm; }
+  bool empty() const { return d_substitutions.empty(); }
 
   /**
    * Print to the output stream
    */
   void print(std::ostream& out) const;
-  void debugPrint() const;
+  /** To string */
+  std::string toString() const;
 
-};/* class SubstitutionMap */
+  void invalidateCache() { d_cacheInvalidated = true; }
 
-inline std::ostream& operator << (std::ostream& out, const SubstitutionMap& subst) {
+}; /* class SubstitutionMap */
+
+inline std::ostream& operator<<(std::ostream& out, const SubstitutionMap& subst)
+{
   subst.print(out);
   return out;
 }
 
-}/* CVC4::theory namespace */
+}  // namespace theory
 
-std::ostream& operator<<(std::ostream& out, const theory::SubstitutionMap::iterator& i);
+std::ostream& operator<<(std::ostream& out,
+                         const theory::SubstitutionMap::iterator& i);
 
-}/* CVC4 namespace */
+}  // namespace cvc5::internal
 
-#endif /* CVC4__THEORY__SUBSTITUTIONS_H */
+#endif /* CVC5__THEORY__SUBSTITUTIONS_H */

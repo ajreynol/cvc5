@@ -1,56 +1,95 @@
-/*********************                                                        */
-/*! \file static_learning.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Yoni Zohar
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2019 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief The static learning preprocessing pass
- **
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * The static learning preprocessing pass.
+ */
 
 #include "preprocessing/passes/static_learning.h"
 
 #include <string>
 
 #include "expr/node.h"
+#include "preprocessing/assertion_pipeline.h"
+#include "preprocessing/preprocessing_pass_context.h"
+#include "theory/rewriter.h"
+#include "theory/theory_engine.h"
 
-namespace CVC4 {
+namespace cvc5::internal {
 namespace preprocessing {
 namespace passes {
 
 StaticLearning::StaticLearning(PreprocessingPassContext* preprocContext)
-    : PreprocessingPass(preprocContext, "static-learning"){};
+    : PreprocessingPass(preprocContext, "static-learning"),
+      d_cache(userContext()) {};
 
 PreprocessingPassResult StaticLearning::applyInternal(
     AssertionPipeline* assertionsToPreprocess)
 {
-  NodeManager::currentResourceManager()->spendResource(
-      options::preprocessStep());
+  d_preprocContext->spendResource(Resource::PreprocessStep);
 
-  for (unsigned i = 0; i < assertionsToPreprocess->size(); ++i)
+  std::vector<TNode> toProcess;
+
+  for (size_t i = 0, size = assertionsToPreprocess->size(); i < size; ++i)
   {
-    NodeBuilder<> learned(kind::AND);
-    learned << (*assertionsToPreprocess)[i];
-    d_preprocContext->getTheoryEngine()->ppStaticLearn(
-        (*assertionsToPreprocess)[i], learned);
-    if (learned.getNumChildren() == 1)
+    const Node& n = (*assertionsToPreprocess)[i];
+
+    /* Already processed in this context. */
+    if (d_cache.find(n) != d_cache.end())
     {
-      learned.clear();
+      continue;
     }
-    else
+
+    /* Process all assertions in nested AND terms. */
+    std::vector<TNode> assertions;
+    flattenAnd(n, assertions);
+    std::vector<TrustNode> tlems;
+    for (TNode a : assertions)
     {
-      assertionsToPreprocess->replace(i, learned);
+      d_preprocContext->getTheoryEngine()->ppStaticLearn(a, tlems);
+    }
+
+    // add the lemmas to the end
+    for (const TrustNode& trn : tlems)
+    {
+      // ensure all learned lemmas are rewritten
+      assertionsToPreprocess->pushBackTrusted(
+          trn, TrustId::PREPROCESS_STATIC_LEARNING_LEMMA, true);
     }
   }
   return PreprocessingPassResult::NO_CONFLICT;
 }
 
+void StaticLearning::flattenAnd(TNode node, std::vector<TNode>& children)
+{
+  std::vector<TNode> visit = {node};
+  do
+  {
+    TNode cur = visit.back();
+    visit.pop_back();
+
+    if (d_cache.find(cur) != d_cache.end())
+    {
+      continue;
+    }
+    d_cache.insert(cur);
+
+    if (cur.getKind() == Kind::AND)
+    {
+      visit.insert(visit.end(), cur.begin(), cur.end());
+    }
+    else
+    {
+      children.push_back(cur);
+    }
+  } while (!visit.empty());
+}
 
 }  // namespace passes
 }  // namespace preprocessing
-}  // namespace CVC4
+}  // namespace cvc5::internal

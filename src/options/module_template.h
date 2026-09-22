@@ -1,51 +1,52 @@
-/*********************                                                        */
-/*! \file module_template.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Mathias Preiner
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2019 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Contains code for handling command-line options.
- **
- ** For each <module>_options.toml configuration file, mkoptions.py
- ** expands this template and generates a <module>_options.h file.
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Contains code for handling command-line options.
+ *
+ * For each <module>_options.toml configuration file, mkoptions.py
+ * expands this template and generates a <module>_options.h file.
+ */
 
-#include "cvc4_private.h"
+#include "cvc5_private.h"
 
-#ifndef CVC4__OPTIONS__${id}$_H
-#define CVC4__OPTIONS__${id}$_H
+// clang-format off
+#ifndef CVC5__OPTIONS__${id_cap}$_H
+#define CVC5__OPTIONS__${id_cap}$_H
 
 #include "options/options.h"
 
 ${includes}$
 
+namespace cvc5::internal::options {
 
-${holder_spec}$
+namespace ${id}$::longName {
+  ${long_name_decl}$
+}
 
+${modes_decl}$
+  // clang-format on
 
-namespace CVC4 {
+#if defined(CVC5_MUZZLED) || defined(CVC5_COMPETITION_MODE)
+#define DO_SEMANTIC_CHECKS_BY_DEFAULT false
+#else /* CVC5_MUZZLED || CVC5_COMPETITION_MODE */
+#define DO_SEMANTIC_CHECKS_BY_DEFAULT true
+#endif /* CVC5_MUZZLED || CVC5_COMPETITION_MODE */
 
-namespace options {
+      // clang-format off
+struct Holder${id_cap}$
+{
+  ${holder_decl}$
+};
+  // clang-format on
 
-${modes}$
+#undef DO_SEMANTIC_CHECKS_BY_DEFAULT
 
-${decls}$
+}  // namespace cvc5::internal::options
 
-}  // namespace options
-
-${specs}$
-
-
-namespace options {
-
-${inls}$
-
-}  // namespace options
-}  // namespace CVC4
-
-#endif /* CVC4__OPTIONS__${id}$_H */
+#endif /* CVC5__OPTIONS__${id_cap}$_H */

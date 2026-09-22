@@ -1,37 +1,55 @@
-/*********************                                                        */
-/*! \file datatypes_rewriter.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds, Morgan Deters, Dejan Jovanovic
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2019 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Rewriter for the theory of (co)inductive datatypes
- **
- ** Rewriter for the theory of (co)inductive datatypes.
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Rewriter for the theory of (co)inductive datatypes.
+ */
 
-#include "cvc4_private.h"
+#include "cvc5_private.h"
 
-#ifndef CVC4__THEORY__DATATYPES__DATATYPES_REWRITER_H
-#define CVC4__THEORY__DATATYPES__DATATYPES_REWRITER_H
+#ifndef CVC5__THEORY__DATATYPES__DATATYPES_REWRITER_H
+#define CVC5__THEORY__DATATYPES__DATATYPES_REWRITER_H
 
-#include "expr/node_manager_attributes.h"
+#include "theory/evaluator.h"
 #include "theory/theory_rewriter.h"
-#include "theory/type_enumerator.h"
 
-namespace CVC4 {
+namespace cvc5::internal {
+
+class Options;
+
 namespace theory {
 namespace datatypes {
 
+/**
+ * The rewriter for datatypes. An invariant of the rewriter is that
+ * postRewrite/preRewrite should not depend on the options, in particular,
+ * they should not depend on whether shared selectors are enabled. Thus,
+ * they should not use DTypeConstructor::getSelectorInternal. Instead,
+ * the conversion from external to internal selectors is done in
+ * expandDefinition. This invariant ensures that the rewritten form of a node
+ * does not mix multiple option settings, which would lead to e.g. shared
+ * selectors being used in an SolverEngine instance where they are disabled.
+ */
 class DatatypesRewriter : public TheoryRewriter
 {
  public:
+  DatatypesRewriter(NodeManager* nm, Evaluator* sygusEval, const Options& opts);
   RewriteResponse postRewrite(TNode in) override;
   RewriteResponse preRewrite(TNode in) override;
+
+  /**
+   * Rewrite n based on the proof rewrite rule id.
+   * @param id The rewrite rule.
+   * @param n The node to rewrite.
+   * @return The rewritten version of n based on id, or Node::null() if n
+   * cannot be rewritten.
+   */
+  Node rewriteViaRule(ProofRewriteRule id, const Node& n) override;
 
   /** normalize codatatype constant
    *
@@ -51,14 +69,70 @@ class DatatypesRewriter : public TheoryRewriter
    * on all top-level codatatype subterms of n.
    */
   static Node normalizeConstant(Node n);
+  /**
+   * Expand an APPLY_SELECTOR term n, return its expanded form. If n is
+   *   (APPLY_SELECTOR selC x)
+   * its expanded form is
+   *   (APPLY_SELECTOR selC' x)
+   * where selC' is the internal selector function for selC (a shared selector
+   * if sharedSel is true).
+   * Note that we do not introduce an uninterpreted function here, e.g. to
+   * handle when the selector is misapplied. This is because it suffices to
+   * reason about the original selector term e.g. via congruence.
+   */
+  static Node expandApplySelector(Node n, bool sharedSel);
+  /**
+   * Expand updater term. Given n = (APPLY_UPDATER{SELECTOR_k} t s), this method
+   * returns (ITE (APPLY_TESTER{C} t) (C (APPLY_SELECTOR SELECTOR_1
+   * t)...s...(APPLY_SELECTOR SELECTOR_m t)) t). where 1 <= k <= m.
+   */
+  Node expandUpdater(const Node& n);
+  /**
+   * Expand a match term into its definition.
+   * For example
+   *   (MATCH x (((APPLY_CONSTRUCTOR CONS y z) z) (APPLY_CONSTRUCTOR NIL x)))
+   * returns
+   *   (ITE (APPLY_TESTER CONS x) (APPLY_SELECTOR x) x)
+   */
+  static Node expandMatch(Node n);
+  /** expand defintions */
+  Node expandDefinition(Node n) override;
+  /**
+   * Expand a nullable lift term with an ite expression.
+   * Example:
+   * input : (nullable.lift f x y) where f is a function
+   *         and x,y are nullable terms.
+   * output: (ite
+   *           (or (nullable.is_null x) (nullable.is_null y))
+   *           (nullable.null)
+   *           (f (nullable.val x) (nullable.val y))
+   *         )
+   * @pre Higher-order logic is enabled.
+   * @param n A nullable lift term.
+   * @return An ite expression.
+   */
+  Node expandNullableLift(Node n);
+
+  /**
+   * Rewrite nullable lift terms as null if any of the arguments is null,
+   * or return the some of applying the function (first child) to values
+   * if all arguments are some constants.
+   * - input : (nullable.lift f x1 ... (nullable.null) ... xn))
+   *   output: (nullable.null)
+   * - input : (nullable.lift f (nullable.some c1) ... (nullable.some cn))
+   *   output: (f c1 ... cn)
+   */
+  RewriteResponse rewriteNullableLift(TNode n);
 
  private:
   /** rewrite constructor term in */
-  static RewriteResponse rewriteConstructor(TNode in);
+  RewriteResponse rewriteConstructor(TNode in);
   /** rewrite selector term in */
-  static RewriteResponse rewriteSelector(TNode in);
+  RewriteResponse rewriteSelector(TNode in);
   /** rewrite tester term in */
-  static RewriteResponse rewriteTester(TNode in);
+  RewriteResponse rewriteTester(TNode in);
+  /** rewrite updater term in */
+  RewriteResponse rewriteUpdater(TNode in);
 
   /** collect references
    *
@@ -77,7 +151,7 @@ class DatatypesRewriter : public TheoryRewriter
    *   Stream := cons( head : Int, tail : Stream )
    * The stream 1,0,1,0,1,0... when written in mu-notation is the term:
    *   mu x. cons( 1, mu y. cons( 0, x ) )
-   * This is represented in CVC4 by the Node:
+   * This is represented in cvc5 by the Node:
    *   cons( 1, cons( 0, c[1] ) )
    * where c[1] is a uninterpreted constant datatype with Debruijn index 1,
    * indicating that c[1] is nested underneath 1 level on the path to the
@@ -138,14 +212,38 @@ class DatatypesRewriter : public TheoryRewriter
    * Tree datatype, replaceDebruijn( node( 0, c[0], node( 1, c[0], c[1] ) ), t,
    * Tree, 0 ) returns node( 0, t, node( 1, c[0], t ) ).
    */
-  static Node replaceDebruijn(Node n,
-                              Node orig,
-                              TypeNode orig_tn,
-                              unsigned depth);
-}; /* class DatatypesRewriter */
+  Node replaceDebruijn(Node n, Node orig, TypeNode orig_tn, unsigned depth);
 
-}/* CVC4::theory::datatypes namespace */
-}/* CVC4::theory namespace */
-}/* CVC4 namespace */
+  /** Sygus to builtin eval
+   *
+   * This method returns the rewritten form of (DT_SYGUS_EVAL n args). Notice
+   * that n does not necessarily need to be a constant.
+   *
+   * It does so by (1) converting constant subterms of n to builtin terms and
+   * evaluating them on the arguments args, (2) unfolding non-constant
+   * applications of sygus constructors in n with respect to args and (3)
+   * converting all other non-constant subterms of n to applications of
+   * DT_SYGUS_EVAL.
+   *
+   * For example, if
+   *   n = C_+( C_*( C_x(), C_y() ), n' ), and args = { 3, 4 }
+   * where n' is a variable, then this method returns:
+   *   12 + (DT_SYGUS_EVAL n' 3 4)
+   * Notice that the subterm C_*( C_x(), C_y() ) is converted to its builtin
+   * equivalent x*y and evaluated under the substition { x -> 3, y -> 4 } giving
+   * 12. The subterm n' is non-constant and thus we return its evaluation under
+   * 3,4, giving the term (DT_SYGUS_EVAL n' 3 4). Since the top-level
+   * constructor is C_+, these terms are added together to give the result.
+   */
+  Node sygusToBuiltinEval(Node n, const std::vector<Node>& args);
+  /** Pointer to the evaluator, used as an optimization for the above method */
+  Evaluator* d_sygusEval;
+  /** Reference to the options */
+  const Options& d_opts;
+};
 
-#endif /* CVC4__THEORY__DATATYPES__DATATYPES_REWRITER_H */
+}  // namespace datatypes
+}  // namespace theory
+}  // namespace cvc5::internal
+
+#endif /* CVC5__THEORY__DATATYPES__DATATYPES_REWRITER_H */

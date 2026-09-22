@@ -1,21 +1,19 @@
-/*********************                                                        */
-/*! \file delta_rational.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Tim King, Dejan Jovanovic, Morgan Deters
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2019 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief [[ Add one-line brief description here ]]
- **
- ** [[ Add lengthier description here ]]
- ** \todo document this file
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * [[ Add one-line brief description here ]]
+ *
+ * [[ Add lengthier description here ]]
+ * \todo document this file
+ */
 
-#include "cvc4_private.h"
+#include "cvc5_private.h"
 
 #pragma once
 
@@ -26,11 +24,12 @@
 #include "util/integer.h"
 #include "util/rational.h"
 
-namespace CVC4 {
+namespace cvc5::internal {
 
 class DeltaRational;
 
-class DeltaRationalException : public Exception {
+class DeltaRationalException : public Exception
+{
  public:
   DeltaRationalException(const char* op,
                          const DeltaRational& a,
@@ -38,223 +37,253 @@ class DeltaRationalException : public Exception {
   ~DeltaRationalException() override;
 };
 
-
 /**
  * A DeltaRational is a pair of rationals (c,k) that represent the number
  *   c + kd
  * where d is an implicit system wide symbolic infinitesimal.
  */
-class DeltaRational {
-private:
-  CVC4::Rational c;
-  CVC4::Rational k;
+class DeltaRational
+{
+ private:
+  cvc5::internal::Rational c;
+  cvc5::internal::Rational k;
 
-public:
-  DeltaRational() : c(0,1), k(0,1) {}
-  DeltaRational(const CVC4::Rational& base) : c(base), k(0,1) {}
-  DeltaRational(const CVC4::Rational& base, const CVC4::Rational& coeff) :
-    c(base), k(coeff) {}
-
-  const CVC4::Rational& getInfinitesimalPart() const {
-    return k;
+ public:
+  DeltaRational() : c(0, 1), k(0, 1) {}
+  DeltaRational(const cvc5::internal::Rational& base) : c(base), k(0, 1) {}
+  DeltaRational(const cvc5::internal::Rational& base,
+                const cvc5::internal::Rational& coeff)
+      : c(base), k(coeff)
+  {
   }
 
-  const CVC4::Rational& getNoninfinitesimalPart() const {
-    return c;
-  }
+  const cvc5::internal::Rational& getInfinitesimalPart() const { return k; }
 
-  int sgn() const {
+  const cvc5::internal::Rational& getNoninfinitesimalPart() const { return c; }
+
+  int sgn() const
+  {
     int s = getNoninfinitesimalPart().sgn();
-    if(s == 0){
+    if (s == 0)
+    {
       return infinitesimalSgn();
-    }else{
+    }
+    else
+    {
       return s;
     }
   }
 
-  int infinitesimalSgn() const {
-    return getInfinitesimalPart().sgn();
-  }
+  int infinitesimalSgn() const { return getInfinitesimalPart().sgn(); }
 
-  bool infinitesimalIsZero() const {
-    return getInfinitesimalPart().isZero();
-  }
+  bool infinitesimalIsZero() const { return getInfinitesimalPart().isZero(); }
 
-  bool noninfinitesimalIsZero() const {
+  bool noninfinitesimalIsZero() const
+  {
     return getNoninfinitesimalPart().isZero();
   }
 
-  bool isZero() const {
+  bool isZero() const
+  {
     return noninfinitesimalIsZero() && infinitesimalIsZero();
   }
 
-
-  int cmp(const DeltaRational& other) const{
+  int cmp(const DeltaRational& other) const
+  {
     int cmp = c.cmp(other.c);
-    if(cmp == 0){
+    if (cmp == 0)
+    {
       return k.cmp(other.k);
-    }else{
+    }
+    else
+    {
       return cmp;
     }
   }
 
-  DeltaRational operator+(const DeltaRational& other) const{
-    CVC4::Rational tmpC = c+other.c;
-    CVC4::Rational tmpK = k+other.k;
+  DeltaRational operator+(const DeltaRational& other) const
+  {
+    cvc5::internal::Rational tmpC = c + other.c;
+    cvc5::internal::Rational tmpK = k + other.k;
     return DeltaRational(tmpC, tmpK);
   }
 
-  DeltaRational operator*(const Rational& a) const{
-    CVC4::Rational tmpC = a*c;
-    CVC4::Rational tmpK = a*k;
+  DeltaRational operator*(const Rational& a) const
+  {
+    cvc5::internal::Rational tmpC = a * c;
+    cvc5::internal::Rational tmpK = a * k;
     return DeltaRational(tmpC, tmpK);
   }
-
 
   /**
    * Multiplies (this->c + this->k * delta) * (a.c + a.k * delta)
    * This can be done whenever this->k or a.k is 0.
-   * Otherwise, the result is not a DeltaRational and a DeltaRationalException is thrown.
+   * Otherwise, the result is not a DeltaRational and a DeltaRationalException
+   * is thrown.
    */
   DeltaRational operator*(const DeltaRational& a) const
   /* throw(DeltaRationalException) */ {
-    if(infinitesimalIsZero()){
+    if (infinitesimalIsZero())
+    {
       return a * (this->getNoninfinitesimalPart());
-    }else if(a.infinitesimalIsZero()){
+    }
+    else if (a.infinitesimalIsZero())
+    {
       return (*this) * a.getNoninfinitesimalPart();
-    }else{
+    }
+    else
+    {
       throw DeltaRationalException("operator*", *this, a);
     }
   }
 
-
-  DeltaRational operator-(const DeltaRational& a) const{
-    CVC4::Rational negOne(CVC4::Integer(-1));
+  DeltaRational operator-(const DeltaRational& a) const
+  {
+    cvc5::internal::Rational negOne(cvc5::internal::Integer(-1));
     return *(this) + (a * negOne);
   }
 
-  DeltaRational operator-() const{
-    return DeltaRational(-c, -k);
-  }
+  DeltaRational operator-() const { return DeltaRational(-c, -k); }
 
-  DeltaRational operator/(const Rational& a) const{
-    CVC4::Rational tmpC = c/a;
-    CVC4::Rational tmpK = k/a;
+  DeltaRational operator/(const Rational& a) const
+  {
+    cvc5::internal::Rational tmpC = c / a;
+    cvc5::internal::Rational tmpK = k / a;
     return DeltaRational(tmpC, tmpK);
   }
 
-  DeltaRational operator/(const Integer& a) const{
-    CVC4::Rational tmpC = c/a;
-    CVC4::Rational tmpK = k/a;
+  DeltaRational operator/(const Integer& a) const
+  {
+    cvc5::internal::Rational tmpC = c / a;
+    cvc5::internal::Rational tmpK = k / a;
     return DeltaRational(tmpC, tmpK);
   }
 
   /**
    * Divides (*this) / (a.c + a.k * delta)
    * This can be done when a.k is 0 and a.c is non-zero.
-   * Otherwise, the result is not a DeltaRational and a DeltaRationalException is thrown.
+   * Otherwise, the result is not a DeltaRational and a DeltaRationalException
+   * is thrown.
    */
   DeltaRational operator/(const DeltaRational& a) const
   /* throw(DeltaRationalException) */ {
-    if(a.infinitesimalIsZero()){
+    if (a.infinitesimalIsZero())
+    {
       return (*this) / a.getNoninfinitesimalPart();
-    }else{
+    }
+    else
+    {
       throw DeltaRationalException("operator/", *this, a);
     }
   }
 
-
-  DeltaRational abs() const {
-    if(sgn() >= 0){
+  DeltaRational abs() const
+  {
+    if (sgn() >= 0)
+    {
       return *this;
-    }else{
+    }
+    else
+    {
       return (*this) * Rational(-1);
     }
   }
 
-  bool operator==(const DeltaRational& other) const{
+  bool operator==(const DeltaRational& other) const
+  {
     return (k == other.k) && (c == other.c);
   }
 
-  bool operator!=(const DeltaRational& other) const{
+  bool operator!=(const DeltaRational& other) const
+  {
     return !(*this == other);
   }
 
-
-  bool operator<=(const DeltaRational& other) const{
+  bool operator<=(const DeltaRational& other) const
+  {
     int cmp = c.cmp(other.c);
-    return (cmp < 0) || ((cmp==0)&&(k <= other.k));
+    return (cmp < 0) || ((cmp == 0) && (k <= other.k));
   }
-  bool operator<(const DeltaRational& other) const{
-    return (other  > *this);
-  }
-  bool operator>=(const DeltaRational& other) const{
-    return (other <= *this);
-  }
-  bool operator>(const DeltaRational& other) const{
-    return !(*this <= other);
-  }
+  bool operator<(const DeltaRational& other) const { return (other > *this); }
+  bool operator>=(const DeltaRational& other) const { return (other <= *this); }
+  bool operator>(const DeltaRational& other) const { return !(*this <= other); }
 
-  int compare(const DeltaRational& other) const{
+  int compare(const DeltaRational& other) const
+  {
     int cmpRes = c.cmp(other.c);
     return (cmpRes != 0) ? cmpRes : (k.cmp(other.k));
   }
 
-  DeltaRational& operator=(const DeltaRational& other){
-    c = other.c;
-    k = other.k;
-    return *(this);
-  }
-
-  DeltaRational& operator*=(const CVC4::Rational& a){
-    c *=  a;
-    k *=  a;
+  DeltaRational& operator*=(const cvc5::internal::Rational& a)
+  {
+    c *= a;
+    k *= a;
 
     return *(this);
   }
 
-  DeltaRational& operator+=(const DeltaRational& other){
+  DeltaRational& operator+=(const DeltaRational& other)
+  {
     c += other.c;
     k += other.k;
 
     return *(this);
   }
 
-  DeltaRational& operator/=(const Rational& a){
+  DeltaRational& operator/=(const Rational& a)
+  {
     Assert(!a.isZero());
     c /= a;
     k /= a;
     return *(this);
   }
 
-  bool isIntegral() const {
-    if(infinitesimalIsZero()){
+  bool isIntegral() const
+  {
+    if (infinitesimalIsZero())
+    {
       return getNoninfinitesimalPart().isIntegral();
-    }else{
+    }
+    else
+    {
       return false;
     }
   }
 
-  Integer floor() const {
-    if(getNoninfinitesimalPart().isIntegral()){
-      if(getInfinitesimalPart().sgn() >= 0){
+  Integer floor() const
+  {
+    if (getNoninfinitesimalPart().isIntegral())
+    {
+      if (getInfinitesimalPart().sgn() >= 0)
+      {
         return getNoninfinitesimalPart().getNumerator();
-      }else{
+      }
+      else
+      {
         return getNoninfinitesimalPart().getNumerator() - Integer(1);
       }
-    }else{
+    }
+    else
+    {
       return getNoninfinitesimalPart().floor();
     }
   }
 
-  Integer ceiling() const {
-    if(getNoninfinitesimalPart().isIntegral()){
-      if(getInfinitesimalPart().sgn() <= 0){
+  Integer ceiling() const
+  {
+    if (getNoninfinitesimalPart().isIntegral())
+    {
+      if (getInfinitesimalPart().sgn() <= 0)
+      {
         return getNoninfinitesimalPart().getNumerator();
-      }else{
+      }
+      else
+      {
         return getNoninfinitesimalPart().getNumerator() + Integer(1);
       }
-    }else{
+    }
+    else
+    {
       return getNoninfinitesimalPart().ceiling();
     }
   }
@@ -269,7 +298,8 @@ public:
 
   std::string toString() const;
 
-  Rational substituteDelta(const Rational& d) const{
+  Rational substituteDelta(const Rational& d) const
+  {
     return getNoninfinitesimalPart() + (d * getInfinitesimalPart());
   }
 
@@ -283,21 +313,20 @@ public:
    * (Similar relationships hold for for a == b and a > b.)
    * Precondition: res > 0
    */
-  static void seperatingDelta(Rational& res, const DeltaRational& a, const DeltaRational& b);
+  static void seperatingDelta(Rational& res,
+                              const DeltaRational& a,
+                              const DeltaRational& b);
 
-  uint32_t complexity() const {
-    return c.complexity() + k.complexity();
-  }
+  uint32_t complexity() const { return c.complexity() + k.complexity(); }
 
-  double approx(double deltaSub) const {
+  double approx(double deltaSub) const
+  {
     double maj = getNoninfinitesimalPart().getDouble();
     double min = deltaSub * (getInfinitesimalPart().getDouble());
     return maj + min;
   }
-
-
 };
 
 std::ostream& operator<<(std::ostream& os, const DeltaRational& n);
 
-}/* CVC4 namespace */
+}  // namespace cvc5::internal

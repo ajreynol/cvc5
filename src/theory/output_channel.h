@@ -1,80 +1,62 @@
-/*********************                                                        */
-/*! \file output_channel.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Morgan Deters, Tim King, Liana Hadarean
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2019 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief The theory output channel interface
- **
- ** The theory output channel interface.
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * The theory engine output channel.
+ */
 
-#include "cvc4_private.h"
+#include "cvc5_private.h"
 
-#ifndef CVC4__THEORY__OUTPUT_CHANNEL_H
-#define CVC4__THEORY__OUTPUT_CHANNEL_H
+#ifndef CVC5__THEORY__OUTPUT_CHANNEL_H
+#define CVC5__THEORY__OUTPUT_CHANNEL_H
 
-#include <memory>
-
-#include "proof/proof_manager.h"
-#include "smt/logic_exception.h"
-#include "theory/interrupted.h"
-#include "util/proof.h"
+#include "expr/node.h"
+#include "proof/trust_node.h"
+#include "theory/incomplete_id.h"
+#include "theory/inference_id.h"
+#include "theory/lemma_property.h"
+#include "theory/theory_id.h"
 #include "util/resource_manager.h"
+#include "util/statistics_stats.h"
 
-namespace CVC4 {
+namespace cvc5::internal {
+
+class TheoryEngine;
+
 namespace theory {
 
 class Theory;
 
 /**
- * A LemmaStatus, returned from OutputChannel::lemma(), provides information
- * about the lemma added.  In particular, it contains the T-rewritten lemma
- * for inspection and the user-level at which the lemma will reside.
- */
-class LemmaStatus {
- public:
-  LemmaStatus(TNode rewrittenLemma, unsigned level)
-      : d_rewrittenLemma(rewrittenLemma), d_level(level) {}
-
-  /** Get the T-rewritten form of the lemma. */
-  TNode getRewrittenLemma() const { return d_rewrittenLemma; }
-  /**
-   * Get the user-level at which the lemma resides.  After this user level
-   * is popped, the lemma is un-asserted from the SAT layer.  This level
-   * will be 0 if the lemma didn't reach the SAT layer at all.
-   */
-  unsigned getLevel() const { return d_level; }
- private:
-  Node d_rewrittenLemma;
-  unsigned d_level;
-}; /* class LemmaStatus */
-
-/**
- * Generic "theory output channel" interface.
+ * An output channel for Theory that passes messages back to a TheoryEngine
+ * for a given Theory.
  *
- * All methods can throw unrecoverable CVC4::Exception's unless otherwise
- * documented.
+ * Notice that it has interfaces trustedConflict and trustedLemma which are
+ * used for ensuring that proof generators are associated with the lemmas
+ * and conflicts sent on this output channel.
  */
-class OutputChannel {
+class OutputChannel
+{
+  friend class internal::TheoryEngine;
+
  public:
-  /** Construct an OutputChannel. */
-  OutputChannel() {}
-
-  /**
-   * Destructs an OutputChannel.  This implementation does nothing,
-   * but we need a virtual destructor for safety in case subclasses
-   * have a destructor.
-   */
+  /** Default constructor */
+  OutputChannel();
+  /** Constructor for use by theory */
+  OutputChannel(StatisticsRegistry& sr,
+                TheoryEngine* engine,
+                theory::TheoryId theory);
+  /** Constructor for use by non-theory */
+  OutputChannel(StatisticsRegistry& sr,
+                TheoryEngine* engine,
+                const std::string& name,
+                size_t id = 0);
   virtual ~OutputChannel() {}
-
-  OutputChannel(const OutputChannel&) = delete;
-  OutputChannel& operator=(const OutputChannel&) = delete;
 
   /**
    * With safePoint(), the theory signals that it is at a safe point
@@ -82,8 +64,7 @@ class OutputChannel {
    *
    * @throws Interrupted if the theory can be safely interrupted.
    */
-  virtual void safePoint(uint64_t amount) {}
-
+  virtual void safePoint(Resource r);
   /**
    * Indicate a theory conflict has arisen.
    *
@@ -93,57 +74,30 @@ class OutputChannel {
    * assigned false), or else a literal by itself (in the case of a
    * unit conflict) which is assigned TRUE (and T-conflicting) in the
    * current assignment.
-   * @param pf - a proof of the conflict. This is only non-null if proofs
-   * are enabled.
    */
-  virtual void conflict(TNode n, std::unique_ptr<Proof> pf = nullptr) = 0;
-
+  virtual void conflict(TNode conflictNode, InferenceId id);
   /**
    * Propagate a theory literal.
    *
    * @param n - a theory consequence at the current decision level
    * @return false if an immediate conflict was encountered
    */
-  virtual bool propagate(TNode n) = 0;
+  virtual bool propagate(TNode literal);
 
   /**
    * Tell the core that a valid theory lemma at decision level 0 has
    * been detected.  (This requests a split.)
    *
    * @param n - a theory lemma valid at decision level 0
-   * @param rule - the proof rule for this lemma
-   * @param removable - whether the lemma can be removed at any point
-   * @param preprocess - whether to apply more aggressive preprocessing
-   * @param sendAtoms - whether to ensure atoms are sent to the theory
-   * @return the "status" of the lemma, including user level at which
-   * the lemma resides; the lemma will be removed when this user level pops
+   * @param p The properties of the lemma
    */
-  virtual LemmaStatus lemma(TNode n, ProofRule rule, bool removable = false,
-                            bool preprocess = false,
-                            bool sendAtoms = false) = 0;
-
+  virtual void lemma(TNode lemma,
+                     InferenceId id,
+                     LemmaProperty p = LemmaProperty::NONE);
   /**
-   * Variant of the lemma function that does not require providing a proof rule.
-   */
-  virtual LemmaStatus lemma(TNode n, bool removable = false,
-                            bool preprocess = false, bool sendAtoms = false) {
-    return lemma(n, RULE_INVALID, removable, preprocess, sendAtoms);
-  }
-
-  /**
-   * Request a split on a new theory atom.  This is equivalent to
-   * calling lemma({OR n (NOT n)}).
-   *
-   * @param n - a theory atom; must be of Boolean type
-   */
-  LemmaStatus split(TNode n) { return splitLemma(n.orNode(n.notNode())); }
-
-  virtual LemmaStatus splitLemma(TNode n, bool removable = false) = 0;
-
-  /**
-   * If a decision is made on n, it must be in the phase specified.
-   * Note that this is enforced *globally*, i.e., it is completely
-   * context-INdependent.  If you ever requirePhase() on a literal,
+   * If a decision is made on n that is not requested from a theory, it must be
+   * in the phase specified. Note that this is enforced *globally*, i.e., it is
+   * completely context-INdependent.  If you ever preferPhase() on a literal,
    * it is phase-locked forever and ever.  If it is to ever have the
    * other phase as its assignment, it will be because it has been
    * propagated that way (or it's a unit, at decision level 0).
@@ -152,15 +106,19 @@ class OutputChannel {
    * been pre-registered
    * @param phase - the phase to decide on n
    */
-  virtual void requirePhase(TNode n, bool phase) = 0;
-
+  virtual void preferPhase(TNode n, bool phase);
   /**
-   * Notification from a theory that it realizes it is incomplete at
-   * this context level.  If SAT is later determined by the
+   * Notification from a theory that it realizes it is model unsound at
+   * this SAT context level.  If SAT is later determined by the
    * TheoryEngine, it should actually return an UNKNOWN result.
    */
-  virtual void setIncomplete() = 0;
-
+  virtual void setModelUnsound(IncompleteId id);
+  /**
+   * Notification from a theory that it realizes it is refutation unsound at
+   * this user context level.  If UNSAT is later determined by the
+   * TheoryEngine, it should actually return an UNKNOWN result.
+   */
+  virtual void setRefutationUnsound(IncompleteId id);
   /**
    * "Spend" a "resource."  The meaning is specific to the context in
    * which the theory is operating, and may even be ignored.  The
@@ -172,25 +130,61 @@ class OutputChannel {
    * long-running operations, they cannot rely on resource() to break
    * out of infinite or intractable computations.
    */
-  virtual void spendResource(unsigned amount) {}
+  virtual void spendResource(Resource r);
 
   /**
-   * Handle user attribute.
-   * Associates theory t with the attribute attr.  Theory t will be
-   * notified whenever an attribute of name attr is set on a node.
-   * This can happen through, for example, the SMT-LIBv2 language.
+   * Let pconf be the pair (Node conf, ProofGenerator * pfg). This method
+   * sends conf on the output channel of this class whose proof can be generated
+   * by the generator pfg. Apart from pfg, the interface for this method is
+   * the same as calling OutputChannel::lemma on conf.
    */
-  virtual void handleUserAttribute(const char* attr, Theory* t) {}
-
-  /** Demands that the search restart from sat search level 0.
-   * Using this leads to non-termination issues.
-   * It is appropriate for prototyping for theories.
+  virtual void trustedConflict(TrustNode pconf, InferenceId id);
+  /**
+   * Let plem be the pair (Node lem, ProofGenerator * pfg).
+   * Send lem on the output channel of this class whose proof can be generated
+   * by the generator pfg. Apart from pfg, the interface for this method is
+   * the same as calling OutputChannel::lemma on lem.
    */
-  virtual void demandRestart() {}
+  virtual void trustedLemma(TrustNode plem,
+                            InferenceId id,
+                            LemmaProperty p = LemmaProperty::NONE);
+  /**
+   * Mark used. Called when we wish to mark that the output channel is used,
+   * for example, if we wish to manually call check again, even if no lemmas
+   * are sent. Note that theory engine determines whether to recheck
+   * (TheoryEngine::needsCheck) if lemmas were sent or if the output channel
+   * is marked as used.
+   */
+  virtual void markUsed();
+  /**
+   * Get the theory identifier
+   */
+  TheoryId getId() const;
 
-}; /* class OutputChannel */
+ protected:
+  /**
+   * Statistics for a particular theory.
+   */
+  class Statistics
+  {
+   public:
+    Statistics();
+    Statistics(StatisticsRegistry& sr, const std::string& statPrefix);
+    /** Number of calls to conflict, propagate, lemma, preferPhase */
+    IntStat conflicts, propagations, lemmas, preferPhase, trustedConflicts,
+        trustedLemmas;
+  };
+  /** The theory engine we're communicating with. */
+  TheoryEngine* d_engine;
+  /** The name of the owner of this channel. */
+  std::string d_name;
+  /** The statistics of the theory interractions. */
+  Statistics d_statistics;
+  /** The theory owning this channel. */
+  theory::TheoryId d_theory;
+};
 
 }  // namespace theory
-}  // namespace CVC4
+}  // namespace cvc5::internal
 
-#endif /* CVC4__THEORY__OUTPUT_CHANNEL_H */
+#endif /* CVC5__THEORY__OUTPUT_CHANNEL_H */

@@ -1,429 +1,422 @@
-/*********************                                                        */
-/*! \file theory_sets_type_rules.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Kshitij Bansal, Andrew Reynolds, Paul Meng
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2019 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Sets theory type rules.
- **
- ** Sets theory type rules.
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Sets theory type rules.
+ */
 
-#include "cvc4_private.h"
+#include "cvc5_private.h"
 
-#ifndef CVC4__THEORY__SETS__THEORY_SETS_TYPE_RULES_H
-#define CVC4__THEORY__SETS__THEORY_SETS_TYPE_RULES_H
+#ifndef CVC5__THEORY__SETS__THEORY_SETS_TYPE_RULES_H
+#define CVC5__THEORY__SETS__THEORY_SETS_TYPE_RULES_H
 
-#include "theory/sets/normal_form.h"
+#include "expr/node.h"
+#include "expr/type_node.h"
 
-namespace CVC4 {
+namespace cvc5::internal {
 namespace theory {
 namespace sets {
 
-struct SetsBinaryOperatorTypeRule {
-  inline static TypeNode computeType(NodeManager* nodeManager, TNode n, bool check)
-  {
-    Assert(n.getKind() == kind::UNION || n.getKind() == kind::INTERSECTION
-           || n.getKind() == kind::SETMINUS);
-    TypeNode setType = n[0].getType(check);
-    if( check ) {
-      if(!setType.isSet()) {
-        throw TypeCheckingExceptionPrivate(n, "operator expects a set, first argument is not");
-      }
-      TypeNode secondSetType = n[1].getType(check);
-      if(secondSetType != setType) {
-        if( n.getKind() == kind::INTERSECTION ){
-          setType = TypeNode::mostCommonTypeNode( secondSetType, setType );
-        }else{
-          setType = TypeNode::leastCommonTypeNode( secondSetType, setType );
-        }
-        if( setType.isNull() ){
-          throw TypeCheckingExceptionPrivate(n, "operator expects two sets of comparable types");
-        }
-        
-      }
-    }
-    return setType;
-  }
+/**
+ * Type rule for binary operators (set.union, set.inter_min, set.minus) to check
+ * if the two arguments are sets of the same sort.
+ */
+struct SetsBinaryOperatorTypeRule
+{
+  static TypeNode preComputeType(NodeManager* nm, TNode n);
 
-  inline static bool computeIsConst(NodeManager* nodeManager, TNode n) {
-    Assert(n.getKind() == kind::UNION || n.getKind() == kind::INTERSECTION
-           || n.getKind() == kind::SETMINUS);
-    if(n.getKind() == kind::UNION) {
-      return NormalForm::checkNormalConstant(n);
-    } else {
-      return false;
-    }
-  }
-};/* struct SetUnionTypeRule */
+  static TypeNode computeType(NodeManager* nodeManager,
+                              TNode n,
+                              bool check,
+                              std::ostream* errOut);
+  static bool computeIsConst(NodeManager* nodeManager, TNode n);
+};
 
-struct SubsetTypeRule {
-  inline static TypeNode computeType(NodeManager* nodeManager, TNode n, bool check)
-  {
-    Assert(n.getKind() == kind::SUBSET);
-    TypeNode setType = n[0].getType(check);
-    if( check ) {
-      if(!setType.isSet()) {
-        throw TypeCheckingExceptionPrivate(n, "set subset operating on non-set");
-      }
-      TypeNode secondSetType = n[1].getType(check);
-      if(secondSetType != setType) {
-        if( !setType.isComparableTo( secondSetType ) ){
-          throw TypeCheckingExceptionPrivate(n, "set subset operating on sets of different types");
-        }
-      }
-    }
-    return nodeManager->booleanType();
-  }
-};/* struct SetSubsetTypeRule */
+/**
+ * Type rule for binary operator set.subset to check if the two arguments are
+ * sets of the same sort.
+ */
+struct SubsetTypeRule
+{
+  static TypeNode preComputeType(NodeManager* nm, TNode n);
 
-struct MemberTypeRule {
-  inline static TypeNode computeType(NodeManager* nodeManager, TNode n, bool check)
-  {
-    Assert(n.getKind() == kind::MEMBER);
-    TypeNode setType = n[1].getType(check);
-    if( check ) {
-      if(!setType.isSet()) {
-        throw TypeCheckingExceptionPrivate(n, "checking for membership in a non-set");
-      }
-      TypeNode elementType = n[0].getType(check);
-      // TODO : still need to be flexible here due to situations like:
-      //
-      // T : (Set Int)
-      // S : (Set Real)
-      // (= (as T (Set Real)) S)
-      // (member 0.5 S)
-      // ...where (member 0.5 T) is inferred
-      //
-      // or
-      //
-      // S : (Set Real)
-      // (not (member 0.5 s))
-      // (member 0.0 s)
-      // ...find model M where M( s ) = { 0 }, check model will generate (not (member 0.5 (singleton 0)))
-      //      
-      if(!elementType.isComparableTo(setType.getSetElementType())) {
-      //if(!elementType.isSubtypeOf(setType.getSetElementType())) {     //FIXME:typing
-        std::stringstream ss;
-        ss << "member operating on sets of different types:\n"
-           << "child type:  " << elementType << "\n"
-           << "not subtype: " << setType.getSetElementType() << "\n"
-           << "in term : " << n;
-        throw TypeCheckingExceptionPrivate(n, ss.str());
-      }
-    }
-    return nodeManager->booleanType();
-  }
-};/* struct MemberTypeRule */
+  static TypeNode computeType(NodeManager* nodeManager,
+                              TNode n,
+                              bool check,
+                              std::ostream* errOut);
+};
 
-struct SingletonTypeRule {
-  inline static TypeNode computeType(NodeManager* nodeManager, TNode n, bool check)
-  {
-    Assert(n.getKind() == kind::SINGLETON);
-    return nodeManager->mkSetType(n[0].getType(check));
-  }
+/**
+ * Type rule for binary operator set.member to check the sort of the first
+ * argument matches the element sort of the given set.
+ */
+struct MemberTypeRule
+{
+  static TypeNode preComputeType(NodeManager* nm, TNode n);
 
-  inline static bool computeIsConst(NodeManager* nodeManager, TNode n) {
-    Assert(n.getKind() == kind::SINGLETON);
-    return n[0].isConst();
-  }
-};/* struct SingletonTypeRule */
+  static TypeNode computeType(NodeManager* nodeManager,
+                              TNode n,
+                              bool check,
+                              std::ostream* errOut);
+};
 
-struct EmptySetTypeRule {
-  inline static TypeNode computeType(NodeManager* nodeManager, TNode n, bool check)
-  {
-    Assert(n.getKind() == kind::EMPTYSET);
-    EmptySet emptySet = n.getConst<EmptySet>();
-    Type setType = emptySet.getType();
-    return TypeNode::fromType(setType);
-  }
-};/* struct EmptySetTypeRule */
+/**
+ * Type rule for (set.singleton x) to check the sort of x
+ * matches the sort t.
+ */
+struct SingletonTypeRule
+{
+  static TypeNode preComputeType(NodeManager* nm, TNode n);
 
-struct CardTypeRule {
-  inline static TypeNode computeType(NodeManager* nodeManager, TNode n, bool check)
-  {
-    Assert(n.getKind() == kind::CARD);
-    TypeNode setType = n[0].getType(check);
-    if( check ) {
-      if(!setType.isSet()) {
-        throw TypeCheckingExceptionPrivate(n, "cardinality operates on a set, non-set object found");
-      }
-    }
-    return nodeManager->integerType();
-  }
+  static TypeNode computeType(NodeManager* nodeManager,
+                              TNode n,
+                              bool check,
+                              std::ostream* errOut);
 
-  inline static bool computeIsConst(NodeManager* nodeManager, TNode n) {
-    Assert(n.getKind() == kind::CARD);
-    return false;
-  }
-};/* struct CardTypeRule */
+  static bool computeIsConst(NodeManager* nodeManager, TNode n);
+};
 
-struct ComplementTypeRule {
-  inline static TypeNode computeType(NodeManager* nodeManager, TNode n, bool check)
-  {
-    Assert(n.getKind() == kind::COMPLEMENT);
-    TypeNode setType = n[0].getType(check);
-    if( check ) {
-      if(!setType.isSet()) {
-        throw TypeCheckingExceptionPrivate(n, "COMPLEMENT operates on a set, non-set object found");
-      }
-    }
-    return setType;
-  }
+/**
+ * Type rule for (as set.empty (Set T)) where T is a type
+ */
+struct EmptySetTypeRule
+{
+  static TypeNode preComputeType(NodeManager* nm, TNode n);
 
-  inline static bool computeIsConst(NodeManager* nodeManager, TNode n) {
-    Assert(n.getKind() == kind::COMPLEMENT);
-    return false;
-  }
-};/* struct ComplementTypeRule */
+  static TypeNode computeType(NodeManager* nodeManager,
+                              TNode n,
+                              bool check,
+                              std::ostream* errOut);
+};
 
-struct UniverseSetTypeRule {
-  inline static TypeNode computeType(NodeManager* nodeManager, TNode n, bool check)
-  {
-    Assert(n.getKind() == kind::UNIVERSE_SET);
-    // for nullary operators, we only computeType for check=true, since they are given TypeAttr() on creation
-    Assert(check);
-    TypeNode setType = n.getType();
-    if(!setType.isSet()) {
-      throw TypeCheckingExceptionPrivate(n, "Non-set type found for universe set");
-    }
-    return setType;
-  }
-};/* struct ComplementTypeRule */
+/**
+ * Type rule for (bag.card A) to check the argument A is a set.
+ */
+struct CardTypeRule
+{
+  static TypeNode preComputeType(NodeManager* nm, TNode n);
 
+  static TypeNode computeType(NodeManager* nodeManager,
+                              TNode n,
+                              bool check,
+                              std::ostream* errOut);
+};
+
+/**
+ * Type rule for (set.complement A) to check the argument A is a set.
+ */
+struct ComplementTypeRule
+{
+  static TypeNode preComputeType(NodeManager* nm, TNode n);
+
+  static TypeNode computeType(NodeManager* nodeManager,
+                              TNode n,
+                              bool check,
+                              std::ostream* errOut);
+};
+
+/**
+ * Type rule for (as set.universe (Set T)) where T is a type
+ */
+struct UniverseSetTypeRule
+{
+  static TypeNode preComputeType(NodeManager* nm, TNode n);
+
+  static TypeNode computeType(NodeManager* nodeManager,
+                              TNode n,
+                              bool check,
+                              std::ostream* errOut);
+};
+
+/**
+ * Type rule for (set.comprehension ((x1 T1) ... (xn Tn)) predicate body)
+ * that checks x1 ... xn are bound variables, predicate is a boolean term,
+ * and computes the type (Set T) where T is the type of body
+ */
 struct ComprehensionTypeRule
 {
-  static TypeNode computeType(NodeManager* nodeManager, TNode n, bool check)
-  {
-    Assert(n.getKind() == kind::COMPREHENSION);
-    if (check)
-    {
-      if (n[0].getType(check) != nodeManager->boundVarListType())
-      {
-        throw TypeCheckingExceptionPrivate(
-            n, "first argument of set comprehension is not bound var list");
-      }
-      if (n[1].getType(check) != nodeManager->booleanType())
-      {
-        throw TypeCheckingExceptionPrivate(
-            n, "body of set comprehension is not boolean");
-      }
-    }
-    return nodeManager->mkSetType(n[2].getType(check));
-  }
-}; /* struct ComprehensionTypeRule */
+  static TypeNode preComputeType(NodeManager* nm, TNode n);
 
-struct InsertTypeRule {
-  inline static TypeNode computeType(NodeManager* nodeManager, TNode n, bool check)
-  {
-    Assert(n.getKind() == kind::INSERT);
-    size_t numChildren = n.getNumChildren();
-    Assert(numChildren >= 2);
-    TypeNode setType = n[numChildren-1].getType(check);
-    if( check ) {
-      if(!setType.isSet()) {
-        throw TypeCheckingExceptionPrivate(n, "inserting into a non-set");
-      }
-      for(size_t i = 0; i < numChildren-1; ++i) {
-        TypeNode elementType = n[i].getType(check);
-        if(elementType != setType.getSetElementType()) {
-          throw TypeCheckingExceptionPrivate
-            (n, "type of element should be same as element type of set being inserted into");
-        }
-      }
-    }
-    return setType;
-  }
+  static TypeNode computeType(NodeManager* nodeManager,
+                              TNode n,
+                              bool check,
+                              std::ostream* errOut);
+};
 
-  inline static bool computeIsConst(NodeManager* nodeManager, TNode n) {
-    Assert(n.getKind() == kind::INSERT);
-    return false;
-  }
-};/* struct InsertTypeRule */
+/**
+ * Type rule for (set.choose A) to check the argument A is a set.
+ */
+struct ChooseTypeRule
+{
+  static TypeNode preComputeType(NodeManager* nm, TNode n);
 
-struct RelBinaryOperatorTypeRule {
-  inline static TypeNode computeType(NodeManager* nodeManager, TNode n, bool check)
-  {
-    Assert(n.getKind() == kind::PRODUCT || n.getKind() == kind::JOIN);
+  static TypeNode computeType(NodeManager* nodeManager,
+                              TNode n,
+                              bool check,
+                              std::ostream* errOut);
+};
 
-    TypeNode firstRelType = n[0].getType(check);
-    TypeNode secondRelType = n[1].getType(check);
-    TypeNode resultType = firstRelType;
+/**
+ * Type rule for (set.is_empty A) and (set.is_singleton A) to check the argument
+ * A is a set.
+ */
+struct IsSetTypeRule
+{
+  static TypeNode preComputeType(NodeManager* nm, TNode n);
 
-    if(!firstRelType.isSet() || !secondRelType.isSet()) {
-      throw TypeCheckingExceptionPrivate(n, " Relational operator operates on non-sets");
-    }
-    if(!firstRelType[0].isTuple() || !secondRelType[0].isTuple()) {
-      throw TypeCheckingExceptionPrivate(n, " Relational operator operates on non-relations (sets of tuples)");
-    }
+  static TypeNode computeType(NodeManager* nodeManager,
+                              TNode n,
+                              bool check,
+                              std::ostream* errOut);
+};
 
-    std::vector<TypeNode> newTupleTypes;
-    std::vector<TypeNode> firstTupleTypes = firstRelType[0].getTupleTypes();
-    std::vector<TypeNode> secondTupleTypes = secondRelType[0].getTupleTypes();
+/**
+ * Type rule for (set.insert e1 ... en A) that checks the sorts of e1, ..., en
+ * match the element sort of the set A
+ */
+struct InsertTypeRule
+{
+  static TypeNode preComputeType(NodeManager* nm, TNode n);
 
-    // JOIN is not allowed to apply on two unary sets
-    if( n.getKind() == kind::JOIN ) {
-      if((firstTupleTypes.size() == 1) && (secondTupleTypes.size() == 1)) {
-        throw TypeCheckingExceptionPrivate(n, " Join operates on two unary relations");
-      } else if(firstTupleTypes.back() != secondTupleTypes.front()) {
-        throw TypeCheckingExceptionPrivate(n, " Join operates on two non-joinable relations");
-      }
-      newTupleTypes.insert(newTupleTypes.end(), firstTupleTypes.begin(), firstTupleTypes.end()-1);
-      newTupleTypes.insert(newTupleTypes.end(), secondTupleTypes.begin()+1, secondTupleTypes.end());
-    }else if( n.getKind() == kind::PRODUCT ) {
-      newTupleTypes.insert(newTupleTypes.end(), firstTupleTypes.begin(), firstTupleTypes.end());
-      newTupleTypes.insert(newTupleTypes.end(), secondTupleTypes.begin(), secondTupleTypes.end());
-    }
-    resultType = nodeManager->mkSetType(nodeManager->mkTupleType(newTupleTypes));
+  static TypeNode computeType(NodeManager* nodeManager,
+                              TNode n,
+                              bool check,
+                              std::ostream* errOut);
+};
 
-    return resultType;
-  }
+/**
+ * Type rule for (set.map f S) to make sure f is a unary function of type
+ * (-> T1 T2) where S is a bag of type (Set T1)
+ */
+struct SetMapTypeRule
+{
+  static TypeNode preComputeType(NodeManager* nm, TNode n);
 
-  inline static bool computeIsConst(NodeManager* nodeManager, TNode n) {
-    Assert(n.getKind() == kind::JOIN || n.getKind() == kind::PRODUCT);
-    return false;
-  }
-};/* struct RelBinaryOperatorTypeRule */
+  static TypeNode computeType(NodeManager* nodeManager,
+                              TNode n,
+                              bool check,
+                              std::ostream* errOut);
+}; /* struct SetMapTypeRule */
 
-struct RelTransposeTypeRule {
-  inline static TypeNode computeType(NodeManager* nodeManager, TNode n, bool check)
-  {
-    Assert(n.getKind() == kind::TRANSPOSE);
-    TypeNode setType = n[0].getType(check);
-    if(check && (!setType.isSet() || !setType.getSetElementType().isTuple())) {
-        throw TypeCheckingExceptionPrivate(n, "relation transpose operates on non-relation");
-    }
-    std::vector<TypeNode> tupleTypes = setType[0].getTupleTypes();
-    std::reverse(tupleTypes.begin(), tupleTypes.end());
-    return nodeManager->mkSetType(nodeManager->mkTupleType(tupleTypes));
-  }
+/**
+ * Type rule for (set.filter p A) to make sure p is a unary predicate of type
+ * (-> T Bool) where A is a set of type (Set T)
+ */
+struct SetFilterTypeRule
+{
+  static TypeNode preComputeType(NodeManager* nm, TNode n);
 
-  inline static bool computeIsConst(NodeManager* nodeManager, TNode n) {
-      return false;
-    }
-};/* struct RelTransposeTypeRule */
+  static TypeNode computeType(NodeManager* nodeManager,
+                              TNode n,
+                              bool check,
+                              std::ostream* errOut);
+}; /* struct SetFilterTypeRule */
 
-struct RelTransClosureTypeRule {
-  inline static TypeNode computeType(NodeManager* nodeManager, TNode n, bool check)
-  {
-    Assert(n.getKind() == kind::TCLOSURE);
-    TypeNode setType = n[0].getType(check);
-    if(check) {
-      if(!setType.isSet() || !setType.getSetElementType().isTuple()) {
-        throw TypeCheckingExceptionPrivate(n, " transitive closure operates on non-relation");
-      }
-      std::vector<TypeNode> tupleTypes = setType[0].getTupleTypes();
-      if(tupleTypes.size() != 2) {
-        throw TypeCheckingExceptionPrivate(n, " transitive closure operates on non-binary relations");
-      }
-      if(tupleTypes[0] != tupleTypes[1]) {
-        throw TypeCheckingExceptionPrivate(n, " transitive closure operates on non-homogeneous binary relations");
-      }
-    }
-    return setType;
-  }
+/**
+ * Type rule for (set.all p A) and (set.some p A) to make sure p is
+ * a unary predicate of type
+ * (-> T Bool) where A is a set of type (Set T)
+ */
+struct SetAllSomeTypeRule
+{
+  static TypeNode preComputeType(NodeManager* nm, TNode n);
 
-  inline static bool computeIsConst(NodeManager* nodeManager, TNode n) {
-    Assert(n.getKind() == kind::TCLOSURE);
-    return false;
-    }
-};/* struct RelTransClosureTypeRule */
+  static TypeNode computeType(NodeManager* nodeManager,
+                              TNode n,
+                              bool check,
+                              std::ostream* errOut);
+}; /* struct SetAllSomeTypeRule */
 
-struct JoinImageTypeRule {
-  inline static TypeNode computeType(NodeManager* nodeManager, TNode n, bool check)
-  {
-    Assert(n.getKind() == kind::JOIN_IMAGE);
+/**
+ * Type rule for (set.fold f t A) to make sure f is a binary operation of type
+ * (-> T1 T2 T2), t of type T2, and A is a set of type (Set T1)
+ */
+struct SetFoldTypeRule
+{
+  static TypeNode preComputeType(NodeManager* nm, TNode n);
 
-    TypeNode firstRelType = n[0].getType(check);
+  static TypeNode computeType(NodeManager* nodeManager,
+                              TNode n,
+                              bool check,
+                              std::ostream* errOut);
+}; /* struct SetFoldTypeRule */
 
-    if(!firstRelType.isSet()) {
-      throw TypeCheckingExceptionPrivate(n, " JoinImage operator operates on non-relations");
-    }
-    if(!firstRelType[0].isTuple()) {
-      throw TypeCheckingExceptionPrivate(n, " JoinImage operator operates on non-relations (sets of tuples)");
-    }
+/**
+ * Type rule for binary operators (rel.join, rel.product) to check
+ * if the two arguments are relations (set of tuples).
+ * For arguments A of type (Relation A1 ... Am) and B of type
+ * (Relation B1 ... Bn):
+ * - (rel.product A B): it computes the type (Relation (A1 ... Am B1 ... Bn).
+ * - (rel.join A B) it checks that m, n > 1 and Am = B1 and computes the type
+ *   (Relation (A1 ... Am-1 B2 ... Bn).
+ */
+struct RelBinaryOperatorTypeRule
+{
+  static TypeNode preComputeType(NodeManager* nm, TNode n);
 
-    std::vector<TypeNode> tupleTypes = firstRelType[0].getTupleTypes();
-    if(tupleTypes.size() != 2) {
-      throw TypeCheckingExceptionPrivate(n, " JoinImage operates on a non-binary relation");
-    }
-    TypeNode valType = n[1].getType(check);
-    if (valType != nodeManager->integerType()) {
-      throw TypeCheckingExceptionPrivate(
-          n, " JoinImage cardinality constraint must be integer");
-    }
-    if (n[1].getKind() != kind::CONST_RATIONAL) {
-      throw TypeCheckingExceptionPrivate(
-          n, " JoinImage cardinality constraint must be a constant");
-    }
-    CVC4::Rational r(INT_MAX);
-    if (n[1].getConst<Rational>() > r) {
-      throw TypeCheckingExceptionPrivate(
-          n, " JoinImage Exceeded INT_MAX in cardinality constraint");
-    }
-    if (n[1].getConst<Rational>().getNumerator().getSignedInt() < 0) {
-      throw TypeCheckingExceptionPrivate(
-          n, " JoinImage cardinality constraint must be non-negative");
-    }
-    std::vector<TypeNode> newTupleTypes;
-    newTupleTypes.push_back(tupleTypes[0]);
-    return nodeManager->mkSetType(nodeManager->mkTupleType(newTupleTypes));
-  }
+  static TypeNode computeType(NodeManager* nodeManager,
+                              TNode n,
+                              bool check,
+                              std::ostream* errOut);
+};
 
-  inline static bool computeIsConst(NodeManager* nodeManager, TNode n) {
-    Assert(n.getKind() == kind::JOIN_IMAGE);
-    return false;
-  }
-};/* struct JoinImageTypeRule */
+/**
+ * Relation table join operator is indexed by a list of indices (m_1, m_k, n_1,
+ * ..., n_k). It ensures that it has 2 arguments:
+ * - A relation of type (Relation X_1 ... X_i)
+ * - A relation of type (Relation Y_1 ... Y_j)
+ * such that indices has constraints 0 <= m_1, ..., mk, n_1, ..., n_k <=
+ * min(i,j) and types has constraints X_{m_1} = Y_{n_1}, ..., X_{m_k} = Y_{n_k}.
+ * The returned type is (Relation X_1 ... X_i Y_1 ... Y_j)
+ */
+struct RelationTableJoinTypeRule
+{
+  static TypeNode preComputeType(NodeManager* nm, TNode n);
+  static TypeNode computeType(NodeManager* nodeManager,
+                              TNode n,
+                              bool check,
+                              std::ostream* errOut);
+}; /* struct RelationTableJoinTypeRule */
 
-struct RelIdenTypeRule {
-  inline static TypeNode computeType(NodeManager* nodeManager, TNode n, bool check)
-  {
-    Assert(n.getKind() == kind::IDEN);
-    TypeNode setType = n[0].getType(check);
-    if(check) {
-      if(!setType.isSet() && !setType.getSetElementType().isTuple()) {
-        throw TypeCheckingExceptionPrivate(n, " Identity operates on non-relation");
-      }
-      if(setType[0].getTupleTypes().size() != 1) {
-        throw TypeCheckingExceptionPrivate(n, " Identity operates on non-unary relations");
-      }
-    }
-    std::vector<TypeNode> tupleTypes = setType[0].getTupleTypes();
-    tupleTypes.push_back(tupleTypes[0]);
-    return nodeManager->mkSetType(nodeManager->mkTupleType(tupleTypes));
-  }
+/**
+ * Type rule for unary operator (rel.transpose A) to check that A is a relation
+ * (set of Tuples). For an argument A of type (Relation A1 ... An)
+ * it reveres A1 ... An and computes the type (Relation An ... A1).
+ */
+struct RelTransposeTypeRule
+{
+  static TypeNode preComputeType(NodeManager* nm, TNode n);
 
-  inline static bool computeIsConst(NodeManager* nodeManager, TNode n) {
-      return false;
-    }
-};/* struct RelIdenTypeRule */
+  static TypeNode computeType(NodeManager* nodeManager,
+                              TNode n,
+                              bool check,
+                              std::ostream* errOut);
+};
 
-struct SetsProperties {
-  inline static Cardinality computeCardinality(TypeNode type) {
-    Assert(type.getKind() == kind::SET_TYPE);
-    Cardinality elementCard = 2;
-    elementCard ^= type[0].getCardinality();
-    return elementCard;
-  }
+/**
+ * Type rule for unary operator (rel.tclosure A) to check that A is a binary
+ * relation of type (Relation T T), where T is a type
+ */
+struct RelTransClosureTypeRule
+{
+  static TypeNode preComputeType(NodeManager* nm, TNode n);
 
-  inline static bool isWellFounded(TypeNode type) {
-    return type[0].isWellFounded();
-  }
+  static TypeNode computeType(NodeManager* nodeManager,
+                              TNode n,
+                              bool check,
+                              std::ostream* errOut);
+};
 
-  inline static Node mkGroundTerm(TypeNode type) {
-    Assert(type.isSet());
-    return NodeManager::currentNM()->mkConst(EmptySet(type.toType()));
-  }
-};/* struct SetsProperties */
+/**
+ * Type rule for operator (rel.join_image A c) that checks A is a binary
+ * relation of type (Relation T T), where T is a type, and c is an integer
+ * term (in fact c should be a non-negative constant, otherwise a logic
+ * exception is thrown TheorySetsPrivate::preRegisterTerm).
+ */
+struct JoinImageTypeRule
+{
+  static TypeNode preComputeType(NodeManager* nm, TNode n);
 
-}/* CVC4::theory::sets namespace */
-}/* CVC4::theory namespace */
-}/* CVC4 namespace */
+  static TypeNode computeType(NodeManager* nodeManager,
+                              TNode n,
+                              bool check,
+                              std::ostream* errOut);
+};
 
-#endif /* CVC4__THEORY__SETS__THEORY_SETS_TYPE_RULES_H */
+/**
+ * Type rule for unary operator (rel.iden A) to check that A is a unary relation
+ * of type (Relation T) and computes the type (Relation T T) for the
+ * identity
+ */
+struct RelIdenTypeRule
+{
+  static TypeNode preComputeType(NodeManager* nm, TNode n);
+
+  static TypeNode computeType(NodeManager* nodeManager,
+                              TNode n,
+                              bool check,
+                              std::ostream* errOut);
+};
+
+/**
+ * Relation group operator is indexed by a list of indices (n_1, ..., n_k). It
+ * ensures that the argument is a relation whose arity is greater than each n_i
+ * for i = 1, ..., k. If the passed relation is of type T, then the returned
+ * type is (Set T), i.e., set of relations.
+ */
+struct RelationGroupTypeRule
+{
+  static TypeNode preComputeType(NodeManager* nm, TNode n);
+
+  static TypeNode computeType(NodeManager* nodeManager,
+                              TNode n,
+                              bool check,
+                              std::ostream* errOut);
+}; /* struct RelationGroupTypeRule */
+
+/**
+ * Relation project is indexed by a list of indices (n_1, ..., n_m). It ensures
+ * that the argument is a set of tuples whose arity k is greater than each n_i
+ * for i = 1, ..., m. If the argument is of type (Relation T_1 ... T_k), then
+ * the returned type is (Relation T_{n_1} ... T_{n_m}).
+ */
+struct RelationProjectTypeRule
+{
+  static TypeNode preComputeType(NodeManager* nm, TNode n);
+
+  static TypeNode computeType(NodeManager* nodeManager,
+                              TNode n,
+                              bool check,
+                              std::ostream* errOut);
+}; /* struct RelationProjectTypeRule */
+
+/**
+ * Relation aggregate operator is indexed by a list of indices (n_1, ..., n_k).
+ * It ensures that it has 3 arguments:
+ * - A combining function of type (-> (Tuple T_1 ... T_j) T T)
+ * - Initial value of type T
+ * - A relation of type (Relation T_1 ... T_j) where 0 <= n_1, ..., n_k < j
+ * the returned type is (Relation T).
+ */
+struct RelationAggregateTypeRule
+{
+  static TypeNode preComputeType(NodeManager* nm, TNode n);
+
+  static TypeNode computeType(NodeManager* nodeManager,
+                              TNode n,
+                              bool check,
+                              std::ostream* errOut);
+}; /* struct RelationAggregateTypeRule */
+
+/**
+ * Type rule for set.empty_of_type
+ */
+struct SetEmptyOfTypeTypeRule
+{
+  static TypeNode preComputeType(NodeManager* nm, TNode n);
+
+  static TypeNode computeType(NodeManager* nodeManager,
+                              TNode n,
+                              bool check,
+                              std::ostream* errOut);
+};
+
+struct SetsProperties
+{
+  static Cardinality computeCardinality(TypeNode type);
+
+  static bool isWellFounded(TypeNode type);
+
+  static Node mkGroundTerm(TypeNode type);
+};
+
+}  // namespace sets
+}  // namespace theory
+}  // namespace cvc5::internal
+
+#endif /* CVC5__THEORY__SETS__THEORY_SETS_TYPE_RULES_H */

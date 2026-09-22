@@ -1,77 +1,75 @@
-/*********************                                                        */
-/*! \file simple_vc_quant_cxx.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2019 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief A simple demonstration of the C++ interface for quantifiers
- **
- ** A simple demonstration of the C++ interface for quantifiers. 
- **/
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * A simple demonstration of the C++ interface for quantifiers.
+ */
+
+#include <cvc5/cvc5.h>
 
 #include <iostream>
 
-#include <cvc4/cvc4.h>
+using namespace cvc5;
 
-using namespace std;
-using namespace CVC4;
-
-int main() {
-  ExprManager em;
-  SmtEngine smt(&em);
+int main()
+{
+  TermManager tm;
+  Solver slv(tm);
 
   // Prove that the following is unsatisfiable:
   //   forall x. P( x ) ^ ~P( 5 )
 
-  Type integer = em.integerType();
-  Type boolean = em.booleanType();
-  Type integerPredicate = em.mkFunctionType(integer, boolean);
-  
-  Expr p = em.mkVar("P", integerPredicate);
-  Expr x = em.mkBoundVar("x", integer);
-  
+  Sort integer = tm.getIntegerSort();
+  Sort boolean = tm.getBooleanSort();
+  Sort integerPredicate = tm.mkFunctionSort({integer}, boolean);
+
+  Term p = tm.mkConst(integerPredicate, "P");
+  Term x = tm.mkVar(integer, "x");
+
   // make forall x. P( x )
-  Expr var_list = em.mkExpr(kind::BOUND_VAR_LIST, x);
-  Expr px = em.mkExpr(kind::APPLY_UF, p, x);
-  Expr quantpospx = em.mkExpr(kind::FORALL, var_list, px);
-  cout << "Made expression : " << quantpospx << endl;
-  
-  //make ~P( 5 )
-  Expr five = em.mkConst(Rational(5));
-  Expr pfive = em.mkExpr(kind::APPLY_UF, p, five);
-  Expr negpfive = em.mkExpr(kind::NOT, pfive);
-  cout << "Made expression : " << negpfive << endl;
-  
-  Expr formula = em.mkExpr(kind::AND, quantpospx, negpfive);
+  Term var_list = tm.mkTerm(Kind::VARIABLE_LIST, {x});
+  Term px = tm.mkTerm(Kind::APPLY_UF, {p, x});
+  Term quantpospx = tm.mkTerm(Kind::FORALL, {var_list, px});
+  std::cout << "Made expression : " << quantpospx << std::endl;
 
-  smt.assertFormula(formula);
+  // make ~P( 5 )
+  Term five = tm.mkInteger(5);
+  Term pfive = tm.mkTerm(Kind::APPLY_UF, {p, five});
+  Term negpfive = tm.mkTerm(Kind::NOT, {pfive});
+  std::cout << "Made expression : " << negpfive << std::endl;
 
-  cout << "Checking SAT after asserting " << formula << " to CVC4." << endl;
-  cout << "CVC4 should report unsat." << endl;
-  cout << "Result from CVC4 is: " << smt.checkSat() << endl;
+  Term formula = tm.mkTerm(Kind::AND, {quantpospx, negpfive});
 
+  slv.assertFormula(formula);
 
-  SmtEngine smtp(&em);
-  
-  // this version has a pattern e.g. in smt2 syntax (forall ((x Int)) (! (P x ) :pattern ((P x))))
-  Expr pattern = em.mkExpr(kind::INST_PATTERN, px);
-  Expr pattern_list = em.mkExpr(kind::INST_PATTERN_LIST, pattern);
-  Expr quantpospx_pattern = em.mkExpr(kind::FORALL, var_list, px, pattern_list);
-  cout << "Made expression : " << quantpospx_pattern << endl;
+  std::cout << "Checking SAT after asserting " << formula << " to cvc5."
+            << std::endl;
+  std::cout << "cvc5 should report unsat." << std::endl;
+  std::cout << "Result from cvc5 is: " << slv.checkSat() << std::endl;
 
-  Expr formula_pattern = em.mkExpr(kind::AND, quantpospx_pattern, negpfive);
+  slv.resetAssertions();
 
-  smtp.assertFormula(formula_pattern);
+  // this version has a pattern e.g. in smt2 syntax (forall ((x Int)) (! (P x )
+  // :pattern ((P x))))
+  Term pattern = tm.mkTerm(Kind::INST_PATTERN, {px});
+  Term pattern_list = tm.mkTerm(Kind::INST_PATTERN_LIST, {pattern});
+  Term quantpospx_pattern =
+      tm.mkTerm(Kind::FORALL, {var_list, px, pattern_list});
+  std::cout << "Made expression : " << quantpospx_pattern << std::endl;
 
-  cout << "Checking SAT after asserting " << formula_pattern << " to CVC4." << endl;
-  cout << "CVC4 should report unsat." << endl;
-  cout << "Result from CVC4 is: " << smtp.checkSat() << endl;
+  Term formula_pattern = tm.mkTerm(Kind::AND, {quantpospx_pattern, negpfive});
 
+  slv.assertFormula(formula_pattern);
+
+  std::cout << "Checking SAT after asserting " << formula_pattern << " to cvc5."
+            << std::endl;
+  std::cout << "cvc5 should report unsat." << std::endl;
+  std::cout << "Result from cvc5 is: " << slv.checkSat() << std::endl;
 
   return 0;
 }
