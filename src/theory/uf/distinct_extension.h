@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2025 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -112,9 +109,15 @@ class DistinctExtension : protected EnvObj
   context::CDO<size_t> d_negDistinctIndex;
   /** The set of asserted positive distinct constraints */
   context::CDList<Node> d_posDistinct;
-  /** A proof generator for disequal congruent terms */
+  /**
+   * A proof generator for distinct constraints, which is used to given proofs
+   * for lemmas on demand.
+   */
   std::shared_ptr<DistinctProofGenerator> d_dproof;
-  /** Eager proof generator */
+  /**
+   * Eager proof generator, which stores SAT-context dependent proof steps that
+   * conclude false based on facts in the equality engine.
+   */
   std::shared_ptr<EagerProofGenerator> d_epg;
   /**
    * The pending conflict if one exists. These are of the form described in
