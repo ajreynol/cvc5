@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Aina Niemetz, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -80,7 +77,7 @@ namespace cvc5::internal {
  * Since we do not traverse underneath quantified formulas, this means that Q
  * may be marked as a term-to-letify before (+ a a), which leads to violation
  * of the above invariant concerning containment. Thus, when converting, if
- * a let symbol is introduced for (+ a a), we will not replace the occurence
+ * a let symbol is introduced for (+ a a), we will not replace the occurrence
  * of (+ a a) within Q. Instead, the user of this class is responsible for
  * letifying the bodies of quantified formulas independently.
  */
@@ -94,8 +91,17 @@ class LetBinding
    * @param prefix The prefix to use for introduced variables
    * @param thresh The threshold to use, that is, the number of times a term
    * must appear before being letified.
+   * @param traverseBinders Whether we should traverse binders, that is, if
+   * this flag is true, we consider terms beneath binders as targets for
+   * letificiation.
+   * @param traverseSkolems Whether we should traverse skolems, that is, if
+   * this flag is true, we consider terms in skolem indices as targets for
+   * letificiation.
    */
-  LetBinding(const std::string& prefix, uint32_t thresh = 2);
+  LetBinding(const std::string& prefix,
+             uint32_t thresh = 2,
+             bool traverseBinders = false,
+             bool traverseSkolems = false);
   /** Get threshold */
   uint32_t getThreshold() const;
   /**
@@ -154,6 +160,10 @@ class LetBinding
   void convertCountToLet();
   /** The dag threshold */
   uint32_t d_thresh;
+  /** Traverse binders? */
+  bool d_traverseBinders;
+  /** Traverse skolems? */
+  bool d_traverseSkolems;
   /** An internal context */
   context::Context d_context;
   /** Visit list */

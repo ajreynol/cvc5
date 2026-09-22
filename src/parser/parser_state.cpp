@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Gereon Kremer, Morgan Deters
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -21,6 +18,7 @@
 #include <fstream>
 #include <iostream>
 #include <iterator>
+#include <limits>
 #include <sstream>
 #include <unordered_set>
 
@@ -37,13 +35,14 @@ namespace parser {
 ParserState::ParserState(ParserStateCallback* psc,
                          Solver* solver,
                          SymManager* sm,
-                         bool strictMode)
+                         ParsingMode parsingMode)
     : d_solver(solver),
+      d_tm(d_solver->getTermManager()),
       d_psc(psc),
       d_symman(sm),
       d_symtab(sm->getSymbolTable()),
       d_checksEnabled(true),
-      d_strictMode(strictMode),
+      d_parsingMode(parsingMode),
       d_parseOnly(d_solver->getOptionInfo("parse-only").boolValue())
 {
 }
@@ -90,7 +89,11 @@ Term ParserState::getExpressionForNameAndType(const std::string& name, Sort t)
   return expr;
 }
 
-bool ParserState::getTesterName(Term cons, std::string& name) { return false; }
+bool ParserState::getTesterName(CVC5_UNUSED Term cons,
+                                CVC5_UNUSED std::string& name)
+{
+  return false;
+}
 
 Kind ParserState::getKindForFunction(Term fun)
 {
@@ -157,27 +160,121 @@ Term ParserState::bindVar(const std::string& name,
                           bool doOverload)
 {
   Trace("parser") << "bindVar(" << name << ", " << type << ")" << std::endl;
-  Term expr = d_solver->mkConst(type, name);
+  Term expr = d_tm.mkConst(type, name);
   defineVar(name, expr, doOverload);
   return expr;
 }
 
-Term ParserState::bindBoundVar(const std::string& name, const Sort& type)
+Term ParserState::bindBoundVar(const std::string& name,
+                               const Sort& type,
+                               bool fresh)
 {
   Trace("parser") << "bindBoundVar(" << name << ", " << type << ")"
                   << std::endl;
-  Term expr = d_solver->mkVar(type, name);
+  std::pair<std::string, Sort> key(name, type);
+  Term expr;
+  if (fresh)
+  {
+    expr = d_tm.mkVar(type, name);
+  }
+  else
+  {
+    std::map<std::pair<std::string, Sort>, Term>::iterator itv =
+        d_varCache.find(key);
+    if (itv != d_varCache.end())
+    {
+      expr = itv->second;
+    }
+    else
+    {
+      expr = d_tm.mkVar(type, name);
+      d_varCache[key] = expr;
+    }
+  }
   defineVar(name, expr);
   return expr;
 }
 
 std::vector<Term> ParserState::bindBoundVars(
-    std::vector<std::pair<std::string, Sort> >& sortedVarNames)
+    std::vector<std::pair<std::string, Sort>>& sortedVarNames, bool fresh)
 {
   std::vector<Term> vars;
   for (std::pair<std::string, Sort>& i : sortedVarNames)
   {
-    vars.push_back(bindBoundVar(i.first, i.second));
+    vars.push_back(bindBoundVar(i.first, i.second, fresh));
+  }
+  return vars;
+}
+
+std::vector<Term> ParserState::bindBoundVarsCtx(
+    std::vector<std::pair<std::string, Sort>>& sortedVarNames,
+    std::vector<std::vector<std::pair<std::string, Term>>>& letBinders,
+    bool fresh)
+{
+  if (fresh || letBinders.empty())
+  {
+    // does not matter if let binders are empty or if we are constructing fresh
+    return bindBoundVars(sortedVarNames, fresh);
+  }
+  std::vector<Term> vars;
+  for (std::pair<std::string, Sort>& i : sortedVarNames)
+  {
+    std::map<std::pair<std::string, Sort>, Term>::const_iterator itv =
+        d_varCache.find(i);
+    if (itv == d_varCache.end() || !isDeclared(i.first))
+    {
+      // haven't created this variable yet, or its not declared
+      Term v = bindBoundVar(i.first, i.second, fresh);
+      vars.push_back(v);
+      continue;
+    }
+    Term v = itv->second;
+    // If we are here, then:
+    // (1) we are not using fresh declarations
+    // (2) there are let binders present,
+    // (3) the current variable was shadowed.
+    // We must check whether the variable is present in the let bindings.
+    bool reqFresh = false;
+    // a dummy variable used for checking containment below
+    Term vr = d_tm.mkVar(v.getSort(), "dummy");
+    // check if it is contained in a let binder, if so, we require making a
+    // fresh variable, despite fresh-binders being false.
+    for (std::vector<std::pair<std::string, Term>>& lbs : letBinders)
+    {
+      for (std::pair<std::string, Term>& lb : lbs)
+      {
+        // To test containment, we use Term::substitute.
+        // If the substitution does anything at all, then we will throw a
+        // warning. We expect this warning to be very rare.
+        Term slbt = lb.second.substitute({v}, {vr});
+        if (slbt != lb.second)
+        {
+          reqFresh = true;
+          break;
+        }
+      }
+      if (reqFresh)
+      {
+        break;
+      }
+    }
+    if (reqFresh)
+    {
+      // Note that if this warning is thrown:
+      // 1. proof reference checking will not be accurate in settings where
+      // variables are parsed as canonical.
+      // 2. the parser will not be deterministic for the same input even when
+      // fresh-binders is false, since we are constructing a fresh variable
+      // below.
+      Warning() << "Constructing a fresh variable for " << i.first
+                << " since this symbol occurs in a let term that is present in "
+                   "the current context. Set fresh-binders to true or use -q "
+                   "to avoid "
+                   "this warning."
+                << std::endl;
+    }
+    v = bindBoundVar(i.first, i.second, reqFresh);
+    vars.push_back(v);
   }
   return vars;
 }
@@ -210,50 +307,31 @@ void ParserState::defineVar(const std::string& name,
 
 void ParserState::defineType(const std::string& name,
                              const Sort& type,
-                             bool skipExisting)
+                             bool isUser)
 {
-  if (skipExisting && isDeclared(name, SYM_SORT))
+  if (!isUser && isDeclared(name, SYM_SORT))
   {
     Assert(d_symtab->lookupType(name) == type);
     return;
   }
-  d_symtab->bindType(name, type);
+  d_symman->bindType(name, type, isUser);
   Assert(isDeclared(name, SYM_SORT));
 }
 
 void ParserState::defineType(const std::string& name,
                              const std::vector<Sort>& params,
-                             const Sort& type)
+                             const Sort& type,
+                             bool isUser)
 {
-  d_symtab->bindType(name, params, type);
+  d_symman->bindType(name, params, type, isUser);
   Assert(isDeclared(name, SYM_SORT));
-}
-
-void ParserState::defineParameterizedType(const std::string& name,
-                                          const std::vector<Sort>& params,
-                                          const Sort& type)
-{
-  if (TraceIsOn("parser"))
-  {
-    Trace("parser") << "defineParameterizedType(" << name << ", "
-                    << params.size() << ", [";
-    if (params.size() > 0)
-    {
-      copy(params.begin(),
-           params.end() - 1,
-           ostream_iterator<Sort>(Trace("parser"), ", "));
-      Trace("parser") << params.back();
-    }
-    Trace("parser") << "], " << type << ")" << std::endl;
-  }
-  defineType(name, params, type);
 }
 
 Sort ParserState::mkSort(const std::string& name)
 {
   Trace("parser") << "newSort(" << name << ")" << std::endl;
-  Sort type = d_solver->mkUninterpretedSort(name);
-  defineType(name, type);
+  Sort type = d_tm.mkUninterpretedSort(name);
+  defineType(name, type, true);
   return type;
 }
 
@@ -261,23 +339,23 @@ Sort ParserState::mkSortConstructor(const std::string& name, size_t arity)
 {
   Trace("parser") << "newSortConstructor(" << name << ", " << arity << ")"
                   << std::endl;
-  Sort type = d_solver->mkUninterpretedSortConstructorSort(arity, name);
-  defineType(name, vector<Sort>(arity), type);
+  Sort type = d_tm.mkUninterpretedSortConstructorSort(arity, name);
+  defineType(name, vector<Sort>(arity), type, true);
   return type;
 }
 
 Sort ParserState::mkUnresolvedType(const std::string& name)
 {
-  Sort unresolved = d_solver->mkUnresolvedDatatypeSort(name);
-  defineType(name, unresolved);
+  Sort unresolved = d_tm.mkUnresolvedDatatypeSort(name);
+  defineType(name, unresolved, true);
   return unresolved;
 }
 
 Sort ParserState::mkUnresolvedTypeConstructor(const std::string& name,
                                               size_t arity)
 {
-  Sort unresolved = d_solver->mkUnresolvedDatatypeSort(name, arity);
-  defineType(name, vector<Sort>(arity), unresolved);
+  Sort unresolved = d_tm.mkUnresolvedDatatypeSort(name, arity);
+  defineType(name, vector<Sort>(arity), unresolved, true);
   return unresolved;
 }
 
@@ -286,8 +364,8 @@ Sort ParserState::mkUnresolvedTypeConstructor(const std::string& name,
 {
   Trace("parser") << "newSortConstructor(P)(" << name << ", " << params.size()
                   << ")" << std::endl;
-  Sort unresolved = d_solver->mkUnresolvedDatatypeSort(name, params.size());
-  defineType(name, params, unresolved);
+  Sort unresolved = d_tm.mkUnresolvedDatatypeSort(name, params.size());
+  defineType(name, params, unresolved, true);
   Sort t = getParametricSort(name, params);
   return unresolved;
 }
@@ -306,7 +384,7 @@ std::vector<Sort> ParserState::mkMutualDatatypeTypes(
 {
   try
   {
-    std::vector<Sort> types = d_solver->mkDatatypeSorts(datatypes);
+    std::vector<Sort> types = d_tm.mkDatatypeSorts(datatypes);
 
     Assert(datatypes.size() == types.size());
 
@@ -376,7 +454,7 @@ Sort ParserState::flattenFunctionType(std::vector<Sort>& sorts,
       // the introduced variable is internal (not parsable)
       std::stringstream ss;
       ss << "__flatten_var_" << i;
-      Term v = d_solver->mkVar(domainTypes[i], ss.str());
+      Term v = d_tm.mkVar(domainTypes[i], ss.str());
       flattenVars.push_back(v);
     }
     range = range.getFunctionCodomainSort();
@@ -406,19 +484,21 @@ Sort ParserState::flattenFunctionType(std::vector<Sort>& sorts, Sort range)
 }
 Sort ParserState::mkFlatFunctionType(std::vector<Sort>& sorts, Sort range)
 {
+  // Note we require this flattening since the API explicitly checks that
+  // the range of functions is not a function.
   Sort newRange = flattenFunctionType(sorts, range);
   if (!sorts.empty())
   {
-    return d_solver->mkFunctionSort(sorts, newRange);
+    return d_tm.mkFunctionSort(sorts, newRange);
   }
   return newRange;
 }
 
 Term ParserState::mkHoApply(Term expr, const std::vector<Term>& args)
 {
-  for (unsigned i = 0; i < args.size(); i++)
+  for (size_t i = 0; i < args.size(); i++)
   {
-    expr = d_solver->mkTerm(Kind::HO_APPLY, {expr, args[i]});
+    expr = d_tm.mkTerm(Kind::HO_APPLY, {expr, args[i]});
   }
   return expr;
 }
@@ -428,11 +508,11 @@ Term ParserState::applyTypeAscription(Term t, Sort s)
   Kind k = t.getKind();
   if (k == Kind::SET_EMPTY)
   {
-    t = d_solver->mkEmptySet(s);
+    t = d_tm.mkEmptySet(s);
   }
   else if (k == Kind::BAG_EMPTY)
   {
-    t = d_solver->mkEmptyBag(s);
+    t = d_tm.mkEmptyBag(s);
   }
   else if (k == Kind::CONST_SEQUENCE)
   {
@@ -448,24 +528,33 @@ Term ParserState::applyTypeAscription(Term t, Sort s)
       ss << "Cannot apply a type ascription to a non-empty sequence";
       parseError(ss.str());
     }
-    t = d_solver->mkEmptySequence(s.getSequenceElementSort());
+    t = d_tm.mkEmptySequence(s.getSequenceElementSort());
   }
   else if (k == Kind::SET_UNIVERSE)
   {
-    t = d_solver->mkUniverseSet(s);
+    t = d_tm.mkUniverseSet(s);
   }
   else if (k == Kind::SEP_NIL)
   {
-    t = d_solver->mkSepNil(s);
+    t = d_tm.mkSepNil(s);
   }
   else if (k == Kind::APPLY_CONSTRUCTOR)
   {
-    std::vector<Term> children(t.begin(), t.end());
-    // apply type ascription to the operator and reconstruct
-    children[0] = applyTypeAscription(children[0], s);
-    t = d_solver->mkTerm(Kind::APPLY_CONSTRUCTOR, children);
+    // For nullable.null we do not have a kind.
+    // so we need to check the sort here.
+    if (s.isNullable())
+    {
+      // parsing (as nullable.null (Nullable T))
+      t = d_tm.mkNullableNull(s);
+    }
+    else
+    {
+      std::vector<Term> children(t.begin(), t.end());
+      // apply type ascription to the operator and reconstruct
+      children[0] = applyTypeAscription(children[0], s);
+      t = d_tm.mkTerm(Kind::APPLY_CONSTRUCTOR, children);
+    }
   }
-  // !!! temporary until datatypes are refactored in the new API
   Sort etype = t.getSort();
   if (etype.isDatatypeConstructor())
   {
@@ -523,7 +612,7 @@ bool ParserState::isDeclared(const std::string& name, SymbolType type)
     case SYM_SORT: return d_symtab->isBoundType(name);
     case SYM_VERBATIM: Unreachable();
   }
-  Assert(false);  // Unhandled(type);
+  DebugUnhandled();  // Unhandled(type);
   return false;
 }
 
@@ -559,7 +648,7 @@ void ParserState::checkDeclaration(const std::string& varName,
 
     case CHECK_NONE: break;
 
-    default: Assert(false);  // Unhandled(check);
+    default: DebugUnhandled();  // Unhandled(check);
   }
 }
 
@@ -617,26 +706,37 @@ void ParserState::pushGetValueScope()
   // we must bind all relevant uninterpreted constants, which coincide with
   // the set of uninterpreted constants that are printed in the definition
   // of a model.
-  std::vector<Sort> declareSorts = d_symman->getModelDeclareSorts();
+  std::vector<Sort> declareSorts = d_symman->getDeclaredSorts();
   Trace("parser") << "Push get value scope, with " << declareSorts.size()
                   << " declared sorts" << std::endl;
-  for (const Sort& s : declareSorts)
+  try
   {
-    std::vector<Term> elements = d_solver->getModelDomainElements(s);
-    Trace("parser") << "elements for " << s << ":" << std::endl;
-    for (const Term& e : elements)
+    for (const Sort& s : declareSorts)
     {
-      Trace("parser") << "  " << e.getKind() << " " << e << std::endl;
-      if (e.getKind() == Kind::UNINTERPRETED_SORT_VALUE)
+      std::vector<Term> elements = d_solver->getModelDomainElements(s);
+      Trace("parser") << "elements for " << s << ":" << std::endl;
+      for (const Term& e : elements)
       {
-        defineVar(e.getUninterpretedSortValue(), e);
-      }
-      else
-      {
-        Assert(false)
-            << "model domain element is not an uninterpreted sort value: " << e;
+        Trace("parser") << "  " << e.getKind() << " " << e << std::endl;
+        if (e.getKind() == Kind::UNINTERPRETED_SORT_VALUE)
+        {
+          defineVar(e.getUninterpretedSortValue(), e);
+        }
+        else
+        {
+          DebugUnhandled()
+              << "model domain element is not an uninterpreted sort value: "
+              << e;
+        }
       }
     }
+  }
+  catch (const CVC5ApiRecoverableException& e)
+  {
+    // Let the get-value command report recoverable model-state errors itself
+    // instead of turning them into fatal parse errors while binding @U_i names.
+    Trace("parser") << "Skipping get-value model bindings: " << e.what()
+                    << std::endl;
   }
 }
 
@@ -658,19 +758,63 @@ std::string ParserState::stripQuotes(const std::string& s)
 
 Term ParserState::mkCharConstant(const std::string& s)
 {
-  Assert(s.find_first_not_of("0123456789abcdefABCDEF", 0) == std::string::npos
-         && s.size() <= 5 && s.size() > 0)
-      << "Unexpected string for hexadecimal character " << s;
-  wchar_t val = static_cast<wchar_t>(std::stoul(s, 0, 16));
-  return d_solver->mkString(std::wstring(1, val));
+  if (!(s.find_first_not_of("0123456789abcdefABCDEF", 0) == std::string::npos
+        && s.size() <= 5 && s.size() > 0))
+  {
+    parseError("Unexpected string for hexadecimal character: `" + s + "'");
+  }
+  char32_t val = static_cast<char32_t>(std::stoul(s, nullptr, 16));
+  return d_tm.mkString(std::u32string(1, val));
 }
 
-uint32_t stringToUnsigned(const std::string& str)
+bool stringToUnsigned(const std::string& str,
+                      uint32_t& result,
+                      std::ostream* os)
 {
-  uint32_t result;
-  std::stringstream ss;
-  ss << str;
-  ss >> result;
+  if (str.empty() || str.find_first_not_of("0123456789") != std::string::npos)
+  {
+    if (os != nullptr)
+    {
+      (*os) << " String is not a numeral.";
+    }
+    return false;
+  }
+  size_t pos = 0;
+  unsigned long long parsed = 0;
+  try
+  {
+    parsed = std::stoull(str, &pos);
+  }
+  catch (const std::exception&)
+  {
+    if (os != nullptr)
+    {
+      (*os) << " Exception encountered in std::stoull.";
+    }
+    return false;
+  }
+  if (pos != str.size() || parsed > std::numeric_limits<uint32_t>::max())
+  {
+    if (os != nullptr)
+    {
+      (*os) << " Numerals must fit into 32-bit unsigned integers.";
+    }
+    return false;
+  }
+  result = static_cast<uint32_t>(parsed);
+  return true;
+}
+
+uint32_t ParserState::parseStringToUnsigned(const std::string& str)
+{
+  uint32_t result = 0;
+  if (!stringToUnsigned(str, result))
+  {
+    std::stringstream ss;
+    ss << "Failed to parse numeral.";
+    stringToUnsigned(str, result, &ss);
+    parseError(ss.str());
+  }
   return result;
 }
 

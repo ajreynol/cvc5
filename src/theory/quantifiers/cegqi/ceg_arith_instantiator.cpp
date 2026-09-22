@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Gereon Kremer, Aina Niemetz
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -37,14 +34,14 @@ namespace quantifiers {
 ArithInstantiator::ArithInstantiator(Env& env, TypeNode tn, VtsTermCache* vtc)
     : Instantiator(env, tn), d_vtc(vtc)
 {
-  d_zero = NodeManager::currentNM()->mkConstRealOrInt(tn, Rational(0));
-  d_one = NodeManager::currentNM()->mkConstRealOrInt(tn, Rational(1));
+  d_zero = nodeManager()->mkConstRealOrInt(tn, Rational(0));
+  d_one = nodeManager()->mkConstRealOrInt(tn, Rational(1));
 }
 
-void ArithInstantiator::reset(CegInstantiator* ci,
-                              SolvedForm& sf,
-                              Node pv,
-                              CegInstEffort effort)
+void ArithInstantiator::reset(CVC5_UNUSED CegInstantiator* ci,
+                              CVC5_UNUSED SolvedForm& sf,
+                              CVC5_UNUSED Node pv,
+                              CVC5_UNUSED CegInstEffort effort)
 {
   Assert(pv.getType() == d_type);
   d_vts_sym[0] = d_vtc->getVtsInfinity(d_type, false, false);
@@ -61,10 +58,10 @@ void ArithInstantiator::reset(CegInstantiator* ci,
   }
 }
 
-bool ArithInstantiator::hasProcessEquality(CegInstantiator* ci,
-                                           SolvedForm& sf,
-                                           Node pv,
-                                           CegInstEffort effort)
+bool ArithInstantiator::hasProcessEquality(CVC5_UNUSED CegInstantiator* ci,
+                                           CVC5_UNUSED SolvedForm& sf,
+                                           CVC5_UNUSED Node pv,
+                                           CVC5_UNUSED CegInstEffort effort)
 {
   return true;
 }
@@ -74,9 +71,9 @@ bool ArithInstantiator::processEquality(CegInstantiator* ci,
                                         Node pv,
                                         std::vector<TermProperties>& term_props,
                                         std::vector<Node>& terms,
-                                        CegInstEffort effort)
+                                        CVC5_UNUSED CegInstEffort effort)
 {
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   Node eq_lhs = terms[0];
   Node eq_rhs = terms[1];
   Node lhs_coeff = term_props[0].d_coeff;
@@ -115,19 +112,19 @@ bool ArithInstantiator::processEquality(CegInstantiator* ci,
   return false;
 }
 
-bool ArithInstantiator::hasProcessAssertion(CegInstantiator* ci,
-                                            SolvedForm& sf,
-                                            Node pv,
+bool ArithInstantiator::hasProcessAssertion(CVC5_UNUSED CegInstantiator* ci,
+                                            CVC5_UNUSED SolvedForm& sf,
+                                            CVC5_UNUSED Node pv,
                                             CegInstEffort effort)
 {
   return effort != CEG_INST_EFFORT_FULL;
 }
 
-Node ArithInstantiator::hasProcessAssertion(CegInstantiator* ci,
-                                            SolvedForm& sf,
-                                            Node pv,
+Node ArithInstantiator::hasProcessAssertion(CVC5_UNUSED CegInstantiator* ci,
+                                            CVC5_UNUSED SolvedForm& sf,
+                                            CVC5_UNUSED Node pv,
                                             Node lit,
-                                            CegInstEffort effort)
+                                            CVC5_UNUSED CegInstEffort effort)
 {
   Node atom = lit.getKind() == Kind::NOT ? lit[0] : lit;
   // arithmetic inequalities and disequalities
@@ -140,14 +137,14 @@ Node ArithInstantiator::hasProcessAssertion(CegInstantiator* ci,
 }
 
 bool ArithInstantiator::processAssertion(CegInstantiator* ci,
-                                         SolvedForm& sf,
+                                         CVC5_UNUSED SolvedForm& sf,
                                          Node pv,
                                          Node lit,
-                                         Node alit,
-                                         CegInstEffort effort)
+                                         CVC5_UNUSED Node alit,
+                                         CVC5_UNUSED CegInstEffort effort)
 {
   Trace("cegqi-arith-debug") << "Process assertion " << lit << std::endl;
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   Node atom = lit.getKind() == Kind::NOT ? lit[0] : lit;
   bool pol = lit.getKind() != Kind::NOT;
   // arithmetic inequalities and disequalities
@@ -301,9 +298,9 @@ bool ArithInstantiator::processAssertion(CegInstantiator* ci,
 bool ArithInstantiator::processAssertions(CegInstantiator* ci,
                                           SolvedForm& sf,
                                           Node pv,
-                                          CegInstEffort effort)
+                                          CVC5_UNUSED CegInstEffort effort)
 {
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   bool use_inf = d_type.isInteger() ? options().quantifiers.cegqiUseInfInt
                                     : options().quantifiers.cegqiUseInfReal;
   bool upper_first = Random::getRandom().pickWithProb(0.5);
@@ -421,9 +418,9 @@ bool ArithInstantiator::processAssertions(CegInstantiator* ci,
             Assert(d_mbp_coeff[rr][j].isConst());
             value[t] = nm->mkNode(
                 Kind::MULT,
-                nm->mkConstReal(Rational(1)
-                                / d_mbp_coeff[rr][j].getConst<Rational>()),
-                nm->mkNode(Kind::TO_REAL, value[t]));
+                {nm->mkConstReal(Rational(1)
+                                 / d_mbp_coeff[rr][j].getConst<Rational>()),
+                 nm->mkNode(Kind::TO_REAL, value[t])});
             value[t] = rewrite(value[t]);
           }
           // check if new best, if we have not already set it.
@@ -582,8 +579,8 @@ bool ArithInstantiator::processAssertions(CegInstantiator* ci,
       else
       {
         val = nm->mkNode(Kind::MULT,
-                         nm->mkNode(Kind::ADD, vals[0], vals[1]),
-                         nm->mkConstReal(Rational(1) / Rational(2)));
+                         {nm->mkNode(Kind::ADD, vals[0], vals[1]),
+                          nm->mkConstReal(Rational(1) / Rational(2))});
         val = rewrite(val);
       }
     }
@@ -664,14 +661,20 @@ bool ArithInstantiator::processAssertions(CegInstantiator* ci,
 }
 
 bool ArithInstantiator::needsPostProcessInstantiationForVariable(
-    CegInstantiator* ci, SolvedForm& sf, Node pv, CegInstEffort effort)
+    CVC5_UNUSED CegInstantiator* ci,
+    SolvedForm& sf,
+    Node pv,
+    CVC5_UNUSED CegInstEffort effort)
 {
   return std::find(sf.d_non_basic.begin(), sf.d_non_basic.end(), pv)
          != sf.d_non_basic.end();
 }
 
 bool ArithInstantiator::postProcessInstantiationForVariable(
-    CegInstantiator* ci, SolvedForm& sf, Node pv, CegInstEffort effort)
+    CVC5_UNUSED CegInstantiator* ci,
+    SolvedForm& sf,
+    Node pv,
+    CVC5_UNUSED CegInstEffort effort)
 {
   Assert(std::find(sf.d_non_basic.begin(), sf.d_non_basic.end(), pv)
          != sf.d_non_basic.end());
@@ -718,7 +721,7 @@ bool ArithInstantiator::postProcessInstantiationForVariable(
   sf.d_subs[index] = veq[1];
   if (!veq_c.isNull())
   {
-    NodeManager* nm = NodeManager::currentNM();
+    NodeManager* nm = nodeManager();
     sf.d_subs[index] = nm->mkNode(Kind::INTS_DIVISION_TOTAL, veq[1], veq_c);
     Trace("cegqi-arith-debug")
         << "...bound type is : " << sf.d_props[index].d_type << std::endl;
@@ -743,7 +746,7 @@ bool ArithInstantiator::postProcessInstantiationForVariable(
   return true;
 }
 
-CegTermType ArithInstantiator::solve_arith(CegInstantiator* ci,
+CegTermType ArithInstantiator::solve_arith(CVC5_UNUSED CegInstantiator* ci,
                                            Node pv,
                                            Node atom,
                                            Node& veq_c,
@@ -751,7 +754,7 @@ CegTermType ArithInstantiator::solve_arith(CegInstantiator* ci,
                                            Node& vts_coeff_inf,
                                            Node& vts_coeff_delta)
 {
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   Trace("cegqi-arith-debug")
       << "isolate for " << pv << " in " << atom << std::endl;
   std::map<Node, Node> msum;
@@ -913,8 +916,9 @@ CegTermType ArithInstantiator::solve_arith(CegInstantiator* ci,
           Kind::TO_INTEGER,
           nm->mkNode(
               ires_use == -1 ? Kind::ADD : Kind::SUB,
-              nm->mkNode(ires_use == -1 ? Kind::SUB : Kind::ADD, val, realPart),
-              nm->mkNode(Kind::TO_INTEGER, realPart)));
+              {nm->mkNode(
+                   ires_use == -1 ? Kind::SUB : Kind::ADD, val, realPart),
+               nm->mkNode(Kind::TO_INTEGER, realPart)}));
       Trace("cegqi-arith-debug")
           << "result (pre-rewrite) : " << val << std::endl;
       val = rewrite(val);
@@ -933,7 +937,7 @@ CegTermType ArithInstantiator::solve_arith(CegInstantiator* ci,
   {
     val = nm->mkNode(Kind::TO_REAL, val);
   }
-  Assert(pv.getType() == val.getType());
+  AssertEqual(pv.getType(), val.getType());
   Trace("cegqi-arith-debug")
       << "Return " << veq_c << " * " << pv << " " << atom.getKind() << " "
       << val << ", vts = (" << vts_coeff_inf << ", " << vts_coeff_delta << ")"
@@ -946,18 +950,19 @@ CegTermType ArithInstantiator::solve_arith(CegInstantiator* ci,
   return ires == 1 ? CEG_TT_UPPER : CEG_TT_LOWER;
 }
 
-Node ArithInstantiator::getModelBasedProjectionValue(CegInstantiator* ci,
-                                                     Node e,
-                                                     Node t,
-                                                     bool isLower,
-                                                     Node c,
-                                                     Node me,
-                                                     Node mt,
-                                                     Node theta,
-                                                     Node inf_coeff,
-                                                     Node delta_coeff)
+Node ArithInstantiator::getModelBasedProjectionValue(
+    CVC5_UNUSED CegInstantiator* ci,
+    Node e,
+    Node t,
+    bool isLower,
+    Node c,
+    Node me,
+    Node mt,
+    Node theta,
+    Node inf_coeff,
+    Node delta_coeff)
 {
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   Node val = t;
   Trace("cegqi-arith-bound2") << "Value : " << val << std::endl;
   Assert(!e.getType().isInteger() || t.getType().isInteger());
@@ -1014,7 +1019,7 @@ Node ArithInstantiator::mkVtsSum(const Node& val,
                                  const Node& inf_coeff,
                                  const Node& delta_coeff)
 {
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   Node vval = val;
   if (!inf_coeff.isNull())
   {
@@ -1036,7 +1041,7 @@ Node ArithInstantiator::mkVtsSum(const Node& val,
 
 Node ArithInstantiator::negate(const Node& t) const
 {
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   return rewrite(nm->mkNode(
       Kind::MULT, nm->mkConstRealOrInt(t.getType(), Rational(-1)), t));
 }

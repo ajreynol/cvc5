@@ -1,11 +1,8 @@
 #!/usr/bin/env python
 ###############################################################################
-# Top contributors (to current version):
-#   Daniel Larraz
-#
 # This file is part of the cvc5 project.
 #
-# Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+# Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
 # in the top-level source directory and their institutional affiliations.
 # All rights reserved.  See the file COPYING in the top-level source
 # directory for licensing information.
@@ -17,7 +14,8 @@
 import cvc5
 
 if __name__ == "__main__":
-    slv = cvc5.Solver()
+    tm = cvc5.TermManager()
+    slv = cvc5.Solver(tm)
 
     # set that we should print success after each successful command
     slv.setOption("print-success", "true")
@@ -34,7 +32,7 @@ if __name__ == "__main__":
         (assert (< a b))
         (assert (> c 0))
     """
-    
+
     parser.setStringInput(cvc5.InputLanguage.SMT_LIB_2_6, input, "MyInput")
 
     # get the symbol manager of the parser, used when invoking commands below

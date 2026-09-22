@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Abdalrhman Mohamed, Andrew Reynolds, Andres Noetzli
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -65,10 +62,16 @@ class CVC5_EXPORT Printer
   /**
    * Write a Node out to a stream with this Printer, with the provided
    * let binding.
+   * @param out The output stream to write to.
+   * @param n The node to print.
+   * @param lbind The let binding, which determines which nodes are letified.
+   * @param lbindTop If false, the topmost term in n does not take into account
+   * lbind.
    */
   virtual void toStream(std::ostream& out,
                         TNode n,
-                        const LetBinding* lbind) const;
+                        const LetBinding* lbind,
+                        bool lbindTop) const;
 
   /** Write a Kind out to a stream with this Printer. */
   virtual void toStream(std::ostream& out, Kind k) const = 0;
@@ -230,6 +233,10 @@ class CVC5_EXPORT Printer
   virtual void toStreamCmdGetValue(std::ostream& out,
                                    const std::vector<Node>& nodes) const;
 
+  /** Print get-model-domain-elements command */
+  virtual void toStreamCmdGetModelDomainElements(std::ostream& out,
+                                                 TypeNode type) const;
+
   /** Print get-assignment command */
   virtual void toStreamCmdGetAssignment(std::ostream& out) const;
 
@@ -382,10 +389,6 @@ class CVC5_EXPORT Printer
 
   /** Make a Printer for a given Language */
   static std::unique_ptr<Printer> makePrinter(Language lang);
-
-  /** Printers for each Language */
-  static std::unique_ptr<Printer>
-      d_printers[static_cast<size_t>(Language::LANG_MAX)];
 
 }; /* class Printer */
 

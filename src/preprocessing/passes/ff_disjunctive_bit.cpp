@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Alex Ozdemir
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -37,7 +34,7 @@ FfDisjunctiveBit::FfDisjunctiveBit(PreprocessingPassContext* preprocContext)
 PreprocessingPassResult FfDisjunctiveBit::applyInternal(
     AssertionPipeline* assertionsToPreprocess)
 {
-  auto nm = NodeManager::currentNM();
+  auto nm = nodeManager();
   for (uint64_t i = 0, n = assertionsToPreprocess->size(); i < n; ++i)
   {
     Node fact = (*assertionsToPreprocess)[i];
@@ -46,7 +43,10 @@ PreprocessingPassResult FfDisjunctiveBit::applyInternal(
     {
       Trace("ff::disjunctive-bit") << "rw bit constr: " << *var << std::endl;
       Node var2 = nm->mkNode(Kind::FINITE_FIELD_MULT, *var, *var);
-      assertionsToPreprocess->replace(i, var2.eqNode(*var));
+      assertionsToPreprocess->replace(i,
+                                      var2.eqNode(*var),
+                                      nullptr,
+                                      TrustId::PREPROCESS_FF_DISJUNCTIVE_BIT);
     }
   }
   return PreprocessingPassResult::NO_CONFLICT;

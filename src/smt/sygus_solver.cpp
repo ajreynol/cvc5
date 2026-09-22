@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Gereon Kremer, Haniel Barbosa
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -36,6 +33,7 @@
 #include "theory/quantifiers_engine.h"
 #include "theory/rewriter.h"
 #include "theory/smt_engine_subsolver.h"
+#include "theory/trust_substitutions.h"
 
 using namespace cvc5::internal::theory;
 using namespace cvc5::internal::kind;
@@ -67,11 +65,10 @@ void SygusSolver::declareSygusVar(Node var)
 
 void SygusSolver::declareSynthFun(Node fn,
                                   TypeNode sygusType,
-                                  bool isInv,
                                   const std::vector<Node>& vars)
 {
   Trace("smt") << "SygusSolver::declareSynthFun: " << fn << "\n";
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   d_sygusFunSymbols.push_back(fn);
   if (!vars.empty())
   {
@@ -85,8 +82,8 @@ void SygusSolver::declareSynthFun(Node fn,
   {
     // use an attribute to mark its grammar
     quantifiers::SygusUtils::setSygusType(fn, sygusType);
-    // we must expand definitions for sygus operators in the block
-    expandDefinitionsSygusDt(fn, sygusType);
+    // we now check for free variables for sygus operators in the block
+    checkDefinitionsSygusDt(fn, sygusType);
   }
 
   // sygus conjecture is now stale
@@ -157,15 +154,15 @@ void SygusSolver::assertSygusInvConstraint(Node inv,
   terms.push_back(trans);
   terms.push_back(post);
   // variables are built based on the invariant type
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   std::vector<TypeNode> argTypes = inv.getType().getArgTypes();
   for (const TypeNode& tn : argTypes)
   {
-    vars.push_back(nm->mkBoundVar(tn));
+    vars.push_back(NodeManager::mkBoundVar(tn));
     d_sygusVars.push_back(vars.back());
     std::stringstream ss;
     ss << vars.back() << "'";
-    primed_vars.push_back(nm->mkBoundVar(ss.str(), tn));
+    primed_vars.push_back(NodeManager::mkBoundVar(ss.str(), tn));
     d_sygusVars.push_back(primed_vars.back());
   }
 
@@ -229,7 +226,7 @@ SynthResult SygusSolver::checkSynth(bool isNext)
   }
   if (d_sygusConjectureStale)
   {
-    NodeManager* nm = NodeManager::currentNM();
+    NodeManager* nm = nodeManager();
     // build synthesis conjecture from asserted constraints and declared
     // variables/functions
     Trace("smt") << "Sygus : Constructing sygus constraint...\n";
@@ -241,20 +238,86 @@ SynthResult SygusSolver::checkSynth(bool isNext)
       body = nm->mkNode(Kind::IMPLIES, bodyAssump, body);
     }
     body = body.notNode();
-    Trace("smt") << "...constructed sygus constraint " << body << std::endl;
+    Trace("smt-debug") << "...constructed sygus constraint " << body
+                       << std::endl;
     if (!d_sygusVars.empty())
     {
       Node boundVars =
           nm->mkNode(Kind::BOUND_VAR_LIST, listToVector(d_sygusVars));
       body = nm->mkNode(Kind::EXISTS, boundVars, body);
-      Trace("smt") << "...constructed exists " << body << std::endl;
+      Trace("smt-debug") << "...constructed exists " << body << std::endl;
     }
-    if (!d_sygusFunSymbols.empty())
+    bool inferTrivial = true;
+    // cannot omit unused functions if in incremental or sygus-stream
+    if (options().quantifiers.sygusStream || options().base.incrementalSolving)
     {
-      body = quantifiers::SygusUtils::mkSygusConjecture(
-          listToVector(d_sygusFunSymbols), body);
+      inferTrivial = false;
     }
-    Trace("smt") << "...constructed forall " << body << std::endl;
+    // Mark functions that do not occur in the conjecture as trivial,
+    // and do not solve for them.
+    std::vector<Node> ntrivSynthFuns;
+    if (inferTrivial)
+    {
+      // must expand definitions first
+      // We consider free variables in the rewritten form of the *body* of
+      // the existential, not the rewritten form of the existential itself,
+      // which could permit eliminating variables that are equal to terms
+      // involving functions to synthesize.
+      Node ppBody = body.getKind() == Kind::EXISTS ? body[1] : body;
+      ppBody = d_smtSolver.getPreprocessor()->applySubstitutions(ppBody);
+      ppBody = rewrite(ppBody);
+      std::unordered_set<Node> vs;
+      expr::getVariables(ppBody, vs);
+      for (size_t i = 0; i < 2; i++)
+      {
+        d_trivialFuns.clear();
+        for (const Node& f : d_sygusFunSymbols)
+        {
+          if (vs.find(f) != vs.end())
+          {
+            ntrivSynthFuns.push_back(f);
+          }
+          else
+          {
+            Trace("smt-debug") << "...trivial function: " << f << std::endl;
+            d_trivialFuns.push_back(f);
+          }
+        }
+        // we could have dependencies from the grammars of
+        // functions-to-synthesize to trivial functions, account for this as
+        // well
+        if (i == 0 && !d_trivialFuns.empty())
+        {
+          size_t prevSize = vs.size();
+          for (const Node& f : ntrivSynthFuns)
+          {
+            TypeNode tnp = quantifiers::SygusUtils::getSygusType(f);
+            if (tnp.isNull())
+            {
+              continue;
+            }
+            theory::datatypes::utils::getFreeVariablesSygusType(tnp, vs);
+          }
+          if (vs.size() == prevSize)
+          {
+            // no new symbols found
+            break;
+          }
+        }
+        else
+        {
+          break;
+        }
+      }
+    }
+    else
+    {
+      ntrivSynthFuns = listToVector(d_sygusFunSymbols);
+    }
+    body = ntrivSynthFuns.empty() ? body.negate()
+                                  : quantifiers::SygusUtils::mkSygusConjecture(
+                                        nodeManager(), ntrivSynthFuns, body);
+    Trace("smt-debug") << "...constructed forall " << body << std::endl;
 
     Trace("smt") << "Check synthesis conjecture: " << body << std::endl;
 
@@ -283,16 +346,21 @@ SynthResult SygusSolver::checkSynth(bool isNext)
   Result r;
   if (usingSygusSubsolver())
   {
+    Trace("smt-sygus") << "SygusSolver: check sat with subsolver..."
+                       << std::endl;
     r = d_subsolver->checkSat();
   }
   else
   {
+    Trace("smt-sygus") << "SygusSolver: check sat with main solver..."
+                       << std::endl;
     std::vector<Node> query;
     query.push_back(d_conj);
     // use a single call driver
     SmtDriverSingleCall sdsc(d_env, d_smtSolver);
     r = sdsc.checkSat(query);
   }
+  Trace("smt-sygus") << "...got " << r << std::endl;
   // The result returned by the above call is typically "unknown", which may
   // or may not correspond to a state in which we solved the conjecture
   // successfully. Instead we call getSynthSolutions below. If this returns
@@ -320,7 +388,12 @@ SynthResult SygusSolver::checkSynth(bool isNext)
   // solved.
   SynthResult sr;
   std::map<Node, Node> sol_map;
-  if (getSynthSolutions(sol_map))
+  if (r.getStatus() == Result::UNSAT)
+  {
+    // unsat means no solution
+    sr = SynthResult(SynthResult::NO_SOLUTION);
+  }
+  else if (getSynthSolutions(sol_map))
   {
     // if we have solutions, we return "solution"
     sr = SynthResult(SynthResult::SOLUTION);
@@ -330,11 +403,6 @@ SynthResult SygusSolver::checkSynth(bool isNext)
       Assertions& as = d_smtSolver.getAssertions();
       checkSynthSolution(as, sol_map);
     }
-  }
-  else if (r.getStatus() == Result::UNSAT)
-  {
-    // unsat means no solution
-    sr = SynthResult(SynthResult::NO_SOLUTION);
   }
   else
   {
@@ -346,14 +414,33 @@ SynthResult SygusSolver::checkSynth(bool isNext)
 
 bool SygusSolver::getSynthSolutions(std::map<Node, Node>& solMap)
 {
+  bool ret = false;
   Trace("smt") << "SygusSolver::getSynthSolutions" << std::endl;
   if (usingSygusSubsolver())
   {
     // use the call to get the synth solutions from the subsolver
-    return d_subsolver ? d_subsolver->getSubsolverSynthSolutions(solMap)
-                       : false;
+    if (d_subsolver)
+    {
+      ret = d_subsolver->getSubsolverSynthSolutions(solMap);
+    }
   }
-  return getSubsolverSynthSolutions(solMap);
+  else
+  {
+    ret = getSubsolverSynthSolutions(solMap);
+  }
+  if (ret)
+  {
+    // also get solutions for trivial functions to synthesize
+    for (const Node& f : d_trivialFuns)
+    {
+      Node sf = quantifiers::SygusUtils::mkSygusTermFor(f);
+      Trace("smt-debug") << "Got " << sf << " for trivial function " << f
+                         << std::endl;
+      AssertEqual(f.getType(), sf.getType());
+      solMap[f] = sf;
+    }
+  }
+  return ret;
 }
 
 bool SygusSolver::getSubsolverSynthSolutions(std::map<Node, Node>& solMap)
@@ -428,16 +515,16 @@ void SygusSolver::checkSynthSolution(Assertions& as,
   Trace("check-synth-sol") << "Retrieving assertions\n";
   // Build conjecture from original assertions
   // check all conjectures
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   for (const Node& conj : conjs)
   {
     // Start new SMT engine to check solutions
     std::unique_ptr<SolverEngine> solChecker;
     initializeSygusSubsolver(solChecker, as);
-    solChecker->getOptions().writeSmt().checkSynthSol = false;
-    solChecker->getOptions().writeQuantifiers().sygusRecFun = false;
-    Assert(conj.getKind() == Kind::FORALL);
-    Node conjBody = conj[1];
+    solChecker->getOptions().write_smt().checkSynthSol = false;
+    solChecker->getOptions().write_quantifiers().sygusRecFun = false;
+    Node conjBody = conj;
+    conjBody = conj.getKind() == Kind::FORALL ? conjBody[1] : conj.negate();
     // we must apply substitutions here, since define-fun may contain the
     // function-to-synthesize, which needs to be substituted.
     conjBody = d_smtSolver.getPreprocessor()->applySubstitutions(conjBody);
@@ -546,7 +633,7 @@ bool SygusSolver::usingSygusSubsolver() const
   return options().base.incrementalSolving;
 }
 
-void SygusSolver::expandDefinitionsSygusDt(const Node& fn, TypeNode tn) const
+void SygusSolver::checkDefinitionsSygusDt(const Node& fn, TypeNode tn) const
 {
   std::unordered_set<TypeNode> processed;
   std::vector<TypeNode> toProcess;
@@ -580,22 +667,11 @@ void SygusSolver::expandDefinitionsSygusDt(const Node& fn, TypeNode tn) const
            << " with free variables in grammar of " << fn;
         throw LogicException(ss.str());
       }
-      // Only expand definitions if the operator is not constant, since
-      // calling expandDefinitions on them should be a no-op. This check
-      // ensures we don't try to expand e.g. bitvector extract operators,
-      // whose type is undefined, and thus should not be passed to
-      // expandDefinitions.
-      Node eop = op.isConst()
-                     ? op
-                     : d_smtSolver.getPreprocessor()->applySubstitutions(op);
-      eop = rewrite(eop);
-      datatypes::utils::setExpandedDefinitionForm(op, eop);
       // also must consider the arguments
       for (unsigned j = 0, nargs = c->getNumArgs(); j < nargs; ++j)
       {
         TypeNode tnc = c->getArgType(j);
-        if (tnc.isDatatype() && tnc.getDType().isSygus()
-            && processed.find(tnc) == processed.end())
+        if (tnc.isSygusDatatype() && processed.find(tnc) == processed.end())
         {
           toProcess.push_back(tnc);
           processed.insert(tnc);

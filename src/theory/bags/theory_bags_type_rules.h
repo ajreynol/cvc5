@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Mudathir Mohamed, Andrew Reynolds, Tim King
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -83,16 +80,16 @@ struct MemberTypeRule
 };
 
 /**
- * Type rule for bag.duplicate_removal to check the argument is of a bag.
+ * Type rule for bag.setof to check the argument is of a bag.
  */
-struct DuplicateRemovalTypeRule
+struct SetofTypeRule
 {
   static TypeNode preComputeType(NodeManager* nm, TNode n);
   static TypeNode computeType(NodeManager* nodeManager,
                               TNode n,
                               bool check,
                               std::ostream* errOut);
-}; /* struct DuplicateRemovalTypeRule */
+}; /* struct SetofTypeRule */
 
 /**
  * Type rule for (bag op e) operator to check the sort of e matches the sort
@@ -107,18 +104,6 @@ struct BagMakeTypeRule
                               std::ostream* errOut);
   static bool computeIsConst(NodeManager* nodeManager, TNode n);
 }; /* struct BagMakeTypeRule */
-
-/**
- * Type rule for (bag.is_singleton B) to check the argument B is a bag.
- */
-struct IsSingletonTypeRule
-{
-  static TypeNode preComputeType(NodeManager* nm, TNode n);
-  static TypeNode computeType(NodeManager* nodeManager,
-                              TNode n,
-                              bool check,
-                              std::ostream* errOut);
-}; /* struct IsSingletonTypeRule */
 
 /**
  * Type rule for (as bag.empty (Bag T)) where T is a type
@@ -157,30 +142,6 @@ struct ChooseTypeRule
 }; /* struct ChooseTypeRule */
 
 /**
- * Type rule for (bag.from_set ..) to check the argument is of a set.
- */
-struct FromSetTypeRule
-{
-  static TypeNode preComputeType(NodeManager* nm, TNode n);
-  static TypeNode computeType(NodeManager* nodeManager,
-                              TNode n,
-                              bool check,
-                              std::ostream* errOut);
-}; /* struct FromSetTypeRule */
-
-/**
- * Type rule for (bag.to_set ..) to check the argument is of a bag.
- */
-struct ToSetTypeRule
-{
-  static TypeNode preComputeType(NodeManager* nm, TNode n);
-  static TypeNode computeType(NodeManager* nodeManager,
-                              TNode n,
-                              bool check,
-                              std::ostream* errOut);
-}; /* struct ToSetTypeRule */
-
-/**
  * Type rule for (bag.map f B) to make sure f is a unary function of type
  * (-> T1 T2) where B is a bag of type (Bag T1)
  */
@@ -205,6 +166,21 @@ struct BagFilterTypeRule
                               bool check,
                               std::ostream* errOut);
 }; /* struct BagFilterTypeRule */
+
+/**
+ * Type rule for (bag.all p A) and (bag.some p A) to make sure p is
+ * a unary predicate of type
+ * (-> T Bool) where A is a bag of type (Bag T)
+ */
+struct BagAllSomeTypeRule
+{
+  static TypeNode preComputeType(NodeManager* nm, TNode n);
+
+  static TypeNode computeType(NodeManager* nodeManager,
+                              TNode n,
+                              bool check,
+                              std::ostream* errOut);
+}; /* struct BagAllSomeTypeRule */
 
 /**
  * Type rule for (bag.fold f t A) to make sure f is a binary operation of type

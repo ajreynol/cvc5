@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Morgan Deters, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -34,8 +31,7 @@ class EqualityEngine;
 class TheoryState : protected EnvObj
 {
  public:
-  TheoryState(Env& env,
-              Valuation val);
+  TheoryState(Env& env, Valuation val);
   virtual ~TheoryState() {}
   /**
    * Set equality engine, where ee is a pointer to the official equality engine
@@ -120,6 +116,32 @@ class TheoryState : protected EnvObj
   /** Get the underlying valuation class */
   Valuation& getValuation();
 
+  //------------------------------------------- access methods for shared terms
+  /** Add shared term, called by Theory. */
+  void addSharedTerm(TNode node);
+
+  using shared_terms_iterator = context::CDList<TNode>::const_iterator;
+  /**
+   * Provides access to the shared terms, primarily intended for theory
+   * debugging purposes.
+   *
+   * @return the iterator to the beginning of the shared terms list
+   */
+  shared_terms_iterator shared_terms_begin() const
+  {
+    return d_sharedTerms.begin();
+  }
+
+  /**
+   * Provides access to the facts queue, primarily intended for theory
+   * debugging purposes.
+   *
+   * @return the iterator to the end of the shared terms list
+   */
+  shared_terms_iterator shared_terms_end() const { return d_sharedTerms.end(); }
+  /** Get shared terms */
+  const context::CDList<TNode>& getSharedTerms() const { return d_sharedTerms; }
+
  protected:
   /**
    * The valuation proxy for the Theory to communicate back with the
@@ -130,6 +152,10 @@ class TheoryState : protected EnvObj
   eq::EqualityEngine* d_ee;
   /** Are we in conflict? */
   context::CDO<bool> d_conflict;
+  /**
+   * A list of shared terms that the theory has.
+   */
+  context::CDList<TNode> d_sharedTerms;
 };
 
 }  // namespace theory

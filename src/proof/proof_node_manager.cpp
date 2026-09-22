@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Haniel Barbosa, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -28,12 +25,13 @@ using namespace cvc5::internal::kind;
 
 namespace cvc5::internal {
 
-ProofNodeManager::ProofNodeManager(const Options& opts,
+ProofNodeManager::ProofNodeManager(NodeManager* nm,
+                                   const Options& opts,
                                    theory::Rewriter* rr,
                                    ProofChecker* pc)
     : d_opts(opts), d_rewriter(rr), d_checker(pc)
 {
-  d_true = NodeManager::currentNM()->mkConst(true);
+  d_true = nm->mkConst(true);
   // we always allocate a proof checker, regardless of the proof checking mode
   Assert(d_checker != nullptr);
 }
@@ -68,7 +66,7 @@ std::shared_ptr<ProofNode> ProofNodeManager::mkTrustedNode(
     const Node& conc)
 {
   std::vector<Node> sargs;
-  sargs.push_back(mkTrustId(id));
+  sargs.push_back(mkTrustId(conc.getNodeManager(), id));
   sargs.push_back(conc);
   sargs.insert(sargs.end(), args.begin(), args.end());
   return mkNode(ProofRule::TRUST, children, sargs);
@@ -112,7 +110,7 @@ std::shared_ptr<ProofNode> ProofNodeManager::mkScope(
     bool doMinimize,
     Node expected)
 {
-  if (!ensureClosed)
+  if (!ensureClosed && !doMinimize)
   {
     return mkNode(ProofRule::SCOPE, {pf}, assumps, expected);
   }
@@ -222,6 +220,10 @@ std::shared_ptr<ProofNode> ProofNodeManager::mkScope(
       acu.insert(aMatch);
       continue;
     }
+    if (!ensureClosed)
+    {
+      continue;
+    }
     // If we did not find a match, it is an error, since all free assumptions
     // should be arguments to SCOPE.
     std::stringstream ss;
@@ -269,7 +271,6 @@ std::shared_ptr<ProofNode> ProofNodeManager::mkScope(
     assumps.insert(assumps.end(), ac.begin(), ac.end());
   }
   Node minExpected;
-  NodeManager* nm = NodeManager::currentNM();
   Node exp;
   if (assumps.empty())
   {
@@ -277,6 +278,7 @@ std::shared_ptr<ProofNode> ProofNodeManager::mkScope(
     return pf;
   }
   Node conc = pf->getResult();
+  NodeManager* nm = conc.getNodeManager();
   exp = assumps.size() == 1 ? assumps[0] : nm->mkNode(Kind::AND, assumps);
   if (conc.isConst() && !conc.getConst<bool>())
   {

@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Alex Ozdemir
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -33,6 +30,7 @@
 // internal includes
 #include "expr/node.h"
 #include "theory/ff/cocoa_util.h"
+#include "theory/ff/core.h"
 #include "theory/ff/util.h"
 
 namespace cvc5::internal {
@@ -63,7 +61,7 @@ class CocoaEncoder : public FieldObj
 {
  public:
   /** Create a new encoder, for this field. */
-  CocoaEncoder(const FfSize& size);
+  CocoaEncoder(NodeManager* nm, const FfSize& size);
   /** Add a fact (one must call this twice per fact, once per stage). */
   void addFact(const Node& fact);
   /** Start Stage::Encode. */
@@ -90,6 +88,11 @@ class CocoaEncoder : public FieldObj
    */
   std::vector<Node> bitsums() const;
   /**
+   * The coefficient ring of the poly ring we're encoding into.
+   * Available in Stage::Encode.
+   */
+  const CoCoA::ring& coeffRing() const { return d_coeffRing.value(); }
+  /**
    * The poly ring we've encoded into.
    * Available in Stage::Encode.
    */
@@ -102,7 +105,15 @@ class CocoaEncoder : public FieldObj
   /**
    * Convert a (coefficient) Scalar to a FiniteFieldValue.
    */
-  FiniteFieldValue cocoaFfToFfVal(const Scalar& elem);
+  FiniteFieldValue cocoaFfToFfVal(const Scalar& elem) const;
+  /**
+   * Does some fact that imply this poly?
+   */
+  bool polyHasFact(const Poly& poly) const;
+  /**
+   * Get the fact that implies this poly.
+   */
+  const Node& polyFact(const Poly& poly) const;
 
  private:
   /**
@@ -157,6 +168,8 @@ class CocoaEncoder : public FieldObj
 
   // populated at the end of Stage::Scan
 
+  /** the coefficient ring */
+  std::optional<CoCoA::ring> d_coeffRing{};
   /** the polynomial ring */
   std::optional<CoCoA::ring> d_polyRing{};
 
@@ -168,6 +181,8 @@ class CocoaEncoder : public FieldObj
   std::vector<Poly> d_polys{};
   /** bitsum polynomials that must be zero */
   std::vector<Poly> d_bitsumPolys{};
+  /** polys to the facts that imply them */
+  std::unordered_map<std::string, Node> d_polyFacts{};
 };
 
 }  // namespace ff

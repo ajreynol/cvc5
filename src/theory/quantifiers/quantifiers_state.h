@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Aina Niemetz, Gereon Kremer
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -32,9 +29,7 @@ namespace quantifiers {
 class QuantifiersState : public TheoryState
 {
  public:
-  QuantifiersState(Env& env,
-                   Valuation val,
-                   const LogicInfo& logicInfo);
+  QuantifiersState(Env& env, Valuation val, const LogicInfo& logicInfo);
   ~QuantifiersState() {}
   /**
    * Increment the instantiation counters, called once at the beginning of when

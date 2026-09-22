@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Mathias Preiner, Gereon Kremer
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -20,11 +17,11 @@
 #include "expr/dtype.h"
 #include "expr/dtype_cons.h"
 #include "expr/node_algorithm.h"
-#include "expr/skolem_manager.h"
 #include "expr/sygus_datatype.h"
 #include "smt/env.h"
 #include "theory/evaluator.h"
 #include "theory/rewriter.h"
+#include "theory/trust_substitutions.h"
 
 using namespace cvc5::internal;
 using namespace cvc5::internal::kind;
@@ -151,8 +148,8 @@ Node mkSygusTerm(const Node& op,
                  const std::vector<Node>& children,
                  bool doBetaReduction)
 {
-  NodeManager* nm = NodeManager::currentNM();
-  Assert(nm->getSkolemManager()->getId(op) != SkolemFunId::SYGUS_ANY_CONSTANT);
+  NodeManager* nm = op.getNodeManager();
+  Assert(op.getInternalSkolemId() != InternalSkolemId::SYGUS_ANY_CONSTANT);
   Trace("dt-sygus-util") << "Operator is " << op << std::endl;
   if (children.empty())
   {
@@ -209,7 +206,7 @@ Node mkSygusTerm(const Node& op,
   }
   else
   {
-    ret = NodeManager::currentNM()->mkNode(tok, schildren);
+    ret = nm->mkNode(tok, schildren);
   }
   Trace("dt-sygus-util") << "...return " << ret << std::endl;
   return ret;
@@ -277,7 +274,7 @@ Node sygusToBuiltin(Node n, bool isExternal)
       }
       else if (cur.getType().isSygusDatatype())
       {
-        Assert (cur.isVar());
+        Assert(cur.isVar());
         if (cur.hasAttribute(SygusToBuiltinVarAttribute()))
         {
           // use the previously constructed variable for it
@@ -289,8 +286,7 @@ Node sygusToBuiltin(Node n, bool isExternal)
           ss << cur;
           const DType& dt = cur.getType().getDType();
           // make a fresh variable
-          NodeManager * nm = NodeManager::currentNM();
-          Node var = nm->mkBoundVar(ss.str(), dt.getSygusType());
+          Node var = NodeManager::mkBoundVar(ss.str(), dt.getSygusType());
           SygusToBuiltinVarAttribute stbv;
           cur.setAttribute(stbv, var);
           visited[cur] = var;
@@ -352,7 +348,16 @@ Node builtinVarToSygus(Node v)
   return Node::null();
 }
 
-void getFreeSymbolsSygusType(TypeNode sdt, std::unordered_set<Node>& syms)
+/**
+ * Get free symbols or variables in a sygus datatype type.
+ * @param sdt The sygus datatype.
+ * @param sym The symbols to add to.
+ * @param isVar If we are looking for variables (if not, we are looking for
+ * symbols).
+ */
+void getFreeSymbolsSygusTypeInternal(TypeNode sdt,
+                                     std::unordered_set<Node>& syms,
+                                     bool isVar)
 {
   // datatype types we need to process
   std::vector<TypeNode> typeToProcess;
@@ -370,7 +375,14 @@ void getFreeSymbolsSygusType(TypeNode sdt, std::unordered_set<Node>& syms)
       {
         // collect the symbols from the operator
         Node op = dtc[j].getSygusOp();
-        expr::getSymbols(op, syms);
+        if (isVar)
+        {
+          expr::getVariables(op, syms);
+        }
+        else
+        {
+          expr::getSymbols(op, syms);
+        }
         // traverse the argument types
         for (unsigned k = 0, nargs = dtc[j].getNumArgs(); k < nargs; k++)
         {
@@ -395,11 +407,21 @@ void getFreeSymbolsSygusType(TypeNode sdt, std::unordered_set<Node>& syms)
   }
 }
 
+void getFreeSymbolsSygusType(TypeNode sdt, std::unordered_set<Node>& syms)
+{
+  getFreeSymbolsSygusTypeInternal(sdt, syms, false);
+}
+
+void getFreeVariablesSygusType(TypeNode sdt, std::unordered_set<Node>& syms)
+{
+  getFreeSymbolsSygusTypeInternal(sdt, syms, true);
+}
+
 TypeNode substituteAndGeneralizeSygusType(TypeNode sdt,
                                           const std::vector<Node>& syms,
                                           const std::vector<Node>& vars)
 {
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = sdt.getNodeManager();
   const DType& sdtd = sdt.getDType();
   // compute the new formal argument list
   std::vector<Node> formalVars;
@@ -423,7 +445,11 @@ TypeNode substituteAndGeneralizeSygusType(TypeNode sdt,
     }
   }
   // make the sygus variable list for the formal argument list
-  Node abvl = nm->mkNode(Kind::BOUND_VAR_LIST, formalVars);
+  Node abvl;
+  if (!formalVars.empty())
+  {
+    abvl = nm->mkNode(Kind::BOUND_VAR_LIST, formalVars);
+  }
   Trace("sygus-abduct-debug") << "...finish" << std::endl;
 
   // must convert all constructors to version with variables in "vars"
@@ -555,11 +581,10 @@ TypeNode generalizeSygusType(TypeNode sdt)
   }
   std::vector<Node> svec;
   std::vector<Node> vars;
-  NodeManager* nm = NodeManager::currentNM();
   for (const Node& s : syms)
   {
     svec.push_back(s);
-    vars.push_back(nm->mkBoundVar(s.getName(), s.getType()));
+    vars.push_back(NodeManager::mkBoundVar(s.getName(), s.getType()));
   }
   return substituteAndGeneralizeSygusType(sdt, svec, vars);
 }
@@ -602,6 +627,39 @@ Node getExpandedDefinitionForm(Node op)
   Node eop = op.getAttribute(SygusExpDefFormAttribute());
   // if not set, assume original
   return eop.isNull() ? op : eop;
+}
+
+void computeExpandedDefinitionForms(Env& env, const TypeNode& tn)
+{
+  std::unordered_set<TypeNode> processed;
+  std::vector<TypeNode> toProcess;
+  toProcess.push_back(tn);
+  while (!toProcess.empty())
+  {
+    TypeNode tnp = toProcess.back();
+    toProcess.pop_back();
+    Assert(tnp.isSygusDatatype());
+    const DType& dt = tnp.getDType();
+    const std::vector<std::shared_ptr<DTypeConstructor>>& cons =
+        dt.getConstructors();
+    for (const std::shared_ptr<DTypeConstructor>& c : cons)
+    {
+      Node op = c->getSygusOp();
+      Node eop = env.getTopLevelSubstitutions().apply(op);
+      eop = env.getRewriter()->rewrite(eop);
+      setExpandedDefinitionForm(op, eop);
+      // also must consider the arguments
+      for (size_t j = 0, nargs = c->getNumArgs(); j < nargs; ++j)
+      {
+        TypeNode tnc = c->getArgType(j);
+        if (tnc.isSygusDatatype() && processed.find(tnc) == processed.end())
+        {
+          toProcess.push_back(tnc);
+          processed.insert(tnc);
+        }
+      }
+    }
+  }
 }
 
 }  // namespace utils

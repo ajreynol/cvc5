@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Ying Sheng, Andrew Reynolds, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -67,7 +64,8 @@ void SygusInterpol::collectSymbols(const std::vector<Node>& axioms,
 
 void SygusInterpol::createVariables(bool needsShared)
 {
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
+  std::vector<Node> newSyms;
   for (const Node& s : d_syms)
   {
     TypeNode tn = s.getType();
@@ -81,9 +79,10 @@ void SygusInterpol::createVariables(bool needsShared)
     // Notice that we allow for non-first class (e.g. function) variables here.
     std::stringstream ss;
     ss << s;
-    Node var = nm->mkBoundVar(tn);
+    Node var = NodeManager::mkBoundVar(tn);
+    newSyms.push_back(s);
     d_vars.push_back(var);
-    Node vlv = nm->mkBoundVar(ss.str(), tn);
+    Node vlv = NodeManager::mkBoundVar(ss.str(), tn);
     // set that this variable encodes the term s
     SygusVarToTermAttribute sta;
     vlv.setAttribute(sta, s);
@@ -95,6 +94,7 @@ void SygusInterpol::createVariables(bool needsShared)
       d_varTypesShared.push_back(tn);
     }
   }
+  d_syms = newSyms;
   // make the sygus variable list
   if (!d_vlvsShared.empty())
   {
@@ -108,7 +108,7 @@ void SygusInterpol::getIncludeCons(
     const Node& conj,
     std::map<TypeNode, std::unordered_set<Node>>& result)
 {
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   Assert(options().smt.produceInterpolants);
   // ASSUMPTIONS
   if (options().smt.interpolantsMode == options::InterpolantsMode::ASSUMPTIONS)
@@ -193,7 +193,7 @@ TypeNode SygusInterpol::setSynthGrammar(const TypeNode& itpGType,
   {
     // set default grammar, unless in DEFAULT mode, in which case we will
     // provide no grammar in this module.
-    TypeNode btype = NodeManager::currentNM()->booleanType();
+    TypeNode btype = nodeManager()->booleanType();
     SygusGrammar g =
         SygusGrammarCons::mkDefaultGrammar(d_env, btype, d_ibvlShared);
     // exclude rules that don't appear in operators
@@ -225,14 +225,14 @@ TypeNode SygusInterpol::setSynthGrammar(const TypeNode& itpGType,
 
 Node SygusInterpol::mkPredicate(const std::string& name)
 {
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   // make the interpolation predicate to synthesize
   Trace("sygus-interpol-debug")
       << "Make interpolation predicate..." << std::endl;
   TypeNode itpType = d_varTypesShared.empty()
                          ? nm->booleanType()
                          : nm->mkPredicateType(d_varTypesShared);
-  Node itp = nm->mkBoundVar(name.c_str(), itpType);
+  Node itp = NodeManager::mkBoundVar(name.c_str(), itpType);
   Trace("sygus-interpol-debug") << "...finish" << std::endl;
   return itp;
 }
@@ -241,7 +241,7 @@ void SygusInterpol::mkSygusConjecture(Node itp,
                                       const std::vector<Node>& axioms,
                                       const Node& conj)
 {
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   // make the interpolation application to synthesize
   Trace("sygus-interpol-debug")
       << "Make interpolation predicate app..." << std::endl;
@@ -361,20 +361,20 @@ bool SygusInterpol::solveInterpolation(const std::string& name,
 
   Options subOptions;
   subOptions.copyValues(d_env.getOptions());
-  subOptions.writeQuantifiers().sygus = true;
+  subOptions.write_quantifiers().sygus = true;
   smt::SetDefaults::disableChecking(subOptions);
   SubsolverSetupInfo ssi(d_env, subOptions);
-  initializeSubsolver(d_subSolver, ssi);
+  initializeSubsolver(nodeManager(), d_subSolver, ssi);
 
   for (const Node& var : d_vars)
   {
     d_subSolver->declareSygusVar(var);
   }
   std::vector<Node> vars_empty;
-  d_subSolver->declareSynthFun(d_itp, grammarType, false, vars_empty);
+  d_subSolver->declareSynthFun(d_itp, grammarType, vars_empty);
   Trace("sygus-interpol")
       << "SygusInterpol::solveInterpolation: made conjecture : " << d_sygusConj
-      << ", solving for " << d_sygusConj[0][0] << std::endl;
+      << std::endl;
   d_subSolver->assertSygusConstraint(d_sygusConj);
 
   Trace("sygus-interpol")

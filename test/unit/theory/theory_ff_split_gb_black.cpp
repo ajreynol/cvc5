@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Alex Ozdemir
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -25,11 +22,12 @@
 #include <memory>
 #include <utility>
 
-#include "test_smt.h"
+#include "test_env.h"
 #include "theory/ff/multi_roots.h"
 #include "theory/ff/split_gb.h"
 #include "util/cocoa_globals.h"
 #include "util/random.h"
+#include "util/resource_manager.h"
 
 namespace cvc5::internal {
 
@@ -39,18 +37,18 @@ using namespace theory;
 
 namespace test {
 
-class TestTheoryFfSplitGb : public TestSmt
+class TestTheoryFfSplitGb : public TestEnv
 {
   void SetUp() override
   {
-    TestSmt::SetUp();
+    TestEnv::SetUp();
     initCocoaGlobalManager();
   }
 };
 
 CoCoA::RingElem randCoeff(const CoCoA::ring& polyRing, Random& rng)
 {
-  return CoCoA::zero(CoCoA::CoeffRing(polyRing)) + rng.rand();
+  return CoCoA::zero(CoCoA::CoeffRing(polyRing)) + rng.pick<uint64_t>();
 }
 
 CoCoA::RingElem randPoly(const CoCoA::ring& polyRing,
@@ -62,10 +60,10 @@ CoCoA::RingElem randPoly(const CoCoA::ring& polyRing,
   for (size_t ti = 0; ti < terms; ++ti)
   {
     CoCoA::RingElem term = CoCoA::zero(polyRing) + randCoeff(polyRing, rng);
-    long tDegree = 1 + (rng.rand() % degree);
+    long tDegree = 1 + (rng.pick<uint64_t>() % degree);
     for (long i = 0; i < tDegree; ++i)
     {
-      long j = rng.rand() % CoCoA::NumIndets(polyRing);
+      long j = rng.pick<uint64_t>() % CoCoA::NumIndets(polyRing);
       term *= CoCoA::indet(polyRing, j);
     }
     out += term;
@@ -111,19 +109,19 @@ TEST_F(TestTheoryFfSplitGb, RandSat)
     {
       allGens.push_back(
           randPolyWithRoot(polyRing, degree, n_terms, solution, rng));
-      size_t j = rng.rand() % n_bases;
+      size_t j = rng.pick<uint64_t>() % n_bases;
       gens[j].push_back(allGens.back());
     }
     std::vector<ff::Gb> bases;
     for (size_t i = 0; i < n_bases; ++i)
     {
-      bases.emplace_back(gens[i]);
+      bases.emplace_back(gens[i], nullptr);
     }
     ff::BitProp nullBitProp{};
-    bool isSat = ff::findZero(CoCoA::ideal(allGens)).size();
+    bool isSat = ff::findZero(CoCoA::ideal(allGens), *d_env).size();
     ff::SplitGb splitBases(bases);
     auto result =
-        ff::splitFindZero(std::move(splitBases), polyRing, nullBitProp);
+        ff::splitFindZero(std::move(splitBases), polyRing, nullBitProp, *d_env);
     ASSERT_EQ(result.has_value(), isSat);
     if (result.has_value())
     {
@@ -152,19 +150,19 @@ TEST_F(TestTheoryFfSplitGb, RandUnsat)
     for (size_t i = 0; i < n_eqns; ++i)
     {
       allGens.push_back(randPoly(polyRing, degree, n_terms, rng));
-      size_t j = rng.rand() % n_bases;
+      size_t j = rng.pick<uint64_t>() % n_bases;
       gens[j].push_back(allGens.back());
     }
     std::vector<ff::Gb> bases;
     for (size_t i = 0; i < n_bases; ++i)
     {
-      bases.emplace_back(gens[i]);
+      bases.emplace_back(gens[i], nullptr);
     }
     ff::BitProp nullBitProp{};
-    bool isSat = ff::findZero(CoCoA::ideal(allGens)).size();
+    bool isSat = ff::findZero(CoCoA::ideal(allGens), *d_env).size();
     ff::SplitGb splitBases(bases);
     auto result =
-        ff::splitFindZero(std::move(splitBases), polyRing, nullBitProp);
+        ff::splitFindZero(std::move(splitBases), polyRing, nullBitProp, *d_env);
     ASSERT_EQ(result.has_value(), isSat);
     if (result.has_value())
     {
@@ -182,7 +180,7 @@ TEST_F(TestTheoryFfSplitGb, GbEmpty)
   CoCoA::PolyRing polyRing = CoCoA::NewPolyRing(ring, syms);
 
   // empty vector
-  ff::Gb gb{std::vector<CoCoA::RingElem>()};
+  ff::Gb gb{std::vector<CoCoA::RingElem>(), nullptr};
   ASSERT_FALSE(gb.isWholeRing());
   ASSERT_FALSE(gb.zeroDimensional());
   ASSERT_EQ(gb.basis().size(), 0);
@@ -222,7 +220,7 @@ TEST_F(TestTheoryFfSplitGb, GbRand)
       gens.push_back(randPoly(polyRing, degree, n_terms, rng));
     }
     CoCoA::ideal i(gens);
-    ff::Gb gb(gens);
+    ff::Gb gb(gens, nullptr);
     ASSERT_EQ(gb.isWholeRing(), CoCoA::IsZero(i));
     ASSERT_EQ(gb.zeroDimensional(), CoCoA::IsZeroDim(i));
     ASSERT_EQ(gb.basis().size(), CoCoA::GBasis(i).size());
