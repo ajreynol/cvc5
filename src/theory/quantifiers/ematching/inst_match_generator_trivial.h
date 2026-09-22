@@ -49,6 +49,8 @@ class InstMatchGeneratorTrivial : public IMGenerator
   uint64_t addInstantiations(InstMatch& m) override;
   /** Get active score. */
   int getActiveScore() override;
+  /** Get the inference id for instantiations from this generator. */
+  InferenceId getInferenceId() override;
   /** Is trivial trigger? */
   static bool isTrivialTrigger(const Node& pat);
 

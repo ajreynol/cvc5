@@ -86,8 +86,7 @@ uint64_t InstMatchGeneratorTrivial::addInstantiations(InstMatch& m)
       Assert(d_varNum[i] < n.getNumChildren());
       d_tvec[d_varNum[i]] = n[i];
     }
-    if (sendInstantiation(d_tvec,
-                          InferenceId::QUANTIFIERS_INST_E_MATCHING_TRIVIAL))
+    if (sendInstantiation(d_tvec))
     {
       // now we can cache
       d_terms.insert(n);
@@ -104,6 +103,11 @@ int InstMatchGeneratorTrivial::getActiveScore()
   TermDb* tdb = d_treg.getTermDatabase();
   size_t ngt = tdb->getNumGroundTerms(d_op);
   return static_cast<int>(ngt);
+}
+
+InferenceId InstMatchGeneratorTrivial::getInferenceId()
+{
+  return InferenceId::QUANTIFIERS_INST_E_MATCHING_TRIVIAL;
 }
 
 bool InstMatchGeneratorTrivial::isTrivialTrigger(const Node& pat)
