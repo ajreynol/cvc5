@@ -31,6 +31,8 @@ class EagerProofGenerator;
 namespace theory {
 namespace datatypes {
 
+class TheoryDatatypes;
+
 /**
  * The datatypes inference manager, which uses the above class for
  * inferences.
@@ -40,7 +42,7 @@ class InferenceManager : public InferenceManagerBuffered
   friend class DatatypesInference;
 
  public:
-  InferenceManager(Env& env, Theory& t, TheoryState& state);
+  InferenceManager(Env& env, TheoryDatatypes& t, TheoryState& state);
   ~InferenceManager();
   /**
    * Add pending inference, which may be processed as either a fact or
@@ -141,6 +143,8 @@ class InferenceManager : public InferenceManagerBuffered
    * context.
    */
   bool isPendingIdValid(uint64_t id) const;
+  /** The theory of datatypes, which owns this inference manager */
+  TheoryDatatypes& d_dt;
   /** The false node */
   Node d_false;
   /** The next pending inference id. */
