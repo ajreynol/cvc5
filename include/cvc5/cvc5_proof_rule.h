@@ -134,15 +134,22 @@ enum ENUM(ProofRule)
    *
    * .. math::
    *
-   *   \inferrule{F_1 \dots F_n \mid t, ids?}{t = t \circ \sigma_{ids}(F_n)
-   *   \circ \cdots \circ \sigma_{ids}(F_1)}
+   *   \inferrule{F_1 \dots F_n \mid t, ids?, ida?}{t =
+   *   \texttt{apply}_{ida}(t, \sigma_{ids}(F_1), \dots, \sigma_{ids}(F_n))}
    *
-   * where :math:`\sigma_{ids}(F_i)` are substitutions, which notice are applied
-   * in reverse order. Notice that :math:`ids` is a MethodId identifier, which
-   * determines how to convert the formulas :math:`F_1 \dots F_n` into
-   * substitutions. It is an optional argument, where by default the premises
-   * are equalities of the form `(= x y)` and converted into substitutions
-   * :math:`x\mapsto y`.
+   * where :math:`\sigma_{ids}(F_i)` are substitutions. The optional MethodId
+   * identifier :math:`ids` determines how to convert the formulas
+   * :math:`F_1 \dots F_n` into substitutions. It defaults to ``SB_DEFAULT``,
+   * where the premises are equalities of the form `(= x y)` and converted into
+   * substitutions :math:`x\mapsto y`.
+   *
+   * The optional MethodId identifier :math:`ida` determines how
+   * :math:`\texttt{apply}_{ida}` applies these substitutions to :math:`t`.
+   * It defaults to ``SBA_SEQUENTIAL``, which applies them in reverse order,
+   * yielding :math:`t \circ \sigma_{ids}(F_n) \circ \cdots \circ \sigma_{ids}(F_1)`.
+   * Alternatively, ``SBA_SIMUL`` applies the substitutions simultaneously, and
+   * ``SBA_FIXPOINT`` applies them to a fixpoint. For ``SBA_FIXPOINT``, the
+   * substitutions must form a terminating rewrite system.
    * \endverbatim
    */
   EVALUE(SUBS),
@@ -2174,7 +2181,61 @@ enum ENUM(ProofRule)
    * \endverbatim
    */
   EVALUE(ARITH_MULT_TANGENT),
-
+  /**
+   * \verbatim embed:rst:leading-asterisk
+   * **Arithmetic -- Pow2 -- Initial refinement**
+   *
+   * .. math::
+   *
+   *   \inferrule{- \mid t}{
+   *     ((t \geq 0) \rightarrow (\texttt{pow2}(t) > 0))
+   *     \land ((t \neq 0) \rightarrow (\texttt{pow2}(t) \bmod 2 = 0))
+   *     \land (t < 0) \rightarrow (\texttt{pow2}(t) = 0)}
+   *
+   * where :math:`t` is an integer term.
+   * \endverbatim
+   */
+  EVALUE(ARITH_POW2_INIT),
+  /**
+   * \verbatim embed:rst:leading-asterisk
+   * **Arithmetic -- Pow2 -- Monotonicity refinement**
+   *
+   * .. math::
+   *
+   *   \inferrule{- \mid x, y}{
+   *     (0 \leq x \land x < y) \rightarrow
+   *     (\texttt{pow2}(x) < \texttt{pow2}(y))}
+   *
+   * where :math:`x,y` are integer terms.
+   * \endverbatim
+   */
+  EVALUE(ARITH_POW2_MONOTONE),
+  /**
+   * \verbatim embed:rst:leading-asterisk
+   * **Arithmetic -- Pow2 -- Division refinement**
+   *
+   * .. math::
+   *
+   *   \inferrule{- \mid t}{(t \geq 0) \rightarrow ((t \mathbin{\texttt{div}} \texttt{pow2}(t)) = 0)}
+   *
+   * where :math:`t` is an integer term. This is sound because for non-negative
+   * :math:`t` we have :math:`t < \texttt{pow2}(t)`.
+   * \endverbatim
+   */
+  EVALUE(ARITH_POW2_DIV0),
+  /**
+   * \verbatim embed:rst:leading-asterisk
+   * **Arithmetic -- Pow2 -- Lower bound refinement**
+   *
+   * .. math::
+   *
+   *   \inferrule{- \mid t, k}{(t \geq k \land k \geq 7) \rightarrow
+   *     (\texttt{pow2}(t) > k \cdot t + k \cdot k)}
+   *
+   * where :math:`t` is an integer term and :math:`k` is an integer constant.
+   * \endverbatim
+   */
+  EVALUE(ARITH_POW2_LOWER_BOUND),
   /**
    * \verbatim embed:rst:leading-asterisk
    * **Arithmetic -- Transcendentals -- Assert bounds on Pi**
@@ -4883,10 +4944,10 @@ enum ENUM(ProofRewriteRule)
   EVALUE(RE_CONCAT_STAR_SWAP),
   /** Auto-generated from RARE rule re-concat-star-repeat */
   EVALUE(RE_CONCAT_STAR_REPEAT),
-  /** Auto-generated from RARE rule re-concat-star-subsume1 */
-  EVALUE(RE_CONCAT_STAR_SUBSUME1),
-  /** Auto-generated from RARE rule re-concat-star-subsume2 */
-  EVALUE(RE_CONCAT_STAR_SUBSUME2),
+  /** Auto-generated from RARE rule re-concat-star-nullable1 */
+  EVALUE(RE_CONCAT_STAR_NULLABLE1),
+  /** Auto-generated from RARE rule re-concat-star-nullable2 */
+  EVALUE(RE_CONCAT_STAR_NULLABLE2),
   /** Auto-generated from RARE rule re-concat-merge */
   EVALUE(RE_CONCAT_MERGE),
   /** Auto-generated from RARE rule re-union-all */
@@ -4915,6 +4976,8 @@ enum ENUM(ProofRewriteRule)
   EVALUE(RE_STAR_UNION_DROP_EMP),
   /** Auto-generated from RARE rule re-loop-neg */
   EVALUE(RE_LOOP_NEG),
+  /** Auto-generated from RARE rule re-loop-star */
+  EVALUE(RE_LOOP_STAR),
   /** Auto-generated from RARE rule re-inter-cstring */
   EVALUE(RE_INTER_CSTRING),
   /** Auto-generated from RARE rule re-inter-cstring-neg */
