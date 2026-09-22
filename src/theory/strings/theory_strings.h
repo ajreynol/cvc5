@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Tianyi Liang, Andres Noetzli
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -24,15 +21,18 @@
 #include "context/cdhashset.h"
 #include "context/cdlist.h"
 #include "expr/node_trie.h"
+#include "proof/trust_proof_generator.h"
 #include "theory/care_pair_argument_callback.h"
 #include "theory/ext_theory.h"
 #include "theory/strings/array_solver.h"
 #include "theory/strings/base_solver.h"
+#include "theory/strings/code_point_solver.h"
 #include "theory/strings/core_solver.h"
 #include "theory/strings/eager_solver.h"
 #include "theory/strings/extf_solver.h"
 #include "theory/strings/infer_info.h"
 #include "theory/strings/inference_manager.h"
+#include "theory/strings/model_cons_default.h"
 #include "theory/strings/normal_form.h"
 #include "theory/strings/proof_checker.h"
 #include "theory/strings/regexp_elim.h"
@@ -60,7 +60,8 @@ namespace strings {
  * Its rewriter is described in:
  * - Reynolds et al, CAV 2019.
  */
-class TheoryStrings : public Theory {
+class TheoryStrings : public Theory
+{
   friend class InferenceManager;
   typedef context::CDHashSet<Node> NodeSet;
   typedef context::CDHashSet<TypeNode, std::hash<TypeNode>> TypeNodeSet;
@@ -112,39 +113,45 @@ class TheoryStrings : public Theory {
   void eqNotifyMerge(TNode t1, TNode t2);
   /** preprocess rewrite */
   TrustNode ppRewrite(TNode atom, std::vector<SkolemLemma>& lems) override;
+  TrustNode ppStaticRewrite(TNode atom) override;
   /** Collect model values in m based on the relevant terms given by termSet */
   bool collectModelValues(TheoryModel* m,
                           const std::set<Node>& termSet) override;
 
  private:
   /** NotifyClass for equality engine */
-  class NotifyClass : public eq::EqualityEngineNotify {
-  public:
-   NotifyClass(TheoryStrings& ts) : d_str(ts) {}
-   bool eqNotifyTriggerPredicate(TNode predicate, bool value) override
-   {
-     Trace("strings") << "NotifyClass::eqNotifyTriggerPredicate(" << predicate
-                      << ", " << (value ? "true" : "false") << ")" << std::endl;
-     if (value)
-     {
-       return d_str.propagateLit(predicate);
-     }
-     return d_str.propagateLit(predicate.notNode());
+  class NotifyClass : public eq::EqualityEngineNotify
+  {
+   public:
+    NotifyClass(TheoryStrings& ts) : d_str(ts) {}
+    bool eqNotifyTriggerPredicate(TNode predicate, bool value) override
+    {
+      Trace("strings") << "NotifyClass::eqNotifyTriggerPredicate(" << predicate
+                       << ", " << (value ? "true" : "false") << ")"
+                       << std::endl;
+      if (value)
+      {
+        return d_str.propagateLit(predicate);
+      }
+      return d_str.propagateLit(predicate.notNode());
     }
     bool eqNotifyTriggerTermEquality(TheoryId tag,
                                      TNode t1,
                                      TNode t2,
                                      bool value) override
     {
-      Trace("strings") << "NotifyClass::eqNotifyTriggerTermMerge(" << tag << ", " << t1 << ", " << t2 << ")" << std::endl;
-      if (value) {
+      Trace("strings") << "NotifyClass::eqNotifyTriggerTermMerge(" << tag
+                       << ", " << t1 << ", " << t2 << ")" << std::endl;
+      if (value)
+      {
         return d_str.propagateLit(t1.eqNode(t2));
       }
       return d_str.propagateLit(t1.eqNode(t2).notNode());
     }
     void eqNotifyConstantTermMerge(TNode t1, TNode t2) override
     {
-      Trace("strings") << "NotifyClass::eqNotifyConstantTermMerge(" << t1 << ", " << t2 << ")" << std::endl;
+      Trace("strings") << "NotifyClass::eqNotifyConstantTermMerge(" << t1
+                       << ", " << t2 << ")" << std::endl;
       d_str.conflict(t1, t2);
     }
     void eqNotifyNewClass(TNode t) override
@@ -158,16 +165,20 @@ class TheoryStrings : public Theory {
                        << std::endl;
       d_str.eqNotifyMerge(t1, t2);
     }
-    void eqNotifyDisequal(TNode t1, TNode t2, TNode reason) override
+    void eqNotifyDisequal(CVC5_UNUSED TNode t1,
+                          CVC5_UNUSED TNode t2,
+                          CVC5_UNUSED TNode reason) override
     {
     }
 
    private:
     /** The theory of strings object to notify */
     TheoryStrings& d_str;
-  };/* class TheoryStrings::NotifyClass */
+  }; /* class TheoryStrings::NotifyClass */
   /** compute care graph */
   void computeCareGraph() override;
+  /** notify shared term */
+  void notifySharedTerm(TNode n) override;
   /** Collect model info for type tn
    *
    * Assigns model values (in m) to all relevant terms of the string-like type
@@ -194,30 +205,6 @@ class TheoryStrings : public Theory {
    * of atom, including calls to registerTerm.
    */
   void assertPendingFact(Node atom, bool polarity, Node exp);
-  //-----------------------inference steps
-  /** check register terms pre-normal forms
-   *
-   * This calls registerTerm(n,2) on all non-congruent strings in the
-   * equality engine of this class.
-   */
-  void checkRegisterTermsPreNormalForm();
-  /** check codes
-   *
-   * This inference schema ensures that constraints between str.code terms
-   * are satisfied by models that correspond to extensions of the current
-   * assignment. In particular, this method ensures that str.code can be
-   * given an interpretation that is injective for string arguments with length
-   * one. It may add lemmas of the form:
-   *   str.code(x) == -1 V str.code(x) != str.code(y) V x == y
-   */
-  void checkCodes();
-  /** check register terms for normal forms
-   *
-   * This calls registerTerm(str.++(t1, ..., tn ), 3) on the normal forms
-   * (t1, ..., tn) of all string equivalence classes { s1, ..., sm } such that
-   * there does not exist a term of the form str.len(si) in the current context.
-   */
-  void checkRegisterTermsNormalForms();
   /**
    * Turn a sequence constant into a skeleton specifying how to construct
    * its value.
@@ -246,7 +233,7 @@ class TheoryStrings : public Theory {
   Node mkSkeletonFromBase(Node r, size_t currIndex, size_t nextIndex);
   //-----------------------end inference steps
   /** run the given inference step */
-  void runInferStep(InferStep s, int effort);
+  void runInferStep(InferStep s, Theory::Effort e, int effort);
   /** run strategy for effort e */
   void runStrategy(Theory::Effort e);
   /** print strings equivalence classes for debugging */
@@ -268,6 +255,10 @@ class TheoryStrings : public Theory {
   SolverState d_state;
   /** The term registry for this theory */
   TermRegistry d_termReg;
+  /** An arithmetic entailment utility */
+  ArithEntail d_arithEntail;
+  /** A string entailment utility */
+  StringsEntail d_strEntail;
   /** The theory rewriter for this theory. */
   StringsRewriter d_rewriter;
   /** The eager solver */
@@ -295,6 +286,8 @@ class TheoryStrings : public Theory {
    * involving extended string functions.
    */
   ExtfSolver d_esolver;
+  /** Code point solver */
+  CodePointSolver d_psolver;
   /**
    * The array solver, which implements specialized approaches for
    * seq.nth/seq.update.
@@ -306,6 +299,8 @@ class TheoryStrings : public Theory {
   RegExpElimination d_regexp_elim;
   /** Strings finite model finding decision strategy */
   StringsFmf d_stringsFmf;
+  /** Model constructor (default) */
+  ModelConsDefault d_mcd;
   /** The representation of the strategy */
   Strategy d_strat;
   /**
@@ -321,7 +316,9 @@ class TheoryStrings : public Theory {
   size_t d_strGapModelCounter;
   /** The care pair argument callback, used for theory combination */
   CarePairArgumentCallback d_cpacb;
-};/* class TheoryStrings */
+  /** For proof of ppStaticRewrite */
+  std::shared_ptr<TrustProofGenerator> d_psrewPg;
+}; /* class TheoryStrings */
 
 }  // namespace strings
 }  // namespace theory

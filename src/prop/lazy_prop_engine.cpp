@@ -27,8 +27,9 @@ LazyPropEngine::LazyPropEngine(Env& env, TheoryEngine* te, PropEngine* pe)
 {
 }
 
-Result LazyPropEngine::checkSat(const std::vector<Node>& assertions,
-                                std::unordered_map<size_t, Node>& skolemMap)
+Result LazyPropEngine::checkSat(
+    const context::CDList<Node>& assertions,
+    const context::CDHashMap<size_t, Node>& skolemMap)
 {
   Trace("lazy-prop") << "lazy check-sat, #assertions=" << assertions.size()
                      << std::endl;
@@ -42,7 +43,7 @@ Result LazyPropEngine::checkSat(const std::vector<Node>& assertions,
   size_t asize = assertions.size();
   Result r;
   std::unordered_set<size_t> assertionsAdded;
-  std::unordered_map<size_t, Node>::iterator itk;
+  context::CDHashMap<size_t, Node>::const_iterator itk;
   while (true)
   {
     // check sat with the current assertions

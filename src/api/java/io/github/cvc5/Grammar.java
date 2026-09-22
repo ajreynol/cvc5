@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Mudathir Mohamed, Aina Niemetz, Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -25,26 +22,65 @@ package io.github.cvc5;
 public class Grammar extends AbstractPointer
 {
   // region construction and destruction
-  Grammar(Solver solver, long pointer)
+  Grammar(long pointer)
   {
-    super(solver, pointer);
+    super(pointer);
   }
 
+  /**
+   * Constructs a new {@code Grammar} instance by creating a deep copy of
+   * the specified {@code Grammar}.
+   *
+   * @param grammar The {@code Grammar} instance to copy.
+   */
   public Grammar(Grammar grammar)
   {
-    super(grammar.solver, copyGrammar(grammar.pointer));
+    super(copyGrammar(grammar.pointer));
   }
 
   private static native long copyGrammar(long pointer);
 
   protected native void deletePointer(long pointer);
 
-  public long getPointer()
+  // endregion
+
+  /**
+   * Determine if this is the null grammar.
+   * @return True if this Grammar is the null grammar.
+   */
+  public boolean isNull()
   {
-    return pointer;
+    return isNull(pointer);
   }
 
-  // endregion
+  private native boolean isNull(long pointer);
+
+  /**
+   * Referential equality operator.
+   *
+   * @param g The grammar to compare to for equality.
+   * @return True if the gramamrs point to the same internal grammar object.
+   */
+  @Override
+  public boolean equals(Object g)
+  {
+    if (this == g)
+    {
+      return true;
+    }
+    if (g == null || getClass() != g.getClass())
+    {
+      return false;
+    }
+    Grammar grammar = (Grammar) g;
+    if (pointer == grammar.pointer)
+    {
+      return true;
+    }
+    return equals(pointer, grammar.getPointer());
+  }
+
+  private native boolean equals(long pointer1, long pointer2);
 
   /**
    * Add {@code rule} to the set of rules corresponding to {@code ntSymbol}.
@@ -69,7 +105,7 @@ public class Grammar extends AbstractPointer
     addRules(pointer, ntSymbol.getPointer(), pointers);
   }
 
-  public native void addRules(long pointer, long ntSymbolPointer, long[] rulePointers);
+  private native void addRules(long pointer, long ntSymbolPointer, long[] rulePointers);
 
   /**
    * Allow {@code ntSymbol} to be an arbitrary constant.
@@ -99,4 +135,16 @@ public class Grammar extends AbstractPointer
    * @return A String representation of this grammar.
    */
   protected native String toString(long pointer);
+
+  /**
+   * Get the hash value of a grammar.
+   * @return The hash value.
+   */
+  @Override
+  public int hashCode()
+  {
+    return Long.hashCode(hashCode(pointer));
+  }
+
+  private native long hashCode(long pointer);
 }

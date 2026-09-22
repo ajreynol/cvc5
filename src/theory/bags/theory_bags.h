@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Mudathir Mohamed, Aina Niemetz, Haniel Barbosa
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -22,12 +19,12 @@
 #include "theory/bags/bag_solver.h"
 #include "theory/bags/bags_rewriter.h"
 #include "theory/bags/bags_statistics.h"
-#include "theory/bags/card_solver.h"
 #include "theory/bags/inference_generator.h"
 #include "theory/bags/inference_manager.h"
 #include "theory/bags/solver_state.h"
 #include "theory/bags/strategy.h"
 #include "theory/bags/term_registry.h"
+#include "theory/care_pair_argument_callback.h"
 #include "theory/theory.h"
 #include "theory/theory_eq_notify.h"
 
@@ -60,7 +57,8 @@ class TheoryBags : public Theory
   //--------------------------------- end initialization
 
   /**
-   * initialize bag and count terms
+   * initialize bag and count terms. This is the first step of the strategy,
+   * run at the beginning of each of its passes.
    */
   void initialize();
   /**
@@ -78,15 +76,14 @@ class TheoryBags : public Theory
   bool collectModelValues(TheoryModel* m,
                           const std::set<Node>& termSet) override;
   TrustNode explain(TNode) override;
-  Node getModelValue(TNode) override;
+  Node getCandidateModelValue(TNode) override;
   std::string identify() const override { return "THEORY_BAGS"; }
   void preRegisterTerm(TNode n) override;
-  void presolve() override;
 
-  /** run strategy for effort e */
-  void runStrategy(Theory::Effort e);
-  /** run the given inference step */
-  bool runInferStep(InferStep s, int effort);
+  void presolve() override;
+  void computeCareGraph() override;
+  void processCarePairArgs(TNode a, TNode b) override;
+  bool isCareArg(Node n, unsigned a);
 
  private:
   /** Functions to handle callbacks from equality engine */
@@ -127,8 +124,10 @@ class TheoryBags : public Theory
   /** the main solver for bags */
   BagSolver d_solver;
 
-  /** the main solver for bags */
-  CardSolver d_cardSolver;
+  /** The care pair argument callback, used for theory combination */
+  CarePairArgumentCallback d_cpacb;
+  /** map kinds to their terms. It is cleared during post check */
+  std::map<Kind, std::vector<Node>> d_opMap;
 
   /** The representation of the strategy */
   Strategy d_strat;

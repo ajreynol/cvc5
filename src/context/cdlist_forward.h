@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Tim King, Morgan Deters, Aina Niemetz
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -33,17 +30,15 @@
 
 #include <memory>
 
+#include "context/default_clean_up.h"
+
 /// \cond internals
 
 namespace cvc5::context {
 
-template <class T>
-class DefaultCleanUp {
-public:
- inline void operator()(T* t CVC5_UNUSED) const {}
-};
-
-template <class T, class CleanUp = DefaultCleanUp<T>, class Allocator = std::allocator<T> >
+template <class T,
+          class CleanUp = DefaultCleanUp<T>,
+          class Allocator = std::allocator<T> >
 class CDList;
 
 /// \endcond

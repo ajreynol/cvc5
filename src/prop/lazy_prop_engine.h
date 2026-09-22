@@ -18,6 +18,8 @@
 #ifndef CVC5__PROP__LAZY_PROP_ENGINE_H
 #define CVC5__PROP__LAZY_PROP_ENGINE_H
 
+#include "context/cdhashmap.h"
+#include "context/cdlist.h"
 #include "expr/node.h"
 #include "smt/env_obj.h"
 #include "util/result.h"
@@ -46,8 +48,8 @@ class LazyPropEngine : protected EnvObj
   /**
    * Check sat
    */
-  Result checkSat(const std::vector<Node>& assertions,
-                  std::unordered_map<size_t, Node>& skolemMap);
+  Result checkSat(const context::CDList<Node>& assertions,
+                  const context::CDHashMap<size_t, Node>& skolemMap);
 
  private:
   /** The theory engine we will be using */

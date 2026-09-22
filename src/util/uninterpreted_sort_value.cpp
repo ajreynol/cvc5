@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andres Noetzli, Andrew Reynolds, Morgan Deters
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -31,19 +28,23 @@ std::ostream& operator<<(std::ostream& out, const UninterpretedSortValue& val)
   return out << "@" << val.getType() << "_" << val.getIndex();
 }
 
+std::string UninterpretedSortValue::getSymbol() const
+{
+  std::ostringstream ss;
+  ss << *this;
+  return ss.str();
+}
+
 UninterpretedSortValue::UninterpretedSortValue(const TypeNode& type,
                                                const Integer& index)
     : d_type(new TypeNode(type)), d_index(index)
 {
-  PrettyCheckArgument(type.isUninterpretedSort(),
-                      type,
-                      "uninterpreted constants can only be created for "
-                      "uninterpreted sorts, not `%s'",
-                      type.toString().c_str());
-  PrettyCheckArgument(index >= 0,
-                      index,
-                      "index >= 0 required for abstract value, not `%s'",
-                      index.toString().c_str());
+  Assert(type.isUninterpretedSort())
+      << "uninterpreted constants can only be created for "
+         "uninterpreted sorts, not `"
+      << type.toString().c_str() << "'";
+  Assert(index >= 0) << "index >= 0 required for abstract value, not `"
+                     << index.toString().c_str() << "'";
 }
 
 UninterpretedSortValue::UninterpretedSortValue(

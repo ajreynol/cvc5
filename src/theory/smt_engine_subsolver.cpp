@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Aina Niemetz, Andres Noetzli
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -18,7 +15,6 @@
 
 #include "proof/unsat_core.h"
 #include "smt/env.h"
-#include "smt/solver_engine.h"
 
 namespace cvc5::internal {
 namespace theory {
@@ -67,12 +63,13 @@ Result quickCheck(Node& query)
   return Result(Result::UNKNOWN, UnknownExplanation::REQUIRES_FULL_CHECK);
 }
 
-void initializeSubsolver(std::unique_ptr<SolverEngine>& smte,
+void initializeSubsolver(NodeManager* nm,
+                         std::unique_ptr<SolverEngine>& smte,
                          const SubsolverSetupInfo& info,
                          bool needsTimeout,
                          unsigned long timeout)
 {
-  smte.reset(new SolverEngine(&info.d_opts));
+  smte.reset(new SolverEngine(nm, &info.d_opts));
   smte->setIsInternalSubsolver();
   smte->setLogic(info.d_logicInfo);
   // set the options
@@ -92,7 +89,7 @@ void initializeSubsolver(std::unique_ptr<SolverEngine>& smte,
                          unsigned long timeout)
 {
   SubsolverSetupInfo ssi(env);
-  initializeSubsolver(smte, ssi, needsTimeout, timeout);
+  initializeSubsolver(env.getNodeManager(), smte, ssi, needsTimeout, timeout);
 }
 
 Result checkWithSubsolver(std::unique_ptr<SolverEngine>& smte,
@@ -107,7 +104,8 @@ Result checkWithSubsolver(std::unique_ptr<SolverEngine>& smte,
   {
     return r;
   }
-  initializeSubsolver(smte, info, needsTimeout, timeout);
+  initializeSubsolver(
+      query.getNodeManager(), smte, info, needsTimeout, timeout);
   smte->assertFormula(query);
   return smte->checkSat();
 }
@@ -140,16 +138,16 @@ Result checkWithSubsolver(Node query,
     if (r.getStatus() == Result::SAT)
     {
       // default model
-      NodeManager* nm = NodeManager::currentNM();
       for (const Node& v : vars)
       {
-        modelVals.push_back(nm->mkGroundTerm(v.getType()));
+        modelVals.push_back(NodeManager::mkGroundTerm(v.getType()));
       }
     }
     return r;
   }
   std::unique_ptr<SolverEngine> smte;
-  initializeSubsolver(smte, info, needsTimeout, timeout);
+  initializeSubsolver(
+      query.getNodeManager(), smte, info, needsTimeout, timeout);
   smte->assertFormula(query);
   r = smte->checkSat();
   if (r.getStatus() == Result::SAT || r.getStatus() == Result::UNKNOWN)
@@ -161,6 +159,31 @@ Result checkWithSubsolver(Node query,
     }
   }
   return r;
+}
+
+void assertToSubsolver(SolverEngine& subsolver,
+                       const std::vector<Node>& core,
+                       const std::unordered_set<Node>& defs,
+                       const std::unordered_set<Node>& removed)
+{
+  for (const Node& f : core)
+  {
+    // check if it is excluded
+    if (removed.find(f) != removed.end())
+    {
+      continue;
+    }
+    // check if it is an ordinary function definition
+    if (defs.find(f) != defs.end())
+    {
+      if (f.getKind() == Kind::EQUAL && f[0].isVar())
+      {
+        subsolver.defineFunction(f[0], f[1]);
+        continue;
+      }
+    }
+    subsolver.assertFormula(f);
+  }
 }
 
 void getModelFromSubsolver(SolverEngine& smt,

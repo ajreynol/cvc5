@@ -36,13 +36,13 @@ AndElim::AndElim(PreprocessingPassContext* preprocContext)
 PreprocessingPassResult AndElim::applyInternal(
     AssertionPipeline* assertionsToPreprocess)
 {
-  NodeManager * nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   size_t size = assertionsToPreprocess->size();
   size_t i = 0;
   while (i < size)
   {
     Node a = (*assertionsToPreprocess)[i];
-    if (a.getKind()==kind::AND)
+    if (a.getKind() == Kind::AND)
     {
       if (isProofEnabled())
       {
@@ -51,7 +51,7 @@ PreprocessingPassResult AndElim::applyInternal(
         for (size_t j=0, achild = a.getNumChildren(); j<achild; j++)
         {
           Node nj = nm->mkConstInt(Rational(j));
-          d_lcp->addStep(a[j], PfRule::AND_ELIM, {a}, {nj});
+          d_lcp->addStep(a[j], ProofRule::AND_ELIM, {a}, {nj});
         }
       }
       assertionsToPreprocess->replace(i, a[0], d_lcp.get());

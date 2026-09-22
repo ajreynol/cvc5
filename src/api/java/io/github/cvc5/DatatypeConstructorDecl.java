@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Mudathir Mohamed, Andrew Reynolds, Aina Niemetz
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -22,19 +19,41 @@ package io.github.cvc5;
 public class DatatypeConstructorDecl extends AbstractPointer
 {
   // region construction and destruction
-  DatatypeConstructorDecl(Solver solver, long pointer)
+  DatatypeConstructorDecl(long pointer)
   {
-    super(solver, pointer);
+    super(pointer);
   }
 
   protected native void deletePointer(long pointer);
 
-  public long getPointer()
+  // endregion
+
+  /**
+   * Syntactic equality operator.
+   *
+   * @param d The datatype constructor declaration to compare to for equality.
+   * @return True if the datatype constructor declarations are equal.
+   */
+  @Override
+  public boolean equals(Object d)
   {
-    return pointer;
+    if (this == d)
+    {
+      return true;
+    }
+    if (d == null || getClass() != d.getClass())
+    {
+      return false;
+    }
+    DatatypeConstructorDecl decl = (DatatypeConstructorDecl) d;
+    if (this.pointer == decl.pointer)
+    {
+      return true;
+    }
+    return equals(pointer, decl.getPointer());
   }
 
-  // endregion
+  private native boolean equals(long pointer1, long pointer2);
 
   /**
    * Add datatype selector declaration.
@@ -76,6 +95,8 @@ public class DatatypeConstructorDecl extends AbstractPointer
   private native void addSelectorUnresolved(long pointer, String name, String unresDataypeName);
 
   /**
+   * Determine if this DatatypeConstructorDecl is a null declaration.
+   *
    * @return True If this DatatypeConstructorDecl is a null declaration.
    */
   public boolean isNull()
@@ -89,4 +110,16 @@ public class DatatypeConstructorDecl extends AbstractPointer
    * @return A String representation of this datatype constructor declaration
    */
   protected native String toString(long pointer);
+
+  /**
+   * Get the hash value of a datatype constructor declaration.
+   * @return The hash value.
+   */
+  @Override
+  public int hashCode()
+  {
+    return Long.hashCode(hashCode(pointer));
+  }
+
+  private native long hashCode(long pointer);
 }

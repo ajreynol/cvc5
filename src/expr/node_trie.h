@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Aina Niemetz
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -19,6 +16,7 @@
 #define CVC5__EXPR__NODE_TRIE_H
 
 #include <map>
+
 #include "expr/node.h"
 
 namespace cvc5::internal {
@@ -49,8 +47,8 @@ namespace cvc5::internal {
  *   t.d_data[b] :
  *     t.d_data[b].d_data[b] :
  *       t.d_data[b].d_data[b].d_data[f(b,b)] : (leaf)
- *     t.d_data[b].d_data[d] :
- *       t.d_data[b].d_data[d].d_data[f(b,d)] : (leaf)
+ *     t.d_data[b].d_data[a] :
+ *       t.d_data[b].d_data[a].d_data[f(b,d)] : (leaf)
  *
  * Leaf nodes store the terms that are indexed by the arguments, for example
  * term f(d,c) is indexed by the representative arguments (a,c), and is stored

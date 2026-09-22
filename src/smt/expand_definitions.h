@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Aina Niemetz, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -21,21 +18,23 @@
 #include <unordered_map>
 
 #include "expr/node.h"
-#include "proof/trust_node.h"
 #include "smt/env_obj.h"
 
 namespace cvc5::internal {
-
-class ProofNodeManager;
-class TConvProofGenerator;
-
 namespace smt {
 
 /**
- * Module in charge of expanding definitions for an SMT engine.
+ * Implements expand definitions, which returns the expanded form of a term.
  *
- * Its main features is expandDefinitions(TNode, ...), which returns the
- * expanded formula of a term.
+ * This method is similar in nature to PropEngine::preprocess in that it
+ * converts a (possibly user-provided) term into the form that we pass
+ * internally. However, this method can be seen as a lightweight version
+ * of that method which only does enough conversions to make, e.g., get-value
+ * accurate on the resulting term. Moreover, this method does not impact
+ * the state of lemmas known to the PropEngine.
+ *
+ * This utility is not proof producing, since it should only be used for
+ * getting model values.
  */
 class ExpandDefs : protected EnvObj
 {
@@ -43,7 +42,21 @@ class ExpandDefs : protected EnvObj
   ExpandDefs(Env& env);
   ~ExpandDefs();
   /**
-   * Expand definitions in term n. Return the expanded form of n.
+   * Expand definitions in term n, using the cache owned by this class.
+   *
+   * Note that the expanded form of a term is a function of the term itself and
+   * the theory rewriters of this environment only. In particular, it does not
+   * depend on the current assertions, the top-level substitutions, or the
+   * user context. It is thus safe to maintain this cache for the lifetime of
+   * this object, e.g. across (incremental) calls to check-sat and across
+   * user-context push/pop.
+   *
+   * @param n The node to expand
+   * @return The expanded term.
+   */
+  Node expandDefinitions(TNode n);
+  /**
+   * Same as above, where the caller provides the cache of previous results.
    *
    * @param n The node to expand
    * @param cache Cache of previous results
@@ -51,19 +64,9 @@ class ExpandDefs : protected EnvObj
    */
   Node expandDefinitions(TNode n, std::unordered_map<Node, Node>& cache);
 
-  /** Enable proofs using the proof node manager of the env. */
-  void enableProofs();
-
  private:
-  /**
-   * Helper function for above, called to specify if we want proof production
-   * based on the optional argument tpg.
-   */
-  TrustNode expandDefinitions(TNode n,
-                              std::unordered_map<Node, Node>& cache,
-                              TConvProofGenerator* tpg);
-  /** A proof generator for the term conversion. */
-  std::unique_ptr<TConvProofGenerator> d_tpg;
+  /** The cache used by the method above that takes no cache argument */
+  std::unordered_map<Node, Node> d_cache;
 };
 
 }  // namespace smt

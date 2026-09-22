@@ -1,18 +1,13 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Morgan Deters, Tim King
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
  * ****************************************************************************
  *
- * This is the interface to TheoryUF implementations
- *
- * All implementations of TheoryUF should inherit from this class.
+ * The theory of uninterpreted functions (UF)
  */
 
 #include "cvc5_private.h"
@@ -25,6 +20,8 @@
 #include "theory/theory.h"
 #include "theory/theory_eq_notify.h"
 #include "theory/theory_state.h"
+#include "theory/uf/diamonds_proof_generator.h"
+#include "theory/uf/distinct_extension.h"
 #include "theory/uf/proof_checker.h"
 #include "theory/uf/symmetry_breaker.h"
 #include "theory/uf/theory_uf_rewriter.h"
@@ -35,9 +32,11 @@ namespace uf {
 
 class CardinalityExtension;
 class HoExtension;
+class ConversionsSolver;
 class LambdaLift;
 
-class TheoryUF : public Theory {
+class TheoryUF : public Theory
+{
  public:
   class NotifyClass : public TheoryEqNotifyClass
   {
@@ -63,22 +62,27 @@ class TheoryUF : public Theory {
 
     void eqNotifyDisequal(TNode t1, TNode t2, TNode reason) override
     {
-      Trace("uf-notify") << "NotifyClass::eqNotifyDisequal(" << t1 << ", " << t2 << ", " << reason << ")" << std::endl;
+      Trace("uf-notify") << "NotifyClass::eqNotifyDisequal(" << t1 << ", " << t2
+                         << ", " << reason << ")" << std::endl;
       d_uf.eqNotifyDisequal(t1, t2, reason);
     }
 
    private:
     /** Reference to the parent theory */
     TheoryUF& d_uf;
-  };/* class TheoryUF::NotifyClass */
+  }; /* class TheoryUF::NotifyClass */
 
-private:
+ private:
   /** The associated cardinality extension (or nullptr if it does not exist) */
   std::unique_ptr<CardinalityExtension> d_thss;
   /** the lambda lifting utility */
   std::unique_ptr<LambdaLift> d_lambdaLift;
   /** the higher-order solver extension (or nullptr if it does not exist) */
   std::unique_ptr<HoExtension> d_ho;
+  /** the conversions solver */
+  std::unique_ptr<ConversionsSolver> d_csolver;
+  /** Diamonds proof generator */
+  DiamondsProofGenerator d_dpfgen;
 
   /** node for true */
   Node d_true;
@@ -99,7 +103,6 @@ private:
   void eqNotifyDisequal(TNode t1, TNode t2, TNode reason);
 
  public:
-
   /** Constructs a new instance of TheoryUF w.r.t. the provided context.*/
   TheoryUF(Env& env,
            OutputChannel& out,
@@ -140,7 +143,7 @@ private:
   void preRegisterTerm(TNode term) override;
   TrustNode explain(TNode n) override;
 
-  void ppStaticLearn(TNode in, NodeBuilder& learned) override;
+  void ppStaticLearn(TNode in, std::vector<TrustNode>& learned) override;
   void presolve() override;
 
   void computeCareGraph() override;
@@ -148,7 +151,10 @@ private:
   EqualityStatus getEqualityStatus(TNode a, TNode b) override;
 
   std::string identify() const override { return "THEORY_UF"; }
+
  private:
+  /** Called when preregistering terms of kind APPLY_UF or HO_APPLY */
+  void preRegisterFunctionTerm(TNode node);
   /** Explain why this literal is true by building an explanation */
   void explain(TNode literal, Node& exp);
 
@@ -160,6 +166,10 @@ private:
    * considered.
    */
   void processCarePairArgs(TNode a, TNode b) override;
+  /**
+   * Compute relevant terms. Used in higher-order.
+   */
+  void computeRelevantTerms(std::set<Node>& termSet) override;
   /**
    * Is t a higher order type? A higher-order type is a function type having
    * an argument type that is also a function type. This is used for checking
@@ -173,13 +183,15 @@ private:
   TheoryState d_state;
   /** A (default) inference manager */
   TheoryInferenceManager d_im;
+  /** the distinct extension */
+  DistinctExtension d_distinct;
   /** The notify class */
   NotifyClass d_notify;
   /** Cache for isHigherOrderType */
   std::map<TypeNode, bool> d_isHoType;
   /** The care pair argument callback, used for theory combination */
   CarePairArgumentCallback d_cpacb;
-};/* class TheoryUF */
+}; /* class TheoryUF */
 
 }  // namespace uf
 }  // namespace theory

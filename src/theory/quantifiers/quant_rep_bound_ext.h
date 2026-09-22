@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Mathias Preiner, Aina Niemetz
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -21,6 +18,7 @@
 #include <map>
 
 #include "expr/node.h"
+#include "theory/quantifiers/inst_match.h"
 #include "theory/rep_set_iterator.h"
 #include "theory/theory_model.h"
 
@@ -40,7 +38,11 @@ class FirstOrderModel;
 class QRepBoundExt : public RepBoundExt
 {
  public:
-  QRepBoundExt(QuantifiersBoundInference& qbi, FirstOrderModel* m);
+  QRepBoundExt(Env& env,
+               QuantifiersBoundInference& qbi,
+               QuantifiersState& qs,
+               TermRegistry& tr,
+               TNode q);
   virtual ~QRepBoundExt() {}
   /** set bound */
   RsiEnumType setBound(Node owner,
@@ -64,6 +66,8 @@ class QRepBoundExt : public RepBoundExt
   FirstOrderModel* d_model;
   /** indices that are bound integer enumeration */
   std::map<size_t, bool> d_bound_int;
+  /** An instantiation match */
+  InstMatch d_instMatch;
 };
 
 }  // namespace quantifiers

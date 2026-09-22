@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Haniel Barbosa, Andrew Reynolds, Gereon Kremer
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -34,10 +31,23 @@ class ProofStep;
  */
 class BufferedProofGenerator : protected EnvObj, public ProofGenerator
 {
-  typedef context::CDHashMap<Node, std::shared_ptr<ProofStep>> NodeProofStepMap;
-
  public:
-  BufferedProofGenerator(Env& env, context::Context* c);
+  /** Constructor
+   *
+   * @param env Reference to the environment
+   * @param c Pointer to a context to make this object dependent on
+   * @param mkUniqueAssume Whether to restrict the proof nodes generated when
+   * proofs are requested so that the same ASSUMPTION step is used for repeated
+   * premises. Note that this can only be done safely if the user of this
+   * buffered proof generator does not use SCOPE steps, which would have the
+   * danger of mixing the scopes of assumptions.
+   * @param autoSymm Whether the proof requestes are robust to (dis)equality
+   * symmetry.
+   */
+  BufferedProofGenerator(Env& env,
+                         context::Context* c,
+                         bool mkUniqueAssume = false,
+                         bool autoSymm = true);
   ~BufferedProofGenerator() {}
   /** add step
    * Unless the overwrite policy is ALWAYS it does not replace previously
@@ -53,9 +63,19 @@ class BufferedProofGenerator : protected EnvObj, public ProofGenerator
   /** identify */
   std::string identify() const override { return "BufferedProofGenerator"; }
 
- private:
+ protected:
+  using NodeProofStepMap = context::CDHashMap<Node, std::shared_ptr<ProofStep>>;
+  using NodeProofNodeMap = context::CDHashMap<Node, std::shared_ptr<ProofNode>>;
+
   /** maps expected to ProofStep */
   NodeProofStepMap d_facts;
+  /** whether we are forcing unique assumptions */
+  bool d_mkUniqueAssume;
+  /** whether we automatically add symmetry steps */
+  bool d_autoSymm;
+  /** Cache of ASSUMPTION proof nodes for nodes used as assumptions in proof
+   * steps. Used only if d_mkUniqueAssume is true. */
+  NodeProofNodeMap d_assumptionsToPfNodes;
 };
 
 }  // namespace cvc5::internal

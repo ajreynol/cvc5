@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Aina Niemetz, Morgan Deters
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -20,6 +17,8 @@
 
 #include <vector>
 
+#include "context/cdhashmap.h"
+#include "context/cdlist.h"
 #include "expr/node.h"
 #include "smt/assertions.h"
 #include "smt/env_obj.h"
@@ -46,7 +45,6 @@ class QuantifiersEngine;
 
 namespace smt {
 
-class SolverEngineState;
 struct SolverEngineStatistics;
 
 /**
@@ -65,10 +63,10 @@ struct SolverEngineStatistics;
  */
 class SmtSolver : protected EnvObj
 {
+  using NodeList = context::CDList<Node>;
+
  public:
-  SmtSolver(Env& env,
-            AbstractValues& abs,
-            SolverEngineStatistics& stats);
+  SmtSolver(Env& env, SolverEngineStatistics& stats);
   ~SmtSolver();
   /**
    * Create theory engine, prop engine based on the environment.
@@ -83,43 +81,24 @@ class SmtSolver : protected EnvObj
    */
   void interrupt();
   /**
-   * Check satisfiability (used to check satisfiability and entailment)
-   * in SolverEngine. This is done via adding assumptions (when necessary) to
-   * assertions as, preprocessing and pushing assertions into the prop engine
-   * of this class, and checking for satisfiability via the prop engine.
-   *
-   * @param as The object managing the assertions in SolverEngine. This class
-   * maintains a current set of (unprocessed) assertions which are pushed
-   * into the internal members of this class (TheoryEngine and PropEngine)
-   * during this call.
-   * @param assumptions The assumptions for this check-sat call, which are
-   * temporary assertions.
+   * Get the list of preprocessed assertions. Only valid if
+   * trackPreprocessedAssertions is true.
    */
-  Result checkSatisfiability(Assertions& as,
-                             const std::vector<Node>& assumptions);
+  const context::CDList<Node>& getPreprocessedAssertions() const;
   /**
-   * Process the assertions that have been asserted in as. This moves the set of
-   * assertions that have been buffered into as, preprocesses them, pushes them
-   * into the SMT solver, and clears the buffer.
+   * Get the skolem map corresponding to the preprocessed assertions. Only valid
+   * if trackPreprocessedAssertions is true.
    */
-  void processAssertions(Assertions& as);
+  const context::CDHashMap<size_t, Node>& getPreprocessedSkolemMap() const;
+  /** Performs a push on the underlying prop engine. */
+  void pushPropContext();
+  /** Performs a pop on the underlying prop engine. */
+  void popPropContext();
   /**
-   * Get the list of preprocessed assertions
+   * Reset the prop engine trail and call the postsolve method of the
+   * underlying TheoryEngine.
    */
-  const std::vector<Node>& getPreprocessedAssertions() const;
-  /**
-   * Perform a deep restart.
-   *
-   * This constructs a fresh copy of the theory engine and prop engine, and
-   * populates the given assertions for the next call to checkSatisfiability.
-   * In particular, we add the preprocessed assertions from the previous
-   * call to checkSatisfiability, as well as those in zll.
-   *
-   * @param as The assertions to populate
-   * @param zll The zero-level literals we learned on the previous call to
-   * checkSatisfiability.
-   */
-  void deepRestart(Assertions& as, const std::vector<Node>& zll);
+  void resetTrail();
   //------------------------------------------ access methods
   /** Get a pointer to the TheoryEngine owned by this solver. */
   TheoryEngine* getTheoryEngine();
@@ -129,15 +108,38 @@ class SmtSolver : protected EnvObj
   theory::QuantifiersEngine* getQuantifiersEngine();
   /** Get a pointer to the preprocessor */
   Preprocessor* getPreprocessor();
+  /** Get the assertions maintained by this SMT solver */
+  Assertions& getAssertions();
   //------------------------------------------ end access methods
+  /**
+   * Preprocess the assertions. This calls the preprocessor on the assertions
+   * d_asserts and records d_ppAssertions / d_ppSkolemMap if necessary.
+   */
+  void preprocess(preprocessing::AssertionPipeline& ap);
+  /**
+   * Push the assertions to the prop engine. Assumes that the assertions
+   * (d_asserts) have been preprocessed. This pushes the assertions
+   * into the prop engine of this solver and subsequently clears d_asserts.
+   */
+  void assertToInternal(preprocessing::AssertionPipeline& ap);
+  /**
+   * Check satisfiability based on the current state of the prop engine.
+   * This assumes we have pushed the necessary assertions to it. It post
+   * processes the results based on the options.
+   */
+  Result checkSatInternal();
 
  private:
   /** Whether we track information necessary for deep restarts */
   bool trackPreprocessedAssertions() const;
   /** Reset the prop engine, assumes theory engine is reset */
   void resetPropEngine();
+  /** Finish initialization of preprocessor */
+  void finishInitPreprocessor();
   /** The preprocessor of this SMT solver */
   Preprocessor d_pp;
+  /** Assertions manager */
+  Assertions d_asserts;
   /** Reference to the statistics of SolverEngine */
   SolverEngineStatistics& d_stats;
   /** The theory engine */
@@ -146,9 +148,9 @@ class SmtSolver : protected EnvObj
   std::unique_ptr<prop::PropEngine> d_propEngine;
   //------------------------------------------ Bookkeeping for deep restarts
   /** The exact list of preprocessed assertions we sent to the PropEngine */
-  std::vector<Node> d_ppAssertions;
+  NodeList d_ppAssertions;
   /** The skolem map associated with d_ppAssertions */
-  std::unordered_map<size_t, Node> d_ppSkolemMap;
+  context::CDHashMap<size_t, Node> d_ppSkolemMap;
   /** All learned literals, used for debugging */
   std::unordered_set<Node> d_allLearnedLits;
   /** The lazy assertion solver */

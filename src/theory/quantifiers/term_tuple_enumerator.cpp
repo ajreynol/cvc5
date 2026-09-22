@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Mikolas Janota, Andrew Reynolds, Andres Noetzli
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -44,7 +41,7 @@ static Cvc5ostream& operator<<(Cvc5ostream& out, const std::vector<T>& v)
 }
 
 /** Tracing purposes, printing a masked vector of indices. */
-static void traceMaskedVector(const char* trace,
+static void traceMaskedVector(CVC5_UNUSED const char* trace,
                               const char* name,
                               const std::vector<bool>& mask,
                               const std::vector<size_t>& values)
@@ -280,8 +277,7 @@ void TermTupleEnumeratorBase::failureReason(const std::vector<bool>& mask)
   // update change prefix accordingly
   for (d_changePrefix = mask.size();
        d_changePrefix && !mask[d_changePrefix - 1];
-       d_changePrefix--)
-    ;
+       d_changePrefix--);
 }
 
 void TermTupleEnumeratorBase::next(/*out*/ std::vector<Node>& terms)
@@ -297,7 +293,7 @@ void TermTupleEnumeratorBase::next(/*out*/ std::vector<Node>& terms)
     terms[variableIx] = t;
     Trace("inst-alg-rd") << t << "  ";
     Assert(!t.isNull());
-    Assert(t.getType() == d_quantifier[0][variableIx].getType())
+    AssertEqual(t.getType(), d_quantifier[0][variableIx].getType())
         << "Bad type: " << t << " " << t.getType() << " "
         << d_quantifier[0][variableIx].getType();
   }
@@ -508,18 +504,14 @@ class TermTupleEnumeratorPool : public TermTupleEnumeratorBase
   TermTupleEnumeratorPool(Node quantifier,
                           const TermTupleEnumeratorEnv* env,
                           Node pool)
-      : TermTupleEnumeratorBase(quantifier, env),
-        d_tp(env->d_tr->getTermPools()),
-        d_pool(pool)
+      : TermTupleEnumeratorBase(quantifier, env), d_pool(pool)
   {
-    Assert(d_pool.getKind() == kind::INST_POOL);
+    Assert(d_pool.getKind() == Kind::INST_POOL);
   }
 
   virtual ~TermTupleEnumeratorPool() = default;
 
  protected:
-  /** Pointer to the term pool utility */
-  TermPools* d_tp;
   /** The pool annotation */
   Node d_pool;
   /**  a list of terms for each id */
@@ -530,7 +522,7 @@ class TermTupleEnumeratorPool : public TermTupleEnumeratorBase
     Assert(d_pool.getNumChildren() > variableIx);
     // prepare terms from pool
     d_poolList[variableIx].clear();
-    d_tp->getTermsForPool(d_pool[variableIx], d_poolList[variableIx]);
+    d_env->d_tr->getTermsForPool(d_pool[variableIx], d_poolList[variableIx]);
     Trace("pool-inst") << "Instantiation Terms for child " << variableIx << ": "
                        << d_poolList[variableIx] << std::endl;
     return d_poolList[variableIx].size();
