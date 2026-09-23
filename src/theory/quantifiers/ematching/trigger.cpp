@@ -194,13 +194,13 @@ bool Trigger::sendInstantiation(std::vector<Node>& m)
     if (!cexp.isNull())
     {
       size_t hasLevel = d_treg.getTermDatabase()->hasTermLevel(cexp);
-      if (hasLevel==1)
+      if (hasLevel == 1)
       {
         id = InferenceId::QUANTIFIERS_INST_E_MATCHING_NO_LOCAL;
       }
     }
   }
-  
+
   if (!d_qim.getInstantiate()->addInstantiation(d_quant, m, id, d_trNode))
   {
     return false;

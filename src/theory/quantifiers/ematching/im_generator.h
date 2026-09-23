@@ -101,23 +101,23 @@ class IMGenerator : protected EnvObj
    */
   virtual InferenceId getInferenceId() = 0;
 
- protected:
-  /** send instantiation
-   *
-   * This method sends instantiation, specified by terms, to the parent trigger
-   * object, which will in turn make a call to
-   * Instantiate::addInstantiation(...). This method returns true if a
-   * call to Instantiate::addInstantiation(...) was successfully made,
-   * indicating that an instantiation was enqueued in the quantifier engine's
-   * lemma cache.
-   */
-  bool sendInstantiation(std::vector<Node>& terms);
-  /** The parent trigger that owns this */
-  Trigger* d_tparent;
-  /** Reference to the state of the quantifiers engine */
-  QuantifiersState& d_qstate;
-  /** Reference to the term registry */
-  TermRegistry& d_treg;
+  protected:
+   /** send instantiation
+    *
+    * This method sends instantiation, specified by terms, to the parent trigger
+    * object, which will in turn make a call to
+    * Instantiate::addInstantiation(...). This method returns true if a
+    * call to Instantiate::addInstantiation(...) was successfully made,
+    * indicating that an instantiation was enqueued in the quantifier engine's
+    * lemma cache.
+    */
+   bool sendInstantiation(std::vector<Node>& terms);
+   /** The parent trigger that owns this */
+   Trigger* d_tparent;
+   /** Reference to the state of the quantifiers engine */
+   QuantifiersState& d_qstate;
+   /** Reference to the term registry */
+   TermRegistry& d_treg;
 }; /* class IMGenerator */
 
 }  // namespace inst

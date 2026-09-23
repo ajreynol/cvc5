@@ -287,7 +287,8 @@ void TermDb::eqNotifyMerge(TNode t1, TNode t2)
 {
   if (d_trackRlv)
   {
-    Trace("ajr-temp") << "Merging " << t1 << " " << t2 << " " << context()->getLevel() << std::endl;
+    Trace("ajr-temp") << "Merging " << t1 << " " << t2 << " "
+                      << context()->getLevel() << std::endl;
     // Since the equivalence class of t1 and t2 merged, we now consider these
     // two terms to be relevant in the current context. Note technically this
     // does not mean that these terms are in assertions, e.g. t1 and t2 may be
@@ -596,14 +597,14 @@ bool TermDb::hasTermCurrent(const Node& n, bool useMode) const
 
 size_t TermDb::hasTermLevel(const Node& n) const
 {
-  if (n.getKind()==Kind::SEXPR)
+  if (n.getKind() == Kind::SEXPR)
   {
     std::vector<Node> terms(n.begin(), n.end());
     size_t maxLevel = 0;
     for (const Node& t : terms)
     {
       size_t level = hasTermLevel(t);
-      if (level>maxLevel)
+      if (level > maxLevel)
       {
         maxLevel = level;
       }
@@ -719,7 +720,8 @@ void TermDb::setHasTerm(Node n)
     if (d_has_map.find(cur) == d_has_map.end())
     {
       d_has_map.insert(cur);
-      Trace("ajr-temp") << "Term: " << cur << " at depth " << context()->getLevel() << std::endl;
+      Trace("ajr-temp") << "Term: " << cur << " at depth "
+                        << context()->getLevel() << std::endl;
       d_hasMapLevel[cur] = context()->getLevel();
       visit.insert(visit.end(), cur.begin(), cur.end());
     }
@@ -761,7 +763,7 @@ bool TermDb::reset(Theory::Effort effort)
            ++it)
       {
         TNode lit = (*it).d_assertion;
-        TNode atom = lit.getKind()==Kind::NOT ? lit[0] : lit;
+        TNode atom = lit.getKind() == Kind::NOT ? lit[0] : lit;
         setHasTerm(atom);
       }
     }
