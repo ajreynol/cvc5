@@ -65,7 +65,8 @@ Instantiate::~Instantiate() {}
 bool Instantiate::reset(Theory::Effort e)
 {
   Trace("ajr-temp-stats") << "==============================" << std::endl;
-  Trace("ajr-temp-stats") << "#inst unique/total: " << d_locals.size() << " / " << d_localTotal << std::endl;
+  Trace("ajr-temp-stats") << "#inst unique/total: " << d_locals.size() << " / "
+                          << d_localTotal << std::endl;
   Trace("inst-debug") << "Reset, effort " << e << std::endl;
   // clear explicitly recorded instantiations
   d_recordedInst.clear();
@@ -412,10 +413,10 @@ bool Instantiate::addInstantiationInternal(
     QuantAttributes::setInstantiationLevelAttr(lem[1], maxInstLevel + 1);
   }
   Trace("inst-add-debug") << " --> Success." << std::endl;
-  //if (isLocal)
+  // if (isLocal)
   //{
-    d_locals.insert(sexpr);
-    d_localTotal++;
+  d_locals.insert(sexpr);
+  d_localTotal++;
   //}
   ++(d_statistics.d_instantiations);
   return true;

@@ -740,8 +740,8 @@ bool TermDb::reset(Theory::Effort effort)
   if (d_indTerms > 0)
   {
     Trace("ajr-temp-stats") << "Prev (ncong/rlv/proc/total): " << d_ncongTerms
-                         << " / " << d_rlvTerms << " / " << d_totalTerms
-                         << " / " << d_indTerms << std::endl;
+                            << " / " << d_rlvTerms << " / " << d_totalTerms
+                            << " / " << d_indTerms << std::endl;
   }
   d_indTerms = d_indexedTerms.get();
   d_congTerms = 0;
@@ -749,10 +749,10 @@ bool TermDb::reset(Theory::Effort effort)
   d_rlvTerms = 0;
   d_totalTerms = 0;
   Trace("ajr-temp-stats") << "Prev triggers (unique-ae/total): "
-                       << d_procTriggerNodes.size() << " / "
-                       << d_procTriggers.size() << std::endl;
+                          << d_procTriggerNodes.size() << " / "
+                          << d_procTriggers.size() << std::endl;
   Trace("ajr-temp-stats") << "Instantiated triggers: " << d_instTriggers.size()
-                       << std::endl;
+                          << std::endl;
 
   d_procTriggers.clear();
   d_procTriggerNodes.clear();
@@ -787,11 +787,12 @@ bool TermDb::reset(Theory::Effort effort)
         nfacts++;
         setHasTerm((*it).d_assertion);
       }
-      Trace("ajr-temp-stats") << "#" << theoryId << " assertions: " << nfacts
-                           << std::endl;
+      Trace("ajr-temp-stats")
+          << "#" << theoryId << " assertions: " << nfacts << std::endl;
       totalFacts += nfacts;
     }
-    Trace("ajr-temp-stats") << "# assertions total: " << totalFacts << std::endl;
+    Trace("ajr-temp-stats")
+        << "# assertions total: " << totalFacts << std::endl;
   }
   // finish reset
   return finishResetInternal(effort);
