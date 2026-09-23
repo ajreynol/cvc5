@@ -127,11 +127,12 @@ void Assertions::addFormula(TNode n, bool isFunDef, bool maybeHasFv)
     }
     if (isFunDef && ns.getKind() == Kind::EQUAL && ns[0].isVar())
     {
-      Trace("smt") << "Add substitution " << ns[0] << " -> " << ns[1] << std::endl;
+      Trace("smt") << "Add substitution " << ns[0] << " -> " << ns[1]
+                   << std::endl;
       // add the definition substitution
       d_definitionSubs.addSubstitution(ns[0], ns[1]);
       // also add to top-level substitutions as a trusted rule
-      //d_env.getTopLevelSubstitutions().addSubstitution(
+      // d_env.getTopLevelSubstitutions().addSubstitution(
       //    ns[0], ns[1], ProofRule::PREPROCESS_LEMMA, {}, {ns});
       return;
     }

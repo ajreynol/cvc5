@@ -92,7 +92,7 @@ class Assertions : protected EnvObj
   /**
    * Get assertions list corresponding to the original list of assertions
    * that correspond to definitions (define-fun or define-fun-rec).
-   * 
+   *
    * Note that this set is empty if --eager-elim-defs is true.
    */
   const context::CDList<Node>& getAssertionListDefinitions() const;
