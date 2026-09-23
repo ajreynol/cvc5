@@ -109,7 +109,6 @@ context::UserContext* Env::getUserContext() { return d_userContext.get(); }
 
 context::Context* Env::getLemmaContext() { return getUserContext(); }
 
-NodeManager* Env::getNodeManager() const { return d_nodeManager; }
 smt::PfManager* Env::getProofManager() { return d_pfManager; }
 
 ProofLogger* Env::getProofLogger()
