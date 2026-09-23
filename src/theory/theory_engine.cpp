@@ -1656,7 +1656,8 @@ void TheoryEngine::lemma(TrustNode tlemma,
         options(), "te-proof-debug", "TheoryEngine::lemma_initial");
   }
 
-  if (id==InferenceId::QUANTIFIERS_INST_E_MATCHING || id==InferenceId::QUANTIFIERS_INST_E_MATCHING_SIMPLE)
+  if (id == InferenceId::QUANTIFIERS_INST_E_MATCHING
+      || id == InferenceId::QUANTIFIERS_INST_E_MATCHING_SIMPLE)
   {
     d_collectLemmas.push_back(lemma);
   }
@@ -2382,6 +2383,5 @@ void TheoryEngine::initializeProofChecker(ProofChecker* pc)
 }
 
 theory::Rewriter* TheoryEngine::getRewriter() { return d_env.getRewriter(); }
-
 
 }  // namespace cvc5::internal

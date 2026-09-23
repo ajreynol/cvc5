@@ -454,6 +454,7 @@ class TheoryEngine : protected EnvObj
   void setRefutationUnsound(theory::IncompleteId id);
 
   std::vector<Node> getLemmas() { return d_collectLemmas; }
+
  private:
   typedef context::
       CDHashMap<NodeTheoryPair, NodeTheoryPair, NodeTheoryPairHashFunction>
@@ -693,7 +694,7 @@ class TheoryEngine : protected EnvObj
   std::unique_ptr<theory::ConflictProcessor> d_cp;
   /** User plugin modules */
   std::vector<std::unique_ptr<theory::PluginModule>> d_userPlugins;
-  
+
   // debug
   std::vector<Node> d_collectLemmas;
 
