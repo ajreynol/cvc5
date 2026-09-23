@@ -1,3 +1,4 @@
+; REQUIRES: unrestricted-mode
 ; COMMAND-LINE: --incremental
 ; EXPECT: unknown
 ; EXPECT: unknown

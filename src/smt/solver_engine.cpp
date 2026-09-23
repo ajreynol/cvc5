@@ -589,6 +589,11 @@ void SolverEngine::defineFunctionsRec(
 {
   beginCall();
   Trace("smt") << "SMT defineFunctionsRec(...)" << endl;
+  if (options().base.safeMode == options::SafeMode::SAFE)
+  {
+    throw SafeLogicException(
+        "Recursive function definitions are not supported in safe mode.");
+  }
 
   if (funcs.size() != formals.size() && funcs.size() != formulas.size())
   {
@@ -1147,6 +1152,10 @@ void SolverEngine::declarePool(const Node& p,
 {
   Assert(p.isVar() && p.getType().isSet());
   beginCall();
+  if (options().base.safeMode == options::SafeMode::SAFE)
+  {
+    throw SafeLogicException("Pool declarations are not supported in safe mode.");
+  }
   QuantifiersEngine* qe = getAvailableQuantifiersEngine("declareTermPool");
   qe->declarePool(p, initValue);
 }

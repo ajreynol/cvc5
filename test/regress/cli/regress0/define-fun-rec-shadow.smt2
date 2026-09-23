@@ -1,3 +1,4 @@
+; REQUIRES: unrestricted-mode
 ; DISABLE-TESTER: dump
 ; REQUIRES: no-competition
 ; SCRUBBER: grep -o "All formal arguments to defined functions must be unique"
