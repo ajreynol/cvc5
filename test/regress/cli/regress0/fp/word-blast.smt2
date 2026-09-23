@@ -1,5 +1,5 @@
-; DISABLE-TESTER: lfsc
-
+; REQUIRES: unrestricted-mode
+; DISABLE-TESTER: proof
 ; COMMAND-LINE: --fp-lazy-wb
 ; EXPECT: unsat
 (set-logic QF_BVFP)

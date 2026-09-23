@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Abdalrhman Mohamed
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2025 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -50,7 +47,8 @@ class RewriteDbProofCons : protected EnvObj
    * If cdp is provided, we add a proof for this fact on it.
    *
    * More specifically, the strategy used by this method is:
-   * 1. Try to prove a=b via THEORY_REWRITE in context TheoryRewriteCtx::PRE_DSL,
+   * 1. Try to prove a=b via THEORY_REWRITE in context
+   * TheoryRewriteCtx::PRE_DSL,
    * 2. Try to prove a=b via a proof involving RARE rewrites,
    * 3. Try to prove a'=b' via a proof involving RARE rewrites, where a' and b'
    * are obtained by transforming a and b via RewriteDbNodeConverter.
@@ -298,15 +296,6 @@ class RewriteDbProofCons : protected EnvObj
                          const std::vector<Node>& subs,
                          ProvenInfo& pi,
                          bool doFixedPoint = false);
-  /**
-   * Adds to proof info (d_pcache) s.t. we can show that:
-   * context[placeholder -> source] = context[placeholder -> target]
-   * Note: we assume that the placeholder only appears once
-   */
-  void cacheProofSubPlaceholder(TNode context,
-                                TNode placeholder,
-                                TNode source,
-                                TNode target);
   /**
    * Rewrite concrete, which returns the result of rewriting n if it contains
    * no abstract subterms, or n itself otherwise.
