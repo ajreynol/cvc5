@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Gereon Kremer, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -13,12 +10,15 @@
  * Utils for indexed root predicates.
  */
 
+#include <cstdint>
+#include <ostream>
+
 #include "cvc5_public.h"
 
 #ifndef CVC5__UTIL__INDEXED_ROOT_PREDICATE_H
 #define CVC5__UTIL__INDEXED_ROOT_PREDICATE_H
 
-namespace cvc5 {
+namespace cvc5::internal {
 
 /**
  * The structure representing the index of a root predicate.
@@ -68,6 +68,6 @@ struct IndexedRootPredicateHashFunction
   }
 }; /* struct IndexedRootPredicateHashFunction */
 
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif

@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -20,7 +17,7 @@
 
 #include <iosfwd>
 
-namespace cvc5 {
+namespace cvc5::internal {
 
 /**
  * Cardinality classes. A type has exactly one cardinality class. The
@@ -80,8 +77,6 @@ const char* toString(CardinalityClass c);
  */
 std::ostream& operator<<(std::ostream& out, CardinalityClass c);
 
-/** Take the min class of c1 and c2 */
-CardinalityClass minCardinalityClass(CardinalityClass c1, CardinalityClass c2);
 /** Take the max class of c1 and c2 */
 CardinalityClass maxCardinalityClass(CardinalityClass c1, CardinalityClass c2);
 /**
@@ -93,6 +88,6 @@ CardinalityClass maxCardinalityClass(CardinalityClass c1, CardinalityClass c2);
  */
 bool isCardinalityClassFinite(CardinalityClass c, bool fmfEnabled);
 
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif

@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Tim King, Abdalrhman Mohamed
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -25,22 +22,24 @@
 #include "theory/quantifiers/inst_match_trie.h"
 #include "theory/quantifiers/single_inv_partition.h"
 #include "theory/quantifiers/sygus/sygus_stats.h"
+#include "util/result.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace quantifiers {
 
 class SynthConjecture;
 class SygusReconstruct;
 
-// this class infers whether a conjecture is single invocation (Reynolds et al CAV 2015), and sets up the
-// counterexample-guided quantifier instantiation utility (d_cinst), and methods for solution
-// reconstruction (d_sol).
-// It also has more advanced techniques for:
-// (1) partitioning a conjecture into single invocation / non-single invocation portions for invariant synthesis,
-// (2) inferring whether the conjecture corresponds to a deterministic transistion system (by utility d_ti).
-// For these techniques, we may generate a template (d_templ) which specifies a restricted
-// solution space. We may in turn embed this template as a SyGuS grammar.
+// this class infers whether a conjecture is single invocation (Reynolds et al
+// CAV 2015), and sets up the counterexample-guided quantifier instantiation
+// utility (d_cinst), and methods for solution reconstruction (d_sol). It also
+// has more advanced techniques for: (1) partitioning a conjecture into single
+// invocation / non-single invocation portions for invariant synthesis, (2)
+// inferring whether the conjecture corresponds to a deterministic transistion
+// system (by utility d_ti). For these techniques, we may generate a template
+// (d_templ) which specifies a restricted solution space. We may in turn embed
+// this template as a SyGuS grammar.
 class CegSingleInv : protected EnvObj
 {
  public:
@@ -50,7 +49,7 @@ class CegSingleInv : protected EnvObj
   /** Get simplified conjecture. */
   Node getSimplifiedConjecture() { return d_simp_quant; }
   /** initialize this class for synthesis conjecture q */
-  void initialize( Node q );
+  void initialize(Node q);
   /** finish initialize
    *
    * This method sets up final decisions about whether to use single invocation
@@ -64,10 +63,11 @@ class CegSingleInv : protected EnvObj
    *
    * If single invocation techniques are being used, it solves
    * the first order form of the negated synthesis conjecture using a fresh
-   * copy of the SMT engine. This method returns true if it has successfully
-   * found a solution to the synthesis conjecture using this method.
+   * copy of the SMT engine. This method returns UNSAT if it has successfully
+   * found a solution to the synthesis conjecture using this method, SAT
+   * if the conjecture is determined to be infeasible, or UNKNOWN otherwise.
    */
-  bool solve();
+  Result solve();
   /**
    * Get solution for the sol_index^th function to synthesize of the conjecture
    * this class was assigned.
@@ -87,15 +87,15 @@ class CegSingleInv : protected EnvObj
                    TypeNode stn,
                    int8_t& reconstructed,
                    bool rconsSygus = true);
-  //reconstruct to syntax
+  // reconstruct to syntax
   Node reconstructToSyntax(Node s,
                            TypeNode stn,
                            int8_t& reconstructed,
                            bool rconsSygus = true);
   // is single invocation
   bool isSingleInvocation() const { return !d_single_inv.isNull(); }
-  /** preregister conjecture */
-  void preregisterConjecture( Node q );
+  /** preprocess notify conjecture */
+  void ppNotifyConjecture(Node q);
 
   //---------------------------------representation of the solution
   /**
@@ -177,6 +177,6 @@ class CegSingleInv : protected EnvObj
 
 }  // namespace quantifiers
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif

@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Tim King, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -19,10 +16,12 @@
 #define CVC5__THEORY__QUANTIFIERS__CEG_BV_INSTANTIATOR_H
 
 #include <unordered_map>
-#include "theory/quantifiers/bv_inverter.h"
-#include "theory/quantifiers/cegqi/ceg_instantiator.h"
 
-namespace cvc5 {
+#include "theory/quantifiers/bv_inverter.h"
+#include "theory/quantifiers/cegqi/ceg_bv_instantiator_utils.h"
+#include "theory/quantifiers/cegqi/instantiator.h"
+
+namespace cvc5::internal {
 namespace theory {
 namespace quantifiers {
 
@@ -104,6 +103,8 @@ class BvInstantiator : public Instantiator
  private:
   /** pointer to the bv inverter class */
   BvInverter* d_inverter;
+  /** Utility class */
+  BvInstantiatorUtil d_util;
   //--------------------------------solved forms
   /** identifier counter, used to allocate ids to each solve form */
   unsigned d_inst_id_counter;
@@ -152,6 +153,17 @@ class BvInstantiator : public Instantiator
                       Node lit,
                       Node alit,
                       CegInstEffort effort);
+  /**
+   * This method takes as input a literal lit, expected to be of kind
+   * EQUAL, BITVECTOR_ULT, or BITVECTOR_SLT, and returns the rewritten form
+   * of lit that we are expected to process. In particular, this method takes
+   * into account the option cegqiBvIneqMode, which determines how inequalities
+   * are processed.
+   * @param ci Pointer to the parent CegInstantiator.
+   * @param lit The literal.
+   * @return the rewritten form of the literal.
+   */
+  Node processAssertionInternal(CegInstantiator* ci, Node lit);
 };
 
 /** Bitvector instantiator preprocess
@@ -163,7 +175,7 @@ class BvInstantiator : public Instantiator
 class BvInstantiatorPreprocess : public InstantiatorPreprocess
 {
  public:
-  BvInstantiatorPreprocess() {}
+  BvInstantiatorPreprocess(const Options& opts) : d_opts(opts) {}
   ~BvInstantiatorPreprocess() override {}
   /** register counterexample lemma
    *
@@ -204,10 +216,12 @@ class BvInstantiatorPreprocess : public InstantiatorPreprocess
   void collectExtracts(Node lem,
                        std::map<Node, std::vector<Node>>& extract_map,
                        std::unordered_set<TNode>& visited);
+  /** Reference to options */
+  const Options& d_opts;
 };
 
 }  // namespace quantifiers
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__THEORY__QUANTIFIERS__CEG_BV_INSTANTIATOR_H */

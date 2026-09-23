@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Haniel Barbosa, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -19,10 +16,11 @@
 #define CVC5__THEORY__QUANTIFIERS__SYGUS_UNIF_H
 
 #include <map>
+
 #include "expr/node.h"
 #include "theory/quantifiers/sygus/sygus_unif_strat.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace quantifiers {
 
@@ -171,11 +169,11 @@ class SygusUnif : protected EnvObj
   virtual Node constructBestConditional(Node ce,
                                         const std::vector<Node>& conds);
   /** Heuristically choose the best string to concatenate from strs to the
-  * solution in context x, currently random
-  * incr stores the vector of indices that are incremented by this solution in
-  * example outputs.
-  * total_inc[x] is the sum of incr[x] for each x in strs.
-  */
+   * solution in context x, currently random
+   * incr stores the vector of indices that are incremented by this solution in
+   * example outputs.
+   * total_inc[x] is the sum of incr[x] for each x in strs.
+   */
   virtual Node constructBestStringToConcat(
       const std::vector<Node>& strs,
       const std::map<Node, size_t>& total_inc,
@@ -194,6 +192,6 @@ class SygusUnif : protected EnvObj
 
 }  // namespace quantifiers
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__THEORY__QUANTIFIERS__SYGUS_UNIF_H */

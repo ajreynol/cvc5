@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Aina Niemetz, Kshitij Bansal, Mudathir Mohamed
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -13,80 +10,85 @@
  * A simple demonstration of reasoning about sets with cvc5.
  */
 
-import static cvc5.Kind.*;
+import static io.github.cvc5.Kind.*;
 
-import cvc5.*;
+import io.github.cvc5.*;
 
 public class Sets
 {
   public static void main(String args[]) throws CVC5ApiException
   {
-    Solver slv = new Solver();
-
-    // Optionally, set the logic. We need at least UF for equality predicate,
-    // integers (LIA) and sets (FS).
-    slv.setLogic("QF_UFLIAFS");
-
-    // Produce models
-    slv.setOption("produce-models", "true");
-    slv.setOption("output-language", "smt2");
-
-    Sort integer = slv.getIntegerSort();
-    Sort set = slv.mkSetSort(integer);
-
-    // Verify union distributions over intersection
-    // (A union B) intersection C = (A intersection C) union (B intersection C)
+    TermManager tm = new TermManager();
+    Solver slv = new Solver(tm);
     {
-      Term A = slv.mkConst(set, "A");
-      Term B = slv.mkConst(set, "B");
-      Term C = slv.mkConst(set, "C");
+      // Optionally, set the logic. We need at least UF for equality predicate,
+      // integers (LIA) and sets (FS).
+      slv.setLogic("QF_UFLIAFS");
 
-      Term unionAB = slv.mkTerm(UNION, A, B);
-      Term lhs = slv.mkTerm(INTERSECTION, unionAB, C);
+      // Produce models
+      slv.setOption("produce-models", "true");
+      slv.setOption("output-language", "smt2");
 
-      Term intersectionAC = slv.mkTerm(INTERSECTION, A, C);
-      Term intersectionBC = slv.mkTerm(INTERSECTION, B, C);
-      Term rhs = slv.mkTerm(UNION, intersectionAC, intersectionBC);
+      Sort integer = tm.getIntegerSort();
+      Sort set = tm.mkSetSort(integer);
 
-      Term theorem = slv.mkTerm(EQUAL, lhs, rhs);
-
-      System.out.println("cvc5 reports: " + theorem + " is " + slv.checkEntailed(theorem) + ".");
-    }
-
-    // Verify emptset is a subset of any set
-    {
-      Term A = slv.mkConst(set, "A");
-      Term emptyset = slv.mkEmptySet(set);
-
-      Term theorem = slv.mkTerm(SUBSET, emptyset, A);
-
-      System.out.println("cvc5 reports: " + theorem + " is " + slv.checkEntailed(theorem) + ".");
-    }
-
-    // Find me an element in {1, 2} intersection {2, 3}, if there is one.
-    {
-      Term one = slv.mkInteger(1);
-      Term two = slv.mkInteger(2);
-      Term three = slv.mkInteger(3);
-
-      Term singleton_one = slv.mkTerm(SINGLETON, one);
-      Term singleton_two = slv.mkTerm(SINGLETON, two);
-      Term singleton_three = slv.mkTerm(SINGLETON, three);
-      Term one_two = slv.mkTerm(UNION, singleton_one, singleton_two);
-      Term two_three = slv.mkTerm(UNION, singleton_two, singleton_three);
-      Term intersection = slv.mkTerm(INTERSECTION, one_two, two_three);
-
-      Term x = slv.mkConst(integer, "x");
-
-      Term e = slv.mkTerm(MEMBER, x, intersection);
-
-      Result result = slv.checkSatAssuming(e);
-      System.out.println("cvc5 reports: " + e + " is " + result + ".");
-
-      if (result.isSat())
+      // Verify union distributions over intersection
+      // (A union B) intersection C = (A intersection C) union (B intersection C)
       {
-        System.out.println("For instance, " + slv.getValue(x) + " is a member.");
+        Term A = tm.mkConst(set, "A");
+        Term B = tm.mkConst(set, "B");
+        Term C = tm.mkConst(set, "C");
+
+        Term unionAB = tm.mkTerm(SET_UNION, A, B);
+        Term lhs = tm.mkTerm(SET_INTER, unionAB, C);
+
+        Term intersectionAC = tm.mkTerm(SET_INTER, A, C);
+        Term intersectionBC = tm.mkTerm(SET_INTER, B, C);
+        Term rhs = tm.mkTerm(SET_UNION, intersectionAC, intersectionBC);
+
+        Term theorem = tm.mkTerm(EQUAL, lhs, rhs);
+
+        System.out.println(
+            "cvc5 reports: " + theorem + " is " + slv.checkSatAssuming(theorem.notTerm()) + ".");
+      }
+
+      // Verify set.empty is a subset of any set
+      {
+        Term A = tm.mkConst(set, "A");
+        Term emptyset = tm.mkEmptySet(set);
+
+        Term theorem = tm.mkTerm(SET_SUBSET, emptyset, A);
+
+        System.out.println(
+            "cvc5 reports: " + theorem + " is " + slv.checkSatAssuming(theorem.notTerm()) + ".");
+      }
+
+      // Find me an element in {1, 2} intersection {2, 3}, if there is one.
+      {
+        Term one = tm.mkInteger(1);
+        Term two = tm.mkInteger(2);
+        Term three = tm.mkInteger(3);
+
+        Term singleton_one = tm.mkTerm(SET_SINGLETON, one);
+        Term singleton_two = tm.mkTerm(SET_SINGLETON, two);
+        Term singleton_three = tm.mkTerm(SET_SINGLETON, three);
+        Term one_two = tm.mkTerm(SET_UNION, singleton_one, singleton_two);
+        Term two_three = tm.mkTerm(SET_UNION, singleton_two, singleton_three);
+        Term intersection = tm.mkTerm(SET_INTER, one_two, two_three);
+
+        Term x = tm.mkConst(integer, "x");
+
+        Term e = tm.mkTerm(SET_MEMBER, x, intersection);
+
+        Result result = slv.checkSatAssuming(e);
+        System.out.println("cvc5 reports: " + e + " is " + result + ".");
+
+        if (result.isSat())
+        {
+          System.out.println("For instance, " + slv.getValue(x) + " is a member.");
+        }
       }
     }
+    Context.deletePointers();
   }
 }

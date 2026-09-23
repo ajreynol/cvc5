@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -18,9 +15,8 @@
 #include <sstream>
 
 #include "expr/skolem_manager.h"
-#include "theory/rewriter.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 
 bool Subs::empty() const { return d_vars.empty(); }
 
@@ -56,9 +52,8 @@ std::optional<Node> Subs::find(TNode v) const
 
 void Subs::add(Node v)
 {
-  SkolemManager* sm = NodeManager::currentNM()->getSkolemManager();
   // default, use a fresh skolem of the same type
-  Node s = sm->mkDummySkolem("sk", v.getType());
+  Node s = NodeManager::mkDummySkolem("sk", v.getType());
   add(v, s);
 }
 
@@ -70,7 +65,7 @@ void Subs::add(const std::vector<Node>& vs)
   }
 }
 
-void Subs::add(Node v, Node s)
+void Subs::add(const Node& v, const Node& s)
 {
   Assert(s.isNull() || v.getType().isComparableTo(s.getType()));
   d_vars.push_back(v);
@@ -88,7 +83,7 @@ void Subs::add(const std::vector<Node>& vs, const std::vector<Node>& ss)
 
 void Subs::addEquality(Node eq)
 {
-  Assert(eq.getKind() == kind::EQUAL);
+  Assert(eq.getKind() == Kind::EQUAL);
   add(eq[0], eq[1]);
 }
 
@@ -98,7 +93,7 @@ void Subs::append(Subs& s)
   add(s.d_vars, s.d_subs);
 }
 
-Node Subs::apply(Node n, bool doRewrite) const
+Node Subs::apply(const Node& n) const
 {
   if (d_vars.empty())
   {
@@ -106,13 +101,9 @@ Node Subs::apply(Node n, bool doRewrite) const
   }
   Node ns =
       n.substitute(d_vars.begin(), d_vars.end(), d_subs.begin(), d_subs.end());
-  if (doRewrite)
-  {
-    ns = theory::Rewriter::rewrite(ns);
-  }
   return ns;
 }
-Node Subs::rapply(Node n, bool doRewrite) const
+Node Subs::rapply(Node n) const
 {
   if (d_vars.empty())
   {
@@ -120,14 +111,10 @@ Node Subs::rapply(Node n, bool doRewrite) const
   }
   Node ns =
       n.substitute(d_subs.begin(), d_subs.end(), d_vars.begin(), d_vars.end());
-  if (doRewrite)
-  {
-    ns = theory::Rewriter::rewrite(ns);
-  }
   return ns;
 }
 
-void Subs::applyToRange(Subs& s, bool doRewrite) const
+void Subs::applyToRange(Subs& s) const
 {
   if (d_vars.empty())
   {
@@ -135,11 +122,11 @@ void Subs::applyToRange(Subs& s, bool doRewrite) const
   }
   for (size_t i = 0, ns = s.d_subs.size(); i < ns; i++)
   {
-    s.d_subs[i] = apply(s.d_subs[i], doRewrite);
+    s.d_subs[i] = apply(s.d_subs[i]);
   }
 }
 
-void Subs::rapplyToRange(Subs& s, bool doRewrite) const
+void Subs::rapplyToRange(Subs& s) const
 {
   if (d_vars.empty())
   {
@@ -147,7 +134,7 @@ void Subs::rapplyToRange(Subs& s, bool doRewrite) const
   }
   for (size_t i = 0, ns = s.d_subs.size(); i < ns; i++)
   {
-    s.d_subs[i] = rapply(s.d_subs[i], doRewrite);
+    s.d_subs[i] = rapply(s.d_subs[i]);
   }
 }
 
@@ -195,4 +182,4 @@ std::ostream& operator<<(std::ostream& out, const Subs& s)
   return out;
 }
 
-}  // namespace cvc5
+}  // namespace cvc5::internal

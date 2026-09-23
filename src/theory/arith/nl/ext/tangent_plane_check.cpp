@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Gereon Kremer, Andrew Reynolds, Tim King
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -18,23 +15,29 @@
 #include "expr/node.h"
 #include "proof/proof.h"
 #include "theory/arith/arith_msum.h"
+#include "theory/arith/arith_utilities.h"
 #include "theory/arith/inference_manager.h"
 #include "theory/arith/nl/ext/ext_state.h"
 #include "theory/arith/nl/nl_model.h"
 #include "theory/rewriter.h"
 #include "util/rational.h"
 
-namespace cvc5 {
+using namespace cvc5::internal::kind;
+
+namespace cvc5::internal {
 namespace theory {
 namespace arith {
 namespace nl {
 
-TangentPlaneCheck::TangentPlaneCheck(ExtState* data) : d_data(data) {}
+TangentPlaneCheck::TangentPlaneCheck(Env& env, ExtState* data)
+    : EnvObj(env), d_data(data)
+{
+}
 
 void TangentPlaneCheck::check(bool asWaitingLemmas)
 {
   Trace("nl-ext") << "Get monomial tangent plane lemmas..." << std::endl;
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   const std::map<Node, std::vector<Node> >& ccMap =
       d_data->d_mdb.getContainsChildrenMap();
   unsigned kstart = d_data->d_ms_vars.size();
@@ -58,7 +61,8 @@ void TangentPlaneCheck::check(bool asWaitingLemmas)
     for (unsigned j = 0; j < it->second.size(); j++)
     {
       Node tc = it->second[j];
-      if (tc != d_data->d_one)
+      Node one = mkOne(tc.getType());
+      if (tc != one)
       {
         Node tc_diff = d_data->d_mdb.getContainsDiffNl(tc, t);
         Assert(!tc_diff.isNull());
@@ -90,7 +94,7 @@ void TangentPlaneCheck::check(bool asWaitingLemmas)
               {
                 Node do_extend = nm->mkNode(
                     (p == 1 || p == 3) ? Kind::GT : Kind::LT, curr_v, pt_v);
-                do_extend = Rewriter::rewrite(do_extend);
+                do_extend = rewrite(do_extend);
                 if (do_extend == d_data->d_true)
                 {
                   for (unsigned q = 0; q < 2; q++)
@@ -113,12 +117,12 @@ void TangentPlaneCheck::check(bool asWaitingLemmas)
             Node a_v = pts[0][p];
             Node b_v = pts[1][p];
 
+            Node mult_bv_a = nm->mkNode(Kind::MULT, b_v, a);
+            Node mult_av_b = nm->mkNode(Kind::MULT, a_v, b);
+            Node add_mults = nm->mkNode(Kind::ADD, mult_bv_a, mult_av_b);
+            Node mult_av_bv = nm->mkNode(Kind::MULT, a_v, b_v);
             // tangent plane
-            Node tplane = nm->mkNode(Kind::MINUS,
-                                     nm->mkNode(Kind::PLUS,
-                                                nm->mkNode(Kind::MULT, b_v, a),
-                                                nm->mkNode(Kind::MULT, a_v, b)),
-                                     nm->mkNode(Kind::MULT, a_v, b_v));
+            Node tplane = nm->mkNode(Kind::SUB, add_mults, mult_av_bv);
             // construct the following lemmas:
             // t <= tplane  <=>  ((a <= a_v ^ b >= b_v) v (a >= a_v ^ b <= b_v))
             // t >= tplane  <=>  ((a <= a_v ^ b <= b_v) v (a >= a_v ^ b >= b_v))
@@ -127,14 +131,15 @@ void TangentPlaneCheck::check(bool asWaitingLemmas)
             {
               Node b1 = nm->mkNode(d == 0 ? Kind::GEQ : Kind::LEQ, b, b_v);
               Node b2 = nm->mkNode(d == 0 ? Kind::LEQ : Kind::GEQ, b, b_v);
-              Node tlem = nm->mkNode(
-                  Kind::EQUAL,
-                  nm->mkNode(d == 0 ? Kind::LEQ : Kind::GEQ, t, tplane),
-                  nm->mkNode(
-                      Kind::OR,
-                      nm->mkNode(Kind::AND, nm->mkNode(Kind::LEQ, a, a_v), b1),
-                      nm->mkNode(
-                          Kind::AND, nm->mkNode(Kind::GEQ, a, a_v), b2)));
+              Node t2 = nm->mkNode(Kind::NONLINEAR_MULT, a, b);
+              Node eq_lhs =
+                  nm->mkNode(d == 0 ? Kind::LEQ : Kind::GEQ, t2, tplane);
+              Node or1 =
+                  nm->mkNode(Kind::AND, nm->mkNode(Kind::LEQ, a, a_v), b1);
+              Node or2 =
+                  nm->mkNode(Kind::AND, nm->mkNode(Kind::GEQ, a, a_v), b2);
+              Node eq_rhs = nm->mkNode(Kind::OR, or1, or2);
+              Node tlem = nm->mkNode(Kind::EQUAL, eq_lhs, eq_rhs);
               Trace("nl-ext-tplanes")
                   << "Tangent plane lemma : " << tlem << std::endl;
               CDProof* proof = nullptr;
@@ -142,14 +147,9 @@ void TangentPlaneCheck::check(bool asWaitingLemmas)
               {
                 proof = d_data->getProof();
                 proof->addStep(tlem,
-                               PfRule::ARITH_MULT_TANGENT,
+                               ProofRule::ARITH_MULT_TANGENT,
                                {},
-                               {t,
-                                a,
-                                b,
-                                a_v,
-                                b_v,
-                                nm->mkConst(Rational(d == 0 ? -1 : 1))});
+                               {a, b, a_v, b_v, nm->mkConst(d == 1)});
               }
               d_data->d_im.addPendingLemma(tlem,
                                            InferenceId::ARITH_NL_TANGENT_PLANE,
@@ -166,4 +166,4 @@ void TangentPlaneCheck::check(bool asWaitingLemmas)
 }  // namespace nl
 }  // namespace arith
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal

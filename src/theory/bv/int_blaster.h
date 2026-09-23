@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Yoni Zohar
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -21,11 +18,13 @@
 #include "context/cdhashmap.h"
 #include "context/cdhashset.h"
 #include "context/cdo.h"
-#include "context/context.h"
 #include "options/smt_options.h"
+#include "proof/proof_generator.h"
+#include "proof/trust_node.h"
+#include "smt/env_obj.h"
 #include "theory/arith/nl/iand_utils.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 
 /*
 ** Converts bit-vector formulas to integer formulas.
@@ -91,7 +90,7 @@ namespace cvc5 {
 ** op.
 **
 **/
-class IntBlaster
+class IntBlaster : protected EnvObj, public ProofGenerator
 {
   using CDNodeMap = context::CDHashMap<Node, Node>;
 
@@ -101,14 +100,14 @@ class IntBlaster
    * @param context user context
    * @param mode bv-to-int translation mode
    * @param granularity bv-to-int translation granularity
-   * @param introduceFreshIntVars determines whether bit-vector variables are
    * translated to integer variables, or are directly casted using `bv2nat`
    * operator. not purely bit-vector nodes.
    */
-  IntBlaster(context::Context* context,
+  IntBlaster(Env& env,
              options::SolveBVAsIntMode mode,
-             uint64_t granluarity = 1,
-             bool introduceFreshIntVars = true);
+             uint64_t granluarity = 1);
+
+  ~IntBlaster();
 
   /**
    * The result is an integer term and is computed
@@ -124,11 +123,26 @@ class IntBlaster
    * ff((bv2nat x))), where k is the bit-width of the domain of f, i is the
    * bit-width of its range, and ff is a Int->Int function that corresponds to
    * f. For functions with other signatures this is similar
-   * @return integer node that corresponds to n
+   * @return trust node proving (= n n_i) where n_i is an integer node that
+   * corresponds to n
    */
+  TrustNode trustedIntBlast(Node n,
+                            std::vector<TrustNode>& lemmas,
+                            std::map<Node, Node>& skolems);
+
+  /** Version without proof tracking */
   Node intBlast(Node n,
                 std::vector<Node>& lemmas,
                 std::map<Node, Node>& skolems);
+  /**
+   * Get proof for fact, where fact may correspond to:
+   * (1) An equality of the form (= n n') where n was rewritten to n' in the
+   * method trustedIntBlast.
+   * (2) A lemma added to lemmas in the method trustedIntBlast.
+   */
+  std::shared_ptr<ProofNode> getProofFor(Node fact) override;
+  /** identify */
+  std::string identify() const override;
 
  protected:
   /**
@@ -147,43 +161,52 @@ class IntBlaster
    *
    */
   Node createShiftNode(std::vector<Node> children,
-                       uint64_t bvsize,
+                       uint32_t bvsize,
                        bool isLeftShift);
 
   /** Adds the constraint 0 <= node < 2^size to lemmas */
-  void addRangeConstraint(Node node, uint64_t size, std::vector<Node>& lemmas);
+  void addRangeConstraint(Node node,
+                          uint32_t size,
+                          std::vector<TrustNode>& lemmas);
+
+  /** Adds the constraint forall x1,...,xn. 0 <= f(x1,...,xn) < 2^size to lemmas
+   */
+  void addQuantifiedRangeConstraint(Node f,
+                                    uint32_t size,
+                                    std::vector<TrustNode>& lemmas);
 
   /** Adds a constraint that encodes bitwise and */
-  void addBitwiseConstraint(Node bitwiseConstraint, std::vector<Node>& lemmas);
+  void addBitwiseConstraint(Node bitwiseConstraint,
+                            std::vector<TrustNode>& lemmas);
 
   /** Returns a node that represents the bitwise negation of n. */
-  Node createBVNotNode(Node n, uint64_t bvsize);
+  Node createBVNotNode(Node n, uint32_t bvsize);
 
   /** Returns a node that represents the arithmetic negation of n. */
-  Node createBVNegNode(Node n, uint64_t bvsize);
+  Node createBVNegNode(Node n, uint32_t bvsize);
 
   /** Returns a node that represents the bitwise and of x and y, based on the
    * provided option. */
   Node createBVAndNode(Node x,
                        Node y,
-                       uint64_t bvsize,
-                       std::vector<Node>& lemmas);
+                       uint32_t bvsize,
+                       std::vector<TrustNode>& lemmas);
 
   /** Returns a node that represents the bitwise or of x and y, by translation
    * to sum and bitwise and. */
   Node createBVOrNode(Node x,
                       Node y,
-                      uint64_t bvsize,
-                      std::vector<Node>& lemmas);
+                      uint32_t bvsize,
+                      std::vector<TrustNode>& lemmas);
 
   /** Returns a node that represents the sum of x and y. */
-  Node createBVAddNode(Node x, Node y, uint64_t bvsize);
+  Node createBVAddNode(Node x, Node y, uint32_t bvsize);
 
   /** Returns a node that represents the difference of x and y. */
-  Node createBVSubNode(Node x, Node y, uint64_t bvsize);
+  Node createBVSubNode(Node x, Node y, uint32_t bvsize);
 
   /** Returns a node that represents the signed extension of x by amount. */
-  Node createSignExtendNode(Node x, uint64_t bvsize, uint64_t amount);
+  Node createSignExtendNode(Node x, uint32_t bvsize, uint32_t amount);
 
   /**
    * Whenever we introduce an integer variable that represents a bit-vector
@@ -193,7 +216,7 @@ class IntBlaster
    * @param k the bit width of the original bit-vector variable.
    * @return a node representing the range constraint.
    */
-  Node mkRangeConstraint(Node newVar, uint64_t k);
+  Node mkRangeConstraint(Node newVar, uint32_t k);
 
   /**
    * Some bit-vector operators (e.g., bvadd, bvand) are binary, but allow more
@@ -212,7 +235,7 @@ class IntBlaster
    * @param k A non-negative integer
    * @return A node that represents the constant 2^k
    */
-  Node pow2(uint64_t k);
+  Node pow2(uint32_t k);
 
   /**
    * @param k A positive integer k
@@ -220,14 +243,14 @@ class IntBlaster
    * For example, if k is 4, the result is a node representing the
    * constant 15.
    */
-  Node maxInt(uint64_t k);
+  Node maxInt(uint32_t k);
 
   /**
    * @param n A node representing an integer term
    * @param exponent A non-negative integer
    * @return A node representing (n mod (2^exponent))
    */
-  Node modpow2(Node n, uint64_t exponent);
+  Node modpow2(Node n, uint32_t exponent);
 
   /**
    * Returns true iff the type of at least
@@ -236,14 +259,16 @@ class IntBlaster
   bool childrenTypesChanged(Node n);
 
   /**
-   * @param quantifiedNode a node whose main operator is forall/exists.
-   * @return a node opbtained from quantifiedNode by:
+   * @param quantifiedNode a node whose main operator is forall.
+   * @param translated_children the translated children of quantifiedNode.
+   * @return a node obtained from quantifiedNode by:
    * 1. Replacing all bound BV variables by new bound integer variables.
-   * 2. Add range constraints for the new variables, induced by the original
-   * bit-width. These range constraints are added with "AND" in case of exists
-   * and with "IMPLIES" in case of forall.
+   * 2. Adding range constraints for the new variables, induced by the original
+   * bit-width, as the left-hand side of an implication.
    */
-  Node translateQuantifiedFormula(Node quantifiedNode);
+  Node translateQuantifiedFormula(Node quantifiedNode,
+                                  const std::vector<Node>& translated_children,
+                                  std::vector<TrustNode>& lemmas);
 
   /**
    * Reconstructs a node whose main operator cannot be
@@ -315,7 +340,7 @@ class IntBlaster
    * binary representation of n is the same as the
    * signed binary representation of m.
    */
-  Node uts(Node n, uint64_t bvsize);
+  Node uts(Node n, uint32_t bvsize);
 
   /**
    * Performs the actual translation to integers for nodes
@@ -323,7 +348,7 @@ class IntBlaster
    */
   Node translateWithChildren(Node original,
                              const std::vector<Node>& translated_children,
-                             std::vector<Node>& lemmas);
+                             std::vector<TrustNode>& lemmas);
 
   /**
    * Performs the actual translation to integers for nodes
@@ -331,7 +356,7 @@ class IntBlaster
    * symbols).
    */
   Node translateNoChildren(Node original,
-                           std::vector<Node>& lemmas,
+                           std::vector<TrustNode>& lemmas,
                            std::map<Node, Node>& skolems);
 
   /** Caches for the different functions */
@@ -342,10 +367,9 @@ class IntBlaster
   NodeManager* d_nm;
 
   /**
-   * Range constraints of the form 0 <= x < 2^k
-   * These are added for every new integer variable that we introduce.
+   * Nodes for which we have added range constraints to the `lemmas set.
    */
-  context::CDHashSet<Node> d_rangeAssertions;
+  context::CDHashSet<Node> d_rangeNodes;
 
   /**
    * A set of "bitwise" equalities over integers for BITVECTOR_AND
@@ -363,19 +387,13 @@ class IntBlaster
   /** the mode for translation to integers */
   options::SolveBVAsIntMode d_mode;
 
-  /** the granularity to use in the translation */
-  uint64_t d_granularity;
-
   /** an SolverEngine for context */
   context::Context* d_context;
 
-  /** true iff the translator should introduce
-   * fresh integer variables for bit-vector variables.
-   * Otherwise, we introduce a nat2bv term.
-   */
-  bool d_introduceFreshIntVars;
+  /** the granularity to use in the translation */
+  uint32_t d_granularity;
 };
 
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* __CVC5__THEORY__BV__INT_BLASTER_H */

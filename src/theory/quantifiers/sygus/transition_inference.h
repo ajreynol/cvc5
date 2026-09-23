@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -23,12 +20,12 @@
 #include <vector>
 
 #include "expr/node.h"
-
+#include "smt/env_obj.h"
 #include "theory/quantifiers/cegqi/inst_strategy_cegqi.h"
 #include "theory/quantifiers/inst_match_trie.h"
 #include "theory/quantifiers/single_inv_partition.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace quantifiers {
 
@@ -59,7 +56,7 @@ class DetTrace
    * Construct the formula that this trace represents with respect to variables
    * in vars. For details, see DetTraceTrie::constructFormula below.
    */
-  Node constructFormula(const std::vector<Node>& vars);
+  Node constructFormula(NodeManager* nm, const std::vector<Node>& vars);
   /** Debug print this trace on trace message c */
   void print(const char* c) const;
 
@@ -83,7 +80,9 @@ class DetTrace
      * and vars is [x,y,z], then this method returns:
      *   ( x=1 ^ y=2 ^ z=3 ) V ( x=2 ^ y=3 ^ z=4 ).
      */
-    Node constructFormula(const std::vector<Node>& vars, unsigned index = 0);
+    Node constructFormula(NodeManager* nm,
+                          const std::vector<Node>& vars,
+                          unsigned index = 0);
   };
   /** The above trie data structure for this class */
   DetTraceTrie d_trie;
@@ -111,10 +110,10 @@ enum TraceIncStatus
  * The invariant-to-synthesize can either be explicitly given, via a call
  * to initialize( f, vars ), or otherwise inferred if this method is not called.
  */
-class TransitionInference
+class TransitionInference : protected EnvObj
 {
  public:
-  TransitionInference() : d_complete(false) {}
+  TransitionInference(Env& env) : EnvObj(env), d_complete(false) {}
   /** Process the conjecture n
    *
    * This initializes this class with information related to viewing it as a
@@ -333,6 +332,6 @@ class TransitionInference
 
 }  // namespace quantifiers
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif

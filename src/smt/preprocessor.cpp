@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Morgan Deters, Aina Niemetz
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -18,47 +15,43 @@
 #include "options/base_options.h"
 #include "options/expr_options.h"
 #include "options/smt_options.h"
+#include "preprocessing/assertion_pipeline.h"
 #include "preprocessing/preprocessing_pass_context.h"
 #include "printer/printer.h"
-#include "smt/abstract_values.h"
 #include "smt/assertions.h"
-#include "smt/dump.h"
 #include "smt/env.h"
 #include "smt/preprocess_proof_generator.h"
-#include "smt/solver_engine.h"
 #include "theory/rewriter.h"
 
 using namespace std;
-using namespace cvc5::theory;
-using namespace cvc5::kind;
+using namespace cvc5::internal::theory;
+using namespace cvc5::internal::kind;
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace smt {
 
-Preprocessor::Preprocessor(Env& env,
-                           AbstractValues& abs,
-                           SolverEngineStatistics& stats)
+Preprocessor::Preprocessor(Env& env, SolverEngineStatistics& stats)
     : EnvObj(env),
-      d_absValues(abs),
-      d_propagator(true, true),
+      d_pppg(nullptr),
+      d_propagator(env, true, true),
       d_assertionsProcessed(env.getUserContext(), false),
-      d_exDefs(env),
-      d_processor(env, stats),
-      d_pnm(nullptr)
+      d_processor(env, stats)
 {
 }
 
-Preprocessor::~Preprocessor()
+Preprocessor::~Preprocessor() {}
+
+void Preprocessor::finishInit(TheoryEngine* te,
+                              prop::PropEngine* pe,
+                              PreprocessProofGenerator* pppg)
 {
-  if (d_propagator.getNeedsFinish())
+  // set up the preprocess proof generator, if necessary
+  if (d_pppg == nullptr && pppg != nullptr)
   {
-    d_propagator.finish();
-    d_propagator.setNeedsFinish(false);
+    d_pppg = pppg;
+    d_propagator.enableProofs(userContext(), d_pppg);
   }
-}
 
-void Preprocessor::finishInit(TheoryEngine* te, prop::PropEngine* pe)
-{
   d_ppContext.reset(new preprocessing::PreprocessingPassContext(
       d_env, te, pe, &d_propagator));
 
@@ -66,14 +59,13 @@ void Preprocessor::finishInit(TheoryEngine* te, prop::PropEngine* pe)
   d_processor.finishInit(d_ppContext.get());
 }
 
-bool Preprocessor::process(Assertions& as)
+bool Preprocessor::process(preprocessing::AssertionPipeline& ap)
 {
-  preprocessing::AssertionPipeline& ap = as.getAssertionPipeline();
-
-  // should not be called if empty
-  Assert(ap.size() != 0)
-      << "Can only preprocess a non-empty list of assertions";
-
+  if (ap.size() == 0)
+  {
+    // nothing to do
+    return true;
+  }
   if (d_assertionsProcessed && options().base.incrementalSolving)
   {
     // TODO(b/1255): Substitutions in incremental mode should be managed with a
@@ -86,7 +78,7 @@ bool Preprocessor::process(Assertions& as)
   }
 
   // process the assertions, return true if no conflict is discovered
-  bool noConflict = d_processor.apply(as);
+  bool noConflict = d_processor.apply(ap);
 
   // now, post-process the assertions
 
@@ -107,60 +99,34 @@ void Preprocessor::clearLearnedLiterals()
   d_propagator.getLearnedLiterals().clear();
 }
 
+std::vector<Node> Preprocessor::getLearnedLiterals() const
+{
+  if (d_ppContext == nullptr)
+  {
+    return {};
+  }
+  return d_ppContext->getLearnedLiterals();
+}
+
 void Preprocessor::cleanup() { d_processor.cleanup(); }
 
-Node Preprocessor::expandDefinitions(const Node& n)
+Node Preprocessor::applySubstitutions(const Node& node)
 {
-  std::unordered_map<Node, Node> cache;
-  return expandDefinitions(n, cache);
+  return d_env.getTopLevelSubstitutions().apply(node);
 }
 
-Node Preprocessor::expandDefinitions(const Node& node,
-                                     std::unordered_map<Node, Node>& cache)
+void Preprocessor::applySubstitutions(std::vector<Node>& ns)
 {
-  Trace("smt") << "SMT expandDefinitions(" << node << ")" << endl;
-  // Substitute out any abstract values in node.
-  Node n = d_absValues.substituteAbstractValues(node);
-  if (options().expr.typeChecking)
-  {
-    // Ensure node is type-checked at this point.
-    n.getType(true);
-  }
-  // we apply substitutions here, before expanding definitions
-  n = d_env.getTopLevelSubstitutions().apply(n, false);
-  // now call expand definitions
-  n = d_exDefs.expandDefinitions(n, cache);
-  return n;
-}
-
-void Preprocessor::expandDefinitions(std::vector<Node>& ns)
-{
-  std::unordered_map<Node, Node> cache;
   for (size_t i = 0, nasserts = ns.size(); i < nasserts; i++)
   {
-    ns[i] = expandDefinitions(ns[i], cache);
+    ns[i] = applySubstitutions(ns[i]);
   }
 }
 
-Node Preprocessor::simplify(const Node& node)
+PreprocessProofGenerator* Preprocessor::getPreprocessProofGenerator()
 {
-  Trace("smt") << "SMT simplify(" << node << ")" << endl;
-  if (Dump.isOn("benchmark"))
-  {
-    d_env.getPrinter().toStreamCmdSimplify(d_env.getDumpOut(), node);
-  }
-  Node ret = expandDefinitions(node);
-  ret = theory::Rewriter::rewrite(ret);
-  return ret;
-}
-
-void Preprocessor::setProofGenerator(PreprocessProofGenerator* pppg)
-{
-  Assert(pppg != nullptr);
-  d_pnm = pppg->getManager();
-  d_exDefs.setProofNodeManager(d_pnm);
-  d_propagator.setProof(d_pnm, userContext(), pppg);
+  return d_pppg;
 }
 
 }  // namespace smt
-}  // namespace cvc5
+}  // namespace cvc5::internal

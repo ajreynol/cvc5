@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andres Noetzli, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -38,24 +35,31 @@
 #ifndef CVC5__SAFE_PRINT_H
 #define CVC5__SAFE_PRINT_H
 
+#include <cvc5/cvc5_export.h>
+#include <time.h>
 #include <unistd.h>
 
+#include <cstdlib>
 #include <cstring>
 #include <string>
 
-#include "cvc5_export.h"
+namespace cvc5::internal {
 
-namespace cvc5 {
+template <size_t N>
+void CVC5_EXPORT safe_print(int fd, const char (&msg)[N]);
+template <typename T>
+void CVC5_EXPORT safe_print(int fd, const T& obj);
 
 /**
  * Prints arrays of chars (e.g. string literals) of length N. Safe to use in a
  * signal handler.
  */
 template <size_t N>
-void CVC5_EXPORT safe_print(int fd, const char (&msg)[N])
+void safe_print(int fd, const char (&msg)[N])
 {
   ssize_t nb = N - 1;
-  if (write(fd, msg, nb) != nb) {
+  if (write(fd, msg, nb) != nb)
+  {
     abort();
   }
 }
@@ -67,7 +71,7 @@ void CVC5_EXPORT safe_print(int fd, const char (&msg)[N])
  * `toString()`.
  */
 template <typename T>
-const char* toStringImpl(const T& obj, long)
+const char* toStringImpl(const T&, long)
 {
   return "<unsupported>";
 }
@@ -96,7 +100,7 @@ auto toStringImpl(const T& obj, int) -> decltype(toString(obj))
  * @param obj The object to print
  */
 template <typename T>
-void CVC5_EXPORT safe_print(int fd, const T& obj)
+void safe_print(int fd, const T& obj)
 {
   const char* s =
       toStringImpl(obj, /* prefer the method that uses `toString()` */ 0);
@@ -137,6 +141,6 @@ void safe_print_hex(int fd, uint64_t i);
  */
 void safe_print_right_aligned(int fd, uint64_t i, ssize_t width);
 
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__SAFE_PRINT_H */

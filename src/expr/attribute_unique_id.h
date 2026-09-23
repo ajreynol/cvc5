@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Tim King, Morgan Deters, Aina Niemetz
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -22,12 +19,13 @@
 
 // ATTRIBUTE IDs ============================================================
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace expr {
 namespace attr {
 
 /** A unique id for each attribute table. */
-enum AttrTableId {
+enum AttrTableId
+{
   AttrTableBool,
   AttrTableUInt64,
   AttrTableTNode,
@@ -46,22 +44,24 @@ enum AttrTableId {
 /**
  * This uniquely identifies attributes across tables.
  */
-class AttributeUniqueId {
+class AttributeUniqueId
+{
   AttrTableId d_tableId;
   uint64_t d_withinTypeId;
 
-public:
-  AttributeUniqueId() : d_tableId(LastAttrTable), d_withinTypeId(0){}
+ public:
+  AttributeUniqueId() : d_tableId(LastAttrTable), d_withinTypeId(0) {}
 
   AttributeUniqueId(AttrTableId tableId, uint64_t within)
-    : d_tableId(tableId), d_withinTypeId(within)
-  {}
+      : d_tableId(tableId), d_withinTypeId(within)
+  {
+  }
 
-  AttrTableId getTableId() const{ return d_tableId; }
-  uint64_t getWithinTypeId() const{ return d_withinTypeId; }
+  AttrTableId getTableId() const { return d_tableId; }
+  uint64_t getWithinTypeId() const { return d_withinTypeId; }
 
-}; /* cvc5::expr::attr::AttributeUniqueId */
+}; /* cvc5::internal::expr::attr::AttributeUniqueId */
 
 }  // namespace attr
 }  // namespace expr
-}  // namespace cvc5
+}  // namespace cvc5::internal

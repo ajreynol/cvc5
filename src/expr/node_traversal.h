@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Alex Ozdemir, Andres Noetzli
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -24,7 +21,7 @@
 
 #include "expr/node.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 
 /**
  * Enum that represents an order in which nodes are visited.
@@ -55,8 +52,8 @@ class NodeDfsIterator
   // Move/copy construction and assignment. Destructor.
   NodeDfsIterator(NodeDfsIterator&&) = default;
   NodeDfsIterator& operator=(NodeDfsIterator&&) = default;
-  NodeDfsIterator(NodeDfsIterator&) = default;
-  NodeDfsIterator& operator=(NodeDfsIterator&) = default;
+  NodeDfsIterator(const NodeDfsIterator&) = default;
+  NodeDfsIterator& operator=(const NodeDfsIterator&) = default;
   ~NodeDfsIterator() = default;
 
   // Preincrement
@@ -132,8 +129,8 @@ class NodeDfsIterable
   // Move/copy construction and assignment. Destructor.
   NodeDfsIterable(NodeDfsIterable&&) = default;
   NodeDfsIterable& operator=(NodeDfsIterable&&) = default;
-  NodeDfsIterable(NodeDfsIterable&) = default;
-  NodeDfsIterable& operator=(NodeDfsIterable&) = default;
+  NodeDfsIterable(const NodeDfsIterable&) = default;
+  NodeDfsIterable& operator=(const NodeDfsIterable&) = default;
   ~NodeDfsIterable() = default;
 
   NodeDfsIterator begin() const;
@@ -145,6 +142,6 @@ class NodeDfsIterable
   std::function<bool(TNode)> d_skipIf;
 };
 
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif  // CVC5__EXPR__NODE_TRAVERSAL_H

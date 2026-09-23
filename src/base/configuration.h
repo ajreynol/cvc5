@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Morgan Deters, Gereon Kremer, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -12,6 +9,10 @@
  *
  * Interface to a public class that provides compile-time information
  * about the cvc5 library.
+ *
+ * Eventually, the configuration methods will all be migrated to the
+ * cvc5::internal::configuration namespace below. This is cleaner and avoids a
+ * gcc/10.1.0 bug. See https://github.com/cvc5/cvc5/pull/7898 for details.
  */
 
 #include "cvc5_public.h"
@@ -19,22 +20,34 @@
 #ifndef CVC5__CONFIGURATION_H
 #define CVC5__CONFIGURATION_H
 
+#include <cvc5/cvc5_export.h>
+
 #include <string>
 #include <vector>
 
-#include "cvc5_export.h"
+namespace cvc5::internal {
 
-namespace cvc5 {
+namespace configuration {
+static constexpr bool isStatisticsBuild()
+{
+#ifdef CVC5_STATISTICS_ON
+  return true;
+#else
+  return false;
+#endif
+}
+}  // namespace configuration
 
 /**
  * Represents the (static) configuration of cvc5.
  */
-class CVC5_EXPORT Configuration
+class CVC5_EXPORT Configuration final
 {
- private:
-  /** Private default ctor: Disallow construction of this class */
-  Configuration();
+ public:
+  /** Delete default ctor: Disallow construction of this class. */
+  Configuration() = delete;
 
+ private:
   // these constants are filled in by the build system
   static const bool GIT_BUILD;
   static const bool CVC5_IS_RELEASE;
@@ -42,24 +55,16 @@ class CVC5_EXPORT Configuration
   static const char* const CVC5_FULL_VERSION;
   static const char* const CVC5_GIT_INFO;
 
-public:
-
+ public:
   static std::string getName();
+
+  static bool isSafeBuild();
+
+  static bool isStableBuild();
 
   static bool isDebugBuild();
 
-  static constexpr bool isStatisticsBuild()
-  {
-#ifdef CVC5_STATISTICS_ON
-    return true;
-#else
-    return false;
-#endif
-  }
-
   static bool isTracingBuild();
-
-  static bool isDumpingBuild();
 
   static bool isMuzzledBuild();
 
@@ -87,6 +92,8 @@ public:
 
   static std::string about();
 
+  static std::string aboutAndCopyright();
+
   static bool licenseIsGpl();
 
   static bool isBuiltWithGmp();
@@ -94,8 +101,6 @@ public:
   static bool isBuiltWithCln();
 
   static bool isBuiltWithGlpk();
-
-  static bool isBuiltWithAbc();
 
   static bool isBuiltWithCryptominisat();
 
@@ -105,10 +110,11 @@ public:
 
   static bool isBuiltWithPoly();
 
-  /* Return a sorted array of the debug tags name */
-  static const std::vector<std::string>& getDebugTags();
-  /* Test if the given argument is a known debug tag name */
-  static bool isDebugTag(const std::string& tag);
+  static bool isBuiltWithCoCoA();
+
+  static bool isBuiltWithNormaliz();
+
+  static bool isBuiltWithPortfolio();
 
   /* Return a sorted array of the trace tags name */
   static const std::vector<std::string>& getTraceTags();
@@ -121,8 +127,10 @@ public:
   static std::string getCompiler();
   static std::string getCompiledDateTime();
 
+  static std::string getBuildType();
+
 }; /* class Configuration */
 
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__CONFIGURATION_H */

@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Morgan Deters, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -23,7 +20,7 @@
 
 #include "expr/node.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace smt {
 
 class Model;
@@ -33,7 +30,8 @@ std::ostream& operator<<(std::ostream&, const Model&);
 /**
  * A utility for representing a model for pretty printing.
  */
-class Model {
+class Model
+{
  public:
   /** Constructor
    * @param isKnownSat True if this model is associated with a "sat" response,
@@ -113,6 +111,6 @@ class Model {
 };
 
 }  // namespace smt
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__SMT__MODEL_H */

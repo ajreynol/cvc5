@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Aina Niemetz
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -16,15 +13,14 @@
 
 #include "theory/quantifiers/sygus/example_min_eval.h"
 
-using namespace cvc5;
-using namespace cvc5::kind;
+using namespace cvc5::internal;
+using namespace cvc5::internal::kind;
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace quantifiers {
 
-ExampleEvalCache::ExampleEvalCache(TermDbSygus* tds,
-                                   Node e)
+ExampleEvalCache::ExampleEvalCache(TermDbSygus* tds, Node e)
     : d_tds(tds), d_stn(e.getType())
 {
   d_indexSearchVals = !d_tds->isVariableAgnosticEnumerator(e);
@@ -57,7 +53,7 @@ Node ExampleEvalCache::addSearchVal(TypeNode tn, Node bv)
   {
     clearEvaluationCache(bv);
   }
-  Assert(ret.getType().isComparableTo(bv.getType()));
+  AssertEqual(ret.getType(), bv.getType());
   return ret;
 }
 
@@ -113,4 +109,4 @@ void ExampleEvalCache::clearEvaluationAll() { d_exOutCache.clear(); }
 
 }  // namespace quantifiers
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal

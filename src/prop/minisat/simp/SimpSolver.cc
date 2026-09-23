@@ -27,8 +27,8 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 #include "prop/minisat/mtl/Sort.h"
 #include "prop/minisat/utils/System.h"
 
-using namespace cvc5;
-using namespace cvc5::Minisat;
+using namespace cvc5::internal;
+using namespace cvc5::internal::Minisat;
 
 //=================================================================================================
 // Options:
@@ -38,7 +38,6 @@ static const char* _cat = "SIMP";
 
 static BoolOption   opt_use_asymm        (_cat, "asymm",        "Shrink clauses by asymmetric branching.", false);
 static BoolOption   opt_use_rcheck       (_cat, "rcheck",       "Check if a clause is already implied. (costly)", false);
-static BoolOption   opt_use_elim         (_cat, "elim",         "Perform variable elimination.", true);
 static IntOption    opt_grow             (_cat, "grow",         "Allow a variable elimination step to grow by a number of clauses.", 0);
 static IntOption    opt_clause_lim       (_cat, "cl-lim",       "Variables are not eliminated if it produces a resolvent with a length above this limit. -1 means no limit", 20,   IntRange(-1, INT32_MAX));
 static IntOption    opt_subsumption_lim  (_cat, "sub-lim",      "Do not check if subsumption against a clause larger than this. -1 means no limit.", 1000, IntRange(-1, INT32_MAX));
@@ -48,39 +47,33 @@ static DoubleOption opt_simp_garbage_frac(_cat, "simp-gc-frac", "The fraction of
 //=================================================================================================
 // Constructor/Destructor:
 
-SimpSolver::SimpSolver(cvc5::prop::TheoryProxy* proxy,
-                       cvc5::context::Context* context,
-                       cvc5::context::UserContext* userContext,
-                       ProofNodeManager* pnm,
+SimpSolver::SimpSolver(Env& env,
+                       prop::TheoryProxy* proxy,
+                       context::Context* context,
                        bool enableIncremental)
-    : Solver(proxy, context, userContext, pnm, enableIncremental),
+    : Solver(env, proxy, context, enableIncremental),
       grow(opt_grow),
       clause_lim(opt_clause_lim),
       subsumption_lim(opt_subsumption_lim),
       simp_garbage_frac(opt_simp_garbage_frac),
       use_asymm(opt_use_asymm),
       // make sure this is not enabled if unsat cores or proofs are on
-      use_rcheck(opt_use_rcheck && !options::unsatCores() && !pnm),
-      use_elim(options::minisatUseElim() && !enableIncremental),
+      use_rcheck(opt_use_rcheck && !options().smt.produceUnsatCores
+                 && !options().smt.produceProofs),
       merges(0),
       asymm_lits(0),
       eliminated_vars(0),
       elimorder(1),
-      use_simplification(!enableIncremental && !options::unsatCores()
-                         && !pnm)  // TODO: turn off simplifications if
-                                   // proofs are on initially
-      ,
+      use_simplification(
+          options().prop.minisatSimpMode != options::MinisatSimpMode::NONE
+          && !enableIncremental
+          && !options().smt.produceUnsatCores
+          && !options().smt.produceProofs),
       occurs(ClauseDeleted(ca)),
       elim_heap(ElimLt(n_occ)),
       bwdsub_assigns(0),
       n_touched(0)
 {
-    if(options::minisatUseElim() &&
-       Options::current().prop.minisatUseElimWasSetByUser &&
-       enableIncremental) {
-        WarningOnce() << "Incremental mode incompatible with --minisat-elim" << std::endl;
-    }
-
     vec<Lit> dummy(1,lit_Undef);
     ca.extra_clause_field = true; // NOTE: must happen before allocating the dummy clause below.
     bwdsub_tmpunit        = ca.alloc(0, dummy);
@@ -100,34 +93,36 @@ SimpSolver::SimpSolver(cvc5::prop::TheoryProxy* proxy,
     }
 }
 
-
-SimpSolver::~SimpSolver()
+void SimpSolver::attachProofManager(prop::PropPfManager* ppm)
 {
+  AlwaysAssert(!use_simplification && !use_rcheck);
+  Solver::attachProofManager(ppm);
 }
 
+Var SimpSolver::newVar(bool sign, bool dvar, bool isTheoryAtom, bool canErase)
+{
+  Var v = Solver::newVar(sign, dvar, isTheoryAtom);
 
-Var SimpSolver::newVar(bool sign, bool dvar, bool isTheoryAtom, bool preRegister, bool canErase) {
-    Var v = Solver::newVar(sign, dvar, isTheoryAtom, preRegister, canErase);
-
-    if (use_simplification){
-        frozen    .push((char)(!canErase));
-        eliminated.push((char)false);
-        n_occ     .push(0);
-        n_occ     .push(0);
-        occurs    .init(v);
-        touched   .push(0);
-        elim_heap .insert(v);
-    }
-    return v; }
-
-
+  if (use_simplification)
+  {
+    frozen.push((char)(!canErase));
+    eliminated.push((char)false);
+    n_occ.push(0);
+    n_occ.push(0);
+    occurs.init(v);
+    touched.push(0);
+    elim_heap.insert(v);
+  }
+  return v;
+}
 
 lbool SimpSolver::solve_(bool do_simp, bool turn_off_simp)
 {
-    if (options::minisatDumpDimacs()) {
-      toDimacs();
-      return l_Undef;
-    }
+  if (options().prop.minisatDumpDimacs)
+  {
+    toDimacs();
+    return l_Undef;
+  }
     Assert(decisionLevel() == 0);
 
     vec<Var> extra_frozen;
@@ -215,7 +210,7 @@ bool SimpSolver::addClause_(vec<Lit>& ps, bool removable, ClauseId& id)
 void SimpSolver::removeClause(CRef cr)
 {
     const Clause& c = ca[cr];
-    Debug("minisat") << "SimpSolver::removeClause(" << c << ")" << std::endl;
+    Trace("minisat") << "SimpSolver::removeClause(" << c << ")" << std::endl;
 
     if (use_simplification)
         for (int i = 0; i < c.size(); i++){
@@ -331,15 +326,14 @@ void SimpSolver::gatherTouchedClauses()
 {
     if (n_touched == 0) return;
 
-    int i,j;
-    for (i = j = 0; i < subsumption_queue.size(); i++)
+    for (int i = 0; i < subsumption_queue.size(); i++)
         if (ca[subsumption_queue[i]].mark() == 0)
             ca[subsumption_queue[i]].mark(2);
 
-    for (i = 0; i < touched.size(); i++)
+    for (int i = 0; i < touched.size(); i++)
         if (touched[i]){
             const vec<CRef>& cs = occurs.lookup(i);
-            for (j = 0; j < cs.size(); j++)
+            for (int j = 0; j < cs.size(); j++)
                 if (ca[cs[j]].mark() == 0){
                     subsumption_queue.insert(cs[j]);
                     ca[cs[j]].mark(2);
@@ -347,7 +341,7 @@ void SimpSolver::gatherTouchedClauses()
             touched[i] = 0;
         }
 
-    for (i = 0; i < subsumption_queue.size(); i++)
+    for (int i = 0; i < subsumption_queue.size(); i++)
         if (ca[subsumption_queue[i]].mark() == 2)
             ca[subsumption_queue[i]].mark(0);
 
@@ -698,8 +692,14 @@ bool SimpSolver::eliminate(bool turn_off_elim)
 
             // At this point, the variable may have been set by assymetric branching, so check it
             // again. Also, don't eliminate frozen variables:
-            if (use_elim && value(elim) == l_Undef && !frozen[elim] && !eliminateVar(elim)){
-                ok = false; goto cleanup; }
+            if (options().prop.minisatSimpMode
+                    != options::MinisatSimpMode::CLAUSE_ELIM
+                && value(elim) == l_Undef && !frozen[elim]
+                && !eliminateVar(elim))
+            {
+              ok = false;
+              goto cleanup;
+            }
 
             checkGarbage(simp_garbage_frac);
         }

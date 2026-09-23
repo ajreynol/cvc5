@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Abdalrhman Mohamed
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -21,7 +18,7 @@
 #include "theory/quantifiers/candidate_rewrite_database.h"
 #include "theory/quantifiers/sygus/sygus_enumerator.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace quantifiers {
 
@@ -88,8 +85,10 @@ class RConsTypeInfo
   RConsObligation* builtinToOb(Node t);
 
  private:
-  /** Sygus terms enumerator for this class' Sygus datatype type */
-  std::unique_ptr<SygusEnumerator> d_enumerator;
+  /** Sygus terms/patterns enumerators for this class' Sygus datatype type */
+  std::vector<std::unique_ptr<SygusEnumerator>> d_enumerators;
+  /** Initial and current probabilities for choosing which enumerator to use. */
+  double d_p, d_cp;
   /** Candidate rewrite database for this class' sygus datatype type */
   std::unique_ptr<CandidateRewriteDatabase> d_crd;
   /** Sygus sampler needed for initializing the candidate rewrite database */
@@ -105,6 +104,6 @@ class RConsTypeInfo
 
 }  // namespace quantifiers
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif  // CVC5__THEORY__QUANTIFIERS__RCONS_TYPE_INFO_H

@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Morgan Deters, Clark Barrett, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -18,80 +15,116 @@
 // for array-constant attributes
 #include "expr/array_store_all.h"
 #include "theory/arrays/theory_arrays_rewriter.h"
+#include "theory/builtin/theory_builtin_type_rules.h"
 #include "theory/type_enumerator.h"
 #include "util/cardinality.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace arrays {
 
+TypeNode ArraySelectTypeRule::preComputeType(CVC5_UNUSED NodeManager* nm,
+                                             CVC5_UNUSED TNode n)
+{
+  return TypeNode::null();
+}
+
 TypeNode ArraySelectTypeRule::computeType(NodeManager* nodeManager,
                                           TNode n,
-                                          bool check)
+                                          bool check,
+                                          std::ostream* errOut)
 {
-  Assert(n.getKind() == kind::SELECT);
-  TypeNode arrayType = n[0].getType(check);
+  Assert(n.getKind() == Kind::SELECT);
+  TypeNode arrayType = n[0].getTypeOrNull();
   if (check)
   {
-    if (!arrayType.isArray())
+    if (!arrayType.isMaybeKind(Kind::ARRAY_TYPE))
     {
-      throw TypeCheckingExceptionPrivate(n,
-                                         "array select operating on non-array");
+      if (errOut)
+      {
+        (*errOut) << "array select operating on non-array";
+      }
+      return TypeNode::null();
     }
-    TypeNode indexType = n[1].getType(check);
-    if (!indexType.isSubtypeOf(arrayType.getArrayIndexType()))
+    TypeNode indexType = n[1].getTypeOrNull();
+    if (!indexType.isComparableTo(arrayType.getArrayIndexType()))
     {
-      throw TypeCheckingExceptionPrivate(
-          n, "array select not indexed with correct type for array");
+      if (errOut)
+      {
+        (*errOut) << "array select not indexed with correct type for array";
+      }
+      return TypeNode::null();
     }
   }
+  if (arrayType.isAbstract())
+  {
+    // if selecting from a (fully) abstract array, the return is unknown.
+    return nodeManager->mkAbstractType(Kind::ABSTRACT_TYPE);
+  }
+  // otherwise
   return arrayType.getArrayConstituentType();
 }
 
+TypeNode ArrayStoreTypeRule::preComputeType(CVC5_UNUSED NodeManager* nm,
+                                            CVC5_UNUSED TNode n)
+{
+  return TypeNode::null();
+}
 TypeNode ArrayStoreTypeRule::computeType(NodeManager* nodeManager,
                                          TNode n,
-                                         bool check)
+                                         bool check,
+                                         std::ostream* errOut)
 {
-  if (n.getKind() == kind::STORE)
+  if (n.getKind() == Kind::STORE)
   {
-    TypeNode arrayType = n[0].getType(check);
+    TypeNode arrayType = n[0].getTypeOrNull();
     if (check)
     {
-      if (!arrayType.isArray())
+      if (!arrayType.isMaybeKind(Kind::ARRAY_TYPE))
       {
-        throw TypeCheckingExceptionPrivate(
-            n, "array store operating on non-array");
-      }
-      TypeNode indexType = n[1].getType(check);
-      TypeNode valueType = n[2].getType(check);
-      if (!indexType.isSubtypeOf(arrayType.getArrayIndexType()))
-      {
-        throw TypeCheckingExceptionPrivate(
-            n, "array store not indexed with correct type for array");
-      }
-      if (!valueType.isSubtypeOf(arrayType.getArrayConstituentType()))
-      {
-        Debug("array-types")
-            << "array type: " << arrayType.getArrayConstituentType()
-            << std::endl;
-        Debug("array-types") << "value types: " << valueType << std::endl;
-        throw TypeCheckingExceptionPrivate(
-            n, "array store not assigned with correct type for array");
+        if (errOut)
+        {
+          (*errOut) << "array store operating on non-array";
+        }
+        return TypeNode::null();
       }
     }
-    return arrayType;
+    TypeNode indexType = n[1].getTypeOrNull();
+    TypeNode aindexType = arrayType.getArrayIndexType();
+    TypeNode indexjoin = indexType.leastUpperBound(aindexType);
+    if (indexjoin.isNull())
+    {
+      if (errOut)
+      {
+        (*errOut) << "array store not indexed with correct type for array";
+      }
+      return TypeNode::null();
+    }
+    TypeNode valueType = n[2].getTypeOrNull();
+    TypeNode avalueType = arrayType.getArrayConstituentType();
+    TypeNode valuejoin = valueType.leastUpperBound(avalueType);
+    if (valuejoin.isNull())
+    {
+      if (errOut)
+      {
+        (*errOut) << "array store not assigned with correct type for array";
+      }
+      return TypeNode::null();
+    }
+    return nodeManager->mkArrayType(indexjoin, valuejoin);
   }
   else
   {
-    Assert(n.getKind() == kind::STORE_ALL);
+    Assert(n.getKind() == Kind::STORE_ALL);
     ArrayStoreAll storeAll = n.getConst<ArrayStoreAll>();
     return storeAll.getType();
   }
 }
 
-bool ArrayStoreTypeRule::computeIsConst(NodeManager* nodeManager, TNode n)
+bool ArrayStoreTypeRule::computeIsConst(CVC5_UNUSED NodeManager* nodeManager,
+                                        TNode n)
 {
-  Assert(n.getKind() == kind::STORE);
+  Assert(n.getKind() == Kind::STORE);
 
   TNode store = n[0];
   TNode index = n[1];
@@ -106,14 +139,14 @@ bool ArrayStoreTypeRule::computeIsConst(NodeManager* nodeManager, TNode n)
 
   // Normal form for nested stores is just ordering by index but also need to
   // check that we are not writing to default value
-  if (store.getKind() == kind::STORE && (!(store[1] < index)))
+  if (store.getKind() == Kind::STORE && (!(store[1] < index)))
   {
     return false;
   }
 
   unsigned depth = 1;
   unsigned valCount = 1;
-  while (store.getKind() == kind::STORE)
+  while (store.getKind() == Kind::STORE)
   {
     depth += 1;
     if (store[2] == value)
@@ -122,7 +155,7 @@ bool ArrayStoreTypeRule::computeIsConst(NodeManager* nodeManager, TNode n)
     }
     store = store[0];
   }
-  Assert(store.getKind() == kind::STORE_ALL);
+  Assert(store.getKind() == Kind::STORE_ALL);
   ArrayStoreAll storeAll = store.getConst<ArrayStoreAll>();
   Node defaultValue = storeAll.getValue();
   if (value == defaultValue)
@@ -130,8 +163,16 @@ bool ArrayStoreTypeRule::computeIsConst(NodeManager* nodeManager, TNode n)
     return false;
   }
 
+  TypeNode itype = index.getType();
+  CardinalityClass itcc = itype.getCardinalityClass();
+
+  if (itcc != CardinalityClass::FINITE && itcc != CardinalityClass::ONE)
+  {
+    return true;
+  }
+
   // Get the cardinality of the index type
-  Cardinality indexCard = index.getType().getCardinality();
+  Cardinality indexCard = itype.getCardinality();
 
   if (indexCard.isInfinite())
   {
@@ -146,7 +187,7 @@ bool ArrayStoreTypeRule::computeIsConst(NodeManager* nodeManager, TNode n)
   TNode mostFrequentValue;
   unsigned mostFrequentValueCount = 0;
   store = n[0];
-  if (store.getKind() == kind::STORE)
+  if (store.getKind() == Kind::STORE)
   {
     mostFrequentValue = getMostFrequentValue(store);
     mostFrequentValueCount = getMostFrequentValueCount(store);
@@ -176,65 +217,43 @@ bool ArrayStoreTypeRule::computeIsConst(NodeManager* nodeManager, TNode n)
   return true;
 }
 
-TypeNode ArrayTableFunTypeRule::computeType(NodeManager* nodeManager,
-                                            TNode n,
-                                            bool check)
+TypeNode ArrayLambdaTypeRule::preComputeType(CVC5_UNUSED NodeManager* nm,
+                                             CVC5_UNUSED TNode n)
 {
-  Assert(n.getKind() == kind::ARR_TABLE_FUN);
-  TypeNode arrayType = n[0].getType(check);
-  if (check)
-  {
-    if (!arrayType.isArray())
-    {
-      throw TypeCheckingExceptionPrivate(n,
-                                         "array table fun arg 0 is non-array");
-    }
-    TypeNode arrType2 = n[1].getType(check);
-    if (!arrayType.isArray())
-    {
-      throw TypeCheckingExceptionPrivate(n,
-                                         "array table fun arg 1 is non-array");
-    }
-    TypeNode indexType = n[2].getType(check);
-    if (!indexType.isComparableTo(arrayType.getArrayIndexType()))
-    {
-      throw TypeCheckingExceptionPrivate(
-          n, "array table fun arg 2 does not match type of array");
-    }
-    indexType = n[3].getType(check);
-    if (!indexType.isComparableTo(arrayType.getArrayIndexType()))
-    {
-      throw TypeCheckingExceptionPrivate(
-          n, "array table fun arg 3 does not match type of array");
-    }
-  }
-  return arrayType.getArrayIndexType();
+  return TypeNode::null();
 }
-
 TypeNode ArrayLambdaTypeRule::computeType(NodeManager* nodeManager,
                                           TNode n,
-                                          bool check)
+                                          bool check,
+                                          std::ostream* errOut)
 {
-  Assert(n.getKind() == kind::ARRAY_LAMBDA);
-  TypeNode lamType = n[0].getType(check);
+  Assert(n.getKind() == Kind::ARRAY_LAMBDA);
+  TypeNode lamType = n[0].getTypeOrNull();
   if (check)
   {
-    if (n[0].getKind() != kind::LAMBDA)
+    if (n[0].getKind() != Kind::LAMBDA)
     {
-      throw TypeCheckingExceptionPrivate(n, "array lambda arg is non-lambda");
+      if (errOut)
+      {
+        (*errOut) << "array lambda arg is non-lambda";
+      }
+      return TypeNode::null();
     }
   }
   if (lamType.getNumChildren() != 2)
   {
-    throw TypeCheckingExceptionPrivate(n,
-                                       "array lambda arg is not unary lambda");
+    if (errOut)
+    {
+      (*errOut) << "array lambda arg is not unary lambda";
+    }
+    return TypeNode::null();
   }
   return nodeManager->mkArrayType(lamType[0], lamType[1]);
 }
 
 Cardinality ArraysProperties::computeCardinality(TypeNode type)
 {
-  Assert(type.getKind() == kind::ARRAY_TYPE);
+  Assert(type.getKind() == Kind::ARRAY_TYPE);
 
   Cardinality indexCard = type[0].getCardinality();
   Cardinality valueCard = type[1].getCardinality();
@@ -249,61 +268,95 @@ bool ArraysProperties::isWellFounded(TypeNode type)
 
 Node ArraysProperties::mkGroundTerm(TypeNode type)
 {
-  return *TypeEnumerator(type);
+  Assert(type.getKind() == Kind::ARRAY_TYPE);
+  TypeNode elemType = type.getArrayConstituentType();
+  Node elem = NodeManager::mkGroundTerm(elemType);
+  if (elem.isConst())
+  {
+    return type.getNodeManager()->mkConst(ArrayStoreAll(type, elem));
+  }
+  // Note the distinction between mkGroundTerm and mkGroundValue. While
+  // an arbitrary value can be obtained by calling the type enumerator here,
+  // that is wrong for types that are not closed enumerable since it may
+  // return a term containing values that should not appear in e.g. assertions.
+  // For example, arrays whose element type is an uninterpreted sort will
+  // incorrectly introduce uninterpreted sort values if this is done.
+  // It is currently infeasible to construct an ArrayStoreAll with the element
+  // type's mkGroundTerm as an argument when that term is not constant.
+  // Thus, we must simply return a fresh Skolem here, using the same utility
+  // as that of uninterpreted sorts.
+  return builtin::SortProperties::mkGroundTerm(type);
 }
 
-TypeNode ArrayPartialSelectTypeRule::computeType(NodeManager* nodeManager,
-                                                 TNode n,
-                                                 bool check)
+TypeNode ArrayEqRangeTypeRule::preComputeType(CVC5_UNUSED NodeManager* nm,
+                                              CVC5_UNUSED TNode n)
 {
-  Assert(n.getKind() == kind::PARTIAL_SELECT_0
-         || n.getKind() == kind::PARTIAL_SELECT_1);
-  return nodeManager->integerType();
+  return nm->booleanType();
 }
 
 TypeNode ArrayEqRangeTypeRule::computeType(NodeManager* nodeManager,
                                            TNode n,
-                                           bool check)
+                                           bool check,
+                                           std::ostream* errOut)
 {
-  Assert(n.getKind() == kind::EQ_RANGE);
+  Assert(n.getKind() == Kind::EQ_RANGE);
   if (check)
   {
-    TypeNode n0_type = n[0].getType(check);
-    TypeNode n1_type = n[1].getType(check);
-    if (!n0_type.isArray())
+    TypeNode n0_type = n[0].getTypeOrNull();
+    TypeNode n1_type = n[1].getTypeOrNull();
+    if (!n0_type.isMaybeKind(Kind::ARRAY_TYPE))
     {
-      throw TypeCheckingExceptionPrivate(
-          n, "first operand of eqrange is not an array");
+      if (errOut)
+      {
+        (*errOut) << "first operand of eqrange is not an array";
+      }
+      return TypeNode::null();
     }
-    if (!n1_type.isArray())
+    if (!n1_type.isMaybeKind(Kind::ARRAY_TYPE))
     {
-      throw TypeCheckingExceptionPrivate(
-          n, "second operand of eqrange is not an array");
+      if (errOut)
+      {
+        (*errOut) << "second operand of eqrange is not an array";
+      }
+      return TypeNode::null();
     }
-    if (n0_type != n1_type)
+    if (!n0_type.isComparableTo(n1_type))
     {
-      throw TypeCheckingExceptionPrivate(n, "array types do not match");
+      if (errOut)
+      {
+        (*errOut) << "array types do not match";
+      }
+      return TypeNode::null();
     }
     TypeNode indexType = n0_type.getArrayIndexType();
-    TypeNode indexRangeType1 = n[2].getType(check);
-    TypeNode indexRangeType2 = n[3].getType(check);
-    if (!indexRangeType1.isSubtypeOf(indexType))
+    TypeNode indexRangeType1 = n[2].getTypeOrNull();
+    TypeNode indexRangeType2 = n[3].getTypeOrNull();
+    if (!indexRangeType1.isComparableTo(indexType))
     {
-      throw TypeCheckingExceptionPrivate(
-          n, "eqrange lower index type does not match array index type");
+      if (errOut)
+      {
+        (*errOut) << "eqrange lower index type does not match array index type";
+      }
+      return TypeNode::null();
     }
-    if (!indexRangeType2.isSubtypeOf(indexType))
+    if (!indexRangeType2.isComparableTo(indexType))
     {
-      throw TypeCheckingExceptionPrivate(
-          n, "eqrange upper index type does not match array index type");
+      if (errOut)
+      {
+        (*errOut) << "eqrange upper index type does not match array index type";
+      }
+      return TypeNode::null();
     }
-    if (!indexType.isBitVector() && !indexType.isFloatingPoint()
-        && !indexType.isInteger() && !indexType.isReal())
+    if (!indexType.isMaybeKind(Kind::BITVECTOR_TYPE)
+        && !indexType.isMaybeKind(Kind::FLOATINGPOINT_TYPE)
+        && !indexType.isRealOrInt())
     {
-      throw TypeCheckingExceptionPrivate(
-          n,
-          "eqrange only supports bit-vectors, floating-points, integers, and "
-          "reals as index type");
+      if (errOut)
+      {
+        (*errOut) << "eqrange only supports bit-vectors, floating-points, "
+                     "integers, and reals as index type";
+      }
+      return TypeNode::null();
     }
   }
   return nodeManager->booleanType();
@@ -311,4 +364,4 @@ TypeNode ArrayEqRangeTypeRule::computeType(NodeManager* nodeManager,
 
 }  // namespace arrays
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal

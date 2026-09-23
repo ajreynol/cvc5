@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Tianyi Liang, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -24,13 +21,18 @@
 #include "context/cdhashset.h"
 #include "context/cdlist.h"
 #include "expr/node_trie.h"
+#include "proof/trust_proof_generator.h"
+#include "theory/care_pair_argument_callback.h"
 #include "theory/ext_theory.h"
+#include "theory/strings/array_solver.h"
 #include "theory/strings/base_solver.h"
+#include "theory/strings/code_point_solver.h"
 #include "theory/strings/core_solver.h"
 #include "theory/strings/eager_solver.h"
 #include "theory/strings/extf_solver.h"
 #include "theory/strings/infer_info.h"
 #include "theory/strings/inference_manager.h"
+#include "theory/strings/model_cons_default.h"
 #include "theory/strings/normal_form.h"
 #include "theory/strings/proof_checker.h"
 #include "theory/strings/regexp_elim.h"
@@ -45,7 +47,7 @@
 #include "theory/theory.h"
 #include "theory/uf/equality_engine.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace strings {
 
@@ -58,7 +60,8 @@ namespace strings {
  * Its rewriter is described in:
  * - Reynolds et al, CAV 2019.
  */
-class TheoryStrings : public Theory {
+class TheoryStrings : public Theory
+{
   friend class InferenceManager;
   typedef context::CDHashSet<Node> NodeSet;
   typedef context::CDHashSet<TypeNode, std::hash<TypeNode>> TypeNodeSet;
@@ -86,8 +89,6 @@ class TheoryStrings : public Theory {
   TrustNode explain(TNode literal) override;
   /** presolve */
   void presolve() override;
-  /** shutdown */
-  void shutdown() override {}
   /** preregister term */
   void preRegisterTerm(TNode n) override;
   //--------------------------------- standard check
@@ -108,80 +109,76 @@ class TheoryStrings : public Theory {
   void conflict(TNode a, TNode b);
   /** called when a new equivalence class is created */
   void eqNotifyNewClass(TNode t);
+  /** Called just after the merge of two equivalence classes */
+  void eqNotifyMerge(TNode t1, TNode t2);
   /** preprocess rewrite */
   TrustNode ppRewrite(TNode atom, std::vector<SkolemLemma>& lems) override;
+  TrustNode ppStaticRewrite(TNode atom) override;
   /** Collect model values in m based on the relevant terms given by termSet */
   bool collectModelValues(TheoryModel* m,
                           const std::set<Node>& termSet) override;
 
  private:
   /** NotifyClass for equality engine */
-  class NotifyClass : public eq::EqualityEngineNotify {
-  public:
-   NotifyClass(TheoryStrings& ts) : d_str(ts), d_eagerSolver(ts.d_eagerSolver)
-   {
-   }
-   bool eqNotifyTriggerPredicate(TNode predicate, bool value) override
-   {
-     Debug("strings") << "NotifyClass::eqNotifyTriggerPredicate(" << predicate
-                      << ", " << (value ? "true" : "false") << ")" << std::endl;
-     if (value)
-     {
-       return d_str.propagateLit(predicate);
-     }
-     return d_str.propagateLit(predicate.notNode());
+  class NotifyClass : public eq::EqualityEngineNotify
+  {
+   public:
+    NotifyClass(TheoryStrings& ts) : d_str(ts) {}
+    bool eqNotifyTriggerPredicate(TNode predicate, bool value) override
+    {
+      Trace("strings") << "NotifyClass::eqNotifyTriggerPredicate(" << predicate
+                       << ", " << (value ? "true" : "false") << ")"
+                       << std::endl;
+      if (value)
+      {
+        return d_str.propagateLit(predicate);
+      }
+      return d_str.propagateLit(predicate.notNode());
     }
     bool eqNotifyTriggerTermEquality(TheoryId tag,
                                      TNode t1,
                                      TNode t2,
                                      bool value) override
     {
-      Debug("strings") << "NotifyClass::eqNotifyTriggerTermMerge(" << tag << ", " << t1 << ", " << t2 << ")" << std::endl;
-      if (value) {
+      Trace("strings") << "NotifyClass::eqNotifyTriggerTermMerge(" << tag
+                       << ", " << t1 << ", " << t2 << ")" << std::endl;
+      if (value)
+      {
         return d_str.propagateLit(t1.eqNode(t2));
       }
       return d_str.propagateLit(t1.eqNode(t2).notNode());
     }
     void eqNotifyConstantTermMerge(TNode t1, TNode t2) override
     {
-      Debug("strings") << "NotifyClass::eqNotifyConstantTermMerge(" << t1 << ", " << t2 << ")" << std::endl;
+      Trace("strings") << "NotifyClass::eqNotifyConstantTermMerge(" << t1
+                       << ", " << t2 << ")" << std::endl;
       d_str.conflict(t1, t2);
     }
     void eqNotifyNewClass(TNode t) override
     {
-      Debug("strings") << "NotifyClass::eqNotifyNewClass(" << t << std::endl;
+      Trace("strings") << "NotifyClass::eqNotifyNewClass(" << t << std::endl;
       d_str.eqNotifyNewClass(t);
     }
     void eqNotifyMerge(TNode t1, TNode t2) override
     {
-      Debug("strings") << "NotifyClass::eqNotifyMerge(" << t1 << ", " << t2
+      Trace("strings") << "NotifyClass::eqNotifyMerge(" << t1 << ", " << t2
                        << std::endl;
-      d_eagerSolver.eqNotifyMerge(t1, t2);
+      d_str.eqNotifyMerge(t1, t2);
     }
-    void eqNotifyDisequal(TNode t1, TNode t2, TNode reason) override
+    void eqNotifyDisequal(CVC5_UNUSED TNode t1,
+                          CVC5_UNUSED TNode t2,
+                          CVC5_UNUSED TNode reason) override
     {
-      Debug("strings") << "NotifyClass::eqNotifyDisequal(" << t1 << ", " << t2 << ", " << reason << std::endl;
-      d_eagerSolver.eqNotifyDisequal(t1, t2, reason);
     }
 
    private:
     /** The theory of strings object to notify */
     TheoryStrings& d_str;
-    /** The eager solver of the theory of strings */
-    EagerSolver& d_eagerSolver;
-  };/* class TheoryStrings::NotifyClass */
+  }; /* class TheoryStrings::NotifyClass */
   /** compute care graph */
   void computeCareGraph() override;
-  /**
-   * Are x and y shared terms that are not equal? This is used for constructing
-   * the care graph in the above function.
-   */
-  bool areCareDisequal(TNode x, TNode y);
-  /** Add care pairs */
-  void addCarePairs(TNodeTrie* t1,
-                    TNodeTrie* t2,
-                    unsigned arity,
-                    unsigned depth);
+  /** notify shared term */
+  void notifySharedTerm(TNode n) override;
   /** Collect model info for type tn
    *
    * Assigns model values (in m) to all relevant terms of the string-like type
@@ -189,8 +186,8 @@ class TheoryStrings : public Theory {
    *
    * @param tn The type to compute model values for
    * @param toProcess Remaining types to compute model values for
-   * @param repSet A map of types to the representatives of the equivalence
-   *               classes of the given type
+   * @param repSet A map of types to representatives of
+   * the equivalence classes of the given type
    * @return false if a conflict is discovered while doing this assignment.
    */
   bool collectModelInfoType(
@@ -208,33 +205,35 @@ class TheoryStrings : public Theory {
    * of atom, including calls to registerTerm.
    */
   void assertPendingFact(Node atom, bool polarity, Node exp);
-  //-----------------------inference steps
-  /** check register terms pre-normal forms
-   *
-   * This calls registerTerm(n,2) on all non-congruent strings in the
-   * equality engine of this class.
+  /**
+   * Turn a sequence constant into a skeleton specifying how to construct
+   * its value.
+   * In particular, this means that value:
+   *   (seq.++ (seq.unit 0) (seq.unit 1) (seq.unit 2))
+   * becomes:
+   *   (seq.++ (seq.unit k_0) (seq.unit k_1) (seq.unit k_2))
+   * where k_0, k_1, k_2 are fresh integer variables. These
+   * variables will be assigned values in the standard way by the
+   * model. This construction is necessary during model construction since the
+   * strings solver must constrain the length of the model of an equivalence
+   * class (e.g. in this case to length 3); moreover we cannot assign a concrete
+   * value since it may conflict with other skeletons we have assigned.
    */
-  void checkRegisterTermsPreNormalForm();
-  /** check codes
-   *
-   * This inference schema ensures that constraints between str.code terms
-   * are satisfied by models that correspond to extensions of the current
-   * assignment. In particular, this method ensures that str.code can be
-   * given an interpretation that is injective for string arguments with length
-   * one. It may add lemmas of the form:
-   *   str.code(x) == -1 V str.code(x) != str.code(y) V x == y
+  Node mkSkeletonFor(Node value);
+  /**
+   * Make the skeleton for the basis of constructing sequence r between
+   * indices currIndex (inclusive) and nextIndex (exclusive). For example, if
+   * currIndex = 2 and nextIndex = 5, then this returns:
+   *   (seq.++ (seq.unit k_{r,2}) (seq.unit k_{r,3}) (seq.unit k_{r,4}))
+   * where k_{r,2}, k_{r,3}, k_{r,4} are Skolem variables of the element type
+   * of r that are unique to the pairs (r,2), (r,3), (r,4). In other words,
+   * these Skolems abstractly represent the element at positions 2, 3, 4 in the
+   * model for r.
    */
-  void checkCodes();
-  /** check register terms for normal forms
-   *
-   * This calls registerTerm(str.++(t1, ..., tn ), 3) on the normal forms
-   * (t1, ..., tn) of all string equivalence classes { s1, ..., sm } such that
-   * there does not exist a term of the form str.len(si) in the current context.
-   */
-  void checkRegisterTermsNormalForms();
+  Node mkSkeletonFromBase(Node r, size_t currIndex, size_t nextIndex);
   //-----------------------end inference steps
   /** run the given inference step */
-  void runInferStep(InferStep s, int effort);
+  void runInferStep(InferStep s, Theory::Effort e, int effort);
   /** run strategy for effort e */
   void runStrategy(Theory::Effort e);
   /** print strings equivalence classes for debugging */
@@ -254,18 +253,22 @@ class TheoryStrings : public Theory {
   SequencesStatistics d_statistics;
   /** The solver state object */
   SolverState d_state;
-  /** The eager solver */
-  EagerSolver d_eagerSolver;
   /** The term registry for this theory */
   TermRegistry d_termReg;
+  /** An arithmetic entailment utility */
+  ArithEntail d_arithEntail;
+  /** A string entailment utility */
+  StringsEntail d_strEntail;
+  /** The theory rewriter for this theory. */
+  StringsRewriter d_rewriter;
+  /** The eager solver */
+  std::unique_ptr<EagerSolver> d_eagerSolver;
   /** The extended theory callback */
   StringsExtfCallback d_extTheoryCb;
   /** The (custom) output channel of the theory of strings */
   InferenceManager d_im;
   /** Extended theory, responsible for context-dependent simplification. */
   ExtTheory d_extTheory;
-  /** The theory rewriter for this theory. */
-  StringsRewriter d_rewriter;
   /** The proof rule checker */
   StringProofRuleChecker d_checker;
   /**
@@ -283,18 +286,42 @@ class TheoryStrings : public Theory {
    * involving extended string functions.
    */
   ExtfSolver d_esolver;
+  /** Code point solver */
+  CodePointSolver d_psolver;
+  /**
+   * The array solver, which implements specialized approaches for
+   * seq.nth/seq.update.
+   */
+  ArraySolver d_asolver;
   /** regular expression solver module */
   RegExpSolver d_rsolver;
   /** regular expression elimination module */
   RegExpElimination d_regexp_elim;
   /** Strings finite model finding decision strategy */
   StringsFmf d_stringsFmf;
+  /** Model constructor (default) */
+  ModelConsDefault d_mcd;
   /** The representation of the strategy */
   Strategy d_strat;
-};/* class TheoryStrings */
+  /**
+   * For model building, a counter on the number of abstract witness terms
+   * we have built, so that unique debug names can be assigned.
+   */
+  size_t d_absModelCounter;
+  /**
+   * For model building, a counter on the number of gaps constructed for
+   * string terms due to array reasoning. This is to allocate unique unspecified
+   * characters.
+   */
+  size_t d_strGapModelCounter;
+  /** The care pair argument callback, used for theory combination */
+  CarePairArgumentCallback d_cpacb;
+  /** For proof of ppStaticRewrite */
+  std::shared_ptr<TrustProofGenerator> d_psrewPg;
+}; /* class TheoryStrings */
 
 }  // namespace strings
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__THEORY__STRINGS__THEORY_STRINGS_H */

@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Alex Ozdemir
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -18,13 +15,15 @@
 #include "proof/proof.h"
 #include "proof/proof_node.h"
 #include "proof/proof_node_manager.h"
+#include "rewriter/rewrites.h"
+#include "smt/env.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 
-EagerProofGenerator::EagerProofGenerator(ProofNodeManager* pnm,
+EagerProofGenerator::EagerProofGenerator(Env& env,
                                          context::Context* c,
                                          std::string name)
-    : d_pnm(pnm), d_name(name), d_proofs(c == nullptr ? &d_context : c)
+    : EnvObj(env), d_name(name), d_proofs(c == nullptr ? &d_context : c)
 {
 }
 
@@ -99,26 +98,52 @@ TrustNode EagerProofGenerator::mkTrustNode(Node n,
 }
 
 TrustNode EagerProofGenerator::mkTrustNode(Node conc,
-                                           PfRule id,
+                                           ProofRule id,
                                            const std::vector<Node>& exp,
                                            const std::vector<Node>& args,
                                            bool isConflict)
 {
+  ProofNodeManager* pnm = d_env.getProofNodeManager();
   // if no children, its easy
   if (exp.empty())
   {
-    std::shared_ptr<ProofNode> pf = d_pnm->mkNode(id, {}, args, conc);
+    // do not use "conc" as expected here, instead this will be checked
+    // later in setProofFor, where conc may be negated if isConflict is true
+    std::shared_ptr<ProofNode> pf = pnm->mkNode(id, {}, args);
     return mkTrustNode(conc, pf, isConflict);
   }
   // otherwise, we use CDProof + SCOPE
-  CDProof cdp(d_pnm);
+  CDProof cdp(d_env);
   cdp.addStep(conc, id, exp, args);
   std::shared_ptr<ProofNode> pf = cdp.getProofFor(conc);
   // We use mkNode instead of mkScope, since there is no reason to check
   // whether the free assumptions of pf are in exp, since they are by the
   // construction above.
-  std::shared_ptr<ProofNode> pfs = d_pnm->mkNode(PfRule::SCOPE, {pf}, exp);
+  std::shared_ptr<ProofNode> pfs = pnm->mkNode(ProofRule::SCOPE, {pf}, exp);
   return mkTrustNode(pfs->getResult(), pfs, isConflict);
+}
+
+TrustNode EagerProofGenerator::mkTrustNodeTrusted(Node conc,
+                                                  TrustId id,
+                                                  const std::vector<Node>& exp,
+                                                  const std::vector<Node>& args,
+                                                  bool isConflict)
+{
+  std::vector<Node> targs;
+  targs.push_back(mkTrustId(nodeManager(), id));
+  targs.push_back(isConflict ? conc.notNode() : conc);
+  targs.insert(targs.end(), args.begin(), args.end());
+  return mkTrustNode(conc, ProofRule::TRUST, exp, targs, isConflict);
+}
+
+TrustNode EagerProofGenerator::mkTrustNodeRewrite(const Node& a,
+                                                  const Node& b,
+                                                  ProofRewriteRule id)
+{
+  std::vector<Node> args;
+  args.push_back(rewriter::mkRewriteRuleNode(nodeManager(), id));
+  args.push_back(a.eqNode(b));
+  return mkTrustedRewrite(a, b, ProofRule::THEORY_REWRITE, args);
 }
 
 TrustNode EagerProofGenerator::mkTrustedRewrite(Node a,
@@ -132,6 +157,18 @@ TrustNode EagerProofGenerator::mkTrustedRewrite(Node a,
   Node eq = a.eqNode(b);
   setProofFor(eq, pf);
   return TrustNode::mkTrustRewrite(a, b, this);
+}
+
+TrustNode EagerProofGenerator::mkTrustedRewrite(Node a,
+                                                Node b,
+                                                ProofRule id,
+                                                const std::vector<Node>& args)
+{
+  Node eq = a.eqNode(b);
+  CDProof cdp(d_env);
+  cdp.addStep(eq, id, {}, args);
+  std::shared_ptr<ProofNode> pf = cdp.getProofFor(eq);
+  return mkTrustedRewrite(a, b, pf);
 }
 
 TrustNode EagerProofGenerator::mkTrustedPropagation(
@@ -149,9 +186,9 @@ TrustNode EagerProofGenerator::mkTrustNodeSplit(Node f)
 {
   // make the lemma
   Node lem = f.orNode(f.notNode());
-  return mkTrustNode(lem, PfRule::SPLIT, {}, {f}, false);
+  return mkTrustNode(lem, ProofRule::SPLIT, {}, {f}, false);
 }
 
 std::string EagerProofGenerator::identify() const { return d_name; }
 
-}  // namespace cvc5
+}  // namespace cvc5::internal

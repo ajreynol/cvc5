@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -19,7 +16,7 @@
 
 #include "preprocessing/preprocessing_pass.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace preprocessing {
 namespace passes {
 
@@ -65,13 +62,18 @@ class SynthRewRulesPass : public PreprocessingPass
  public:
   SynthRewRulesPass(PreprocessingPassContext* preprocContext);
 
+  static std::vector<TypeNode> getGrammarsFrom(
+      Env& env, const std::vector<Node>& assertions, uint64_t nvars);
+
  protected:
+  static std::map<TypeNode, TypeNode> constructTopLevelGrammar(
+      Env& env, const std::vector<Node>& assertions, uint64_t nvars);
   PreprocessingPassResult applyInternal(
       AssertionPipeline* assertionsToPreprocess) override;
 };
 
 }  // namespace passes
 }  // namespace preprocessing
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__PREPROCESSING__PASSES__SYNTH_REW_RULES_H */

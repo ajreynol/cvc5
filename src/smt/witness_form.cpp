@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -16,27 +13,43 @@
 #include "smt/witness_form.h"
 
 #include "expr/skolem_manager.h"
+#include "smt/env.h"
 #include "theory/rewriter.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace smt {
 
-WitnessFormGenerator::WitnessFormGenerator(ProofNodeManager* pnm)
-    : d_tcpg(pnm,
+std::ostream& operator<<(std::ostream& out, WitnessReq wr)
+{
+  switch (wr)
+  {
+    case WitnessReq::WITNESS_AND_REWRITE: out << "WITNESS_AND_REWRITE"; break;
+    case WitnessReq::WITNESS: out << "WITNESS"; break;
+    case WitnessReq::REWRITE: out << "REWRITE"; break;
+    case WitnessReq::NONE: out << "NONE"; break;
+  }
+  return out;
+}
+
+WitnessFormGenerator::WitnessFormGenerator(Env& env)
+    : EnvObj(env),
+      d_rewriter(env.getRewriter()),
+      d_tcpg(env,
              nullptr,
              TConvPolicy::FIXPOINT,
              TConvCachePolicy::NEVER,
              "WfGenerator::TConvProofGenerator",
              nullptr,
              true),
-      d_wintroPf(pnm, nullptr, nullptr, "WfGenerator::LazyCDProof"),
-      d_pskPf(pnm, nullptr, "WfGenerator::PurifySkolemProof")
+      d_wintroPf(env, nullptr, nullptr, "WfGenerator::LazyCDProof"),
+      d_pskPf(env, nullptr, "WfGenerator::PurifySkolemProof")
 {
+  d_true = nodeManager()->mkConst(true);
 }
 
 std::shared_ptr<ProofNode> WitnessFormGenerator::getProofFor(Node eq)
 {
-  if (eq.getKind() != kind::EQUAL)
+  if (eq.getKind() != Kind::EQUAL)
   {
     // expecting an equality
     return nullptr;
@@ -66,7 +79,7 @@ Node WitnessFormGenerator::convertToWitnessForm(Node t)
     // trivial case
     return tw;
   }
-  std::unordered_set<TNode>::iterator it;
+  std::unordered_set<Node>::iterator it;
   std::vector<TNode> visit;
   TNode cur;
   TNode curw;
@@ -80,24 +93,27 @@ Node WitnessFormGenerator::convertToWitnessForm(Node t)
     {
       d_visited.insert(cur);
       curw = SkolemManager::getOriginalForm(cur);
-      // if its witness form is different
+      // if its original form is different
       if (cur != curw)
       {
         if (cur.isVar())
         {
+          curw = SkolemManager::getUnpurifiedForm(cur);
           Node eq = cur.eqNode(curw);
-          // equality between a variable and its original form
+          // equality between a variable and its unpurified form
           d_eqs.insert(eq);
           // ------- SKOLEM_INTRO
           // k = t
-          d_wintroPf.addStep(eq, PfRule::SKOLEM_INTRO, {}, {cur});
+          d_wintroPf.addStep(eq, ProofRule::SKOLEM_INTRO, {}, {cur});
           d_tcpg.addRewriteStep(
-              cur, curw, &d_wintroPf, true, PfRule::ASSUME, true);
+              cur, curw, &d_wintroPf, true, TrustId::NONE, true);
+          // recursively transform
+          visit.push_back(curw);
         }
         else
         {
-          // A term whose witness form is different from itself, recurse.
-          // It should be the case that cur has children, since the witness
+          // A term whose original form is different from itself, recurse.
+          // It should be the case that cur has children, since the original
           // form of constants are themselves.
           Assert(cur.getNumChildren() > 0);
           if (cur.hasOperator())
@@ -112,15 +128,35 @@ Node WitnessFormGenerator::convertToWitnessForm(Node t)
   return tw;
 }
 
-bool WitnessFormGenerator::requiresWitnessFormTransform(Node t, Node s) const
+WitnessReq WitnessFormGenerator::requiresWitnessFormTransform(
+    Node t, Node s, MethodId idr) const
 {
-  return theory::Rewriter::rewrite(t) != theory::Rewriter::rewrite(s);
+  Node tr = d_env.rewriteViaMethod(t, idr);
+  Node sr = d_env.rewriteViaMethod(s, idr);
+  if (tr == sr)
+  {
+    // rewriting via the method is enough
+    return WitnessReq::NONE;
+  }
+  if (CVC5_EQUAL(rewrite(tr), rewrite(sr)))
+  {
+    // calling ordinary rewrite after (extended) rewriting is enough
+    return WitnessReq::REWRITE;
+  }
+  Node trw = SkolemManager::getOriginalForm(tr);
+  Node srw = SkolemManager::getOriginalForm(sr);
+  if (trw == srw)
+  {
+    // witness is enough
+    return WitnessReq::WITNESS;
+  }
+  return WitnessReq::WITNESS_AND_REWRITE;
 }
 
-bool WitnessFormGenerator::requiresWitnessFormIntro(Node t) const
+WitnessReq WitnessFormGenerator::requiresWitnessFormIntro(Node t,
+                                                          MethodId idr) const
 {
-  Node tr = theory::Rewriter::rewrite(t);
-  return !tr.isConst() || !tr.getConst<bool>();
+  return requiresWitnessFormTransform(t, d_true, idr);
 }
 
 const std::unordered_set<Node>& WitnessFormGenerator::getWitnessFormEqs() const
@@ -128,28 +164,5 @@ const std::unordered_set<Node>& WitnessFormGenerator::getWitnessFormEqs() const
   return d_eqs;
 }
 
-ProofGenerator* WitnessFormGenerator::convertExistsInternal(Node exists)
-{
-  Assert(exists.getKind() == kind::EXISTS);
-  if (exists[0].getNumChildren() == 1 && exists[1].getKind() == kind::EQUAL
-      && exists[1][0] == exists[0][0])
-  {
-    Node tpurified = exists[1][1];
-    Trace("witness-form") << "convertExistsInternal: infer purification "
-                          << exists << " for " << tpurified << std::endl;
-    // ------ REFL
-    // t = t
-    // ---------------- EXISTS_INTRO
-    // exists x. x = t
-    // The concluded existential is then used to construct the witness term
-    // via witness intro.
-    Node teq = tpurified.eqNode(tpurified);
-    d_pskPf.addStep(teq, PfRule::REFL, {}, {tpurified});
-    d_pskPf.addStep(exists, PfRule::EXISTS_INTRO, {teq}, {exists});
-    return &d_pskPf;
-  }
-  return nullptr;
-}
-
 }  // namespace smt
-}  // namespace cvc5
+}  // namespace cvc5::internal

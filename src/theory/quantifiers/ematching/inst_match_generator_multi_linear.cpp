@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Aina Niemetz
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -18,16 +15,16 @@
 #include "theory/quantifiers/ematching/trigger_trie.h"
 #include "theory/quantifiers/term_util.h"
 
-using namespace cvc5::kind;
+using namespace cvc5::internal::kind;
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace quantifiers {
 namespace inst {
 
 InstMatchGeneratorMultiLinear::InstMatchGeneratorMultiLinear(
-    Trigger* tparent, Node q, std::vector<Node>& pats)
-    : InstMatchGenerator(tparent, Node::null())
+    Env& env, Trigger* tparent, Node q, std::vector<Node>& pats)
+    : InstMatchGenerator(env, tparent, Node::null())
 {
   // order patterns to maximize eager matching failures
   std::map<Node, std::vector<Node> > var_contains;
@@ -102,7 +99,7 @@ InstMatchGeneratorMultiLinear::InstMatchGeneratorMultiLinear(
   {
     Node po = pats_ordered[i];
     Trace("multi-trigger-linear") << "...make for " << po << std::endl;
-    InstMatchGenerator* cimg = getInstMatchGenerator(tparent, q, po);
+    InstMatchGenerator* cimg = getInstMatchGenerator(env, tparent, q, po);
     Assert(cimg != nullptr);
     d_children.push_back(cimg);
     // this could be improved
@@ -125,21 +122,21 @@ int InstMatchGeneratorMultiLinear::resetChildren()
   return 1;
 }
 
-bool InstMatchGeneratorMultiLinear::reset(Node eqc)
+bool InstMatchGeneratorMultiLinear::reset(CVC5_UNUSED Node eqc)
 {
   Assert(eqc.isNull());
-  if (options::multiTriggerLinear())
+  if (options().quantifiers.multiTriggerLinear)
   {
     return true;
   }
   return resetChildren() > 0;
 }
 
-int InstMatchGeneratorMultiLinear::getNextMatch(Node q, InstMatch& m)
+int InstMatchGeneratorMultiLinear::getNextMatch(InstMatch& m)
 {
   Trace("multi-trigger-linear-debug")
       << "InstMatchGeneratorMultiLinear::getNextMatch : reset " << std::endl;
-  if (options::multiTriggerLinear())
+  if (options().quantifiers.multiTriggerLinear)
   {
     // reset everyone
     int rc_ret = resetChildren();
@@ -152,13 +149,12 @@ int InstMatchGeneratorMultiLinear::getNextMatch(Node q, InstMatch& m)
       << "InstMatchGeneratorMultiLinear::getNextMatch : continue match "
       << std::endl;
   Assert(d_next != nullptr);
-  int ret_val =
-      continueNextMatch(q, m, InferenceId::QUANTIFIERS_INST_E_MATCHING_MTL);
+  int ret_val = continueNextMatch(m);
   if (ret_val > 0)
   {
     Trace("multi-trigger-linear")
         << "Successful multi-trigger instantiation." << std::endl;
-    if (options::multiTriggerLinear())
+    if (options().quantifiers.multiTriggerLinear)
     {
       // now, restrict everyone
       for (size_t i = 0, csize = d_children.size(); i < csize; i++)
@@ -173,7 +169,12 @@ int InstMatchGeneratorMultiLinear::getNextMatch(Node q, InstMatch& m)
   return ret_val;
 }
 
+InferenceId InstMatchGeneratorMultiLinear::getInferenceId()
+{
+  return InferenceId::QUANTIFIERS_INST_E_MATCHING_MTL;
+}
+
 }  // namespace inst
 }  // namespace quantifiers
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal

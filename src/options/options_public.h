@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Gereon Kremer
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -22,6 +19,8 @@
 #ifndef CVC5__OPTIONS__OPTIONS_PUBLIC_H
 #define CVC5__OPTIONS__OPTIONS_PUBLIC_H
 
+#include <cvc5/cvc5_export.h>
+
 #include <iosfwd>
 #include <optional>
 #include <sstream>
@@ -29,10 +28,9 @@
 #include <variant>
 #include <vector>
 
-#include "cvc5_export.h"
 #include "options/options.h"
 
-namespace cvc5::options {
+namespace cvc5::internal::options {
 
 /**
  * Get a (sorted) list of all option names that are available.
@@ -61,9 +59,19 @@ void set(Options& opts,
  */
 struct CVC5_EXPORT OptionInfo
 {
+  enum class Category
+  {
+    COMMON,
+    EXPERT,
+    REGULAR,
+    UNDOCUMENTED
+  };
+
   std::string name;
   std::vector<std::string> aliases;
+  std::vector<std::string> noSupports;
   bool setByUser;
+  Category category;
 
   /** No information about the options value */
   struct VoidInfo
@@ -119,6 +127,6 @@ struct CVC5_EXPORT OptionInfo
  */
 OptionInfo getInfo(const Options& opts, const std::string& name) CVC5_EXPORT;
 
-}  // namespace cvc5::options
+}  // namespace cvc5::internal::options
 
 #endif

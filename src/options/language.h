@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Morgan Deters, Andrew Reynolds, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -18,14 +15,14 @@
 #ifndef CVC5__LANGUAGE_H
 #define CVC5__LANGUAGE_H
 
+#include <cvc5/cvc5_export.h>
+
 #include <ostream>
 #include <string>
 
-#include "cvc5_export.h"
+namespace cvc5::internal {
 
-namespace cvc5 {
-
-enum class CVC5_EXPORT Language
+enum class Language
 {
   // SPECIAL "NON-LANGUAGE" LANGUAGES HAVE ENUM VALUE < 0
 
@@ -34,8 +31,8 @@ enum class CVC5_EXPORT Language
 
   /** The SMTLIB v2.6 language, with support for the strings standard */
   LANG_SMTLIB_V2_6 = 0,
-  /** The TPTP language */
-  LANG_TPTP,
+  /** A custom SMTLIB v2.6-derived output format for TPTP output */
+  LANG_SMTLIB_V2_6_TPTP,
   /** The SyGuS language version 2.0 */
   LANG_SYGUS_V2,
 
@@ -53,7 +50,8 @@ namespace language {
 /** Is the language a variant of the smtlib version 2 language? */
 inline bool isLangSmt2(Language lang)
 {
-  return lang == Language::LANG_SMTLIB_V2_6;
+  return lang == Language::LANG_SMTLIB_V2_6
+         || lang == Language::LANG_SMTLIB_V2_6_TPTP;
 }
 
 /** Is the language a variant of the SyGuS input language? */
@@ -65,6 +63,6 @@ inline bool isLangSygus(Language lang)
 Language toLanguage(const std::string& language) CVC5_EXPORT;
 
 }  // namespace language
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__LANGUAGE_H */

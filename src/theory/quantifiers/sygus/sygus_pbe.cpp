@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Haniel Barbosa, Aina Niemetz
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -23,10 +20,10 @@
 #include "theory/quantifiers/term_util.h"
 #include "util/random.h"
 
-using namespace cvc5;
-using namespace cvc5::kind;
+using namespace cvc5::internal;
+using namespace cvc5::internal::kind;
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace quantifiers {
 
@@ -37,24 +34,37 @@ SygusPbe::SygusPbe(Env& env,
                    SynthConjecture* p)
     : SygusModule(env, qs, qim, tds, p)
 {
-  d_true = NodeManager::currentNM()->mkConst(true);
-  d_false = NodeManager::currentNM()->mkConst(false);
+  d_true = nodeManager()->mkConst(true);
+  d_false = nodeManager()->mkConst(false);
   d_is_pbe = false;
 }
 
 SygusPbe::~SygusPbe() {}
 
-bool SygusPbe::initialize(Node conj,
+bool SygusPbe::initialize(CVC5_UNUSED Node conj,
                           Node n,
                           const std::vector<Node>& candidates)
 {
   Trace("sygus-pbe") << "Initialize PBE : " << n << std::endl;
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
 
-  if (!options::sygusUnifPbe())
+  if (!options().quantifiers.sygusUnifPbe)
   {
     // we are not doing unification
     return false;
+  }
+
+  // PBE does not repair symbolic any-constant constructors in candidate
+  // solutions. Let CEGIS handle these grammars so SygusRepairConst can repair
+  // the concrete values for any-constant holes.
+  for (const Node& c : candidates)
+  {
+    TypeNode tn = c.getType();
+    d_tds->registerSygusType(tn);
+    if (d_tds->getTypeInfo(tn).hasSubtermSymbolicCons())
+    {
+      return false;
+    }
   }
 
   // check if all candidates are valid examples
@@ -112,8 +122,9 @@ bool SygusPbe::initialize(Node conj,
           if (!itsl->second.empty())
           {
             TNode tsp = sp;
-            Node lem = itsl->second.size() == 1 ? itsl->second[0]
-                                                : nm->mkNode(AND, itsl->second);
+            Node lem = itsl->second.size() == 1
+                           ? itsl->second[0]
+                           : nm->mkNode(Kind::AND, itsl->second);
             if (tsp != te)
             {
               lem = lem.substitute(tsp, te);
@@ -128,7 +139,7 @@ bool SygusPbe::initialize(Node conj,
         Node ag = d_tds->getActiveGuardForEnumerator(e);
         Assert(!ag.isNull());
         disj.push_back(ag.negate());
-        Node lem = disj.size() == 1 ? disj[0] : nm->mkNode(OR, disj);
+        Node lem = disj.size() == 1 ? disj[0] : nm->mkNode(Kind::OR, disj);
         // Apply extended rewriting on the lemma. This helps utilities like
         // SygusEnumerator more easily recognize the shape of this lemma, e.g.
         // ( ~is-ite(x) or ( ~is-ite(x) ^ P ) ) --> ~is-ite(x).
@@ -146,14 +157,16 @@ bool SygusPbe::initialize(Node conj,
   return true;
 }
 
-// ------------------------------------------- solution construction from enumeration
+// ------------------------------------------- solution construction from
+// enumeration
 
 void SygusPbe::getTermList(const std::vector<Node>& candidates,
                            std::vector<Node>& terms)
 {
-  for( unsigned i=0; i<candidates.size(); i++ ){
+  for (unsigned i = 0; i < candidates.size(); i++)
+  {
     Node v = candidates[i];
-    std::map<Node, std::vector<Node> >::iterator it =
+    std::map<Node, std::vector<Node>>::iterator it =
         d_candidate_to_enum.find(v);
     if (it != d_candidate_to_enum.end())
     {
@@ -162,7 +175,10 @@ void SygusPbe::getTermList(const std::vector<Node>& candidates,
   }
 }
 
-bool SygusPbe::allowPartialModel() { return !options::sygusPbeMultiFair(); }
+bool SygusPbe::allowPartialModel()
+{
+  return !options().quantifiers.sygusPbeMultiFair;
+}
 
 bool SygusPbe::constructCandidates(const std::vector<Node>& enums,
                                    const std::vector<Node>& enum_values,
@@ -170,7 +186,8 @@ bool SygusPbe::constructCandidates(const std::vector<Node>& enums,
                                    std::vector<Node>& candidate_values)
 {
   Assert(enums.size() == enum_values.size());
-  if( !enums.empty() ){
+  if (!enums.empty())
+  {
     unsigned min_term_size = 0;
     Trace("sygus-pbe-enum") << "Register new enumerated values : " << std::endl;
     std::vector<unsigned> szs;
@@ -194,13 +211,13 @@ bool SygusPbe::constructCandidates(const std::vector<Node>& enums,
       }
     }
     // Assume two enumerators of types T1 and T2.
-    // If options::sygusPbeMultiFair() is true,
+    // If the sygusPbeMultiFair option is true,
     // we ensure that all values of type T1 and size n are enumerated before
     // any term of type T2 of size n+d, and vice versa, where d is
-    // set by options::sygusPbeMultiFairDiff(). If d is zero, then our
+    // set by the sygusPbeMultiFairDiff option. If d is zero, then our
     // enumeration is such that all terms of T1 or T2 of size n are considered
     // before any term of size n+1.
-    int diffAllow = options::sygusPbeMultiFairDiff();
+    int diffAllow = options().quantifiers.sygusPbeMultiFairDiff;
     std::vector<unsigned> enum_consider;
     for (unsigned i = 0, esize = enums.size(); i < esize; i++)
     {
@@ -208,7 +225,7 @@ bool SygusPbe::constructCandidates(const std::vector<Node>& enums,
       {
         Assert(szs[i] >= min_term_size);
         int diff = szs[i] - min_term_size;
-        if (!options::sygusPbeMultiFair() || diff <= diffAllow)
+        if (!options().quantifiers.sygusPbeMultiFair || diff <= diffAllow)
         {
           enum_consider.push_back(i);
         }
@@ -216,8 +233,9 @@ bool SygusPbe::constructCandidates(const std::vector<Node>& enums,
     }
 
     // only consider the enumerators that are at minimum size (for fairness)
-    Trace("sygus-pbe-enum") << "...register " << enum_consider.size() << " / " << enums.size() << std::endl;
-    NodeManager* nm = NodeManager::currentNM();
+    Trace("sygus-pbe-enum") << "...register " << enum_consider.size() << " / "
+                            << enums.size() << std::endl;
+    NodeManager* nm = nodeManager();
     for (unsigned i = 0, ecsize = enum_consider.size(); i < ecsize; i++)
     {
       unsigned j = enum_consider[i];
@@ -234,16 +252,17 @@ bool SygusPbe::constructCandidates(const std::vector<Node>& enums,
         Assert(!g.isNull());
         for (unsigned k = 0, size = enum_lems.size(); k < size; k++)
         {
-          Node lem = nm->mkNode(OR, g.negate(), enum_lems[k]);
+          Node lem = nm->mkNode(Kind::OR, g.negate(), enum_lems[k]);
           d_qim.addPendingLemma(lem,
                                 InferenceId::QUANTIFIERS_SYGUS_PBE_EXCLUDE);
         }
       }
     }
   }
-  for( unsigned i=0; i<candidates.size(); i++ ){
+  for (unsigned i = 0; i < candidates.size(); i++)
+  {
     Node c = candidates[i];
-    //build decision tree for candidate
+    // build decision tree for candidate
     std::vector<Node> sol;
     std::vector<Node> lems;
     bool solSuccess = d_sygus_unif[c]->constructSolution(sol, lems);
@@ -265,6 +284,6 @@ bool SygusPbe::constructCandidates(const std::vector<Node>& enums,
   return true;
 }
 
-}
-}
-}  // namespace cvc5
+}  // namespace quantifiers
+}  // namespace theory
+}  // namespace cvc5::internal

@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Haniel Barbosa, Dejan Jovanovic, Liana Hadarean
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -26,12 +23,12 @@
 #include "proof/proof_node_manager.h"
 #include "proof/theory_proof_step_buffer.h"
 #include "prop/cnf_stream.h"
-#include "prop/sat_proof_manager.h"
+#include "smt/env_obj.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace prop {
 
-class SatProofManager;
+class PropPfManager;
 
 /**
  * A proof generator for CNF transformation. It is a layer on top of CNF stream,
@@ -42,21 +39,10 @@ class SatProofManager;
  * that getting the proof of a clausified formula will also extend to its
  * registered proof generator.
  */
-class ProofCnfStream : public ProofGenerator
+class ProofCnfStream : protected EnvObj
 {
  public:
-  ProofCnfStream(context::UserContext* u,
-                 CnfStream& cnfStream,
-                 SatProofManager* satPM,
-                 ProofNodeManager* pnm);
-
-  /** Invokes getProofFor of the underlying LazyCDProof */
-  std::shared_ptr<ProofNode> getProofFor(Node f) override;
-  /** Whether there is a concrete step or a generator associated with f in the
-   * underlying LazyCDProof. */
-  bool hasProofFor(Node f) override;
-  /** identify */
-  std::string identify() const override;
+  ProofCnfStream(Env& env, CnfStream& cnfStream, PropPfManager* ppm);
   /**
    * Converts a formula into CNF into CNF and asserts the generated clauses into
    * the underlying SAT solver of d_cnfStream. Every transformation the formula
@@ -71,19 +57,12 @@ class ProofCnfStream : public ProofGenerator
    * @param node formula to convert and assert
    * @param negated whether we are asserting the node negated
    * @param removable whether the SAT solver can choose to remove the clauses
+   * @param input whether the node is from the input
    * @param pg a proof generator for node
    */
-  void convertAndAssert(TNode node,
-                        bool negated,
-                        bool removable,
-                        ProofGenerator* pg);
+  void convertAndAssert(
+      TNode node, bool negated, bool removable, bool input, ProofGenerator* pg);
 
-  /**
-   * Clausifies the given propagation lemma *without* registering the resoluting
-   * clause in the SAT solver, as this is handled internally by the SAT
-   * solver. The clausification steps and the generator within the trust node
-   * are saved in d_proof if we are producing proofs in the theory engine. */
-  void convertPropagation(TrustNode ttn);
   /**
    * Ensure that the given node will have a designated SAT literal that is
    * definitionally equal to it.  The result of this function is that the Node
@@ -93,15 +72,34 @@ class ProofCnfStream : public ProofGenerator
   void ensureLiteral(TNode n);
 
   /**
-   * Blocks a proof, so that it is not further updated by a post processor of
-   * this class's proof. */
-  void addBlocked(std::shared_ptr<ProofNode> pfn);
+   * Returns true iff the node has an assigned literal (it might not be
+   * translated).
+   */
+  bool hasLiteral(TNode node) const;
 
   /**
-   * Whether a given proof is blocked for further updates.  An example of a
-   * blocked proof node is one integrated into this class via an external proof
-   * generator. */
-  bool isBlocked(std::shared_ptr<ProofNode> pfn);
+   * Returns the literal that represents the given node in the SAT CNF
+   * representation.
+   */
+  SatLiteral getLiteral(TNode node);
+
+  /**
+   * Returns the Boolean variables from the input problem.
+   */
+  void getBooleanVariables(std::vector<TNode>& outputVariables) const;
+
+  /**
+   * Dump dimacs of the given clauses to the given output stream.
+   * For details, see cnf_stream.h.
+   */
+  void dumpDimacs(std::ostream& out, const std::vector<Node>& clauses);
+  /**
+   * Same as above, but also prints additional "auxiliary unit" clauses.
+   * For details, see cnf_stream.h.
+   */
+  void dumpDimacs(std::ostream& out,
+                  const std::vector<Node>& clauses,
+                  const std::vector<Node>& auxUnits);
 
  private:
   /**
@@ -140,36 +138,19 @@ class ProofCnfStream : public ProofGenerator
   SatLiteral handleAnd(TNode node);
   SatLiteral handleOr(TNode node);
 
-  /** Normalizes a clause node and registers it in the SAT proof manager.
-   *
-   * Normalization (factoring, reordering, double negation elimination) is done
-   * via the TheoryProofStepBuffer of this class, which will register the
-   * respective steps, if any. This normalization is necessary so that the
-   * resulting clauses of the clausification process are synchronized with the
-   * clauses used in the underlying SAT solver, which automatically performs the
-   * above normalizations on all added clauses.
-   */
-  void normalizeAndRegister(TNode clauseNode);
-
   /** Reference to the underlying cnf stream. */
   CnfStream& d_cnfStream;
-  /** The proof manager of underlying SAT solver associated with this stream. */
-  SatProofManager* d_satPM;
-  /** The proof node manager. */
-  ProofNodeManager* d_pnm;
-  /** The user-context-dependent proof object. */
-  LazyCDProof d_proof;
-  /** An accumulator of steps that may be applied to normalize the clauses
-   * generated during clausification. */
-  TheoryProofStepBuffer d_psb;
-  /** Blocked proofs.
-   *
-   * These are proof nodes added to this class by external generators. */
-  context::CDHashSet<std::shared_ptr<ProofNode>, ProofNodeHashFunction>
-      d_blocked;
+
+  /** Whether we are we asserting clauses derived from the input. */
+  bool d_input;
+
+  /** Pointer to the prop proof manager. */
+  PropPfManager* d_ppm;
+  /** The proof of d_ppm */
+  LazyCDProof* d_proof;
 };
 
 }  // namespace prop
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif

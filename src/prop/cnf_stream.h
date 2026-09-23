@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Dejan Jovanovic, Haniel Barbosa, Tim King
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -30,11 +27,12 @@
 #include "context/cdinsert_hashmap.h"
 #include "context/cdlist.h"
 #include "expr/node.h"
-#include "prop/proof_cnf_stream.h"
 #include "prop/registrar.h"
 #include "prop/sat_solver_types.h"
+#include "smt/env_obj.h"
+#include "util/statistics_stats.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 
 class Env;
 
@@ -49,6 +47,8 @@ enum class FormulaLitPolicy : uint32_t
 {
   // literals for formulas are notified
   TRACK_AND_NOTIFY,
+  // literals for Boolean variables are notified
+  TRACK_AND_NOTIFY_VAR,
   // literals for formulas are added to node map
   TRACK,
   // literals for formulas are kept internal (default)
@@ -57,14 +57,15 @@ enum class FormulaLitPolicy : uint32_t
 
 /**
  * Implements the following recursive algorithm
- * http://people.inf.ethz.ch/daniekro/classes/251-0247-00/f2007/readings/Tseitin70.pdf
+ * https://link.springer.com/chapter/10.1007/978-3-642-81955-1_28
  * in a single pass.
  *
  * The general idea is to introduce a new literal that will be equivalent to
  * each subexpression in the constructed equi-satisfiable formula, then
  * substitute the new literal for the formula, and so on, recursively.
  */
-class CnfStream {
+class CnfStream : protected EnvObj
+{
   friend PropEngine;
   friend ProofCnfStream;
 
@@ -81,22 +82,19 @@ class CnfStream {
    * and sends the generated clauses and to the given SAT solver. This does not
    * take ownership of satSolver, registrar, or context.
    *
+   * @param env reference to the environment
    * @param satSolver the sat solver to use.
    * @param registrar the entity that takes care of preregistration of Nodes.
-   * @param context the context that the CNF should respect.
-   * @param env Reference to the environment of the smt engine. Assertions
-   * will not be dumped if env == nullptr.
-   * @param rm the resource manager of the CNF stream
+   * @param c the context that the CNF should respect.
    * @param flpol policy for literals corresponding to formulas (those that are
    * not-theory literals).
    * @param name string identifier to distinguish between different instances
    * even for non-theory literals.
    */
-  CnfStream(SatSolver* satSolver,
+  CnfStream(Env& env,
+            SatSolver* satSolver,
             Registrar* registrar,
-            context::Context* context,
-            Env* env,
-            ResourceManager* rm,
+            context::Context* c,
             FormulaLitPolicy flpol = FormulaLitPolicy::INTERNAL,
             std::string name = "");
   /**
@@ -105,13 +103,8 @@ class CnfStream {
    * @param node node to convert and assert
    * @param removable whether the sat solver can choose to remove the clauses
    * @param negated whether we are asserting the node negated
-   * @param input whether it is an input assertion (rather than a lemma). This
-   * information is only relevant for unsat core tracking.
    */
-  void convertAndAssert(TNode node,
-                        bool removable,
-                        bool negated,
-                        bool input = false);
+  void convertAndAssert(TNode node, bool removable, bool negated);
   /**
    * Get the node that is represented by the given SatLiteral.
    * @param literal the literal from the sat solver
@@ -163,7 +156,54 @@ class CnfStream {
   /** Retrieves map from literals to nodes. */
   const CnfStream::LiteralToNodeMap& getNodeCache() const;
 
+  /**
+   * Dump dimacs of the given clauses to the given output stream.
+   * We use the identifiers for literals computed by this class. All literals
+   * in clauses should be assigned by this class already.
+   *
+   * @param out The output stream.
+   * @param clauses The clauses to print.
+   */
+  void dumpDimacs(std::ostream& out, const std::vector<Node>& clauses);
+  /**
+   * Same as above, but additionally prints the clauses in auxUnits as unit
+   * clauses, after clause. In particular, say
+   * we pass the following clauses to this method:
+   *
+   * (or ~(or A B) ~C)
+   * (or A B)
+   * C
+   *
+   * And the auxilary units:
+   *
+   * (or A B)
+   *
+   * Here, we would print the DIMACS:
+   *
+   * p cnf 4 4
+   * -1 -2 0
+   * 3 4 0
+   * 2 0
+   * 1 0
+   *
+   * Note that the copy of (or A B) in clauses is printed as "3 4 0" whereas
+   * the copy of (or A B) in auxUnits is printed as "1 0".
+   *
+   * @param out The output stream.
+   * @param clauses The clauses to print.
+   * @param auxUnits The auxiliary units that were appended to the end of the
+   * DIMACS, after clauses were printed.
+   */
+  void dumpDimacs(std::ostream& out,
+                  const std::vector<Node>& clauses,
+                  const std::vector<Node>& auxUnits);
+
  protected:
+  /** Helper function */
+  void dumpDimacsInternal(std::ostream& out,
+                          const std::vector<Node>& clauses,
+                          std::vector<Node>& auxUnits,
+                          bool printAuxUnits);
   /**
    * Same as above, except that uses the saved d_removable flag. It calls the
    * dedicated converter for the possible formula kinds.
@@ -209,45 +249,6 @@ class CnfStream {
    */
   void ensureMappingForLiteral(TNode n);
 
-  /** The SAT solver we will be using */
-  SatSolver* d_satSolver;
-
-  /** Pointer to the env of the smt engine */
-  Env* d_env;
-
-  /** Boolean variables that we translated */
-  context::CDList<TNode> d_booleanVariables;
-
-  /** Formulas that we translated that we are notifying */
-  context::CDHashSet<Node> d_notifyFormulas;
-
-  /** Map from nodes to literals */
-  NodeToLiteralMap d_nodeToLiteralMap;
-
-  /** Map from literals to nodes */
-  LiteralToNodeMap d_literalToNodeMap;
-
-  /**
-   * True if the lit-to-Node map should be kept for all lits, not just
-   * theory lits.  This is true if e.g. replay logging is on, which
-   * dumps the Nodes corresponding to decision literals.
-   */
-  const FormulaLitPolicy d_flitPolicy;
-
-  /** The "registrar" for pre-registration of terms */
-  Registrar* d_registrar;
-
-  /** The name of this CNF stream*/
-  std::string d_name;
-
-  /**
-   * Are we asserting a removable clause (true) or a permanent clause (false).
-   * This is set at the beginning of convertAndAssert so that it doesn't
-   * need to be passed on over the stack.  Only pure clauses can be asserted
-   * as removable.
-   */
-  bool d_removable;
-
   /**
    * Asserts the given clause to the sat solver.
    * @param node the node giving rise to this clause
@@ -289,13 +290,15 @@ class CnfStream {
    * @param node a formula
    * @param isTheoryAtom is this a theory atom that needs to be asserted to
    * theory.
-   * @param preRegister whether to preregister the atom with the theory
+   * @param notifyTheory whether to notify the theory of the atom
    * @param canEliminate whether the sat solver can safely eliminate this
    * variable.
    * @return the literal corresponding to the formula
    */
-  SatLiteral newLiteral(TNode node, bool isTheoryAtom = false,
-                        bool preRegister = false, bool canEliminate = true);
+  SatLiteral newLiteral(TNode node,
+                        bool isTheoryAtom = false,
+                        bool notifyTheory = false,
+                        bool canEliminate = true);
 
   /**
    * Constructs a new literal for an atom and returns it.  Calls
@@ -307,19 +310,59 @@ class CnfStream {
    */
   SatLiteral convertAtom(TNode node);
 
+  /** The SAT solver we will be using */
+  SatSolver* d_satSolver;
+
+  /** Boolean variables that we translated */
+  context::CDList<TNode> d_booleanVariables;
+
+  /** Formulas that we translated that we are notifying */
+  context::CDHashSet<Node> d_notifyFormulas;
+
+  /** Map from nodes to literals */
+  NodeToLiteralMap d_nodeToLiteralMap;
+
+  /** Map from literals to nodes */
+  LiteralToNodeMap d_literalToNodeMap;
+
+  /**
+   * True if the lit-to-Node map should be kept for all lits, not just
+   * theory lits.  This is true if e.g. replay logging is on, which
+   * dumps the Nodes corresponding to decision literals.
+   */
+  const FormulaLitPolicy d_flitPolicy;
+
+  /** The "registrar" for pre-registration of terms */
+  Registrar* d_registrar;
+
+  /** The name of this CNF stream*/
+  std::string d_name;
+
+  /**
+   * Are we asserting a removable clause (true) or a permanent clause (false).
+   * This is set at the beginning of convertAndAssert so that it doesn't
+   * need to be passed on over the stack.  Only pure clauses can be asserted
+   * as removable.
+   */
+  bool d_removable;
+
   /** Pointer to resource manager for associated SolverEngine */
   ResourceManager* d_resourceManager;
 
  private:
   struct Statistics
   {
-    Statistics(const std::string& name);
+    Statistics(StatisticsRegistry& sr, const std::string& name);
     TimerStat d_cnfConversionTime;
-  } d_stats;
+    /** Number of atoms */
+    IntStat d_numAtoms;
+  };
+  /** Statistics */
+  Statistics d_stats;
 
 }; /* class CnfStream */
 
 }  // namespace prop
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__PROP__CNF_STREAM_H */

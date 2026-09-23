@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -21,8 +18,9 @@
 #include <unordered_map>
 
 #include "expr/node.h"
+#include "expr/subs.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 
 class Rewriter;
@@ -51,12 +49,14 @@ namespace quantifiers {
 class ExtendedRewriter
 {
  public:
-  ExtendedRewriter(Rewriter& rew, bool aggr = true);
+  ExtendedRewriter(NodeManager* nm, Rewriter& rew, bool aggr = true);
   ~ExtendedRewriter() {}
   /** return the extended rewritten form of n */
   Node extendedRewrite(Node n) const;
 
  private:
+  /** Pointer to the underlying node manager */
+  NodeManager* d_nm;
   /** The underlying rewriter that we are extending  */
   Rewriter& d_rew;
   /** cache that the extended rewritten form of n is ret */
@@ -138,10 +138,10 @@ class ExtendedRewriter
    *   ( A V B ) ^ ( A V C ) ----> A V ( B ^ C )
    *   ( A ^ B ) V ( A ^ C ) ----> A ^ ( B V C )
    *
-   * This function takes as arguments the kinds that specify AND, OR, NOT.
+   * This function takes as arguments the kinds that specify AND, OR.
    * We assume that the children of n do not contain duplicates.
    */
-  Node extendedRewriteFactoring(Kind andk, Kind ork, Kind notk, Node n) const;
+  Node extendedRewriteFactoring(Kind andk, Kind ork, Node n) const;
   /** (type-independent) equality resolution, for example:
    *
    *   ( A V C ) & ( A = B ) ---> ( B V C ) & ( A = B )
@@ -207,10 +207,9 @@ class ExtendedRewriter
   Node partialSubstitute(Node n,
                          const std::map<Node, Node>& assign,
                          const std::map<Kind, bool>& rkinds) const;
-  /** same as above, with vectors */
+  /** same as above, with the subs utility */
   Node partialSubstitute(Node n,
-                         const std::vector<Node>& vars,
-                         const std::vector<Node>& subs,
+                         const Subs& subs,
                          const std::map<Kind, bool>& rkinds) const;
   /** solve equality
    *
@@ -223,15 +222,12 @@ class ExtendedRewriter
    * If n is an equality of the form x = t, where t is either:
    * (1) a constant, or
    * (2) a variable y such that x < y based on an ordering,
-   * then this method adds x to vars and y to subs and return true, otherwise
+   * then this method adds {x -> y} to subs and return true, otherwise
    * it returns false.
    * If usePred is true, we may additionally add n -> true, or n[0] -> false
    * is n is a negation.
    */
-  bool inferSubstitution(Node n,
-                         std::vector<Node>& vars,
-                         std::vector<Node>& subs,
-                         bool usePred = false) const;
+  bool inferSubstitution(Node n, Subs& subs, bool usePred = false) const;
   /** extended rewrite
    *
    * Prints debug information, indicating the rewrite n ---> ret was found.
@@ -240,12 +236,13 @@ class ExtendedRewriter
   //--------------------------------------end generic utilities
 
   //--------------------------------------theory-specific top-level calls
-  /** extended rewrite strings
-   *
-   * If this method returns a non-null node ret', then ret is equivalent to
+  /**
+   * If these methods return a non-null node ret', then ret is equivalent to
    * ret'.
    */
-  Node extendedRewriteStrings(Node ret) const;
+  Node extendedRewriteStrings(const Node& ret) const;
+  Node extendedRewriteSets(const Node& ret) const;
+  Node extendedRewriteArith(const Node& ret) const;
   //--------------------------------------end theory-specific top-level calls
 
   /**
@@ -259,13 +256,14 @@ class ExtendedRewriter
    * may be applied as a preprocessing step.
    */
   bool d_aggr;
-  /** true/false nodes */
+  /** Common constant nodes */
   Node d_true;
   Node d_false;
+  Node d_intZero;
 };
 
 }  // namespace quantifiers
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__THEORY__QUANTIFIERS__EXTENDED_REWRITE_H */

@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -17,13 +14,13 @@
 #include "proof/conv_proof_generator.h"
 #include "theory/rewriter.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace bv {
 
-BitblastProofGenerator::BitblastProofGenerator(ProofNodeManager* pnm,
+BitblastProofGenerator::BitblastProofGenerator(Env& env,
                                                TConvProofGenerator* tcpg)
-    : d_pnm(pnm), d_tcpg(tcpg)
+    : EnvObj(env), d_tcpg(tcpg)
 {
 }
 
@@ -31,11 +28,11 @@ std::shared_ptr<ProofNode> BitblastProofGenerator::getProofFor(Node eq)
 {
   const auto& [t, bbt] = d_cache.at(eq);
 
-  CDProof cdp(d_pnm);
+  CDProof cdp(d_env);
   /* Coarse-grained bit-blast step. */
   if (t.isNull())
   {
-    cdp.addStep(eq, PfRule::BV_BITBLAST, {}, {eq});
+    cdp.addStep(eq, ProofRule::MACRO_BV_BITBLAST, {}, {eq});
   }
   else
   {
@@ -78,14 +75,14 @@ std::shared_ptr<ProofNode> BitblastProofGenerator::getProofFor(Node eq)
      * sub-terms and recording these bit-blast steps in the conversion proof.
      */
 
-    Node rwt = Rewriter::rewrite(t);
+    Node rwt = rewrite(t);
 
     std::vector<Node> transSteps;
 
     // Record pre-rewrite of bit-vector atom.
     if (t != rwt)
     {
-      cdp.addStep(t.eqNode(rwt), PfRule::REWRITE, {}, {t});
+      cdp.addStep(t.eqNode(rwt), ProofRule::MACRO_REWRITE, {}, {t});
       transSteps.push_back(t.eqNode(rwt));
     }
 
@@ -94,10 +91,10 @@ std::shared_ptr<ProofNode> BitblastProofGenerator::getProofFor(Node eq)
     transSteps.push_back(rwt.eqNode(bbt));
 
     // Record post-rewrite of bit-blasted term.
-    Node rwbbt = Rewriter::rewrite(bbt);
+    Node rwbbt = rewrite(bbt);
     if (bbt != rwbbt)
     {
-      cdp.addStep(bbt.eqNode(rwbbt), PfRule::REWRITE, {}, {bbt});
+      cdp.addStep(bbt.eqNode(rwbbt), ProofRule::MACRO_REWRITE, {}, {bbt});
       transSteps.push_back(bbt.eqNode(rwbbt));
     }
 
@@ -106,7 +103,7 @@ std::shared_ptr<ProofNode> BitblastProofGenerator::getProofFor(Node eq)
     // given by the conversion proof generator.
     if (transSteps.size() > 1)
     {
-      cdp.addStep(eq, PfRule::TRANS, transSteps, {});
+      cdp.addStep(eq, ProofRule::TRANS, transSteps, {});
     }
   }
 
@@ -120,4 +117,4 @@ void BitblastProofGenerator::addBitblastStep(TNode t, TNode bbt, TNode eq)
 
 }  // namespace bv
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal

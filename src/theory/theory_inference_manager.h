@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Gereon Kremer, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -21,17 +18,18 @@
 #include <memory>
 
 #include "context/cdhashset.h"
+#include "cvc5/cvc5_proof_rule.h"
 #include "expr/node.h"
-#include "proof/proof_rule.h"
 #include "proof/trust_node.h"
 #include "smt/env_obj.h"
 #include "theory/inference_id.h"
 #include "theory/output_channel.h"
 #include "util/statistics_stats.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 
 class ProofNodeManager;
+class EagerProofGenerator;
 
 namespace theory {
 
@@ -41,7 +39,7 @@ class DecisionManager;
 namespace eq {
 class EqualityEngine;
 class ProofEqEngine;
-}
+}  // namespace eq
 
 /**
  * The base class for inference manager. An inference manager is a wrapper
@@ -89,7 +87,6 @@ class TheoryInferenceManager : protected EnvObj
   TheoryInferenceManager(Env& env,
                          Theory& t,
                          TheoryState& state,
-                         ProofNodeManager* pnm,
                          const std::string& statsName,
                          bool cacheLemmas = true);
   virtual ~TheoryInferenceManager();
@@ -171,7 +168,7 @@ class TheoryInferenceManager : protected EnvObj
    * engine as the proof generator (if it exists).
    */
   void conflictExp(InferenceId id,
-                   PfRule pfr,
+                   ProofRule pfr,
                    const std::vector<Node>& exp,
                    const std::vector<Node>& args);
   /**
@@ -179,7 +176,7 @@ class TheoryInferenceManager : protected EnvObj
    * the responsibility of the caller to subsequently call trustedConflict with
    * the returned trust node.
    */
-  TrustNode mkConflictExp(PfRule pfr,
+  TrustNode mkConflictExp(ProofRule pfr,
                           const std::vector<Node>& exp,
                           const std::vector<Node>& args);
   /**
@@ -239,7 +236,7 @@ class TheoryInferenceManager : protected EnvObj
    */
   bool lemmaExp(Node conc,
                 InferenceId id,
-                PfRule pfr,
+                ProofRule pfr,
                 const std::vector<Node>& exp,
                 const std::vector<Node>& noExplain,
                 const std::vector<Node>& args,
@@ -249,7 +246,7 @@ class TheoryInferenceManager : protected EnvObj
    * caller to subsequently call trustedLemma with the returned trust node.
    */
   TrustNode mkLemmaExp(Node conc,
-                       PfRule id,
+                       ProofRule id,
                        const std::vector<Node>& exp,
                        const std::vector<Node>& noExplain,
                        const std::vector<Node>& args);
@@ -327,7 +324,7 @@ class TheoryInferenceManager : protected EnvObj
   bool assertInternalFact(TNode atom,
                           bool pol,
                           InferenceId id,
-                          PfRule pfr,
+                          ProofRule pfr,
                           const std::vector<Node>& exp,
                           const std::vector<Node>& args);
   /**
@@ -357,9 +354,9 @@ class TheoryInferenceManager : protected EnvObj
   DecisionManager* getDecisionManager();
   /**
    * Set that literal n has SAT phase requirement pol, that is, it should be
-   * decided with polarity pol, for details see OutputChannel::requirePhase.
+   * decided with polarity pol, for details see OutputChannel::preferPhase.
    */
-  void requirePhase(TNode n, bool pol);
+  void preferPhase(TNode n, bool pol);
 
   /**
    * Forward to OutputChannel::spendResource() to spend resources.
@@ -371,10 +368,30 @@ class TheoryInferenceManager : protected EnvObj
    */
   void safePoint(Resource r);
   /**
-   * Notification from a theory that it realizes it is incomplete at
-   * this context level.
+   * Notification from a theory that it realizes it is model unsound at
+   * this SAT context level. In other words, we cannot answer "sat" in this
+   * SAT context.
+   *
+   * Note that we use SAT context for model unsoundness, since the typical use
+   * case is that an asserted literal cannot be verified for the model under
+   * construction, where asserted literals are SAT-context dependent.
    */
-  void setIncomplete(IncompleteId id);
+  void setModelUnsound(IncompleteId id);
+  /**
+   * Notification from a theory that it realizes it is refutation unsound at
+   * this user context level. In other words, we cannot answer "unsat" in this
+   * user context.
+   *
+   * Note that we use user context for refutation unsoundness, since typically
+   * the source of refutation unsoundness is a lemma, which are user context
+   * dependent.
+   */
+  void setRefutationUnsound(IncompleteId id);
+  /**
+   * Mark used. Called when we wish to mark that the output channel is used,
+   * for example, if we wish to recheck.
+   */
+  void markUsed();
   /**
    * Notify this inference manager that a conflict was sent in this SAT context.
    * This method is called via TheoryEngine when a conflict is sent.
@@ -389,7 +406,7 @@ class TheoryInferenceManager : protected EnvObj
   bool processInternalFact(TNode atom,
                            bool pol,
                            InferenceId iid,
-                           PfRule id,
+                           ProofRule id,
                            const std::vector<Node>& exp,
                            const std::vector<Node>& args,
                            ProofGenerator* pg);
@@ -441,8 +458,8 @@ class TheoryInferenceManager : protected EnvObj
   eq::ProofEqEngine* d_pfee;
   /** The proof equality engine we allocated */
   std::unique_ptr<eq::ProofEqEngine> d_pfeeAlloc;
-  /** The proof node manager of the theory */
-  ProofNodeManager* d_pnm;
+  /** Proof generator for trusted THEORY_LEMMA steps */
+  std::unique_ptr<EagerProofGenerator> d_defaultPg;
   /** Whether this manager caches lemmas */
   bool d_cacheLemmas;
   /**
@@ -472,6 +489,6 @@ class TheoryInferenceManager : protected EnvObj
 };
 
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__THEORY__THEORY_INFERENCE_MANAGER_H */

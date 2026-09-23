@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Aina Niemetz, Tim King, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -15,9 +12,9 @@
 
 #include "options/options_handler.h"
 
-#include <cerrno>
 #include <iostream>
 #include <ostream>
+#include <regex>
 #include <string>
 
 #include "base/check.h"
@@ -27,38 +24,37 @@
 #include "base/exception.h"
 #include "base/modal_exception.h"
 #include "base/output.h"
-#include "expr/expr_iomanip.h"
 #include "lib/strtok_r.h"
 #include "options/base_options.h"
 #include "options/bv_options.h"
 #include "options/decision_options.h"
-#include "options/didyoumean.h"
+#include "options/io_utils.h"
 #include "options/language.h"
+#include "options/main_options.h"
 #include "options/option_exception.h"
-#include "options/set_language.h"
+#include "options/parser_options.h"
 #include "options/smt_options.h"
 #include "options/theory_options.h"
-#include "smt/command.h"
-#include "smt/dump.h"
+#include "util/didyoumean.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace options {
 
 // helper functions
 namespace {
 
-static void printTags(const std::vector<std::string>& tags)
+void printTags(std::ostream& out, const std::vector<std::string>& tags)
 {
-  std::cout << "available tags:";
+  out << "available tags:" << std::endl;
   for (const auto& t : tags)
   {
-    std::cout << "  " << t << std::endl;
+    out << "  " << t << std::endl;
   }
-  std::cout << std::endl;
+  out << std::endl;
 }
 
 std::string suggestTags(const std::vector<std::string>& validTags,
-                        std::string inputTag,
+                        const std::string& inputTag,
                         const std::vector<std::string>& additionalTags)
 {
   DidYouMean didYouMean;
@@ -67,25 +63,56 @@ std::string suggestTags(const std::vector<std::string>& validTags,
   return didYouMean.getMatchAsString(inputTag);
 }
 
-}  // namespace
-
-OptionsHandler::OptionsHandler(Options* options) : d_options(options) { }
-
-void OptionsHandler::setErrStream(const std::string& option,
-                                  const std::string& flag,
-                                  const ManagedErr& me)
+/**
+ * Select all tags from validTags that match the given (globbing) pattern.
+ * The pattern may contain `*` as wildcards. These are internally converted to
+ * `.*` and matched using std::regex. If no wildcards are present, regular
+ * string comparisons are used.
+ */
+std::vector<std::string> selectTags(const std::vector<std::string>& validTags,
+                                    std::string pattern)
 {
-  Debug.setStream(me);
-  Warning.setStream(me);
-  CVC5Message.setStream(me);
-  Notice.setStream(me);
-  Chat.setStream(me);
-  Trace.setStream(me);
+  bool isRegex = false;
+  size_t pos = 0;
+  while ((pos = pattern.find('*', pos)) != std::string::npos)
+  {
+    pattern.replace(pos, 1, ".*");
+    pos += 2;
+    isRegex = true;
+  }
+  std::vector<std::string> results;
+  if (isRegex)
+  {
+    std::regex re(pattern);
+    std::copy_if(validTags.begin(),
+                 validTags.end(),
+                 std::back_inserter(results),
+                 [&re](const auto& tag) { return std::regex_match(tag, re); });
+  }
+  else
+  {
+    if (std::find(validTags.begin(), validTags.end(), pattern)
+        != validTags.end())
+    {
+      results.emplace_back(pattern);
+    }
+  }
+  return results;
 }
 
-Language OptionsHandler::stringToLanguage(const std::string& option,
-                                          const std::string& flag,
-                                          const std::string& optarg)
+}  // namespace
+
+OptionsHandler::OptionsHandler(Options* options) : d_options(options) {}
+
+void OptionsHandler::setErrStream(CVC5_UNUSED const std::string& flag,
+                                  const ManagedErr& me) const
+{
+  Warning.setStream(me);
+  TraceChannel.setStream(me);
+}
+
+Language OptionsHandler::stringToLanguage(const std::string& flag,
+                                          const std::string& optarg) const
 {
   if (optarg == "help")
   {
@@ -94,18 +121,16 @@ Languages currently supported as arguments to the -L / --lang option:
   auto                           attempt to automatically determine language
   smt | smtlib | smt2 |
   smt2.6 | smtlib2.6             SMT-LIB format 2.6 with support for the strings standard
-  tptp                           TPTP format (cnf, fof and tff)
   sygus | sygus2                 SyGuS version 2.0
 
 Languages currently supported as arguments to the --output-lang option:
   auto                           match output language to input language
   smt | smtlib | smt2 |
   smt2.6 | smtlib2.6             SMT-LIB format 2.6 with support for the strings standard
-  tptp                           TPTP format
+  smt2-tptp                      custom SMT-LIB v2.6-derived output format for tptpmodels
   ast                            internal format (simple syntax trees)
 )FOOBAR" << std::endl;
-    std::exit(1);
-    return Language::LANG_AUTO;
+    throw OptionException("help is not a valid language");
   }
 
   try
@@ -114,79 +139,64 @@ Languages currently supported as arguments to the --output-lang option:
   }
   catch (OptionException& oe)
   {
-    throw OptionException("Error in " + option + ": " + oe.getMessage()
+    throw OptionException("Error in " + flag + ": " + oe.getMessage()
                           + "\nTry --lang help");
   }
 
   Unreachable();
 }
 
-void OptionsHandler::languageIsNotAST(const std::string& option,
-                                      const std::string& flag,
-                                      Language lang)
+void OptionsHandler::setInputLanguage(const std::string& flag,
+                                      const Language lang) const
 {
-  if (lang == Language::LANG_AST)
+  if (lang == Language::LANG_AST || lang == Language::LANG_SMTLIB_V2_6_TPTP)
   {
-    throw OptionException("Language LANG_AST is not allowed for " + flag);
+    throw OptionException("This language is not allowed for " + flag);
+  }
+  if (!d_options->printer.outputLanguageWasSetByUser)
+  {
+    d_options->write_printer().outputLanguage = lang;
+    ioutils::setDefaultOutputLanguage(lang);
   }
 }
 
-void OptionsHandler::applyOutputLanguage(const std::string& option,
-                                         const std::string& flag,
-                                         Language lang)
+void OptionsHandler::setVerbosity(CVC5_UNUSED const std::string& flag,
+                                  const int value) const
 {
-  d_options->base.out << language::SetLanguage(lang);
-}
-
-void OptionsHandler::setVerbosity(const std::string& option,
-                                  const std::string& flag,
-                                  int value)
-{
-  if(Configuration::isMuzzledBuild()) {
-    DebugChannel.setStream(&cvc5::null_os);
-    TraceChannel.setStream(&cvc5::null_os);
-    NoticeChannel.setStream(&cvc5::null_os);
-    ChatChannel.setStream(&cvc5::null_os);
-    MessageChannel.setStream(&cvc5::null_os);
-    WarningChannel.setStream(&cvc5::null_os);
-  } else {
-    if(value < 2) {
-      ChatChannel.setStream(&cvc5::null_os);
-    } else {
-      ChatChannel.setStream(&std::cout);
+  if (Configuration::isMuzzledBuild())
+  {
+    TraceChannel.setStream(&cvc5::internal::null_os);
+    WarningChannel.setStream(&cvc5::internal::null_os);
+  }
+  else
+  {
+    if (value < 0)
+    {
+      WarningChannel.setStream(&cvc5::internal::null_os);
     }
-    if(value < 1) {
-      NoticeChannel.setStream(&cvc5::null_os);
-    } else {
-      NoticeChannel.setStream(&std::cout);
-    }
-    if(value < 0) {
-      MessageChannel.setStream(&cvc5::null_os);
-      WarningChannel.setStream(&cvc5::null_os);
-    } else {
-      MessageChannel.setStream(&std::cout);
+    else
+    {
       WarningChannel.setStream(&std::cerr);
     }
   }
 }
 
-void OptionsHandler::decreaseVerbosity(const std::string& option,
-                                       const std::string& flag)
+void OptionsHandler::decreaseVerbosity(CVC5_UNUSED const std::string& flag,
+                                       CVC5_UNUSED bool value)
 {
-  d_options->base.verbosity -= 1;
-  setVerbosity(option, flag, d_options->base.verbosity);
+  d_options->write_base().verbosity -= 1;
+  setVerbosity(flag, d_options->base.verbosity);
 }
 
-void OptionsHandler::increaseVerbosity(const std::string& option,
-                                       const std::string& flag)
+void OptionsHandler::increaseVerbosity(CVC5_UNUSED const std::string& flag,
+                                       CVC5_UNUSED bool value)
 {
-  d_options->base.verbosity += 1;
-  setVerbosity(option, flag, d_options->base.verbosity);
+  d_options->write_base().verbosity += 1;
+  setVerbosity(flag, d_options->base.verbosity);
 }
 
-void OptionsHandler::setStats(const std::string& option,
-                              const std::string& flag,
-                              bool value)
+void OptionsHandler::setStats(CVC5_UNUSED const std::string& flag,
+                              const bool value) const
 {
 #ifndef CVC5_STATISTICS_ON
   if (value)
@@ -200,15 +210,14 @@ void OptionsHandler::setStats(const std::string& option,
 #endif /* CVC5_STATISTICS_ON */
   if (!value)
   {
-    d_options->base.statisticsAll = false;
-    d_options->base.statisticsEveryQuery = false;
-    d_options->base.statisticsExpert = false;
+    d_options->write_base().statisticsAll = false;
+    d_options->write_base().statisticsEveryQuery = false;
+    d_options->write_base().statisticsInternal = false;
   }
 }
 
-void OptionsHandler::setStatsDetail(const std::string& option,
-                              const std::string& flag,
-                              bool value)
+void OptionsHandler::setStatsDetail(CVC5_UNUSED const std::string& flag,
+                                    const bool value) const
 {
 #ifndef CVC5_STATISTICS_ON
   if (value)
@@ -222,342 +231,193 @@ void OptionsHandler::setStatsDetail(const std::string& option,
 #endif /* CVC5_STATISTICS_ON */
   if (value)
   {
-    d_options->base.statistics = true;
+    d_options->write_base().statistics = true;
   }
 }
 
-void OptionsHandler::enableTraceTag(const std::string& option,
-                                    const std::string& flag,
-                                    const std::string& optarg)
+void OptionsHandler::enableTraceTag(CVC5_UNUSED const std::string& flag,
+                                    const std::string& optarg) const
 {
-  if(!Configuration::isTracingBuild())
+  if (!Configuration::isTracingBuild())
   {
     throw OptionException("trace tags not available in non-tracing builds");
   }
-  else if(!Configuration::isTraceTag(optarg.c_str()))
+  const auto tags = selectTags(Configuration::getTraceTags(), optarg);
+  if (tags.empty())
   {
     if (optarg == "help")
     {
-      printTags(Configuration::getTraceTags());
-      std::exit(0);
+      d_options->write_driver().showTraceTags = true;
+      showTraceTags("", true);
+      return;
     }
 
     throw OptionException(
-        std::string("trace tag ") + optarg + std::string(" not available.")
+        std::string("no trace tag matching ") + optarg
+        + std::string(" was found.")
         + suggestTags(Configuration::getTraceTags(), optarg, {}));
   }
-  Trace.on(optarg);
-}
-
-void OptionsHandler::enableDebugTag(const std::string& option,
-                                    const std::string& flag,
-                                    const std::string& optarg)
-{
-  if (!Configuration::isDebugBuild())
+  for (const auto& tag : tags)
   {
-    throw OptionException("debug tags not available in non-debug builds");
+    TraceChannel.on(tag);
   }
-  else if (!Configuration::isTracingBuild())
-  {
-    throw OptionException("debug tags not available in non-tracing builds");
-  }
-
-  if (!Configuration::isDebugTag(optarg.c_str())
-      && !Configuration::isTraceTag(optarg.c_str()))
-  {
-    if (optarg == "help")
-    {
-      printTags(Configuration::getDebugTags());
-      std::exit(0);
-    }
-
-    throw OptionException(std::string("debug tag ") + optarg
-                          + std::string(" not available.")
-                          + suggestTags(Configuration::getDebugTags(),
-                                        optarg,
-                                        Configuration::getTraceTags()));
-  }
-  Debug.on(optarg);
-  Trace.on(optarg);
 }
 
-void OptionsHandler::enableOutputTag(const std::string& option,
-                                     const std::string& flag,
-                                     const std::string& optarg)
+void OptionsHandler::enableOutputTag(CVC5_UNUSED const std::string& flag,
+                                     const OutputTag optarg) const
 {
-  d_options->base.outputTagHolder.set(
-      static_cast<size_t>(stringToOutputTag(optarg)));
+  const size_t tagid = static_cast<size_t>(optarg);
+  Assert(d_options->base.outputTagHolder.size() > tagid)
+      << "Output tag is larger than the bitset that holds it.";
+  d_options->write_base().outputTagHolder.set(tagid);
 }
 
-void OptionsHandler::setPrintSuccess(const std::string& option,
-                                     const std::string& flag,
-                                     bool value)
+void OptionsHandler::setResourceWeight(CVC5_UNUSED const std::string& flag,
+                                       const std::string& optarg) const
 {
-  Debug.getStream() << Command::printsuccess(value);
-  Trace.getStream() << Command::printsuccess(value);
-  Notice.getStream() << Command::printsuccess(value);
-  Chat.getStream() << Command::printsuccess(value);
-  CVC5Message.getStream() << Command::printsuccess(value);
-  Warning.getStream() << Command::printsuccess(value);
-  *d_options->base.out << Command::printsuccess(value);
+  d_options->write_base().resourceWeightHolder.emplace_back(optarg);
 }
 
-void OptionsHandler::setResourceWeight(const std::string& option,
-                                       const std::string& flag,
-                                       const std::string& optarg)
+void OptionsHandler::checkBvSatSolver(const std::string& flag,
+                                      const BvSatSolverMode m) const
 {
-  d_options->base.resourceWeightHolder.emplace_back(optarg);
-}
-
-void OptionsHandler::abcEnabledBuild(const std::string& option,
-                                     const std::string& flag,
-                                     bool value)
-{
-#ifndef CVC5_USE_ABC
-  if(value) {
-    std::stringstream ss;
-    ss << "option `" << option
-       << "' requires an abc-enabled build of cvc5; this binary was not built "
-          "with abc support";
-    throw OptionException(ss.str());
-  }
-#endif /* CVC5_USE_ABC */
-}
-
-void OptionsHandler::abcEnabledBuild(const std::string& option,
-                                     const std::string& flag,
-                                     const std::string& value)
-{
-#ifndef CVC5_USE_ABC
-  if(!value.empty()) {
-    std::stringstream ss;
-    ss << "option `" << option
-       << "' requires an abc-enabled build of cvc5; this binary was not built "
-          "with abc support";
-    throw OptionException(ss.str());
-  }
-#endif /* CVC5_USE_ABC */
-}
-
-void OptionsHandler::checkBvSatSolver(const std::string& option,
-                                      const std::string& flag,
-                                      SatSolverMode m)
-{
-  if (m == SatSolverMode::CRYPTOMINISAT
+  if (m == BvSatSolverMode::CRYPTOMINISAT
       && !Configuration::isBuiltWithCryptominisat())
   {
     std::stringstream ss;
-    ss << "option `" << option
+    ss << "option `" << flag
        << "' requires a CryptoMiniSat build of cvc5; this binary was not built "
           "with CryptoMiniSat support";
     throw OptionException(ss.str());
   }
 
-  if (m == SatSolverMode::KISSAT && !Configuration::isBuiltWithKissat())
+  if (m == BvSatSolverMode::KISSAT && !Configuration::isBuiltWithKissat())
   {
     std::stringstream ss;
-    ss << "option `" << option
+    ss << "option `" << flag
        << "' requires a Kissat build of cvc5; this binary was not built with "
           "Kissat support";
     throw OptionException(ss.str());
   }
 
   if (d_options->bv.bvSolver != options::BVSolver::BITBLAST
-      && (m == SatSolverMode::CRYPTOMINISAT || m == SatSolverMode::CADICAL
-          || m == SatSolverMode::KISSAT))
+      && (m == BvSatSolverMode::CRYPTOMINISAT || m == BvSatSolverMode::CADICAL
+          || m == BvSatSolverMode::KISSAT))
   {
     if (d_options->bv.bitblastMode == options::BitblastMode::LAZY
         && d_options->bv.bitblastModeWasSetByUser)
     {
-      std::string sat_solver;
-      if (m == options::SatSolverMode::CADICAL)
-      {
-        sat_solver = "CaDiCaL";
-      }
-      else if (m == options::SatSolverMode::KISSAT)
-      {
-        sat_solver = "Kissat";
-      }
-      else
-      {
-        Assert(m == options::SatSolverMode::CRYPTOMINISAT);
-        sat_solver = "CryptoMiniSat";
-      }
-      throw OptionException(sat_solver
-                            + " does not support lazy bit-blasting.\n"
-                            + "Try --bv-sat-solver=minisat");
+      std::stringstream ss;
+      ss << m << " does not support lazy bit-blasting." << std::endl
+         << "Try --bv-sat-solver=minisat";
+      throw OptionException(ss.str());
     }
-    options::bv::setDefaultBitvectorToBool(*d_options, true);
-  }
-}
-
-void OptionsHandler::setBitblastAig(const std::string& option,
-                                    const std::string& flag,
-                                    bool arg)
-{
-  if(arg) {
-    if (d_options->bv.bitblastModeWasSetByUser) {
-      if (d_options->bv.bitblastMode != options::BitblastMode::EAGER)
-      {
-        throw OptionException("bitblast-aig must be used with eager bitblaster");
-      }
-    } else {
-      d_options->bv.bitblastMode = options::BitblastMode::EAGER;
+    if (!d_options->bv.bitvectorToBoolWasSetByUser)
+    {
+      d_options->write_bv().bitvectorToBool = true;
     }
   }
 }
 
-void OptionsHandler::setDefaultExprDepth(const std::string& option,
-                                         const std::string& flag,
-                                         int depth)
-{
-  Debug.getStream() << expr::ExprSetDepth(depth);
-  Trace.getStream() << expr::ExprSetDepth(depth);
-  Notice.getStream() << expr::ExprSetDepth(depth);
-  Chat.getStream() << expr::ExprSetDepth(depth);
-  CVC5Message.getStream() << expr::ExprSetDepth(depth);
-  Warning.getStream() << expr::ExprSetDepth(depth);
-}
-
-void OptionsHandler::setDefaultDagThresh(const std::string& option,
-                                         const std::string& flag,
-                                         int dag)
-{
-  Debug.getStream() << expr::ExprDag(dag);
-  Trace.getStream() << expr::ExprDag(dag);
-  Notice.getStream() << expr::ExprDag(dag);
-  Chat.getStream() << expr::ExprDag(dag);
-  CVC5Message.getStream() << expr::ExprDag(dag);
-  Warning.getStream() << expr::ExprDag(dag);
-  Dump.getStream() << expr::ExprDag(dag);
-}
-
-static void print_config(const char* str, std::string config)
+namespace {
+void print_config(std::ostream& out, const char* str, const std::string& config)
 {
   std::string s(str);
-  unsigned sz = 14;
+  constexpr unsigned sz = 14;
   if (s.size() < sz) s.resize(sz, ' ');
-  std::cout << s << ": " << config << std::endl;
+  out << s << ": " << config << std::endl;
 }
 
-static void print_config_cond(const char* str, bool cond = false)
+void print_config_cond(std::ostream& out, const char* str, bool cond = false)
 {
-  print_config(str, cond ? "yes" : "no");
+  print_config(out, str, cond ? "yes" : "no");
 }
+}  // namespace
 
-void OptionsHandler::showConfiguration(const std::string& option,
-                                       const std::string& flag)
+void OptionsHandler::showConfiguration(CVC5_UNUSED const std::string& flag,
+                                       const bool value) const
 {
-  std::cout << Configuration::about() << std::endl;
-
-  print_config("version", Configuration::getVersionString());
+  if (!value) return;
+  std::ostream& o = d_options->base.out;
+  print_config(o, "package", Configuration::getPackageName());
+  print_config(o, "version", Configuration::getVersionString());
   if (Configuration::isGitBuild())
   {
-    print_config("scm", Configuration::getGitInfo());
+    print_config(o, "scm", Configuration::getGitInfo());
   }
   else
   {
-    print_config_cond("scm", false);
+    print_config_cond(o, "scm", false);
   }
 
-  std::cout << std::endl;
+  o << std::endl;
 
-  std::stringstream ss;
-  ss << Configuration::getVersionString();
-  print_config("library", ss.str());
+  print_config_cond(o, "safe-mode", Configuration::isSafeBuild());
+  print_config_cond(o, "stable-mode", Configuration::isStableBuild());
+  print_config_cond(o, "debug code", Configuration::isDebugBuild());
+  print_config_cond(o, "statistics", configuration::isStatisticsBuild());
+  print_config_cond(o, "tracing", Configuration::isTracingBuild());
+  print_config_cond(o, "muzzled", Configuration::isMuzzledBuild());
+  print_config_cond(o, "assertions", Configuration::isAssertionBuild());
+  print_config_cond(o, "coverage", Configuration::isCoverageBuild());
+  print_config_cond(o, "profiling", Configuration::isProfilingBuild());
+  print_config_cond(o, "asan", Configuration::isAsanBuild());
+  print_config_cond(o, "ubsan", Configuration::isUbsanBuild());
+  print_config_cond(o, "tsan", Configuration::isTsanBuild());
+  print_config_cond(o, "competition", Configuration::isCompetitionBuild());
+  print_config_cond(o, "portfolio", Configuration::isBuiltWithPortfolio());
 
-  std::cout << std::endl;
+  o << std::endl;
 
-  print_config_cond("debug code", Configuration::isDebugBuild());
-  print_config_cond("statistics", Configuration::isStatisticsBuild());
-  print_config_cond("tracing", Configuration::isTracingBuild());
-  print_config_cond("dumping", Configuration::isDumpingBuild());
-  print_config_cond("muzzled", Configuration::isMuzzledBuild());
-  print_config_cond("assertions", Configuration::isAssertionBuild());
-  print_config_cond("coverage", Configuration::isCoverageBuild());
-  print_config_cond("profiling", Configuration::isProfilingBuild());
-  print_config_cond("asan", Configuration::isAsanBuild());
-  print_config_cond("ubsan", Configuration::isUbsanBuild());
-  print_config_cond("tsan", Configuration::isTsanBuild());
-  print_config_cond("competition", Configuration::isCompetitionBuild());
-
-  std::cout << std::endl;
-
-  print_config_cond("abc", Configuration::isBuiltWithAbc());
-  print_config_cond("cln", Configuration::isBuiltWithCln());
-  print_config_cond("glpk", Configuration::isBuiltWithGlpk());
-  print_config_cond("cryptominisat", Configuration::isBuiltWithCryptominisat());
-  print_config_cond("gmp", Configuration::isBuiltWithGmp());
-  print_config_cond("kissat", Configuration::isBuiltWithKissat());
-  print_config_cond("poly", Configuration::isBuiltWithPoly());
-  print_config_cond("editline", Configuration::isBuiltWithEditline());
-
-  std::exit(0);
+  print_config_cond(o, "cln", Configuration::isBuiltWithCln());
+  print_config_cond(o, "glpk", Configuration::isBuiltWithGlpk());
+  print_config_cond(
+      o, "cryptominisat", Configuration::isBuiltWithCryptominisat());
+  print_config_cond(o, "gmp", Configuration::isBuiltWithGmp());
+  print_config_cond(o, "kissat", Configuration::isBuiltWithKissat());
+  print_config_cond(o, "poly", Configuration::isBuiltWithPoly());
+  print_config_cond(o, "cocoa", Configuration::isBuiltWithCoCoA());
+  print_config_cond(o, "normaliz", Configuration::isBuiltWithNormaliz());
+  print_config_cond(o, "editline", Configuration::isBuiltWithEditline());
 }
 
-void OptionsHandler::showCopyright(const std::string& option,
-                                   const std::string& flag)
+void OptionsHandler::showCopyright(CVC5_UNUSED const std::string& flag,
+                                   const bool value) const
 {
-  std::cout << Configuration::copyright() << std::endl;
-  std::exit(0);
+  if (!value) return;
+  d_options->base.out << Configuration::copyright() << std::endl;
 }
 
-void OptionsHandler::showVersion(const std::string& option,
-                                 const std::string& flag)
+void OptionsHandler::showVersion(CVC5_UNUSED const std::string& flag,
+                                 const bool value) const
 {
-  d_options->base.out << Configuration::about() << std::endl;
-  std::exit(0);
+  if (!value) return;
+  d_options->base.out << Configuration::aboutAndCopyright() << std::endl;
 }
 
-void OptionsHandler::showDebugTags(const std::string& option,
-                                   const std::string& flag)
+void OptionsHandler::showTraceTags(CVC5_UNUSED const std::string& flag,
+                                   const bool value) const
 {
-  if (!Configuration::isDebugBuild())
-  {
-    throw OptionException("debug tags not available in non-debug builds");
-  }
-  else if (!Configuration::isTracingBuild())
-  {
-    throw OptionException("debug tags not available in non-tracing builds");
-  }
-  printTags(Configuration::getDebugTags());
-  std::exit(0);
-}
-
-void OptionsHandler::showTraceTags(const std::string& option,
-                                   const std::string& flag)
-{
+  if (!value) return;
   if (!Configuration::isTracingBuild())
   {
     throw OptionException("trace tags not available in non-tracing build");
   }
-  printTags(Configuration::getTraceTags());
-  std::exit(0);
+  printTags(d_options->base.out, Configuration::getTraceTags());
 }
 
-void OptionsHandler::setDumpMode(const std::string& option,
-                                 const std::string& flag,
-                                 const std::string& optarg)
+void OptionsHandler::strictParsing(CVC5_UNUSED const std::string& flag,
+                                   const bool value) const
 {
-#ifdef CVC5_DUMPING
-  Dump.setDumpFromString(optarg);
-#else  /* CVC5_DUMPING */
-  throw OptionException(
-      "The dumping feature was disabled in this build of cvc5.");
-#endif /* CVC5_DUMPING */
-}
-
-void OptionsHandler::setDumpStream(const std::string& option,
-                                   const std::string& flag,
-                                   const ManagedOut& mo)
-{
-#ifdef CVC5_DUMPING
-  Dump.setStream(mo);
-#else  /* CVC5_DUMPING */
-  throw OptionException(
-      "The dumping feature was disabled in this build of cvc5.");
-#endif /* CVC5_DUMPING */
+  if (value)
+  {
+    d_options->write_parser().parsingMode = options::ParsingMode::STRICT;
+  }
+  else if (d_options->parser.parsingMode == options::ParsingMode::STRICT)
+  {
+    d_options->write_parser().parsingMode = options::ParsingMode::DEFAULT;
+  }
 }
 
 }  // namespace options
-}  // namespace cvc5
+}  // namespace cvc5::internal

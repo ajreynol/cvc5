@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -23,8 +20,11 @@
 
 #include "expr/node.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
+
+class Rewriter;
+
 namespace sets {
 
 /**
@@ -35,7 +35,7 @@ namespace sets {
 class SkolemCache
 {
  public:
-  SkolemCache();
+  SkolemCache(NodeManager* nm, Rewriter* rr);
   /** Identifiers for skolem types
    *
    * The comments below document the properties of each skolem introduced by
@@ -75,10 +75,14 @@ class SkolemCache
   std::map<Node, std::map<Node, std::map<SkolemId, Node> > > d_skolemCache;
   /** the set of all skolems we have generated */
   std::unordered_set<Node> d_allSkolems;
+  /** the associated node manager */
+  NodeManager* d_nm;
+  /** the optional rewriter */
+  Rewriter* d_rewriter;
 };
 
 }  // namespace sets
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__THEORY__STRINGS__SKOLEM_CACHE_H */

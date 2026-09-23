@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Gereon Kremer, Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -19,8 +16,9 @@
 #include <vector>
 
 #include "expr/node.h"
+#include "smt/env_obj.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 
 class CDProof;
 
@@ -28,12 +26,12 @@ namespace theory {
 namespace arith {
 namespace nl {
 
-struct ExtState;
+class ExtState;
 
-class FactoringCheck
+class FactoringCheck : protected EnvObj
 {
  public:
-  FactoringCheck(ExtState* data);
+  FactoringCheck(Env& env, ExtState* data);
 
   /** check factoring
    *
@@ -70,6 +68,6 @@ class FactoringCheck
 }  // namespace nl
 }  // namespace arith
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif

@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Gereon Kremer
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -21,7 +18,7 @@
 
 #include "options/options.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace arith {
 namespace nl {
@@ -29,15 +26,18 @@ namespace nl {
 /** The possible inference steps for the nonlinear extension */
 enum class InferStep
 {
+  /** Placeholder specifying no inference step */
+  NONE,
+
   /** Break if any lemma is pending */
   BREAK,
   /** Flush waiting lemmas to be pending */
   FLUSH_WAITING_LEMMAS,
 
-  /** Initialize the CAD solver */
-  CAD_INIT,
-  /** A full CAD check */
-  CAD_FULL,
+  /** Initialize the coverings solver */
+  COVERINGS_INIT,
+  /** A full coverings check */
+  COVERINGS_FULL,
 
   /** Initialize the IAND solver */
   IAND_INIT,
@@ -45,6 +45,13 @@ enum class InferStep
   IAND_FULL,
   /** An initial IAND check */
   IAND_INITIAL,
+
+  /** Initialize the PIAND solver */
+  PIAND_INIT,
+  /** A full PIAND check */
+  PIAND_FULL,
+  /** An initial PIAND check */
+  PIAND_INITIAL,
 
   /** Initialize the POW2 solver */
   POW2_INIT,
@@ -61,6 +68,8 @@ enum class InferStep
   NL_INIT,
   /** Nl factoring lemmas */
   NL_FACTORING,
+  /** Nl monomial equality propagation by flattening */
+  NL_FLATTEN_MON,
   /** Nl lemmas for monomial bound inference */
   NL_MONOMIAL_INFER_BOUNDS,
   /** Nl lemmas for monomial magnitudes (class 0) */
@@ -88,6 +97,9 @@ enum class InferStep
   TRANS_MONOTONIC,
   /** Tangent planes from transcendental solver */
   TRANS_TANGENT_PLANES,
+
+  /** The inference step is unknown */
+  UNKNOWN
 };
 
 /** Streaming operator for InferStep */
@@ -184,6 +196,6 @@ class Strategy
 }  // namespace nl
 }  // namespace arith
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__THEORY__ARITH__NL__STRATEGY_H */

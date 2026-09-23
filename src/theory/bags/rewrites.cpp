@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Mudathir Mohamed
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -17,7 +14,7 @@
 
 #include <iostream>
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace bags {
 
@@ -26,28 +23,46 @@ const char* toString(Rewrite r)
   switch (r)
   {
     case Rewrite::NONE: return "NONE";
+    case Rewrite::AGGREGATE_CONST: return "AGGREGATE_CONST";
+    case Rewrite::BAG_MAKE_COUNT_NEGATIVE: return "BAG_MAKE_COUNT_NEGATIVE";
     case Rewrite::CARD_DISJOINT: return "CARD_DISJOINT";
-    case Rewrite::CARD_MK_BAG: return "CARD_MK_BAG";
-    case Rewrite::CHOOSE_MK_BAG: return "CHOOSE_MK_BAG";
+    case Rewrite::CARD_BAG_MAKE: return "CARD_BAG_MAKE";
+    case Rewrite::CHOOSE_BAG_MAKE: return "CHOOSE_BAG_MAKE";
     case Rewrite::CONSTANT_EVALUATION: return "CONSTANT_EVALUATION";
     case Rewrite::COUNT_EMPTY: return "COUNT_EMPTY";
-    case Rewrite::COUNT_MK_BAG: return "COUNT_MK_BAG";
-    case Rewrite::DUPLICATE_REMOVAL_MK_BAG: return "DUPLICATE_REMOVAL_MK_BAG";
+    case Rewrite::COUNT_BAG_MAKE: return "COUNT_BAG_MAKE";
+    case Rewrite::SETOF_BAG_MAKE: return "SETOF_BAG_MAKE";
     case Rewrite::EQ_CONST_FALSE: return "EQ_CONST_FALSE";
     case Rewrite::EQ_REFL: return "EQ_REFL";
     case Rewrite::EQ_SYM: return "EQ_SYM";
+    case Rewrite::FILTER_CONST: return "FILTER_CONST";
+    case Rewrite::FILTER_BAG_MAKE: return "FILTER_BAG_MAKE";
+    case Rewrite::FILTER_UNION_DISJOINT: return "FILTER_UNION_DISJOINT";
+    case Rewrite::ALL_EMPTY: return "ALL_EMPTY";
+    case Rewrite::ALL_BAG_MAKE: return "ALL_BAG_MAKE";
+    case Rewrite::ALL_UNION_DISJOINT: return "ALL_UNION_DISJOINT";
+    case Rewrite::ALL_FILTER: return "ALL_FILTER";
+    case Rewrite::SOME_EMPTY: return "SOME_EMPTY";
+    case Rewrite::SOME_BAG_MAKE: return "SOME_BAG_MAKE";
+    case Rewrite::SOME_UNION_DISJOINT: return "SOME_UNION_DISJOINT";
+    case Rewrite::SOME_FILTER: return "SOME_FILTER";
     case Rewrite::FROM_SINGLETON: return "FROM_SINGLETON";
+    case Rewrite::FOLD_BAG: return "FOLD_BAG";
+    case Rewrite::FOLD_CONST: return "FOLD_CONST";
+    case Rewrite::FOLD_UNION_DISJOINT: return "FOLD_UNION_DISJOINT";
     case Rewrite::IDENTICAL_NODES: return "IDENTICAL_NODES";
     case Rewrite::INTERSECTION_EMPTY_LEFT: return "INTERSECTION_EMPTY_LEFT";
     case Rewrite::INTERSECTION_EMPTY_RIGHT: return "INTERSECTION_EMPTY_RIGHT";
     case Rewrite::INTERSECTION_SAME: return "INTERSECTION_SAME";
     case Rewrite::INTERSECTION_SHARED_LEFT: return "INTERSECTION_SHARED_LEFT";
     case Rewrite::INTERSECTION_SHARED_RIGHT: return "INTERSECTION_SHARED_RIGHT";
-    case Rewrite::IS_SINGLETON_MK_BAG: return "IS_SINGLETON_MK_BAG";
+    case Rewrite::IS_SINGLETON_BAG_MAKE: return "IS_SINGLETON_BAG_MAKE";
     case Rewrite::MAP_CONST: return "MAP_CONST";
-    case Rewrite::MAP_MK_BAG: return "MAP_MK_BAG";
+    case Rewrite::MAP_BAG_MAKE: return "MAP_BAG_MAKE";
     case Rewrite::MAP_UNION_DISJOINT: return "MAP_UNION_DISJOINT";
-    case Rewrite::MK_BAG_COUNT_NEGATIVE: return "MK_BAG_COUNT_NEGATIVE";
+    case Rewrite::MEMBER: return "MEMBER";
+    case Rewrite::PARTITION_CONST: return "PARTITION_CONST";
+    case Rewrite::PRODUCT_EMPTY: return "PRODUCT_EMPTY";
     case Rewrite::REMOVE_FROM_UNION: return "REMOVE_FROM_UNION";
     case Rewrite::REMOVE_MIN: return "REMOVE_MIN";
     case Rewrite::REMOVE_RETURN_LEFT: return "REMOVE_RETURN_LEFT";
@@ -83,4 +98,4 @@ std::ostream& operator<<(std::ostream& out, Rewrite r)
 
 }  // namespace bags
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal

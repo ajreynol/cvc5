@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Morgan Deters, Tim King, Dejan Jovanovic
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -78,7 +75,7 @@
  *     possible.
  */
 
-#include "cvc5_private.h"
+#include "cvc5parser_public.h"
 
 #ifndef CVC5__CONTEXT__CDHASHMAP_H
 #define CVC5__CONTEXT__CDHASHMAP_H
@@ -91,8 +88,7 @@
 #include "context/cdhashmap_forward.h"
 #include "context/context.h"
 
-namespace cvc5 {
-namespace context {
+namespace cvc5::context {
 
 // Auxiliary class: almost the same as CDO (see cdo.h)
 
@@ -137,9 +133,9 @@ class CDOhash_map : public ContextObj
   void restore(ContextObj* data) override
   {
     CDOhash_map* p = static_cast<CDOhash_map*>(data);
-    if (d_map != NULL)
+    if (d_map != nullptr)
     {
-      if (p->d_map == NULL)
+      if (p->d_map == nullptr)
       {
         Assert(d_map->d_map.find(getKey()) != d_map->d_map.end()
                && (*d_map->d_map.find(getKey())).second == this);
@@ -148,30 +144,21 @@ class CDOhash_map : public ContextObj
         // If we call deleteSelf() here, it re-enters restore().  So,
         // put it on a "trash heap" instead, for later deletion.
         //
-        // FIXME multithreading
         if (d_map->d_first == this)
         {
-          Debug("gc") << "remove first-elem " << this << " from map " << d_map
-                      << " with next-elem " << d_next << std::endl;
           if (d_next == this)
           {
             Assert(d_prev == this);
-            d_map->d_first = NULL;
+            d_map->d_first = nullptr;
           }
           else
           {
             d_map->d_first = d_next;
           }
         }
-        else
-        {
-          Debug("gc") << "remove nonfirst-elem " << this << " from map "
-                      << d_map << std::endl;
-        }
         d_next->d_prev = d_prev;
         d_prev->d_next = d_next;
 
-        Debug("gc") << "CDHashMap<> trash push_back " << this << std::endl;
         // this->deleteSelf();
         enqueueToGarbageCollect();
       }
@@ -193,8 +180,8 @@ class CDOhash_map : public ContextObj
         // refcounts for Node keys messed up and leak memory
         d_value(Key(), other.d_value.second),
         d_map(other.d_map),
-        d_prev(NULL),
-        d_next(NULL)
+        d_prev(nullptr),
+        d_next(nullptr)
   {
   }
   CDOhash_map& operator=(const CDOhash_map&) = delete;
@@ -203,42 +190,25 @@ class CDOhash_map : public ContextObj
   CDOhash_map(Context* context,
               CDHashMap<Key, Data, HashFcn>* map,
               const Key& key,
-              const Data& data,
-              bool atLevelZero = false)
-      : ContextObj(false, context), d_value(key, data), d_map(NULL)
+              const Data& data)
+      : ContextObj(context), d_value(key, data), d_map(nullptr)
   {
-    if (atLevelZero)
-    {
-      // "Initializing" map insertion: this entry will never be
-      // removed from the map, it's inserted at level 0 as an
-      // "initializing" element.  See
-      // CDHashMap<>::insertAtContextLevelZero().
-      mutable_data() = data;
-    }
-    else
-    {
-      // Normal map insertion: first makeCurrent(), then set the data
-      // and then, later, the map.  Order is important; we can't
-      // initialize d_map in the constructor init list above, because
-      // we want the restore of d_map to NULL to signal us to remove
-      // the element from the map.
+    // Normal map insertion: first makeCurrent(), then set the data
+    // and then, later, the map.  Order is important; we can't
+    // initialize d_map in the constructor init list above, because
+    // we want the restore of d_map to NULL to signal us to remove
+    // the element from the map.
 
-      set(data);
-    }
+    set(data);
     d_map = map;
 
     CDOhash_map*& first = d_map->d_first;
-    if (first == NULL)
+    if (first == nullptr)
     {
       first = d_next = d_prev = this;
-      Debug("gc") << "add first-elem " << this << " to map " << d_map
-                  << std::endl;
     }
     else
     {
-      Debug("gc") << "add nonfirst-elem " << this << " to map " << d_map
-                  << " with first-elem " << first << "[" << first->d_prev << " "
-                  << first->d_next << std::endl;
       d_prev = first->d_prev;
       d_next = first;
       d_prev->d_next = this;
@@ -272,7 +242,7 @@ class CDOhash_map : public ContextObj
   {
     if (d_next == d_map->d_first)
     {
-      return NULL;
+      return nullptr;
     }
     else
     {
@@ -300,14 +270,14 @@ class CDHashMap : public ContextObj
   Context* d_context;
 
   // Nothing to save; the elements take care of themselves
-  ContextObj* save(ContextMemoryManager* pCMM) override
+  ContextObj* save(CVC5_UNUSED ContextMemoryManager* pCMM) override
   {
     Unreachable();
     SuppressWrongNoReturnWarning;
   }
 
   // Similarly, nothing to restore
-  void restore(ContextObj* data) override { Unreachable(); }
+  void restore(CVC5_UNUSED ContextObj* data) override { Unreachable(); }
 
   // no copy or assignment
   CDHashMap(const CDHashMap&) = delete;
@@ -315,26 +285,18 @@ class CDHashMap : public ContextObj
 
  public:
   CDHashMap(Context* context)
-      : ContextObj(context), d_map(), d_first(NULL), d_context(context)
+      : ContextObj(context), d_map(), d_first(nullptr), d_context(context)
   {
   }
 
   ~CDHashMap()
   {
-    Debug("gc") << "cdhashmap" << this << " disappearing, destroying..."
-                << std::endl;
     destroy();
-    Debug("gc") << "cdhashmap" << this << " disappearing, done destroying"
-                << std::endl;
     clear();
   }
 
   void clear()
   {
-    Debug("gc") << "clearing cdhashmap" << this << ", emptying trash"
-                << std::endl;
-    Debug("gc") << "done emptying trash for " << this << std::endl;
-
     for (auto& key_element_pair : d_map)
     {
       // mark it as being a destruction (short-circuit restore())
@@ -379,40 +341,7 @@ class CDHashMap : public ContextObj
     return res.second;
   }
 
-  /**
-   * Version of insert() for CDHashMap<> that inserts data value d at
-   * context level zero.  This is a special escape hatch for inserting
-   * "initializing" data into the map.  Imagine something happens at a
-   * deep context level L that causes insertion into a map, such that
-   * the object should have an "initializing" value v1 below context
-   * level L, and a "current" value v2 at context level L.  Then you
-   * can (assuming key k):
-   *
-   *   map.insertAtContextLevelZero(k, v1);
-   *   map.insert(k, v2);
-   *
-   * The justification for this "escape hatch" has to do with
-   * variables and assignments in theories (e.g., in arithmetic).
-   * Let's say you introduce a new variable x at some deep decision
-   * level (thanks to lazy registration, or a splitting lemma, or
-   * whatever).  x might be mapped to something, but for theory
-   * implementation simplicity shouldn't disappear from the map on
-   * backjump; rather, it can take another (legal) value, or a special
-   * value to indicate it needs to be recomputed.
-   *
-   * It is an error (checked via AlwaysAssert()) to
-   * insertAtContextLevelZero() a key that already is in the map.
-   */
-  void insertAtContextLevelZero(const Key& k, const Data& d)
-  {
-    AlwaysAssert(d_map.find(k) == d_map.end());
-
-    Element* obj =
-        new (true) Element(d_context, this, k, d, true /* atLevelZero */);
-    d_map.insert(std::make_pair(k, obj));
-  }
-
-  // FIXME: no erase(), too much hassle to implement efficiently...
+  // Note: no erase(), too much hassle to implement efficiently...
 
   using value_type = typename CDOhash_map<Key, Data, HashFcn>::value_type;
 
@@ -428,7 +357,6 @@ class CDHashMap : public ContextObj
     using reference = typename CDOhash_map<Key, Data, HashFcn>::value_type&;
 
     iterator(const Element* p) : d_it(p) {}
-    iterator(const iterator& i) : d_it(i.d_it) {}
 
     // Default constructor
     iterator() : d_it(nullptr) {}
@@ -455,7 +383,7 @@ class CDHashMap : public ContextObj
 
   iterator begin() const { return iterator(d_first); }
 
-  iterator end() const { return iterator(NULL); }
+  iterator end() const { return iterator(nullptr); }
 
   iterator find(const Key& k) const
   {
@@ -473,7 +401,6 @@ class CDHashMap : public ContextObj
 
 }; /* class CDHashMap<> */
 
-}  // namespace context
-}  // namespace cvc5
+}  // namespace cvc5::context
 
 #endif /* CVC5__CONTEXT__CDHASHMAP_H */

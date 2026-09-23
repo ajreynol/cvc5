@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Mathias Preiner, Aina Niemetz
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -22,10 +19,10 @@
 #include "theory/quantifiers/term_util.h"
 
 using namespace std;
-using namespace cvc5::kind;
+using namespace cvc5::internal::kind;
 using namespace cvc5::context;
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace quantifiers {
 
@@ -40,7 +37,7 @@ EqualityQuery::EqualityQuery(Env& env, QuantifiersState& qs, FirstOrderModel* m)
 
 EqualityQuery::~EqualityQuery() {}
 
-bool EqualityQuery::reset(Theory::Effort e)
+bool EqualityQuery::reset(CVC5_UNUSED Theory::Effort e)
 {
   d_int_rep.clear();
   d_reset_count++;
@@ -49,11 +46,13 @@ bool EqualityQuery::reset(Theory::Effort e)
 
 Node EqualityQuery::getInternalRepresentative(Node a, Node q, size_t index)
 {
-  Assert(q.isNull() || q.getKind() == FORALL);
+  Assert(q.isNull() || q.getKind() == Kind::FORALL);
   Node r = d_qstate.getRepresentative(a);
-  if( options::finiteModelFind() ){
-    if( r.isConst() && quantifiers::TermUtil::containsUninterpretedConstant( r ) ){
-      //map back from values assigned by model, if any
+  if (options().quantifiers.finiteModelFind)
+  {
+    if (r.isConst() && quantifiers::TermUtil::containsUninterpretedConstant(r))
+    {
+      // map back from values assigned by model, if any
       if (d_model != nullptr)
       {
         Node tr = d_model->getRepSet()->getTermForRepresentative(r);
@@ -61,20 +60,24 @@ Node EqualityQuery::getInternalRepresentative(Node a, Node q, size_t index)
         {
           r = tr;
           r = d_qstate.getRepresentative(r);
-        }else{
-          if( r.getType().isSort() ){
-            Trace("internal-rep-warn") << "No representative for UF constant." << std::endl;
-            //should never happen : UF constants should never escape model
-            Assert(false);
+        }
+        else
+        {
+          if (r.getType().isUninterpretedSort())
+          {
+            Trace("internal-rep-warn")
+                << "No representative for UF constant." << std::endl;
+            // should never happen : UF constants should never escape model
+            DebugUnhandled();
           }
         }
       }
     }
   }
   TypeNode v_tn = q.isNull() ? a.getType() : q[0][index].getType();
-  if (options::quantRepMode() == options::QuantRepMode::EE)
+  if (options().quantifiers.quantRepMode == options::QuantRepMode::EE)
   {
-    int32_t score = getRepScore(r, q, index, v_tn);
+    int32_t score = getRepScore(r, v_tn);
     if (score >= 0)
     {
       return r;
@@ -97,7 +100,7 @@ Node EqualityQuery::getInternalRepresentative(Node a, Node q, size_t index)
   int32_t r_best_score = -1;
   for (const Node& n : eqc)
   {
-    int32_t score = getRepScore(n, q, index, v_tn);
+    int32_t score = getRepScore(n, v_tn);
     if (score != -2)
     {
       if (r_best.isNull()
@@ -126,9 +129,9 @@ Node EqualityQuery::getInternalRepresentative(Node a, Node q, size_t index)
   Trace("internal-rep-select")
       << "...Choose " << r_best << " with score " << r_best_score
       << " and type " << r_best.getType() << std::endl;
-  Assert(r_best.getType().isSubtypeOf(v_tn));
+  Assert(r_best.getType() == v_tn);
   v_int_rep[r] = r_best;
-  if (Trace.isOn("internal-rep-debug"))
+  if (TraceIsOn("internal-rep-debug"))
   {
     if (r_best != a)
     {
@@ -141,51 +144,68 @@ Node EqualityQuery::getInternalRepresentative(Node a, Node q, size_t index)
   return r_best;
 }
 
-//helper functions
+// helper functions
 
 Node EqualityQuery::getInstance(Node n,
                                 const std::vector<Node>& eqc,
                                 std::unordered_map<TNode, Node>& cache)
 {
-  if(cache.find(n) != cache.end()) {
+  if (cache.find(n) != cache.end())
+  {
     return cache[n];
   }
-  for( size_t i=0; i<n.getNumChildren(); i++ ){
-    Node nn = getInstance( n[i], eqc, cache );
-    if( !nn.isNull() ){
+  for (size_t i = 0; i < n.getNumChildren(); i++)
+  {
+    Node nn = getInstance(n[i], eqc, cache);
+    if (!nn.isNull())
+    {
       return cache[n] = nn;
     }
   }
-  if( std::find( eqc.begin(), eqc.end(), n )!=eqc.end() ){
+  if (std::find(eqc.begin(), eqc.end(), n) != eqc.end())
+  {
     return cache[n] = n;
-  }else{
+  }
+  else
+  {
     return cache[n] = Node::null();
   }
 }
 
 //-2 : invalid, -1 : undesired, otherwise : smaller the score, the better
-int32_t EqualityQuery::getRepScore(Node n, Node q, size_t index, TypeNode v_tn)
+int32_t EqualityQuery::getRepScore(Node n, TypeNode v_tn)
 {
-  if( options::cegqi() && quantifiers::TermUtil::hasInstConstAttr(n) ){  //reject
+  if (quantifiers::TermUtil::hasInstConstAttr(n))
+  {  // reject
     return -2;
-  }else if( !n.getType().isSubtypeOf( v_tn ) ){  //reject if incorrect type
-    return -2;
-  }else if( options::instMaxLevel()!=-1 ){
-    //score prefer lowest instantiation level
-    if( n.hasAttribute(InstLevelAttribute()) ){
-      return n.getAttribute(InstLevelAttribute());
-    }
-    return options::instLevelInputOnly() ? -1 : 0;
   }
-  else if (options::quantRepMode() == options::QuantRepMode::FIRST)
+  else if (n.getType() != v_tn)
+  {  // reject if incorrect type
+    return -2;
+  }
+  else if (options().quantifiers.instMaxLevel != -1)
+  {
+    // score prefer lowest instantiation level
+    uint64_t level;
+    if (QuantAttributes::getInstantiationLevel(n, level))
+    {
+      return static_cast<int32_t>(level);
+    }
+    return -1;
+  }
+  else if (options().quantifiers.quantRepMode == options::QuantRepMode::FIRST)
   {
     // score prefers earliest use of this term as a representative
     return d_rep_score.find(n) == d_rep_score.end() ? -1 : d_rep_score[n];
   }
-  Assert(options::quantRepMode() == options::QuantRepMode::DEPTH);
-  return quantifiers::TermUtil::getTermDepth(n);
+  else if (options().quantifiers.quantRepMode == options::QuantRepMode::DEPTH)
+  {
+    return quantifiers::TermUtil::getTermDepth(n);
+  }
+  // no preference
+  return 0;
 }
 
 }  // namespace quantifiers
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal

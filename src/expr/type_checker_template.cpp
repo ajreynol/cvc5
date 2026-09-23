@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Morgan Deters, Dejan Jovanovic, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -24,40 +21,61 @@
 ${typechecker_includes}
 // clang-format on
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace expr {
 
-TypeNode TypeChecker::computeType(NodeManager* nodeManager, TNode n, bool check)
+TypeNode TypeChecker::preComputeType(NodeManager* nodeManager, TNode n)
 {
   TypeNode typeNode;
 
   // Infer the type
   switch (n.getKind())
   {
-    case kind::VARIABLE:
-    case kind::SKOLEM:
+    case Kind::VARIABLE:
+    case Kind::SKOLEM:
+    case Kind::BOUND_VARIABLE:
+    case Kind::INST_CONSTANT:
+    case Kind::RAW_SYMBOL:
+      // variable kinds have their type marked as an attribute upon construction
       typeNode = nodeManager->getAttribute(n, TypeAttr());
       break;
-    case kind::BUILTIN:
+    case Kind::BUILTIN:
       typeNode = nodeManager->builtinOperatorType();
       break;
 
       // clang-format off
+${pretyperules}
+      // clang-format on
+
+    default:
+      // not handled
+      break;
+  }
+  return typeNode;
+}
+
+TypeNode TypeChecker::computeType(NodeManager* nodeManager,
+                                  TNode n,
+                                  bool check,
+                                  std::ostream* errOut)
+{
+  TypeNode typeNode;
+
+  // Infer the type
+  switch (n.getKind())
+  {
+    // clang-format off
 ${typerules}
       // clang-format on
 
     default:
-      Debug("getType") << "FAILURE" << std::endl;
+      Trace("getType") << "FAILURE" << std::endl;
       Unhandled() << " " << n.getKind();
   }
 
-  nodeManager->setAttribute(n, TypeAttr(), typeNode);
-  nodeManager->setAttribute(n, TypeCheckedAttr(),
-                            check || nodeManager->getAttribute(n, TypeCheckedAttr()));
-
   return typeNode;
 
-}/* TypeChecker::computeType */
+} /* TypeChecker::computeType */
 
 bool TypeChecker::computeIsConst(NodeManager* nodeManager, TNode n)
 {
@@ -76,7 +94,7 @@ ${construles}
 
   return false;
 
-}/* TypeChecker::computeIsConst */
+} /* TypeChecker::computeIsConst */
 
 }  // namespace expr
-}  // namespace cvc5
+}  // namespace cvc5::internal

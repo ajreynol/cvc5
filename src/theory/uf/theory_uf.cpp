@@ -1,18 +1,13 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Morgan Deters, Dejan Jovanovic
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
  * ****************************************************************************
  *
- * This is the interface to TheoryUF implementations
- *
- * All implementations of TheoryUF should inherit from this class.
+ * The theory of uninterpreted functions (UF)
  */
 
 #include "theory/uf/theory_uf.h"
@@ -21,21 +16,25 @@
 #include <sstream>
 
 #include "expr/node_algorithm.h"
+#include "expr/skolem_manager.h"
 #include "options/quantifiers_options.h"
 #include "options/smt_options.h"
 #include "options/theory_options.h"
 #include "options/uf_options.h"
 #include "proof/proof_node_manager.h"
 #include "smt/logic_exception.h"
+#include "theory/arith/arith_utilities.h"
 #include "theory/theory_model.h"
 #include "theory/type_enumerator.h"
 #include "theory/uf/cardinality_extension.h"
+#include "theory/uf/conversions_solver.h"
 #include "theory/uf/ho_extension.h"
+#include "theory/uf/lambda_lift.h"
 #include "theory/uf/theory_uf_rewriter.h"
 
 using namespace std;
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace uf {
 
@@ -46,22 +45,26 @@ TheoryUF::TheoryUF(Env& env,
                    std::string instanceName)
     : Theory(THEORY_UF, env, out, valuation, instanceName),
       d_thss(nullptr),
+      d_lambdaLift(new LambdaLift(env)),
       d_ho(nullptr),
+      d_dpfgen(env),
       d_functionsTerms(context()),
-      d_symb(userContext(), instanceName),
-      d_rewriter(logicInfo().isHigherOrder()),
+      d_symb(env, instanceName),
+      d_rewriter(nodeManager()),
+      d_checker(nodeManager()),
       d_state(env, valuation),
-      d_im(env, *this, d_state, d_pnm, "theory::uf::" + instanceName, false),
-      d_notify(d_im, *this)
+      d_im(env, *this, d_state, "theory::uf::" + instanceName, false),
+      d_distinct(env, d_state, d_im),
+      d_notify(d_im, *this),
+      d_cpacb(*this)
 {
-  d_true = NodeManager::currentNM()->mkConst( true );
+  d_true = nodeManager()->mkConst(true);
   // indicate we are using the default theory state and inference managers
   d_theoryState = &d_state;
   d_inferManager = &d_im;
 }
 
-TheoryUF::~TheoryUF() {
-}
+TheoryUF::~TheoryUF() {}
 
 TheoryRewriter* TheoryUF::getTheoryRewriter() { return &d_rewriter; }
 
@@ -71,8 +74,8 @@ bool TheoryUF::needsEqualityEngine(EeSetupInfo& esi)
 {
   esi.d_notify = &d_notify;
   esi.d_name = d_instanceName + "theory::uf::ee";
-  if (options::finiteModelFind()
-      && options::ufssMode() != options::UfssMode::NONE)
+  if (options().quantifiers.finiteModelFind
+      && options().uf.ufssMode != options::UfssMode::NONE)
   {
     // need notifications about sorts
     esi.d_notifyNewClass = true;
@@ -82,56 +85,59 @@ bool TheoryUF::needsEqualityEngine(EeSetupInfo& esi)
   return true;
 }
 
-void TheoryUF::finishInit() {
+void TheoryUF::finishInit()
+{
   Assert(d_equalityEngine != nullptr);
   // combined cardinality constraints are not evaluated in getModelValue
-  d_valuation.setUnevaluatedKind(kind::COMBINED_CARDINALITY_CONSTRAINT);
+  d_valuation.setUnevaluatedKind(Kind::COMBINED_CARDINALITY_CONSTRAINT);
+  // distinct should not be sent to the model
+  d_valuation.setIrrelevantKind(Kind::DISTINCT);
+  if (logicInfo().hasCardinalityConstraints())
+  {
+    if (!options().uf.ufCardExp)
+    {
+      std::stringstream ss;
+      ss << "Logic with cardinality constraints not available in this "
+            "configuration, try --uf-card-exp.";
+      throw SafeLogicException(ss.str());
+    }
+  }
   // Initialize the cardinality constraints solver if the logic includes UF,
   // finite model finding is enabled, and it is not disabled by
-  // options::ufssMode().
-  if (options::finiteModelFind()
-      && options::ufssMode() != options::UfssMode::NONE)
+  // the ufssMode option.
+  if (options().quantifiers.finiteModelFind
+      && options().uf.ufssMode != options::UfssMode::NONE)
   {
     d_thss.reset(new CardinalityExtension(d_env, d_state, d_im, this));
   }
   // The kinds we are treating as function application in congruence
   bool isHo = logicInfo().isHigherOrder();
-  d_equalityEngine->addFunctionKind(kind::APPLY_UF, false, isHo);
+  d_equalityEngine->addFunctionKind(Kind::APPLY_UF, false, isHo);
   if (isHo)
   {
-    d_equalityEngine->addFunctionKind(kind::HO_APPLY);
-    d_ho.reset(new HoExtension(d_env, d_state, d_im));
+    if (!options().uf.ufHoExp)
+    {
+      std::stringstream ss;
+      ss << "Higher-order logic not available in this configuration, try "
+            "--uf-ho-exp.";
+      throw SafeLogicException(ss.str());
+    }
+    d_equalityEngine->addFunctionKind(Kind::HO_APPLY);
+    d_ho.reset(new HoExtension(d_env, d_state, d_im, *d_lambdaLift.get()));
   }
+  // conversion kinds
+  d_equalityEngine->addFunctionKind(Kind::INT_TO_BITVECTOR, true);
+  d_equalityEngine->addFunctionKind(Kind::BITVECTOR_UBV_TO_INT, true);
 }
-
-static Node mkAnd(const std::vector<TNode>& conjunctions) {
-  Assert(conjunctions.size() > 0);
-
-  std::set<TNode> all;
-  all.insert(conjunctions.begin(), conjunctions.end());
-
-  if (all.size() == 1) {
-    // All the same, or just one
-    return conjunctions[0];
-  }
-
-  NodeBuilder conjunction(kind::AND);
-  std::set<TNode>::const_iterator it = all.begin();
-  std::set<TNode>::const_iterator it_end = all.end();
-  while (it != it_end) {
-    conjunction << *it;
-    ++ it;
-  }
-
-  return conjunction;
-}/* mkAnd() */
 
 //--------------------------------- standard check
 
 bool TheoryUF::needsCheckLastEffort()
 {
-  // last call effort needed if using finite model finding
-  return d_thss != nullptr;
+  // last call effort needed if using finite model finding,
+  // arithmetic/bit-vector conversions, or higher-order extension
+  return d_thss != nullptr || d_csolver != nullptr || d_ho != nullptr
+         || d_distinct.needsCheckLastEffort();
 }
 
 void TheoryUF::postCheck(Effort level)
@@ -145,17 +151,29 @@ void TheoryUF::postCheck(Effort level)
   {
     d_thss->check(level);
   }
-  // check with the higher-order extension at full effort
-  if (!d_state.isInConflict() && fullEffort(level))
+  if (!d_state.isInConflict())
   {
-    if (logicInfo().isHigherOrder())
+    if (level == Effort::EFFORT_LAST_CALL)
+    {
+      // check with conversions solver at last call effort
+      if (d_csolver != nullptr)
+      {
+        d_csolver->check();
+      }
+    }
+    d_distinct.check(level);
+    // check with the higher-order extension at full effort
+    if (fullEffort(level) && logicInfo().isHigherOrder())
     {
       d_ho->check();
     }
   }
 }
 
-void TheoryUF::notifyFact(TNode atom, bool pol, TNode fact, bool isInternal)
+void TheoryUF::notifyFact(TNode atom,
+                          bool pol,
+                          TNode fact,
+                          CVC5_UNUSED bool isInternal)
 {
   if (d_state.isInConflict())
   {
@@ -169,9 +187,9 @@ void TheoryUF::notifyFact(TNode atom, bool pol, TNode fact, bool isInternal)
   }
   switch (atom.getKind())
   {
-    case kind::EQUAL:
+    case Kind::EQUAL:
     {
-      if (logicInfo().isHigherOrder() && options::ufHoExt())
+      if (logicInfo().isHigherOrder() && options().uf.ufHoExt)
       {
         if (!pol && !d_state.isInConflict() && atom[0].getType().isFunction())
         {
@@ -181,8 +199,14 @@ void TheoryUF::notifyFact(TNode atom, bool pol, TNode fact, bool isInternal)
       }
     }
     break;
-    case kind::CARDINALITY_CONSTRAINT:
-    case kind::COMBINED_CARDINALITY_CONSTRAINT:
+    case Kind::DISTINCT:
+    {
+      // call the distinct extension
+      d_distinct.assertDistinct(atom, pol, fact);
+    }
+    break;
+    case Kind::CARDINALITY_CONSTRAINT:
+    case Kind::COMBINED_CARDINALITY_CONSTRAINT:
     {
       if (d_thss == nullptr)
       {
@@ -197,7 +221,7 @@ void TheoryUF::notifyFact(TNode atom, bool pol, TNode fact, bool isInternal)
         else
         {
           // support for cardinality constraints is not enabled, set incomplete
-          d_im.setIncomplete(IncompleteId::UF_CARD_DISABLED);
+          d_im.setModelUnsound(IncompleteId::UF_CARD_DISABLED);
         }
       }
     }
@@ -212,36 +236,61 @@ TrustNode TheoryUF::ppRewrite(TNode node, std::vector<SkolemLemma>& lems)
   Trace("uf-exp-def") << "TheoryUF::ppRewrite: expanding definition : " << node
                       << std::endl;
   Kind k = node.getKind();
-  if (k == kind::HO_APPLY)
+  bool isHol = logicInfo().isHigherOrder();
+  if (node.getType().isAbstract())
   {
-    if (!logicInfo().isHigherOrder())
+    std::stringstream ss;
+    ss << "Cannot process term of abstract type " << node;
+    throw LogicException(ss.str());
+  }
+  if (k == Kind::HO_APPLY || node.getType().isFunction())
+  {
+    if (!isHol)
     {
       std::stringstream ss;
-      ss << "Partial function applications are only supported with "
+      if (k == Kind::HO_APPLY)
+      {
+        ss << "Higher-order function applications";
+      }
+      else
+      {
+        ss << "Function terms";
+      }
+      ss << " are only supported with "
             "higher-order logic. Try adding the logic prefix HO_.";
       throw LogicException(ss.str());
     }
-    Node ret = d_ho->ppRewrite(node);
-    if (ret != node)
-    {
-      Trace("uf-exp-def") << "TheoryUF::ppRewrite: higher-order: " << node
-                          << " to " << ret << std::endl;
-      return TrustNode::mkTrustRewrite(node, ret, nullptr);
-    }
   }
-  else if (k == kind::APPLY_UF)
+  else if (k == Kind::APPLY_UF)
   {
-    // check for higher-order
-    // logic exception if higher-order is not enabled
-    if (isHigherOrderType(node.getOperator().getType())
-        && !logicInfo().isHigherOrder())
+    if (!isHol && isHigherOrderType(node.getOperator().getType()))
     {
+      // check for higher-order
+      // logic exception if higher-order is not enabled
       std::stringstream ss;
       ss << "UF received an application whose operator has higher-order type "
          << node
-         << ", which is only supported with higher-order logic. Try adding the "
-            "logic prefix HO_.";
+         << ", which is only supported with higher-order logic. Try adding "
+            "the logic prefix HO_.";
       throw LogicException(ss.str());
+    }
+  }
+  else if ((k == Kind::BITVECTOR_UBV_TO_INT || k == Kind::INT_TO_BITVECTOR)
+           && options().uf.eagerArithBvConv)
+  {
+    // eliminate if option specifies to eliminate eagerly
+    Node ret = k == Kind::BITVECTOR_UBV_TO_INT ? arith::eliminateBv2Nat(node)
+                                               : arith::eliminateInt2Bv(node);
+    return TrustNode::mkTrustRewrite(node, ret);
+  }
+  if (isHol)
+  {
+    TrustNode ret = d_ho->ppRewrite(node, lems);
+    if (!ret.isNull())
+    {
+      Trace("uf-exp-def") << "TheoryUF::ppRewrite: higher-order: " << node
+                          << " to " << ret.getNode() << std::endl;
+      return ret;
     }
   }
   return TrustNode::null();
@@ -249,74 +298,116 @@ TrustNode TheoryUF::ppRewrite(TNode node, std::vector<SkolemLemma>& lems)
 
 void TheoryUF::preRegisterTerm(TNode node)
 {
-  Debug("uf") << "TheoryUF::preRegisterTerm(" << node << ")" << std::endl;
+  Trace("uf") << "TheoryUF::preRegisterTerm(" << node << ")" << std::endl;
 
-  if (d_thss != NULL) {
+  if (d_thss != nullptr)
+  {
     d_thss->preRegisterTerm(node);
   }
-
-  // we always use APPLY_UF if not higher-order, HO_APPLY if higher-order
-  Assert(node.getKind() != kind::HO_APPLY || logicInfo().isHigherOrder());
 
   Kind k = node.getKind();
   switch (k)
   {
-    case kind::EQUAL:
+    case Kind::EQUAL:
       // Add the trigger for equality
-      d_equalityEngine->addTriggerPredicate(node);
+      d_state.addEqualityEngineTriggerPredicate(node);
       break;
-    case kind::APPLY_UF:
-    case kind::HO_APPLY:
+    case Kind::APPLY_UF: preRegisterFunctionTerm(node); break;
+    case Kind::HO_APPLY:
     {
-      // Maybe it's a predicate
-      if (node.getType().isBoolean())
+      if (!logicInfo().isHigherOrder())
       {
-        // Get triggered for both equal and dis-equal
-        d_equalityEngine->addTriggerPredicate(node);
+        std::stringstream ss;
+        ss << "Partial function applications are only supported with "
+              "higher-order logic. Try adding the logic prefix HO_.";
+        throw LogicException(ss.str());
       }
-      else
-      {
-        // Function applications/predicates
-        d_equalityEngine->addTerm(node);
-      }
-      // Remember the function and predicate terms
-      d_functionsTerms.push_back(node);
+      preRegisterFunctionTerm(node);
     }
     break;
-  case kind::CARDINALITY_CONSTRAINT:
-  case kind::COMBINED_CARDINALITY_CONSTRAINT:
-    //do nothing
+    case Kind::INT_TO_BITVECTOR:
+    case Kind::BITVECTOR_UBV_TO_INT:
+    {
+      Assert(!options().uf.eagerArithBvConv);
+      d_equalityEngine->addTerm(node);
+      d_functionsTerms.push_back(node);
+      // initialize the conversions solver if not already done so
+      if (d_csolver == nullptr)
+      {
+        d_csolver.reset(new ConversionsSolver(d_env, d_state, d_im));
+      }
+      // call preregister
+      d_csolver->preRegisterTerm(node);
+    }
     break;
-  case kind::UNINTERPRETED_CONSTANT:
+    case Kind::CARDINALITY_CONSTRAINT:
+    case Kind::COMBINED_CARDINALITY_CONSTRAINT:
+      // do nothing
+      break;
+    case Kind::UNINTERPRETED_SORT_VALUE:
+    {
+      // Uninterpreted sort values should only appear in models, and should
+      // never appear in constraints. They are unallowed to ever appear in
+      // constraints since the cardinality of an uninterpreted sort may have an
+      // upper bound, e.g. if (forall ((x U) (y U)) (= x y)) holds, then @uc_U_2
+      // is a ill-formed term, as its existence cannot be assumed.  The parser
+      // prevents the user from ever constructing uninterpreted sort values.
+      // However, they may be exported via models to API users. It is thus
+      // possible that these uninterpreted sort values are asserted back in
+      // constraints, hence this check is necessary.
+      throw LogicException(
+          "An uninterpreted constant was preregistered to the UF theory.");
+    }
+    break;
+    default:
+      // Variables etc
+      d_equalityEngine->addTerm(node);
+      if (logicInfo().isHigherOrder())
+      {
+        // When using lazy lambda handling, if node is a lambda function, it
+        // must be marked as a shared term. This is to ensure we split on the
+        // equality of lambda functions with other functions when doing care
+        // graph based theory combination.
+        if (d_lambdaLift->isLambdaFunction(node))
+        {
+          addSharedTerm(node);
+        }
+      }
+      else if (node.getType().isFunction())
+      {
+        std::stringstream ss;
+        ss << "Function terms are only supported with higher-order logic. Try "
+              "adding the logic prefix HO_.";
+        throw LogicException(ss.str());
+      }
+      break;
+  }
+}
+
+void TheoryUF::preRegisterFunctionTerm(TNode node)
+{
+  // Maybe it's a predicate
+  if (node.getType().isBoolean())
   {
-    // Uninterpreted constants should only appear in models, and should
-    // never appear in constraints. They are unallowed to ever appear in
-    // constraints since the cardinality of an uninterpreted sort may have
-    // an upper bound, e.g. if (forall ((x U) (y U)) (= x y)) holds, then
-    // @uc_U_2 is a ill-formed term, as its existence cannot be assumed.
-    // The parser prevents the user from ever constructing uninterpreted
-    // constants. However, they may be exported via models to API users.
-    // It is thus possible that these uninterpreted constants are asserted
-    // back in constraints, hence this check is necessary.
-    throw LogicException(
-        "An uninterpreted constant was preregistered to the UF theory.");
+    d_state.addEqualityEngineTriggerPredicate(node);
   }
-  break;
-  default:
-    // Variables etc
+  else
+  {
+    // Function applications/predicates
     d_equalityEngine->addTerm(node);
-    break;
   }
+  // Remember the function and predicate terms
+  d_functionsTerms.push_back(node);
 }
 
 void TheoryUF::explain(TNode literal, Node& exp)
 {
-  Debug("uf") << "TheoryUF::explain(" << literal << ")" << std::endl;
+  Trace("uf") << "TheoryUF::explain(" << literal << ")" << std::endl;
   std::vector<TNode> assumptions;
   // Do the work
-  bool polarity = literal.getKind() != kind::NOT;
+  bool polarity = literal.getKind() != Kind::NOT;
   TNode atom = polarity ? literal : literal[0];
-  if (atom.getKind() == kind::EQUAL)
+  if (atom.getKind() == Kind::EQUAL)
   {
     d_equalityEngine->explainEquality(
         atom[0], atom[1], polarity, assumptions, nullptr);
@@ -325,7 +416,7 @@ void TheoryUF::explain(TNode literal, Node& exp)
   {
     d_equalityEngine->explainPredicate(atom, polarity, assumptions, nullptr);
   }
-  exp = mkAnd(assumptions);
+  exp = nodeManager()->mkAnd(assumptions);
 }
 
 TrustNode TheoryUF::explain(TNode literal) { return d_im.explainLit(literal); }
@@ -343,155 +434,50 @@ bool TheoryUF::collectModelValues(TheoryModel* m, const std::set<Node>& termSet)
     }
   }
 
-  Debug("uf") << "UF : finish collectModelInfo " << std::endl;
+  Trace("uf") << "UF : finish collectModelInfo " << std::endl;
   return true;
 }
 
-void TheoryUF::presolve() {
+void TheoryUF::presolve()
+{
   // TimerStat::CodeTimer codeTimer(d_presolveTimer);
 
-  Debug("uf") << "uf: begin presolve()" << endl;
-  if(options::ufSymmetryBreaker()) {
+  Trace("uf") << "uf: begin presolve()" << endl;
+  if (options().uf.ufSymmetryBreaker)
+  {
     vector<Node> newClauses;
     d_symb.apply(newClauses);
-    for(vector<Node>::const_iterator i = newClauses.begin();
-        i != newClauses.end();
-        ++i) {
-      Debug("uf") << "uf: generating a lemma: " << *i << std::endl;
+    for (vector<Node>::const_iterator i = newClauses.begin();
+         i != newClauses.end();
+         ++i)
+    {
+      Trace("uf") << "uf: generating a lemma: " << *i << std::endl;
       // no proof generator provided
       d_im.lemma(*i, InferenceId::UF_BREAK_SYMMETRY);
     }
   }
-  if( d_thss ){
+  if (d_thss)
+  {
     d_thss->presolve();
   }
-  Debug("uf") << "uf: end presolve()" << endl;
+  Trace("uf") << "uf: end presolve()" << endl;
 }
 
-void TheoryUF::ppStaticLearn(TNode n, NodeBuilder& learned)
+void TheoryUF::ppStaticLearn(TNode n, std::vector<TrustNode>& learned)
 {
-  //TimerStat::CodeTimer codeTimer(d_staticLearningTimer);
+  // TimerStat::CodeTimer codeTimer(d_staticLearningTimer);
 
-  vector<TNode> workList;
-  workList.push_back(n);
-  std::unordered_set<TNode> processed;
+  // Use the diamonds utility
+  d_dpfgen.ppStaticLearn(n, learned);
 
-  while(!workList.empty()) {
-    n = workList.back();
-
-    if (n.isClosure())
-    {
-      // unsafe to go under quantifiers; we might pull bound vars out of scope!
-      processed.insert(n);
-      workList.pop_back();
-      continue;
-    }
-
-    bool unprocessedChildren = false;
-    for(TNode::iterator i = n.begin(), iend = n.end(); i != iend; ++i) {
-      if(processed.find(*i) == processed.end()) {
-        // unprocessed child
-        workList.push_back(*i);
-        unprocessedChildren = true;
-      }
-    }
-
-    if(unprocessedChildren) {
-      continue;
-    }
-
-    workList.pop_back();
-    // has node n been processed in the meantime ?
-    if(processed.find(n) != processed.end()) {
-      continue;
-    }
-    processed.insert(n);
-
-    // == DIAMONDS ==
-
-    Debug("diamonds") << "===================== looking at" << endl
-                      << n << endl;
-
-    // binary OR of binary ANDs of EQUALities
-    if(n.getKind() == kind::OR && n.getNumChildren() == 2 &&
-       n[0].getKind() == kind::AND && n[0].getNumChildren() == 2 &&
-       n[1].getKind() == kind::AND && n[1].getNumChildren() == 2 &&
-       (n[0][0].getKind() == kind::EQUAL) &&
-       (n[0][1].getKind() == kind::EQUAL) &&
-       (n[1][0].getKind() == kind::EQUAL) &&
-       (n[1][1].getKind() == kind::EQUAL)) {
-      // now we have (a = b && c = d) || (e = f && g = h)
-
-      Debug("diamonds") << "has form of a diamond!" << endl;
-
-      TNode
-        a = n[0][0][0], b = n[0][0][1],
-        c = n[0][1][0], d = n[0][1][1],
-        e = n[1][0][0], f = n[1][0][1],
-        g = n[1][1][0], h = n[1][1][1];
-
-      // test that one of {a, b} = one of {c, d}, and make "b" the
-      // shared node (i.e. put in the form (a = b && b = d))
-      // note we don't actually care about the shared ones, so the
-      // "swaps" below are one-sided, ignoring b and c
-      if(a == c) {
-        a = b;
-      } else if(a == d) {
-        a = b;
-        d = c;
-      } else if(b == c) {
-        // nothing to do
-      } else if(b == d) {
-        d = c;
-      } else {
-        // condition not satisfied
-        Debug("diamonds") << "+ A fails" << endl;
-        continue;
-      }
-
-      Debug("diamonds") << "+ A holds" << endl;
-
-      // same: one of {e, f} = one of {g, h}, and make "f" the
-      // shared node (i.e. put in the form (e = f && f = h))
-      if(e == g) {
-        e = f;
-      } else if(e == h) {
-        e = f;
-        h = g;
-      } else if(f == g) {
-        // nothing to do
-      } else if(f == h) {
-        h = g;
-      } else {
-        // condition not satisfied
-        Debug("diamonds") << "+ B fails" << endl;
-        continue;
-      }
-
-      Debug("diamonds") << "+ B holds" << endl;
-
-      // now we have (a = b && b = d) || (e = f && f = h)
-      // test that {a, d} == {e, h}
-      if( (a == e && d == h) ||
-          (a == h && d == e) ) {
-        // learn: n implies a == d
-        Debug("diamonds") << "+ C holds" << endl;
-        Node newEquality = a.eqNode(d);
-        Debug("diamonds") << "  ==> " << newEquality << endl;
-        learned << n.impNode(newEquality);
-      } else {
-        Debug("diamonds") << "+ C fails" << endl;
-      }
-    }
-  }
-
-  if(options::ufSymmetryBreaker()) {
+  if (options().uf.ufSymmetryBreaker)
+  {
     d_symb.assertFormula(n);
   }
 } /* TheoryUF::ppStaticLearn() */
 
-EqualityStatus TheoryUF::getEqualityStatus(TNode a, TNode b) {
-
+EqualityStatus TheoryUF::getEqualityStatus(TNode a, TNode b)
+{
   // Check for equality (simplest)
   if (d_equalityEngine->areEqual(a, b))
   {
@@ -510,9 +496,14 @@ EqualityStatus TheoryUF::getEqualityStatus(TNode a, TNode b) {
   return EQUALITY_FALSE_IN_MODEL;
 }
 
-bool TheoryUF::areCareDisequal(TNode x, TNode y){
-  Assert(d_equalityEngine->hasTerm(x));
-  Assert(d_equalityEngine->hasTerm(y));
+bool TheoryUF::areCareDisequal(TNode x, TNode y)
+{
+  // check for disequality first, as an optimization
+  if (d_equalityEngine->hasTerm(x) && d_equalityEngine->hasTerm(y)
+      && d_equalityEngine->areDisequal(x, y, false))
+  {
+    return true;
+  }
   if (d_equalityEngine->isTriggerTerm(x, THEORY_UF)
       && d_equalityEngine->isTriggerTerm(y, THEORY_UF))
   {
@@ -521,109 +512,92 @@ bool TheoryUF::areCareDisequal(TNode x, TNode y){
     TNode y_shared =
         d_equalityEngine->getTriggerTermRepresentative(y, THEORY_UF);
     EqualityStatus eqStatus = d_valuation.getEqualityStatus(x_shared, y_shared);
-    if( eqStatus==EQUALITY_FALSE_AND_PROPAGATED || eqStatus==EQUALITY_FALSE || eqStatus==EQUALITY_FALSE_IN_MODEL ){
+    if (eqStatus == EQUALITY_FALSE || eqStatus == EQUALITY_FALSE_AND_PROPAGATED)
+    {
+      return true;
+    }
+    else if (eqStatus == EQUALITY_FALSE_IN_MODEL)
+    {
+      // if x or y is a lambda function, and they are neither entailed to
+      // be equal or disequal, then we return false. This ensures the pair
+      // (x,y) may be considered for the care graph.
+      if (d_lambdaLift->isLambdaFunction(x)
+          || d_lambdaLift->isLambdaFunction(y))
+      {
+        return false;
+      }
       return true;
     }
   }
   return false;
 }
 
-void TheoryUF::addCarePairs(const TNodeTrie* t1,
-                            const TNodeTrie* t2,
-                            unsigned arity,
-                            unsigned depth)
+void TheoryUF::processCarePairArgs(TNode a, TNode b)
 {
-  if( depth==arity ){
-    if( t2!=NULL ){
-      Node f1 = t1->getData();
-      Node f2 = t2->getData();
-      if (!d_equalityEngine->areEqual(f1, f2))
+  // if a and b are already equal, we ignore this pair
+  if (d_state.areEqual(a, b))
+  {
+    return;
+  }
+  // otherwise, we add pairs for each of their arguments
+  addCarePairArgs(a, b);
+
+  // also split on functions
+  if (logicInfo().isHigherOrder())
+  {
+    NodeManager* nm = nodeManager();
+    for (size_t k = 0, nchild = a.getNumChildren(); k < nchild; ++k)
+    {
+      TNode x = a[k];
+      TNode y = b[k];
+      if (d_state.areEqual(x, y))
       {
-        Debug("uf::sharing") << "TheoryUf::computeCareGraph(): checking function " << f1 << " and " << f2 << std::endl;
-        vector< pair<TNode, TNode> > currentPairs;
-        for (size_t k = 0, nchildren = f1.getNumChildren(); k < nchildren; ++k)
-        {
-          TNode x = f1[k];
-          TNode y = f2[k];
-          Assert(d_equalityEngine->hasTerm(x));
-          Assert(d_equalityEngine->hasTerm(y));
-          Assert(!d_equalityEngine->areDisequal(x, y, false));
-          Assert(!areCareDisequal(x, y));
-          if (!d_equalityEngine->areEqual(x, y))
-          {
-            if (d_equalityEngine->isTriggerTerm(x, THEORY_UF)
-                && d_equalityEngine->isTriggerTerm(y, THEORY_UF))
-            {
-              TNode x_shared =
-                  d_equalityEngine->getTriggerTermRepresentative(x, THEORY_UF);
-              TNode y_shared =
-                  d_equalityEngine->getTriggerTermRepresentative(y, THEORY_UF);
-              currentPairs.push_back(make_pair(x_shared, y_shared));
-            }
-          }
-        }
-        for (unsigned c = 0; c < currentPairs.size(); ++ c) {
-          Debug("uf::sharing") << "TheoryUf::computeCareGraph(): adding to care-graph" << std::endl;
-          addCarePair(currentPairs[c].first, currentPairs[c].second);
-        }
+        continue;
       }
-    }
-  }else{
-    if( t2==NULL ){
-      if( depth<(arity-1) ){
-        //add care pairs internal to each child
-        for (const std::pair<const TNode, TNodeTrie>& tt : t1->d_data)
-        {
-          addCarePairs(&tt.second, NULL, arity, depth + 1);
-        }
-      }
-      //add care pairs based on each pair of non-disequal arguments
-      for (std::map<TNode, TNodeTrie>::const_iterator it = t1->d_data.begin();
-           it != t1->d_data.end();
-           ++it)
+      // Splitting on functions. This is required since conceptually the HO
+      // extension should be considered a separate entity with regards to
+      // theory combination (in particular, with the core UF solver). This is
+      // similar to how we handle sets of sets, where each set type is
+      // considered a separate entity. The types below must be equal to handle
+      // polymorphic operators taking higher-order arguments, e.g. set.map.
+      TypeNode xt = x.getType();
+      if (xt.isFunction() && xt == y.getType())
       {
-        std::map<TNode, TNodeTrie>::const_iterator it2 = it;
-        ++it2;
-        for( ; it2 != t1->d_data.end(); ++it2 ){
-          if (!d_equalityEngine->areDisequal(it->first, it2->first, false))
-          {
-            if( !areCareDisequal(it->first, it2->first) ){
-              addCarePairs( &it->second, &it2->second, arity, depth+1 );
-            }
-          }
-        }
-      }
-    }else{
-      //add care pairs based on product of indices, non-disequal arguments
-      for (const std::pair<const TNode, TNodeTrie>& tt1 : t1->d_data)
-      {
-        for (const std::pair<const TNode, TNodeTrie>& tt2 : t2->d_data)
-        {
-          if (!d_equalityEngine->areDisequal(tt1.first, tt2.first, false))
-          {
-            if (!areCareDisequal(tt1.first, tt2.first))
-            {
-              addCarePairs(&tt1.second, &tt2.second, arity, depth + 1);
-            }
-          }
-        }
+        Node lemma = x.eqNode(y);
+        lemma = nm->mkNode(Kind::OR, lemma, lemma.notNode());
+        d_im.lemma(lemma, InferenceId::UF_HO_CG_SPLIT);
       }
     }
   }
 }
 
-void TheoryUF::computeCareGraph() {
-  if (d_sharedTerms.empty())
+void TheoryUF::computeRelevantTerms(std::set<Node>& termSet)
+{
+  if (d_ho != nullptr)
+  {
+    d_ho->computeRelevantTerms(termSet);
+  }
+}
+
+void TheoryUF::computeCareGraph()
+{
+  bool isHigherOrder = logicInfo().isHigherOrder();
+  // note that if we are higher-order, we may still generate splits for
+  // function arguments
+  if (d_state.getSharedTerms().empty() && !isHigherOrder)
   {
     return;
   }
+  NodeManager* nm = nodeManager();
   // Use term indexing. We build separate indices for APPLY_UF and HO_APPLY.
   // We maintain indices per operator for the former, and indices per
   // function type for the latter.
-  Debug("uf::sharing") << "TheoryUf::computeCareGraph(): Build term indices..."
+  Trace("uf::sharing") << "TheoryUf::computeCareGraph(): Build term indices..."
                        << std::endl;
+  // temporary keep set for higher-order indexing below
+  std::vector<Node> keep;
   std::map<Node, TNodeTrie> index;
-  std::map<TypeNode, TNodeTrie> hoIndex;
+  std::map<TypeNode, TNodeTrie> typeIndex;
   std::map<Node, size_t> arity;
   for (TNode app : d_functionsTerms)
   {
@@ -632,61 +606,105 @@ void TheoryUF::computeCareGraph() {
     for (const Node& j : app)
     {
       reps.push_back(d_equalityEngine->getRepresentative(j));
-      if (d_equalityEngine->isTriggerTerm(j, THEORY_UF))
+      // if doing higher-order, higher-order arguments must all be considered as
+      // well
+      if (d_equalityEngine->isTriggerTerm(j, THEORY_UF)
+          || (isHigherOrder && j.getType().isFunction()))
       {
         has_trigger_arg = true;
       }
     }
     if (has_trigger_arg)
     {
-      if (app.getKind() == kind::APPLY_UF)
+      Trace("uf::sharing-terms")
+          << "...add: " << app << " / " << reps << std::endl;
+      Kind k = app.getKind();
+      if (k == Kind::APPLY_UF)
       {
         Node op = app.getOperator();
         index[op].addTerm(app, reps);
         arity[op] = reps.size();
+        if (isHigherOrder && d_equalityEngine->hasTerm(op))
+        {
+          // Since we use a lazy app-completion scheme for equating fully
+          // and partially applied versions of terms, we must add all
+          // sub-chains to the HO index if the operator of this term occurs
+          // in a higher-order context in the equality engine.  In other words,
+          // for (f a b c), this will add the terms:
+          // (HO_APPLY f a), (HO_APPLY (HO_APPLY f a) b),
+          // (HO_APPLY (HO_APPLY (HO_APPLY f a) b) c) to the higher-order
+          // term index for consideration when computing care pairs.
+          Node curr = op;
+          for (const Node& c : app)
+          {
+            Node happ = nm->mkNode(Kind::HO_APPLY, curr, c);
+            Assert(curr.getType().isFunction());
+            typeIndex[curr.getType()].addTerm(happ, {curr, c});
+            curr = happ;
+            keep.push_back(happ);
+          }
+        }
+      }
+      else if (k == Kind::HO_APPLY || k == Kind::BITVECTOR_UBV_TO_INT)
+      {
+        // add it to the typeIndex for the function type if HO_APPLY, or the
+        // bitvector type if bv2nat. The latter ensures that we compute
+        // care pairs based on bv2nat only for bitvectors of the same width.
+        typeIndex[app[0].getType()].addTerm(app, reps);
       }
       else
       {
-        Assert(app.getKind() == kind::HO_APPLY);
-        // add it to the hoIndex for the function type
-        hoIndex[app[0].getType()].addTerm(app, reps);
+        // case for other operators, e.g. int2bv
+        Node op = app.getOperator();
+        index[op].addTerm(app, reps);
+        arity[op] = reps.size();
       }
     }
   }
   // for each index
   for (std::pair<const Node, TNodeTrie>& tt : index)
   {
-    Debug("uf::sharing") << "TheoryUf::computeCareGraph(): Process index "
+    Trace("uf::sharing") << "TheoryUf::computeCareGraph(): Process index "
                          << tt.first << "..." << std::endl;
     Assert(arity.find(tt.first) != arity.end());
-    addCarePairs(&tt.second, nullptr, arity[tt.first], 0);
+    nodeTriePathPairProcess(&tt.second, arity[tt.first], d_cpacb);
   }
-  for (std::pair<const TypeNode, TNodeTrie>& tt : hoIndex)
+  for (std::pair<const TypeNode, TNodeTrie>& tt : typeIndex)
   {
-    Debug("uf::sharing") << "TheoryUf::computeCareGraph(): Process ho index "
+    // functions for HO_APPLY which has arity 2, bitvectors for bv2nat which
+    // has arity one
+    size_t a = tt.first.isFunction() ? 2 : 1;
+    Trace("uf::sharing") << "TheoryUf::computeCareGraph(): Process ho index "
                          << tt.first << "..." << std::endl;
     // the arity of HO_APPLY is always two
-    addCarePairs(&tt.second, nullptr, 2, 0);
+    nodeTriePathPairProcess(&tt.second, a, d_cpacb);
   }
-  Debug("uf::sharing") << "TheoryUf::computeCareGraph(): finished."
+  Trace("uf::sharing") << "TheoryUf::computeCareGraph(): finished."
                        << std::endl;
-}/* TheoryUF::computeCareGraph() */
+} /* TheoryUF::computeCareGraph() */
 
-void TheoryUF::eqNotifyNewClass(TNode t) {
-  if (d_thss != NULL) {
+void TheoryUF::eqNotifyNewClass(TNode t)
+{
+  if (d_thss != nullptr)
+  {
     d_thss->newEqClass(t);
   }
 }
 
 void TheoryUF::eqNotifyMerge(TNode t1, TNode t2)
 {
-  if (d_thss != NULL) {
+  if (d_thss != nullptr)
+  {
     d_thss->merge(t1, t2);
   }
+  // check if we have a conflict due to distinct
+  d_distinct.eqNotifyMerge(t1, t2);
 }
 
-void TheoryUF::eqNotifyDisequal(TNode t1, TNode t2, TNode reason) {
-  if (d_thss != NULL) {
+void TheoryUF::eqNotifyDisequal(TNode t1, TNode t2, TNode reason)
+{
+  if (d_thss != nullptr)
+  {
     d_thss->assertDisequal(t1, t2, reason);
   }
 }
@@ -715,4 +733,4 @@ bool TheoryUF::isHigherOrderType(TypeNode tn)
 
 }  // namespace uf
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal

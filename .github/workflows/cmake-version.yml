@@ -4,28 +4,31 @@ name: cmake-version
 jobs:
   build:
     continue-on-error: true
-    name: ubuntu:production-dbg
+    name: ubuntu:unrestricted-dbg
     runs-on: ubuntu-latest
     strategy:
       matrix:
         cmake_version: [
-          "3.12", "3.13", "3.14", "3.15", "3.16",
+          "3.8", "3.9", "3.10", "3.11", "3.12", "3.13", "3.14", "3.15", "3.16",
           "3.17", "3.18", "3.19", "3.20", "3.21"
         ]
 
     steps:
     - name: Setup cmake
-      uses: jwlawson/actions-setup-cmake@v1.9
+      uses: jwlawson/actions-setup-cmake@v2
       with:
         cmake-version: ${{ matrix.cmake_version }}
 
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v6
+
+    - name: Adapt cmake version checks
+      run: |
+        sed -i'orig' -E 's/cmake_minimum_required\(VERSION [0-9.]+\)/cmake_minimum_required(VERSION ${{ matrix.cmake_version }})/' CMakeLists.txt
 
     - name: Install dependencies
       uses: ./.github/actions/install-dependencies
       with:
         with-documentation: true
-        with-python-bindings: true
   
     - name: Setup caches
       uses: ./.github/actions/setup-cache
@@ -34,7 +37,7 @@ jobs:
   
     - name: Configure
       run: |
-        ./configure.sh production --auto-download --static --python-bindings --assertions --tracing --unit-testing --editline --docs \
+        ./configure.sh unrestricted --auto-download --static --python-bindings --assertions --tracing --unit-testing --editline --docs \
           --prefix=$(pwd)/build/install \
           --werror
 

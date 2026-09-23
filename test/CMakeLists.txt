@@ -1,10 +1,7 @@
 ###############################################################################
-# Top contributors (to current version):
-#   Aina Niemetz, Mathias Preiner, Yoni Zohar
-#
 # This file is part of the cvc5 project.
 #
-# Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+# Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
 # in the top-level source directory and their institutional affiliations.
 # All rights reserved.  See the file COPYING in the top-level source
 # directory for licensing information.
@@ -17,6 +14,20 @@
 # > unit tests
 # > regression tests of levels 0 and 1
 # > api tests
+
+set(ENV_PATH_CMD )
+if(WIN32)
+  # Set up a command to add DLL library paths to PATH
+  set(ENV_PATH )
+  list(APPEND ENV_PATH ${PROJECT_BINARY_DIR}\\src)
+  list(APPEND ENV_PATH ${PROJECT_BINARY_DIR}\\src\\parser)
+  list(APPEND ENV_PATH ${DEPS_BASE}\\bin)
+  list(APPEND ENV_PATH $ENV{PATH})
+  # Escape semicolons and backslashes
+  string(REPLACE "\\" "\\\\" ENV_PATH "${ENV_PATH}")
+  list(JOIN ENV_PATH "\;" ENV_PATH)
+  set(ENV_PATH_CMD ${CMAKE_COMMAND} -E env "PATH=${ENV_PATH}")
+endif()
 
 add_custom_target(build-tests)
 
@@ -37,12 +48,7 @@ add_custom_target(check
 
 add_subdirectory(regress)
 add_subdirectory(api EXCLUDE_FROM_ALL)
-
+add_subdirectory(binary EXCLUDE_FROM_ALL)
 if(ENABLE_UNIT_TESTING)
   add_subdirectory(unit EXCLUDE_FROM_ALL)
-endif()
-
-# add Python bindings tests if building with Python bindings
-if (BUILD_BINDINGS_PYTHON)
-  add_subdirectory(python)
 endif()

@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Gereon Kremer, Andrew Reynolds, Tim King
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -29,33 +26,43 @@
 #include "theory/arith/nl/transcendental/transcendental_state.h"
 #include "theory/rewriter.h"
 
-namespace cvc5 {
+using namespace cvc5::internal::kind;
+
+namespace cvc5::internal {
 namespace theory {
 namespace arith {
 namespace nl {
 namespace transcendental {
 
-ExponentialSolver::ExponentialSolver(TranscendentalState* tstate)
-    : d_data(tstate)
+ExponentialSolver::ExponentialSolver(Env& env, TranscendentalState* tstate)
+    : EnvObj(env), d_data(tstate)
 {
 }
 
 ExponentialSolver::~ExponentialSolver() {}
 
-void ExponentialSolver::doPurification(TNode a, TNode new_a, TNode y)
+void ExponentialSolver::doPurification(TNode a, TNode new_a)
 {
-  NodeManager* nm = NodeManager::currentNM();
+  Assert(TranscendentalState::isSimplePurify(a));
+  NodeManager* nm = nodeManager();
   // do both equalities to ensure that new_a becomes a preregistered term
-  Node lem = nm->mkNode(Kind::AND, a.eqNode(new_a), a[0].eqNode(y));
+  Node lem = nm->mkNode(Kind::AND, {a.eqNode(new_a), a[0].eqNode(new_a[0])});
   // note we must do preprocess on this lemma
   Trace("nl-ext-lemma") << "NonlinearExtension::Lemma : purify : " << lem
                         << std::endl;
-  d_data->d_im.addPendingLemma(lem, InferenceId::ARITH_NL_T_PURIFY_ARG);
+  CDProof* proof = nullptr;
+  if (d_data->isProofEnabled())
+  {
+    // simple to justify
+    proof = d_data->getProof();
+    proof->addStep(lem, ProofRule::MACRO_SR_PRED_INTRO, {}, {lem});
+  }
+  d_data->d_im.addPendingLemma(lem, InferenceId::ARITH_NL_T_PURIFY_ARG, proof);
 }
 
 void ExponentialSolver::checkInitialRefine()
 {
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   for (std::pair<const Kind, std::vector<Node> >& tfl : d_data->d_funcMap)
   {
     if (tfl.first != Kind::EXPONENTIAL)
@@ -71,43 +78,48 @@ void ExponentialSolver::checkInitialRefine()
       // initial refinements
       if (d_tf_initial_refine.find(t) == d_tf_initial_refine.end())
       {
+        Node zero = nm->mkConstReal(Rational(0));
+        Node one = nm->mkConstReal(Rational(1));
         d_tf_initial_refine[t] = true;
         {
           // exp is always positive: exp(t) > 0
-          Node lem = nm->mkNode(Kind::GT, t, d_data->d_zero);
+          Node lem = nm->mkNode(Kind::GT, t, zero);
           CDProof* proof = nullptr;
           if (d_data->isProofEnabled())
           {
             proof = d_data->getProof();
-            proof->addStep(lem, PfRule::ARITH_TRANS_EXP_POSITIVITY, {}, {t[0]});
+            proof->addStep(
+                lem, ProofRule::ARITH_TRANS_EXP_POSITIVITY, {}, {t[0]});
           }
           d_data->d_im.addPendingLemma(
               lem, InferenceId::ARITH_NL_T_INIT_REFINE, proof);
         }
         {
-          // exp at zero: (t = 0) <=> (exp(t) = 1)
-          Node lem = nm->mkNode(Kind::EQUAL,
-                                t[0].eqNode(d_data->d_zero),
-                                t.eqNode(d_data->d_one));
+          // must use real one/zero in equalities
+          Node rzero = mkZero(t[0].getType());
+          Node rone = nm->mkConstReal(Rational(1));
+          // exp at zero: (t = 0.0) <=> (exp(t) = 1.0)
+          Node lem =
+              nm->mkNode(Kind::EQUAL, {t[0].eqNode(rzero), t.eqNode(rone)});
           CDProof* proof = nullptr;
           if (d_data->isProofEnabled())
           {
             proof = d_data->getProof();
-            proof->addStep(lem, PfRule::ARITH_TRANS_EXP_ZERO, {}, {t[0]});
+            proof->addStep(lem, ProofRule::ARITH_TRANS_EXP_ZERO, {}, {t[0]});
           }
           d_data->d_im.addPendingLemma(
               lem, InferenceId::ARITH_NL_T_INIT_REFINE, proof);
         }
         {
           // exp on negative values: (t < 0) <=> (exp(t) < 1)
-          Node lem = nm->mkNode(Kind::EQUAL,
-                                nm->mkNode(Kind::LT, t[0], d_data->d_zero),
-                                nm->mkNode(Kind::LT, t, d_data->d_one));
+          Node lem = nm->mkNode(
+              Kind::EQUAL,
+              {nm->mkNode(Kind::LT, t[0], zero), nm->mkNode(Kind::LT, t, one)});
           CDProof* proof = nullptr;
           if (d_data->isProofEnabled())
           {
             proof = d_data->getProof();
-            proof->addStep(lem, PfRule::ARITH_TRANS_EXP_NEG, {}, {t[0]});
+            proof->addStep(lem, ProofRule::ARITH_TRANS_EXP_NEG, {}, {t[0]});
           }
           d_data->d_im.addPendingLemma(
               lem, InferenceId::ARITH_NL_T_INIT_REFINE, proof);
@@ -116,14 +128,14 @@ void ExponentialSolver::checkInitialRefine()
           // exp on positive values: (t <= 0) or (exp(t) > t+1)
           Node lem = nm->mkNode(
               Kind::OR,
-              nm->mkNode(Kind::LEQ, t[0], d_data->d_zero),
-              nm->mkNode(
-                  Kind::GT, t, nm->mkNode(Kind::PLUS, t[0], d_data->d_one)));
+              {nm->mkNode(Kind::LEQ, t[0], zero),
+               nm->mkNode(Kind::GT, t, nm->mkNode(Kind::ADD, t[0], one))});
           CDProof* proof = nullptr;
           if (d_data->isProofEnabled())
           {
             proof = d_data->getProof();
-            proof->addStep(lem, PfRule::ARITH_TRANS_EXP_SUPER_LIN, {}, {t[0]});
+            proof->addStep(
+                lem, ProofRule::ARITH_TRANS_EXP_SUPER_LIN, {}, {t[0]});
           }
           d_data->d_im.addPendingLemma(
               lem, InferenceId::ARITH_NL_T_INIT_REFINE, proof);
@@ -151,6 +163,17 @@ void ExponentialSolver::checkMonotonic()
 
   for (const Node& tf : it->second)
   {
+    Node mva = d_data->d_model.computeAbstractModelValue(tf);
+    if (!mva.isConst())
+    {
+      // If it was not assigned a model value by the linear solver, it is not
+      // a relevant term. This can happen for terms like (exp (exp 1.0)),
+      // where (exp 1.0) is not relevant until we purify (exp (exp 1.0)).
+      // Note that the abstract model value of such a term is not necessarily
+      // the term itself: it is computed from the model values of its
+      // arguments, e.g. (exp c) for a constant c, which does not evaluate.
+      continue;
+    }
     Node a = tf[0];
     Node mvaa = d_data->d_model.computeAbstractModelValue(a);
     if (mvaa.isConst())
@@ -176,18 +199,19 @@ void ExponentialSolver::checkMonotonic()
     Assert(sargval.isConst());
     Node s = tf_arg_to_term[sarg];
     Node sval = d_data->d_model.computeAbstractModelValue(s);
-    Assert(sval.isConst());
+    Assert(sval.isConst()) << "non-constant model value " << sval << " for "
+                           << s;
 
     // store the concavity region
-    d_data->d_tf_region[s] = 1;
+    d_data->d_tf_region[s] = TranscendentalRegion::EXPONENTIAL;
     Trace("nl-ext-concavity") << ", arg model value = " << sargval << std::endl;
 
     if (!tval.isNull() && sval.getConst<Rational>() > tval.getConst<Rational>())
     {
-      NodeManager* nm = NodeManager::currentNM();
-      Node mono_lem = nm->mkNode(Kind::IMPLIES,
-                                 nm->mkNode(Kind::GEQ, targ, sarg),
-                                 nm->mkNode(Kind::GEQ, t, s));
+      NodeManager* nm = nodeManager();
+      Node mono_lem = nm->mkNode(
+          Kind::IMPLIES,
+          {nm->mkNode(Kind::GEQ, targ, sarg), nm->mkNode(Kind::GEQ, t, s)});
       Trace("nl-ext-exp") << "Monotonicity lemma : " << mono_lem << std::endl;
 
       d_data->d_im.addPendingLemma(mono_lem,
@@ -206,19 +230,17 @@ void ExponentialSolver::doTangentLemma(TNode e,
                                        TNode poly_approx,
                                        std::uint64_t d)
 {
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   // compute tangent plane
   // Figure 3: T( x )
   // We use zero slope tangent planes, since the concavity of the Taylor
   // approximation cannot be easily established.
   // Tangent plane is valid in the interval [c,u).
-  Node lem = nm->mkNode(Kind::IMPLIES,
-                        nm->mkNode(Kind::GEQ, e[0], c),
-                        nm->mkNode(Kind::GEQ, e, poly_approx));
+  Node lem = nm->mkNode(
+      Kind::IMPLIES,
+      {nm->mkNode(Kind::GEQ, e[0], c), nm->mkNode(Kind::GEQ, e, poly_approx)});
   Trace("nl-ext-exp") << "*** Tangent plane lemma (pre-rewrite): " << lem
                       << std::endl;
-  lem = Rewriter::rewrite(lem);
-  Trace("nl-ext-exp") << "*** Tangent plane lemma : " << lem << std::endl;
   Assert(d_data->d_model.computeAbstractModelValue(lem) == d_data->d_false);
   // Figure 3 : line 9
   CDProof* proof = nullptr;
@@ -226,9 +248,9 @@ void ExponentialSolver::doTangentLemma(TNode e,
   {
     proof = d_data->getProof();
     proof->addStep(lem,
-                   PfRule::ARITH_TRANS_EXP_APPROX_BELOW,
+                   ProofRule::ARITH_TRANS_EXP_APPROX_BELOW,
                    {},
-                   {nm->mkConst<Rational>(d), e[0]});
+                   {nm->mkConstInt(Rational(d)), c, e[0]});
   }
   d_data->d_im.addPendingLemma(
       lem, InferenceId::ARITH_NL_T_TANGENT, proof, true);
@@ -257,18 +279,31 @@ std::pair<Node, Node> ExponentialSolver::getSecantBounds(TNode e,
 {
   std::pair<Node, Node> bounds = d_data->getClosestSecantPoints(e, center, d);
 
+  int csign = center.getConst<Rational>().sgn();
   // Check if we already have neighboring secant points
   if (bounds.first.isNull())
   {
+    NodeManager* nm = nodeManager();
+    Node one = nm->mkConstInt(Rational(1));
     // pick c-1
-    bounds.first = Rewriter::rewrite(
-        NodeManager::currentNM()->mkNode(Kind::MINUS, center, d_data->d_one));
+    bounds.first = rewrite(nm->mkNode(Kind::SUB, center, one));
+    // ensure we don't cross zero
+    if (bounds.first.getConst<Rational>().sgn() != csign)
+    {
+      bounds.first = nm->mkConstReal(Rational(0));
+    }
   }
   if (bounds.second.isNull())
   {
+    NodeManager* nm = nodeManager();
+    Node one = nm->mkConstInt(Rational(1));
     // pick c+1
-    bounds.second = Rewriter::rewrite(
-        NodeManager::currentNM()->mkNode(Kind::PLUS, center, d_data->d_one));
+    bounds.second = rewrite(nm->mkNode(Kind::ADD, center, one));
+    // ensure we don't cross zero
+    if (bounds.second.getConst<Rational>().sgn() != csign)
+    {
+      bounds.second = nm->mkConstReal(Rational(0));
+    }
   }
   return bounds;
 }
@@ -277,4 +312,4 @@ std::pair<Node, Node> ExponentialSolver::getSecantBounds(TNode e,
 }  // namespace nl
 }  // namespace arith
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal

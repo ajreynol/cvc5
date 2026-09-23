@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Dejan Jovanovic, Morgan Deters, Christopher L. Conway
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -17,60 +14,84 @@
 
 #include <sstream>
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace boolean {
 
+bool isMaybeBoolean(const TypeNode& tn)
+{
+  return tn.isBoolean() || tn.isFullyAbstract();
+}
+
+TypeNode BooleanTypeRule::preComputeType(NodeManager* nm, CVC5_UNUSED TNode n)
+{
+  return nm->booleanType();
+}
 TypeNode BooleanTypeRule::computeType(NodeManager* nodeManager,
                                       TNode n,
-                                      bool check)
+                                      bool check,
+                                      std::ostream* errOut)
 {
   TypeNode booleanType = nodeManager->booleanType();
   if (check)
   {
     for (const auto& child : n)
     {
-      if (!child.getType(check).isBoolean())
+      TypeNode tc = child.getTypeOrNull();
+      if (!isMaybeBoolean(tc))
       {
-        Debug("pb") << "failed type checking: " << child << std::endl;
-        Debug("pb") << "  integer: " << child.getType(check).isInteger()
-                    << std::endl;
-        Debug("pb") << "  real: " << child.getType(check).isReal() << std::endl;
-        throw TypeCheckingExceptionPrivate(n,
-                                           "expecting a Boolean subexpression");
+        if (errOut)
+        {
+          (*errOut) << "expecting a Boolean subexpression";
+        }
+        return TypeNode::null();
       }
     }
   }
   return booleanType;
 }
 
-TypeNode IteTypeRule::computeType(NodeManager* nodeManager, TNode n, bool check)
+TypeNode IteTypeRule::preComputeType(CVC5_UNUSED NodeManager* nm,
+                                     CVC5_UNUSED TNode n)
 {
-  TypeNode thenType = n[1].getType(check);
-  TypeNode elseType = n[2].getType(check);
-  TypeNode iteType = TypeNode::leastCommonTypeNode(thenType, elseType);
+  return TypeNode::null();
+}
+TypeNode IteTypeRule::computeType(NodeManager* nodeManager,
+                                  TNode n,
+                                  bool check,
+                                  std::ostream* errOut)
+{
+  TypeNode thenType = n[1].getTypeOrNull();
+  TypeNode elseType = n[2].getTypeOrNull();
+  TypeNode resType = thenType.leastUpperBound(elseType);
+  if (resType.isNull())
+  {
+    if (errOut)
+    {
+      (*errOut) << "Branches of the ITE must have comparable type." << std::endl
+                << "then branch: " << n[1] << std::endl
+                << "its type   : " << thenType << std::endl
+                << "else branch: " << n[2] << std::endl
+                << "its type   : " << elseType << std::endl;
+    }
+    return TypeNode::null();
+  }
   if (check)
   {
+    TypeNode condType = n[0].getTypeOrNull();
     TypeNode booleanType = nodeManager->booleanType();
-    if (n[0].getType(check) != booleanType)
+    if (!isMaybeBoolean(condType))
     {
-      throw TypeCheckingExceptionPrivate(n, "condition of ITE is not Boolean");
-    }
-    if (iteType.isNull())
-    {
-      std::stringstream ss;
-      ss << "Both branches of the ITE must be a subtype of a common type."
-         << std::endl
-         << "then branch: " << n[1] << std::endl
-         << "its type   : " << thenType << std::endl
-         << "else branch: " << n[2] << std::endl
-         << "its type   : " << elseType << std::endl;
-      throw TypeCheckingExceptionPrivate(n, ss.str());
+      if (errOut)
+      {
+        (*errOut) << "condition of ITE is not Boolean";
+      }
+      return TypeNode::null();
     }
   }
-  return iteType;
+  return resType;
 }
 
 }  // namespace boolean
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal

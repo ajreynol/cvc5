@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Morgan Deters, Tim King
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -15,11 +12,11 @@
 
 #include "smt/model.h"
 
-#include "expr/expr_iomanip.h"
 #include "options/base_options.h"
+#include "options/io_utils.h"
 #include "printer/printer.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace smt {
 
 Model::Model(bool isKnownSat, const std::string& inputName)
@@ -27,9 +24,11 @@ Model::Model(bool isKnownSat, const std::string& inputName)
 {
 }
 
-std::ostream& operator<<(std::ostream& out, const Model& m) {
-  expr::ExprDag::Scope scope(out, false);
-  Printer::getPrinter(options::outputLanguage())->toStream(out, m);
+std::ostream& operator<<(std::ostream& out, const Model& m)
+{
+  options::ioutils::Scope scope(out);
+  options::ioutils::applyDagThresh(out, 0);
+  Printer::getPrinter(out)->toStream(out, m);
   return out;
 }
 
@@ -88,4 +87,4 @@ const std::vector<Node>& Model::getDeclaredTerms() const
 }
 
 }  // namespace smt
-}  // namespace cvc5
+}  // namespace cvc5::internal

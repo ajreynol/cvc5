@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -20,22 +17,35 @@
 
 #include <iosfwd>
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 
 /**
- * Reasons for incompleteness in cvc5.
+ * Reasons for answering "unknown" in cvc5.
+ *
+ * Note that this enumeration is used both for marking incomplete in a
+ * SAT context, and marking unsound in a user context, both of which may
+ * imply that we are "unknown".
  */
 enum class IncompleteId
 {
+  // there is no marked incompleteness
+  NONE,
   // the non-linear arithmetic solver was disabled
   ARITH_NL_DISABLED,
   // the non-linear arithmetic solver was incomplete
   ARITH_NL,
+  // the floating-point solver could not refine a conversion abstraction,
+  // e.g. because model values for its arguments were unavailable
+  FP_ABSTRACTION_REFINEMENT,
   // incomplete due to lack of a complete quantifiers strategy
   QUANTIFIERS,
-  // we failed to verify the correctness of a candidate solution in SyGuS
+  // (refutation unsound) we failed to verify the correctness of a candidate
+  // solution in SyGuS and blocked it to make progress
   QUANTIFIERS_SYGUS_NO_VERIFY,
+  // (refutation unsound) we are generalizing any-constants when blocking with
+  // smart enumeration
+  QUANTIFIERS_SYGUS_SMART_BLOCK_ANY_CONSTANT,
   // incomplete due to counterexample-guided instantiation not being complete
   QUANTIFIERS_CEGQI,
   // incomplete due to finite model finding not being complete
@@ -44,14 +54,29 @@ enum class IncompleteId
   QUANTIFIERS_RECORDED_INST,
   // incomplete due to limited number of allowed instantiation rounds
   QUANTIFIERS_MAX_INST_ROUNDS,
+  // we solved a negated synthesis conjecture and will terminate as a subsolver
+  // with unknown
+  QUANTIFIERS_SYGUS_SOLVED,
+  // we failed to construct a grammar for a function-to-synthesize
+  QUANTIFIERS_SYGUS_NO_WF_GRAMMAR,
   // incomplete due to separation logic
   SEP,
+  // Higher order operators like sets.map were used in combination with set
+  // cardinality constraints
+  SETS_HO_CARD,
   // relations were used in combination with set cardinality constraints
   SETS_RELS_CARD,
+  // finite model finding used in combination with set cardinality constraints
+  SETS_FMF_BOUND_CARD,
   // we skipped processing a looping word equation
   STRINGS_LOOP_SKIP,
   // we could not simplify a regular expression membership
   STRINGS_REGEXP_NO_SIMPLIFY,
+  // incomplete due to sequence of a dynamic finite type (e.g. a type that
+  // we know is finite, but its exact cardinality is not fixed. For example,
+  // when finite model finding is enabled, uninterpreted sorts have a
+  // cardinality that depends on their interpretation in the current model).
+  SEQ_FINITE_DYNAMIC_CARDINALITY,
   // HO extensionality axiom was disabled
   UF_HO_EXT_DISABLED,
   // UF+cardinality solver was disabled
@@ -59,7 +84,15 @@ enum class IncompleteId
   // UF+cardinality solver used in an incomplete mode
   UF_CARD_MODE,
 
-  //-------------------------------------- unknown
+  //------------------- other causes external to theories
+  // unprocessed theory conflict
+  UNPROCESSED_THEORY_CONFLICT,
+  // the prop layer stopped search
+  STOP_SEARCH,
+  // due to preprocessing
+  PREPROCESSING,
+  //------------------- unknown
+  // the reason for the incompleteness is unknown
   UNKNOWN
 };
 
@@ -81,6 +114,6 @@ const char* toString(IncompleteId i);
 std::ostream& operator<<(std::ostream& out, IncompleteId i);
 
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__THEORY__INCOMPLETE_ID_H */

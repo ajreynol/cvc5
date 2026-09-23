@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Tim King, Kshitij Bansal
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -21,14 +18,16 @@
 #include <memory>
 
 #include "smt/logic_exception.h"
+#include "theory/care_pair_argument_callback.h"
 #include "theory/sets/inference_manager.h"
+#include "theory/sets/proof_checker.h"
 #include "theory/sets/skolem_cache.h"
 #include "theory/sets/solver_state.h"
+#include "theory/sets/theory_sets_rewriter.h"
 #include "theory/theory.h"
 #include "theory/theory_eq_notify.h"
-#include "theory/uf/equality_engine.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace sets {
 
@@ -39,6 +38,7 @@ class TheorySets : public Theory
 {
   friend class TheorySetsPrivate;
   friend class TheorySetsRels;
+
  public:
   /** Constructs a new instance of TheorySets w.r.t. the provided contexts. */
   TheorySets(Env& env, OutputChannel& out, Valuation valuation);
@@ -70,7 +70,7 @@ class TheorySets : public Theory
                           const std::set<Node>& termSet) override;
   void computeCareGraph() override;
   TrustNode explain(TNode) override;
-  Node getModelValue(TNode) override;
+  Node getCandidateModelValue(TNode) override;
   std::string identify() const override { return "THEORY_SETS"; }
   void preRegisterTerm(TNode node) override;
   /**
@@ -79,12 +79,15 @@ class TheorySets : public Theory
    * and is_singleton.
    */
   TrustNode ppRewrite(TNode n, std::vector<SkolemLemma>& lems) override;
-  PPAssertStatus ppAssert(TrustNode tin,
-                          TrustSubstitutionMap& outSubstitutions) override;
+  bool ppAssert(TrustNode tin, TrustSubstitutionMap& outSubstitutions) override;
   void presolve() override;
   bool isEntailed(Node n, bool pol);
 
  private:
+  /**
+   * Overrides to handle a special case of set membership.
+   */
+  void processCarePairArgs(TNode a, TNode b) override;
   /** Functions to handle callbacks from equality engine */
   class NotifyClass : public TheoryEqNotifyClass
   {
@@ -104,16 +107,22 @@ class TheorySets : public Theory
   SkolemCache d_skCache;
   /** The state of the sets solver at full effort */
   SolverState d_state;
+  /** The theory rewriter for this theory. */
+  TheorySetsRewriter d_rewriter;
   /** The inference manager */
   InferenceManager d_im;
+  /** The care pair argument callback, used for theory combination */
+  CarePairArgumentCallback d_cpacb;
   /** The internal theory */
   std::unique_ptr<TheorySetsPrivate> d_internal;
+  /** The proof checker */
+  SetsProofRuleChecker d_checker;
   /** Instance of the above class */
   NotifyClass d_notify;
 }; /* class TheorySets */
 
 }  // namespace sets
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__THEORY__SETS__THEORY_SETS_H */

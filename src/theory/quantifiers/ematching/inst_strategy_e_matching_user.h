@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Morgan Deters, Tim King
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -19,12 +16,13 @@
 #define CVC5__INST_STRATEGY_E_MATCHING_USER_H
 
 #include <map>
+
 #include "expr/node.h"
 #include "options/quantifiers_options.h"
 #include "theory/quantifiers/ematching/inst_strategy.h"
 #include "theory/quantifiers/ematching/trigger.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace quantifiers {
 
@@ -44,10 +42,6 @@ class InstStrategyUserPatterns : public InstStrategy
   ~InstStrategyUserPatterns();
   /** add pattern */
   void addUserPattern(Node q, Node pat);
-  /** get num patterns */
-  size_t getNumUserGenerators(Node q) const;
-  /** get user pattern */
-  inst::Trigger* getUserGenerator(Node q, size_t i) const;
   /** identify */
   std::string identify() const override;
 
@@ -66,6 +60,6 @@ class InstStrategyUserPatterns : public InstStrategy
 
 }  // namespace quantifiers
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif

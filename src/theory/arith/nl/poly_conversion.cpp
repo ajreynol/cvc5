@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Gereon Kremer, Aina Niemetz, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -18,16 +15,17 @@
 #ifdef CVC5_POLY_IMP
 
 #include "expr/node.h"
-#include "expr/node_manager_attributes.h"
 #include "theory/arith/bound_inference.h"
 #include "util/poly_util.h"
 
-namespace cvc5 {
+using namespace cvc5::internal::kind;
+
+namespace cvc5::internal {
 namespace theory {
 namespace arith {
 namespace nl {
 
-poly::Variable VariableMapper::operator()(const cvc5::Node& n)
+poly::Variable VariableMapper::operator()(const cvc5::internal::Node& n)
 {
   auto it = mVarCVCpoly.find(n);
   if (it == mVarCVCpoly.end())
@@ -35,50 +33,56 @@ poly::Variable VariableMapper::operator()(const cvc5::Node& n)
     std::string name;
     if (n.isVar())
     {
-      if (!n.getAttribute(expr::VarNameAttr(), name))
+      if (!n.hasName())
       {
         Trace("poly::conversion")
             << "Variable " << n << " has no name, using ID instead."
             << std::endl;
         name = "v_" + std::to_string(n.getId());
       }
+      else
+      {
+        name = n.getName();
+      }
     }
     else
     {
       name = "v_" + std::to_string(n.getId());
     }
-    it = mVarCVCpoly.emplace(n, poly::Variable(name.c_str())).first;
+    it = mVarCVCpoly.emplace(n, poly::Variable(polyCtx, name.c_str())).first;
     mVarpolyCVC.emplace(it->second, n);
   }
   return it->second;
 }
 
-cvc5::Node VariableMapper::operator()(const poly::Variable& n)
+cvc5::internal::Node VariableMapper::operator()(const poly::Variable& n)
 {
   auto it = mVarpolyCVC.find(n);
   Assert(it != mVarpolyCVC.end())
-      << "Expect variable " << n << " to be added already.";
+      << "Expect variable " << stream_variable(polyCtx, n)
+      << " to be added already.";
   return it->second;
 }
 
-cvc5::Node as_cvc_upolynomial(const poly::UPolynomial& p, const cvc5::Node& var)
+cvc5::internal::Node as_cvc_upolynomial(const poly::UPolynomial& p,
+                                        const cvc5::internal::Node& var)
 {
   Trace("poly::conversion")
       << "Converting " << p << " over " << var << std::endl;
 
   std::vector<poly::Integer> coeffs = coefficients(p);
 
-  auto* nm = NodeManager::currentNM();
+  auto* nm = var.getNodeManager();
 
-  Node res = nm->mkConst(Rational(0));
-  Node monomial = nm->mkConst(Rational(1));
+  Node res = nm->mkConstReal(Rational(0));
+  Node monomial = nm->mkConstReal(Rational(1));
   for (std::size_t i = 0, n = coeffs.size(); i < n; ++i)
   {
     if (!is_zero(coeffs[i]))
     {
-      Node coeff = nm->mkConst(poly_utils::toRational(coeffs[i]));
+      Node coeff = nm->mkConstReal(poly_utils::toRational(coeffs[i]));
       Node term = nm->mkNode(Kind::MULT, coeff, monomial);
-      res = nm->mkNode(Kind::PLUS, res, term);
+      res = nm->mkNode(Kind::ADD, res, term);
     }
     monomial = nm->mkNode(Kind::NONLINEAR_MULT, monomial, var);
   }
@@ -86,10 +90,11 @@ cvc5::Node as_cvc_upolynomial(const poly::UPolynomial& p, const cvc5::Node& var)
   return res;
 }
 
-poly::UPolynomial as_poly_upolynomial_impl(const cvc5::Node& n,
+poly::UPolynomial as_poly_upolynomial_impl(cvc5::internal::Node n,
                                            poly::Integer& denominator,
-                                           const cvc5::Node& var)
+                                           const cvc5::internal::Node& var)
 {
+  if (n.getKind() == Kind::TO_REAL) n = n[0];
   denominator = poly::Integer(1);
   if (n.isVar())
   {
@@ -97,15 +102,15 @@ poly::UPolynomial as_poly_upolynomial_impl(const cvc5::Node& n,
                      << n;
     return poly::UPolynomial({0, 1});
   }
+  if (n.isConst())
+  {
+    Rational r = n.getConst<Rational>();
+    denominator = poly_utils::toInteger(r.getDenominator());
+    return poly::UPolynomial(poly_utils::toInteger(r.getNumerator()));
+  }
   switch (n.getKind())
   {
-    case Kind::CONST_RATIONAL:
-    {
-      Rational r = n.getConst<Rational>();
-      denominator = poly_utils::toInteger(r.getDenominator());
-      return poly::UPolynomial(poly_utils::toInteger(r.getNumerator()));
-    }
-    case Kind::PLUS:
+    case Kind::ADD:
     {
       poly::UPolynomial res;
       poly::Integer denom;
@@ -133,39 +138,41 @@ poly::UPolynomial as_poly_upolynomial_impl(const cvc5::Node& n,
       return res;
     }
     default:
-      Warning() << "Unhandled node " << n << " with kind " << n.getKind()
-                << std::endl;
+      DebugUnhandled() << "Unhandled node " << n << " with kind " << n.getKind()
+                       << std::endl;
   }
   return poly::UPolynomial();
 }
 
-poly::UPolynomial as_poly_upolynomial(const cvc5::Node& n,
-                                      const cvc5::Node& var)
+poly::UPolynomial as_poly_upolynomial(const cvc5::internal::Node& n,
+                                      const cvc5::internal::Node& var)
 {
   poly::Integer denom;
   return as_poly_upolynomial_impl(n, denom, var);
 }
 
-poly::Polynomial as_poly_polynomial_impl(const cvc5::Node& n,
+poly::Polynomial as_poly_polynomial_impl(cvc5::internal::Node n,
                                          poly::Integer& denominator,
                                          VariableMapper& vm)
 {
+  if (n.getKind() == Kind::TO_REAL) n = n[0];
   denominator = poly::Integer(1);
   if (n.isVar())
   {
-    return poly::Polynomial(vm(n));
+    return poly::Polynomial(vm.polyCtx, vm(n));
+  }
+  if (n.isConst())
+  {
+    Rational r = n.getConst<Rational>();
+    denominator = poly_utils::toInteger(r.getDenominator());
+    return poly::Polynomial(vm.polyCtx,
+                            poly_utils::toInteger(r.getNumerator()));
   }
   switch (n.getKind())
   {
-    case Kind::CONST_RATIONAL:
+    case Kind::ADD:
     {
-      Rational r = n.getConst<Rational>();
-      denominator = poly_utils::toInteger(r.getDenominator());
-      return poly::Polynomial(poly_utils::toInteger(r.getNumerator()));
-    }
-    case Kind::PLUS:
-    {
-      poly::Polynomial res;
+      poly::Polynomial res(vm.polyCtx);
       poly::Integer denom;
       for (const auto& child : n)
       {
@@ -181,7 +188,7 @@ poly::Polynomial as_poly_polynomial_impl(const cvc5::Node& n,
     case Kind::MULT:
     case Kind::NONLINEAR_MULT:
     {
-      poly::Polynomial res(denominator);
+      poly::Polynomial res(vm.polyCtx, denominator);
       poly::Integer denom;
       for (const auto& child : n)
       {
@@ -190,16 +197,17 @@ poly::Polynomial as_poly_polynomial_impl(const cvc5::Node& n,
       }
       return res;
     }
-    default: return poly::Polynomial(vm(n));
+    default: return poly::Polynomial(vm.polyCtx, vm(n));
   }
-  return poly::Polynomial();
+  return poly::Polynomial(vm.polyCtx);
 }
-poly::Polynomial as_poly_polynomial(const cvc5::Node& n, VariableMapper& vm)
+poly::Polynomial as_poly_polynomial(const cvc5::internal::Node& n,
+                                    VariableMapper& vm)
 {
   poly::Integer denom;
   return as_poly_polynomial_impl(n, denom, vm);
 }
-poly::Polynomial as_poly_polynomial(const cvc5::Node& n,
+poly::Polynomial as_poly_polynomial(const cvc5::internal::Node& n,
                                     VariableMapper& vm,
                                     poly::Rational& denominator)
 {
@@ -216,34 +224,34 @@ namespace {
  */
 struct CollectMonomialData
 {
-  CollectMonomialData(VariableMapper& v) : d_vm(v) {}
+  CollectMonomialData(NodeManager* nm, VariableMapper& v) : d_vm(v), d_nm(nm) {}
 
   /** Mapper from poly variables to cvc5 variables */
   VariableMapper& d_vm;
   /** Collections of the monomial terms */
   std::vector<Node> d_terms;
   /** Caches the current node manager */
-  NodeManager* d_nm = NodeManager::currentNM();
+  NodeManager* d_nm;
 };
 /**
  * Callback for lp_polynomial_traverse. Assumes data is actually a
  * CollectMonomialData object and puts the polynomial into it.
  */
-void collect_monomials(const lp_polynomial_context_t* ctx,
+void collect_monomials(CVC5_UNUSED const lp_polynomial_context_t* ctx,
                        lp_monomial_t* m,
                        void* data)
 {
   CollectMonomialData* d = static_cast<CollectMonomialData*>(data);
   // constant
   Node term =
-      d->d_nm->mkConst<Rational>(poly_utils::toRational(poly::Integer(&m->a)));
+      d->d_nm->mkConstReal(poly_utils::toRational(poly::Integer(&m->a)));
   for (std::size_t i = 0; i < m->n; ++i)
   {
     // variable exponent pair
-    Node var = d->d_vm(m->p[i].x);
+    Node var = d->d_vm(poly::Variable(m->p[i].x));
     if (m->p[i].d > 1)
     {
-      Node exp = d->d_nm->mkConst<Rational>(m->p[i].d);
+      Node exp = d->d_nm->mkConstReal(m->p[i].d);
       term = d->d_nm->mkNode(
           Kind::NONLINEAR_MULT, term, d->d_nm->mkNode(Kind::POW, var, exp));
     }
@@ -256,24 +264,26 @@ void collect_monomials(const lp_polynomial_context_t* ctx,
 }
 }  // namespace
 
-cvc5::Node as_cvc_polynomial(const poly::Polynomial& p, VariableMapper& vm)
+cvc5::internal::Node as_cvc_polynomial(NodeManager* nm,
+                                       const poly::Polynomial& p,
+                                       VariableMapper& vm)
 {
-  CollectMonomialData cmd(vm);
+  CollectMonomialData cmd(nm, vm);
   // Do the actual conversion
   lp_polynomial_traverse(p.get_internal(), collect_monomials, &cmd);
 
   if (cmd.d_terms.empty())
   {
-    return cmd.d_nm->mkConst<Rational>(0);
+    return cmd.d_nm->mkConstReal(0);
   }
   if (cmd.d_terms.size() == 1)
   {
     return cmd.d_terms.front();
   }
-  return cmd.d_nm->mkNode(Kind::PLUS, cmd.d_terms);
+  return cmd.d_nm->mkNode(Kind::ADD, cmd.d_terms);
 }
 
-poly::SignCondition normalize_kind(cvc5::Kind kind,
+poly::SignCondition normalize_kind(cvc5::internal::Kind kind,
                                    bool negated,
                                    poly::Polynomial& lhs)
 {
@@ -320,7 +330,7 @@ poly::SignCondition normalize_kind(cvc5::Kind kind,
       return poly::SignCondition::LE;
     }
     default:
-      Assert(false) << "This function only deals with arithmetic relations.";
+      DebugUnhandled() << "This function only deals with arithmetic relations.";
       return poly::SignCondition::EQ;
   }
 }
@@ -359,35 +369,31 @@ std::pair<poly::Polynomial, poly::SignCondition> as_poly_constraint(
   return {lhs, sc};
 }
 
-Node ran_to_node(const RealAlgebraicNumber& ran, const Node& ran_variable)
-{
-  return ran_to_node(ran.getValue(), ran_variable);
-}
-
 Node ran_to_node(const poly::AlgebraicNumber& an, const Node& ran_variable)
 {
-  auto* nm = NodeManager::currentNM();
+  auto* nm = ran_variable.getNodeManager();
 
   const poly::DyadicInterval& di = get_isolating_interval(an);
   if (is_point(di))
   {
-    return nm->mkConst(poly_utils::toRational(get_point(di)));
+    return nm->mkConstReal(poly_utils::toRational(get_point(di)));
   }
   Assert(di.get_internal()->a_open && di.get_internal()->b_open)
       << "We assume an open interval here.";
 
   Node poly = as_cvc_upolynomial(get_defining_polynomial(an), ran_variable);
-  Node lower = nm->mkConst(poly_utils::toRational(get_lower(di)));
-  Node upper = nm->mkConst(poly_utils::toRational(get_upper(di)));
+  Node lower = nm->mkConstReal(poly_utils::toRational(get_lower(di)));
+  Node upper = nm->mkConstReal(poly_utils::toRational(get_upper(di)));
 
   // Construct witness:
-  return nm->mkNode(Kind::AND,
-                    // poly(var) == 0
-                    nm->mkNode(Kind::EQUAL, poly, nm->mkConst(Rational(0))),
-                    // lower_bound < var
-                    nm->mkNode(Kind::LT, lower, ran_variable),
-                    // var < upper_bound
-                    nm->mkNode(Kind::LT, ran_variable, upper));
+  Node pred =
+      nm->mkNode(Kind::AND,
+                 // poly(var) == 0
+                 {nm->mkNode(Kind::EQUAL, poly, nm->mkConstReal(Rational(0))),
+                  nm->mkNode(Kind::LT, lower, ran_variable),
+                  nm->mkNode(Kind::LT, ran_variable, upper)});
+  return nm->mkNode(
+      Kind::WITNESS, nm->mkNode(Kind::BOUND_VAR_LIST, ran_variable), pred);
 }
 
 Node value_to_node(const poly::Value& v, const Node& ran_variable)
@@ -396,25 +402,26 @@ Node value_to_node(const poly::Value& v, const Node& ran_variable)
   Assert(!is_none(v)) << "Can not convert none.";
   Assert(!is_plus_infinity(v)) << "Can not convert plus infinity.";
 
+  auto* nm = ran_variable.getNodeManager();
   if (is_algebraic_number(v))
   {
-    return ran_to_node(as_algebraic_number(v), ran_variable);
+    auto ran = as_algebraic_number(v);
+    return nm->mkRealAlgebraicNumber(RealAlgebraicNumber(std::move(ran)));
   }
-  auto* nm = NodeManager::currentNM();
   if (is_dyadic_rational(v))
   {
-    return nm->mkConst(poly_utils::toRational(as_dyadic_rational(v)));
+    return nm->mkConstReal(poly_utils::toRational(as_dyadic_rational(v)));
   }
   if (is_integer(v))
   {
-    return nm->mkConst(poly_utils::toRational(as_integer(v)));
+    return nm->mkConstReal(poly_utils::toRational(as_integer(v)));
   }
   if (is_rational(v))
   {
-    return nm->mkConst(poly_utils::toRational(as_rational(v)));
+    return nm->mkConstReal(poly_utils::toRational(as_rational(v)));
   }
-  Assert(false) << "All cases should be covered.";
-  return nm->mkConst(Rational(0));
+  DebugUnhandled() << "All cases should be covered.";
+  return nm->mkConstReal(Rational(0));
 }
 
 Node lower_bound_as_node(const Node& var,
@@ -422,19 +429,19 @@ Node lower_bound_as_node(const Node& var,
                          bool open,
                          bool allowNonlinearLemma)
 {
-  auto* nm = NodeManager::currentNM();
+  auto* nm = var.getNodeManager();
   if (!poly::is_algebraic_number(lower))
   {
     return nm->mkNode(open ? Kind::LEQ : Kind::LT,
                       var,
-                      nm->mkConst(poly_utils::toRationalAbove(lower)));
+                      nm->mkConstReal(poly_utils::toRationalAbove(lower)));
   }
   if (poly::represents_rational(lower))
   {
-    return nm->mkNode(
-        open ? Kind::LEQ : Kind::LT,
-        var,
-        nm->mkConst(poly_utils::toRationalAbove(poly::get_rational(lower))));
+    return nm->mkNode(open ? Kind::LEQ : Kind::LT,
+                      var,
+                      nm->mkConstReal(poly_utils::toRationalAbove(
+                          poly::get_rational(lower))));
   }
   if (!allowNonlinearLemma)
   {
@@ -469,10 +476,10 @@ Node lower_bound_as_node(const Node& var,
   }
   return nm->mkNode(
       Kind::OR,
-      nm->mkNode(Kind::LEQ, var, nm->mkConst(l)),
-      nm->mkNode(Kind::AND,
-                 nm->mkNode(Kind::LT, var, nm->mkConst(u)),
-                 nm->mkNode(relation, poly, nm->mkConst(Rational(0)))));
+      {nm->mkNode(Kind::LEQ, var, nm->mkConstReal(l)),
+       nm->mkNode(Kind::AND,
+                  {nm->mkNode(Kind::LT, var, nm->mkConstReal(u)),
+                   nm->mkNode(relation, poly, nm->mkConstReal(Rational(0)))})});
 }
 
 Node upper_bound_as_node(const Node& var,
@@ -480,19 +487,19 @@ Node upper_bound_as_node(const Node& var,
                          bool open,
                          bool allowNonlinearLemma)
 {
-  auto* nm = NodeManager::currentNM();
+  auto* nm = var.getNodeManager();
   if (!poly::is_algebraic_number(upper))
   {
     return nm->mkNode(open ? Kind::GEQ : Kind::GT,
                       var,
-                      nm->mkConst(poly_utils::toRationalAbove(upper)));
+                      nm->mkConstReal(poly_utils::toRationalAbove(upper)));
   }
   if (poly::represents_rational(upper))
   {
-    return nm->mkNode(
-        open ? Kind::GEQ : Kind::GT,
-        var,
-        nm->mkConst(poly_utils::toRationalAbove(poly::get_rational(upper))));
+    return nm->mkNode(open ? Kind::GEQ : Kind::GT,
+                      var,
+                      nm->mkConstReal(poly_utils::toRationalAbove(
+                          poly::get_rational(upper))));
   }
   if (!allowNonlinearLemma)
   {
@@ -527,17 +534,17 @@ Node upper_bound_as_node(const Node& var,
   }
   return nm->mkNode(
       Kind::OR,
-      nm->mkNode(Kind::GEQ, var, nm->mkConst(u)),
-      nm->mkNode(Kind::AND,
-                 nm->mkNode(Kind::GT, var, nm->mkConst(l)),
-                 nm->mkNode(relation, poly, nm->mkConst(Rational(0)))));
+      {nm->mkNode(Kind::GEQ, var, nm->mkConstReal(u)),
+       nm->mkNode(Kind::AND,
+                  {nm->mkNode(Kind::GT, var, nm->mkConstReal(l)),
+                   nm->mkNode(relation, poly, nm->mkConstReal(Rational(0)))})});
 }
 
 Node excluding_interval_to_lemma(const Node& variable,
                                  const poly::Interval& interval,
                                  bool allowNonlinearLemma)
 {
-  auto* nm = NodeManager::currentNM();
+  auto* nm = variable.getNodeManager();
   const auto& lv = poly::get_lower(interval);
   const auto& uv = poly::get_upper(interval);
   if (bitsize(lv) > 100 || bitsize(uv) > 100) return Node();
@@ -551,50 +558,50 @@ Node excluding_interval_to_lemma(const Node& variable,
       const poly::AlgebraicNumber& alg = as_algebraic_number(lv);
       if (poly::is_rational(alg))
       {
-        Trace("nl-cad") << "Rational point interval: " << interval << std::endl;
+        Trace("nl-cov") << "Rational point interval: " << interval << std::endl;
         return nm->mkNode(Kind::DISTINCT,
                           variable,
-                          nm->mkConst(poly_utils::toRational(
+                          nm->mkConstReal(poly_utils::toRational(
                               poly::to_rational_approximation(alg))));
       }
-      Trace("nl-cad") << "Algebraic point interval: " << interval << std::endl;
+      Trace("nl-cov") << "Algebraic point interval: " << interval << std::endl;
       // p(x) != 0 or x <= lb or ub <= x
       if (allowNonlinearLemma)
       {
         Node poly = as_cvc_upolynomial(get_defining_polynomial(alg), variable);
         return nm->mkNode(
             Kind::OR,
-            nm->mkNode(Kind::DISTINCT, poly, nm->mkConst(Rational(0))),
-            nm->mkNode(Kind::LT,
-                       variable,
-                       nm->mkConst(poly_utils::toRationalBelow(lv))),
-            nm->mkNode(Kind::GT,
-                       variable,
-                       nm->mkConst(poly_utils::toRationalAbove(lv))));
+            {nm->mkNode(Kind::DISTINCT, poly, nm->mkConstReal(Rational(0))),
+             nm->mkNode(Kind::LT,
+                        variable,
+                        nm->mkConstReal(poly_utils::toRationalBelow(lv))),
+             nm->mkNode(Kind::GT,
+                        variable,
+                        nm->mkConstReal(poly_utils::toRationalAbove(lv)))});
       }
       return Node();
     }
     else
     {
-      Trace("nl-cad") << "Rational point interval: " << interval << std::endl;
+      Trace("nl-cov") << "Rational point interval: " << interval << std::endl;
       return nm->mkNode(Kind::DISTINCT,
                         variable,
-                        nm->mkConst(poly_utils::toRationalBelow(lv)));
+                        nm->mkConstReal(poly_utils::toRationalBelow(lv)));
     }
   }
   if (li)
   {
-    Trace("nl-cad") << "Only upper bound: " << interval << std::endl;
+    Trace("nl-cov") << "Only upper bound: " << interval << std::endl;
     return upper_bound_as_node(
         variable, uv, poly::get_upper_open(interval), allowNonlinearLemma);
   }
   if (ui)
   {
-    Trace("nl-cad") << "Only lower bound: " << interval << std::endl;
+    Trace("nl-cov") << "Only lower bound: " << interval << std::endl;
     return lower_bound_as_node(
         variable, lv, poly::get_lower_open(interval), allowNonlinearLemma);
   }
-  Trace("nl-cad") << "Proper interval: " << interval << std::endl;
+  Trace("nl-cov") << "Proper interval: " << interval << std::endl;
   Node lb = lower_bound_as_node(
       variable, lv, poly::get_lower_open(interval), allowNonlinearLemma);
   Node ub = upper_bound_as_node(
@@ -641,8 +648,10 @@ std::optional<Rational> get_upper_bound(const Node& n)
 /** Returns indices of appropriate parts of ran encoding.
  * Returns (poly equation ; lower bound ; upper bound)
  */
-std::tuple<Node, Rational, Rational> detect_ran_encoding(const Node& n)
+std::tuple<Node, Rational, Rational> detect_ran_encoding(const Node& w)
 {
+  Assert(w.getKind() == Kind::WITNESS) << "Invalid node structure.";
+  Node n = w[1];
   Assert(n.getKind() == Kind::AND) << "Invalid node structure.";
   Assert(n.getNumChildren() == 3) << "Invalid node structure.";
 
@@ -654,7 +663,7 @@ std::tuple<Node, Rational, Rational> detect_ran_encoding(const Node& n)
   else if (n[2].getKind() == Kind::EQUAL)
     poly_eq = n[2];
   else
-    Assert(false) << "Could not identify polynomial equation.";
+    DebugUnhandled() << "Could not identify polynomial equation.";
 
   Node poly;
   Assert(poly_eq.getNumChildren() == 2) << "Invalid polynomial equation.";
@@ -672,7 +681,7 @@ std::tuple<Node, Rational, Rational> detect_ran_encoding(const Node& n)
   }
   else
   {
-    Assert(false) << "Invalid polynomial equation.";
+    DebugUnhandled() << "Invalid polynomial equation.";
   }
 
   std::optional<Rational> lower = get_lower_bound(n[0]);
@@ -699,10 +708,6 @@ poly::AlgebraicNumber node_to_poly_ran(const Node& n, const Node& ran_variable)
   // Construct algebraic number
   return poly_utils::toPolyRanWithRefinement(
       std::move(pol), std::get<1>(encoding), std::get<2>(encoding));
-}
-RealAlgebraicNumber node_to_ran(const Node& n, const Node& ran_variable)
-{
-  return RealAlgebraicNumber(node_to_poly_ran(n, ran_variable));
 }
 
 poly::Value node_to_value(const Node& n, const Node& ran_variable)
@@ -777,13 +782,13 @@ std::size_t bitsize(const poly::Value& v)
   {
     return bitsize(as_rational(v));
   }
-  Assert(false);
+  DebugUnhandled();
   return 0;
 }
 
 poly::IntervalAssignment getBounds(VariableMapper& vm, const BoundInference& bi)
 {
-  poly::IntervalAssignment res;
+  poly::IntervalAssignment res(vm.polyCtx);
   for (const auto& vb : bi.get())
   {
     poly::Variable v = vm(vb.first);
@@ -802,6 +807,76 @@ poly::IntervalAssignment getBounds(VariableMapper& vm, const BoundInference& bi)
 }  // namespace nl
 }  // namespace arith
 }  // namespace theory
-}  // namespace cvc5
+
+Node PolyConverter::ran_to_node(const RealAlgebraicNumber& ran,
+                                const Node& ran_variable)
+{
+  NodeManager* nm = ran_variable.getNodeManager();
+  // if the ran is represented by a poly, run the conversion routine
+  if (!ran.d_isRational)
+  {
+    return theory::arith::nl::ran_to_node(ran.getValue(), ran_variable);
+  }
+  // otherwise, just make the real from the rational value
+  return nm->mkConstReal(ran.getRationalValue());
+}
+
+Node PolyConverter::ran_to_defining_polynomial(const RealAlgebraicNumber& ran,
+                                               const Node& ran_variable)
+{
+  Node witness = ran_to_node(ran, ran_variable);
+  if (witness.getKind() == Kind::WITNESS)
+  {
+    Assert(witness[1].getKind() == Kind::AND
+           && witness[1].getNumChildren() == 3);
+    Assert(witness[1][0].getKind() == Kind::EQUAL);
+    Assert(!witness[1][0][0].isConst());
+    return witness[1][0][0];
+  }
+  return Node::null();
+}
+
+Node PolyConverter::ran_to_lower(NodeManager* nm,
+                                 const RealAlgebraicNumber& ran)
+{
+  Node ran_variable = NodeManager::mkBoundVar(nm->realType());
+  Node witness = ran_to_node(ran, ran_variable);
+  if (witness.getKind() == Kind::WITNESS)
+  {
+    Assert(witness[1].getKind() == Kind::AND
+           && witness[1].getNumChildren() == 3);
+    Assert(witness[1][1].getKind() == Kind::LT);
+    Assert(witness[1][1][0].isConst());
+    return witness[1][1][0];
+  }
+  Assert(witness.isConst());
+  return witness;
+}
+
+Node PolyConverter::ran_to_upper(NodeManager* nm,
+                                 const RealAlgebraicNumber& ran)
+{
+  Node ran_variable = NodeManager::mkBoundVar(nm->realType());
+  Node witness = ran_to_node(ran, ran_variable);
+  if (witness.getKind() == Kind::WITNESS)
+  {
+    Assert(witness[1].getKind() == Kind::AND
+           && witness[1].getNumChildren() == 3);
+    Assert(witness[1][2].getKind() == Kind::LT);
+    Assert(witness[1][2][1].isConst());
+    return witness[1][2][1];
+  }
+  Assert(witness.isConst());
+  return witness;
+}
+
+RealAlgebraicNumber PolyConverter::node_to_ran(const Node& n,
+                                               const Node& ran_variable)
+{
+  return RealAlgebraicNumber(
+      theory::arith::nl::node_to_poly_ran(n, ran_variable));
+}
+
+}  // namespace cvc5::internal
 
 #endif

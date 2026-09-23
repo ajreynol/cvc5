@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Mathias Preiner, Liana Hadarean, Aina Niemetz
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -30,10 +27,10 @@
 // forward declare CMSat::SATSolver and include the cryptominisat header only
 // in cryptominisat.cpp.
 namespace CMSat {
-  class SATSolver;
+class SATSolver;
 }
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace prop {
 
 class CryptoMinisatSolver : public SatSolver
@@ -43,19 +40,12 @@ class CryptoMinisatSolver : public SatSolver
  public:
   ~CryptoMinisatSolver() override;
 
-  ClauseId addClause(SatClause& clause, bool removable) override;
-  ClauseId addXorClause(SatClause& clause, bool rhs, bool removable) override;
+  ClauseId addClause(const SatClause& clause, bool removable) override;
+  ClauseId addXorClause(const SatClause& clause, bool rhs, bool removable);
 
-  bool nativeXor() override { return true; }
-
-  SatVariable newVar(bool isTheoryAtom = false,
-                     bool preRegister = false,
-                     bool canErase = true) override;
-
+  SatVariable newVar(bool isTheoryAtom, bool canErase) override;
   SatVariable trueVar() override;
   SatVariable falseVar() override;
-
-  void markUnremovable(SatLiteral lit);
 
   void interrupt() override;
 
@@ -67,8 +57,6 @@ class CryptoMinisatSolver : public SatSolver
   bool ok() const override;
   SatValue value(SatLiteral l) override;
   SatValue modelValue(SatLiteral l) override;
-
-  unsigned getAssertionLevel() const override;
 
  private:
   class Statistics
@@ -91,7 +79,18 @@ class CryptoMinisatSolver : public SatSolver
    * Initialize SAT solver instance.
    * Note: Split out to not call virtual functions in constructor.
    */
-  void init();
+  void initialize() override;
+
+  /**
+   * Set time limit per solve() call.
+   */
+  void setTimeLimit(ResourceManager* resmgr);
+
+  /**
+   * Set CryptoMiniSat's maximum time limit based on the already elapsed time
+   * of the --tlimit-per limit.
+   */
+  void setMaxTime();
 
   std::unique_ptr<CMSat::SATSolver> d_solver;
   unsigned d_numVariables;
@@ -100,10 +99,11 @@ class CryptoMinisatSolver : public SatSolver
   SatVariable d_false;
 
   Statistics d_statistics;
+  ResourceManager* d_resmgr;
 };
 
 }  // namespace prop
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif  // CVC5_USE_CRYPTOMINISAT
 #endif  // CVC5__PROP__CRYPTOMINISAT_H

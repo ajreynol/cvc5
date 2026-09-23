@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Morgan Deters
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -22,7 +19,7 @@
 
 #include "expr/node.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace quantifiers {
 namespace inst {
@@ -108,6 +105,19 @@ class TriggerTermInfo
   static bool isRelationalTrigger(Node n);
   /** Is k a relational trigger kind? */
   static bool isRelationalTriggerKind(Kind k);
+  /**
+   * Is n a usable relational trigger, which is true if RelationalMatchGenerator
+   * can process n.
+   */
+  static bool isUsableRelationTrigger(Node n);
+  /**
+   * Same as above, but lit / hasPol / pol are updated to the required
+   * constructor arguments for RelationalMatchGenerator.
+   */
+  static bool isUsableRelationTrigger(Node n,
+                                      bool& hasPol,
+                                      bool& pol,
+                                      Node& lit);
   /** is n a simple trigger (see inst_match_generator.h)? */
   static bool isSimpleTrigger(Node n);
   /** get trigger weight
@@ -116,7 +126,8 @@ class TriggerTermInfo
    * trigger term n, where the smaller the value, the easier.
    *
    * Returns 0 for triggers that are APPLY_UF terms.
-   * Returns 1 for other triggers whose kind is atomic.
+   * Returns 1 for other triggers whose kind is atomic, or are usable
+   * relational triggers.
    * Returns 2 otherwise.
    */
   static int32_t getTriggerWeight(Node n);
@@ -125,6 +136,6 @@ class TriggerTermInfo
 }  // namespace inst
 }  // namespace quantifiers
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif

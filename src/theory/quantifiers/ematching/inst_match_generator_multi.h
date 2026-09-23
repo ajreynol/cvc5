@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Tim King, Morgan Deters
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -20,11 +17,12 @@
 
 #include <map>
 #include <vector>
+
 #include "expr/node_trie.h"
 #include "theory/quantifiers/ematching/inst_match_generator.h"
 #include "theory/quantifiers/inst_match_trie.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace quantifiers {
 namespace inst {
@@ -40,7 +38,10 @@ class InstMatchGeneratorMulti : public IMGenerator
 {
  public:
   /** constructors */
-  InstMatchGeneratorMulti(Trigger* tparent, Node q, std::vector<Node>& pats);
+  InstMatchGeneratorMulti(Env& env,
+                          Trigger* tparent,
+                          Node q,
+                          std::vector<Node>& pats);
   /** destructor */
   ~InstMatchGeneratorMulti() override;
 
@@ -49,14 +50,16 @@ class InstMatchGeneratorMulti : public IMGenerator
   /** Reset. */
   bool reset(Node eqc) override;
   /** Add instantiations. */
-  uint64_t addInstantiations(Node q) override;
+  uint64_t addInstantiations(InstMatch& m) override;
+  /** Get the inference id, for statistics. */
+  InferenceId getInferenceId() override;
 
  private:
   /** process new match
    *
    * Called during addInstantiations(...).
    * Indicates we produced a match m for child fromChildIndex
-   * addedLemmas is how many instantiations we succesfully send
+   * addedLemmas is how many instantiations we successfully send
    * via IMGenerator::sendInstantiation(...) calls.
    */
   void processNewMatch(InstMatch& m,
@@ -104,6 +107,6 @@ class InstMatchGeneratorMulti : public IMGenerator
 }  // namespace inst
 }  // namespace quantifiers
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif

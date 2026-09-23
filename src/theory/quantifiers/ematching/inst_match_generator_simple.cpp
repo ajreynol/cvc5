@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Mathias Preiner, Aina Niemetz
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -22,19 +19,20 @@
 #include "theory/quantifiers/term_registry.h"
 #include "theory/quantifiers/term_util.h"
 
-using namespace cvc5::kind;
+using namespace cvc5::internal::kind;
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace quantifiers {
 namespace inst {
 
-InstMatchGeneratorSimple::InstMatchGeneratorSimple(Trigger* tparent,
+InstMatchGeneratorSimple::InstMatchGeneratorSimple(Env& env,
+                                                   Trigger* tparent,
                                                    Node q,
                                                    Node pat)
-    : IMGenerator(tparent), d_quant(q), d_match_pattern(pat)
+    : IMGenerator(env, tparent), d_quant(q), d_match_pattern(pat)
 {
-  if (d_match_pattern.getKind() == NOT)
+  if (d_match_pattern.getKind() == Kind::NOT)
   {
     d_match_pattern = d_match_pattern[0];
     d_pol = false;
@@ -43,7 +41,7 @@ InstMatchGeneratorSimple::InstMatchGeneratorSimple(Trigger* tparent,
   {
     d_pol = true;
   }
-  if (d_match_pattern.getKind() == EQUAL)
+  if (d_match_pattern.getKind() == Kind::EQUAL)
   {
     d_eqc = d_match_pattern[1];
     d_match_pattern = d_match_pattern[0];
@@ -52,10 +50,10 @@ InstMatchGeneratorSimple::InstMatchGeneratorSimple(Trigger* tparent,
   Assert(TriggerTermInfo::isSimpleTrigger(d_match_pattern));
   for (size_t i = 0, nchild = d_match_pattern.getNumChildren(); i < nchild; i++)
   {
-    if (d_match_pattern[i].getKind() == INST_CONSTANT)
+    if (d_match_pattern[i].getKind() == Kind::INST_CONSTANT)
     {
-      if (!options::cegqi()
-          || TermUtil::getInstConstAttr(d_match_pattern[i]) == q)
+      // check independent of options
+      if (TermUtil::getInstConstAttr(d_match_pattern[i]) == q)
       {
         d_var_num[i] = d_match_pattern[i].getAttribute(InstVarNumAttribute());
       }
@@ -71,7 +69,7 @@ InstMatchGeneratorSimple::InstMatchGeneratorSimple(Trigger* tparent,
 }
 
 void InstMatchGeneratorSimple::resetInstantiationRound() {}
-uint64_t InstMatchGeneratorSimple::addInstantiations(Node q)
+uint64_t InstMatchGeneratorSimple::addInstantiations(InstMatch& m)
 {
   uint64_t addedLemmas = 0;
   TNodeTrie* tat;
@@ -97,7 +95,7 @@ uint64_t InstMatchGeneratorSimple::addInstantiations(Node q)
         {
           if (t.first != r)
           {
-            InstMatch m(q);
+            m.resetAll();
             addInstantiations(m, addedLemmas, 0, &(t.second));
             if (d_qstate.isInConflict())
             {
@@ -109,12 +107,12 @@ uint64_t InstMatchGeneratorSimple::addInstantiations(Node q)
       tat = nullptr;
     }
   }
-  Debug("simple-trigger-debug")
+  Trace("simple-trigger-debug")
       << "Adding instantiations based on " << tat << " from " << d_op << " "
       << d_eqc << std::endl;
   if (tat && !d_qstate.isInConflict())
   {
-    InstMatch m(q);
+    m.resetAll();
     addInstantiations(m, addedLemmas, 0, tat);
   }
   return addedLemmas;
@@ -125,34 +123,37 @@ void InstMatchGeneratorSimple::addInstantiations(InstMatch& m,
                                                  size_t argIndex,
                                                  TNodeTrie* tat)
 {
-  Debug("simple-trigger-debug")
+  Trace("simple-trigger-debug")
       << "Add inst " << argIndex << " " << d_match_pattern << std::endl;
   if (argIndex == d_match_pattern.getNumChildren())
   {
     Assert(!tat->d_data.empty());
     TNode t = tat->getData();
-    Debug("simple-trigger") << "Actual term is " << t << std::endl;
+    Trace("simple-trigger") << "Actual term is " << t << std::endl;
     // convert to actual used terms
+    std::vector<Node> terms;
+    terms.resize(d_quant[0].getNumChildren());
     for (const auto& v : d_var_num)
     {
       if (v.second >= 0)
       {
         Assert(v.first < t.getNumChildren());
-        Debug("simple-trigger")
+        Trace("simple-trigger")
             << "...set " << v.second << " " << t[v.first] << std::endl;
-        m.setValue(v.second, t[v.first]);
+        terms[v.second] = t[v.first];
       }
     }
     // we do not need the trigger parent for simple triggers (no post-processing
     // required)
-    if (sendInstantiation(m, InferenceId::QUANTIFIERS_INST_E_MATCHING_SIMPLE))
+    if (sendInstantiation(terms))
     {
       addedLemmas++;
-      Debug("simple-trigger") << "-> Produced instantiation " << m << std::endl;
+      Trace("simple-trigger")
+          << "-> Produced instantiation " << terms << std::endl;
     }
     return;
   }
-  if (d_match_pattern[argIndex].getKind() == INST_CONSTANT)
+  if (d_match_pattern[argIndex].getKind() == Kind::INST_CONSTANT)
   {
     int v = d_var_num[argIndex];
     if (v != -1)
@@ -160,18 +161,25 @@ void InstMatchGeneratorSimple::addInstantiations(InstMatch& m,
       for (std::pair<const TNode, TNodeTrie>& tt : tat->d_data)
       {
         Node t = tt.first;
-        Node prev = m.get(v);
         // using representatives, just check if equal
-        Assert(t.getType().isComparableTo(d_match_pattern_arg_types[argIndex]));
-        if (prev.isNull() || prev == t)
+        Assert(t.getType() == d_match_pattern_arg_types[argIndex]);
+        bool wasSet = !m.get(v).isNull();
+        if (!m.set(v, t))
         {
-          m.setValue(v, t);
-          addInstantiations(m, addedLemmas, argIndex + 1, &(tt.second));
-          m.setValue(v, prev);
-          if (d_qstate.isInConflict())
-          {
-            break;
-          }
+          continue;
+        }
+        if (d_qstate.isInConflict())
+        {
+          break;
+        }
+        addInstantiations(m, addedLemmas, argIndex + 1, &(tt.second));
+        if (!wasSet)
+        {
+          m.reset(v);
+        }
+        if (d_qstate.isInConflict())
+        {
+          break;
         }
       }
       return;
@@ -196,7 +204,11 @@ int InstMatchGeneratorSimple::getActiveScore()
   return static_cast<int>(ngt);
 }
 
+InferenceId InstMatchGeneratorSimple::getInferenceId()
+{
+  return InferenceId::QUANTIFIERS_INST_E_MATCHING_SIMPLE;
+}
 }  // namespace inst
 }  // namespace quantifiers
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal

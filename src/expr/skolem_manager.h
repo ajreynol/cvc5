@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Morgan Deters, Andres Noetzli
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -18,205 +15,93 @@
 #ifndef CVC5__EXPR__SKOLEM_MANAGER_H
 #define CVC5__EXPR__SKOLEM_MANAGER_H
 
+#include <cvc5/cvc5_skolem_id.h>
+
 #include <string>
 
+#include "expr/internal_skolem_id.h"
 #include "expr/node.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 
 class ProofGenerator;
 
-/** Skolem function identifier */
-enum class SkolemFunId
-{
-  NONE,
-  /** an uninterpreted function f s.t. f(x) = x / 0.0 (real division) */
-  DIV_BY_ZERO,
-  /** an uninterpreted function f s.t. f(x) = x / 0 (integer division) */
-  INT_DIV_BY_ZERO,
-  /** an uninterpreted function f s.t. f(x) = x mod 0 */
-  MOD_BY_ZERO,
-  /** an uninterpreted function f s.t. f(x) = sqrt(x) */
-  SQRT,
-  /** a wrongly applied selector */
-  SELECTOR_WRONG,
-  /** a shared selector */
-  SHARED_SELECTOR,
-  /** an application of seq.nth that is out of bounds */
-  SEQ_NTH_OOB,
-  /**
-   * Regular expression unfold component: if (str.in_re t R), where R is
-   * (re.++ r0 ... rn), then the RE_UNFOLD_POS_COMPONENT{t,R,i} is a string
-   * skolem ki such that t = (str.++ k0 ... kn) and (str.in_re k0 r0) for
-   * i = 0, ..., n.
-   */
-  RE_UNFOLD_POS_COMPONENT,
-  /** Higher-order type match predicate, see HoTermDb */
-  HO_TYPE_MATCH_PRED,
-};
-/** Converts a skolem function name to a string. */
-const char* toString(SkolemFunId id);
-/** Writes a skolem function name to a stream. */
-std::ostream& operator<<(std::ostream& out, SkolemFunId id);
-
 /**
  * A manager for skolems that can be used in proofs. This is designed to be
- * a trusted interface to NodeManager::mkSkolem, where one
- * must provide a definition for the skolem they create in terms of a
- * predicate that the introduced variable is intended to witness.
+ * a trusted interface for constructing variables of SKOLEM type, where one
+ * must provide information that characterizes the skolem. This information
+ * may either be:
+ * (1) the term that the skolem purifies (`mkPurifySkolem`)
+ * (2) an identifier (`mkSkolemFunction`) and a set of "cache values", which
+ * can be seen as arguments to the skolem function. These are typically used for
+ * implementing theory-specific inferences that introduce symbols that
+ * are not interpreted by the theory (see SkolemId enum).
+ *
+ * Note that (1) is a special instance of (2), where the purification skolem
+ * for t is equivalent to calling mkSkolemFunction on SkolemId::PURIFY
+ * and t.
+ *
+ * If a variable cannot be associated with any of the above information,
+ * the method `mkDummySkolem` may be used, which always constructs a fresh
+ * skolem variable.
  *
  * It is implemented by mapping terms to an attribute corresponding to their
- * "original form" and "witness form" as described below. Hence, this class does
- * not impact the reference counting of skolem variables which may be deleted if
- * they are not used.
+ * "original form" as described below. Hence, this class does not impact the
+ * reference counting of skolem variables which may be deleted if they are not
+ * used.
  *
- * We distinguish two kinds of mappings between terms and skolems:
+ * To handle purification of witness terms, notice that the purification
+ * skolem for (witness ((x T)) P) is equivalent to the skolem function:
+ *    (QUANTIFIERS_SKOLEMIZE (exists ((x T)) P) 0)
+ * In other words, the purification for witness terms are equivalent to
+ * the skolemization of their corresponding existential. This is currently only
+ * used for eliminating witness terms coming from algorithms that introduce
+ * them, e.g. BV/set instantiation. Unifying these two skolems is required
+ * for ensuring proof checking succeeds for term formula removal on witness
+ * terms.
  *
- * (1) "Original form", which associates skolems with the terms they purify.
- * This is used in mkPurifySkolem below.
- *
- * (2) "Witness form", which associates skolems with their formal definition
- * as a witness term. This is used in mkSkolem below.
- *
- * It is possible to unify these so that purification skolems for t are skolems
- * whose witness form is (witness ((x T)) (= x t)). However, there are
- * motivations not to do so. In particular, witness terms in most contexts
- * should be seen as black boxes, converting something to witness form may have
- * unintended consequences e.g. variable shadowing. In contrast, converting to
- * original form does not have these complications. Furthermore, having original
- * form greatly simplifies reasoning in the proof, in particular, it avoids the
- * need to reason about identifiers for introduced variables x.
- *
- * Furthermore, note that original form and witness form may share skolems
- * in the rare case that a witness term is purified. This is currently only the
- * case for algorithms that introduce witness, e.g. BV/set instantiation.
- *
- * Additionally, we consider a third class of skolems (mkSkolemFunction) which
- * are for convenience associated with an identifier, and not a witness term.
+ * The use of purification skolems and skolem functions avoid having to reason
+ * about witness terms. This avoids several complications. In particular,
+ * witness terms in most contexts should be seen as black boxes, converting
+ * something to a witness term may have unintended consequences e.g. variable
+ * shadowing. In contrast, converting to original form does not have these
+ * complications. Furthermore, having original form greatly simplifies
+ * reasoning in the proof in certain external proof formats, in particular, it
+ * avoids the need to reason about identifiers for introduced variables for
+ * the binders of witness terms.
  */
 class SkolemManager
 {
  public:
-  SkolemManager() {}
+  SkolemManager(NodeManager* nm);
   ~SkolemManager() {}
   /**
-   * This makes a skolem of same type as bound variable v, (say its type is T),
-   * whose definition is (witness ((v T)) pred). This definition is maintained
-   * by this class.
-   *
-   * Notice that (exists ((v T)) pred) should be a valid formula. This fact
-   * captures the reason for why the returned Skolem was introduced.
-   *
-   * Take as an example extensionality in arrays:
-   *
-   * (declare-fun a () (Array Int Int))
-   * (declare-fun b () (Array Int Int))
-   * (assert (not (= a b)))
-   *
-   * To witness the index where the arrays a and b are disequal, it is intended
-   * we call this method on:
-   *   Node k = mkSkolem( x, F )
-   * where F is:
-   *   (=> (not (= a b)) (not (= (select a x) (select b x))))
-   * and x is a fresh bound variable of integer type. Internally, this will map
-   * k to the term:
-   *   (witness ((x Int)) (=> (not (= a b))
-   *                          (not (= (select a x) (select b x)))))
-   * A lemma generated by the array solver for extensionality may safely use
-   * the skolem k in the standard way:
-   *   (=> (not (= a b)) (not (= (select a k) (select b k))))
-   * Furthermore, notice that the following lemma does not involve fresh
-   * skolem variables and is valid according to the theory of arrays extended
-   * with support for witness:
-   *   (let ((w (witness ((x Int)) (=> (not (= a b))
-   *                                   (not (= (select a x) (select b x)))))))
-   *     (=> (not (= a b)) (not (= (select a w) (select b w)))))
-   * This version of the lemma, which requires no explicit tracking of free
-   * Skolem variables, can be obtained by a call to getWitnessForm(...)
-   * below. We call this the "witness form" of the lemma above.
-   *
-   * @param v The bound variable of the same type of the Skolem to create.
-   * @param pred The desired property of the Skolem to create, in terms of bound
-   * variable v.
-   * @param prefix The prefix of the name of the Skolem
-   * @param comment Debug information about the Skolem
-   * @param flags The flags for the Skolem (see NodeManager::mkSkolem)
-   * @param pg The proof generator for this skolem. If non-null, this proof
-   * generator must respond to a call to getProofFor(exists v. pred) during
-   * the lifetime of the current node manager.
-   * @return The skolem whose witness form is registered by this class.
-   */
-  Node mkSkolem(Node v,
-                Node pred,
-                const std::string& prefix,
-                const std::string& comment = "",
-                int flags = NodeManager::SKOLEM_DEFAULT,
-                ProofGenerator* pg = nullptr);
-  /**
-   * Make skolemized form of existentially quantified formula q, and store its
-   * Skolems into the argument skolems.
-   *
-   * For example, calling this method on:
-   *   (exists ((x Int) (y Int)) (P x y))
-   * returns:
-   *   (P w1 w2)
-   * where w1 and w2 are skolems with witness forms:
-   *   (witness ((x Int)) (exists ((y Int)) (P x y)))
-   *   (witness ((y Int)) (P w1 y))
-   * respectively. Additionally, this method will add { w1, w2 } to skolems.
-   * Notice that y is *not* renamed in the witness form of w1. This is not
-   * necessary since w1 is skolem. Although its witness form contains
-   * quantification on y, we never construct a term where the witness form
-   * of w1 is expanded in the witness form of w2. This avoids variable
-   * shadowing.
-   *
-   * In contrast to mkSkolem, the proof generator is for the *entire*
-   * existentially quantified formula q, which may have multiple variables in
-   * its prefix.
-   *
-   * @param q The existentially quantified formula to skolemize,
-   * @param skolems Vector to add Skolems of q to,
-   * @param prefix The prefix of the name of each of the Skolems
-   * @param comment Debug information about each of the Skolems
-   * @param flags The flags for the Skolem (see NodeManager::mkSkolem)
-   * @param pg The proof generator for this skolem. If non-null, this proof
-   * generator must respond to a call to getProofFor(q) during
-   * the lifetime of the current node manager.
-   * @return The skolemized form of q.
-   */
-  Node mkSkolemize(Node q,
-                   std::vector<Node>& skolems,
-                   const std::string& prefix,
-                   const std::string& comment = "",
-                   int flags = NodeManager::SKOLEM_DEFAULT,
-                   ProofGenerator* pg = nullptr);
-  /**
-   * Same as above, but for special case of (witness ((x T)) (= x t))
-   * where T is the type of t. This skolem is unique for each t, which we
+   * Make purification skolem. This skolem is unique for each t, which we
    * implement via an attribute on t. This attribute is used to ensure to
    * associate a unique skolem for each t.
    *
-   * Notice that a purification skolem is trivial to justify, and hence it
-   * does not require a proof generator.
+   * Notice that a purification skolem is trivial to justify (via
+   * SKOLEM_INTRO), and hence it does not require a proof generator.
    *
-   * Notice that in very rare cases, two different terms may have the
-   * same purification skolem. For example, let k be the skolem introduced to
-   * eliminate (ite A B C). Then, the pair of terms:
+   * Notice that we do not convert t to original form in this call. Thus,
+   * in very rare cases, two Skolems may be introduced that have the same
+   * original form. For example, let k be the skolem introduced to eliminate
+   * (ite A B C). Then, asking for the purify skolem for:
    *  (ite (ite A B C) D E) and (ite k D E)
-   * have the same purification skolem. In the implementation, this is a result
-   * of the fact that the above terms have the same original form. It is sound
-   * to use the same skolem to purify these two terms, since they are
-   * definitionally equivalent.
+   * will return two different Skolems.
+   *
+   * @param t The term to purify
+   * @return The purification skolem for t
    */
-  Node mkPurifySkolem(Node t,
-                      const std::string& prefix,
-                      const std::string& comment = "",
-                      int flags = NodeManager::SKOLEM_DEFAULT);
+  static Node mkPurifySkolem(Node t);
   /**
    * Make skolem function. This method should be used for creating fixed
-   * skolem functions of the forms described in SkolemFunId. The user of this
+   * skolem functions of the forms described in SkolemId. The user of this
    * method is responsible for providing a proper type for the identifier that
-   * matches the description of id. Skolem functions are useful for modelling
+   * matches the description of id.
+   * This can be done from the function
+   * `SkolemManager::getTypeFor`.
+   * Skolem functions are useful for modelling
    * the behavior of partial functions, or for theory-specific inferences that
    * introduce fresh variables.
    *
@@ -234,27 +119,54 @@ class SkolemManager
    * as well.
    *
    * @param id The identifier of the skolem function
-   * @param tn The type of the returned skolem function
    * @param cacheVal A cache value. The returned skolem function will be
    * unique to the pair (id, cacheVal). This value is required, for instance,
    * for skolem functions that are in fact families of skolem functions,
    * e.g. the wrongly applied case of selectors.
    * @return The skolem function.
    */
-  Node mkSkolemFunction(SkolemFunId id,
-                        TypeNode tn,
-                        Node cacheVal = Node::null(),
-                        int flags = NodeManager::SKOLEM_DEFAULT);
-  /** Same as above, with multiple cache values */
-  Node mkSkolemFunction(SkolemFunId id,
-                        TypeNode tn,
-                        const std::vector<Node>& cacheVals,
-                        int flags = NodeManager::SKOLEM_DEFAULT);
+  Node mkSkolemFunction(SkolemId id, Node cacheVal = Node::null());
   /**
-   * Is k a skolem function? Returns true if k was generated by the above call.
-   * Updates the arguments to the values used when constructing it.
+   * Same as above, with multiple cache values.
+   * @param id The identifier of the skolem function
+   * @param cacheVals A vector of cache values.
+   * @return The skolem function.
    */
-  bool isSkolemFunction(Node k, SkolemFunId& id, Node& cacheVal) const;
+  Node mkSkolemFunction(SkolemId id, const std::vector<Node>& cacheVals);
+  /**
+   * Same as above, with multiple cache values and an internal skolem id.
+   * This will call mkSkolemFunction where the (external) id is
+   * SkolemId::INTERNAL. The type is provided explicitly.
+   */
+  Node mkInternalSkolemFunction(InternalSkolemId id,
+                                TypeNode tn,
+                                const std::vector<Node>& cacheVals = {});
+  /**
+   * Is k a skolem function? Returns true if k was generated by the above
+   * call.
+   */
+  static bool isSkolemFunction(TNode k);
+  /**
+   * Is k a skolem function? Returns true if k was generated by the above
+   * call. Updates the arguments to the values used when constructing it.
+   */
+  static bool isSkolemFunction(TNode k, SkolemId& id, Node& cacheVal);
+  /**
+   * @param k The skolem.
+   * @return skolem function id for k.
+   */
+  SkolemId getId(TNode k) const;
+  /**
+   * @param k The skolem.
+   * @return The list of skolem indices for k.
+   */
+  std::vector<Node> getIndices(TNode k) const;
+  /**
+   * @param k The skolem.
+   * @return the internal skolem function id, for skolem k whose id is
+   * SkolemId::INTERNAL.
+   */
+  InternalSkolemId getInternalId(TNode k) const;
   /**
    * Create a skolem constant with the given name, type, and comment. This
    * should only be used if the definition of the skolem does not matter.
@@ -267,73 +179,85 @@ class SkolemManager
    * debugging output.  Use SKOLEM_EXACT_NAME flag if you don't want
    * a unique ID appended and use prefix as the name.
    * @param type the type of the skolem variable to create
-   * @param comment a comment for dumping output; if declarations are
-   * being dumped, this is included in a comment before the declaration
-   * and can be quite useful for debugging
    * @param flags an optional mask of bits from SkolemFlags to control
-   * mkSkolem() behavior
+   * skolem behavior
    */
   Node mkDummySkolem(const std::string& prefix,
                      const TypeNode& type,
-                     const std::string& comment = "",
-                     int flags = NodeManager::SKOLEM_DEFAULT);
+                     SkolemFlags flags = SkolemFlags::SKOLEM_DEFAULT);
+  /** Returns true if n is a skolem that stands for an abstract value */
+  bool isAbstractValue(TNode n) const;
   /**
-   * Get proof generator for existentially quantified formula q. This returns
-   * the proof generator that was provided in a call to mkSkolem above.
-   */
-  ProofGenerator* getProofGenerator(Node q) const;
-  /**
-   * Convert to witness form, which gets the witness form of a skolem k.
-   * Notice this method is *not* recursive, instead, it is a simple attribute
-   * lookup.
-   *
-   * @param k The variable to convert to witness form described above
-   * @return k in witness form.
-   */
-  static Node getWitnessForm(Node k);
-  /**
-   * Convert to original form, which recursively replaces all skolems terms in n
-   * by the term they purify.
+   * Convert to original form, which recursively replaces all skolems terms in
+   * n by the term they purify.
    *
    * @param n The term or formula to convert to original form described above
    * @return n in original form.
    */
   static Node getOriginalForm(Node n);
+  /**
+   * Convert to unpurified form, which returns the term that k purifies. This
+   * is literally the term that was passed as an argument to mkPurify on the
+   * call that created k. In contrast to getOriginalForm, this is not
+   * recursive w.r.t. skolems, so that the term purified by k may itself
+   * contain purification skolems that are not expanded.
+   *
+   * @param k The skolem to convert to unpurified form
+   * @return the unpurified form of k.
+   */
+  static Node getUnpurifiedForm(Node k);
+  /**
+   * Get the number of indices for a skolem id.
+   * @param id The skolem id.
+   * @return The number of indices for the skolem id.
+   */
+  size_t getNumIndicesForSkolemId(SkolemId id) const;
+  /**
+   * Is the given skolem identifier commutative, in the sense that its
+   * arguments can be reordered? If this method returns true, then
+   * we sort the arguments to the skolem upon construction via the API.
+   */
+  static bool isCommutativeSkolemId(SkolemId id);
 
  private:
+  /** The associated node manager. */
+  NodeManager* d_nm;
   /** Cache of skolem functions for mkSkolemFunction above. */
-  std::map<std::tuple<SkolemFunId, TypeNode, Node>, Node> d_skolemFuns;
+  std::map<std::tuple<SkolemId, TypeNode, Node>, Node> d_skolemFuns;
   /** Backwards mapping of above */
-  std::map<Node, std::tuple<SkolemFunId, TypeNode, Node>> d_skolemFunMap;
+  std::map<Node, std::tuple<SkolemId, TypeNode, Node>> d_skolemFunMap;
+
   /**
-   * Mapping from witness terms to proof generators.
-   */
-  std::map<Node, ProofGenerator*> d_gens;
-  /** Get or make skolem attribute for term w, which may be a witness term */
-  static Node mkSkolemInternal(Node w,
-                               const std::string& prefix,
-                               const std::string& comment,
-                               int flags);
-  /**
-   * Skolemize the first variable of existentially quantified formula q.
-   * For example, calling this method on:
-   *   (exists ((x Int) (y Int)) (P x y))
-   * will return:
-   *   (witness ((x Int)) (exists ((y Int)) (P x y)))
-   * If q is not an existentially quantified formula, then null is
-   * returned and an assertion failure is thrown.
+   * A counter used to produce unique skolem names.
    *
-   * This method additionally updates qskolem to be the skolemized form of q.
-   * In the above example, this is set to:
-   *   (exists ((y Int)) (P (witness ((x Int)) (exists ((y' Int)) (P x y'))) y))
+   * Note that it is NOT incremented when skolems are created using
+   * SKOLEM_EXACT_NAME, so it is NOT a count of the skolems produced
+   * by this node manager.
    */
-  Node skolemize(Node q,
-                 Node& qskolem,
-                 const std::string& prefix,
-                 const std::string& comment = "",
-                 int flags = NodeManager::SKOLEM_DEFAULT);
+  size_t d_skolemCounter;
+  /** Same as mkSkolemFunction, with explicit type */
+  Node mkSkolemFunctionTyped(SkolemId id,
+                             TypeNode tn,
+                             Node cacheVal = Node::null());
+  /** Same as above, with multiple cache values and explicit Type */
+  Node mkSkolemFunctionTyped(SkolemId id,
+                             TypeNode tn,
+                             const std::vector<Node>& cacheVals);
+  /**
+   * Create a skolem constant with the given name, type, and comment.
+   *
+   * This method is intentionally private. To create skolems, one should
+   * call a public method from SkolemManager for allocating a skolem in a
+   * proper way, or otherwise use SkolemManager::mkDummySkolem.
+   */
+  Node mkSkolemNode(Kind k,
+                    const std::string& prefix,
+                    const TypeNode& type,
+                    SkolemFlags flags = SkolemFlags::SKOLEM_DEFAULT);
+  /** Get type for skolem */
+  TypeNode getTypeFor(SkolemId id, const std::vector<Node>& cacheVals);
 };
 
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__EXPR__PROOF_SKOLEM_CACHE_H */

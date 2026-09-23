@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Kshitij Bansal, Gereon Kremer
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -16,15 +13,17 @@
 #ifndef CVC5__MAIN__COMMAND_EXECUTOR_H
 #define CVC5__MAIN__COMMAND_EXECUTOR_H
 
+#include <cvc5/cvc5.h>
+#include <cvc5/cvc5_parser.h>
+
 #include <iosfwd>
 #include <string>
 
-#include "api/cpp/cvc5.h"
-#include "expr/symbol_manager.h"
-
 namespace cvc5 {
 
+namespace parser {
 class Command;
+}
 
 namespace main {
 
@@ -35,7 +34,7 @@ class CommandExecutor
    * The solver object, which is allocated by this class and is used for
    * executing most commands (e.g. check-sat).
    */
-  std::unique_ptr<api::Solver>& d_solver;
+  std::unique_ptr<cvc5::Solver>& d_solver;
   /**
    * The symbol manager, which is allocated by this class. This manages
    * all things related to definitions of symbols and their impact on behaviors
@@ -46,12 +45,15 @@ class CommandExecutor
    * Certain commands (e.g. reset-assertions) have a specific impact on the
    * symbol manager.
    */
-  std::unique_ptr<SymbolManager> d_symman;
+  std::unique_ptr<parser::SymbolManager> d_symman;
 
-  api::Result d_result;
+  cvc5::Result d_result;
+
+  /** Cache option value of parse-only option. */
+  bool d_parseOnly;
 
  public:
-  CommandExecutor(std::unique_ptr<api::Solver>& solver);
+  CommandExecutor(std::unique_ptr<cvc5::Solver>& solver);
 
   virtual ~CommandExecutor();
 
@@ -60,24 +62,34 @@ class CommandExecutor
    * sequence.  Eventually uses doCommandSingleton (which can be
    * overridden by a derived class).
    */
-  bool doCommand(cvc5::Command* cmd);
+  bool doCommand(cvc5::parser::Command* cmd);
 
-  bool doCommand(std::unique_ptr<cvc5::Command>& cmd)
+  bool doCommand(std::unique_ptr<cvc5::parser::Command>& cmd)
   {
     return doCommand(cmd.get());
   }
 
   /** Get a pointer to the solver object owned by this CommandExecutor. */
-  api::Solver* getSolver() { return d_solver.get(); }
+  cvc5::Solver* getSolver() { return d_solver.get(); }
 
   /** Get a pointer to the symbol manager owned by this CommandExecutor */
-  SymbolManager* getSymbolManager() { return d_symman.get(); }
+  parser::SymbolManager* getSymbolManager() { return d_symman.get(); }
 
-  api::Result getResult() const { return d_result; }
+  cvc5::Result getResult() const { return d_result; }
   void reset();
 
   /** Store the current options as the original options */
   void storeOptionsAsOriginal();
+
+  /**
+   * Set option internal. This method should be used to set options on the
+   * underlying solver that do not originate from the user. We do this to
+   * set expert or undocumented options that should not throw an exception
+   * e.g. when using --safe-options.
+   * @param key The option to set
+   * @param value The value to set
+   */
+  void setOptionInternal(const std::string& key, const std::string& value);
 
   /**
    * Prints statistics to an output stream.
@@ -96,19 +108,17 @@ class CommandExecutor
 
   void flushOutputStreams();
 
-protected:
+ protected:
   /** Executes treating cmd as a singleton */
- virtual bool doCommandSingleton(cvc5::Command* cmd);
+  virtual bool doCommandSingleton(parser::Cmd* cmd);
 
-private:
+ private:
   CommandExecutor();
 
+  bool solverInvoke(cvc5::Solver* solver,
+                    parser::SymManager* sm,
+                    parser::Cmd* cmd);
 }; /* class CommandExecutor */
-
-bool solverInvoke(api::Solver* solver,
-                  SymbolManager* sm,
-                  Command* cmd,
-                  std::ostream& out);
 
 }  // namespace main
 }  // namespace cvc5

@@ -1,0 +1,6 @@
+(set-logic ALL)
+(set-info :status unsat)
+(declare-datatypes ((U@ 0)) (((V))))
+(declare-fun I (U@ Int) Bool)
+(assert (forall ((v U@) (i Int)) (! false :qid |outputbpl.122:24| :pattern ((I v i)))))
+(check-sat)

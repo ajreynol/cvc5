@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Andres Noetzli, Tianyi Liang
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -30,7 +27,7 @@
 #include "theory/strings/solver_state.h"
 #include "theory/strings/term_registry.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace strings {
 
@@ -48,20 +45,12 @@ class CoreInferInfo
   /** The infer info of this class */
   InferInfo d_infer;
   /**
-   * The pending phase requirements, see InferenceManager::sendPhaseRequirement.
-   */
-  std::map<Node, bool> d_pendingPhase;
-  /**
    * The index in the normal forms under which this inference is addressing.
    * For example, if the inference is inferring x = y from |x|=|y| and
    *   w ++ x ++ ... = w ++ y ++ ...
    * then d_index is 1, since x and y are at index 1 in these concat terms.
    */
   unsigned d_index;
-  /**
-   * The normal form pair that is cached as a result of this inference.
-   */
-  Node d_nfPair[2];
   /** for debugging
    *
    * The base pair of strings d_i/d_j that led to the inference, and whether
@@ -78,7 +67,7 @@ class CoreInferInfo
  * This implements techniques for handling (dis)equalities involving
  * string concatenation terms based on the procedure by Liang et al CAV 2014.
  */
-class CoreSolver : protected EnvObj
+class CoreSolver : public InferSideEffectProcess, protected EnvObj
 {
   friend class InferenceManager;
   using NodeIntMap = context::CDHashMap<Node, int>;
@@ -152,7 +141,7 @@ class CoreSolver : protected EnvObj
    * assignment. For further detail on this terminology, see Liang et al
    * CAV 2014.
    *
-   * Notice that all constant words are implicitly considered concatentation
+   * Notice that all constant words are implicitly considered concatenation
    * of their characters, e.g. "abc" is treated as "a" ++ "b" ++ "c".
    *
    * At a high level, we build normal forms for equivalence classes bottom-up,
@@ -171,6 +160,23 @@ class CoreSolver : protected EnvObj
    * we have successfully assigned normal forms for all equivalence classes, as
    * stored in d_normal_forms. Otherwise, this method may add a fact, lemma, or
    * conflict based on inferences in the Inference enumeration above.
+   *
+   * This check is stratified into two phases. When checkNormalFormsEqProp
+   * is called, this may:
+   * (A) trigger new facts or conflicts,
+   * (B) compute a set of possible lemmas,
+   * (C) determine that there is nothing to do, in which case normal forms
+   * are assigned for all equivalence classes.
+   * In the case of (B), the possible lemmas are buffered in this class, and
+   * are sent to the inference manager only when checkNormalFormsEq is called.
+   * In the case of (C), it is possible that model unsoundness was introduced,
+   * for example, by ignoring cyclic word equations. In this case, we
+   * setModelUnsound on the output channel during checkNormalFormsEq below.
+   */
+  void checkNormalFormsEqProp();
+  /**
+   * Sends a lemma computed in the above check, if one exists, and processes
+   * model unsoundness if necessary.
    */
   void checkNormalFormsEq();
   /** check normal forms disequalities
@@ -201,9 +207,28 @@ class CoreSolver : protected EnvObj
    * shown to be helpful.
    */
   void checkLengthsEqc();
+  /** check register terms for normal forms
+   *
+   * This calls registerTerm(str.++(t1, ..., tn ), 3) on the normal forms
+   * (t1, ..., tn) of all string equivalence classes { s1, ..., sm } such that
+   * there does not exist a term of the form str.len(si) in the current context.
+   */
+  void checkRegisterTermsNormalForms();
   //-----------------------end inference steps
 
   //--------------------------- query functions
+  /**
+   * Get relevant disequalities, which is a list of disequalities that are
+   * asserted in the current context between strings whose lengths are not
+   * already disequal. This list is filtered to not contain pairs of
+   * disequalities that are congruent.
+   *
+   * This list is used, e.g., when implementing the injectivity lemma schema
+   * for str.to_code.
+   */
+  const std::vector<Node>& getRelevantDeq() const;
+  /** Has a normal form for n been computed? */
+  bool hasNormalForm(const Node& n) const;
   /**
    * Get normal form for string term n. For details on this data structure,
    * see theory/strings/normal_form.h.
@@ -211,7 +236,7 @@ class CoreSolver : protected EnvObj
    * This query is valid after a successful call to checkNormalFormsEq, e.g.
    * a call where the inference manager was not given any lemmas or inferences.
    */
-  NormalForm& getNormalForm(Node n);
+  NormalForm& getNormalForm(const Node& n);
   /** get normal string
    *
    * This method returns the node that is equivalent to the normal form of x,
@@ -223,75 +248,19 @@ class CoreSolver : protected EnvObj
   Node getNormalString(Node x, std::vector<Node>& nf_exp);
   //-------------------------- end query functions
 
-  /**
-   * This returns the conclusion of the proof rule corresponding to splitting
-   * on the arrangement of terms x and y appearing in an equation of the form
-   *   x ++ x' = y ++ y' or x' ++ x = y' ++ y
-   * where we are in the second case if isRev is true. This method is called
-   * both by the core solver and by the strings proof checker.
-   *
-   * @param x The first term
-   * @param y The second term
-   * @param rule The proof rule whose conclusion we are asking for
-   * @param isRev Whether the equation is in a reverse direction
-   * @param skc The skolem cache (to allocate fresh variables if necessary)
-   * @param newSkolems The vector to add new variables to
-   * @return The conclusion of the inference.
-   */
-  static Node getConclusion(Node x,
-                            Node y,
-                            PfRule rule,
-                            bool isRev,
-                            SkolemCache* skc,
-                            std::vector<Node>& newSkolems);
-  /**
-   * Get sufficient non-empty overlap of string constants c and d.
-   *
-   * This is called when handling equations of the form:
-   *   x ++ d ++ ... = c ++ ...
-   * when x is non-empty and non-constant.
-   *
-   * This returns the maximal index in c which x must have as a prefix, which
-   * notice is an integer >= 1 since x is non-empty.
-   *
-   * @param c The first constant
-   * @param d The second constant
-   * @param isRev Whether the equation is in the reverse direction
-   * @return The position in c.
-   */
-  static size_t getSufficientNonEmptyOverlap(Node c, Node d, bool isRev);
-  /**
-   * This returns the conclusion of the decompose proof rule. This returns
-   * a conjunction of splitting string x into pieces based on length l, e.g.:
-   *   x = k_1 ++ k_2
-   * where k_1 (resp. k_2) is a skolem corresponding to a substring of x of
-   * length l if isRev is false (resp. true). The function also adds a
-   * length constraint len(k_1) = l (resp. len(k_2) = l). Note that adding this
-   * constraint to the conclusion is *not* optional, since the skolems k_1 and
-   * k_2 may be shared, hence their length constraint must be guarded by the
-   * premises of this inference.
-   *
-   * @param x The string term
-   * @param l The length term
-   * @param isRev Whether the equation is in a reverse direction
-   * @param skc The skolem cache (to allocate fresh variables if necessary)
-   * @param newSkolems The vector to add new variables to
-   * @return The conclusion of the inference.
-   */
-  static Node getDecomposeConclusion(Node x,
-                                     Node l,
-                                     bool isRev,
-                                     SkolemCache* skc,
-                                     std::vector<Node>& newSkolems);
+  /** Called when ii is ready to be processed as a fact */
+  void processFact(InferInfo& ii, ProofGenerator*& pg) override;
+  /** Called when ii is ready to be processed as a lemma */
+  TrustNode processLemma(InferInfo& ii, LemmaProperty& p) override;
 
  private:
   /**
-   * This processes the infer info ii as an inference. In more detail, it calls
-   * the inference manager to process the inference, and updates the set of
-   * normal form pairs. Returns true if the conclusion of ii was not true
-   * after rewriting. If the conclusion is true, this method does nothing.
+   * This returns the index of the inference in pinfer that should be processed
+   * based on our heuristics. In particular, we favor certain identifiers
+   * before others, as well as considering the position in a concatenation
+   * term they reference.
    */
-  bool processInferInfo(CoreInferInfo& ii);
+  size_t pickInferInfo(const std::vector<CoreInferInfo>& pinfer);
   /** Add that (n1,n2) is a normal form pair in the current context. */
   void addNormalFormPair(Node n1, Node n2);
   /** Is (n1,n2) a normal form pair in the current context? */
@@ -321,12 +290,14 @@ class CoreSolver : protected EnvObj
    * of string term n (for more details on normal forms, see normal_form.h
    * or see Liang et al CAV 2014). In particular, this method checks whether the
    * current normal form for each term in this equivalence class is identical.
-   * If it is not, then we add an inference via sendInference and abort the
+   * If it is not, then we add (at least one) inference to pinfer and abort the
    * call.
    *
    * stype is the string-like type of the equivalence class we are processing.
    */
-  void normalizeEquivalenceClass(Node n, TypeNode stype);
+  void normalizeEquivalenceClass(Node n,
+                                 TypeNode stype,
+                                 std::vector<CoreInferInfo>& pinfer);
   /**
    * For each term in the equivalence class of eqc, this adds data regarding its
    * normal form to normal_forms. The map term_to_nf_index maps terms to the
@@ -355,7 +326,8 @@ class CoreSolver : protected EnvObj
    */
   void processNEqc(Node eqc,
                    std::vector<NormalForm>& normal_forms,
-                   TypeNode stype);
+                   TypeNode stype,
+                   std::vector<CoreInferInfo>& pinfer);
   /** process simple normal equality
    *
    * This method is called when two equal terms have normal forms nfi and nfj.
@@ -381,8 +353,10 @@ class CoreSolver : protected EnvObj
    * pinfer: the set of possible inferences we add to.
    *
    * stype is the string-like type of the equivalence class we are processing.
+   *
+   * @return true if the normal forms are equal
    */
-  void processSimpleNEq(NormalForm& nfi,
+  bool processSimpleNEq(NormalForm& nfi,
                         NormalForm& nfj,
                         unsigned& index,
                         bool isRev,
@@ -504,6 +478,8 @@ class CoreSolver : protected EnvObj
    * on the ordering described in checkCycles.
    */
   std::vector<Node> d_strings_eqc;
+  /** The relevant disequalities */
+  std::vector<Node> d_rlvDeq;
   /** map from terms to their normal forms */
   std::map<Node, NormalForm> d_normal_form;
   /**
@@ -536,10 +512,21 @@ class CoreSolver : protected EnvObj
   std::map<Node, std::vector<int> > d_flat_form_index;
   /** Set of equalities for which we have applied extensionality. */
   NodeSet d_extDeq;
+  /**
+   * If not IncompleteId::NONE, this is reason why the normal form computation
+   * was model unsound. We set model incomplete in the lemma phase of
+   * normal form equality computation if necessary.
+   */
+  IncompleteId d_modelUnsoundId;
+  /**
+   * Possible inferences, computed during the propagation phase of
+   * normal form equality computation, and sent during the lemma phase.
+   */
+  std::vector<CoreInferInfo> d_pinfers;
 }; /* class CoreSolver */
 
 }  // namespace strings
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__THEORY__STRINGS__CORE_SOLVER_H */

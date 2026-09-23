@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Gereon Kremer
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -28,7 +25,7 @@
 
 #include "base/configuration.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 
 // forward declare all values to avoid inclusion
 struct StatisticAverageValue;
@@ -73,7 +70,7 @@ class AverageStat
  * an `std::ostream`.
  * New values are added by
  *    HistogramStat<Kind> stat;
- *    stat << Kind::PLUS << Kind::AND;
+ *    stat << Kind::ADD << Kind::AND;
  */
 template <typename Integral>
 class HistogramStat
@@ -86,12 +83,14 @@ class HistogramStat
   /** Add the value `val` to the histogram */
   HistogramStat& operator<<(Integral val)
   {
-    if constexpr (Configuration::isStatisticsBuild())
+    if constexpr (configuration::isStatisticsBuild())
     {
       d_data->add(val);
     }
     return *this;
   }
+  /** Get the current value for key `val` */
+  uint64_t getValue(Integral val) { return d_data->getValue(val); }
 
  private:
   /** Construct from a pointer to the internal data */
@@ -109,8 +108,8 @@ class HistogramStat
  * `ReferenceStat` the current value of the referenced object is copied into
  * the `StatisticsRegistry`.
  *
- * To convert to the API representation in `api::Stat`, `T` can only be one
- * of the types accepted by the `api::Stat` constructors (or be implicitly
+ * To convert to the API representation in `cvc5::Stat`, `T` can only be one
+ * of the types accepted by the `cvc5::Stat` constructors (or be implicitly
  * converted to one of them).
  */
 template <typename T>
@@ -126,7 +125,7 @@ class ReferenceStat
   void set(const TT& t)
   {
     static_assert(std::is_same_v<T, TT>, "Incorrect type for ReferenceStat");
-    if constexpr (Configuration::isStatisticsBuild())
+    if constexpr (configuration::isStatisticsBuild())
     {
       d_data->d_value = &t;
     }
@@ -134,7 +133,7 @@ class ReferenceStat
   /** Commit the value currently pointed to and release it. */
   void reset()
   {
-    if constexpr (Configuration::isStatisticsBuild())
+    if constexpr (configuration::isStatisticsBuild())
     {
       d_data->commit();
       d_data->d_value = nullptr;
@@ -143,7 +142,7 @@ class ReferenceStat
   /** Copy the current value of the referenced object. */
   ~ReferenceStat()
   {
-    if constexpr (Configuration::isStatisticsBuild())
+    if constexpr (configuration::isStatisticsBuild())
     {
       d_data->commit();
     }
@@ -174,7 +173,7 @@ class SizeStat
   /** Reset the reference to point to `t`. */
   void set(const T& t)
   {
-    if constexpr (Configuration::isStatisticsBuild())
+    if constexpr (configuration::isStatisticsBuild())
     {
       d_data->d_value = &t;
     }
@@ -182,7 +181,7 @@ class SizeStat
   /** Copy the current size of the referenced container. */
   ~SizeStat()
   {
-    if constexpr (Configuration::isStatisticsBuild())
+    if constexpr (configuration::isStatisticsBuild())
     {
       d_data->commit();
     }
@@ -211,7 +210,7 @@ class TimerStat
 {
  public:
   /** Utility for RAII-style timing of code blocks */
-  using CodeTimer = cvc5::CodeTimer;
+  using CodeTimer = cvc5::internal::CodeTimer;
   /** Allow access to private constructor */
   friend class StatisticsRegistry;
   /** Value stored for this statistic */
@@ -250,18 +249,26 @@ class CodeTimer
   CodeTimer& operator=(const CodeTimer& timer) = delete;
   /**
    * Start the timer.
-   * If `allow_reentrant` is true we check whether the timer is already
+   * @param timer Reference to the timer.
+   * @param allow_reentrant If true we check whether the timer is already
    * running. If so, this particular instance of `CodeTimer` neither starts
    * nor stops the actual timer, but leaves this to the first (or outermost)
    * `CodeTimer`.
    */
-  CodeTimer(TimerStat& timer, bool allow_reentrant = false);
+  explicit CodeTimer(TimerStat& timer, bool allow_reentrant = false);
+  /**
+   * Starts the timer.
+   *
+   * @param timer Pointer to the timer, may be nullptr.
+   * @param allow_reentrant see above
+   */
+  explicit CodeTimer(TimerStat* timer, bool allow_reentrant = false);
   /** Stop the timer */
   ~CodeTimer();
 
  private:
-  /** Reference to the timer this utility works on */
-  TimerStat& d_timer;
+  /** Pointer to the timer this utility works on */
+  TimerStat* const d_timer;
   /** Whether this timer is reentrant (i.e. does not do anything) */
   bool d_reentrant;
 };
@@ -270,8 +277,8 @@ class CodeTimer
  * Stores a simple value that can be set manually using regular assignment
  * or the `set` method.
  *
- * To convert to the API representation in `api::Stat`, `T` can only be one
- * of the types accepted by the `api::Stat` constructors (or be implicitly
+ * To convert to the API representation in `cvc5::Stat`, `T` can only be one
+ * of the types accepted by the `cvc5::Stat` constructors (or be implicitly
  * converted to one of them).
  */
 template <typename T>
@@ -286,7 +293,7 @@ class ValueStat
   /** Set to `t` */
   void set(const T& t)
   {
-    if constexpr (Configuration::isStatisticsBuild())
+    if constexpr (configuration::isStatisticsBuild())
     {
       d_data->d_value = t;
     }
@@ -294,7 +301,7 @@ class ValueStat
   /** Set to `t` */
   ValueStat<T>& operator=(const T& t)
   {
-    if constexpr (Configuration::isStatisticsBuild())
+    if constexpr (configuration::isStatisticsBuild())
     {
       set(t);
     }
@@ -302,7 +309,7 @@ class ValueStat
   }
   T get() const
   {
-    if constexpr (Configuration::isStatisticsBuild())
+    if constexpr (configuration::isStatisticsBuild())
     {
       return d_data->d_value;
     }
@@ -347,6 +354,6 @@ class IntStat : public ValueStat<int64_t>
   IntStat(stat_type* data) : ValueStat(data) {}
 };
 
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif

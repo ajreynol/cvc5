@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Dejan Jovanovic, Tim King
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -23,13 +20,14 @@
 #include "expr/node.h"
 #include "theory/theory_id.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 
 /**
  * A (ordered) pair of terms a theory cares about.
  */
-struct CarePair {
+struct CarePair
+{
   const TNode d_a, d_b;
   const TheoryId d_theory;
 
@@ -38,12 +36,14 @@ struct CarePair {
   {
   }
 
-  bool operator==(const CarePair& other) const {
+  bool operator==(const CarePair& other) const
+  {
     return (d_theory == other.d_theory) && (d_a == other.d_a)
            && (d_b == other.d_b);
   }
 
-  bool operator<(const CarePair& other) const {
+  bool operator<(const CarePair& other) const
+  {
     if (d_theory < other.d_theory) return true;
     if (d_theory > other.d_theory) return false;
     if (d_a < other.d_a) return true;
@@ -59,6 +59,6 @@ struct CarePair {
 typedef std::set<CarePair> CareGraph;
 
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__THEORY__CARE_GRAPH_H */

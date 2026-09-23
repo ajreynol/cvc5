@@ -1,4 +1,17 @@
+###############################################################################
+# This file is part of the cvc5 project.
+#
+# Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+# in the top-level source directory and their institutional affiliations.
+# All rights reserved.  See the file COPYING in the top-level source
+# directory for licensing information.
+# #############################################################################
+#
+# Sphinx extension, implements directive 'api-examples'.
+##
+
 import os
+import re
 
 from docutils import nodes
 from docutils.statemachine import StringList
@@ -15,46 +28,86 @@ class APIExamples(SphinxDirective):
 
         The arguments should be proper filenames to source files.
         This directives tries to detect the language from the file extension
-        and supports the file extensions specified in `self.exts`.
-    """
+        and supports the file extensions specified in `examples_types`.
+        Additionally, `examples_file_patterns` allows to specify file name
+        patterns that allow using files from fixed directories more easily, and
+        to add proper download links.
 
-    # Set tab title and language for syntax highlighting
-    exts = {
-        '.cpp': {'title': 'C++', 'lang': 'c++'},
-        '.java': {'title': 'Java', 'lang': 'java'},
-        '.py': {'title': 'Python', 'lang': 'python'},
-        '.smt2': {'title': 'SMT-LIBv2', 'lang': 'smtlib'},
-        '.sy': {'title': 'SyGuS', 'lang': 'smtlib'},
-    }
+        examples_types:
+            '<regex>': {
+                'title': '<tab title>',
+                'lang': '<language identifier for syntax highlighting>',
+                'group': '<group identifier to detect missing examples>',
+            }
+
+        examples_file_patterns:
+            '<regex>': { # match groups are used to format the strings below
+                'local': '<pseudo-absolute path to local file>',
+                'url': '<url to download this file>', # optional
+                'urlname': '<text for the download link>',
+            }
+    """
 
     # The "arguments" are actually the content of the directive
     has_content = True
+    option_spec = {
+        'skip': lambda x: [s.strip() for s in x.split(',')],
+    }
 
     logger = logging.getLogger(__name__)
+
+    srcdir = None
 
     def run(self):
         self.state.document.settings.env.note_dependency(__file__)
         # collect everything in a list of strings
         content = ['.. tabs::', '']
 
-        remaining = set([self.exts[e]['lang'] for e in self.exts])
+        remaining = set([t['group'] for t in self.env.config.examples_types.values()])
         location = '{}:{}'.format(*self.get_source_info())
+
+        # remove skipped groups
+        skipped = set(self.options.get('skip', []))
+        remaining.difference_update(skipped)
 
         for file in self.content:
             # detect file extension
-            _, ext = os.path.splitext(file)
-            if ext in self.exts:
-                title = self.exts[ext]['title']
-                lang = self.exts[ext]['lang']
-                remaining.remove(lang)
-            else:
-                self.logger.warning(f'{location} is using unknown file extension "{ext}"')
-                title = ext
-                lang = ext
+            lang = None
+            title = None
+            for pattern,data in self.env.config.examples_types.items():
+                if re.search(pattern, file) != None:
+                    lang = data['lang']
+                    title = data['title']
+                    remaining.discard(data['group'])
+                    break
+            if lang == None:
+                self.logger.warning(
+                    f'file type of {location} could not be detected')
+                title = os.path.splitext(file)[1]
+                lang = title
+
+            url = None
+            urlname = None
+            for k, v in self.env.config.examples_file_patterns.items():
+                m = re.match(k, file)
+                if m is not None:
+                    file = v['local'].format(*m.groups())
+                    if 'url' in v:
+                        url = v['url'].format(*m.groups())
+                        urlname = v['urlname'].format(*m.groups())
+                    break
 
             # generate tabs
             content.append(f'    .. tab:: {title}')
             content.append(f'')
+
+            if url is not None:
+                # we can provide a download link
+                content.append(f'        .. rst-class:: fa fa-download icon-margin')
+                content.append(f'        ')
+                content.append(f'        `{urlname} <{url}>`_')
+                content.append(f'')
+
             content.append(f'        .. literalinclude:: {file}')
             content.append(f'            :language: {lang}')
             content.append(f'            :linenos:')
@@ -69,7 +122,10 @@ class APIExamples(SphinxDirective):
 
 
 def setup(app):
+    APIExamples.srcdir = app.srcdir
     app.setup_extension('sphinx_tabs.tabs')
+    app.add_config_value('examples_types', {}, 'env')
+    app.add_config_value('examples_file_patterns', {}, 'env')
     app.add_directive("api-examples", APIExamples)
     return {
         'version': '0.1',
