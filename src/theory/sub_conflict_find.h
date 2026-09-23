@@ -27,9 +27,9 @@
 #include "expr/node.h"
 #include "expr/term_context.h"
 #include "theory/difficulty_manager.h"
+#include "theory/smt_engine_subsolver.h"
 #include "theory/theory_engine_module.h"
 #include "theory/valuation.h"
-#include "theory/smt_engine_subsolver.h"
 
 namespace cvc5::internal {
 

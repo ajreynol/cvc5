@@ -32,12 +32,12 @@
 #include "theory/partition_generator.h"
 #include "theory/rewriter.h"
 #include "theory/sort_inference.h"
+#include "theory/sub_conflict_find.h"
 #include "theory/theory.h"
 #include "theory/theory_engine_module.h"
 #include "theory/theory_engine_statistics.h"
 #include "theory/theory_preprocessor.h"
 #include "theory/trust_substitutions.h"
-#include "theory/sub_conflict_find.h"
 #include "theory/uf/equality_engine.h"
 #include "theory/valuation.h"
 #include "util/hash.h"
@@ -553,7 +553,7 @@ class TheoryEngine : protected EnvObj
   /** */
   void setSubsolverResult(SolverEngine* m);
   /** */
-  SolverEngine * getSubsolverResult();
+  SolverEngine* getSubsolverResult();
 
   /** Ensure atoms from the given node are sent to the given theory */
   void ensureLemmaAtoms(TNode n, theory::TheoryId atomsTo);
@@ -649,7 +649,7 @@ class TheoryEngine : protected EnvObj
   bool d_lemmasAdded;
 
   /** A subsolver that has the result of the current query */
-  SolverEngine * d_sresult;
+  SolverEngine* d_sresult;
 
   /**
    * A variable to mark if the OutputChannel was "used" by any theory

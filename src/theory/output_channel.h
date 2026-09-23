@@ -164,6 +164,7 @@ class OutputChannel
 
   /** Set subsolver result */
   void setSubsolverResult(SolverEngine* s);
+
  protected:
   /**
    * Statistics for a particular theory.

@@ -60,7 +60,8 @@ void SubConflictFind::check(Theory::Effort effort)
   if (TraceIsOn("scf"))
   {
     clSet = double(clock()) / double(CLOCKS_PER_SEC);
-    Trace("scf") << "---Subconflict Find Engine Round, effort = " << effort << "---" << std::endl;
+    Trace("scf") << "---Subconflict Find Engine Round, effort = " << effort
+                 << "---" << std::endl;
   }
   std::vector<Node> assertions;
   const LogicInfo& info = logicInfo();

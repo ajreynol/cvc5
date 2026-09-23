@@ -153,6 +153,5 @@ void OutputChannel::setSubsolverResult(SolverEngine* s)
   d_engine->setSubsolverResult(s);
 }
 
-
 }  // namespace theory
 }  // namespace cvc5::internal

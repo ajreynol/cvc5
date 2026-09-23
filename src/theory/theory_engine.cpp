@@ -443,7 +443,7 @@ void TheoryEngine::check(Theory::Effort effort)
     {
       tem->check(effort);
       // TODO: better place for this?
-      if (d_sresult!=nullptr)
+      if (d_sresult != nullptr)
       {
         return;
       }
@@ -1695,15 +1695,9 @@ void TheoryEngine::lemma(TrustNode tlemma,
   d_lemmasAdded = true;
 }
 
-void TheoryEngine::setSubsolverResult(SolverEngine* s)
-{
-  d_sresult = s;
-}
-  
-SolverEngine * TheoryEngine::getSubsolverResult()
-{
-  return d_sresult;
-}
+void TheoryEngine::setSubsolverResult(SolverEngine* s) { d_sresult = s; }
+
+SolverEngine* TheoryEngine::getSubsolverResult() { return d_sresult; }
 
 void TheoryEngine::markInConflict()
 {
