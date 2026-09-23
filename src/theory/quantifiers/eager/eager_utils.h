@@ -38,11 +38,10 @@ using EagerFailExp =
 class EagerWatchList
 {
   using WatchJob = std::pair<const EagerTrie*, Node>;
-  using WatchJobHash =
-      PairHashFunction<const EagerTrie*,
-                       Node,
-                       std::hash<const EagerTrie*>,
-                       std::hash<Node>>;
+  using WatchJobHash = PairHashFunction<const EagerTrie*,
+                                        Node,
+                                        std::hash<const EagerTrie*>,
+                                        std::hash<Node>>;
 
  public:
   EagerWatchList(context::Context* c)
