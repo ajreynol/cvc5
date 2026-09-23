@@ -61,11 +61,9 @@ void InferenceManager::addPendingInference(Node conc,
   // processed internally, since they update datatype-specific bookkeeping such
   // as constructor labels and selected constructors.
   bool centralNeedsLemma =
-      options().theory.eeMode == options::EqEngineMode::CENTRAL
-      && !exp.isNull() && !exp.isConst()
-      && id != InferenceId::DATATYPES_INST;
-  if (forceLemma || options().datatypes.dtInferAsLemmas
-      || centralNeedsLemma
+      options().theory.eeMode == options::EqEngineMode::CENTRAL && !exp.isNull()
+      && !exp.isConst() && id != InferenceId::DATATYPES_INST;
+  if (forceLemma || options().datatypes.dtInferAsLemmas || centralNeedsLemma
       || DatatypesInference::mustCommunicateFact(conc, exp))
   {
     d_pendingLem.emplace_back(new DatatypesInference(this, conc, exp, id));
