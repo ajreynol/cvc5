@@ -389,7 +389,7 @@ void TheoryEngine::check(Theory::Effort effort)
 
   // Reset the interrupt flag
   d_interrupted = false;
-        
+
 #ifdef CVC5_FOR_EACH_THEORY_STATEMENT
 #undef CVC5_FOR_EACH_THEORY_STATEMENT
 #endif
