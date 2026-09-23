@@ -213,8 +213,7 @@ void EagerInstantiation::registerQuantifier(Node q)
       Node op = ipl[fi].getOperator();
       d_opTriggers[op].emplace_back(
           std::make_unique<EagerTrigger>(context(), q, ipl[fi], others));
-      Trace("eager-inst") << "Eager inst: trigger for " << q << " : "
-                          << ipl[fi]
+      Trace("eager-inst") << "Eager inst: trigger for " << q << " : " << ipl[fi]
                           << (others.empty() ? "" : " (multi)") << std::endl;
     }
   }
@@ -265,8 +264,7 @@ void EagerInstantiation::eqNotifyMerge(TNode t1, TNode t2)
 EagerInstantiation::OpTermList& EagerInstantiation::getOpTermList(
     const Node& op)
 {
-  std::map<Node, std::unique_ptr<OpTermList>>::iterator it =
-      d_opTerms.find(op);
+  std::map<Node, std::unique_ptr<OpTermList>>::iterator it = d_opTerms.find(op);
   if (it == d_opTerms.end())
   {
     it = d_opTerms.emplace(op, std::make_unique<OpTermList>(context())).first;
@@ -332,9 +330,8 @@ void EagerInstantiation::promoteTerms(OpTermList& ol)
         // The term was introduced by a (deep) chain of eager
         // instantiations; do not match it eagerly. Instantiations
         // depending on it are found by the lazy engine.
-        Trace("eager-inst-debug2")
-            << "Eager inst: do not promote generation " << itg->second
-            << " term " << t << std::endl;
+        Trace("eager-inst-debug2") << "Eager inst: do not promote generation "
+                                   << itg->second << " term " << t << std::endl;
         continue;
       }
     }
@@ -434,9 +431,8 @@ void EagerInstantiation::processMerges()
         {
           continue;
         }
-        Trace("eager-inst-debug")
-            << "Eager inst: re-match " << p << " due to merge on " << u
-            << std::endl;
+        Trace("eager-inst-debug") << "Eager inst: re-match " << p
+                                  << " due to merge on " << u << std::endl;
         OpTermList& ol = getOpTermList(pop);
         ol.d_unique.push_back(p);
         ol.d_uniqueSigs.push_back(computeSig(p));
@@ -571,8 +567,8 @@ void EagerInstantiation::processNewTerms()
         {
           // the triggers whose indexed ground argument has the same
           // representative as the corresponding argument of this term
-          std::unordered_map<Node, std::vector<EagerTrigger*>>::iterator
-              itpi = pi.second.find(sig[pi.first]);
+          std::unordered_map<Node, std::vector<EagerTrigger*>>::iterator itpi =
+              pi.second.find(sig[pi.first]);
           if (itpi != pi.second.end())
           {
             candidates.insert(
@@ -591,8 +587,7 @@ void EagerInstantiation::processNewTerms()
             break;
           }
           if (instLimit > 0
-              && d_statInst.get() - prevInst
-                     >= static_cast<int64_t>(instLimit))
+              && d_statInst.get() - prevInst >= static_cast<int64_t>(instLimit))
           {
             // met the limit of instantiations for this round
             finished = true;
@@ -738,9 +733,8 @@ void EagerInstantiation::processTermForTrigger(TNode t,
       continue;
     }
     d_sentFps.insert(fp);
-    Trace("eager-inst-debug")
-        << "Eager inst: match " << q << " with " << terms << " from term "
-        << t << std::endl;
+    Trace("eager-inst-debug") << "Eager inst: match " << q << " with " << terms
+                              << " from term " << t << std::endl;
     ++d_statMatches;
     // We disable the entailment check, since it relies on state of TermDb
     // that is only valid during full effort instantiation rounds.
@@ -768,8 +762,7 @@ void EagerInstantiation::processTermForTrigger(TNode t,
         uint64_t g = 0;
         for (const Node& tt : terms)
         {
-          std::unordered_map<Node, uint64_t>::iterator itg =
-              d_termGen.find(tt);
+          std::unordered_map<Node, uint64_t>::iterator itg = d_termGen.find(tt);
           if (itg != d_termGen.end() && itg->second > g)
           {
             g = itg->second;

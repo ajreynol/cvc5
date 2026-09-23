@@ -97,7 +97,8 @@ bool Instantiate::addInstantiation(Node q,
                                    bool doEntailCheck)
 {
   // do the instantiation
-  bool ret = addInstantiationInternal(q, terms, id, pfArg, doVts, doEntailCheck);
+  bool ret =
+      addInstantiationInternal(q, terms, id, pfArg, doVts, doEntailCheck);
   // process the instantiation with callbacks via term registry
   d_treg.processInstantiation(q, terms);
   // return whether the instantiation was successful
