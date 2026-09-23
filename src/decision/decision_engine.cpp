@@ -35,8 +35,7 @@ DecisionEngineEmpty::DecisionEngineEmpty(Env& env)
 }
 bool DecisionEngineEmpty::isDone() { return false; }
 void DecisionEngineEmpty::addAssertions(
-    CVC5_UNUSED const std::vector<TNode>& lems,
-    CVC5_UNUSED bool isConflict)
+    CVC5_UNUSED const std::vector<TNode>& lems, CVC5_UNUSED bool isConflict)
 {
 }
 prop::SatLiteral DecisionEngineEmpty::getNextInternal(

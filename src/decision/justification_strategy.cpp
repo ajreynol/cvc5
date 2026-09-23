@@ -30,9 +30,8 @@ JustificationStrategy::JustificationStrategy(Env& env,
           context(),
           options()
               .decision.jhRlvOrder),  // assertions are user-context dependent
-      d_conflictAssertions(userContext(),
-                           context(),
-                           options().decision.jhRlvOrder),
+      d_conflictAssertions(
+          userContext(), context(), options().decision.jhRlvOrder),
       d_localAssertions(
           context(), context()),  // local assertions are SAT-context dependent
       d_jcache(context(), ss, cs),
@@ -472,9 +471,8 @@ void JustificationStrategy::insertToAssertionList(
     const std::vector<TNode>& lems, bool local, bool conflict)
 {
   std::vector<TNode> toProcess(lems.begin(), lems.end());
-  AssertionList& al =
-      local ? d_localAssertions
-            : (conflict ? d_conflictAssertions : d_assertions);
+  AssertionList& al = local ? d_localAssertions
+                            : (conflict ? d_conflictAssertions : d_assertions);
   IntStat& sizeStat =
       local ? d_stats.d_maxSkolemDefsSize : d_stats.d_maxAssertionsSize;
   // always miniscope AND and negated OR immediately
@@ -566,8 +564,8 @@ bool JustificationStrategy::refreshCurrentAssertion()
   return !skFirst && refreshCurrentAssertionFromList(d_localAssertions, false);
 }
 
-bool JustificationStrategy::refreshCurrentAssertionFromList(
-    AssertionList& al, bool doWatchStatus)
+bool JustificationStrategy::refreshCurrentAssertionFromList(AssertionList& al,
+                                                            bool doWatchStatus)
 {
   d_currUnderStatus = Node::null();
   d_currStatusList = nullptr;
