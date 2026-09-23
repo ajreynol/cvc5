@@ -312,6 +312,44 @@ class CpcTester(CpcTesterBase):
     def __init__(self):
         super().__init__("cpc")
 
+    def uses_real_only_logic(self, benchmark_info):
+        """Whether numerals in the input denote reals rather than integers."""
+        # A command-line logic overrides the benchmark's set-logic command.
+        logic = None
+        args = benchmark_info.command_line_args
+        for i, arg in enumerate(args):
+            if arg.startswith("--force-logic="):
+                logic = arg.split("=", 1)[1]
+            elif arg == "--force-logic" and i + 1 < len(args):
+                logic = args[i + 1]
+        if logic is not None:
+            logics = [logic]
+        else:
+            # Keep strings and quoted symbols as single tokens so embedded
+            # text cannot be mistaken for a top-level set-logic command.
+            tokens = re.findall(
+                r';[^\n]*|"(?:[^"]|"")*"|\|[^|]*\||[()]|[^\s();"|]+',
+                benchmark_info.benchmark_content)
+            tokens = [t for t in tokens if not t.startswith(";")]
+            logics = []
+            depth = 0
+            for i, token in enumerate(tokens):
+                if token == "(":
+                    if (depth == 0 and i + 3 < len(tokens)
+                            and tokens[i + 1] == "set-logic"
+                            and tokens[i + 3] == ")"):
+                        logics.append(tokens[i + 2].strip("|"))
+                    depth += 1
+                elif token == ")":
+                    depth -= 1
+        # LRA, NRA (including NRAT), and RDL use reals. Integer arithmetic
+        # fragments contain I, including the mixed fragments LIRA/NIRA/IRDL.
+        # If the input resets its logic, every logic must be real-only since
+        # ethos applies numeral normalization to the whole reference file.
+        return bool(logics) and all(
+            any(fragment in logic for fragment in ("LRA", "NRA", "RDL"))
+            and "I" not in logic for logic in logics)
+
     def run_internal(self, benchmark_info):
         with tempfile.NamedTemporaryFile() as tmpf:
             # Reference checking is enabled in restricted builds only. These
@@ -320,6 +358,7 @@ class CpcTester(CpcTesterBase):
             # In other builds, the proof redeclares the symbols of the
             # benchmark and its assumptions are not checked against the input.
             reference = benchmark_info.safe_mode
+            normalize_num = reference and self.uses_real_only_logic(benchmark_info)
             cvc5_args = [
                 "--dump-proofs",
                 "--proof-print-conclusion",
@@ -345,14 +384,20 @@ class CpcTester(CpcTesterBase):
                     os.path.join(benchmark_info.benchmark_dir,
                                  benchmark_info.benchmark_basename))
                 tmpf.write(("(reference \"" + benchmark_path + "\")").encode())
+            if normalize_num:
+                # Only the reference input uses implicit real numerals. The
+                # generated proof already prints real literals explicitly and
+                # still needs integer arguments, e.g. indices for and_elim.
+                tmpf.write(b"(set-option :normalize-num false)")
             tmpf.write(proof)
             tmpf.flush()
             # Require a step concluding false, in addition to the non-empty
             # proof check in gen_proof.
+            ethos_args = ["--require-proof-of-false"]
+            if normalize_num:
+                ethos_args.append("--normalize-num")
             output, error, exit_status = run_process(
-                [benchmark_info.ethos_binary] +
-                ["--require-proof-of-false"] +
-                [tmpf.name],
+                [benchmark_info.ethos_binary] + ethos_args + [tmpf.name],
                 benchmark_info.benchmark_dir,
                 timeout=benchmark_info.timeout,
             )
