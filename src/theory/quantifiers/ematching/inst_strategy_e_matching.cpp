@@ -122,7 +122,10 @@ void InstStrategyAutoGenTriggers::processResetInstantiationRound(
 }
 
 InstStrategyStatus InstStrategyAutoGenTriggers::process(
-    Node f, CVC5_UNUSED Theory::Effort effort, int e, ieval::TermEvaluatorMode tev)
+    Node f,
+    CVC5_UNUSED Theory::Effort effort,
+    int e,
+    ieval::TermEvaluatorMode tev)
 {
   options::UserPatMode upMode = getInstUserPatMode();
   // we don't auto-generate triggers if the mode is trust or strict

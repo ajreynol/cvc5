@@ -86,23 +86,27 @@ void InstantiationEngine::doInstantiationRound(Theory::Effort effort,
   bool finished = false;
   bool singleQuant = (tev == ieval::TermEvaluatorMode::CONFLICT
                       && !options().quantifiers.cbqiAllConflict);
-  //while unfinished, try effort level=0,1,2....
-  while( !finished && e<=eLimit ){
-    Trace("inst-engine-debug") << "IE: Prepare instantiation (" << e << ")." << std::endl;
+  // while unfinished, try effort level=0,1,2....
+  while (!finished && e <= eLimit)
+  {
+    Trace("inst-engine-debug")
+        << "IE: Prepare instantiation (" << e << ")." << std::endl;
     finished = true;
-    //instantiate each quantifier
+    // instantiate each quantifier
     for (const Node& q : d_quants)
     {
-      Trace("inst-engine-debug") << "IE: Instantiate " << q << "..." << std::endl;
-      //int e_use = d_quantEngine->getRelevance( q )==-1 ? e - 1 : e;
+      Trace("inst-engine-debug")
+          << "IE: Instantiate " << q << "..." << std::endl;
+      // int e_use = d_quantEngine->getRelevance( q )==-1 ? e - 1 : e;
       int e_use = e;
       if (e_use >= 0)
       {
         Trace("inst-engine-debug") << "inst-engine : " << q << std::endl;
-        //check each instantiation strategy
+        // check each instantiation strategy
         for (InstStrategy* is : d_instStrategies)
         {
-          Trace("inst-engine-debug") << "Do " << is->identify() << " " << e_use << std::endl;
+          Trace("inst-engine-debug")
+              << "Do " << is->identify() << " " << e_use << std::endl;
           InstStrategyStatus quantStatus = is->process(q, effort, e_use, tev);
           Trace("inst-engine-debug")
               << " -> unfinished= "
@@ -132,8 +136,9 @@ void InstantiationEngine::doInstantiationRound(Theory::Effort effort,
   }
 }
 
-bool InstantiationEngine::needsCheck( Theory::Effort e ){
-  if (options().quantifiers.ematchingStratifyIEval && e==Theory::EFFORT_FULL)
+bool InstantiationEngine::needsCheck(Theory::Effort e)
+{
+  if (options().quantifiers.ematchingStratifyIEval && e == Theory::EFFORT_FULL)
   {
     return true;
   }
@@ -181,7 +186,8 @@ void InstantiationEngine::check(Theory::Effort e, QEffort quant_e)
   {
     size_t lastWaiting = d_qim.numPendingLemmas();
     size_t starti, endi;
-    if (options().quantifiers.ematchingStratifyIEval && e==Theory::EFFORT_FULL)
+    if (options().quantifiers.ematchingStratifyIEval
+        && e == Theory::EFFORT_FULL)
     {
       starti = 0;
       endi = d_qstate.getInstWhenNeedsCheck(e) ? 2 : 1;

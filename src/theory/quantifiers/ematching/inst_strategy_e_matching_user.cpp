@@ -59,7 +59,10 @@ void InstStrategyUserPatterns::processResetInstantiationRound(
 }
 
 InstStrategyStatus InstStrategyUserPatterns::process(
-    Node q, CVC5_UNUSED Theory::Effort effort, int e, ieval::TermEvaluatorMode tev)
+    Node q,
+    CVC5_UNUSED Theory::Effort effort,
+    int e,
+    ieval::TermEvaluatorMode tev)
 {
   if (e == 0)
   {
