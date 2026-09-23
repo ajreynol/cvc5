@@ -660,8 +660,7 @@ int InstMatchGenerator::getNextMatch(InstMatch& m)
     // candidates.
     d_scan_from_reset = false;
   }
-  return success > 0 ? success
-                     : ((fullScan && cacheableFailure) ? -2 : -1);
+  return success > 0 ? success : ((fullScan && cacheableFailure) ? -2 : -1);
 }
 
 void InstMatchGenerator::computeChainEnv()
