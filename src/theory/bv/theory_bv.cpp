@@ -149,11 +149,11 @@ void TheoryBV::postCheck(Effort e)
 {
   if (options().bv.bitblastLastCall)
   {
-    if (e==EFFORT_LAST_CALL)
+    if (e == EFFORT_LAST_CALL)
     {
       return;
     }
-    else if (e==EFFORT_FULL)
+    else if (e == EFFORT_FULL)
     {
       e = EFFORT_STANDARD;
     }
@@ -186,7 +186,7 @@ void TheoryBV::computeRelevantTerms(std::set<Node>& termSet)
 }
 
 bool TheoryBV::collectModelValues(TheoryModel* m, const std::set<Node>& termSet)
-{  
+{
   if (options().bv.bitblastLastCall)
   {
     d_internal->postCheck(EFFORT_FULL);
