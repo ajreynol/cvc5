@@ -309,10 +309,12 @@ Node InstMatchGeneratorMulti::getCurrentExplanation()
     exp.push_back(e);
   }
   return nodeManager()->mkNode(Kind::SEXPR, exp);
-  InferenceId InstMatchGeneratorMulti::getInferenceId()
-  {
-    return InferenceId::QUANTIFIERS_INST_E_MATCHING_MT;
-  }
+}
+
+InferenceId InstMatchGeneratorMulti::getInferenceId()
+{
+  return InferenceId::QUANTIFIERS_INST_E_MATCHING_MT;
+}
 
 }  // namespace inst
 }  // namespace quantifiers
