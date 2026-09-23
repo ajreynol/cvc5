@@ -23,6 +23,7 @@
 #include "proof/proof_generator.h"
 #include "rewriter/basic_rewrite_rcons.h"
 #include "rewriter/rewrite_db.h"
+#include "rewriter/rewrite_db_proof_generator.h"
 #include "rewriter/rewrite_db_term_process.h"
 #include "rewriter/rewrite_proof_status.h"
 #include "rewriter/rewrites.h"
@@ -131,41 +132,6 @@ class RewriteDbProofCons : protected EnvObj
     }
   };
   /**
-   * Proven info, which stores information for each equality we attempt to
-   * prove, including whether we were successful and what is the maximum
-   * depth we have tried if we have failed.
-   */
-  class ProvenInfo
-  {
-   public:
-    ProvenInfo()
-        : d_id(RewriteProofStatus::FAIL),
-          d_dslId(ProofRewriteRule::NONE),
-          d_failMaxDepth(-1)
-    {
-    }
-    /** The identifier of the proof rule, or fail if we failed */
-    RewriteProofStatus d_id;
-    /** The identifier of the DSL proof rule if d_id is DSL */
-    ProofRewriteRule d_dslId;
-    /** The substitution used, if successful */
-    std::vector<Node> d_vars;
-    std::vector<Node> d_subs;
-    /**
-     * The maximum depth tried for rules that have failed, where -1 indicates
-     * that the formula is unprovable at any depth.
-     */
-    int64_t d_failMaxDepth;
-    /**
-     * Is internal rule? these rules store children (if any) in d_vars.
-     */
-    bool isInternalRule() const
-    {
-      return d_id != RewriteProofStatus::DSL
-             && d_id != RewriteProofStatus::THEORY_REWRITE;
-    }
-  };
-  /**
    * Prove and store the proof of eq with internal form eqi in cdp if possible,
    * return true if successful. Tries the basic utility and all recursion depths
    * up to recLimit.
@@ -228,17 +194,6 @@ class RewriteDbProofCons : protected EnvObj
    * RewriteProofStatus::FAIL.
    */
   bool proveInternalBase(const Node& eqi, RewriteProofStatus& id);
-  /**
-   * Ensure proof for proven fact exists in cdp. This method is called on
-   * equalities eqi after they have been successfully proven by this class.
-   * Based on the information in proven infos, it constructs the formal
-   * proof of eqi, which may involve recursing to premises of rules that
-   * prove eqi. For details, see IV.B of Noetzli et al FMCAD 2022.
-   *
-   * @param cdp The proof to add the proof of eqi to
-   * @param eqi The proven equality
-   */
-  bool ensureProofInternal(CDProof* cdp, const Node& eqi);
   /** Return the evaluation of n, which uses local caching. */
   Node doEvaluate(const Node& n);
   /**
@@ -328,6 +283,11 @@ class RewriteDbProofCons : protected EnvObj
   std::unordered_map<Node, ProvenInfo> d_pcache;
   /** the evaluation cache */
   std::unordered_map<Node, Node> d_evalCache;
+  /**
+   * The proof generator, which constructs proofs from the proven infos in
+   * d_pcache.
+   */
+  RewriteDbProofGenerator d_pfGen;
   /** common constants */
   Node d_true;
   Node d_false;
