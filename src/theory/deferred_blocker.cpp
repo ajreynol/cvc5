@@ -15,11 +15,11 @@
 
 #include "theory/deferred_blocker.h"
 
-#include "options/theory_options.h"
 #include "options/smt_options.h"
+#include "options/theory_options.h"
+#include "proof/unsat_core.h"
 #include "smt/set_defaults.h"
 #include "theory/smt_engine_subsolver.h"
-#include "proof/unsat_core.h"
 
 namespace cvc5::internal {
 
@@ -53,12 +53,15 @@ void DeferredBlocker::check(Theory::Effort e) {}
 
 bool DeferredBlocker::filterLemma(TNode n, InferenceId id, LemmaProperty p)
 {
-  //if (id==InferenceId::ARITH_BB_LEMMA || id==InferenceId::ARITH_NL_TANGENT_PLANE || id==InferenceId::ARITH_NL_INFER_BOUNDS_NT)
-  if (id==InferenceId::ARITH_BB_LEMMA)
+  // if (id==InferenceId::ARITH_BB_LEMMA ||
+  // id==InferenceId::ARITH_NL_TANGENT_PLANE ||
+  // id==InferenceId::ARITH_NL_INFER_BOUNDS_NT)
+  if (id == InferenceId::ARITH_BB_LEMMA)
   {
-    Assert (n.getKind()==Kind::OR && n[0].getNumChildren()==2 && n[0][1].isConst());
+    Assert(n.getKind() == Kind::OR && n[0].getNumChildren() == 2
+           && n[0][1].isConst());
     Node term = n[0][0];
-    if (d_bbSplit.find(term)==d_bbSplit.end())
+    if (d_bbSplit.find(term) == d_bbSplit.end())
     {
       d_bbSplit.insert(term);
       return false;
@@ -77,7 +80,8 @@ bool DeferredBlocker::needsCandidateModel()
   {
     return false;
   }
-  Trace("defer-block-debug") << "DeferredBlocker: notifyCandidateModel" << std::endl;
+  Trace("defer-block-debug")
+      << "DeferredBlocker: notifyCandidateModel" << std::endl;
   if (d_valuation.needCheck())
   {
     Trace("defer-block-debug") << "...already needs check" << std::endl;
@@ -88,16 +92,16 @@ bool DeferredBlocker::needsCandidateModel()
     Trace("defer-block-debug") << "...didnt filter" << std::endl;
     return false;
   }
-    Trace("defer-block-debug") << "...run check" << std::endl;
+  Trace("defer-block-debug") << "...run check" << std::endl;
   Trace("defer-block") << "DeferredBlocker: notifyCandidateModel" << std::endl;
   // maybe just delaying?
-  if (options().theory.deferBlockMode==options::DeferBlockMode::DELAY)
+  if (options().theory.deferBlockMode == options::DeferBlockMode::DELAY)
   {
-    while (d_filterIndex.get()<d_filteredLems.size())
+    while (d_filterIndex.get() < d_filteredLems.size())
     {
       Node n = d_filteredLems[d_filterIndex.get()];
-      d_filterIndex = d_filterIndex.get()+1;
-      if (d_cache.find(n)==d_cache.end())
+      d_filterIndex = d_filterIndex.get() + 1;
+      if (d_cache.find(n) == d_cache.end())
       {
         d_cache.insert(n);
         Trace("defer-block") << "...now send " << n << std::endl;
@@ -134,7 +138,7 @@ bool DeferredBlocker::needsCandidateModel()
   // assert and check-sat
   for (const Node& a : assertions)
   {
-    if (a.getKind()!=Kind::FORALL)
+    if (a.getKind() != Kind::FORALL)
     {
       deferChecker->assertFormula(a);
     }
@@ -148,7 +152,8 @@ bool DeferredBlocker::needsCandidateModel()
     UnsatCore uc = deferChecker->getUnsatCore();
     Node ucc = nodeManager()->mkAnd(uc.getCore());
     Trace("defer-block-solve-debug") << "Unsat core is " << ucc << std::endl;
-    Trace("defer-block-solve") << "Core size = " << uc.getCore().size() << std::endl;
+    Trace("defer-block-solve")
+        << "Core size = " << uc.getCore().size() << std::endl;
     TrustNode trn = TrustNode::mkTrustLemma(ucc.notNode(), nullptr);
     d_out.trustedLemma(trn, InferenceId::DEFER_BLOCK_UC);
   }

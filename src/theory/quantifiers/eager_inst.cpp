@@ -1028,15 +1028,15 @@ bool EagerInst::doInstantiation(const Node& q, const Node& pat, const Node& n)
       return true;
     }
   }
-  //if (d_eagerQiCount[q]>100)
+  // if (d_eagerQiCount[q]>100)
   //{
-  //  return false;
-  //}
-  //if (d_eagerCount>1000)
+  //   return false;
+  // }
+  // if (d_eagerCount>1000)
   //{
-  //  return false;
-  //}
-  // must resize now
+  //   return false;
+  // }
+  //  must resize now
   std::vector<Node> instq(d_inst.begin(),
                           d_inst.begin() + q[0].getNumChildren());
   Trace("eager-inst-inst") << "Instantiation :  " << instq << std::endl;
@@ -1044,8 +1044,8 @@ bool EagerInst::doInstantiation(const Node& q, const Node& pat, const Node& n)
   if (ie->addInstantiation(
           q, instq, InferenceId::QUANTIFIERS_INST_EAGER_E_MATCHING))
   {
-    d_eagerQiCount[q] = d_eagerQiCount[q]+1;
-    d_eagerCount = d_eagerCount+1;
+    d_eagerQiCount[q] = d_eagerQiCount[q] + 1;
+    d_eagerCount = d_eagerCount + 1;
     d_tmpAddedLemmas++;
     if (!n.isNull())
     {
