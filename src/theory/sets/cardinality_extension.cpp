@@ -88,8 +88,11 @@ void CardinalityExtension::checkCardinalityExtended(TypeNode& t)
   NodeManager* nm = nodeManager();
   TypeNode setType = nm->mkSetType(t);
   bool finiteType = d_env.isFiniteType(t);
-  // skip infinite types
-  if (!finiteType)
+  // here we call getUnivSet instead of getUnivSetEqClass to generate
+  // a univset term for finite types even if they are not used in the input
+  Node univ = d_treg.getUnivSet(setType);
+  // skip infinite types whose universe set is not used
+  if (!finiteType && !d_state.hasTerm(univ))
   {
     return;
   }
@@ -108,9 +111,6 @@ void CardinalityExtension::checkCardinalityExtended(TypeNode& t)
     throw LogicException(message.str());
   }
 
-  // here we call getUnivSet instead of getUnivSetEqClass to generate
-  // a univset term for finite types even if they are not used in the input
-  Node univ = d_treg.getUnivSet(setType);
   std::map<Node, Node>::iterator it = d_univProxy.find(univ);
 
   Node proxy;

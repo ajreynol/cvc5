@@ -115,12 +115,10 @@ bool TheorySets::collectModelValues(TheoryModel* m,
   if (options().sets.setsExp)
   {
     NodeManager* nm = nodeManager();
-    SkolemManager* sm = nm->getSkolemManager();
     for (const TypeNode& tn : d_setsUnivTypes)
     {
       Node univ = nm->mkNullaryOperator(tn, Kind::SET_UNIVERSE);
-      Node k = sm->mkPurifySkolem(univ);
-      m->assertEquality(univ, k, true);
+      m->assertEquality(univ, getSetUniverseSkolem(tn), true);
     }
   }
   return d_internal->collectModelValues(m, termSet);
@@ -138,24 +136,29 @@ Node TheorySets::getCandidateModelValue(CVC5_UNUSED TNode node)
 void TheorySets::preRegisterTerm(TNode node)
 {
   d_internal->preRegisterTerm(node);
-  if (options().sets.setsExp)
+  if (!options().sets.setsExp
+      || d_setsUnivSubset.find(node) != d_setsUnivSubset.end())
   {
-    if (d_setsUnivSubset.find(node) == d_setsUnivSubset.end())
+    return;
+  }
+  d_setsUnivSubset.insert(node);
+  Node lem;
+  Node u;
+  if (node.getType().isSet() && Theory::isLeafOf(node, THEORY_SETS)
+      && !d_skCache.isSkolem(node))
+  {
+    // all set terms must be subsets of respective set universe. We exclude
+    // internally introduced skolems, due to the semantics of the universe set.
+    u = getSetUniverseSkolem(node.getType());
+    if (node != u)
     {
-      d_setsUnivSubset.insert(node);
-      if (node.getKind() != Kind::SKOLEM && Theory::isLeafOf(node, THEORY_SETS))
-      {
-        // all set terms must be subsets of respective set universe
-        TypeNode tn = node.getType();
-        if (tn.isSet())
-        {
-          d_setsUnivTypes.insert(tn);
-          Node u = getSetUniverseSkolem(tn);
-          Node lem = nodeManager()->mkNode(Kind::SET_SUBSET, node, u);
-          d_im.lemma(lem, InferenceId::SETS_UNIVERSE_SUBSET);
-        }
-      }
+      lem = nodeManager()->mkNode(Kind::SET_SUBSET, node, u);
     }
+  }
+  if (!lem.isNull())
+  {
+    d_setsUnivTypes.insert(u.getType());
+    d_im.lemma(lem, InferenceId::SETS_UNIVERSE_SUBSET);
   }
 }
 

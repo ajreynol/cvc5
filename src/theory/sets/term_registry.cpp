@@ -84,8 +84,11 @@ Node TermRegistry::getUnivSet(TypeNode tn)
   {
     return it->second;
   }
+  // the universe set is eliminated during preprocessing in favor of its
+  // purification skolem, see TheorySets::ppRewrite
   NodeManager* nm = nodeManager();
   Node n = nm->mkNullaryOperator(tn, Kind::SET_UNIVERSE);
+  n = nm->getSkolemManager()->mkPurifySkolem(n);
   d_univset[tn] = n;
   return n;
 }
