@@ -246,7 +246,7 @@ void PropEngine::assertTrustedLemmaInternal(theory::InferenceId id,
     output(OutputTag::LEMMAS) << " :source " << id;
     output(OutputTag::LEMMAS) << ")" << std::endl;
   }
-  
+
   bool negated = trn.getKind() == TrustNodeKind::CONFLICT;
   // should have a proof generator if the theory engine is proof producing
   Assert(!d_env.isTheoryProofProducing() || trn.getGenerator() != nullptr);

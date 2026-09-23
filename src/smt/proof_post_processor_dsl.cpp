@@ -78,11 +78,11 @@ bool ProofPostprocessDsl::shouldUpdate(std::shared_ptr<ProofNode> pn,
       && pn->getChildren().empty() && d_traversing.size() < 3)
   {
     // temporary: do not run RARE on parts we disable
-    if (id==ProofRule::TRUST)
+    if (id == ProofRule::TRUST)
     {
       TrustId tid;
       getTrustId(pn->getArguments()[0], tid);
-      if (tid==TrustId::THEORY_LEMMA || tid==TrustId::PREPROCESSED_INPUT)
+      if (tid == TrustId::THEORY_LEMMA || tid == TrustId::PREPROCESSED_INPUT)
       {
         return false;
       }

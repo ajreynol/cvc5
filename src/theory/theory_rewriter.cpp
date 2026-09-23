@@ -113,7 +113,7 @@ ProofRewriteRule TheoryRewriter::findRule(const Node& a,
 void TheoryRewriter::registerProofRewriteRule(ProofRewriteRule id,
                                               TheoryRewriteCtx ctx)
 {
-  if (ctx==TheoryRewriteCtx::POST_DSL)
+  if (ctx == TheoryRewriteCtx::POST_DSL)
   {
     ctx = TheoryRewriteCtx::PRE_DSL;
   }
