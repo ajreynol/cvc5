@@ -97,6 +97,7 @@ class IMGenerator : protected EnvObj
    * Get current match
    */
   virtual Node getCurrentExplanation() { return Node::null(); }
+  /**
    * Get the inference id, for statistics.
    */
   virtual InferenceId getInferenceId() = 0;
