@@ -151,7 +151,8 @@ class InstMatchGeneratorDirect : public IMGenerator
   std::vector<MatchResult> d_rootMatches;
   /** The next root match to process. */
   size_t d_rootMatchIndex = 0;
-  /** Cached candidate lists, indexed by match operator and equivalence class. */
+  /** Cached candidate lists, indexed by match operator and equivalence class.
+   */
   std::map<CandidateKey, std::vector<Node>> d_candidateCache;
   /** Cached matches for nested application subpatterns. */
   std::map<SubMatchKey, std::vector<MatchResult>> d_subMatchCache;

@@ -320,8 +320,8 @@ bool InstMatchGeneratorDirect::mergeMatch(std::vector<Node>& current,
   return true;
 }
 
-void InstMatchGeneratorDirect::undoMerge(std::vector<Node>& current,
-                                         const std::vector<size_t>& touched) const
+void InstMatchGeneratorDirect::undoMerge(
+    std::vector<Node>& current, const std::vector<size_t>& touched) const
 {
   for (size_t i : touched)
   {
@@ -426,7 +426,8 @@ int InstMatchGeneratorDirect::getNextMatch(InstMatch& m)
     if (d_currMatched.isNull() && !advanceToNextRoot())
     {
       bool restored = restoreFromPrefix(prefix, std::vector<Node>(), m);
-      AlwaysAssert(restored) << "Failed to restore prefix for direct E-matching";
+      AlwaysAssert(restored)
+          << "Failed to restore prefix for direct E-matching";
       return -1;
     }
     while (d_rootMatchIndex < d_rootMatches.size())
