@@ -16,9 +16,9 @@
 #include "theory/term_manager.h"
 
 #include "expr/node_algorithm.h"
+#include "options/quantifiers_options.h"
 #include "theory/quantifiers/quantifiers_attributes.h"
 #include "theory/quantifiers_engine.h"
-#include "options/quantifiers_options.h"
 
 namespace cvc5::internal {
 namespace theory {
@@ -83,7 +83,7 @@ void TermDbManager::notifyLemma(TNode n,
     if (qe->getTermVectorForInstantiation(n, inst))
     {
       Trace("term-origin") << "Lemma is instantiation " << q << " with " << inst
-                          << std::endl;
+                           << std::endl;
       for (const Node& nc : inst)
       {
         // do not visit the terms we are instantiating
@@ -132,13 +132,13 @@ TermDbManager::TermOrigin::TermOrigin(context::Context* c, const Node& t)
 int64_t TermDbManager::TermOrigin::getQuantifierDepth(const Node& q) const
 {
   context::CDHashMap<Node, int64_t>::iterator it = d_quantDepth.find(q);
-  if (it!=d_quantDepth.end())
+  if (it != d_quantDepth.end())
   {
     return it->second;
   }
   return 0;
 }
-    
+
 TermDbManager::TermOrigin* TermDbManager::getOrMkTermOrigin(const Node& n)
 {
   context::CDHashMap<Node, std::shared_ptr<TermOrigin>>::iterator it =
@@ -153,7 +153,7 @@ TermDbManager::TermOrigin* TermDbManager::getOrMkTermOrigin(const Node& n)
   d_omap.insert(n, tor);
   return tor.get();
 }
-  
+
 void TermDbManager::addOrigin(const Node& n,
                               InferenceId id,
                               const Node& q,
@@ -183,7 +183,7 @@ void TermDbManager::initializeTerm(const Node& n)
 int64_t TermDbManager::getInstNestedMaxLimit(const Node& q) const
 {
   context::CDHashMap<Node, int64_t>::iterator it = d_qinLevel.find(q);
-  if (it!=d_qinLevel.end())
+  if (it != d_qinLevel.end())
   {
     return it->second;
   }
@@ -193,21 +193,22 @@ int64_t TermDbManager::getInstNestedMaxLimit(const Node& q) const
 bool TermDbManager::canInstantiate(const Node& q, const Node& n)
 {
   int64_t maxLevel = getInstNestedMaxLimit(q);
-  if (maxLevel==-1)
+  if (maxLevel == -1)
   {
     return true;
   }
   // input terms have a depth of 0 always
-  if (d_inputTerms.find(n)!=d_inputTerms.end())
+  if (d_inputTerms.find(n) != d_inputTerms.end())
   {
-    return maxLevel>0;
+    return maxLevel > 0;
   }
-  context::CDHashMap<Node, std::shared_ptr<TermOrigin>>::iterator it = d_omap.find(n);
-  if (it==d_omap.end())
+  context::CDHashMap<Node, std::shared_ptr<TermOrigin>>::iterator it =
+      d_omap.find(n);
+  if (it == d_omap.end())
   {
     return true;
   }
-  return it->second->getQuantifierDepth(q)<=maxLevel;
+  return it->second->getQuantifierDepth(q) <= maxLevel;
 }
 
 }  // namespace theory

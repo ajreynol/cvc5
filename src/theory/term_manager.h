@@ -77,7 +77,7 @@ class TermDbManager : public TheoryEngineModule
      * Quantified formulas that are not present are 0. This is the minimial
      * number of times the quantified formula occurs on a label in a path
      * from this term to an input term.
-     * 
+     *
      * This map is incrementally maintained as d_children/d_parents is updated.
      */
     context::CDHashMap<Node, int64_t> d_quantDepth;
@@ -104,7 +104,10 @@ class TermDbManager : public TheoryEngineModule
    * generated this term.
    * @param args The arguments.
    */
-  void addOrigin(const Node& n, InferenceId id,const Node& q, const std::vector<TermOrigin*>& args);
+  void addOrigin(const Node& n,
+                 InferenceId id,
+                 const Node& q,
+                 const std::vector<TermOrigin*>& args);
   /**
    * Do any term-specific initialization, called once when the term n is first
    * seen in the user context.
