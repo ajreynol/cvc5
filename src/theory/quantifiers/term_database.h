@@ -76,8 +76,7 @@ class TermDb : public QuantifiersUtil
   TermDb(Env& env, QuantifiersState& qs, QuantifiersRegistry& qr);
   virtual ~TermDb();
   /** Finish init, which sets the inference manager */
-  void finishInit(QuantifiersInferenceManager* qim,
-                  TermDbEager* tde = nullptr);
+  void finishInit(QuantifiersInferenceManager* qim, TermDbEager* tde = nullptr);
   /** presolve (called once per user check-sat) */
   void presolve() override;
   /** reset (calculate which terms are active) */

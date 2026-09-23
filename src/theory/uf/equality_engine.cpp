@@ -1900,8 +1900,7 @@ void EqualityEngine::getExplanation(
                   }
                   else
                   {
-                    // The LFSC translator prefers (not (= a b)) over (= (= a b)
-                    // false)
+                    // Prefer (not (= a b)) over (= (= a b) false).
 
                     if (a == nodeManager()->mkConst(false))
                     {
@@ -2334,9 +2333,9 @@ void EqualityEngine::propagate()
         && !d_isInternal[t2classId])
     {
       d_masterEqualityEngine->assertEqualityInternal(d_nodes[t1classId],
-                                                    d_nodes[t2classId],
-                                                    current.d_reason,
-                                                    current.d_type);
+                                                     d_nodes[t2classId],
+                                                     current.d_reason,
+                                                     current.d_type);
       d_masterEqualityEngine->propagate();
     }
 

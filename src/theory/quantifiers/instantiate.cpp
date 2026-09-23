@@ -765,7 +765,7 @@ void Instantiate::getInstantiatedQuantifiedFormulas(std::vector<Node>& qs) const
 }
 
 void Instantiate::getInstantiationTermVectors(
-    Node q, std::vector<std::vector<Node> >& tvecs)
+    Node q, std::vector<std::vector<Node>>& tvecs)
 {
   if (d_useCdInstTrie)
   {
@@ -786,7 +786,7 @@ void Instantiate::getInstantiationTermVectors(
 }
 
 void Instantiate::getInstantiationTermVectors(
-    std::map<Node, std::vector<std::vector<Node> > >& insts)
+    std::map<Node, std::vector<std::vector<Node>>>& insts)
 {
   if (d_useCdInstTrie)
   {
@@ -810,8 +810,7 @@ void Instantiate::getInstantiations(Node q, std::vector<Node>& insts)
   InstLemmaList* ill = getOrMkInstLemmaList(q);
   insts.insert(insts.end(), ill->d_list.begin(), ill->d_list.end());
   // also include recorded instantations (for qe-partial)
-  std::map<Node, std::vector<Node> >::const_iterator it =
-      d_recordedInst.find(q);
+  std::map<Node, std::vector<Node>>::const_iterator it = d_recordedInst.find(q);
   if (it != d_recordedInst.end())
   {
     insts.insert(insts.end(), it->second.begin(), it->second.end());
