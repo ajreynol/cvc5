@@ -94,9 +94,6 @@ class Env
    */
   context::Context* getLemmaContext();
 
-  /** Get a pointer to the underlying NodeManager. */
-  NodeManager* getNodeManager() const;
-
   /**
    * Get the underlying proof manager. Note since proofs depend on option
    * initialization, this is only available after the SolverEngine that owns
