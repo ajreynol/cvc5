@@ -65,7 +65,8 @@ bool EmatchingFilter::exclude(Node q) const
 
 void EmatchingFilter::registerTrigger(inst::Trigger* tr)
 {
-  if (tr == nullptr || d_registeredTriggers.find(tr) != d_registeredTriggers.end())
+  if (tr == nullptr
+      || d_registeredTriggers.find(tr) != d_registeredTriggers.end())
   {
     return;
   }
@@ -77,8 +78,7 @@ void EmatchingFilter::registerTrigger(inst::Trigger* tr)
 bool EmatchingFilter::shouldProcessTrigger(inst::Trigger* tr)
 {
   registerTrigger(tr);
-  bool shouldProcess =
-      !d_triggersProcessed[tr] || d_triggerNeedsProcessing[tr];
+  bool shouldProcess = !d_triggersProcessed[tr] || d_triggerNeedsProcessing[tr];
   accountTriggerDecision(tr, shouldProcess);
   return shouldProcess;
 }
@@ -147,7 +147,8 @@ void EmatchingFilter::updateTriggerProcessingNeeds()
   for (std::pair<inst::Trigger* const, bool>& entry : d_registeredTriggers)
   {
     inst::Trigger* tr = entry.first;
-    if (tr == nullptr || d_triggerNeedsProcessing[tr] || !d_triggersProcessed[tr])
+    if (tr == nullptr || d_triggerNeedsProcessing[tr]
+        || !d_triggersProcessed[tr])
     {
       continue;
     }
@@ -180,7 +181,8 @@ void EmatchingFilter::updateTriggerProcessingNeeds()
 void EmatchingFilter::accountTriggerDecision(inst::Trigger* tr,
                                              bool shouldProcess)
 {
-  if (tr == nullptr || d_accountedTriggers.find(tr) != d_accountedTriggers.end())
+  if (tr == nullptr
+      || d_accountedTriggers.find(tr) != d_accountedTriggers.end())
   {
     return;
   }
@@ -199,8 +201,7 @@ void EmatchingFilter::traceMasterEqEventDiff(size_t previousSize) const
 {
   Trace("ematching-filter-events")
       << "Master equality engine events: previous=" << previousSize
-      << ", current="
-      << d_masterEqEventSnapshot.size();
+      << ", current=" << d_masterEqEventSnapshot.size();
   Trace("ematching-filter-events")
       << ", removed=" << d_masterEqEventsRemoved.size()
       << ", added=" << d_masterEqEventsAdded.size() << "." << std::endl;

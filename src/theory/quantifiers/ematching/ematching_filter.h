@@ -50,7 +50,8 @@ class EmatchingFilter : public QuantifiersModule
   bool needsCheck(Theory::Effort e) override;
   void check(Theory::Effort e, QEffort quant_e) override;
   void registerQuantifier(Node q) override;
-  /** Returns true if quantified formula q should be excluded from E-matching. */
+  /** Returns true if quantified formula q should be excluded from E-matching.
+   */
   bool exclude(Node q) const;
   /** Register a trigger that may be filtered by this class. */
   void registerTrigger(inst::Trigger* tr);
@@ -68,7 +69,8 @@ class EmatchingFilter : public QuantifiersModule
  private:
   /** Snapshot current master equality engine events and compute their delta. */
   void updateMasterEqEvents();
-  /** Update trigger dirty bits based on the current master equality event diff. */
+  /** Update trigger dirty bits based on the current master equality event diff.
+   */
   void updateTriggerProcessingNeeds();
   /** Account for a trigger filtering decision. */
   void accountTriggerDecision(inst::Trigger* tr, bool shouldProcess);

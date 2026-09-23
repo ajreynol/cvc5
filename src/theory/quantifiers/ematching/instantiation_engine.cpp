@@ -57,8 +57,8 @@ InstantiationEngine::InstantiationEngine(Env& env,
     // user-provided patterns
     if (options().quantifiers.userPatternsQuant != options::UserPatMode::IGNORE)
     {
-      d_isup.reset(
-          new InstStrategyUserPatterns(d_env, d_trdb, qs, qim, qr, tr, emFilter));
+      d_isup.reset(new InstStrategyUserPatterns(
+          d_env, d_trdb, qs, qim, qr, tr, emFilter));
       d_instStrategies.push_back(d_isup.get());
     }
 
@@ -306,9 +306,10 @@ void InstantiationEngine::traceFilterSummary()
     uint64_t numUnfilteredTriggers = d_emFilter->getNumUnfilteredTriggers();
     Trace("ematching-filter")
         << "E-matching filter summary: filtered=" << numFilteredTriggers
-        << ", unfiltered=" << numUnfilteredTriggers << " triggers (excluded="
-        << d_excludedQuants.size() << ", active=" << d_quants.size()
-        << " quantified formulas)." << std::endl;
+        << ", unfiltered=" << numUnfilteredTriggers
+        << " triggers (excluded=" << d_excludedQuants.size()
+        << ", active=" << d_quants.size() << " quantified formulas)."
+        << std::endl;
   }
 }
 
@@ -320,8 +321,7 @@ void InstantiationEngine::assertExcludedQuantifierHasNoInstantiations(
   {
     return;
   }
-  uint32_t numInst =
-      d_qim.getInstantiate()->getNumInstantiationsThisRound(q);
+  uint32_t numInst = d_qim.getInstantiate()->getNumInstantiationsThisRound(q);
   int e = 0;
   int eLimit = effort == Theory::EFFORT_LAST_CALL ? 10 : 2;
   bool finished = false;
@@ -331,7 +331,8 @@ void InstantiationEngine::assertExcludedQuantifierHasNoInstantiations(
     for (InstStrategy* is : d_instStrategies)
     {
       InstStrategyStatus quantStatus = is->process(q, effort, e);
-      Assert(d_qim.getInstantiate()->getNumInstantiationsThisRound(q) == numInst)
+      Assert(d_qim.getInstantiate()->getNumInstantiationsThisRound(q)
+             == numInst)
           << "E-matching exclusion was not conservative for " << q;
       if (d_qstate.isInConflict())
       {

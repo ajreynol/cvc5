@@ -19,8 +19,8 @@
 #include <map>
 #include <unordered_set>
 
-#include "context/cdlist.h"
 #include "context/cdhashset.h"
+#include "context/cdlist.h"
 #include "smt/env_obj.h"
 #include "theory/quantifiers/bv_inverter.h"
 #include "theory/quantifiers/cegqi/vts_term_cache.h"
@@ -56,7 +56,9 @@ class TermRegistry : protected EnvObj
   /** A master equality engine event recorded by this registry. */
   struct MasterEqEvent
   {
-    MasterEqEvent(MasterEqEventKind kind, Node first, Node second = Node::null())
+    MasterEqEvent(MasterEqEventKind kind,
+                  Node first,
+                  Node second = Node::null())
         : d_kind(kind), d_first(first), d_second(second)
     {
     }

@@ -93,9 +93,8 @@ Trigger::Trigger(Env& env,
       d_supportsRelevantTermFiltering = false;
     }
     std::vector<TNode> visit;
-    visit.push_back(TriggerTermInfo::isSimpleTrigger(n)
-                        ? getSimpleTriggerMatchTerm(n)
-                        : n);
+    visit.push_back(
+        TriggerTermInfo::isSimpleTrigger(n) ? getSimpleTriggerMatchTerm(n) : n);
     do
     {
       TNode cur = visit.back();
