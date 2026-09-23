@@ -126,11 +126,12 @@ size_t QuantifiersRegistry::getNumInstantiationConstants(Node q) const
   return 0;
 }
 
-const std::vector<Node>& QuantifiersRegistry::getInstantiationConstants(const Node& q) const
+const std::vector<Node>& QuantifiersRegistry::getInstantiationConstants(
+    const Node& q) const
 {
   std::map<Node, std::vector<Node> >::const_iterator it =
       d_inst_constants.find(q);
-  Assert (it != d_inst_constants.end());
+  Assert(it != d_inst_constants.end());
   return it->second;
 }
 
