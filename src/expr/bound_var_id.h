@@ -141,10 +141,9 @@ enum class BoundVarId
    * predicate that describes the invertibility condition.
    */
   QUANT_BV_INVERT_ANNOT,
-   * Cached on a canonical variable index and type class, used by
-   * expr::TermCanonize when building alpha-invariant representative terms.
-   */
-  TERM_CANONIZE,
+  *Cached on a canonical variable index and type class,
+  used by* expr::TermCanonize when building alpha
+      - invariant representative terms.* / TERM_CANONIZE,
   /**
    * A variable used by the valid witness proof generator. This is cached based
    * on the skolem that witnesses the variable, whose skolem identifier is one

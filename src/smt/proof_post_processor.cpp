@@ -998,15 +998,15 @@ Node ProofPostprocessCallback::addExpandStep(ProofRule id,
                                              const std::vector<Node>& args,
                                              CDProof* cdp)
 {
-/*
-  Node res = d_pc->checkDebug(id, children, args);
-  if (res.isNull())
-  {
+  /*
+    Node res = d_pc->checkDebug(id, children, args);
+    if (res.isNull())
+    {
+      return res;
+    }
+    cdp->addStep(res, id, children, args);
     return res;
-  }
-  cdp->addStep(res, id, children, args);
-  return res;
-*/
+  */
   // For now, this is a (locally) recursive call to expand macros; alternatively
   // we could add the step to cdp and allow the proof node updater to call us
   // again. This has the advantage that it may be possible to do more aggressive
