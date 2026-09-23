@@ -191,13 +191,11 @@ void InstMatchGenerator::initialize(Node q,
           d_children_types.push_back(pat.getAttribute(InstVarNumAttribute()));
           continue;
         }
-        cimg =
-            getInstMatchGenerator(d_env, d_tparent, q, pat);
+        cimg = getInstMatchGenerator(d_env, d_tparent, q, pat);
       }
-      else if (expr::hasBoundVar(pat) && pat.getKind()!=Kind::BOUND_VARIABLE)
+      else if (expr::hasBoundVar(pat) && pat.getKind() != Kind::BOUND_VARIABLE)
       {
-        cimg =
-            getInstMatchGenerator(d_env, d_tparent, q, pat);
+        cimg = getInstMatchGenerator(d_env, d_tparent, q, pat);
       }
       if (cimg)
       {
@@ -338,7 +336,8 @@ int InstMatchGenerator::getMatch(Node t, InstMatch& m)
     }
     else if (ct == -1)
     {
-      if (d_match_pattern[i].getKind()!=Kind::BOUND_VARIABLE && !d_qstate.areEqual(d_match_pattern[i], t[i]))
+      if (d_match_pattern[i].getKind() != Kind::BOUND_VARIABLE
+          && !d_qstate.areEqual(d_match_pattern[i], t[i]))
       {
         Trace("matching-fail") << "Match fail arg: " << d_match_pattern[i]
                                << " and " << t[i] << std::endl;

@@ -187,7 +187,7 @@ void InstMatchGeneratorSimple::addInstantiations(InstMatch& m,
     // inst constant from another quantified formula, treat as ground term?
   }
   // rare case: bound variable from another formula, ignore
-  if (d_match_pattern[argIndex].getKind()==Kind::BOUND_VARIABLE)
+  if (d_match_pattern[argIndex].getKind() == Kind::BOUND_VARIABLE)
   {
     for (std::pair<const TNode, TNodeTrie>& tt : tat->d_data)
     {

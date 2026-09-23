@@ -12,8 +12,8 @@
 
 #include "theory/quantifiers/ematching/trigger_term_info.h"
 
-#include "theory/quantifiers/term_util.h"
 #include "expr/node_algorithm.h"
+#include "theory/quantifiers/term_util.h"
 
 using namespace cvc5::internal::kind;
 
