@@ -67,7 +67,7 @@ void SolverState::registerEqc(TypeNode tn, Node r)
 void SolverState::registerTerm(Node r, TypeNode tnn, Node n)
 {
   Kind nk = n.getKind();
-  Assert (nk!=Kind::SET_UNIVERSE);
+  Assert(nk != Kind::SET_UNIVERSE);
   int polarityIndex = r == d_true ? 0 : (r == d_false ? 1 : -1);
   if (nk == Kind::SET_MEMBER)
   {
