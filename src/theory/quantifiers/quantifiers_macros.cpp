@@ -13,8 +13,10 @@
 #include "theory/quantifiers/quantifiers_macros.h"
 
 #include "expr/node_algorithm.h"
+#include "options/proof_options.h"
 #include "options/quantifiers_options.h"
 #include "proof/proof.h"
+#include "rewriter/basic_rewrite_rcons.h"
 #include "theory/arith/arith_msum.h"
 #include "theory/quantifiers/ematching/pattern_term_selector.h"
 #include "theory/quantifiers/term_util.h"
@@ -40,7 +42,9 @@ Node QuantifiersMacros::getMacroDefinition(const Options& opts,
                                            bool reqGround)
 {
   Trace("macros-debug") << "QuantifiersMacros::solve " << lit << std::endl;
-  if (lit.getKind() != Kind::FORALL)
+  // Abstracting the arguments of a macro is only sound if they are bound by
+  // this formula. In particular, forall x. P(y) must not define P on all inputs.
+  if (lit.getKind() != Kind::FORALL || expr::hasFreeVar(lit))
   {
     return Node::null();
   }
@@ -172,6 +176,11 @@ bool QuantifiersMacros::preservesTriggerVariables(const Options& opts,
 bool QuantifiersMacros::isBoundVarApplyUf(Node n)
 {
   Assert(n.getKind() == Kind::APPLY_UF);
+  // The function being defined must not depend on the quantified variables.
+  if (expr::hasFreeVar(n.getOperator()))
+  {
+    return false;
+  }
   TypeNode tno = n.getOperator().getType();
   std::map<Node, bool> vars;
   // allow if a vector of unique variables of the same type as UF arguments
@@ -315,7 +324,20 @@ std::shared_ptr<ProofNode> QuantifiersMacros::getProofFor(Node fact)
   std::shared_ptr<ProofNode> pfa = tin.toProofNode();
   cdp.addProof(pfa);
   Node equiv = assump.eqNode(fact);
-  cdp.addTheoryRewriteStep(equiv, ProofRewriteRule::MACRO_QUANT_MACRO_DEF);
+  options::ProofGranularityMode pg = options().proof.proofGranularityMode;
+  if (pg == options::ProofGranularityMode::DSL_REWRITE
+      || pg == options::ProofGranularityMode::DSL_REWRITE_STRICT)
+  {
+    // Explicit THEORY_REWRITE steps are not revisited by DSL reconstruction.
+    // Expand it now so its subgoals can be processed in the final proof.
+    rewriter::BasicRewriteRCons rcons(d_env);
+    rcons.ensureProofForTheoryRewrite(
+        &cdp, ProofRewriteRule::MACRO_QUANT_MACRO_DEF, equiv);
+  }
+  else
+  {
+    cdp.addTheoryRewriteStep(equiv, ProofRewriteRule::MACRO_QUANT_MACRO_DEF);
+  }
   cdp.addStep(fact, ProofRule::EQ_RESOLVE, {assump, equiv}, {});
   return cdp.getProofFor(fact);
 }

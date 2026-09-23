@@ -1,7 +1,8 @@
-; COMMAND-LINE: --dump-proofs --proof-granularity=theory-rewrite
-; SCRUBBER: grep -o 'unsat\|macro-quant-macro-def\|TRUST SUBS_EQ'
+; REQUIRES: no-safe-mode
+; COMMAND-LINE: --dump-proofs --proof-granularity=dsl-rewrite --check-proofs --proof-check=eager --no-proof-allow-trust
+; SCRUBBER: grep -o 'unsat\|lambda-elim\|macro-quant-macro-def\|trust'
 ; EXPECT: unsat
-; EXPECT: macro-quant-macro-def
+; EXPECT: lambda-elim
 (set-logic UFLIA)
 (set-option :macros-quant true)
 

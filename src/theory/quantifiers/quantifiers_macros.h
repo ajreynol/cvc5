@@ -45,6 +45,7 @@ class QuantifiersMacros : protected EnvObj, public ProofGenerator
    * where n is of the form U(x1...xn). Returns an equality of the form
    *   U = lambda x1 ... xn. ndef
    * if this is a legal macro definition for U, and the null node otherwise.
+   * The formula and U must have no free bound variables.
    *
    * @param lit The body of the quantified formula
    * @param reqGround Whether we require the macro definition to be ground,

@@ -3150,6 +3150,8 @@ enum ENUM(ProofRewriteRule)
    *   \forall X.\> F = (f = \lambda X.\> G)
    *
    * where :math:`f(X) = G` is equivalent to :math:`F`.
+   * The quantified formula has no free bound variables, and :math:`f` is not
+   * a bound variable.
    *
    * \endverbatim
    */
