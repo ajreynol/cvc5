@@ -1,10 +1,7 @@
 ###############################################################################
-# Top contributors (to current version):
-#   Daniel Larraz, Mathias Preiner, Andres Noetzli
-#
 # This file is part of the cvc5 project.
 #
-# Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+# Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
 # in the top-level source directory and their institutional affiliations.
 # All rights reserved.  See the file COPYING in the top-level source
 # directory for licensing information.
@@ -25,7 +22,7 @@ if(NOT ONLY_PYTHON_EXT_SRC)
   # a directory within the Python wheel package so that
   # the package is self-contained. It works on Linux,
   # macOS, and Windows.
-  find_package(Repairwheel 0.3.1 REQUIRED)
+  find_package(Repairwheel 0.3.2 REQUIRED)
 endif()
 
 configure_file(genenums.py.in genenums.py)
@@ -116,18 +113,24 @@ copy_file_from_src(py_plugin.h)
 copy_file_from_src(py_plugin.cpp)
 copy_file_from_src(pyproject.toml)
 
+# Get python extension filename
+execute_process(COMMAND
+  ${Python_EXECUTABLE} -c
+    "import sysconfig;\
+     print('cvc5_python_base' + sysconfig.get_config_var('EXT_SUFFIX'))"
+  OUTPUT_VARIABLE PYTHON_EXT_FILENAME
+  OUTPUT_STRIP_TRAILING_WHITESPACE)
+
 # Set include_dirs and library_dirs variables that are used in setup.cfg.in
 if (WIN32)
-  set(PYTHON_EXT "pyd")
-  set(SETUP_INCLUDE_DIRS "${PROJECT_SOURCE_DIR}/include;${CMAKE_BINARY_DIR}/include")
-  set(SETUP_LIBRARY_DIRS "${CMAKE_BINARY_DIR}/src;${CMAKE_BINARY_DIR}/src/parser")
+  set(SETUP_INCLUDE_DIRS "${PROJECT_SOURCE_DIR}/include;${PROJECT_BINARY_DIR}/include")
+  set(SETUP_LIBRARY_DIRS "${PROJECT_BINARY_DIR}/src;${PROJECT_BINARY_DIR}/src/parser")
   set(SETUP_COMPILER "[build]\ncompiler=mingw32")
 else()
-  set(PYTHON_EXT "so")
-  set(SETUP_INCLUDE_DIRS "${PROJECT_SOURCE_DIR}/include:${CMAKE_BINARY_DIR}/include")
-  set(SETUP_LIBRARY_DIRS "${CMAKE_BINARY_DIR}/src:${CMAKE_BINARY_DIR}/src/parser")
+  set(SETUP_INCLUDE_DIRS "${PROJECT_SOURCE_DIR}/include:${PROJECT_BINARY_DIR}/include")
+  set(SETUP_LIBRARY_DIRS "${PROJECT_BINARY_DIR}/src:${PROJECT_BINARY_DIR}/src/parser")
   # On Linux and macOS, set rpath variable too
-  set(SETUP_RPATH "rpath=${CMAKE_BINARY_DIR}/src:${CMAKE_BINARY_DIR}/src/parser")
+  set(SETUP_RPATH "rpath=${PROJECT_BINARY_DIR}/src:${PROJECT_BINARY_DIR}/src/parser")
 endif()
 
 # Set MACOS_ARCH variable that is used in setup.py.in
@@ -153,20 +156,20 @@ set(PYTHON_EXT_SRC_FILES
 
 if(NOT ONLY_PYTHON_EXT_SRC)
   set(CVC5_PYTHON_BASE_LIB
-    "${CMAKE_CURRENT_BINARY_DIR}/cvc5/cvc5_python_base.${PYTHON_EXT}")
+    "${CMAKE_CURRENT_BINARY_DIR}/cvc5/${PYTHON_EXT_FILENAME}")
 
   add_custom_command(
     OUTPUT
       ${CVC5_PYTHON_BASE_LIB}
     COMMAND
       # Force a new build if any dependency has changed
-      ${CMAKE_COMMAND} -E remove cvc5_python_base.cpp cvc5/cvc5_python_base.${PYTHON_EXT}
+      ${CMAKE_COMMAND} -E remove cvc5_python_base.cpp cvc5/${PYTHON_EXT_FILENAME}
     COMMAND
       "${Python_EXECUTABLE}" setup.py build_ext --inplace
     DEPENDS
       cvc5 cvc5parser
       ${PYTHON_EXT_SRC_FILES}
-    COMMENT "Generating cvc5_python_base.${PYTHON_EXT}"
+    COMMENT "Generating ${PYTHON_EXT_FILENAME}"
   )
 endif()
 
@@ -176,6 +179,7 @@ endif()
 find_package(CVC5PythonicAPI)
 
 set(LICENSE_FILES
+  "${CMAKE_CURRENT_BINARY_DIR}/AUTHORS"
   "${CMAKE_CURRENT_BINARY_DIR}/COPYING"
   "${CMAKE_CURRENT_BINARY_DIR}/licenses/lgpl-3.0.txt"
   "${CMAKE_CURRENT_BINARY_DIR}/licenses/pythonic-LICENSE"
@@ -184,6 +188,10 @@ set(LICENSE_FILES
 add_custom_command(
   OUTPUT
     ${LICENSE_FILES}
+  COMMAND
+    ${CMAKE_COMMAND} -E copy
+    "${PROJECT_SOURCE_DIR}/AUTHORS"
+    "${CMAKE_CURRENT_BINARY_DIR}/AUTHORS"
   COMMAND
     ${CMAKE_COMMAND} -E copy
     "${PROJECT_SOURCE_DIR}/COPYING"
@@ -256,10 +264,10 @@ else()
   install(CODE "execute_process(COMMAND \${CMAKE_COMMAND}
     -DPython_EXECUTABLE=${Python_EXECUTABLE}
     -DRepairwheel_EXECUTABLE=${Repairwheel_EXECUTABLE}
-    -DBUILD_DIR=${CMAKE_BINARY_DIR}
+    -DBUILD_DIR=${PROJECT_BINARY_DIR}
     -DDEPS_BASE=${DEPS_BASE}
     -DINSTALL_CMD=\"${INSTALL_CMD}\"
-    -P ${CMAKE_SOURCE_DIR}/cmake/install_python_wheel.cmake)"
+    -P ${PROJECT_SOURCE_DIR}/cmake/install_python_wheel.cmake)"
     COMPONENT python-api)
 
 endif()

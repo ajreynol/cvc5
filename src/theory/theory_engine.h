@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Dejan Jovanovic, Morgan Deters
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -57,7 +54,8 @@ class ProofChecker;
  * A pair of a theory and a node. This is used to mark the flow of
  * propagations between theories.
  */
-struct NodeTheoryPair {
+struct NodeTheoryPair
+{
   Node d_node;
   theory::TheoryId d_theory;
   size_t d_timestamp;
@@ -67,20 +65,22 @@ struct NodeTheoryPair {
   }
   NodeTheoryPair() : d_theory(theory::THEORY_LAST), d_timestamp() {}
   // Comparison doesn't take into account the timestamp
-  bool operator == (const NodeTheoryPair& pair) const {
+  bool operator==(const NodeTheoryPair& pair) const
+  {
     return d_node == pair.d_node && d_theory == pair.d_theory;
   }
-};/* struct NodeTheoryPair */
+}; /* struct NodeTheoryPair */
 
-struct NodeTheoryPairHashFunction {
+struct NodeTheoryPairHashFunction
+{
   std::hash<Node> hashFunction;
   // Hash doesn't take into account the timestamp
-  size_t operator()(const NodeTheoryPair& pair) const {
+  size_t operator()(const NodeTheoryPair& pair) const
+  {
     uint64_t hash = fnv1a::fnv1a_64(std::hash<Node>()(pair.d_node));
     return static_cast<size_t>(fnv1a::fnv1a_64(pair.d_theory, hash));
   }
-};/* struct NodeTheoryPairHashFunction */
-
+}; /* struct NodeTheoryPairHashFunction */
 
 /* Forward declarations */
 namespace theory {
@@ -133,7 +133,8 @@ class TheoryEngine : protected EnvObj
   template <class TheoryClass>
   void addTheory(theory::TheoryId theoryId)
   {
-    Assert(d_theoryTable[theoryId] == NULL && d_theoryOut[theoryId] == NULL);
+    Assert(d_theoryTable[theoryId] == nullptr
+           && d_theoryOut[theoryId] == nullptr);
     d_theoryOut[theoryId] =
         new theory::OutputChannel(statisticsRegistry(), this, theoryId);
     d_theoryTable[theoryId] =
@@ -263,9 +264,13 @@ class TheoryEngine : protected EnvObj
    * Solve the given literal with a theory that owns it. The proof of tliteral
    * is carried in the trust node. The proof added to substitutionOut should
    * take this proof into account (when proofs are enabled).
+   *
+   * @param tin The literal and its proof generator.
+   * @param outSubstitutions The substitution map to add to, if applicable.
+   * @return true iff the literal can be removed from the input, e.g. when
+   * the substitution it entails is added to outSubstitutions.
    */
-  theory::Theory::PPAssertStatus solve(
-      TrustNode tliteral, theory::TrustSubstitutionMap& substitutionOut);
+  bool solve(TrustNode tliteral, theory::TrustSubstitutionMap& substitutionOut);
 
   /**
    * Preregister a Theory atom with the responsible theory (or
@@ -286,10 +291,12 @@ class TheoryEngine : protected EnvObj
   void check(theory::Theory::Effort effort);
 
   /**
-   * Calls ppStaticLearn() on all theories, accumulating their
-   * combined contributions in the "learned" builder.
+   * Calls ppStaticLearn() on all theories.
+   * Adds any new lemmas learned to the learned vector.
+   * @param in The formula that holds.
+   * @param learned The vector storing the new lemmas learned.
    */
-  void ppStaticLearn(TNode in, NodeBuilder& learned);
+  void ppStaticLearn(TNode in, std::vector<TrustNode>& learned);
 
   /**
    * Calls presolve() on all theories and returns true

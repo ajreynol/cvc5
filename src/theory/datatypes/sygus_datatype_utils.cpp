@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Aina Niemetz, Mathias Preiner
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -20,7 +17,6 @@
 #include "expr/dtype.h"
 #include "expr/dtype_cons.h"
 #include "expr/node_algorithm.h"
-#include "expr/skolem_manager.h"
 #include "expr/sygus_datatype.h"
 #include "smt/env.h"
 #include "theory/evaluator.h"
@@ -152,9 +148,8 @@ Node mkSygusTerm(const Node& op,
                  const std::vector<Node>& children,
                  bool doBetaReduction)
 {
-  NodeManager* nm = NodeManager::currentNM();
-  Assert(nm->getSkolemManager()->getInternalId(op)
-         != InternalSkolemId::SYGUS_ANY_CONSTANT);
+  NodeManager* nm = op.getNodeManager();
+  Assert(op.getInternalSkolemId() != InternalSkolemId::SYGUS_ANY_CONSTANT);
   Trace("dt-sygus-util") << "Operator is " << op << std::endl;
   if (children.empty())
   {
@@ -211,7 +206,7 @@ Node mkSygusTerm(const Node& op,
   }
   else
   {
-    ret = NodeManager::currentNM()->mkNode(tok, schildren);
+    ret = nm->mkNode(tok, schildren);
   }
   Trace("dt-sygus-util") << "...return " << ret << std::endl;
   return ret;
@@ -279,7 +274,7 @@ Node sygusToBuiltin(Node n, bool isExternal)
       }
       else if (cur.getType().isSygusDatatype())
       {
-        Assert (cur.isVar());
+        Assert(cur.isVar());
         if (cur.hasAttribute(SygusToBuiltinVarAttribute()))
         {
           // use the previously constructed variable for it
@@ -291,8 +286,7 @@ Node sygusToBuiltin(Node n, bool isExternal)
           ss << cur;
           const DType& dt = cur.getType().getDType();
           // make a fresh variable
-          NodeManager * nm = NodeManager::currentNM();
-          Node var = nm->mkBoundVar(ss.str(), dt.getSygusType());
+          Node var = NodeManager::mkBoundVar(ss.str(), dt.getSygusType());
           SygusToBuiltinVarAttribute stbv;
           cur.setAttribute(stbv, var);
           visited[cur] = var;
@@ -427,7 +421,7 @@ TypeNode substituteAndGeneralizeSygusType(TypeNode sdt,
                                           const std::vector<Node>& syms,
                                           const std::vector<Node>& vars)
 {
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = sdt.getNodeManager();
   const DType& sdtd = sdt.getDType();
   // compute the new formal argument list
   std::vector<Node> formalVars;
@@ -587,11 +581,10 @@ TypeNode generalizeSygusType(TypeNode sdt)
   }
   std::vector<Node> svec;
   std::vector<Node> vars;
-  NodeManager* nm = NodeManager::currentNM();
   for (const Node& s : syms)
   {
     svec.push_back(s);
-    vars.push_back(nm->mkBoundVar(s.getName(), s.getType()));
+    vars.push_back(NodeManager::mkBoundVar(s.getName(), s.getType()));
   }
   return substituteAndGeneralizeSygusType(sdt, svec, vars);
 }

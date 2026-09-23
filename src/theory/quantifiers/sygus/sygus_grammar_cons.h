@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -97,11 +94,12 @@ class SygusGrammarCons
   /**
    * Make the builtin constants for type "type" that should be included in a
    * sygus grammar, add them to vector ops.
-   * 
+   *
    * @param type The type to add constants for
    * @param op The vector to add the constants to
    */
-  static void mkSygusConstantsForType(const TypeNode& type,
+  static void mkSygusConstantsForType(const Env& env,
+                                      const TypeNode& type,
                                       std::vector<Node>& ops);
 
  private:
@@ -124,7 +122,8 @@ class SygusGrammarCons
    * for the type range. This is the component types of range plus other
    * auxiliary types for defining operators in its theory.
    */
-  static void collectTypes(const TypeNode& range,
+  static void collectTypes(NodeManager* nm,
+                           const TypeNode& range,
                            std::unordered_set<TypeNode>& types);
   /**
    * Adds the default rules for non-terminal ntSym to g, where ntSym is a
@@ -169,6 +168,7 @@ class SygusGrammarCons
    * constructed term.
    */
   static bool addRuleTo(
+      NodeManager* nm,
       SygusGrammar& g,
       const std::map<TypeNode, std::vector<Node>>& typeToNtSym,
       Kind k,
@@ -185,6 +185,7 @@ class SygusGrammarCons
    * constructed term.
    */
   static bool addRuleTo(
+      NodeManager* nm,
       SygusGrammar& g,
       const std::map<TypeNode, std::vector<Node>>& typeToNtSym,
       Kind k,

@@ -1,6 +1,7 @@
+; REQUIRES: unrestricted-mode
 (set-logic ALL)
 (set-info :status unsat)
-(set-option :strings-exp true)
+
 (set-option :sets-exp true)
 (declare-const x (Array (Set RoundingMode) (Set RoundingMode)))
 (check-sat-assuming (

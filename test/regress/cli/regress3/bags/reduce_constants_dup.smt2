@@ -1,8 +1,7 @@
+; Safe and stable modes disallow combining uf-lazy-ll with fmf-bound.
+; REQUIRES: unrestricted-mode
 ; DISABLE-TESTER: unsat-core
-; DISABLE-TESTER: proof
-; DISABLE-TESTER: dsl-proof
 ; DISABLE-TESTER: cpc
-; DISABLE-TESTER: lfsc
 ; test name: testReduceConstantsDup2
 ;Translating sql query: SELECT * FROM EMP AS EMP WHERE EMP.DEPTNO = 7 AND EMP.DEPTNO = 8 AND EMP.EMPNO = 10 AND EMP.MGR IS NULL AND EMP.EMPNO = 10
 ;Translating sql query: SELECT 10 AS EMPNO, t0.ENAME, t0.JOB, CAST(NULL AS INT) AS MGR, t0.HIREDATE, t0.SAL, t0.COMM, t0.DEPTNO, t0.SLACKER FROM (SELECT * FROM EMP WHERE FALSE) AS t0
@@ -12,7 +11,7 @@
 (set-option :uf-lazy-ll true)
 (set-option :fmf-bound true)
 (set-option :tlimit-per 10000)
-(set-option :strings-exp true)
+
 
 (declare-const EMP (Bag (Tuple (Nullable Int) (Nullable String) (Nullable String) (Nullable Int) (Nullable Int) (Nullable Int) (Nullable Int) (Nullable Int) (Nullable Int))))
 (declare-const q1 (Bag (Tuple (Nullable Int) (Nullable String) (Nullable String) (Nullable Int) (Nullable Int) (Nullable Int) (Nullable Int) (Nullable Int) (Nullable Int))))

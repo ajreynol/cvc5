@@ -1,10 +1,7 @@
 /******************************************************************************
- * Top contributors (to current version):
- *   Andrew Reynolds, Tim King, Andres Noetzli
- *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -347,6 +344,7 @@ class SymbolTable::Implementation
  public:
   Implementation()
       : d_context(),
+        d_dummySortTerms(&d_context),
         d_exprMap(&d_context),
         d_typeMap(&d_context),
         d_overload_trie(&d_context)
@@ -356,6 +354,7 @@ class SymbolTable::Implementation
   ~Implementation() {}
 
   bool bind(const string& name, Term obj, bool doOverload);
+  bool bindDummySortTerm(const std::string& name, Term t);
   void bindType(const string& name, Sort t);
   void bindType(const string& name, const vector<Sort>& params, Sort t);
   bool isBound(const string& name) const;
@@ -383,6 +382,8 @@ class SymbolTable::Implementation
  private:
   /** The context manager for the scope maps. */
   Context d_context;
+  /** The set of dummy sort terms we have bound. */
+  CDHashSet<Term> d_dummySortTerms;
 
   /** A map for expressions. */
   CDHashMap<string, Term> d_exprMap;
@@ -423,6 +424,18 @@ bool SymbolTable::Implementation::bind(const string& name,
   }
   d_exprMap.insert(name, obj);
 
+  return true;
+}
+
+bool SymbolTable::Implementation::bindDummySortTerm(const std::string& name,
+                                                    Term t)
+{
+  if (!bind(name, t, false))
+  {
+    return false;
+  }
+  // remember that it is a dummy sort term
+  d_dummySortTerms.insert(t);
   return true;
 }
 
@@ -621,6 +634,13 @@ bool SymbolTable::Implementation::bindWithOverloading(const string& name,
     // the symbol manager.
     if (prev_bound_obj != obj)
     {
+      // If the previous overloaded symbol was a dummy symbol denoting a sort
+      // (as tracked by d_dummySortTerms), we fail unconditionally
+      // in this case.
+      if (d_dummySortTerms.find(prev_bound_obj) != d_dummySortTerms.end())
+      {
+        return false;
+      }
       return d_overload_trie.bind(name, prev_bound_obj, obj);
     }
   }
@@ -652,6 +672,11 @@ SymbolTable::~SymbolTable() {}
 bool SymbolTable::bind(const string& name, Term obj, bool doOverload)
 {
   return d_implementation->bind(name, obj, doOverload);
+}
+
+bool SymbolTable::bindDummySortTerm(const std::string& name, cvc5::Term t)
+{
+  return d_implementation->bindDummySortTerm(name, t);
 }
 
 void SymbolTable::bindType(const string& name, Sort t)
