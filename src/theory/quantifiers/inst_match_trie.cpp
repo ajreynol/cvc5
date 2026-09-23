@@ -242,12 +242,14 @@ void CDInstMatchTrie::print(std::ostream& out, const Node& q) const
   print(out, q, terms);
 }
 
-bool InstMatchTrieOrdered::addInstMatch(const Node& q, const std::vector<Node>& m)
+bool InstMatchTrieOrdered::addInstMatch(const Node& q,
+                                        const std::vector<Node>& m)
 {
   return d_imt.addInstMatch(q, m, d_imtio);
 }
 
-bool InstMatchTrieOrdered::existsInstMatch(const Node& q, const std::vector<Node>& m)
+bool InstMatchTrieOrdered::existsInstMatch(const Node& q,
+                                           const std::vector<Node>& m)
 {
   return d_imt.existsInstMatch(q, m, d_imtio);
 }

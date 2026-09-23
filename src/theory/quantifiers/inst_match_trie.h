@@ -72,7 +72,8 @@ class InstMatchTrie
   /**
    * Adds the instantiations for q into insts.
    */
-  void getInstantiations(const Node& q, std::vector<std::vector<Node>>& insts) const;
+  void getInstantiations(const Node& q,
+                         std::vector<std::vector<Node>>& insts) const;
 
   /** clear the data of this class */
   void clear();
@@ -128,7 +129,8 @@ class CDInstMatchTrie
   /**
    * Adds the instantiations for q into insts.
    */
-  void getInstantiations(const Node& q, std::vector<std::vector<Node>>& insts) const;
+  void getInstantiations(const Node& q,
+                         std::vector<std::vector<Node>>& insts) const;
 
   /** print this class */
   void print(std::ostream& out, const Node& q) const;
