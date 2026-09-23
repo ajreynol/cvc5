@@ -22,8 +22,8 @@
 #include "options/main_options.h"
 #include "options/sets_options.h"
 #include "options/smt_options.h"
-#include "prop/lazy_prop_engine.h"
 #include "preprocessing/assertion_pipeline.h"
+#include "prop/lazy_prop_engine.h"
 #include "prop/prop_engine.h"
 #include "smt/assertions.h"
 #include "smt/env.h"
@@ -221,8 +221,7 @@ void SmtSolver::resetPropEngine()
 bool SmtSolver::trackPreprocessedAssertions() const
 {
   return options().smt.deepRestartMode != options::DeepRestartMode::NONE
-         || options().smt.produceProofs
-         || options().smt.smtLazyAssert;
+         || options().smt.produceProofs || options().smt.smtLazyAssert;
 }
 
 TheoryEngine* SmtSolver::getTheoryEngine() { return d_theoryEngine.get(); }

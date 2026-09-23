@@ -15,21 +15,20 @@
 
 #include "preprocessing/passes/and_elim.h"
 
+#include "options/smt_options.h"
 #include "preprocessing/assertion_pipeline.h"
 #include "preprocessing/preprocessing_pass_context.h"
 #include "smt/env.h"
-#include "util/rational.h"
-#include "options/smt_options.h"
 #include "smt/preprocess_proof_generator.h"
+#include "util/rational.h"
 
 namespace cvc5::internal {
 namespace preprocessing {
 namespace passes {
 
 AndElim::AndElim(PreprocessingPassContext* preprocContext)
-    : PreprocessingPass(preprocContext, "and-elim"), 
-      d_lcp(new LazyCDProof(
-                 d_env, nullptr, userContext(), "AndElim::lcp"))
+    : PreprocessingPass(preprocContext, "and-elim"),
+      d_lcp(new LazyCDProof(d_env, nullptr, userContext(), "AndElim::lcp"))
 {
 }
 
@@ -46,32 +45,30 @@ PreprocessingPassResult AndElim::applyInternal(
     {
       if (isProofEnabled())
       {
-        smt::PreprocessProofGenerator * pppg = assertionsToPreprocess->getPreprocessProofGenerator();
+        smt::PreprocessProofGenerator* pppg =
+            assertionsToPreprocess->getPreprocessProofGenerator();
         d_lcp->addProof(pppg->getProofFor(a));
-        for (size_t j=0, achild = a.getNumChildren(); j<achild; j++)
+        for (size_t j = 0, achild = a.getNumChildren(); j < achild; j++)
         {
           Node nj = nm->mkConstInt(Rational(j));
           d_lcp->addStep(a[j], ProofRule::AND_ELIM, {a}, {nj});
         }
       }
       assertionsToPreprocess->replace(i, a[0], d_lcp.get());
-      for (size_t j=1, achild = a.getNumChildren(); j<achild; j++)
+      for (size_t j = 1, achild = a.getNumChildren(); j < achild; j++)
       {
         assertionsToPreprocess->push_back(a[j], d_lcp.get());
       }
     }
     else
     {
-      i = i+1;
+      i = i + 1;
     }
   }
   return PreprocessingPassResult::NO_CONFLICT;
 }
 
-bool AndElim::isProofEnabled() const
-{
-  return options().smt.produceProofs;
-}
+bool AndElim::isProofEnabled() const { return options().smt.produceProofs; }
 
 }  // namespace passes
 }  // namespace preprocessing

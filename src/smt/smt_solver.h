@@ -37,7 +37,7 @@ class ProofNodeManager;
 namespace prop {
 class LazyPropEngine;
 class PropEngine;
-}
+}  // namespace prop
 
 namespace theory {
 class QuantifiersEngine;
