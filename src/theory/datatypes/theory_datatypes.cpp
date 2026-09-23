@@ -1967,7 +1967,7 @@ void TheoryDatatypes::checkSplit()
       // If only one constructor, then this term must be this constructor
       // We shortcut constructing utils::mkTester(n, 0, dt) and directly
       // call the instantiate inference here.
-      if (eqc==nullptr)
+      if (eqc == nullptr)
       {
         eqc = getOrMakeEqcInfo(n, true);
       }
