@@ -38,7 +38,8 @@ using namespace cvc5::internal::theory;
 
 bool isUnaryPolicy(DtElimPolicy policy)
 {
-  return policy == DtElimPolicy::UNIT || policy == DtElimPolicy::UNARY || policy == DtElimPolicy::UNIT_ENUM;
+  return policy == DtElimPolicy::UNIT || policy == DtElimPolicy::UNARY
+         || policy == DtElimPolicy::UNIT_ENUM;
 }
 
 bool isBinaryTestPolicy(DtElimPolicy policy)
@@ -54,7 +55,9 @@ bool isAbstractPolicy(DtElimPolicy policy)
 
 bool isEnumPolicy(DtElimPolicy policy)
 {
-  return policy == DtElimPolicy::UNIT_ENUM || policy == DtElimPolicy::BINARY_ENUM || policy == DtElimPolicy::ABSTRACT_ENUM;
+  return policy == DtElimPolicy::UNIT_ENUM
+         || policy == DtElimPolicy::BINARY_ENUM
+         || policy == DtElimPolicy::ABSTRACT_ENUM;
 }
 const char* toString(DtElimPolicy policy)
 {
@@ -351,7 +354,7 @@ Node DtElimConverter::postConvert(Node n)
           }
           Assert(tna.isDatatype());
           const DType& dt = tna.getDType();
-          //bool isInline = false;
+          // bool isInline = false;
           bool isInline = (dt.getNumConstructors() == 1);
           if (isInline)
           {
@@ -690,10 +693,10 @@ const std::vector<Node>& DtElimConverter::getSelectorVec(const Node& v,
     TypeNode tn = v.getType();
     Assert(tn.isDatatype());
     const DType& dt = tn.getDType();
-    if (dt[i].getNumArgs()==0)
+    if (dt[i].getNumArgs() == 0)
     {
       std::pair<Node, size_t> key(v, i);
-      Assert (d_selectors[key].empty());
+      Assert(d_selectors[key].empty());
       return d_selectors[key];
     }
   }
@@ -773,7 +776,8 @@ Node DtElimConverter::getModelElimination(const Node& v)
   /*
   if (!vars.empty())
   {
-    cur = d_nm->mkNode(Kind::LAMBDA, d_nm->mkNode(Kind::BOUND_VAR_LIST, vars), cur);
+    cur = d_nm->mkNode(Kind::LAMBDA, d_nm->mkNode(Kind::BOUND_VAR_LIST, vars),
+  cur);
   }
   */
   Trace("dt-elim") << "*** Overall elimination for " << v << " is " << cur
@@ -786,7 +790,7 @@ TypeNode DtElimConverter::getTypeAbstraction(const TypeNode& dt)
 {
   Assert(dt.isDatatype());
   std::map<TypeNode, TypeNode>::iterator it = d_typeAbs.find(dt);
-  if (it!=d_typeAbs.end())
+  if (it != d_typeAbs.end())
   {
     return it->second;
   }
