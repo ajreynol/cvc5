@@ -968,8 +968,7 @@ TrustNode TheoryEngine::ppRewrite(TNode term,
       Node proven = tskl.getProven();
       Node tidn =
           builtin::BuiltinProofRuleChecker::mkTheoryIdNode(nodeManager(), tid);
-      lp->addTrustedStep(
-          proven, TrustId::THEORY_PREPROCESS_LEMMA, {}, {tidn});
+      lp->addTrustedStep(proven, TrustId::THEORY_PREPROCESS_LEMMA, {}, {tidn});
       skl.d_lemma = TrustNode::mkTrustLemma(proven, lp);
     }
   }
