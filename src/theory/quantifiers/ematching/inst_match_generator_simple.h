@@ -127,7 +127,7 @@ class InstMatchGeneratorSimple : public IMGenerator
    * @param argIndex the argument index in d_match_pattern we are currently
    * matching with tat,
    * @param tat the term index we are currently traversing.
-   * 
+   *
    */
   bool hasTerm(size_t argIndex, TNodeTrie* tat);
 };
