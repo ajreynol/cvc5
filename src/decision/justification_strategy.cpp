@@ -32,8 +32,8 @@ JustificationStrategy::JustificationStrategy(Env& env,
               .decision.jhRlvOrder),  // assertions are user-context dependent
       d_localAssertions(
           context(), context()),  // local assertions are SAT-context dependent
-      d_instRevisit(
-          context(), context()),  // revisit lemmas are SAT-context dependent
+      d_instRevisit(context(),
+                    context()),  // revisit lemmas are SAT-context dependent
       d_jcache(context(), ss, cs),
       d_stack(context()),
       d_lastDecisionLit(context()),
@@ -540,7 +540,8 @@ bool JustificationStrategy::refreshCurrentAssertion()
   }
   // First, revisit instantiation lemmas whose quantified formula has just
   // become asserted (option jhRlvInst). These are SAT-context dependent.
-  if (d_trackInstLemmas && refreshCurrentAssertionFromList(d_instRevisit, false))
+  if (d_trackInstLemmas
+      && refreshCurrentAssertionFromList(d_instRevisit, false))
   {
     return true;
   }

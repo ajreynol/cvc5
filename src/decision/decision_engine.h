@@ -64,7 +64,8 @@ class DecisionEngine : protected EnvObj
    * decision engine to revisit them in the current SAT context.
    * @param lems The instantiation lemmas to revisit.
    */
-  virtual void notifyInstLemmasActive(CVC5_UNUSED const std::vector<TNode>& lems)
+  virtual void notifyInstLemmasActive(
+      CVC5_UNUSED const std::vector<TNode>& lems)
   {
   }
 

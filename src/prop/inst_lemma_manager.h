@@ -46,8 +46,7 @@ namespace prop {
 class InstLemmaManager
 {
   using NodeList = context::CDList<Node>;
-  using NodeListMap =
-      context::CDHashMap<Node, std::shared_ptr<NodeList>>;
+  using NodeListMap = context::CDHashMap<Node, std::shared_ptr<NodeList>>;
   using NodeSet = context::CDHashSet<Node>;
 
  public:
