@@ -40,7 +40,7 @@ class EagerQMatching : public PreprocessingPass
   class PatInfo
   {
    public:
-    PatInfo() : d_ufIndex(0){}
+    PatInfo() : d_ufIndex(0) {}
     Node d_quant;
     size_t d_ufIndex;
   };

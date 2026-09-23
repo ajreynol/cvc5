@@ -364,7 +364,7 @@ bool ProcessAssertions::apply(AssertionPipeline& ap)
   {
     applyPass("ff-bitsum", ap);
   }
-  
+
   if (options().smt.eagerQMatching)
   {
     applyPass("eager-qmatching", ap);
