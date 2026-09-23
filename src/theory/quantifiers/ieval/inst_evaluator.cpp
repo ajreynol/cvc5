@@ -147,8 +147,9 @@ bool InstEvaluator::pushInternal(TNode v,
   return true;
 }
 
-void InstEvaluator::pop(size_t nscopes) {
-  for (size_t i=0; i<nscopes; i++)
+void InstEvaluator::pop(size_t nscopes)
+{
+  for (size_t i = 0; i < nscopes; i++)
   {
     d_context.pop();
   }
