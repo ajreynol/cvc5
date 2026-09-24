@@ -43,7 +43,8 @@ Node QuantifiersMacros::getMacroDefinition(const Options& opts,
 {
   Trace("macros-debug") << "QuantifiersMacros::solve " << lit << std::endl;
   // Abstracting the arguments of a macro is only sound if they are bound by
-  // this formula. In particular, forall x. P(y) must not define P on all inputs.
+  // this formula. In particular, forall x. P(y) must not define P on all
+  // inputs.
   if (lit.getKind() != Kind::FORALL || expr::hasFreeVar(lit))
   {
     return Node::null();
