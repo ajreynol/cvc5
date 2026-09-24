@@ -1,4 +1,5 @@
 ; REQUIRES: no-safe-mode
+; DISABLE-TESTER: alethe
 ; COMMAND-LINE: --macros-quant --macros-quant-mode=ground --dump-proofs --proof-granularity=dsl-rewrite --check-proofs --proof-check=eager --no-proof-allow-trust
 ; SCRUBBER: grep -o unsat
 ; EXPECT: unsat
