@@ -29,6 +29,7 @@ InferenceManagerBuffered::InferenceManagerBuffered(Env& env,
                                                    const std::string& statsName,
                                                    bool cacheLemmas)
     : TheoryInferenceManager(env, t, state, statsName, cacheLemmas),
+      context::ContextNotifyObj(env.getContext()),
       d_processingPendingLemmas(false)
 {
 }
@@ -81,13 +82,21 @@ void InferenceManagerBuffered::addPendingFact(Node conc,
 {
   // make a simple theory internal fact
   Assert(conc.getKind() != Kind::AND && conc.getKind() != Kind::OR);
-  d_pendingFact.emplace_back(new SimpleTheoryInternalFact(id, conc, exp, pg));
+  addPendingFactInternal(
+      std::make_unique<SimpleTheoryInternalFact>(id, conc, exp, pg));
 }
 
 void InferenceManagerBuffered::addPendingFact(
     std::unique_ptr<TheoryInference> fact)
 {
+  addPendingFactInternal(std::move(fact));
+}
+
+void InferenceManagerBuffered::addPendingFactInternal(
+    std::unique_ptr<TheoryInference> fact)
+{
   d_pendingFact.emplace_back(std::move(fact));
+  d_pendingFactLevel.push_back(context()->getLevel());
 }
 
 void InferenceManagerBuffered::addPendingPhaseRequirement(Node lit, bool pol)
@@ -106,7 +115,7 @@ void InferenceManagerBuffered::doPendingFacts()
     assertInternalFactTheoryInference(d_pendingFact[i].get());
     i++;
   }
-  d_pendingFact.clear();
+  clearPendingFacts();
 }
 
 void InferenceManagerBuffered::doPendingLemmas()
@@ -159,11 +168,15 @@ void InferenceManagerBuffered::doPendingPhaseRequirements()
 }
 void InferenceManagerBuffered::clearPending()
 {
-  d_pendingFact.clear();
+  clearPendingFacts();
   d_pendingLem.clear();
   d_pendingReqPhase.clear();
 }
-void InferenceManagerBuffered::clearPendingFacts() { d_pendingFact.clear(); }
+void InferenceManagerBuffered::clearPendingFacts()
+{
+  d_pendingFact.clear();
+  d_pendingFactLevel.clear();
+}
 void InferenceManagerBuffered::clearPendingLemmas() { d_pendingLem.clear(); }
 void InferenceManagerBuffered::clearPendingPhaseRequirements()
 {
@@ -210,6 +223,28 @@ void InferenceManagerBuffered::notifyInConflict()
   d_theoryState.notifyInConflict();
   // also clear the pending facts, which will be stale after backtracking
   clearPending();
+}
+
+void InferenceManagerBuffered::contextNotifyPop()
+{
+  // Pending facts may be added outside of a check of this theory, e.g. when
+  // the equality engine is shared with other theories. If the SAT solver
+  // backtracks before they are processed, they are stale and must not be
+  // asserted, as their explanation may no longer hold.
+  Assert(d_pendingFact.size() == d_pendingFactLevel.size());
+  uint32_t level = context()->getLevel();
+  size_t j = 0;
+  for (size_t i = 0, nfacts = d_pendingFact.size(); i < nfacts; i++)
+  {
+    if (d_pendingFactLevel[i] <= level)
+    {
+      d_pendingFact[j] = std::move(d_pendingFact[i]);
+      d_pendingFactLevel[j] = d_pendingFactLevel[i];
+      j++;
+    }
+  }
+  d_pendingFact.resize(j);
+  d_pendingFactLevel.resize(j);
 }
 
 }  // namespace theory

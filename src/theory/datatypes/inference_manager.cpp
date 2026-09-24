@@ -59,7 +59,7 @@ void InferenceManager::addPendingInference(Node conc,
   }
   else
   {
-    d_pendingFact.emplace_back(new DatatypesInference(this, conc, exp, id));
+    addPendingFact(std::make_unique<DatatypesInference>(this, conc, exp, id));
   }
 }
 

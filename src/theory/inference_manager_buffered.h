@@ -15,6 +15,7 @@
 #ifndef CVC5__THEORY__INFERENCE_MANAGER_BUFFERED_H
 #define CVC5__THEORY__INFERENCE_MANAGER_BUFFERED_H
 
+#include "context/context.h"
 #include "expr/node.h"
 #include "theory/theory.h"
 #include "theory/theory_inference.h"
@@ -26,8 +27,12 @@ namespace theory {
 /**
  * The buffered inference manager.  This class implements standard methods
  * for buffering facts, lemmas and phase requirements.
+ *
+ * Pending facts are discarded when the SAT context is popped below the level
+ * at which they were added, since their explanations may no longer hold.
  */
-class InferenceManagerBuffered : public TheoryInferenceManager
+class InferenceManagerBuffered : public TheoryInferenceManager,
+                                 public context::ContextNotifyObj
 {
  public:
   InferenceManagerBuffered(Env& env,
@@ -191,8 +196,17 @@ class InferenceManagerBuffered : public TheoryInferenceManager
  protected:
   /** A set of pending inferences to be processed as lemmas */
   std::vector<std::unique_ptr<TheoryInference>> d_pendingLem;
+  /**
+   * Called when the SAT context is popped. Discards the pending facts that
+   * were added at a level higher than the current one.
+   */
+  void contextNotifyPop() override;
+  /** Add fact to the pending facts, recording the current SAT context level */
+  void addPendingFactInternal(std::unique_ptr<TheoryInference> fact);
   /** A set of pending inferences to be processed as facts */
   std::vector<std::unique_ptr<TheoryInference>> d_pendingFact;
+  /** The SAT context level at which each fact in d_pendingFact was added */
+  std::vector<uint32_t> d_pendingFactLevel;
   /** A map from literals to their pending phase requirement */
   std::map<Node, bool> d_pendingReqPhase;
   /**
