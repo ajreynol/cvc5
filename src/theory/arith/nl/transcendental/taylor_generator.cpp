@@ -141,26 +141,12 @@ std::uint64_t TaylorGenerator::getPolynomialApproximationBoundForArg(
   Assert(c.isConst());
   if (k == Kind::EXPONENTIAL && c.getConst<Rational>().sgn() == 1)
   {
-    bool success = false;
     std::uint64_t ds = d;
-    TNode ttrf = getTaylorVariable();
-    TNode tc = c;
-    Evaluator eval(nullptr);
-    do
+    // increase the degree until the upper bound is sound at c
+    while (!isUpperPosSoundForArg(c, ds))
     {
-      success = true;
-      std::uint64_t n = 2 * ds;
-      std::pair<Node, Node> taylor = getTaylor(k, n);
-      // check that 1-c^{n+1}/(n+1)! > 0
-      Node ru = taylor.second;
-      Node rus = eval.eval(ru, {ttrf}, {tc});
-      Assert(rus.isConst());
-      if (rus.getConst<Rational>() > 1)
-      {
-        success = false;
-        ds = ds + 1;
-      }
-    } while (!success);
+      ds = ds + 1;
+    }
     if (ds > d)
     {
       Trace("nl-ext-exp-taylor")
@@ -174,6 +160,19 @@ std::uint64_t TaylorGenerator::getPolynomialApproximationBoundForArg(
     return ds;
   }
   return d;
+}
+
+bool TaylorGenerator::isUpperPosSoundForArg(TNode c, std::uint64_t d)
+{
+  Assert(c.isConst());
+  // ru is c^n/n! for n = 2*d
+  Node ru = getTaylor(Kind::EXPONENTIAL, 2 * d).second;
+  TNode ttrf = getTaylorVariable();
+  Evaluator eval(nullptr);
+  Node rus = eval.eval(ru, {ttrf}, {c});
+  Assert(rus.isConst());
+  // check that 1-c^n/n! > 0
+  return rus.getConst<Rational>() < 1;
 }
 
 std::pair<Node, Node> TaylorGenerator::getTfModelBounds(Node tf,

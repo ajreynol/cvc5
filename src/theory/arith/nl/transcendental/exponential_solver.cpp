@@ -263,14 +263,47 @@ void ExponentialSolver::doSecantLemmas(TNode e,
                                        unsigned d,
                                        unsigned actual_d)
 {
-  d_data->doSecantLemmas(getSecantBounds(e, center, d),
-                         poly_approx,
+  std::pair<Node, Node> bounds = getSecantBounds(e, center, d);
+  Node papprox = poly_approx;
+  Node pcval = cval;
+  std::uint64_t ad = actual_d;
+  if (center.getConst<Rational>().sgn() == 1)
+  {
+    // The approximation P_u+ is evaluated at the secant points below, and not
+    // only at center. For positive arguments it is a sound upper bound for exp
+    // only below a bound on the argument that depends on its degree, where
+    // actual_d was chosen so that it is sound at center. Thus it may fail to
+    // be sound at the upper secant point, in which case we increase the degree
+    // until it is. Note that it is then sound on all of [0,bounds.second], and
+    // hence at both secant points.
+    while (!d_data->d_taylor.isUpperPosSoundForArg(bounds.second, ad))
+    {
+      ad++;
+    }
+    if (ad > actual_d)
+    {
+      Trace("nl-ext-exp-taylor")
+          << "*** Increase Taylor bound to " << ad << " > " << actual_d
+          << " for secant point " << bounds.second << std::endl;
+      TaylorGenerator::ApproximationBounds pbounds;
+      d_data->d_taylor.getPolynomialApproximationBounds(
+          Kind::EXPONENTIAL, ad, pbounds);
+      papprox = pbounds.d_upperPos;
+      // Recompute the value of the approximation at the center. Note that a
+      // higher degree gives a tighter upper bound for exp(center), hence the
+      // secant lemmas below are still falsified by the current model.
+      pcval = rewrite(
+          papprox.substitute(d_data->d_taylor.getTaylorVariable(), center));
+    }
+  }
+  d_data->doSecantLemmas(bounds,
+                         papprox,
                          center,
-                         cval,
+                         pcval,
                          e,
                          Convexity::CONVEX,
                          d,
-                         actual_d);
+                         ad);
 }
 
 std::pair<Node, Node> ExponentialSolver::getSecantBounds(TNode e,

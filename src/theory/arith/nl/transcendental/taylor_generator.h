@@ -92,6 +92,18 @@ class TaylorGenerator
   std::uint64_t getPolynomialApproximationBoundForArg(
       Kind k, Node c, std::uint64_t d, ApproximationBounds& pbounds);
 
+  /**
+   * Is P_u+[x], as returned by getPolynomialApproximationBounds for kind
+   * EXPONENTIAL and degree d, a sound upper bound for exp at the constant
+   * point c?
+   *
+   * That polynomial is P[x]/(1-x^n/n!) for n=2*d, which over-approximates exp
+   * only if its denominator is positive, that is if c^n/n! < 1. Note that
+   * x^n/n! is increasing for positive x, hence if this holds for c, it holds
+   * for all points in [0,c] as well.
+   */
+  bool isUpperPosSoundForArg(TNode c, std::uint64_t d);
+
   /** get transcendental function model bounds
    *
    * This returns the current lower and upper bounds of transcendental
