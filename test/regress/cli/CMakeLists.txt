@@ -103,6 +103,7 @@ set(regress_0_tests
   regress0/arith/pow-issue-10676.smt2
   regress0/arith/projissue469-int-equality.smt2
   regress0/arith/proj-issue780-arith-mult-pf.smt2
+  regress0/arith/propagation-inference-id.smt2
   regress0/arith-bv-conv-ineq-rewrites.smt2
   regress0/arr1.smt2
   regress0/arr1.smtv1.smt2
@@ -2523,6 +2524,7 @@ set(regress_0_tests
   regress0/uf/NEQ016_size5_reduced2a.smtv1.smt2
   regress0/uf/NEQ016_size5_reduced2b.smtv1.smt2
   regress0/uf/pred.smtv1.smt2
+  regress0/uf/propagation-inference-id.smt2
   regress0/uf/SEQ032_size2.smtv1.smt2
   regress0/uf/simple.01.cvc.smt2
   regress0/uf/simple.02.cvc.smt2

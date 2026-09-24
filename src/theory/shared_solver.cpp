@@ -113,9 +113,9 @@ bool SharedSolver::propagateLit(TNode predicate, bool value)
 {
   if (value)
   {
-    return d_im->propagateLit(predicate);
+    return d_im->propagateLit(predicate, InferenceId::EQ_ENGINE);
   }
-  return d_im->propagateLit(predicate.notNode());
+  return d_im->propagateLit(predicate.notNode(), InferenceId::EQ_ENGINE);
 }
 
 bool SharedSolver::propagateSharedEquality(theory::TheoryId theory,

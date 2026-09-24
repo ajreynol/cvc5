@@ -133,13 +133,13 @@ bool InferenceManager::isEntailedFalse(const SimpleTheoryLemma& lem)
   return false;
 }
 
-bool InferenceManager::propagateLit(TNode lit)
+bool InferenceManager::propagateLit(TNode lit, InferenceId id)
 {
   if (d_trackPropLits)
   {
     d_propLits.insert(lit);
   }
-  return TheoryInferenceManager::propagateLit(lit);
+  return TheoryInferenceManager::propagateLit(lit, id);
 }
 
 bool InferenceManager::hasPropagated(TNode lit) const

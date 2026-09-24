@@ -40,6 +40,8 @@ void registerPublicStatistics(StatisticsRegistry& reg)
                                                false);
     reg.registerHistogram<theory::InferenceId>(prefix + "inferencesLemma",
                                                false);
+    reg.registerHistogram<theory::InferenceId>(prefix + "inferencesPropagation",
+                                               false);
   }
 }
 

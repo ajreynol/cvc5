@@ -302,9 +302,9 @@ bool SharedTermsDatabase::propagateEquality(TNode equality, bool polarity)
 {
   if (polarity)
   {
-    return d_out.propagate(equality);
+    return d_out.propagate(equality, InferenceId::EQ_ENGINE);
   }
-  return d_out.propagate(equality.notNode());
+  return d_out.propagate(equality.notNode(), InferenceId::EQ_ENGINE);
 }
 
 void SharedTermsDatabase::checkForConflict()

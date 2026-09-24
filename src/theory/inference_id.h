@@ -43,6 +43,8 @@ enum class InferenceId
   INPUT,
   // a conflict when two constants merge in the equality engine (of any theory)
   EQ_CONSTANT_MERGE,
+  // a propagation from the equality engine (of any theory)
+  EQ_ENGINE,
   // a split from theory combination
   COMBINATION_SPLIT,
   // a conflict due to rewriting an asserted literal
@@ -82,6 +84,8 @@ enum class InferenceId
   ARITH_CONF_REPLAY_LOG_REC,
   // conflict from handleUnateProp
   ARITH_CONF_UNATE_PROP,
+  // a propagation from the linear arithmetic constraint database
+  ARITH_PROP,
   // introduces split on a disequality
   ARITH_SPLIT_DEQ,
   // states the equivalence of two atoms that correspond to the same internal

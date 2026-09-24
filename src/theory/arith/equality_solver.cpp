@@ -116,7 +116,7 @@ bool EqualitySolver::propagateLit(Node lit)
   // remember that this was a literal we propagated
   Trace("arith-eq-solver-debug") << "propagate lit " << lit << std::endl;
   d_propLits.insert(lit);
-  return d_aim.propagateLit(lit);
+  return d_aim.propagateLit(lit, InferenceId::EQ_ENGINE);
 }
 void EqualitySolver::conflictEqConstantMerge(TNode a, TNode b)
 {

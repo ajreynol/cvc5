@@ -79,10 +79,11 @@ class OutputChannel
   /**
    * Propagate a theory literal.
    *
-   * @param n - a theory consequence at the current decision level
+   * @param literal A theory consequence at the current decision level
+   * @param id The inference identifier for the propagation
    * @return false if an immediate conflict was encountered
    */
-  virtual bool propagate(TNode literal);
+  virtual bool propagate(TNode literal, InferenceId id);
 
   /**
    * Tell the core that a valid theory lemma at decision level 0 has
@@ -173,6 +174,8 @@ class OutputChannel
     /** Number of calls to conflict, propagate, lemma, preferPhase */
     IntStat conflicts, propagations, lemmas, preferPhase, trustedConflicts,
         trustedLemmas;
+    /** Inference identifiers for propagations sent on this channel. */
+    HistogramStat<InferenceId> propagationIds;
   };
   /** The theory engine we're communicating with. */
   TheoryEngine* d_engine;

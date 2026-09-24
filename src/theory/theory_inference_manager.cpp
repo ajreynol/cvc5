@@ -193,7 +193,7 @@ TrustNode TheoryInferenceManager::mkConflictExp(const std::vector<Node>& exp,
   return TrustNode::mkTrustConflict(conf, nullptr);
 }
 
-bool TheoryInferenceManager::propagateLit(TNode lit)
+bool TheoryInferenceManager::propagateLit(TNode lit, InferenceId id)
 {
   // If already in conflict, no more propagation
   if (d_theoryState.isInConflict())
@@ -201,7 +201,8 @@ bool TheoryInferenceManager::propagateLit(TNode lit)
     return false;
   }
   // Propagate out
-  bool ok = d_out.propagate(lit);
+  Trace("im") << "(propagate " << id << " " << lit << ")" << std::endl;
+  bool ok = d_out.propagate(lit, id);
   if (!ok)
   {
     d_theoryState.notifyInConflict();

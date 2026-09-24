@@ -186,7 +186,7 @@ bool TheoryStrings::propagateLit(TNode literal)
     // pending conflict also implies we are done
     return false;
   }
-  return d_im.propagateLit(literal);
+  return d_im.propagateLit(literal, InferenceId::EQ_ENGINE);
 }
 
 TrustNode TheoryStrings::explain(TNode literal)

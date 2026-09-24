@@ -797,7 +797,7 @@ bool TheoryFp::handleLemma(Node node, InferenceId id)
 bool TheoryFp::propagateLit(TNode node)
 {
   Trace("fp") << "TheoryFp::propagateLit(): propagate " << node << std::endl;
-  return d_im.propagateLit(node);
+  return d_im.propagateLit(node, InferenceId::EQ_ENGINE);
 }
 
 void TheoryFp::conflictEqConstantMerge(TNode t1, TNode t2)

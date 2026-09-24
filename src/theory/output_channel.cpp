@@ -28,7 +28,9 @@ OutputChannel::Statistics::Statistics(StatisticsRegistry& sr,
       lemmas(sr.registerInt(statPrefix + "lemmas")),
       preferPhase(sr.registerInt(statPrefix + "preferPhase")),
       trustedConflicts(sr.registerInt(statPrefix + "trustedConflicts")),
-      trustedLemmas(sr.registerInt(statPrefix + "trustedLemmas"))
+      trustedLemmas(sr.registerInt(statPrefix + "trustedLemmas")),
+      propagationIds(sr.registerHistogram<InferenceId>(
+          statPrefix + "inferencesPropagation"))
 {
 }
 
@@ -67,13 +69,16 @@ void OutputChannel::lemma(TNode lemma, InferenceId id, LemmaProperty p)
   trustedLemma(TrustNode::mkTrustLemma(lemma), id, p);
 }
 
-bool OutputChannel::propagate(TNode literal)
+bool OutputChannel::propagate(TNode literal, InferenceId id)
 {
+  Assert(id != InferenceId::UNKNOWN)
+      << "Must provide an inference id for propagation";
   Trace("theory::propagate") << "OutputChannel<" << d_theory << ">::propagate("
-                             << literal << ")" << std::endl;
+                             << literal << ", " << id << ")" << std::endl;
   ++d_statistics.propagations;
+  d_statistics.propagationIds << id;
   d_engine->d_outputChannelUsed = true;
-  return d_engine->propagate(literal, d_theory);
+  return d_engine->propagate(literal, id, d_theory);
 }
 
 void OutputChannel::conflict(TNode conflictNode, InferenceId id)

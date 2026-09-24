@@ -94,7 +94,7 @@ class InferenceManager : public InferenceManagerBuffered
   /** Checks whether the given lemma is already present in the cache. */
   virtual bool hasCachedLemma(TNode lem, LemmaProperty p) override;
   /** overrides propagateLit to track which literals have been propagated */
-  bool propagateLit(TNode lit) override;
+  bool propagateLit(TNode lit, InferenceId id) override;
   /**
    * Return true if we have propagated lit already. This call is only valid if
    * d_trackPropLits is true.

@@ -2192,11 +2192,11 @@ void TheoryArithPrivate::outputConflict(TNode lit, InferenceId id)
   outputTrustedConflict(tlit, id);
 }
 
-void TheoryArithPrivate::outputPropagate(TNode lit)
+void TheoryArithPrivate::outputPropagate(TNode lit, InferenceId id)
 {
   Trace("arith::channel") << "Arith propagation: " << lit << std::endl;
-  // call the propagate lit method of the
-  d_containing.outputPropagate(lit);
+  // Forward the propagation and its inference identifier.
+  d_containing.outputPropagate(lit, id);
 }
 
 void TheoryArithPrivate::outputRestart()
@@ -4440,7 +4440,7 @@ void TheoryArithPrivate::propagate()
       Trace("arith::prop") << "propagating @" << context()->getLevel() << " "
                            << literal << endl;
 
-      outputPropagate(literal);
+      outputPropagate(literal, InferenceId::ARITH_PROP);
     }
     else
     {
@@ -4464,7 +4464,7 @@ void TheoryArithPrivate::propagate()
       Trace("arith::prop") << "propagating on non-constraint? " << toProp
                            << endl;
 
-      outputPropagate(toProp);
+      outputPropagate(toProp, InferenceId::EQ_ENGINE);
     }
     else if (constraint->negationHasProof())
     {
@@ -4521,7 +4521,7 @@ void TheoryArithPrivate::propagate()
     else
     {
       Trace("arith::prop") << "propagating still?" << toProp << endl;
-      outputPropagate(toProp);
+      outputPropagate(toProp, InferenceId::EQ_ENGINE);
     }
   }
 }

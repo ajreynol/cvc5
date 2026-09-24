@@ -737,7 +737,7 @@ class TheoryArithPrivate : protected EnvObj
   bool outputLemma(TNode lem, InferenceId id);
   void outputTrustedConflict(TrustNode conf, InferenceId id);
   void outputConflict(TNode lit, InferenceId id);
-  void outputPropagate(TNode lit);
+  void outputPropagate(TNode lit, InferenceId id);
   void outputRestart();
   bool isSatLiteral(TNode l) const;
   Node getSatValue(TNode n) const;

@@ -480,9 +480,14 @@ class TheoryEngine : protected EnvObj
 
   /**
    * Called by the output channel to propagate literals and facts
+   * @param literal The literal to propagate
+   * @param id The inference identifier for the propagation
+   * @param theory The theory that sent the propagation
    * @return false if immediate conflict
    */
-  bool propagate(TNode literal, theory::TheoryId theory);
+  bool propagate(TNode literal,
+                 theory::InferenceId id,
+                 theory::TheoryId theory);
 
   /**
    * Internal method to call the propagation routines and collect the

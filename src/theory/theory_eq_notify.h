@@ -37,9 +37,9 @@ class TheoryEqNotifyClass : public eq::EqualityEngineNotify
   {
     if (value)
     {
-      return d_im.propagateLit(predicate);
+      return d_im.propagateLit(predicate, InferenceId::EQ_ENGINE);
     }
-    return d_im.propagateLit(predicate.notNode());
+    return d_im.propagateLit(predicate.notNode(), InferenceId::EQ_ENGINE);
   }
   bool eqNotifyTriggerTermEquality(CVC5_UNUSED TheoryId tag,
                                    TNode t1,
@@ -48,9 +48,9 @@ class TheoryEqNotifyClass : public eq::EqualityEngineNotify
   {
     if (value)
     {
-      return d_im.propagateLit(t1.eqNode(t2));
+      return d_im.propagateLit(t1.eqNode(t2), InferenceId::EQ_ENGINE);
     }
-    return d_im.propagateLit(t1.eqNode(t2).notNode());
+    return d_im.propagateLit(t1.eqNode(t2).notNode(), InferenceId::EQ_ENGINE);
   }
   void eqNotifyConstantTermMerge(TNode t1, TNode t2) override
   {

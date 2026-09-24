@@ -438,7 +438,7 @@ bool TheoryArrays::propagateLit(TNode literal)
     return false;
   }
 
-  bool ok = d_out->propagate(literal);
+  bool ok = d_out->propagate(literal, InferenceId::EQ_ENGINE);
   if (!ok)
   {
     d_state.notifyInConflict();

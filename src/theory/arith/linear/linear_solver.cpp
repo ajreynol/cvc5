@@ -97,7 +97,10 @@ void LinearSolver::outputTrustedConflict(TrustNode conf, InferenceId id)
   d_im.trustedConflict(conf, id);
 }
 
-void LinearSolver::outputPropagate(TNode lit) { d_im.propagateLit(lit); }
+void LinearSolver::outputPropagate(TNode lit, InferenceId id)
+{
+  d_im.propagateLit(lit, id);
+}
 
 void LinearSolver::spendResource(Resource r) { d_im.spendResource(r); }
 

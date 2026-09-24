@@ -119,7 +119,7 @@ class DummyOutputChannel : public theory::OutputChannel
     push(CONFLICT, n.getNode());
   }
 
-  bool propagate(TNode n) override
+  bool propagate(TNode n, CVC5_UNUSED theory::InferenceId id) override
   {
     push(PROPAGATE, n);
     return true;

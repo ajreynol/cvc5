@@ -130,8 +130,11 @@ class TheoryInferenceManager : protected EnvObj
    * Note that this is the preferred method to call on
    * EqualityEngineNotify::eqNotifyTriggerPredicate and
    * EqualityEngineNotify::eqNotifyTriggerTermEquality.
+   *
+   * @param lit The literal to propagate
+   * @param id The inference identifier for the propagation
    */
-  virtual bool propagateLit(TNode lit);
+  virtual bool propagateLit(TNode lit, InferenceId id);
   /**
    * Return an explanation for the literal represented by parameter lit
    * (which was previously propagated by this theory). By default, this

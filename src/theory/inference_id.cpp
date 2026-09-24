@@ -29,6 +29,7 @@ const char* toString(InferenceId i)
     case InferenceId::NONE: return "NONE";
     case InferenceId::INPUT: return "INPUT";
     case InferenceId::EQ_CONSTANT_MERGE: return "EQ_CONSTANT_MERGE";
+    case InferenceId::EQ_ENGINE: return "EQ_ENGINE";
     case InferenceId::COMBINATION_SPLIT: return "COMBINATION_SPLIT";
     case InferenceId::CONFLICT_REWRITE_LIT: return "CONFLICT_REWRITE_LIT";
     case InferenceId::EXPLAINED_PROPAGATION: return "EXPLAINED_PROPAGATION";
@@ -49,6 +50,7 @@ const char* toString(InferenceId i)
     case InferenceId::ARITH_CONF_REPLAY_LOG_REC:
       return "ARITH_CONF_REPLAY_LOG_REC";
     case InferenceId::ARITH_CONF_UNATE_PROP: return "ARITH_CONF_UNATE_PROP";
+    case InferenceId::ARITH_PROP: return "ARITH_PROP";
     case InferenceId::ARITH_SPLIT_DEQ: return "ARITH_SPLIT_DEQ";
     case InferenceId::ARITH_EQUIV_ATOM: return "ARITH_EQUIV_ATOM";
     case InferenceId::ARITH_TIGHTEN_CEIL: return "ARITH_TIGHTEN_CEIL";

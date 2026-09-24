@@ -1307,10 +1307,12 @@ void TheoryEngine::assertFact(TNode literal)
   }
 }
 
-bool TheoryEngine::propagate(TNode literal, theory::TheoryId theory)
+bool TheoryEngine::propagate(TNode literal,
+                             InferenceId id,
+                             theory::TheoryId theory)
 {
-  Trace("theory::propagate")
-      << "TheoryEngine::propagate(" << literal << ", " << theory << ")" << endl;
+  Trace("theory::propagate") << "TheoryEngine::propagate(" << literal << ", "
+                             << id << ", " << theory << ")" << endl;
 
   Trace("dtview::prop") << std::string(context()->getLevel(), ' ')
                         << ":THEORY-PROP: " << literal << endl;

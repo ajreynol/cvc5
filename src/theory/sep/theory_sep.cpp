@@ -144,7 +144,7 @@ void TheorySep::preRegisterTerm(TNode n)
 
 bool TheorySep::propagateLit(TNode literal)
 {
-  return d_im.propagateLit(literal);
+  return d_im.propagateLit(literal, InferenceId::EQ_ENGINE);
 }
 
 TrustNode TheorySep::explain(TNode literal)

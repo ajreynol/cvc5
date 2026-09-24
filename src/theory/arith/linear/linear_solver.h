@@ -108,7 +108,7 @@ class LinearSolver : protected EnvObj
   //======================
   bool outputTrustedLemma(TrustNode lemma, InferenceId id);
   void outputTrustedConflict(TrustNode conf, InferenceId id);
-  void outputPropagate(TNode lit);
+  void outputPropagate(TNode lit, InferenceId id);
   void spendResource(Resource r);
 
  private:
