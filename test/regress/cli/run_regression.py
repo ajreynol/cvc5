@@ -312,6 +312,41 @@ class CpcTester(CpcTesterBase):
     def __init__(self):
         super().__init__("cpc")
 
+    def get_smt2_commands(self, benchmark_info):
+        """Yield top-level commands without their surrounding parentheses."""
+        # Keep strings and quoted symbols as single tokens so embedded text
+        # cannot be mistaken for a command. Ignore comments between tokens.
+        tokens = re.findall(
+            r';[^\n]*|"(?:[^"]|"")*"|\|[^|]*\||[()]|[^\s();"|]+',
+            benchmark_info.benchmark_content)
+        tokens = [t for t in tokens if not t.startswith(";")]
+        depth = 0
+        start = 0
+        for i, token in enumerate(tokens):
+            if token == "(":
+                if depth == 0:
+                    start = i + 1
+                depth += 1
+            elif token == ")":
+                depth -= 1
+                if depth == 0:
+                    yield tokens[start:i]
+
+    def is_incremental(self, benchmark_info):
+        """Whether the benchmark requests incremental solving or uses scopes."""
+        incremental = False
+        for arg in benchmark_info.command_line_args:
+            # Short flags may be bundled, e.g. -iq or -mi. Only flags without
+            # arguments can precede i; -o... and -t... may contain i in a value.
+            if arg == "--incremental" or re.match(r"-[vqmVhH]*i", arg):
+                incremental = True
+            elif arg == "--no-incremental":
+                incremental = False
+        return incremental or any(
+            command == ["set-option", ":incremental", "true"]
+            or (command and command[0] in ("push", "pop"))
+            for command in self.get_smt2_commands(benchmark_info))
+
     def uses_real_only_logic(self, benchmark_info):
         """Whether numerals in the input denote reals rather than integers."""
         # A command-line logic overrides the benchmark's set-logic command.
@@ -325,23 +360,9 @@ class CpcTester(CpcTesterBase):
         if logic is not None:
             logics = [logic]
         else:
-            # Keep strings and quoted symbols as single tokens so embedded
-            # text cannot be mistaken for a top-level set-logic command.
-            tokens = re.findall(
-                r';[^\n]*|"(?:[^"]|"")*"|\|[^|]*\||[()]|[^\s();"|]+',
-                benchmark_info.benchmark_content)
-            tokens = [t for t in tokens if not t.startswith(";")]
-            logics = []
-            depth = 0
-            for i, token in enumerate(tokens):
-                if token == "(":
-                    if (depth == 0 and i + 3 < len(tokens)
-                            and tokens[i + 1] == "set-logic"
-                            and tokens[i + 3] == ")"):
-                        logics.append(tokens[i + 2].strip("|"))
-                    depth += 1
-                elif token == ")":
-                    depth -= 1
+            logics = [command[1].strip("|")
+                      for command in self.get_smt2_commands(benchmark_info)
+                      if len(command) == 2 and command[0] == "set-logic"]
         # LRA, NRA (including NRAT), and RDL use reals. Integer arithmetic
         # fragments contain I, including the mixed fragments LIRA/NIRA/IRDL.
         # If the input resets its logic, every logic must be real-only since
@@ -352,12 +373,13 @@ class CpcTester(CpcTesterBase):
 
     def run_internal(self, benchmark_info):
         with tempfile.NamedTemporaryFile() as tmpf:
-            # Reference checking is enabled in restricted builds only. These
+            # Reference checking is enabled in safe builds only. These
             # builds disable the features that lack proof support, which
             # excludes most of the inputs that ethos cannot faithfully parse.
-            # In other builds, the proof redeclares the symbols of the
-            # benchmark and its assumptions are not checked against the input.
-            reference = benchmark_info.safe_mode
+            # Incremental benchmarks use ordinary proof checking because ethos
+            # does not support reference assertion scopes (push/pop).
+            reference = (benchmark_info.safe_mode
+                         and not self.is_incremental(benchmark_info))
             normalize_num = reference and self.uses_real_only_logic(benchmark_info)
             cvc5_args = [
                 "--dump-proofs",

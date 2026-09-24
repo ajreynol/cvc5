@@ -38,6 +38,13 @@ CVC5_REGRESSION_ARGS="--ackermann" ctest -L regress0
 
 This runs regression tests from level 0 with the `--ackermann` option.
 
+The `cpc` tester uses Ethos reference checking for non-incremental benchmarks
+in safe builds. Benchmarks that enable incremental solving with `--incremental`,
+`-i` (including bundles such as `-iq`), or `(set-option :incremental true)`,
+or use `push`/`pop`, use ordinary proof checking instead. Ethos still checks their
+complete proofs in safe builds,
+but does not check their assumptions against the original input's scopes.
+
 ## Adding New Regressions
 
 To add a new regression file, add the file to git, for example:
