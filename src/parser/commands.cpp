@@ -2724,12 +2724,11 @@ const std::vector<cvc5::Sort>& DatatypeDeclarationCommand::getDatatypes() const
   return d_datatypes;
 }
 
-void DatatypeDeclarationCommand::invoke(cvc5::Solver* solver, SymManager* sm)
+void DatatypeDeclarationCommand::invoke(CVC5_UNUSED cvc5::Solver* solver,
+                                        SymManager* sm)
 {
-  // Implement the bindings. We bind tester names is-C if strict parsing is
-  // disabled.
-  bool bindTesters = solver->getOption("strict-parsing") != "true";
-  if (!sm->bindMutualDatatypeTypes(d_datatypes, bindTesters))
+  // Bind the datatype sorts, constructors, and selectors.
+  if (!sm->bindMutualDatatypeTypes(d_datatypes))
   {
     // this should generally never happen since we look ahead to check whether
     // binding will succeed in Parser::mkMutualDatatypeTypes.

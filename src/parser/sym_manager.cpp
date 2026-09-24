@@ -348,7 +348,7 @@ bool SymManager::bindType(const std::string& name, cvc5::Sort t, bool isUser)
 }
 
 bool SymManager::bindMutualDatatypeTypes(
-    const std::vector<cvc5::Sort>& datatypes, bool bindTesters)
+    const std::vector<cvc5::Sort>& datatypes)
 {
   for (size_t i = 0, ntypes = datatypes.size(); i < ntypes; ++i)
   {
@@ -387,18 +387,6 @@ bool SymManager::bindMutualDatatypeTypes(
       if (!bind(constructorName, constructor, true))
       {
         return false;
-      }
-      if (bindTesters)
-      {
-        std::stringstream testerName;
-        testerName << "is-" << constructorName;
-        Term tester = ctor.getTesterTerm();
-        Trace("parser-idt") << "+ define " << testerName.str() << std::endl;
-        // always do overloading
-        if (!bind(testerName.str(), tester, true))
-        {
-          return false;
-        }
       }
       for (size_t k = 0, nargs = ctor.getNumSelectors(); k < nargs; k++)
       {
