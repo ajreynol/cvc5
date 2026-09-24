@@ -188,8 +188,45 @@ class Trigger : protected EnvObj
   static Node ensureGroundTermPreprocessed(Valuation& val,
                                            Node n,
                                            std::vector<Node>& gts);
+  /**
+   * Is n a term that can be used as a filter term for a multi-trigger (see
+   * d_filterNodes)? This is the case if n is a ground term, an instantiation
+   * constant of d_quant, or an atomic trigger term with a match operator whose
+   * children are filter terms. If isTop is true, n must additionally be an
+   * atomic trigger term.
+   */
+  bool isFilterTerm(TNode n, bool isTop) const;
+  /**
+   * Get the representative of the ground term that the filter term n is
+   * equal to under substitution m, or null if no such term currently
+   * exists. This returns the representative of a term t that is currently
+   * indexed by the term database, where t is equal to n * m modulo the
+   * current equalities.
+   */
+  Node evaluateFilterTerm(TNode n, const std::vector<Node>& m);
+  /**
+   * Return true if all terms in d_filterNodes can be found in the term
+   * database modulo equality when instantiated by m.
+   */
+  bool checkFilters(const std::vector<Node>& m);
   /** The nodes comprising this trigger. */
   std::vector<Node> d_nodes;
+  /**
+   * The filter nodes of this trigger. This vector is non-empty if this is
+   * a multi-trigger that contains a "base" term that contains all of the
+   * variables of the trigger. In this case, we match only the base term, and
+   * use the remaining terms of the trigger as filters. In particular, we only
+   * send an instantiation for a match m of the base term if for each filter
+   * term t, t * m is equal to a term in the term database. This is typically
+   * much cheaper than matching the terms of the multi-trigger independently
+   * and joining the results.
+   *
+   * For example, for the multi-trigger { f(x, y), P(x) }, the base term is
+   * f(x, y) and P(x) is a filter. A match { x -> a, y -> b } obtained by
+   * matching f(x, y) against f(a, b) is only used if P(a') is a term in the
+   * term database for some a' that is equal to a.
+   */
+  std::vector<Node> d_filterNodes;
   /** The nodes as a single s-expression */
   Node d_trNode;
   /**

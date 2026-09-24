@@ -390,6 +390,14 @@ name   = "Quantifiers"
   default    = "true"
   help       = "implementation of multi triggers where maximum number of instantiations is linear wrt number of ground terms"
 
+[[option]]
+  name       = "multiTriggerFilter"
+  category   = "expert"
+  long       = "multi-trigger-filter"
+  type       = "bool"
+  default    = "true"
+  help       = "implement multi triggers that have a term containing all variables by matching that term only, and using the remaining terms as filters"
+
 # Trigger selection mode.
 #
 # These modes are used for determining which terms to select

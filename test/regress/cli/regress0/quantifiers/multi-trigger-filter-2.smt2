@@ -1,0 +1,26 @@
+; COMMAND-LINE: --no-cbqi --no-enum-inst
+; Multi-trigger with a base term (k x y z) and two filters, one of which is
+; nested. The filter (g (h x)) is found via h(d) where a = d, and g(e) where
+; e = h(d).
+(set-logic UF)
+(set-info :status unsat)
+(declare-sort U 0)
+(declare-fun k (U U U) U)
+(declare-fun g (U) U)
+(declare-fun h (U) U)
+(declare-fun P (U) Bool)
+(declare-fun Q (U U U) Bool)
+(declare-fun a () U)
+(declare-fun b () U)
+(declare-fun c () U)
+(declare-fun d () U)
+(declare-fun e () U)
+(assert (forall ((x U) (y U) (z U))
+  (! (Q x y z) :pattern ((k x y z) (g (h x)) (P y)))))
+(assert (= (k a b c) c))
+(assert (= e (h d)))
+(assert (= a d))
+(assert (P (g e)))
+(assert (P b))
+(assert (not (Q a b c)))
+(check-sat)

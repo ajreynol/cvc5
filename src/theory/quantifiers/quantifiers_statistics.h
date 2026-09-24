@@ -39,6 +39,7 @@ class QuantifiersStatistics
   IntStat d_triggers;
   IntStat d_simple_triggers;
   IntStat d_multi_triggers;
+  IntStat d_multi_triggers_filter;
   IntStat d_red_alpha_equiv;
 };
 

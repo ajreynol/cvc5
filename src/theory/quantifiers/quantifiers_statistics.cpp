@@ -30,6 +30,8 @@ QuantifiersStatistics::QuantifiersStatistics(StatisticsRegistry& sr)
       d_triggers(sr.registerInt("QuantifiersEngine::Triggers")),
       d_simple_triggers(sr.registerInt("QuantifiersEngine::Triggers_Simple")),
       d_multi_triggers(sr.registerInt("QuantifiersEngine::Triggers_Multi")),
+      d_multi_triggers_filter(
+          sr.registerInt("QuantifiersEngine::Triggers_Multi_Filter")),
       d_red_alpha_equiv(
           sr.registerInt("QuantifiersEngine::Reductions_Alpha_Equivalence"))
 {

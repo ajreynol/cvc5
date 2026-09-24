@@ -22,6 +22,7 @@
 #include "theory/quantifiers/ematching/inst_match_generator_multi_linear.h"
 #include "theory/quantifiers/ematching/inst_match_generator_simple.h"
 #include "theory/quantifiers/ematching/pattern_term_selector.h"
+#include "theory/quantifiers/ematching/trigger_term_info.h"
 #include "theory/quantifiers/ematching/trigger_trie.h"
 #include "theory/quantifiers/inst_match.h"
 #include "theory/quantifiers/instantiate.h"
@@ -29,6 +30,8 @@
 #include "theory/quantifiers/quantifiers_inference_manager.h"
 #include "theory/quantifiers/quantifiers_registry.h"
 #include "theory/quantifiers/quantifiers_state.h"
+#include "theory/quantifiers/term_database.h"
+#include "theory/quantifiers/term_registry.h"
 #include "theory/quantifiers/term_util.h"
 #include "theory/valuation.h"
 
@@ -91,7 +94,63 @@ Trigger::Trigger(Env& env,
     output(OutputTag::TRIGGER) << qa.quantToString(q) << " " << d_trNode;
   }
   QuantifiersStatistics& stats = qs.getStats();
-  if (d_nodes.size() == 1)
+  // If this is a multi-trigger with a term containing all of its variables,
+  // we match that (base) term only and use the others as filter terms.
+  size_t baseIndex = d_nodes.size();
+  if (d_nodes.size() > 1 && options().quantifiers.multiTriggerFilter
+      && !logicInfo().isHigherOrder())
+  {
+    std::vector<std::vector<Node>> nodeVars;
+    std::unordered_set<Node> allVars;
+    for (const Node& n : d_nodes)
+    {
+      nodeVars.emplace_back();
+      TermUtil::computeInstConstContainsForQuant(q, n, nodeVars.back());
+      allVars.insert(nodeVars.back().begin(), nodeVars.back().end());
+    }
+    for (size_t i = 0, nsize = d_nodes.size(); i < nsize; i++)
+    {
+      if (nodeVars[i].size() == allVars.size())
+      {
+        baseIndex = i;
+        break;
+      }
+    }
+    // the remaining terms must be usable as filters
+    for (size_t i = 0, nsize = d_nodes.size(); i < nsize && baseIndex < nsize;
+         i++)
+    {
+      if (i == baseIndex)
+      {
+        continue;
+      }
+      if (!isFilterTerm(d_nodes[i], true))
+      {
+        d_filterNodes.clear();
+        break;
+      }
+      d_filterNodes.push_back(d_nodes[i]);
+    }
+  }
+  if (!d_filterNodes.empty())
+  {
+    Node base = d_nodes[baseIndex];
+    if (TriggerTermInfo::isSimpleTrigger(base))
+    {
+      d_mg = new InstMatchGeneratorSimple(env, this, q, base);
+    }
+    else
+    {
+      d_mg = InstMatchGenerator::mkInstMatchGenerator(env, this, q, base);
+    }
+    output(OutputTag::TRIGGER) << " :multi-filter";
+    Trace("multi-trigger") << "Filter multi-trigger for " << q
+                           << ", base: " << base
+                           << ", filters: " << d_filterNodes << std::endl;
+    ++(stats.d_multi_triggers);
+    ++(stats.d_multi_triggers_filter);
+  }
+  else if (d_nodes.size() == 1)
   {
     if (TriggerTermInfo::isSimpleTrigger(d_nodes[0]))
     {
@@ -184,6 +243,10 @@ uint64_t Trigger::addInstantiations()
 
 bool Trigger::sendInstantiation(std::vector<Node>& m)
 {
+  if (!d_filterNodes.empty() && !checkFilters(m))
+  {
+    return false;
+  }
   InferenceId id = d_mg->getInferenceId();
   return d_qim.getInstantiate()->addInstantiation(d_quant, m, id, d_trNode);
 }
@@ -252,6 +315,90 @@ Node Trigger::ensureGroundTermPreprocessed(Valuation& val,
   Assert(visited.find(n) != visited.end());
   Assert(!visited.find(n)->second.isNull());
   return visited[n];
+}
+
+bool Trigger::isFilterTerm(TNode n, bool isTop) const
+{
+  if (!TermUtil::hasInstConstAttr(n))
+  {
+    return !isTop;
+  }
+  Kind k = n.getKind();
+  if (k == Kind::INST_CONSTANT)
+  {
+    return !isTop && TermUtil::getInstConstAttr(n) == d_quant;
+  }
+  if (!TriggerTermInfo::isAtomicTriggerKind(k) || k == Kind::HO_APPLY)
+  {
+    return false;
+  }
+  if (n.getMetaKind() == metakind::PARAMETERIZED
+      && TermUtil::hasInstConstAttr(n.getOperator()))
+  {
+    return false;
+  }
+  if (d_treg.getTermDatabase()->getMatchOperator(n).isNull())
+  {
+    return false;
+  }
+  for (TNode nc : n)
+  {
+    if (!isFilterTerm(nc, false))
+    {
+      return false;
+    }
+  }
+  return true;
+}
+
+Node Trigger::evaluateFilterTerm(TNode n, const std::vector<Node>& m)
+{
+  Node ret;
+  if (n.getKind() == Kind::INST_CONSTANT)
+  {
+    uint64_t vnum = n.getAttribute(InstVarNumAttribute());
+    Assert(vnum < m.size());
+    ret = m[vnum];
+  }
+  else if (!TermUtil::hasInstConstAttr(n))
+  {
+    ret = n;
+  }
+  else
+  {
+    std::vector<Node> cargs;
+    for (TNode nc : n)
+    {
+      Node a = evaluateFilterTerm(nc, m);
+      if (a.isNull())
+      {
+        return a;
+      }
+      cargs.push_back(a);
+    }
+    TermDb* tdb = d_treg.getTermDatabase();
+    std::vector<TNode> args(cargs.begin(), cargs.end());
+    ret = tdb->getCongruentTerm(tdb->getMatchOperator(n), args);
+  }
+  if (ret.isNull() || !d_qstate.hasTerm(ret))
+  {
+    return Node::null();
+  }
+  return d_qstate.getRepresentative(ret);
+}
+
+bool Trigger::checkFilters(const std::vector<Node>& m)
+{
+  for (const Node& f : d_filterNodes)
+  {
+    if (evaluateFilterTerm(f, m).isNull())
+    {
+      Trace("multi-trigger-debug")
+          << "...filtered " << m << " based on " << f << std::endl;
+      return false;
+    }
+  }
+  return true;
 }
 
 void Trigger::debugPrint(CVC5_UNUSED const char* c) const

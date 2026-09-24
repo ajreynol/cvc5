@@ -1843,6 +1843,11 @@ set(regress_0_tests
   regress0/quantifiers/mix-complete-strat.smt2
   regress0/quantifiers/mix-match.smt2
   regress0/quantifiers/mix-simp.smt2
+  regress0/quantifiers/multi-trigger-filter-1.smt2
+  regress0/quantifiers/multi-trigger-filter-2.smt2
+  regress0/quantifiers/multi-trigger-filter-3.smt2
+  regress0/quantifiers/multi-trigger-filter-4.smt2
+  regress0/quantifiers/multi-trigger-filter-5.smt2
   regress0/quantifiers/nested-delta.smt2
   regress0/quantifiers/nested-inf.smt2
   regress0/quantifiers/partial-trigger.smt2
