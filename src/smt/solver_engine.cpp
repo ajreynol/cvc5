@@ -1152,9 +1152,10 @@ void SolverEngine::declarePool(const Node& p,
 {
   Assert(p.isVar() && p.getType().isSet());
   beginCall();
-  if (options().base.safeMode == options::SafeMode::SAFE)
+  if (options().base.safeMode != options::SafeMode::UNRESTRICTED)
   {
-    throw SafeLogicException("Pool declarations are not supported in safe mode.");
+    throw SafeLogicException(
+        "Pool declarations are only supported in unrestricted mode.");
   }
   QuantifiersEngine* qe = getAvailableQuantifiersEngine("declareTermPool");
   qe->declarePool(p, initValue);

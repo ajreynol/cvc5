@@ -152,9 +152,9 @@ supported exactly when neither of the former two is. Thus, use:
 ; REQUIRES: unrestricted-mode
 ```
 
-if the benchmark is admissible in neither safe nor stable mode, e.g. it sets an
-expert option, sets more than one regular option, or uses a logic that both
-modes restrict, and:
+if the benchmark is admissible in neither safe nor stable mode, e.g. it uses
+`declare-pool`, sets an expert option, sets more than one regular option, or
+uses a logic that both modes restrict, and:
 
 ```
 ; REQUIRES: no-safe-mode
