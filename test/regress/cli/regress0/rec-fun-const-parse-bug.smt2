@@ -1,4 +1,4 @@
-; REQUIRES: unrestricted-mode
+; REQUIRES: no-safe-mode
 (set-logic ALL)
 (set-info :status unsat)
 

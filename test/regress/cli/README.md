@@ -39,7 +39,8 @@ CVC5_REGRESSION_ARGS="--ackermann" ctest -L regress0
 This runs regression tests from level 0 with the `--ackermann` option.
 
 The `cpc` tester uses Ethos reference checking for non-incremental benchmarks
-in safe builds. Benchmarks that enable incremental solving with `--incremental`,
+in safe builds. Stable and unrestricted builds use ordinary Ethos proof checking.
+Benchmarks that enable incremental solving with `--incremental`,
 `-i` (including bundles such as `-iq`), or `(set-option :incremental true)`,
 or use `push`/`pop`, use ordinary proof checking instead. Ethos still checks their
 complete proofs in safe builds,
@@ -139,8 +140,8 @@ as a requirement, refer to cvc5's `--show-config` output. Features can also be
 excluded by adding the `no-` prefix, e.g. `no-cryptominisat` means that the
 test is not valid for builds that include CryptoMiniSat support.
 
-Two features are of special note. Builds configured with `--safe-mode=safe` or
-`--safe-mode=stable` restrict the options and the logics that cvc5 accepts.
+Two features are of special note. Builds configured with `./configure.sh safe` or
+`./configure.sh stable` restrict the options and the logics that cvc5 accepts.
 The regression runner does *not* infer these restrictions from cvc5's output,
 so a benchmark that such a build rejects must say so explicitly. Apart from the
 `safe-mode` and `stable-mode` features reported by `--show-config`, the
@@ -159,8 +160,10 @@ modes restrict, and:
 ; REQUIRES: no-safe-mode
 ```
 
-if it is admissible in stable mode but not in safe mode, e.g. it sets a regular
-option that does not support proofs.
+if it is admissible in stable mode but not in safe mode, e.g. it uses
+`define-fun-rec` or `define-funs-rec`, or sets a regular option that does not
+support proofs. Recursive-definition tests that also require expert options or
+other features unavailable in stable mode still need `unrestricted-mode`.
 
 Note that `REQUIRES` applies to the entire file, i.e. it is evaluated before the
 individual `COMMAND-LINE` configurations are considered. Annotating a benchmark
