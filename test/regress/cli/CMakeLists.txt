@@ -1677,6 +1677,9 @@ set(regress_0_tests
   regress0/proofs/RF-11-aci-norm-ndet.smt2
   regress0/proofs/scope.smt2
   regress0/proofs/shadow_quant.smt2
+  regress0/proofs/strict-assumptions.smt2
+  regress0/proofs/strict-assumptions-define-fun.smt2
+  regress0/proofs/strict-assumptions-disabled.smt2
   regress0/proofs/subtype-elim-1.smt2
   regress0/proofs/subtype-elim-2.smt2
   regress0/proofs/subtype-elim-rare-fail.smt2

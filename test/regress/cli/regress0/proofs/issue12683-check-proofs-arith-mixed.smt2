@@ -1,5 +1,6 @@
+; EXPECT: (error "Cannot eliminate subtypes from an input assumption with --strict-assumptions. Use --no-strict-assumptions to allow this.")
+; EXIT: 1
 ; COMMAND-LINE: --check-proofs --tlimit-per=1000
-; EXPECT: unknown
 (set-logic ALL)
 (assert
  (forall ((x Int) (y Int) (a Real) (z Int))

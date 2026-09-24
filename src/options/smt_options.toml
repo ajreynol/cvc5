@@ -126,6 +126,14 @@ name   = "SMT Layer"
   help       = "produce proofs, support check-proofs and get-proof"
 
 [[option]]
+  name       = "strictAssumptions"
+  category   = "regular"
+  long       = "strict-assumptions"
+  type       = "bool"
+  default    = "true"
+  help       = "reject input assumptions that require subtype elimination when producing proofs"
+
+[[option]]
   name       = "proofMode"
   category   = "expert"
   long       = "proof-mode=MODE"

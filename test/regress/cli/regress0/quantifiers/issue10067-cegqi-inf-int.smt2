@@ -1,7 +1,8 @@
 ; REQUIRES: unrestricted-mode
 ; DISABLE-TESTER: alethe
-; COMMAND-LINE: --cegqi-inf-int --sat-solver=minisat
-; EXPECT: unsat
+; COMMAND-LINE: --produce-proofs --cegqi-inf-int --sat-solver=minisat
+; EXPECT: (error "Cannot eliminate subtypes from an input assumption with --strict-assumptions. Use --no-strict-assumptions to allow this.")
+; EXIT: 1
 (set-logic ALL)
 (declare-fun a () Real)
 (assert

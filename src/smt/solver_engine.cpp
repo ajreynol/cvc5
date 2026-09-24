@@ -978,7 +978,14 @@ Node SolverEngine::eliminateSubtypesForProof(const Node& n) const
       && options().proof.proofElimSubtypes)
   {
     SubtypeElimNodeConverter senc(d_env->getNodeManager());
-    return senc.convert(n);
+    Node ret = senc.convert(n);
+    if (options().smt.strictAssumptions && ret != n)
+    {
+      throw ModalException(
+          "Cannot eliminate subtypes from an input assumption with "
+          "--strict-assumptions. Use --no-strict-assumptions to allow this.");
+    }
+    return ret;
   }
   return n;
 }
@@ -988,8 +995,6 @@ void SolverEngine::assertFormulaInternal(const Node& formula)
   // as an optimization we do not check whether formula is well-formed here, and
   // defer this check for certain cases within the assertions module.
   Trace("smt") << "SolverEngine::assertFormula(" << formula << ")" << endl;
-  // note we could throw a warning here if formula and f are different,
-  // but currently don't.
   Node f = eliminateSubtypesForProof(formula);
   d_smtSolver->getAssertions().assertFormula(f);
 }

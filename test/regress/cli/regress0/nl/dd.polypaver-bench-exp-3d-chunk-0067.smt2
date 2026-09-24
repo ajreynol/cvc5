@@ -1,6 +1,7 @@
 ; REQUIRES: no-safe-mode
-; COMMAND-LINE: --no-nl-cov
-; EXPECT: unsat
+; COMMAND-LINE: --produce-proofs --no-nl-cov
+; EXPECT: (error "Cannot eliminate subtypes from an input assumption with --strict-assumptions. Use --no-strict-assumptions to allow this.")
+; EXIT: 1
 ; Input has mixed arithmetic
 ; DISABLE-TESTER: alethe
 (set-logic ALL)

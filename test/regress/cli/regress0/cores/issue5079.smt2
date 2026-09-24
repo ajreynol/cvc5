@@ -1,6 +1,6 @@
-; EXPECT: sat
-; EXPECT: sat
-; EXPECT: unsat
+; COMMAND-LINE: --produce-proofs
+; EXPECT: (error "Cannot eliminate subtypes from an input assumption with --strict-assumptions. Use --no-strict-assumptions to allow this.")
+; EXIT: 1
 (set-logic ALL)
 (set-option :incremental true)
 (declare-fun a () Real)

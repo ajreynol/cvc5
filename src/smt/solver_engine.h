@@ -915,6 +915,8 @@ class CVC5_EXPORT SolverEngine
    * and do not require a trust step for an irreducible mixed-arithmetic term
    * (e.g. division by zero). This is a no-op for internal subsolvers, since it
    * only impacts having exportable, complete proofs.
+   * @throw ModalException if strict assumptions are enabled and eliminating
+   * subtypes changes n.
    */
   Node eliminateSubtypesForProof(const Node& n) const;
 

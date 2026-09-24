@@ -1,9 +1,9 @@
+; COMMAND-LINE: --produce-proofs
+; COMMAND-LINE: --produce-proofs --strict-assumptions
 ; EXPECT: (error "Cannot eliminate subtypes from an input assumption with --strict-assumptions. Use --no-strict-assumptions to allow this.")
 ; EXIT: 1
-; DISABLE-TESTER: dump
-; DISABLE-TESTER: alethe
-; COMMAND-LINE: --check-proofs
 (set-logic ALL)
-(define-fun i () Real (/ 0.0 0))
-(assert (forall ((l Real)) (and false (= i 0))))
+(declare-const i Int)
+(declare-const r Real)
+(assert (< i r))
 (check-sat)

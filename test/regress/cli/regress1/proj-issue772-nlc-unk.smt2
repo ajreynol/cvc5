@@ -1,5 +1,6 @@
+; EXPECT: (error "Cannot eliminate subtypes from an input assumption with --strict-assumptions. Use --no-strict-assumptions to allow this.")
+; EXIT: 1
 ; COMMAND-LINE: --tlimit-per=500
-; EXPECT: unknown
 (set-logic ALL)
 (set-option :produce-proofs true)
 (set-option :proof-check eager)
