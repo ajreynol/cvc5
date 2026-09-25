@@ -1,6 +1,3 @@
-; REQUIRES: unrestricted-mode
-; COMMAND-LINE: --safe-mode=safe --check-proofs
-; DISABLE-TESTER: alethe
 ; EXPECT: unsat
 (set-logic QF_SLIA)
 (declare-fun x () (Seq (Seq Int)))

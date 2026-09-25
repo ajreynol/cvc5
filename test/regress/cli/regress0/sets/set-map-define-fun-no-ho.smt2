@@ -1,5 +1,5 @@
 ; REQUIRES: unrestricted-mode
-; COMMAND-LINE: --safe-mode=safe
+; COMMAND-LINE: --no-uf-ho-exp
 ; EXPECT: (error "Cannot handle assertion with term of kind set.map in this configuration.")
 ; EXIT: 1
 (set-logic ALL)
