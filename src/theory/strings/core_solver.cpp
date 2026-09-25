@@ -579,6 +579,8 @@ void CoreSolver::checkNormalFormsEqProp()
   // calculate normal forms for each equivalence class, possibly adding
   // splitting lemmas
   d_normal_form.clear();
+  d_nfRegExp.clear();
+  computePositiveMemberships();
   // map from normal form terms (the concatenation of the terms in the normal
   // form) to the equivalence that had that normal form
   std::map<Node, Node> nf_to_eqc;
@@ -720,6 +722,94 @@ NormalForm& CoreSolver::getNormalForm(const Node& n)
   return itn->second;
 }
 
+void CoreSolver::computePositiveMemberships()
+{
+  d_posMems.clear();
+  eq::EqualityEngine* ee = d_state.getEqualityEngine();
+  if (!ee->hasTerm(d_true))
+  {
+    return;
+  }
+  // positive memberships are those in the equivalence class of true
+  eq::EqClassIterator eqc_i = eq::EqClassIterator(d_true, ee);
+  while (!eqc_i.isFinished())
+  {
+    Node n = (*eqc_i);
+    ++eqc_i;
+    if (n.getKind() == Kind::STRING_IN_REGEXP)
+    {
+      Node r = d_state.getRepresentative(n[0]);
+      d_posMems[r].push_back(n);
+    }
+  }
+}
+
+void CoreSolver::setAtomicRegExp(NormalForm& nf)
+{
+  if (nf.d_nfRe.size() != 1 || nf.d_nf[0].isConst())
+  {
+    return;
+  }
+  Node u = nf.d_nf[0];
+  std::map<Node, std::vector<Node>>::iterator itm =
+      d_posMems.find(d_state.getRepresentative(u));
+  if (itm == d_posMems.end())
+  {
+    return;
+  }
+  std::vector<Node> rs;
+  for (const Node& m : itm->second)
+  {
+    rs.push_back(m[1]);
+    nf.d_reExp.push_back(m);
+    if (m[0] != u)
+    {
+      nf.d_reExp.push_back(m[0].eqNode(u));
+    }
+  }
+  nf.d_nfRe[0] =
+      rs.size() == 1 ? rs[0] : nodeManager()->mkNode(Kind::REGEXP_INTER, rs);
+}
+
+Node CoreSolver::getNormalFormRegExp(const Node& eqc, std::vector<Node>& exp)
+{
+  std::map<Node, std::pair<Node, std::vector<Node>>>::iterator it =
+      d_nfRegExp.find(eqc);
+  if (it == d_nfRegExp.end())
+  {
+    std::pair<Node, std::vector<Node>>& entry = d_nfRegExp[eqc];
+    const NormalForm& nf = getNormalForm(eqc);
+    // uninformative if the normal form is a single term
+    if (nf.d_nfRe.size() > 1)
+    {
+      Node re = rewrite(nf.getRegExp());
+      Trace("strings-nf-re") << "RE approximation of " << eqc << " (base "
+                             << nf.d_base << ") is " << re << std::endl;
+      bool isAll = re.getKind() == Kind::REGEXP_ALL
+                   || (re.getKind() == Kind::REGEXP_STAR
+                       && re[0].getKind() == Kind::REGEXP_ALLCHAR);
+      if (!isAll)
+      {
+        entry.first = re;
+        std::unordered_set<Node> processed;
+        for (const std::vector<Node>* ev : {&nf.d_exp, &nf.d_reExp})
+        {
+          for (const Node& e : *ev)
+          {
+            if (processed.insert(e).second)
+            {
+              entry.second.push_back(e);
+            }
+          }
+        }
+      }
+    }
+    it = d_nfRegExp.find(eqc);
+  }
+  exp.insert(exp.end(), it->second.second.begin(), it->second.second.end());
+  return it->second.first;
+}
+
 Node CoreSolver::getNormalString(Node x, std::vector<Node>& nf_exp)
 {
   if (!x.isConst())
@@ -784,6 +874,7 @@ void CoreSolver::getNormalForms(Node eqc,
         if (isCLike)
         {
           nf_curr.init(n);
+          setAtomicRegExp(nf_curr);
         }
         else if (nk == Kind::STRING_CONCAT)
         {
@@ -828,6 +919,12 @@ void CoreSolver::getNormalForms(Node eqc,
                 }
               }
               nf_curr.d_nf.insert(nf_curr.d_nf.end(), nfrv.begin(), nfrv.end());
+              // the regular expression approximation is the concatenation of
+              // the approximations of the components
+              nf_curr.d_nfRe.insert(
+                  nf_curr.d_nfRe.end(), nfr.d_nfRe.begin(), nfr.d_nfRe.end());
+              nf_curr.d_reExp.insert(
+                  nf_curr.d_reExp.end(), nfr.d_reExp.begin(), nfr.d_reExp.end());
             }
             // Track explanation for the normal form. This is in two parts.
             // First, we must carry the explanation of the normal form computed
@@ -925,6 +1022,7 @@ void CoreSolver::getNormalForms(Node eqc,
     Assert(eqc_non_c.getKind() != Kind::STRING_CONCAT);
     NormalForm nf_triv;
     nf_triv.init(eqc_non_c);
+    setAtomicRegExp(nf_triv);
     normal_forms.push_back(nf_triv);
   }
   else
@@ -2701,6 +2799,21 @@ void CoreSolver::checkNormalFormsEq()
       Trace("strings-nf") << "     exp: " << nf.d_exp << std::endl;
     }
     Trace("strings-nf") << std::endl;
+  }
+  if (TraceIsOn("strings-nf-re"))
+  {
+    Trace("strings-nf-re") << "**** RE approximations are : " << std::endl;
+    for (const Node& eqc : d_strings_eqc)
+    {
+      std::vector<Node> exp;
+      Node re = getNormalFormRegExp(eqc, exp);
+      if (!re.isNull())
+      {
+        Trace("strings-nf-re") << "  A[" << eqc << "] = " << re << std::endl;
+        Trace("strings-nf-re") << "     exp: " << exp << std::endl;
+      }
+    }
+    Trace("strings-nf-re") << std::endl;
   }
 }
 

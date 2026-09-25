@@ -33,18 +33,46 @@ void NormalForm::init(Node base)
   d_isRev = false;
   d_exp.clear();
   d_expDep.clear();
+  d_nfRe.clear();
+  d_reExp.clear();
 
   // add to normal form
   if (!base.isConst() || Word::getLength(base) > 0)
   {
     d_nf.push_back(base);
+    if (base.getType().isString())
+    {
+      NodeManager* nm = base.getNodeManager();
+      d_nfRe.push_back(base.isConst() ? nm->mkNode(Kind::STRING_TO_REGEXP, base)
+                                      : nm->mkNode(Kind::REGEXP_ALL));
+    }
   }
 }
 
 void NormalForm::reverse()
 {
   std::reverse(d_nf.begin(), d_nf.end());
+  std::reverse(d_nfRe.begin(), d_nfRe.end());
   d_isRev = !d_isRev;
+}
+
+Node NormalForm::getRegExp() const
+{
+  if (d_nfRe.empty())
+  {
+    return Node::null();
+  }
+  Assert(d_nfRe.size() == d_nf.size());
+  std::vector<Node> res(d_nfRe.begin(), d_nfRe.end());
+  if (d_isRev)
+  {
+    std::reverse(res.begin(), res.end());
+  }
+  if (res.size() == 1)
+  {
+    return res[0];
+  }
+  return d_base.getNodeManager()->mkNode(Kind::REGEXP_CONCAT, res);
 }
 
 void NormalForm::splitConstant(unsigned index, Node c1, Node c2)
@@ -53,6 +81,14 @@ void NormalForm::splitConstant(unsigned index, Node c1, Node c2)
          == d_nf[index]);
   d_nf.insert(d_nf.begin() + index + 1, c2);
   d_nf[index] = c1;
+  if (!d_nfRe.empty())
+  {
+    Assert(d_nfRe.size() + 1 == d_nf.size());
+    NodeManager* nm = c1.getNodeManager();
+    d_nfRe.insert(d_nfRe.begin() + index + 1,
+                  nm->mkNode(Kind::STRING_TO_REGEXP, c2));
+    d_nfRe[index] = nm->mkNode(Kind::STRING_TO_REGEXP, c1);
+  }
   // update the dependency indices
   // notice this is not critical for soundness: not doing the below incrementing
   // will only lead to overapproximating when antecedants are required in

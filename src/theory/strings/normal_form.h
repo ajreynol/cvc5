@@ -53,6 +53,27 @@ class NormalForm
   /** is the normal form d_nf stored in reverse order? */
   bool d_isRev;
   /**
+   * The regular expression approximation of the normal form. For strings,
+   * this vector is parallel to d_nf, where d_nfRe[i] is a regular expression
+   * such that d_nf[i] is a member of d_nfRe[i]. If d_nf[i] is a constant s,
+   * then d_nfRe[i] is (str.to_re s); otherwise it is the intersection of the
+   * positive memberships asserted for d_nf[i], or re.all if there are none.
+   * Thus, d_base is a member of the concatenation of d_nfRe. For sequences,
+   * this vector is empty.
+   *
+   * In the above example, if (str.in_re u1 R) is asserted, and u2 and v have
+   * no asserted positive memberships, this is (R, re.all, re.all).
+   */
+  std::vector<Node> d_nfRe;
+  /**
+   * The explanation for the regular expression approximation, this is a set
+   * of literals such that
+   *   d_reExp => d_nf[i] in d_nfRe[i] for each i
+   * In the above example, this is { (str.in_re u1 R) }.
+   * Notice that d_exp ^ d_reExp => d_base in (re.++ d_nfRe).
+   */
+  std::vector<Node> d_reExp;
+  /**
    * The explanation for the normal form, this is a set of literals such that
    *   d_exp => d_base = d_nf
    * In the above example, this is the set of equalities
@@ -98,7 +119,8 @@ class NormalForm
    *
    * Initialize the normal form with base node base. If base is not the empty
    * string, then d_nf is set to the singleton list containing base, otherwise
-   * d_nf is empty.
+   * d_nf is empty. If base is a string, d_nfRe is set to (str.to_re base) if
+   * base is a constant, or re.all otherwise.
    */
   void init(Node base);
   /** reverse the content of normal form d_nf
@@ -115,6 +137,12 @@ class NormalForm
    * d_isRev, as this impacts how the dependency indices are updated.
    */
   void splitConstant(unsigned index, Node c1, Node c2);
+  /**
+   * Get the regular expression approximation of this normal form, which is
+   * the (unrewritten) concatenation of d_nfRe. Returns null if d_nfRe is
+   * empty.
+   */
+  Node getRegExp() const;
   /** add to explanation
    *
    * This adds exp to the explanation vector d_exp with new forward and

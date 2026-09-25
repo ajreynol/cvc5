@@ -237,6 +237,30 @@ class CoreSolver : public InferSideEffectProcess, protected EnvObj
    * a call where the inference manager was not given any lemmas or inferences.
    */
   NormalForm& getNormalForm(const Node& n);
+  /**
+   * Get the regular expression approximation of the normal form of the
+   * equivalence class whose representative is eqc.
+   *
+   * If the normal form of eqc is (u1, ..., un), this returns the (rewritten)
+   * regular expression (re.++ R1 ... Rn), where (R1, ..., Rn) is the
+   * approximation stored in the normal form (see NormalForm::d_nfRe). For
+   * example, if the normal form of eqc is (y, "A", z) and we have asserted
+   * (str.in_re y R), then this returns the result of rewriting
+   * (re.++ R (str.to_re "A") re.all).
+   *
+   * It adds to exp a set of literals such that exp => (str.in_re b R), where
+   * b is the base of the normal form of eqc and R is the returned regular
+   * expression.
+   *
+   * This returns null if the approximation is uninformative, that is, if the
+   * normal form of eqc has fewer than two components, or if the approximation
+   * rewrites to re.all. This is always the case for sequences.
+   *
+   * Like getNormalForm, this query is valid after a successful call to
+   * checkNormalFormsEq. The result is cached until normal forms are
+   * recomputed.
+   */
+  Node getNormalFormRegExp(const Node& eqc, std::vector<Node>& exp);
   /** get normal string
    *
    * This method returns the node that is equivalent to the normal form of x,
@@ -482,6 +506,27 @@ class CoreSolver : public InferSideEffectProcess, protected EnvObj
   std::vector<Node> d_rlvDeq;
   /** map from terms to their normal forms */
   std::map<Node, NormalForm> d_normal_form;
+  /**
+   * Map from equivalence classes to the regular expression approximation of
+   * their normal form and its explanation, computed lazily by
+   * getNormalFormRegExp. This is cleared whenever d_normal_form is.
+   */
+  std::map<Node, std::pair<Node, std::vector<Node>>> d_nfRegExp;
+  /**
+   * Map from representatives to the positive regular expression memberships
+   * asserted for their equivalence class. This is computed at the beginning
+   * of checkNormalFormsEqProp and used for constructing the regular
+   * expression approximations of normal forms (NormalForm::d_nfRe).
+   */
+  std::map<Node, std::vector<Node>> d_posMems;
+  /** Compute d_posMems */
+  void computePositiveMemberships();
+  /**
+   * If nf is a normal form for a single non-constant string term u, this sets
+   * its regular expression approximation to the intersection of the positive
+   * memberships asserted for u, if any, and updates its explanation.
+   */
+  void setAtomicRegExp(NormalForm& nf);
   /**
    * In certain cases, we know that two terms are equivalent despite
    * not having to verify their normal forms are identical. For example,
