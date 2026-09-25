@@ -3876,16 +3876,25 @@ set(regress_1_tests
   regress1/strings/re-mod-eq.smt2
   regress1/strings/re-neg-concat-reduct.smt2
   regress1/strings/re-neg-unfold-rev-a.smt2
+  regress1/strings/re-nf-approx-conf-neg-2vars.smt2
+  regress1/strings/re-nf-approx-conf-neg-3vars.smt2
   regress1/strings/re-nf-approx-conf-neg-nested.smt2
   regress1/strings/re-nf-approx-conf-pos-disjoint.smt2
+  regress1/strings/re-nf-approx-conf-pos-star.smt2
+  regress1/strings/re-nf-approx-conf-pos-star-suffix.smt2
   regress1/strings/re-nf-approx-conf-pos-suffix.smt2
+  regress1/strings/re-nf-approx-cst-ite.smt2
   regress1/strings/re-nf-approx-cst-mid.smt2
   regress1/strings/re-nf-approx-cst-nested.smt2
   regress1/strings/re-nf-approx-cst-odd.smt2
+  regress1/strings/re-nf-approx-cst-odd-long.smt2
   regress1/strings/re-nf-approx-cst-sat.smt2
   regress1/strings/re-nf-approx-ent-neg-disjoint.smt2
+  regress1/strings/re-nf-approx-ent-neg-star.smt2
   regress1/strings/re-nf-approx-ent-pos-concat.smt2
   regress1/strings/re-nf-approx-ent-pos-const.smt2
+  regress1/strings/re-nf-approx-ent-pos-star.smt2
+  regress1/strings/re-nf-approx-ent-pos-star-const.smt2
   regress1/strings/re-unsound-080718.smt2
   regress1/strings/regexp001.smt2
   regress1/strings/regexp002.smt2
@@ -4436,12 +4445,8 @@ set(regression_disabled_tests
   regress1/fmf/issue3587.smt2
   # demonstrates instance where RE inference in necessary, times out
   regress1/strings/re-uf.smt2
-  # slow or time out, require reasoning about regular expression
-  # approximations of normal forms
-  regress1/strings/re-nf-approx-conf-neg-2vars.smt2
-  regress1/strings/re-nf-approx-conf-neg-3vars.smt2
-  regress1/strings/re-nf-approx-cst-ite.smt2
-  regress1/strings/re-nf-approx-cst-odd-long.smt2
+  # times out, requires reasoning about regular expression approximations of
+  # normal forms beyond what is currently implemented
   regress1/strings/re-nf-approx-ent-pos-concat-200.smt2
   ###
   regress1/bags/card3.smt2

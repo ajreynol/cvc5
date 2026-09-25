@@ -47,6 +47,10 @@ const char* toString(ExtReducedId id)
     case ExtReducedId::STRINGS_REGEXP_INCLUDE: return "STRINGS_REGEXP_INCLUDE";
     case ExtReducedId::STRINGS_REGEXP_INCLUDE_NEG:
       return "STRINGS_REGEXP_INCLUDE_NEG";
+    case ExtReducedId::STRINGS_REGEXP_NF_APPROX_INCLUDE:
+      return "STRINGS_REGEXP_NF_APPROX_INCLUDE";
+    case ExtReducedId::STRINGS_REGEXP_NF_APPROX_INTER_NEG:
+      return "STRINGS_REGEXP_NF_APPROX_INTER_NEG";
     case ExtReducedId::STRINGS_REGEXP_RE_SYM_NF:
       return "STRINGS_REGEXP_RE_SYM_NF";
     case ExtReducedId::STRINGS_REGEXP_PDERIVATIVE:

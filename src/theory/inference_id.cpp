@@ -530,6 +530,12 @@ const char* toString(InferenceId i)
     case InferenceId::STRINGS_RE_INTER_INCLUDE:
       return "STRINGS_RE_INTER_INCLUDE";
     case InferenceId::STRINGS_RE_INTER_CONF: return "STRINGS_RE_INTER_CONF";
+    case InferenceId::STRINGS_RE_NF_APPROX_CONST_CONF:
+      return "STRINGS_RE_NF_APPROX_CONST_CONF";
+    case InferenceId::STRINGS_RE_NF_APPROX_INCLUDE_CONF:
+      return "STRINGS_RE_NF_APPROX_INCLUDE_CONF";
+    case InferenceId::STRINGS_RE_NF_APPROX_INTER_CONF:
+      return "STRINGS_RE_NF_APPROX_INTER_CONF";
     case InferenceId::STRINGS_RE_INTER_INFER: return "STRINGS_RE_INTER_INFER";
     case InferenceId::STRINGS_RE_DELTA: return "STRINGS_RE_DELTA";
     case InferenceId::STRINGS_RE_DELTA_CONF: return "STRINGS_RE_DELTA_CONF";

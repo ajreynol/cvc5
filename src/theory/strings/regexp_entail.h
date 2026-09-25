@@ -152,6 +152,23 @@ class RegExpEntail
   /** Same as above, without cache */
   static bool regExpIncludes(Node r1, Node r2);
   /**
+   * Returns true if we can show that the intersection of the regular
+   * expressions `r1` and `r2` is empty. This is a lightweight check based on
+   * the characters that may begin (resp. end) a non-empty string in each
+   * regular expression: if at least one of `r1` or `r2` does not contain the
+   * empty string, and the sets of possible first (resp. last) characters of
+   * `r1` and `r2` are disjoint, then their intersection is empty.
+   *
+   * For example, this returns true for (re.++ (re.+ "b") re.all) and (re.* "a")
+   * since strings in the former start with "b", and the only string in the
+   * latter that does not start with "a" is the empty string.
+   *
+   * @param r1 The first regular expression (should be in rewritten form)
+   * @param r2 The second regular expression (should be in rewritten form)
+   * @return True if the intersection of r1 and r2 is empty
+   */
+  static bool regExpDisjoint(Node r1, Node r2);
+  /**
    * Get generalized constant regular expression.
    * Given a (possibly non-constant) string, return the most specific regular
    * expression that is constant and contains the string. For example, given
@@ -166,6 +183,29 @@ class RegExpEntail
    * Does the substring of s starting at index_start occur in constant regular
    * expression r?
    */
+  /**
+   * Over-approximation of the set of characters that may occur at the start
+   * (or end, if isRev is true) of a non-empty string in a regular expression.
+   * This is either all characters, or a union of the intervals of code points
+   * in d_ranges.
+   */
+  struct CharSet
+  {
+    CharSet() : d_all(false) {}
+    /** Whether this is the set of all characters */
+    bool d_all;
+    /** The intervals of code points, if d_all is false */
+    std::vector<std::pair<unsigned, unsigned>> d_ranges;
+    /** Add all characters in c to this set */
+    void add(const CharSet& c);
+    /** Does this set have an empty intersection with c? */
+    bool isDisjoint(const CharSet& c) const;
+  };
+  /**
+   * Get the (over-approximation of the) set of characters that may occur at
+   * the start (or end, if isRev is true) of a non-empty string in r.
+   */
+  static CharSet getFirstChars(TNode r, bool isRev);
   static bool testConstStringInRegExpInternal(String& s,
                                               unsigned index_start,
                                               TNode r);

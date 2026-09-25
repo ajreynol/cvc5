@@ -205,6 +205,14 @@ name   = "Strings Theory"
   help       = "use regular expression inclusion for finding conflicts and avoiding regular expression unfolding"
 
 [[option]]
+  name       = "stringRegExpNfApprox"
+  category   = "expert"
+  long       = "strings-regexp-nf-approx"
+  type       = "bool"
+  default    = "true"
+  help       = "use regular expression approximations of normal forms for finding conflicts and avoiding regular expression unfolding"
+
+[[option]]
   name       = "seqArray"
   category   = "expert"
   long       = "seq-array=MODE"

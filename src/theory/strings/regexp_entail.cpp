@@ -418,6 +418,177 @@ bool RegExpEntail::isConstRegExp(TNode t)
   return true;
 }
 
+void RegExpEntail::CharSet::add(const CharSet& c)
+{
+  if (d_all)
+  {
+    return;
+  }
+  if (c.d_all)
+  {
+    d_all = true;
+    d_ranges.clear();
+    return;
+  }
+  d_ranges.insert(d_ranges.end(), c.d_ranges.begin(), c.d_ranges.end());
+}
+
+bool RegExpEntail::CharSet::isDisjoint(const CharSet& c) const
+{
+  if (d_all)
+  {
+    return !c.d_all && c.d_ranges.empty();
+  }
+  if (c.d_all)
+  {
+    return d_ranges.empty();
+  }
+  for (const std::pair<unsigned, unsigned>& r1 : d_ranges)
+  {
+    for (const std::pair<unsigned, unsigned>& r2 : c.d_ranges)
+    {
+      if (r1.first <= r2.second && r2.first <= r1.second)
+      {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+RegExpEntail::CharSet RegExpEntail::getFirstChars(TNode r, bool isRev)
+{
+  CharSet ret;
+  Kind k = r.getKind();
+  switch (k)
+  {
+    case Kind::REGEXP_NONE: break;
+    case Kind::STRING_TO_REGEXP:
+    {
+      if (!r[0].isConst())
+      {
+        ret.d_all = true;
+        break;
+      }
+      const std::vector<unsigned>& vec = r[0].getConst<String>().getVec();
+      if (!vec.empty())
+      {
+        unsigned ch = isRev ? vec.back() : vec.front();
+        ret.d_ranges.emplace_back(ch, ch);
+      }
+    }
+    break;
+    case Kind::REGEXP_RANGE:
+    {
+      if (!r[0].isConst() || !r[1].isConst())
+      {
+        ret.d_all = true;
+        break;
+      }
+      const std::vector<unsigned>& lvec = r[0].getConst<String>().getVec();
+      const std::vector<unsigned>& uvec = r[1].getConst<String>().getVec();
+      if (lvec.size() != 1 || uvec.size() != 1)
+      {
+        // an invalid range, which is empty
+        break;
+      }
+      if (lvec[0] <= uvec[0])
+      {
+        ret.d_ranges.emplace_back(lvec[0], uvec[0]);
+      }
+    }
+    break;
+    case Kind::REGEXP_STAR:
+    case Kind::REGEXP_PLUS:
+    case Kind::REGEXP_OPT:
+    case Kind::REGEXP_LOOP: ret = getFirstChars(r[0], isRev); break;
+    case Kind::REGEXP_UNION:
+      for (const Node& rc : r)
+      {
+        ret.add(getFirstChars(rc, isRev));
+        if (ret.d_all)
+        {
+          break;
+        }
+      }
+      break;
+    case Kind::REGEXP_INTER:
+    {
+      // for simplicity, we take the set for one of the children (the one with
+      // the fewest intervals), which is an over-approximation of the set for
+      // their intersection
+      bool init = false;
+      for (const Node& rc : r)
+      {
+        CharSet cc = getFirstChars(rc, isRev);
+        if (cc.d_all)
+        {
+          continue;
+        }
+        if (!init || cc.d_ranges.size() < ret.d_ranges.size())
+        {
+          ret = cc;
+          init = true;
+        }
+      }
+      if (!init)
+      {
+        ret.d_all = true;
+      }
+    }
+    break;
+    case Kind::REGEXP_CONCAT:
+    {
+      size_t nchild = r.getNumChildren();
+      for (size_t i = 0; i < nchild; i++)
+      {
+        TNode rc = r[isRev ? nchild - 1 - i : i];
+        ret.add(getFirstChars(rc, isRev));
+        bool nullable;
+        if (ret.d_all || (isNullable(rc, nullable) && !nullable))
+        {
+          // the first character must come from this component
+          break;
+        }
+      }
+    }
+    break;
+    default:
+      // e.g. re.allchar, re.all, re.comp, re.diff
+      ret.d_all = true;
+      break;
+  }
+  return ret;
+}
+
+bool RegExpEntail::regExpDisjoint(Node r1, Node r2)
+{
+  bool nullable1, nullable2;
+  bool nkn1 = isNullable(r1, nullable1);
+  bool nkn2 = isNullable(r2, nullable2);
+  // if both may contain the empty string, we cannot show disjointness
+  if ((!nkn1 || nullable1) && (!nkn2 || nullable2))
+  {
+    return false;
+  }
+  // otherwise, all strings in the intersection are non-empty, and must begin
+  // and end with a character in the intersection of the respective sets
+  for (bool isRev : {false, true})
+  {
+    CharSet c1 = getFirstChars(r1, isRev);
+    if (c1.d_all)
+    {
+      continue;
+    }
+    CharSet c2 = getFirstChars(r2, isRev);
+    if (c1.isDisjoint(c2))
+    {
+      return true;
+    }
+  }
+  return false;
+}
+
 bool RegExpEntail::isNullable(TNode r, bool& res)
 {
   // Note the cases below are intentionally in sync with the $re_nullable

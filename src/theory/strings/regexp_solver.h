@@ -112,6 +112,34 @@ class RegExpSolver : protected EnvObj
    * @return False if a conflict was detected, true otherwise
    */
   bool checkEqcInclusion(Theory::Effort e, std::vector<Node>& mems);
+  /**
+   * Check memberships in the equivalence class of rep against the regular
+   * expression approximation A of the normal form of rep (see
+   * CoreSolver::getNormalFormRegExp). In particular, for each membership:
+   * - (x in R) is marked inactive if A is included in R,
+   * - (not (x in R)) is marked inactive if A and R have an empty intersection,
+   * - (not (x in R)) is in conflict if A is included in R,
+   * - (x in R) is in conflict if A and R have an empty intersection.
+   *
+   * @param e The current effort.
+   * @param rep The representative of the equivalence class.
+   * @param mems Vector of memberships of the form: (~)str.in.re(x1, R1)
+   *             ... (~)str.in.re(xn, Rn) where x1 = ... = xn = rep in the
+   *             current context. The function removes elements from this
+   *             vector that were marked as reduced.
+   * @return False if a conflict was detected, true otherwise
+   */
+  bool checkEqcNormalFormApprox(Theory::Effort e,
+                                const Node& rep,
+                                std::vector<Node>& mems);
+  /**
+   * Returns true if we can show that r1 includes r2. This extends
+   * RegExpOpr::regExpIncludes with additional reasoning, e.g. that
+   * (re.* R) includes (re.++ R1 ... Rn) if it includes each of R1 ... Rn.
+   * Notice this is intentionally not used in the rewriter, whose uses of
+   * RegExpEntail::regExpIncludes are kept in sync with the proof signature.
+   */
+  bool regExpIncludesApprox(const Node& r1, const Node& r2);
 
   /**
    * Check memberships for equivalence class.

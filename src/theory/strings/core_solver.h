@@ -528,6 +528,15 @@ class CoreSolver : public InferSideEffectProcess, protected EnvObj
    */
   void setAtomicRegExp(NormalForm& nf);
   /**
+   * Called when c is the constant in the equivalence class eqc, and nf is the
+   * normal form of a term in eqc. If c is not a member of the regular
+   * expression approximation of nf (see NormalForm::d_nfRe), then this sends
+   * a conflict and returns true. Otherwise, this returns false.
+   */
+  bool checkConstantRegExpApprox(const Node& eqc,
+                                 const Node& c,
+                                 const NormalForm& nf);
+  /**
    * In certain cases, we know that two terms are equivalent despite
    * not having to verify their normal forms are identical. For example,
    * after applying the R-Loop rule to two terms a and b, we know they

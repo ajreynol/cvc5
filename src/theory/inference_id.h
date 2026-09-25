@@ -850,6 +850,21 @@ enum class InferenceId
   // intersection inference
   //   (x in R1 ^ y in R2 ^ x = y) => (x in re.inter(R1,R2))
   STRINGS_RE_INTER_INFER,
+  // Conflicts based on the regular expression approximation of normal forms.
+  // Below, we write (x in A) to denote that the regular expression
+  // approximation of the normal form of x is A. This holds due to an
+  // explanation exp that includes the equalities explaining the normal form
+  // of x (x = u1 ++ ... ++ un) and the positive memberships for the ui that
+  // were used for constructing A (see NormalForm::d_nfRe).
+  // constant conflict
+  //   (x = c ^ exp) => false  where [[c not in A]]
+  STRINGS_RE_NF_APPROX_CONST_CONF,
+  // inclusion conflict
+  //   (~ x in R ^ exp) => false  where [[includes(R, A)]]
+  STRINGS_RE_NF_APPROX_INCLUDE_CONF,
+  // intersection conflict
+  //   (x in R ^ exp) => false  where [[intersect(R, A) = empty]]
+  STRINGS_RE_NF_APPROX_INTER_CONF,
   // regular expression delta
   //   (x = "" ^ x in R) => C
   // where "" in R holds if and only if C holds.

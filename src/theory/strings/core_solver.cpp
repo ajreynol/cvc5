@@ -17,6 +17,7 @@
 #include "options/strings_options.h"
 #include "smt/logic_exception.h"
 #include "theory/rewriter.h"
+#include "theory/strings/regexp_entail.h"
 #include "theory/strings/sequences_rewriter.h"
 #include "theory/strings/strings_entail.h"
 #include "theory/strings/theory_strings_utils.h"
@@ -725,6 +726,11 @@ NormalForm& CoreSolver::getNormalForm(const Node& n)
 void CoreSolver::computePositiveMemberships()
 {
   d_posMems.clear();
+  if (!options().strings.stringRegExpNfApprox)
+  {
+    // regular expression approximations are all re.all
+    return;
+  }
   eq::EqualityEngine* ee = d_state.getEqualityEngine();
   if (!ee->hasTerm(d_true))
   {
@@ -769,6 +775,36 @@ void CoreSolver::setAtomicRegExp(NormalForm& nf)
   }
   nf.d_nfRe[0] =
       rs.size() == 1 ? rs[0] : nodeManager()->mkNode(Kind::REGEXP_INTER, rs);
+}
+
+bool CoreSolver::checkConstantRegExpApprox(const Node& eqc,
+                                           const Node& c,
+                                           const NormalForm& nf)
+{
+  // only informative if the normal form has more than one component, and it
+  // is not the normal form of the constant itself
+  if (!options().strings.stringRegExpNfApprox || nf.d_nfRe.size() <= 1)
+  {
+    return false;
+  }
+  Node re = rewrite(nf.getRegExp());
+  String s = c.getConst<String>();
+  if (RegExpEntail::testConstStringInRegExp(s, re))
+  {
+    return false;
+  }
+  Node n = nf.d_base;
+  Trace("strings-solve") << "Constant " << c << " is not in the regular "
+                         << "expression approximation " << re
+                         << " of the normal form of " << n << std::endl;
+  // conflict, explanation is:
+  //  n = base ^ base = c ^ ( n = N[n] ) ^ ( N[n] in re.++(d_nfRe) )
+  std::vector<Node> exp(nf.d_exp.begin(), nf.d_exp.end());
+  exp.insert(exp.end(), nf.d_reExp.begin(), nf.d_reExp.end());
+  d_bsolver.explainConstantEqc(n, eqc, exp);
+  d_im.sendInference(
+      exp, d_false, InferenceId::STRINGS_RE_NF_APPROX_CONST_CONF);
+  return true;
 }
 
 Node CoreSolver::getNormalFormRegExp(const Node& eqc, std::vector<Node>& exp)
@@ -1121,6 +1157,13 @@ void CoreSolver::processNEqc(Node eqc,
           // firstc/lastc, normal_forms_exp_depend.
           d_bsolver.explainConstantEqc(n, eqc, exp);
           d_im.sendInference(exp, d_false, InferenceId::STRINGS_N_NCTN);
+          // conflict, finished
+          return;
+        }
+        // Check if the constant is a member of the regular expression
+        // approximation of the normal form.
+        if (checkConstantRegExpApprox(eqc, c, nfi))
+        {
           // conflict, finished
           return;
         }

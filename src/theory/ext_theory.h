@@ -74,6 +74,14 @@ enum class ExtReducedId
   STRINGS_REGEXP_INCLUDE,
   // subsumed due to RE inclusion reasoning for negative memberships
   STRINGS_REGEXP_INCLUDE_NEG,
+  // positive membership entailed since the regular expression approximation
+  // of the normal form of its left hand side is included in its regular
+  // expression
+  STRINGS_REGEXP_NF_APPROX_INCLUDE,
+  // negative membership entailed since the regular expression approximation
+  // of the normal form of its left hand side has an empty intersection with
+  // its regular expression
+  STRINGS_REGEXP_NF_APPROX_INTER_NEG,
   // satisfied due to normal form substitution into re memberships
   STRINGS_REGEXP_RE_SYM_NF,
   // satisfied due to partial derivative computation

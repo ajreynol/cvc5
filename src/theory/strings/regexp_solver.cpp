@@ -17,6 +17,7 @@
 #include "options/strings_options.h"
 #include "smt/logic_exception.h"
 #include "theory/ext_theory.h"
+#include "theory/strings/regexp_entail.h"
 #include "theory/strings/term_registry.h"
 #include "theory/strings/theory_strings_utils.h"
 #include "util/statistics_value.h"
@@ -116,6 +117,12 @@ void RegExpSolver::checkInclusions(Theory::Effort e)
     std::vector<Node> mems2 = mr.second;
     Trace("regexp-process")
         << "Memberships(" << mr.first << ") = " << mr.second << std::endl;
+    if (options().strings.stringRegExpNfApprox
+        && !checkEqcNormalFormApprox(e, mr.first, mems2))
+    {
+      // conflict discovered, return
+      return;
+    }
     if (options().strings.stringRegexpInclusion && !checkEqcInclusion(e, mems2))
     {
       // conflict discovered, return
@@ -428,6 +435,122 @@ bool RegExpSolver::checkEqcInclusion(Theory::Effort e, std::vector<Node>& mems)
              mems.end());
 
   return true;
+}
+
+bool RegExpSolver::checkEqcNormalFormApprox(Theory::Effort e,
+                                            const Node& rep,
+                                            std::vector<Node>& mems)
+{
+  if (mems.empty() || !d_csolver.hasNormalForm(rep))
+  {
+    return true;
+  }
+  std::vector<Node> aexp;
+  Node approx = d_csolver.getNormalFormRegExp(rep, aexp);
+  if (approx.isNull())
+  {
+    return true;
+  }
+  Node base = d_csolver.getNormalForm(rep).d_base;
+  Trace("regexp-nf-approx")
+      << "Check memberships of " << rep << " against normal form approximation "
+      << approx << std::endl;
+  std::unordered_set<Node> remove;
+  for (const Node& m : mems)
+  {
+    bool pol = m.getKind() != Kind::NOT;
+    Node atom = pol ? m : m[0];
+    Assert(atom.getKind() == Kind::STRING_IN_REGEXP);
+    Node r = atom[1];
+    bool includes = regExpIncludesApprox(r, approx);
+    bool disjoint = !includes && RegExpEntail::regExpDisjoint(r, approx);
+    if (!includes && !disjoint)
+    {
+      continue;
+    }
+    if (pol == includes)
+    {
+      // Either (x in R) where A is included in R, or (not (x in R)) where A
+      // and R are disjoint. Thus, m is entailed by the memberships in the
+      // explanation of A. We only mark m inactive at efforts where
+      // memberships of this polarity are unfolded, similar to
+      // checkEqcInclusion.
+      if (shouldUnfold(e, pol))
+      {
+        Trace("regexp-nf-approx") << "...entailed: " << m << std::endl;
+        d_im.markInactive(
+            atom,
+            pol ? ExtReducedId::STRINGS_REGEXP_NF_APPROX_INCLUDE
+                : ExtReducedId::STRINGS_REGEXP_NF_APPROX_INTER_NEG);
+        remove.insert(m);
+      }
+      continue;
+    }
+    // Either (not (x in R)) where A is included in R, or (x in R) where A and
+    // R are disjoint. This is a conflict.
+    Trace("regexp-nf-approx") << "...conflict: " << m << std::endl;
+    std::vector<Node> exp(aexp.begin(), aexp.end());
+    exp.push_back(m);
+    if (atom[0] != base)
+    {
+      exp.push_back(atom[0].eqNode(base));
+    }
+    Node conc;
+    d_im.sendInference(exp,
+                       conc,
+                       pol ? InferenceId::STRINGS_RE_NF_APPROX_INTER_CONF
+                           : InferenceId::STRINGS_RE_NF_APPROX_INCLUDE_CONF,
+                       false,
+                       true);
+    return false;
+  }
+  mems.erase(std::remove_if(
+                 mems.begin(),
+                 mems.end(),
+                 [&remove](Node& n) { return remove.find(n) != remove.end(); }),
+             mems.end());
+  return true;
+}
+
+bool RegExpSolver::regExpIncludesApprox(const Node& r1, const Node& r2)
+{
+  if (d_regexp_opr.regExpIncludes(r1, r2))
+  {
+    return true;
+  }
+  Kind k2 = r2.getKind();
+  if (k2 == Kind::REGEXP_UNION
+      || (k2 == Kind::REGEXP_CONCAT && r1.getKind() == Kind::REGEXP_STAR))
+  {
+    // r1 includes (re.union R1 ... Rn) if it includes each Ri. Since
+    // (re.* R) is closed under concatenation, it includes (re.++ R1 ... Rn) if
+    // it includes each Ri.
+    for (const Node& r2c : r2)
+    {
+      if (!regExpIncludesApprox(r1, r2c))
+      {
+        return false;
+      }
+    }
+    return true;
+  }
+  if (k2 == Kind::REGEXP_STAR && r1.getKind() == Kind::REGEXP_STAR)
+  {
+    // (re.* R) includes (re.* R2) if it includes R2
+    return regExpIncludesApprox(r1, r2[0]);
+  }
+  if (k2 == Kind::REGEXP_INTER)
+  {
+    // r1 includes (re.inter R1 ... Rn) if it includes some Ri
+    for (const Node& r2c : r2)
+    {
+      if (regExpIncludesApprox(r1, r2c))
+      {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 bool RegExpSolver::checkEqcIntersect(const std::vector<Node>& mems)
