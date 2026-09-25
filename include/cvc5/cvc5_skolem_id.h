@@ -636,7 +636,7 @@ enum ENUM(SkolemId)
    * elements of ``A``.
    *
    * - Number of skolem indices: ``1``
-   *   - ``1:`` a ground value for the type ``(Set E)``.
+   *   - ``1:`` A term that represents the element type ``E``.
    * - Sort: ``(-> (Set E) E)``
    */
   EVALUE(SETS_CHOOSE),

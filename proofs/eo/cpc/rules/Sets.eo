@@ -41,7 +41,7 @@
 (declare-rule sets_choose_reduction ((T Type) (a (Set T)))
   :args ((set.choose a))
   :conclusion (eo::define ((k (@purify (set.choose a))) (e (as set.empty (eo::typeof a))))
-                (and (= k (@sets_choose e a)) (or (= a e) (set.member k a))))
+                (and (= k (@sets_choose (eo::typeof k) a)) (or (= a e) (set.member k a))))
 )
 
 ;;;;; ProofRewriteRule::SETS_EVAL_OP

@@ -15,6 +15,7 @@
 #include "expr/bound_var_manager.h"
 #include "expr/emptyset.h"
 #include "expr/skolem_manager.h"
+#include "expr/sort_to_term.h"
 #include "theory/datatypes//project_op.h"
 #include "theory/quantifiers/fmf/bounded_integers.h"
 #include "util/rational.h"
@@ -135,10 +136,9 @@ Node SetReduction::reduceChooseOperator(const Node& n)
   Node k = sm->mkPurifySkolem(n);
   Node A = n[0];
   TypeNode setType = A.getType();
-  // use canonical constant to ensure it can be typed
-  Node mkElem = NodeManager::mkGroundValue(setType);
-  // a ground value is used here to get a unique skolem function per set type
-  Node uf = sm->mkSkolemFunction(SkolemId::SETS_CHOOSE, mkElem);
+  // the skolem function is indexed by the element type
+  Node elemType = nm->mkConst(SortToTerm(setType.getSetElementType()));
+  Node uf = sm->mkSkolemFunction(SkolemId::SETS_CHOOSE, elemType);
   Node ufA = nm->mkNode(Kind::APPLY_UF, uf, A);
   Node equal = k.eqNode(ufA);
   Node isEmpty = A.eqNode(nm->mkConst(EmptySet(setType)));

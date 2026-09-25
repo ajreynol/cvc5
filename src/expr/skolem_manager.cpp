@@ -474,12 +474,18 @@ TypeNode SkolemManager::getTypeFor(SkolemId id,
     }
     // skolems that return the set to set element type
     case SkolemId::BAGS_CHOOSE:
-    case SkolemId::SETS_CHOOSE:
     {
       Assert(cacheVals.size() > 0);
       TypeNode stype = cacheVals[0].getType();
       Assert(stype.getNumChildren() == 1);
       return d_nm->mkFunctionType(stype, stype[0]);
+    }
+    // skolems that take the element type and return a set to element function
+    case SkolemId::SETS_CHOOSE:
+    {
+      Assert(cacheVals[0].getKind() == Kind::SORT_TO_TERM);
+      TypeNode etype = cacheVals[0].getConst<SortToTerm>().getType();
+      return d_nm->mkFunctionType(d_nm->mkSetType(etype), etype);
     }
     case SkolemId::TABLES_GROUP_PART:
     case SkolemId::RELATIONS_GROUP_PART:

@@ -81,7 +81,7 @@ class SetReduction
    * @return the reduction lemma for n:
    *   (and (= k (uf A)) (or (= A (as set.empty (Set E))) (set.member k A)))
    * where k is the purification skolem for n and uf: (-> (Set E) E) is the
-   * SETS_CHOOSE skolem function for the type of A.
+   * SETS_CHOOSE skolem function for the element type E.
    */
   static Node reduceChooseOperator(const Node& n);
 };
