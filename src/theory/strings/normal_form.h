@@ -56,13 +56,15 @@ class NormalForm
    * The regular expression approximation of the normal form. For strings,
    * this vector is parallel to d_nf, where d_nfRe[i] is a regular expression
    * such that d_nf[i] is a member of d_nfRe[i]. If d_nf[i] is a constant s,
-   * then d_nfRe[i] is (str.to_re s); otherwise it is the intersection of the
-   * positive memberships asserted for d_nf[i], or re.all if there are none.
+   * then d_nfRe[i] is (str.to_re s); otherwise it is the regular expression
+   * of the first positive membership asserted for d_nf[i] whose regular
+   * expression is not a concatenation, or (re.* re.allchar) if there is none.
    * Thus, d_base is a member of the concatenation of d_nfRe. For sequences,
    * this vector is empty.
    *
    * In the above example, if (str.in_re u1 R) is asserted, and u2 and v have
-   * no asserted positive memberships, this is (R, re.all, re.all).
+   * no asserted positive memberships, this is
+   * (R, (re.* re.allchar), (re.* re.allchar)).
    */
   std::vector<Node> d_nfRe;
   /**
@@ -120,7 +122,7 @@ class NormalForm
    * Initialize the normal form with base node base. If base is not the empty
    * string, then d_nf is set to the singleton list containing base, otherwise
    * d_nf is empty. If base is a string, d_nfRe is set to (str.to_re base) if
-   * base is a constant, or re.all otherwise.
+   * base is a constant, or (re.* re.allchar) otherwise.
    */
   void init(Node base);
   /** reverse the content of normal form d_nf

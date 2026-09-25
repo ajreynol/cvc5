@@ -1672,10 +1672,14 @@ Node InferProofCons::convertRegExpApproxTerm(TheoryProofStepBuffer& psb,
   }
   else
   {
-    // the positive memberships for t, possibly modulo an equality in eqs
-    std::vector<Node> tmems;
+    // the first positive membership for t, possibly modulo an equality in
+    // eqs, whose regular expression is not a concatenation
     for (const Node& m : mems)
     {
+      if (m[1].getKind() == Kind::REGEXP_CONCAT)
+      {
+        continue;
+      }
       std::vector<Node> meq;
       if (m[0] != t)
       {
@@ -1687,22 +1691,21 @@ Node InferProofCons::convertRegExpApproxTerm(TheoryProofStepBuffer& psb,
         meq.push_back(eq);
       }
       Node tmem = nm->mkNode(Kind::STRING_IN_REGEXP, t, m[1]);
-      if (psb.applyPredTransform(m, tmem, meq))
+      if (!psb.applyPredTransform(m, tmem, meq))
       {
-        tmems.push_back(tmem);
+        Trace("strings-ipc-re-approx")
+            << "...failed to transform " << m << " to " << tmem << std::endl;
+        return Node::null();
       }
+      return tmem;
     }
-    if (tmems.size() == 1)
-    {
-      return tmems[0];
-    }
-    else if (tmems.size() > 1)
-    {
-      return psb.tryStep(ProofRule::RE_INTER, tmems, {});
-    }
-    mem = nm->mkNode(Kind::STRING_IN_REGEXP, t, nm->mkNode(Kind::REGEXP_ALL));
+    mem = nm->mkNode(
+        Kind::STRING_IN_REGEXP,
+        t,
+        nm->mkNode(Kind::REGEXP_STAR, nm->mkNode(Kind::REGEXP_ALLCHAR)));
   }
-  // (str.in_re c (str.to_re c)) and (str.in_re t re.all) rewrite to true
+  // (str.in_re c (str.to_re c)) and (str.in_re t (re.* re.allchar)) rewrite
+  // to true
   if (!psb.applyPredIntro(mem, {}))
   {
     Trace("strings-ipc-re-approx") << "...failed to prove " << mem << std::endl;

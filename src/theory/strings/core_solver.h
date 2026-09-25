@@ -246,7 +246,7 @@ class CoreSolver : public InferSideEffectProcess, protected EnvObj
    * approximation stored in the normal form (see NormalForm::d_nfRe). For
    * example, if the normal form of eqc is (y, "A", z) and we have asserted
    * (str.in_re y R), then this returns the result of rewriting
-   * (re.++ R (str.to_re "A") re.all).
+   * (re.++ R (str.to_re "A") (re.* re.allchar)).
    *
    * It adds to exp a set of literals such that exp => (str.in_re b R), where
    * b is the base of the normal form of eqc and R is the returned regular
@@ -254,7 +254,7 @@ class CoreSolver : public InferSideEffectProcess, protected EnvObj
    *
    * This returns null if the approximation is uninformative, that is, if the
    * normal form of eqc has fewer than two components, or if the approximation
-   * rewrites to re.all. This is always the case for sequences.
+   * rewrites to (re.* re.allchar). This is always the case for sequences.
    *
    * Like getNormalForm, this query is valid after a successful call to
    * checkNormalFormsEq. The result is cached until normal forms are
@@ -523,8 +523,11 @@ class CoreSolver : public InferSideEffectProcess, protected EnvObj
   void computePositiveMemberships();
   /**
    * If nf is a normal form for a single non-constant string term u, this sets
-   * its regular expression approximation to the intersection of the positive
-   * memberships asserted for u, if any, and updates its explanation.
+   * its regular expression approximation to the regular expression of the
+   * first positive membership asserted for u whose regular expression is not
+   * a concatenation, if any, and updates its explanation. Conflicts between
+   * the memberships of u are not checked here, and are instead left to the
+   * regular expression solver.
    */
   void setAtomicRegExp(NormalForm& nf);
   /**

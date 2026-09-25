@@ -43,8 +43,10 @@ void NormalForm::init(Node base)
     if (base.getType().isString())
     {
       NodeManager* nm = base.getNodeManager();
-      d_nfRe.push_back(base.isConst() ? nm->mkNode(Kind::STRING_TO_REGEXP, base)
-                                      : nm->mkNode(Kind::REGEXP_ALL));
+      d_nfRe.push_back(base.isConst()
+                           ? nm->mkNode(Kind::STRING_TO_REGEXP, base)
+                           : nm->mkNode(Kind::REGEXP_STAR,
+                                        nm->mkNode(Kind::REGEXP_ALLCHAR)));
     }
   }
 }

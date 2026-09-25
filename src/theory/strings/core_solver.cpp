@@ -728,7 +728,7 @@ void CoreSolver::computePositiveMemberships()
   d_posMems.clear();
   if (!options().strings.stringRegExpNfApprox)
   {
-    // regular expression approximations are all re.all
+    // regular expression approximations are all (re.* re.allchar)
     return;
   }
   eq::EqualityEngine* ee = d_state.getEqualityEngine();
@@ -763,18 +763,24 @@ void CoreSolver::setAtomicRegExp(NormalForm& nf)
   {
     return;
   }
-  std::vector<Node> rs;
+  // We use the first membership whose regular expression is not a
+  // concatenation. Other memberships for u are handled by the inclusion and
+  // intersection checks for memberships in the same equivalence class (see
+  // RegExpSolver::checkInclusions).
   for (const Node& m : itm->second)
   {
-    rs.push_back(m[1]);
+    if (m[1].getKind() == Kind::REGEXP_CONCAT)
+    {
+      continue;
+    }
+    nf.d_nfRe[0] = m[1];
     nf.d_reExp.push_back(m);
     if (m[0] != u)
     {
       nf.d_reExp.push_back(m[0].eqNode(u));
     }
+    return;
   }
-  nf.d_nfRe[0] =
-      rs.size() == 1 ? rs[0] : nodeManager()->mkNode(Kind::REGEXP_INTER, rs);
 }
 
 bool CoreSolver::checkConstantRegExpApprox(const Node& c, const NormalForm& nf)

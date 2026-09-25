@@ -187,9 +187,11 @@ class InferProofCons : protected EnvObj, public ProofGenerator
    * based on the term n' that n is equal to after applying the substitution
    * given by the equalities in exp (as in convertCoreSubs), where each
    * constant c in n' is approximated by (str.to_re c), each other atomic term
-   * t in n' is approximated by the intersection of the regular expressions of
-   * the positive memberships (str.in_re t' R') in exp such that t' is t or
-   * (= t' t) is in exp, or by re.all if there are none.
+   * t in n' is approximated by the regular expression of the first positive
+   * membership (str.in_re t' R') in exp such that t' is t or (= t' t) is in
+   * exp and R' is not a concatenation, or by (re.* re.allchar) if there is
+   * none. This mirrors how the approximation is computed in
+   * CoreSolver::setAtomicRegExp.
    *
    * @param env Reference to the environment
    * @param pf Pointer to proof.
