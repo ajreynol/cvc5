@@ -1,6 +1,10 @@
+; DISABLE-TESTER: dump
+; REQUIRES: no-competition
+; SCRUBBER: grep -o "Subexpressions must have the same type"
+; EXPECT: Subexpressions must have the same type
+; EXIT: 1
 ; REQUIRES: no-safe-mode
 ; COMMAND-LINE: --learned-rewrite
-; EXPECT: sat
 (set-logic ALL)
 (declare-const a Int)
 (declare-const b Int)

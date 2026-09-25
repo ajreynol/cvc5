@@ -1,6 +1,10 @@
+; DISABLE-TESTER: dump
+; REQUIRES: no-competition
+; SCRUBBER: grep -o "Subexpressions must have the same type"
+; EXPECT: Subexpressions must have the same type
+; EXIT: 1
 ; REQUIRES: unrestricted-mode
 ; COMMAND-LINE: --ext-rew-prep=agg
-; EXPECT: sat
 (set-logic ALL)
 (declare-fun a () Real)   
 (declare-fun b () Int)     

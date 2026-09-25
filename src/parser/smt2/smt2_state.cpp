@@ -1547,7 +1547,6 @@ Term Smt2State::applyParseOp(const ParseOp& p, std::vector<Term>& args)
   {
     if (kind == Kind::EQUAL || kind == Kind::DISTINCT)
     {
-      bool isReal = false;
       // need hol if these operators are applied over function args
       for (const Term& i : args)
       {
@@ -1559,24 +1558,6 @@ Term Smt2State::applyParseOp(const ParseOp& p, std::vector<Term>& args)
             parseError(
                 "Cannot apply equality to functions unless logic is prefixed "
                 "by HO_.");
-          }
-        }
-        if (s.isReal())
-        {
-          isReal = true;
-        }
-      }
-      // If strict mode is not enabled, we are permissive for Int and Real
-      // subtyping. Note that other arithmetic operators and relations are
-      // already permissive, e.g. <=, +.
-      if (isReal && !strictModeEnabled())
-      {
-        for (Term& i : args)
-        {
-          Sort s = i.getSort();
-          if (s.isInteger())
-          {
-            i = d_tm.mkTerm(Kind::TO_REAL, {i});
           }
         }
       }

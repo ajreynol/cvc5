@@ -332,7 +332,6 @@ bool EoPrinter::isHandledTheoryRewrite(const Options& opts,
     case ProofRewriteRule::RE_LOOP_ELIM:
     case ProofRewriteRule::RE_EQ_ELIM:
     case ProofRewriteRule::SETS_EVAL_OP:
-    case ProofRewriteRule::SETS_INSERT_ELIM:
     case ProofRewriteRule::STR_IN_RE_CONCAT_STAR_CHAR:
     case ProofRewriteRule::STR_IN_RE_SIGMA:
     case ProofRewriteRule::STR_IN_RE_SIGMA_STAR:
@@ -368,6 +367,7 @@ bool EoPrinter::isHandledTheoryRewrite(const Options& opts,
     case ProofRewriteRule::ARITH_POW_ELIM:
     case ProofRewriteRule::ARRAYS_SELECT_CONST:
     case ProofRewriteRule::LAMBDA_ELIM:
+    case ProofRewriteRule::SETS_INSERT_ELIM:
       // only supported in unrestricted builds
       if (opts.base.safeMode == options::SafeMode::UNRESTRICTED)
       {

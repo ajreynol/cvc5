@@ -1,6 +1,9 @@
-; COMMAND-LINE: --produce-proofs
-; EXPECT: (error "Cannot eliminate subtypes from an input assumption with --strict-assumptions. Use --no-strict-assumptions to allow this.")
+; DISABLE-TESTER: dump
+; REQUIRES: no-competition
+; SCRUBBER: grep -o "Subexpressions must have the same type"
+; EXPECT: Subexpressions must have the same type
 ; EXIT: 1
+; COMMAND-LINE: --produce-proofs
 (set-logic ALL)
 (declare-const t Int)
 (declare-const a Int)

@@ -1,5 +1,9 @@
+; DISABLE-TESTER: dump
+; REQUIRES: no-competition
+; SCRUBBER: grep -o "Subexpressions must have the same type"
+; EXPECT: Subexpressions must have the same type
+; EXIT: 1
 ; COMMAND-LINE: --check-proofs --proof-check=eager --sat-solver=minisat
-; EXPECT: sat
 (set-logic ALL)
 (declare-fun x () Int)
 (declare-fun y () Int)

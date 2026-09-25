@@ -1346,6 +1346,7 @@ set(regress_0_tests
   regress0/options/safe-options3.smt2
   regress0/options/safe-opts-warn.smt2
   regress0/options/safe-options-fatal.smt2
+  regress0/options/safe-set-insert.smt2
   regress0/options/set-after-init.smt2
   regress0/options/set-and-get-options.smt2
   regress0/options/stable-declare-pool.smt2
@@ -1413,6 +1414,7 @@ set(regress_0_tests
   regress0/parser/linear_arithmetic_err1.smt2
   regress0/parser/linear_arithmetic_err2.smt2
   regress0/parser/linear_arithmetic_err3.smt2
+  regress0/parser/mixed-arith-distinct.smt2
   regress0/parser/named-attr-error.smt2
   regress0/parser/named-attr.smt2
   regress0/parser/no-fresh.smt2

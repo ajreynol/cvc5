@@ -1,3 +1,4 @@
+; REQUIRES: no-safe-mode
 (set-logic ALL)
 (set-info :status sat)
 (declare-fun x () Int)

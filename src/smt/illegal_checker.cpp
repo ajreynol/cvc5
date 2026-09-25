@@ -92,6 +92,10 @@ IllegalChecker::IllegalChecker(Env& e)
   }
   if (logicInfo().isTheoryEnabled(theory::THEORY_SETS))
   {
+    if (options().base.safeMode == options::SafeMode::SAFE)
+    {
+      d_illegalKinds.insert(Kind::SET_INSERT);
+    }
     if (!options().sets.setsCardExp)
     {
       d_illegalKinds.insert(Kind::SET_CARD);

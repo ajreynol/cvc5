@@ -1,3 +1,4 @@
+; REQUIRES: no-safe-mode
 ; EXPECT: unsat
 (set-logic ALL)
 (declare-const __ (_ BitVec 1))

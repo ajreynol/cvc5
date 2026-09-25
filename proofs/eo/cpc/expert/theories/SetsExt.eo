@@ -9,6 +9,8 @@
 (declare-parameterized-const set.universe ((T Type :implicit)) (Set T))
 
 ; Operators for the theory of sets.
+(declare-parameterized-const set.insert ((T Type :implicit))
+  (-> (@TList T) (Set T) (Set T)))
 (declare-parameterized-const set.complement ((T Type :implicit))
   (-> (Set T) (Set T)))
 (declare-parameterized-const set.card ((T Type :implicit)) (-> (Set T) Int))
