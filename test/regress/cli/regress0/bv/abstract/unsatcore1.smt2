@@ -1,3 +1,4 @@
+; REQUIRES: unrestricted-mode
 ; COMMAND-LINE: --bv-abstraction --produce-unsat-cores
 ; EXPECT: unsat
 ; Ported from Bitwuzla test/regress/solver/abstract/unsatcore1.smt2

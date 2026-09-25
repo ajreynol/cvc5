@@ -1,3 +1,4 @@
+; REQUIRES: unrestricted-mode
 ; COMMAND-LINE: --bv-abstraction --bv-abstraction-size=16
 ; COMMAND-LINE: --bv-abstraction --bv-abstraction-size=16 --bv-solver=bitblast --produce-proofs --proof-check=eager-simple
 ; EXPECT: unsat

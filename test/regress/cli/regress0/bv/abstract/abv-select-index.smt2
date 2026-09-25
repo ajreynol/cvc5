@@ -1,3 +1,4 @@
+; REQUIRES: unrestricted-mode
 ; COMMAND-LINE: --bv-abstraction --bv-abstraction-size=3
 ; EXPECT: unsat
 ; QF_ABV coverage for the shape that exposed abstraction below foreign-theory

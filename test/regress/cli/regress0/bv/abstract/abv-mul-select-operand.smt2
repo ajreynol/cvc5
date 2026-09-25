@@ -1,3 +1,4 @@
+; REQUIRES: unrestricted-mode
 ; COMMAND-LINE: --bv-abstraction --bv-abstraction-size=3
 ; EXPECT: unsat
 ; The abstracted 64-bit bvmul has an array select inside its operand: the
