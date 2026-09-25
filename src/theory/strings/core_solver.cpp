@@ -777,13 +777,21 @@ void CoreSolver::setAtomicRegExp(NormalForm& nf)
       rs.size() == 1 ? rs[0] : nodeManager()->mkNode(Kind::REGEXP_INTER, rs);
 }
 
-bool CoreSolver::checkConstantRegExpApprox(const Node& eqc,
-                                           const Node& c,
-                                           const NormalForm& nf)
+bool CoreSolver::checkConstantRegExpApprox(const Node& c, const NormalForm& nf)
 {
   // only informative if the normal form has more than one component, and it
   // is not the normal form of the constant itself
   if (!options().strings.stringRegExpNfApprox || nf.d_nfRe.size() <= 1)
+  {
+    return false;
+  }
+  // We require that c is a term in the equality engine, so that the
+  // explanation can include the equality between the base of nf and c, which
+  // is assumed by the proof reconstruction for this inference (see
+  // InferProofCons::convert). Otherwise, the explanation would be given by
+  // BaseSolver::explainConstantEqc, for which the proof reconstruction is not
+  // implemented.
+  if (!d_state.hasTerm(c))
   {
     return false;
   }
@@ -797,11 +805,16 @@ bool CoreSolver::checkConstantRegExpApprox(const Node& eqc,
   Trace("strings-solve") << "Constant " << c << " is not in the regular "
                          << "expression approximation " << re
                          << " of the normal form of " << n << std::endl;
-  // conflict, explanation is:
-  //  n = base ^ base = c ^ ( n = N[n] ) ^ ( N[n] in re.++(d_nfRe) )
-  std::vector<Node> exp(nf.d_exp.begin(), nf.d_exp.end());
+  // Conflict, explanation is:
+  //   n = c ^ ( n = N[n] ) ^ ( N[n] in re.++(d_nfRe) )
+  // Notice the proof reconstruction for this inference (see
+  // InferProofCons::convert) assumes (= n c) is the first literal in the
+  // explanation.
+  Assert(d_state.areEqual(n, c));
+  std::vector<Node> exp;
+  exp.push_back(n.eqNode(c));
+  exp.insert(exp.end(), nf.d_exp.begin(), nf.d_exp.end());
   exp.insert(exp.end(), nf.d_reExp.begin(), nf.d_reExp.end());
-  d_bsolver.explainConstantEqc(n, eqc, exp);
   d_im.sendInference(
       exp, d_false, InferenceId::STRINGS_RE_NF_APPROX_CONST_CONF);
   return true;
@@ -1162,7 +1175,7 @@ void CoreSolver::processNEqc(Node eqc,
         }
         // Check if the constant is a member of the regular expression
         // approximation of the normal form.
-        if (checkConstantRegExpApprox(eqc, c, nfi))
+        if (checkConstantRegExpApprox(c, nfi))
         {
           // conflict, finished
           return;

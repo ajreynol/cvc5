@@ -462,47 +462,115 @@ bool RegExpSolver::checkEqcNormalFormApprox(Theory::Effort e,
     Node atom = pol ? m : m[0];
     Assert(atom.getKind() == Kind::STRING_IN_REGEXP);
     Node r = atom[1];
-    bool includes = regExpIncludesApprox(r, approx);
-    bool disjoint = !includes && RegExpEntail::regExpDisjoint(r, approx);
-    if (!includes && !disjoint)
+    // Notice we use the inclusion test that is in sync with the proof
+    // signature (the $str_re_includes program), since conflicts based on it
+    // are justified by the rewrite ProofRewriteRule::RE_INTER_INCLUSION.
+    if (d_regexp_opr.regExpIncludes(r, approx))
     {
+      if (pol)
+      {
+        // (x in R) where A is included in R. Thus, m is entailed by the
+        // memberships in the explanation of A. We only mark m inactive at
+        // efforts where positive memberships are unfolded, similar to
+        // checkEqcInclusion.
+        if (shouldUnfold(e, pol))
+        {
+          Trace("regexp-nf-approx") << "...entailed: " << m << std::endl;
+          d_im.markInactive(atom,
+                            ExtReducedId::STRINGS_REGEXP_NF_APPROX_INCLUDE);
+          remove.insert(m);
+        }
+        continue;
+      }
+      // (not (x in R)) where A is included in R. This is a conflict.
+      Trace("regexp-nf-approx") << "...conflict: " << m << std::endl;
+      sendNormalFormApproxConflict(
+          m, base, aexp, InferenceId::STRINGS_RE_NF_APPROX_INCLUDE_CONF);
+      return false;
+    }
+    if (pol)
+    {
+      // PROPOSAL: If A and R are disjoint, then (x in R) is in conflict.
+      // This is currently disabled since this conflict does not have a
+      // complete proof. The following would be enabled once the proof
+      // signature is extended as described below:
+      //
+      // if (RegExpEntail::regExpDisjoint(r, approx))
+      // {
+      //   Trace("regexp-nf-approx") << "...conflict: " << m << std::endl;
+      //   sendNormalFormApproxConflict(
+      //       m, base, aexp, InferenceId::STRINGS_RE_NF_APPROX_INTER_CONF);
+      //   return false;
+      // }
+      //
+      // The proof reconstruction for STRINGS_RE_NF_APPROX_INTER_CONF (see
+      // InferProofCons::convert) already derives
+      //   (str.in_re x (re.inter A' R))
+      // via RE_INTER, where A' is equivalent to A up to rewriting. It remains
+      // to show that (re.inter A' R) is re.none, which is not done by the
+      // rewriter. This requires:
+      //
+      // (1) A new ProofRewriteRule, e.g. RE_INTER_DISJOINT, for the rewrite
+      //   (re.inter r1 r2) = re.none
+      // if RegExpEntail::regExpDisjoint(r1, r2). This rewrite can be applied
+      // via rewriteViaRule in the proof reconstruction only, i.e. it need not
+      // be applied by the rewriter itself.
+      //
+      // (2) A corresponding rule re-inter-disjoint in
+      // proofs/eo/cpc/rules/Strings.eo:
+      //   (declare-rule re-inter-disjoint ((r1 RegLan) (r2 RegLan))
+      //     :args ((= (re.inter r1 r2) re.none))
+      //     :requires ((($re_disjoint r1 r2) true))
+      //     :conclusion (= (re.inter r1 r2) re.none))
+      // where $re_disjoint is a new program in
+      // proofs/eo/cpc/programs/Strings.eo that mirrors
+      // RegExpEntail::regExpDisjoint. It is defined in terms of:
+      // - The existing program $re_nullable, which is already in sync with
+      //   RegExpEntail::isNullable. We require that one of r1 or r2 is not
+      //   nullable.
+      // - A new program $re_first_chars mirroring RegExpEntail::getFirstChars,
+      //   which returns an over-approximation of the characters that may
+      //   begin a non-empty string in a regular expression. This can operate
+      //   on flat forms ($re_to_flat_form r rev), since the flat form splits
+      //   (str.to_re s) into single character components, and the reverse
+      //   (last character) case is handled by flattening with rev = true. It
+      //   returns a list of pairs of code points (eo::to_z of single
+      //   characters), or a distinguished value denoting all characters. Its
+      //   cases are: re.none and (str.to_re "") give the empty list, a single
+      //   character (str.to_re c) gives [c,c], (re.range c1 c2) gives
+      //   [c1,c2] (or the empty list if invalid), re.*, re.+, re.opt, re.loop
+      //   recurse on their body, re.union takes the union of its children,
+      //   re.inter takes the result for any one of its children, re.++
+      //   accumulates the union of its children up to and including the first
+      //   one that is not nullable according to $re_nullable, and all other
+      //   regular expressions (e.g. re.allchar, re.comp) give all characters.
+      // - A program $char_ranges_disjoint that checks whether two lists of
+      //   pairs of code points are pairwise disjoint, using eo::gt/eo::is_neg
+      //   on eo::add of the bounds.
+      // Then ($re_disjoint r1 r2) is true if one of r1 or r2 is not nullable,
+      // and $char_ranges_disjoint holds for the first characters of r1 and
+      // r2, or for their last characters.
+      //
+      // (3) The proof reconstruction in InferProofCons::convert would then
+      // conclude false by rewriting (re.inter A' R) to re.none via a
+      // THEORY_REWRITE step with RE_INTER_DISJOINT, after rewriting A' to A.
       continue;
     }
-    if (pol == includes)
+    if (RegExpEntail::regExpDisjoint(r, approx))
     {
-      // Either (x in R) where A is included in R, or (not (x in R)) where A
-      // and R are disjoint. Thus, m is entailed by the memberships in the
-      // explanation of A. We only mark m inactive at efforts where
-      // memberships of this polarity are unfolded, similar to
-      // checkEqcInclusion.
+      // (not (x in R)) where A and R are disjoint. Thus, m is entailed by the
+      // memberships in the explanation of A. We only mark m inactive at
+      // efforts where negative memberships are unfolded, similar to
+      // checkEqcInclusion. Notice this does not require a proof, similar to
+      // other cases where memberships are marked inactive.
       if (shouldUnfold(e, pol))
       {
         Trace("regexp-nf-approx") << "...entailed: " << m << std::endl;
-        d_im.markInactive(
-            atom,
-            pol ? ExtReducedId::STRINGS_REGEXP_NF_APPROX_INCLUDE
-                : ExtReducedId::STRINGS_REGEXP_NF_APPROX_INTER_NEG);
+        d_im.markInactive(atom,
+                          ExtReducedId::STRINGS_REGEXP_NF_APPROX_INTER_NEG);
         remove.insert(m);
       }
-      continue;
     }
-    // Either (not (x in R)) where A is included in R, or (x in R) where A and
-    // R are disjoint. This is a conflict.
-    Trace("regexp-nf-approx") << "...conflict: " << m << std::endl;
-    std::vector<Node> exp(aexp.begin(), aexp.end());
-    exp.push_back(m);
-    if (atom[0] != base)
-    {
-      exp.push_back(atom[0].eqNode(base));
-    }
-    Node conc;
-    d_im.sendInference(exp,
-                       conc,
-                       pol ? InferenceId::STRINGS_RE_NF_APPROX_INTER_CONF
-                           : InferenceId::STRINGS_RE_NF_APPROX_INCLUDE_CONF,
-                       false,
-                       true);
-    return false;
   }
   mems.erase(std::remove_if(
                  mems.begin(),
@@ -512,45 +580,25 @@ bool RegExpSolver::checkEqcNormalFormApprox(Theory::Effort e,
   return true;
 }
 
-bool RegExpSolver::regExpIncludesApprox(const Node& r1, const Node& r2)
+void RegExpSolver::sendNormalFormApproxConflict(const Node& m,
+                                                const Node& base,
+                                                const std::vector<Node>& aexp,
+                                                InferenceId id)
 {
-  if (d_regexp_opr.regExpIncludes(r1, r2))
+  // Notice the proof reconstruction for this inference (see
+  // InferProofCons::convert) assumes the explanation is m, followed by the
+  // equality between x and the base of its normal form (if necessary),
+  // followed by the explanation of the approximation.
+  Node atom = m.getKind() == Kind::NOT ? m[0] : m;
+  std::vector<Node> exp;
+  exp.push_back(m);
+  if (atom[0] != base)
   {
-    return true;
+    exp.push_back(atom[0].eqNode(base));
   }
-  Kind k2 = r2.getKind();
-  if (k2 == Kind::REGEXP_UNION
-      || (k2 == Kind::REGEXP_CONCAT && r1.getKind() == Kind::REGEXP_STAR))
-  {
-    // r1 includes (re.union R1 ... Rn) if it includes each Ri. Since
-    // (re.* R) is closed under concatenation, it includes (re.++ R1 ... Rn) if
-    // it includes each Ri.
-    for (const Node& r2c : r2)
-    {
-      if (!regExpIncludesApprox(r1, r2c))
-      {
-        return false;
-      }
-    }
-    return true;
-  }
-  if (k2 == Kind::REGEXP_STAR && r1.getKind() == Kind::REGEXP_STAR)
-  {
-    // (re.* R) includes (re.* R2) if it includes R2
-    return regExpIncludesApprox(r1, r2[0]);
-  }
-  if (k2 == Kind::REGEXP_INTER)
-  {
-    // r1 includes (re.inter R1 ... Rn) if it includes some Ri
-    for (const Node& r2c : r2)
-    {
-      if (regExpIncludesApprox(r1, r2c))
-      {
-        return true;
-      }
-    }
-  }
-  return false;
+  exp.insert(exp.end(), aexp.begin(), aexp.end());
+  Node conc;
+  d_im.sendInference(exp, conc, id, false, true);
 }
 
 bool RegExpSolver::checkEqcIntersect(const std::vector<Node>& mems)

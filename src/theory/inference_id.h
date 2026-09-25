@@ -864,6 +864,8 @@ enum class InferenceId
   STRINGS_RE_NF_APPROX_INCLUDE_CONF,
   // intersection conflict
   //   (x in R ^ exp) => false  where [[intersect(R, A) = empty]]
+  // This is currently not used since it does not have a complete proof, see
+  // RegExpSolver::checkEqcNormalFormApprox.
   STRINGS_RE_NF_APPROX_INTER_CONF,
   // regular expression delta
   //   (x = "" ^ x in R) => C

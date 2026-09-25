@@ -1152,6 +1152,93 @@ bool InferProofCons::convert(Env& env,
       }
     }
     break;
+    case InferenceId::STRINGS_RE_NF_APPROX_CONST_CONF:
+    {
+      // The explanation is (= n c) followed by the explanation for why n is
+      // in the regular expression approximation A of its normal form, where
+      // c is not in A.
+      if (ps.d_children.empty() || ps.d_children[0].getKind() != Kind::EQUAL
+          || !ps.d_children[0][1].isConst())
+      {
+        break;
+      }
+      Node eqc = ps.d_children[0];
+      std::vector<Node> aexp(ps.d_children.begin() + 1, ps.d_children.end());
+      Node mem = convertRegExpApprox(env, pf, psb, eqc[0], aexp);
+      Trace("strings-ipc-re-approx")
+          << "Approximation membership: " << mem << std::endl;
+      // substitute n -> c, which evaluates to false
+      if (!mem.isNull() && psb.applyPredTransform(mem, conc, {eqc}))
+      {
+        useBuffer = true;
+      }
+    }
+    break;
+    case InferenceId::STRINGS_RE_NF_APPROX_INCLUDE_CONF:
+    case InferenceId::STRINGS_RE_NF_APPROX_INTER_CONF:
+    {
+      // The explanation is the membership (not) (str.in_re x R), optionally
+      // followed by an equality (= x n), followed by the explanation for why n
+      // is in the regular expression approximation A of its normal form.
+      if (ps.d_children.empty())
+      {
+        break;
+      }
+      Node tgt = ps.d_children[0];
+      bool pol = tgt.getKind() != Kind::NOT;
+      Node atom = pol ? tgt : tgt[0];
+      if (atom.getKind() != Kind::STRING_IN_REGEXP)
+      {
+        break;
+      }
+      Node x = atom[0];
+      Node n = x;
+      size_t aStart = 1;
+      std::vector<Node> xeq;
+      if (ps.d_children.size() > 1 && ps.d_children[1].getKind() == Kind::EQUAL
+          && ps.d_children[1][0] == x)
+      {
+        n = ps.d_children[1][1];
+        xeq.push_back(ps.d_children[1]);
+        aStart = 2;
+      }
+      std::vector<Node> aexp(ps.d_children.begin() + aStart,
+                             ps.d_children.end());
+      Node mem = convertRegExpApprox(env, pf, psb, n, aexp);
+      Trace("strings-ipc-re-approx")
+          << "Approximation membership: " << mem << std::endl;
+      if (mem.isNull())
+      {
+        break;
+      }
+      // conclude x is in the approximation
+      Node memx = nm->mkNode(Kind::STRING_IN_REGEXP, x, mem[1]);
+      if (!xeq.empty() && !psb.applyPredTransform(mem, memx, xeq))
+      {
+        break;
+      }
+      // the target membership, as a positive membership
+      Node tgtp = tgt;
+      if (!pol)
+      {
+        tgtp = nm->mkNode(Kind::STRING_IN_REGEXP,
+                          x,
+                          nm->mkNode(Kind::REGEXP_COMPLEMENT, atom[1]));
+        if (!psb.applyPredTransform(tgt, tgtp, {}))
+        {
+          break;
+        }
+      }
+      // their intersection, which should rewrite to false
+      Node inter = psb.tryStep(ProofRule::RE_INTER, {memx, tgtp}, {});
+      Trace("strings-ipc-re-approx")
+          << "Intersection membership: " << inter << std::endl;
+      if (!inter.isNull() && psb.applyPredTransform(inter, conc, {}))
+      {
+        useBuffer = true;
+      }
+    }
+    break;
     case InferenceId::STRINGS_I_CYCLE_E:
     {
       Assert(ps.d_children.size() == 1);
@@ -1491,6 +1578,137 @@ Node InferProofCons::convertCoreSubs(Env& env,
     return res[1];
   }
   return src;
+}
+
+Node InferProofCons::convertRegExpApprox(Env& env,
+                                         CDProof* pf,
+                                         TheoryProofStepBuffer& psb,
+                                         const Node& n,
+                                         const std::vector<Node>& exp)
+{
+  std::vector<Node> eqs;
+  std::vector<Node> mems;
+  for (const Node& e : exp)
+  {
+    if (e.getKind() == Kind::EQUAL)
+    {
+      eqs.push_back(e);
+    }
+    else if (e.getKind() == Kind::STRING_IN_REGEXP)
+    {
+      mems.push_back(e);
+    }
+  }
+  // apply the substitution to n, as in convertCoreSubs
+  StringCoreTermContext sctc;
+  TConvProofGenerator tconv(env,
+                            nullptr,
+                            TConvPolicy::FIXPOINT,
+                            TConvCachePolicy::NEVER,
+                            "StrTConv",
+                            &sctc);
+  for (const Node& eq : eqs)
+  {
+    tconv.addRewriteStep(eq[0], eq[1], pf, false, TrustId::NONE, false, 0);
+  }
+  std::shared_ptr<ProofNode> pfn = tconv.getProofForRewriting(n);
+  Node res = pfn->getResult();
+  Assert(res.getKind() == Kind::EQUAL && res[0] == n);
+  Node ns = res[1];
+  Trace("strings-ipc-re-approx")
+      << "Normal form of " << n << " is " << ns << std::endl;
+  Node memNs = convertRegExpApproxTerm(psb, ns, mems, eqs);
+  if (memNs.isNull())
+  {
+    return memNs;
+  }
+  if (ns == n)
+  {
+    return memNs;
+  }
+  pf->addProof(pfn);
+  // The proof step buffer is tracking unique conclusions, we (dummy) mark
+  // that we have a proof of res via the proof above.
+  psb.addStep(ProofRule::ASSUME, {}, {res}, res);
+  Node memN =
+      memNs[0].getNodeManager()->mkNode(Kind::STRING_IN_REGEXP, n, memNs[1]);
+  if (!psb.applyPredTransform(memNs, memN, {res}))
+  {
+    Trace("strings-ipc-re-approx")
+        << "...failed to transform " << memNs << " to " << memN << std::endl;
+    return Node::null();
+  }
+  return memN;
+}
+
+Node InferProofCons::convertRegExpApproxTerm(TheoryProofStepBuffer& psb,
+                                             const Node& t,
+                                             const std::vector<Node>& mems,
+                                             const std::vector<Node>& eqs)
+{
+  NodeManager* nm = t.getNodeManager();
+  if (t.getKind() == Kind::STRING_CONCAT)
+  {
+    std::vector<Node> cmems;
+    for (const Node& tc : t)
+    {
+      Node cmem = convertRegExpApproxTerm(psb, tc, mems, eqs);
+      if (cmem.isNull())
+      {
+        return cmem;
+      }
+      cmems.push_back(cmem);
+    }
+    Node mem = psb.tryStep(ProofRule::RE_CONCAT, cmems, {});
+    Trace("strings-ipc-re-approx")
+        << "RE_CONCAT for " << t << " is " << mem << std::endl;
+    return mem;
+  }
+  Node mem;
+  if (t.isConst())
+  {
+    mem = nm->mkNode(
+        Kind::STRING_IN_REGEXP, t, nm->mkNode(Kind::STRING_TO_REGEXP, t));
+  }
+  else
+  {
+    // the positive memberships for t, possibly modulo an equality in eqs
+    std::vector<Node> tmems;
+    for (const Node& m : mems)
+    {
+      std::vector<Node> meq;
+      if (m[0] != t)
+      {
+        Node eq = m[0].eqNode(t);
+        if (std::find(eqs.begin(), eqs.end(), eq) == eqs.end())
+        {
+          continue;
+        }
+        meq.push_back(eq);
+      }
+      Node tmem = nm->mkNode(Kind::STRING_IN_REGEXP, t, m[1]);
+      if (psb.applyPredTransform(m, tmem, meq))
+      {
+        tmems.push_back(tmem);
+      }
+    }
+    if (tmems.size() == 1)
+    {
+      return tmems[0];
+    }
+    else if (tmems.size() > 1)
+    {
+      return psb.tryStep(ProofRule::RE_INTER, tmems, {});
+    }
+    mem = nm->mkNode(Kind::STRING_IN_REGEXP, t, nm->mkNode(Kind::REGEXP_ALL));
+  }
+  // (str.in_re c (str.to_re c)) and (str.in_re t re.all) rewrite to true
+  if (!psb.applyPredIntro(mem, {}))
+  {
+    Trace("strings-ipc-re-approx") << "...failed to prove " << mem << std::endl;
+    return Node::null();
+  }
+  return mem;
 }
 
 Node InferProofCons::spliceConstants(ProofRule rule,

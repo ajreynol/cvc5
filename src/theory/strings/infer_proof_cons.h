@@ -178,6 +178,41 @@ class InferProofCons : protected EnvObj, public ProofGenerator
    * @param proveSrc Whether we prove src from src' or vice versa.
    * @return The result of applying the substituion to src.
    */
+  /**
+   * Helper method for convert, for inferences based on the regular expression
+   * approximation of normal forms (see NormalForm::d_nfRe).
+   *
+   * This adds steps to psb that prove (str.in_re n R) for some R, whose free
+   * assumptions are a subset of exp. The regular expression R is constructed
+   * based on the term n' that n is equal to after applying the substitution
+   * given by the equalities in exp (as in convertCoreSubs), where each
+   * constant c in n' is approximated by (str.to_re c), each other atomic term
+   * t in n' is approximated by the intersection of the regular expressions of
+   * the positive memberships (str.in_re t' R') in exp such that t' is t or
+   * (= t' t) is in exp, or by re.all if there are none.
+   *
+   * @param env Reference to the environment
+   * @param pf Pointer to proof.
+   * @param psb Reference to proof step buffer.
+   * @param n The term to prove a membership for.
+   * @param exp The explanation, consisting of equalities and memberships.
+   * @return The membership (str.in_re n R) that was proven, or null if we
+   * failed.
+   */
+  static Node convertRegExpApprox(Env& env,
+                                  CDProof* pf,
+                                  TheoryProofStepBuffer& psb,
+                                  const Node& n,
+                                  const std::vector<Node>& exp);
+  /**
+   * Helper for convertRegExpApprox, which adds steps to psb that prove
+   * (str.in_re t R) for some R, based on the approximation described above.
+   * Returns the membership that was proven, or null if we failed.
+   */
+  static Node convertRegExpApproxTerm(TheoryProofStepBuffer& psb,
+                                      const Node& t,
+                                      const std::vector<Node>& mems,
+                                      const std::vector<Node>& eqs);
   static Node convertCoreSubs(Env& env,
                               CDProof* pf,
                               TheoryProofStepBuffer& psb,

@@ -118,8 +118,31 @@ class RegExpSolver : protected EnvObj
    * CoreSolver::getNormalFormRegExp). In particular, for each membership:
    * - (x in R) is marked inactive if A is included in R,
    * - (not (x in R)) is marked inactive if A and R have an empty intersection,
-   * - (not (x in R)) is in conflict if A is included in R,
-   * - (x in R) is in conflict if A and R have an empty intersection.
+   * - (not (x in R)) is in conflict if A is included in R.
+   * Notice that (x in R) is in conflict if A and R have an empty
+   * intersection, however this is not yet implemented since it does not have
+   * a complete proof (see the proposal in the implementation of this method).
+   *
+   * PROPOSAL: The inclusion tests above use RegExpOpr::regExpIncludes, which
+   * is kept in sync with the $str_re_includes program of the proof signature.
+   * This inclusion test could be strengthened based on the fact that
+   * (re.* R) is closed under concatenation, e.g. to show that (re.* "ab")
+   * includes (re.++ "abab" (re.* "ab")). In particular:
+   * - (re.* R) includes (re.++ S1 ... Sn) if it includes each Si,
+   * - (re.* R) includes (re.* S) if it includes S,
+   * - any regular expression includes (re.union S1 ... Sn) if it includes
+   *   each Si.
+   * This would require extending both RegExpEntail::regExpIncludes and
+   * $str_re_includes (in $str_re_includes_lhs_star) in sync, which also
+   * strengthens the rewriter via RE_INTER_INCLUSION and RE_UNION_INCLUSION.
+   * A complication is that $str_re_includes operates on flat forms, where
+   * (str.to_re "abab") is split into the single character components
+   * "a", "b", "a", "b", none of which are included in (re.* "ab"). Thus, the
+   * first rule above must be generalized to partitioning S1 ... Sn into
+   * consecutive blocks each included in (re.* R), e.g. via a dynamic program
+   * over positions that invokes the existing concatenation inclusion test on
+   * each block, and RegExpEntail::regExpIncludes must be generalized in the
+   * same way, using utils::getRegexpComponents to obtain the components.
    *
    * @param e The current effort.
    * @param rep The representative of the equivalence class.
@@ -133,13 +156,14 @@ class RegExpSolver : protected EnvObj
                                 const Node& rep,
                                 std::vector<Node>& mems);
   /**
-   * Returns true if we can show that r1 includes r2. This extends
-   * RegExpOpr::regExpIncludes with additional reasoning, e.g. that
-   * (re.* R) includes (re.++ R1 ... Rn) if it includes each of R1 ... Rn.
-   * Notice this is intentionally not used in the rewriter, whose uses of
-   * RegExpEntail::regExpIncludes are kept in sync with the proof signature.
+   * Send the conflict for membership m based on the regular expression
+   * approximation of the normal form of its left hand side, whose base is
+   * base, and whose explanation is aexp.
    */
-  bool regExpIncludesApprox(const Node& r1, const Node& r2);
+  void sendNormalFormApproxConflict(const Node& m,
+                                    const Node& base,
+                                    const std::vector<Node>& aexp,
+                                    InferenceId id);
 
   /**
    * Check memberships for equivalence class.

@@ -528,14 +528,14 @@ class CoreSolver : public InferSideEffectProcess, protected EnvObj
    */
   void setAtomicRegExp(NormalForm& nf);
   /**
-   * Called when c is the constant in the equivalence class eqc, and nf is the
-   * normal form of a term in eqc. If c is not a member of the regular
-   * expression approximation of nf (see NormalForm::d_nfRe), then this sends
-   * a conflict and returns true. Otherwise, this returns false.
+   * Called when c is the constant in the equivalence class of the base of
+   * normal form nf. If c is not a member of the regular expression
+   * approximation of nf (see NormalForm::d_nfRe), then this sends a conflict
+   * and returns true. Otherwise, this returns false. We only check this if c
+   * is a term in the equality engine, so that the conflict has a complete
+   * proof.
    */
-  bool checkConstantRegExpApprox(const Node& eqc,
-                                 const Node& c,
-                                 const NormalForm& nf);
+  bool checkConstantRegExpApprox(const Node& c, const NormalForm& nf);
   /**
    * In certain cases, we know that two terms are equivalent despite
    * not having to verify their normal forms are identical. For example,
