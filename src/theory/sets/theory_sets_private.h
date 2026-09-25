@@ -18,6 +18,7 @@
 #include "context/cdhashset.h"
 #include "context/cdqueue.h"
 #include "expr/node_trie.h"
+#include "proof/eager_proof_generator.h"
 #include "smt/env_obj.h"
 #include "theory/care_pair_argument_callback.h"
 #include "theory/sets/cardinality_extension.h"
@@ -478,6 +479,8 @@ class TheorySetsPrivate : protected EnvObj
   std::set<Node> d_relevantTerms;
   /** The strategy that drives the full-effort check loop. */
   Strategy d_strategy;
+  /** Proof generator for the lemmas from expanding set.choose */
+  std::unique_ptr<EagerProofGenerator> d_epg;
 }; /* class TheorySetsPrivate */
 
 }  // namespace sets

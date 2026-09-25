@@ -76,6 +76,14 @@ class SetReduction
    * @return (set.map (lambda ((t T)) ((_ tuple.project n1 ... nk) t)) A)
    */
   static Node reduceProjectOperator(Node n);
+  /**
+   * @param n a term of the form (set.choose A) where A has type (Set E)
+   * @return the reduction lemma for n:
+   *   (and (= k (uf A)) (or (= A (as set.empty (Set E))) (set.member k A)))
+   * where k is the purification skolem for n and uf: (-> (Set E) E) is the
+   * SETS_CHOOSE skolem function for the type of A.
+   */
+  static Node reduceChooseOperator(const Node& n);
 };
 
 }  // namespace sets

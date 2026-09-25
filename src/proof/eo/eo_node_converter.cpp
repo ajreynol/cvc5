@@ -695,6 +695,7 @@ bool EoNodeConverter::isHandledSkolemId(SkolemId id)
     case SkolemId::ARITH_VTS_DELTA:
     case SkolemId::ARITH_VTS_DELTA_FREE:
     case SkolemId::QUANTIFIERS_SKOLEMIZE:
+    case SkolemId::SETS_CHOOSE:
     case SkolemId::SETS_DEQ_DIFF:
     case SkolemId::STRINGS_NUM_OCCUR:
     case SkolemId::STRINGS_NUM_OCCUR_RE:

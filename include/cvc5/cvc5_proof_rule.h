@@ -1562,6 +1562,21 @@ enum ENUM(ProofRule)
   EVALUE(SETS_EXT),
   /**
    * \verbatim embed:rst:leading-asterisk
+   * **Sets -- Sets choose reduction**
+   *
+   * .. math::
+   *
+   *   \inferrule{-\mid \mathit{set.choose}(a)}
+   *   {k = f(a) \wedge (a = \emptyset \vee \mathit{set.member}(k,a))}
+   *
+   * where :math:`k` is the purification skolem for
+   * :math:`\mathit{set.choose}(a)` and :math:`f` is the
+   * :math:`\texttt{SETS_CHOOSE}` skolem function for the type of :math:`a`.
+   * \endverbatim
+   */
+  EVALUE(SETS_CHOOSE_REDUCTION),
+  /**
+   * \verbatim embed:rst:leading-asterisk
    * **Sets -- Sets filter up**
    *
    * .. math::

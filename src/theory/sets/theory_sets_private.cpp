@@ -23,6 +23,7 @@
 #include "theory/datatypes/project_op.h"
 #include "theory/datatypes/tuple_utils.h"
 #include "theory/sets/normal_form.h"
+#include "theory/sets/set_reduction.h"
 #include "theory/sets/theory_sets.h"
 #include "theory/theory_model.h"
 #include "theory/uf/function_const.h"
@@ -60,7 +61,13 @@ TheorySetsPrivate::TheorySetsPrivate(Env& env,
       d_card_enabled(false),
       d_higher_order_kinds_enabled(false),
       d_cpacb(cpacb),
-      d_strategy(this, &state, &im)
+      d_strategy(this, &state, &im),
+      d_epg(env.isTheoryProofProducing()
+                ? new EagerProofGenerator(
+                      env,
+                      userContext(),
+                      "sets::TheorySetsPrivate::EagerProofGenerator")
+                : nullptr)
 {
   d_true = nodeManager()->mkConst(true);
   d_false = nodeManager()->mkConst(false);
@@ -1768,27 +1775,22 @@ TrustNode TheorySetsPrivate::expandChooseOperator(
   //   (and (= k (uf A)) (or (= A (as set.empty (Set E))) (set.member k A)))
   // where uf: (Set E) -> E is a skolem function, and E is the type of elements
   // of A
-
-  NodeManager* nm = nodeManager();
-  SkolemManager* sm = nm->getSkolemManager();
-  Node x = sm->mkPurifySkolem(node);
-  Node A = node[0];
-  TypeNode setType = A.getType();
-  ensureFirstClassSetType(setType);
-  // use canonical constant to ensure it can be typed
-  Node mkElem = NodeManager::mkGroundValue(setType);
-  // a Null node is used here to get a unique skolem function per set type
-  Node uf = sm->mkSkolemFunction(SkolemId::SETS_CHOOSE, mkElem);
-  Node ufA = nodeManager()->mkNode(Kind::APPLY_UF, uf, A);
-
-  Node equal = x.eqNode(ufA);
-  Node emptySet = nm->mkConst(EmptySet(setType));
-  Node isEmpty = A.eqNode(emptySet);
-  Node member = nm->mkNode(Kind::SET_MEMBER, x, A);
-  Node lem =
-      nm->mkNode(Kind::AND, equal, nm->mkNode(Kind::OR, isEmpty, member));
-  TrustNode tlem = TrustNode::mkTrustLemma(lem, nullptr);
+  ensureFirstClassSetType(node[0].getType());
+  Node x = nodeManager()->getSkolemManager()->mkPurifySkolem(node);
+  Node lem = SetReduction::reduceChooseOperator(node);
+  TrustNode tlem;
+  if (d_epg != nullptr)
+  {
+    tlem =
+        d_epg->mkTrustNode(lem, ProofRule::SETS_CHOOSE_REDUCTION, {}, {node});
+  }
+  else
+  {
+    tlem = TrustNode::mkTrustLemma(lem, nullptr);
+  }
   lems.push_back(SkolemLemma(tlem, x));
+  // We rewrite the term to its purify variable, which can be justified
+  // trivially.
   return TrustNode::mkTrustRewrite(node, x, nullptr);
 }
 

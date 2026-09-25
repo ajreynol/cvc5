@@ -127,6 +127,25 @@ Node SetReduction::reduceProjectOperator(Node n)
   return setMap;
 }
 
+Node SetReduction::reduceChooseOperator(const Node& n)
+{
+  Assert(n.getKind() == Kind::SET_CHOOSE);
+  NodeManager* nm = n.getNodeManager();
+  SkolemManager* sm = nm->getSkolemManager();
+  Node k = sm->mkPurifySkolem(n);
+  Node A = n[0];
+  TypeNode setType = A.getType();
+  // use canonical constant to ensure it can be typed
+  Node mkElem = NodeManager::mkGroundValue(setType);
+  // a ground value is used here to get a unique skolem function per set type
+  Node uf = sm->mkSkolemFunction(SkolemId::SETS_CHOOSE, mkElem);
+  Node ufA = nm->mkNode(Kind::APPLY_UF, uf, A);
+  Node equal = k.eqNode(ufA);
+  Node isEmpty = A.eqNode(nm->mkConst(EmptySet(setType)));
+  Node member = nm->mkNode(Kind::SET_MEMBER, k, A);
+  return nm->mkNode(Kind::AND, equal, nm->mkNode(Kind::OR, isEmpty, member));
+}
+
 }  // namespace sets
 }  // namespace theory
 }  // namespace cvc5::internal

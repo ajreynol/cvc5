@@ -28,6 +28,22 @@
   :conclusion (not (= (set.member (@sets_deq_diff a b) a) (set.member (@sets_deq_diff a b) b)))
 )
 
+;;;;; ProofRule::SETS_CHOOSE_REDUCTION
+
+; rule: sets_choose_reduction
+; implements: ProofRule::SETS_CHOOSE_REDUCTION
+; args:
+; - t T: The set.choose term to reduce.
+; conclusion: >
+;   The purification skolem for (set.choose a) is equal to the application of
+;   the set.choose skolem function to a, and is a member of a if a is
+;   non-empty.
+(declare-rule sets_choose_reduction ((T Type) (a (Set T)))
+  :args ((set.choose a))
+  :conclusion (eo::define ((k (@purify (set.choose a))) (e (as set.empty (eo::typeof a))))
+                (and (= k (@sets_choose e a)) (or (= a e) (set.member k a))))
+)
+
 ;;;;; ProofRewriteRule::SETS_EVAL_OP
 
 ; program: $set_union_to_list
