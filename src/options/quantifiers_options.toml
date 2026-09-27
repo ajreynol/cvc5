@@ -311,6 +311,14 @@ name   = "Quantifiers"
   help = "Quantifiers module considers only ground terms connected to current assertions, then all ground terms as a last resort."
 
 [[option]]
+  name       = "termDbReuseEqc"
+  category   = "expert"
+  long       = "term-db-reuse-eqc"
+  type       = "bool"
+  default    = "false"
+  help       = "reuse equivalence-class term indices across rounds after validating their contents"
+
+[[option]]
   name       = "registerQuantBodyTerms"
   category   = "expert"
   long       = "register-quant-body-terms"

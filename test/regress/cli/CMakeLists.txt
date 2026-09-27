@@ -1888,6 +1888,8 @@ set(regress_0_tests
   regress0/quantifiers/selector-trigger.smt2
   regress0/quantifiers/simp-len.smt2
   regress0/quantifiers/simp-typ-test.smt2
+  regress0/quantifiers/term-db-reuse-eqc.smt2
+  regress0/quantifiers/term-db-reuse-eqc-push-pop.smt2
   regress0/quantifiers/ufnia-fv-delta.smt2
   regress0/quantifiers/var-elim-bv-partial.smt2
   regress0/quantifiers/var-elim-ineq-simple.smt2

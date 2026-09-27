@@ -379,13 +379,18 @@ void TermDb::computeArgReps(TNode n)
 void TermDb::computeUfEqcTerms(TNode f)
 {
   Assert(f == getOperatorRepresentative(f));
-  if (d_func_map_eqc_trie.find(f) != d_func_map_eqc_trie.end())
+  auto it = d_func_map_eqc_trie.find(f);
+  if (it != d_func_map_eqc_trie.end() && it->second.d_valid)
   {
     return;
   }
+  bool reuse = options().quantifiers.termDbReuseEqc;
+  bool hadIndex = it != d_func_map_eqc_trie.end();
   Trace("term-db-debug") << "computeUfEqcTerms for " << f << std::endl;
-  TNodeTrie& tnt = d_func_map_eqc_trie[f];
-  tnt.clear();
+  EqcIndex& index = d_func_map_eqc_trie[f];
+  index.d_valid = true;
+  TNodeTrie& tnt = index.d_trie;
+  std::vector<Node> signature;
   // get the matchable operators in the equivalence class of f
   std::vector<TNode> ops;
   getOperatorsFor(f, ops);
@@ -399,12 +404,44 @@ void TermDb::computeUfEqcTerms(TNode f)
       {
         computeArgReps(n);
         TNode r = ee->hasTerm(n) ? ee->getRepresentative(n) : TNode(n);
-        tnt.d_data[r].addTerm(n, d_arg_reps[n]);
+        if (reuse)
+        {
+          signature.push_back(n);
+          signature.push_back(r);
+          const std::vector<TNode>& args = d_arg_reps[n];
+          signature.insert(signature.end(), args.begin(), args.end());
+        }
+        else
+        {
+          tnt.d_data[r].addTerm(n, d_arg_reps[n]);
+        }
         Trace("term-db-debug")
             << "Adding term " << n << " to eqc " << r
             << " with arg reps : " << d_arg_reps[n] << std::endl;
       }
     }
+  }
+  if (reuse)
+  {
+    // Validate the full ordered input, not just a hash or a term count. This
+    // includes changes in relevance, activity, operator equivalence (in HO),
+    // and representatives after merges or backtracking. Keeping the order
+    // preserves which term wins when several terms have the same trie key.
+    if (hadIndex && signature == index.d_signature)
+    {
+      Trace("term-db-reuse-eqc") << "reuse " << f << std::endl;
+      return;
+    }
+    tnt.clear();
+    for (size_t i = 0; i < signature.size();)
+    {
+      TNode n = signature[i++];
+      TNode r = signature[i++];
+      tnt.d_data[r].addTerm(n, d_arg_reps[n]);
+      i += n.getNumChildren();
+    }
+    index.d_signature = std::move(signature);
+    Trace("term-db-reuse-eqc") << "rebuild " << f << std::endl;
   }
 }
 
@@ -694,14 +731,41 @@ void TermDb::setHasTerm(Node n)
   } while (!visit.empty());
 }
 
-void TermDb::presolve() {}
+void TermDb::presolve()
+{
+  // Do not retain nodes from a previous user check-sat.
+  if (options().quantifiers.termDbReuseEqc)
+  {
+    d_func_map_eqc_trie.clear();
+  }
+}
 
 bool TermDb::reset(Theory::Effort effort)
 {
   d_op_nonred_count.clear();
   d_arg_reps.clear();
   d_func_map_trie.clear();
-  d_func_map_eqc_trie.clear();
+  if (options().quantifiers.termDbReuseEqc)
+  {
+    for (auto it = d_func_map_eqc_trie.begin();
+         it != d_func_map_eqc_trie.end();)
+    {
+      if (!it->second.d_valid)
+      {
+        // Discard indices that were not requested in the previous round.
+        it = d_func_map_eqc_trie.erase(it);
+      }
+      else
+      {
+        it->second.d_valid = false;
+        ++it;
+      }
+    }
+  }
+  else
+  {
+    d_func_map_eqc_trie.clear();
+  }
   d_fmapRelDom.clear();
 
   Assert(d_qstate.getEqualityEngine()->consistent());
@@ -755,7 +819,7 @@ TNodeTrie* TermDb::getTermArgTrie(Node eqc, Node f)
 {
   f = getOperatorRepresentative(f);
   computeUfEqcTerms(f);
-  std::map<Node, TNodeTrie>::iterator itut = d_func_map_eqc_trie.find(f);
+  auto itut = d_func_map_eqc_trie.find(f);
   if (itut == d_func_map_eqc_trie.end())
   {
     return nullptr;
@@ -764,13 +828,13 @@ TNodeTrie* TermDb::getTermArgTrie(Node eqc, Node f)
   {
     if (eqc.isNull())
     {
-      return &itut->second;
+      return &itut->second.d_trie;
     }
     else
     {
       std::map<TNode, TNodeTrie>::iterator itute =
-          itut->second.d_data.find(eqc);
-      if (itute != itut->second.d_data.end())
+          itut->second.d_trie.d_data.find(eqc);
+      if (itute != itut->second.d_trie.d_data.end())
       {
         return &itute->second;
       }

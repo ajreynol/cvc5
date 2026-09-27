@@ -259,7 +259,21 @@ class TermDb : public QuantifiersUtil
   std::map<TNode, std::vector<TNode>> d_arg_reps;
   /** map from operators to trie */
   std::map<Node, TNodeTrie> d_func_map_trie;
-  std::map<Node, TNodeTrie> d_func_map_eqc_trie;
+  /** An equivalence-class index, optionally retained across rounds. */
+  struct EqcIndex
+  {
+    /**
+     * Exact ordered inputs to the trie: for each eligible term, the term,
+     * its representative, and its argument representatives. The term's arity
+     * determines the length of each record. Owning Nodes keep every TNode in
+     * the retained trie alive, including across context pops.
+     */
+    std::vector<Node> d_signature;
+    TNodeTrie d_trie;
+    /** Whether this index has been computed in the current round. */
+    bool d_valid = false;
+  };
+  std::map<Node, EqcIndex> d_func_map_eqc_trie;
   /**
    * Mapping from operators to their representative relevant domains. The
    * size of the range is equal to the arity of the domain symbol. The
