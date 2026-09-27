@@ -37,6 +37,7 @@ const char* toString(IncompleteId i)
     case IncompleteId::QUANTIFIERS_FMF: return "QUANTIFIERS_FMF";
     case IncompleteId::QUANTIFIERS_RECORDED_INST:
       return "QUANTIFIERS_RECORDED_INST";
+    case IncompleteId::QUANTIFIERS_INST_GC: return "QUANTIFIERS_INST_GC";
     case IncompleteId::QUANTIFIERS_MAX_INST_ROUNDS:
       return "QUANTIFIERS_MAX_INST_ROUNDS";
     case IncompleteId::QUANTIFIERS_SYGUS_SOLVED:

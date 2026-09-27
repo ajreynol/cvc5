@@ -51,6 +51,7 @@ Instantiate::Instantiate(Env& env,
       d_insts(userContext()),
       d_uimt(userContext()),
       d_cimt(context()),
+      d_gcInstSent(false),
       d_pfInst(isProofEnabled()
                    ? new CDProof(env, userContext(), "Instantiate::pfInst")
                    : nullptr)
@@ -79,6 +80,18 @@ bool Instantiate::checkComplete(IncompleteId& incId)
     Trace("quant-engine-debug")
         << "Set incomplete due to recorded instantiations." << std::endl;
     incId = IncompleteId::QUANTIFIERS_RECORDED_INST;
+    return false;
+  }
+  if (d_gcInstSent)
+  {
+    // We handed at least one instantiation lemma to the SAT solver as a
+    // removable clause. The solver is free to have discarded it, and our
+    // instantiation cache will not produce it a second time, so we cannot
+    // conclude that the quantified formulas are satisfied.
+    Trace("quant-engine-debug")
+        << "Set incomplete due to garbage collected instantiations."
+        << std::endl;
+    incId = IncompleteId::QUANTIFIERS_INST_GC;
     return false;
   }
   return true;
@@ -332,6 +345,16 @@ bool Instantiate::addInstantiationInternal(
   if (isLocal)
   {
     p = LemmaProperty::LOCAL;
+  }
+  if (options().quantifiers.instGcMode != options::InstGcMode::NONE)
+  {
+    // Let the SAT solver garbage collect the clauses of this instantiation.
+    // Which of them are removable is decided by the CNF stream, based on the
+    // same option. This makes us incomplete for "sat", which checkComplete
+    // accounts for.
+    p |= LemmaProperty::REMOVABLE;
+    d_gcInstSent = true;
+    ++(d_statistics.d_instGcRemovable);
   }
   if (hasProof)
   {
@@ -812,7 +835,8 @@ Instantiate::Statistics::Statistics(StatisticsRegistry& sr)
       d_inst_duplicate(sr.registerInt("Instantiate::Duplicate_Inst")),
       d_inst_duplicate_eq(sr.registerInt("Instantiate::Duplicate_Inst_Eq")),
       d_inst_duplicate_ent(
-          sr.registerInt("Instantiate::Duplicate_Inst_Entailed"))
+          sr.registerInt("Instantiate::Duplicate_Inst_Entailed")),
+      d_instGcRemovable(sr.registerInt("Instantiate::Inst_Gc_Removable"))
 {
 }
 

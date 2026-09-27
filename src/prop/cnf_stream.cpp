@@ -16,6 +16,7 @@
 #include "base/output.h"
 #include "expr/node.h"
 #include "options/bv_options.h"
+#include "options/quantifiers_options.h"
 #include "printer/printer.h"
 #include "proof/clause_id.h"
 #include "prop/minisat/minisat.h"
@@ -44,6 +45,8 @@ CnfStream::CnfStream(Env& env,
       d_registrar(registrar),
       d_name(name),
       d_removable(false),
+      d_removableDefs(options().quantifiers.instGcMode
+                      == options::InstGcMode::BODY),
       d_stats(statisticsRegistry(), name)
 {
 }
@@ -66,6 +69,10 @@ bool CnfStream::assertClause(TNode node, SatClause& c)
     }
   }
 
+  if (d_removable)
+  {
+    ++d_stats.d_numRemovableClauses;
+  }
   ClauseId clauseId = d_satSolver->addClause(cl, d_removable);
 
   return clauseId != ClauseIdUndef;
@@ -320,7 +327,9 @@ void CnfStream::handleXor(TNode xorNode)
   Assert(!hasLiteral(xorNode)) << "Atom already mapped!";
   Assert(xorNode.getKind() == Kind::XOR) << "Expecting an XOR expression!";
   Assert(xorNode.getNumChildren() == 2) << "Expecting exactly 2 children!";
-  Assert(!d_removable) << "Removable clauses can not contain Boolean structure";
+  Assert(!d_removable || d_removableDefs)
+      << "Removable clauses can not contain Boolean structure unless "
+         "d_removableDefs is set";
   Trace("cnf") << "CnfStream::handleXor(" << xorNode << ")\n";
 
   SatLiteral a = getLiteral(xorNode[0]);
@@ -339,7 +348,9 @@ void CnfStream::handleOr(TNode orNode)
   Assert(!hasLiteral(orNode)) << "Atom already mapped!";
   Assert(orNode.getKind() == Kind::OR) << "Expecting an OR expression!";
   Assert(orNode.getNumChildren() > 1) << "Expecting more then 1 child!";
-  Assert(!d_removable) << "Removable clauses can not contain Boolean structure";
+  Assert(!d_removable || d_removableDefs)
+      << "Removable clauses can not contain Boolean structure unless "
+         "d_removableDefs is set";
   Trace("cnf") << "CnfStream::handleOr(" << orNode << ")\n";
 
   // Number of children
@@ -372,7 +383,9 @@ void CnfStream::handleAnd(TNode andNode)
   Assert(!hasLiteral(andNode)) << "Atom already mapped!";
   Assert(andNode.getKind() == Kind::AND) << "Expecting an AND expression!";
   Assert(andNode.getNumChildren() > 1) << "Expecting more than 1 child!";
-  Assert(!d_removable) << "Removable clauses can not contain Boolean structure";
+  Assert(!d_removable || d_removableDefs)
+      << "Removable clauses can not contain Boolean structure unless "
+         "d_removableDefs is set";
   Trace("cnf") << "handleAnd(" << andNode << ")\n";
 
   // Number of children
@@ -407,7 +420,9 @@ void CnfStream::handleImplies(TNode impliesNode)
   Assert(impliesNode.getKind() == Kind::IMPLIES)
       << "Expecting an IMPLIES expression!";
   Assert(impliesNode.getNumChildren() == 2) << "Expecting exactly 2 children!";
-  Assert(!d_removable) << "Removable clauses can not contain Boolean structure";
+  Assert(!d_removable || d_removableDefs)
+      << "Removable clauses can not contain Boolean structure unless "
+         "d_removableDefs is set";
   Trace("cnf") << "handleImplies(" << impliesNode << ")\n";
 
   // Convert the children to cnf
@@ -432,7 +447,9 @@ void CnfStream::handleIff(TNode iffNode)
   Assert(!hasLiteral(iffNode)) << "Atom already mapped!";
   Assert(iffNode.getKind() == Kind::EQUAL) << "Expecting an EQUAL expression!";
   Assert(iffNode.getNumChildren() == 2) << "Expecting exactly 2 children!";
-  Assert(!d_removable) << "Removable clauses can not contain Boolean structure";
+  Assert(!d_removable || d_removableDefs)
+      << "Removable clauses can not contain Boolean structure unless "
+         "d_removableDefs is set";
   Trace("cnf") << "handleIff(" << iffNode << ")\n";
 
   // Convert the children to CNF
@@ -462,7 +479,9 @@ void CnfStream::handleIte(TNode iteNode)
   Assert(!hasLiteral(iteNode)) << "Atom already mapped!";
   Assert(iteNode.getKind() == Kind::ITE);
   Assert(iteNode.getNumChildren() == 3);
-  Assert(!d_removable) << "Removable clauses can not contain Boolean structure";
+  Assert(!d_removable || d_removableDefs)
+      << "Removable clauses can not contain Boolean structure unless "
+         "d_removableDefs is set";
   Trace("cnf") << "handleIte(" << iteNode[0] << " " << iteNode[1] << " "
                << iteNode[2] << ")\n";
 
@@ -497,6 +516,17 @@ SatLiteral CnfStream::toCNF(TNode node, bool negated)
 {
   Trace("cnf") << "toCNF(" << node
                << ", negated = " << (negated ? "true" : "false") << ")\n";
+
+  // The clauses generated below define the Tseitin literals of the Boolean
+  // structure of node, rather than asserting anything. If the SAT solver
+  // discarded a definition, the literal it defines would be left
+  // unconstrained, and an assignment satisfying the remaining clauses need
+  // not correspond to a model of node. By default we therefore clear the
+  // removable flag for the duration of the definitions and restore it
+  // afterwards, so that only the clauses which *assert* a formula, generated
+  // by the convertAndAssert* methods, can be removable. d_removableDefs lifts
+  // that restriction; see its declaration.
+  RemovableGuard rguard(d_removable, d_removableDefs);
 
   TNode cur;
   SatLiteral nodeLit;
@@ -808,7 +838,9 @@ CnfStream::Statistics::Statistics(StatisticsRegistry& sr,
                                   const std::string& name)
     : d_cnfConversionTime(
           sr.registerTimer(name + "::CnfStream::cnfConversionTime")),
-      d_numAtoms(sr.registerInt(name + "::CnfStream::numAtoms"))
+      d_numAtoms(sr.registerInt(name + "::CnfStream::numAtoms")),
+      d_numRemovableClauses(
+          sr.registerInt(name + "::CnfStream::numRemovableClauses"))
 {
 }
 

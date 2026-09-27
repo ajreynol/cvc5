@@ -1150,6 +1150,13 @@ bool SetDefaults::incompatibleWithProofs(Options& opts,
     reason << "deep restarts";
     return true;
   }
+  if (opts.quantifiers.instGcMode != options::InstGcMode::NONE)
+  {
+    // the SAT solver may discard clauses of an instantiation, which a proof of
+    // unsat may depend on.
+    reason << "instantiation garbage collection";
+    return true;
+  }
   // specific to SAT solver
   if (opts.prop.satSolver == options::SatSolverMode::MINISAT)
   {
@@ -1271,6 +1278,14 @@ bool SetDefaults::incompatibleWithIncremental(const LogicInfo& logic,
   if (opts.smt.deepRestartMode != options::DeepRestartMode::NONE)
   {
     reason << "deep restarts";
+    return true;
+  }
+  if (opts.quantifiers.instGcMode != options::InstGcMode::NONE)
+  {
+    // instantiations are cached in a user-context-dependent trie when
+    // incremental, so a clause the SAT solver discarded in an earlier query
+    // would not be re-sent in a later one.
+    reason << "instantiation garbage collection";
     return true;
   }
   if (opts.parallel.computePartitions > 1)

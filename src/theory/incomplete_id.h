@@ -52,6 +52,9 @@ enum class IncompleteId
   QUANTIFIERS_FMF,
   // incomplete due to explicitly recorded instantiations
   QUANTIFIERS_RECORDED_INST,
+  // incomplete due to instantiation lemmas that the SAT solver was permitted
+  // to garbage collect (--inst-gc)
+  QUANTIFIERS_INST_GC,
   // incomplete due to limited number of allowed instantiation rounds
   QUANTIFIERS_MAX_INST_ROUNDS,
   // we solved a negated synthesis conjecture and will terminate as a subsolver

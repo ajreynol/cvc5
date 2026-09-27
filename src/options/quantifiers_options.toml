@@ -1865,6 +1865,24 @@ name   = "Quantifiers"
   default    = "false"
   help       = "Instantiations are local to the SAT context"
 
+[[option]]
+  name       = "instGcMode"
+  category   = "expert"
+  long       = "inst-gc=MODE"
+  type       = "InstGcMode"
+  default    = "NONE"
+  help       = "mode for garbage collecting the clauses of instantiation lemmas"
+  help_mode  = "Mode for garbage collecting the clauses of instantiation lemmas. Any mode other than none makes us incomplete for \"sat\", since the instantiation cache will not re-send a discarded instantiation."
+[[option.mode.NONE]]
+  name = "none"
+  help = "instantiation lemmas are kept by the SAT solver for the whole user context"
+[[option.mode.ASSERT]]
+  name = "assert"
+  help = "the clause that asserts an instantiation may be discarded; the clauses defining the Tseitin literals of its body are kept"
+[[option.mode.BODY]]
+  name = "body"
+  help = "the clauses defining the Tseitin literals of an instantiation body may be discarded as well, which is where the clause mass of an instantiation actually is; discarding a definition leaves the literal it defines unconstrained, so this can only lose \"unsat\", never produce a wrong one"
+
 ### SyGuS instantiation options
 
 [[option]]

@@ -547,12 +547,14 @@ void CadicalPropagator::add_clause(const SatClause& clause, bool forgettable)
     }
     else
     {
+      // Clauses added outside of search are given to CaDiCaL directly, which
+      // has no way to mark them redundant. A forgettable clause is kept
+      // instead of being dropped, which is always safe.
       for (const auto& lit : lits)
       {
         d_solver.add(lit);
       }
       d_solver.add(0);
-      Assert(!forgettable);
     }
   }
   // // Add empty clause

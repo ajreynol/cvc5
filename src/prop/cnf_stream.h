@@ -346,16 +346,49 @@ class CnfStream : protected EnvObj
    */
   bool d_removable;
 
+  /**
+   * Whether a removable assertion makes the Tseitin definitions of its
+   * Boolean structure removable as well (--inst-gc=body). This is where an
+   * instantiation's clause mass is, but discarding a definition leaves the
+   * literal it defines unconstrained, so it can only lose "unsat" answers.
+   */
+  bool d_removableDefs;
+
   /** Pointer to resource manager for associated SolverEngine */
   ResourceManager* d_resourceManager;
 
  private:
+  /**
+   * Saves d_removable and clears it for the lifetime of the guard, unless
+   * `keep` is true. Used to ensure that Tseitin definitions are not handed to
+   * the SAT solver as removable clauses.
+   */
+  class RemovableGuard
+  {
+   public:
+    RemovableGuard(bool& removable, bool keep)
+        : d_flag(removable), d_saved(removable)
+    {
+      if (!keep)
+      {
+        d_flag = false;
+      }
+    }
+    ~RemovableGuard() { d_flag = d_saved; }
+
+   private:
+    bool& d_flag;
+    bool d_saved;
+  };
+
   struct Statistics
   {
     Statistics(StatisticsRegistry& sr, const std::string& name);
     TimerStat d_cnfConversionTime;
     /** Number of atoms */
     IntStat d_numAtoms;
+    /** Number of clauses asserted as removable */
+    IntStat d_numRemovableClauses;
   };
   /** Statistics */
   Statistics d_stats;

@@ -289,6 +289,8 @@ class Instantiate : public QuantifiersUtil
     IntStat d_inst_duplicate;
     IntStat d_inst_duplicate_eq;
     IntStat d_inst_duplicate_ent;
+    /** Number of instantiation lemmas sent as removable (--inst-gc) */
+    IntStat d_instGcRemovable;
     Statistics(StatisticsRegistry& sr);
   }; /* class Instantiate::Statistics */
   Statistics d_statistics;
@@ -352,6 +354,12 @@ class Instantiate : public QuantifiersUtil
    * main instantiation trie (d_imt or d_uimt).
    */
   NodeInstTrieMap d_cimt;
+  /**
+   * Whether we have sent at least one instantiation lemma as a removable
+   * clause (--inst-gc). If so, the SAT solver may have discarded it, and we
+   * are incomplete for "sat"; see checkComplete.
+   */
+  bool d_gcInstSent;
   /**
    * A CDProof storing instantiation steps.
    */
