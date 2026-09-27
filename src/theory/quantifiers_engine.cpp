@@ -24,6 +24,7 @@
 #include "theory/quantifiers/fmf/full_model_check.h"
 #include "theory/quantifiers/fmf/model_builder.h"
 #include "theory/quantifiers/ieval/inst_evaluator_manager.h"
+#include "theory/quantifiers/inst_strategy_eager_literal.h"
 #include "theory/quantifiers/quant_module.h"
 #include "theory/quantifiers/quantifiers_inference_manager.h"
 #include "theory/quantifiers/quantifiers_modules.h"
@@ -115,6 +116,11 @@ void QuantifiersEngine::finishInit(TheoryEngine* te)
   d_qmodules.reset(new QuantifiersModules());
   d_qmodules->initialize(
       d_env, d_qstate, d_qim, d_qreg, d_treg, d_builder.get(), d_modules);
+  if (options().quantifiers.eagerInstLiteral)
+  {
+    d_eagerLiteral =
+        std::make_unique<InstStrategyEagerLiteral>(d_env, d_qstate, d_qim);
+  }
   if (d_qmodules->d_rel_dom.get())
   {
     d_util.push_back(d_qmodules->d_rel_dom.get());
@@ -149,6 +155,10 @@ void QuantifiersEngine::presolve()
 {
   Trace("quant-engine-proc") << "QuantifiersEngine : presolve " << std::endl;
   d_numInstRoundsLemma = 0;
+  if (d_eagerLiteral)
+  {
+    d_eagerLiteral->presolve();
+  }
   d_qim.clearPending();
   for (QuantifiersUtil*& u : d_util)
   {
@@ -700,6 +710,11 @@ void QuantifiersEngine::registerQuantifierInternal(Node f)
       // this call
       Assert(d_qim.numPendingLemmas() == prev_lemma_waiting);
     }
+    if (d_eagerLiteral
+        && (qm == nullptr || qm == d_qmodules->d_inst_engine.get()))
+    {
+      d_eagerLiteral->registerQuantifier(f);
+    }
     Trace("quant-debug") << "...finish." << std::endl;
     d_quants[f] = true;
     AlwaysAssert(d_qim.numPendingLemmas() == prev_lemma_waiting);
@@ -764,12 +779,33 @@ void QuantifiersEngine::assertQuantifier(Node f, bool pol)
   registerQuantifierInternal(f);
   // assert it to each module
   d_model->assertQuantifier(f);
+  if (d_eagerLiteral)
+  {
+    d_eagerLiteral->assertQuantifier(f);
+  }
   for (QuantifiersModule*& mdl : d_modules)
   {
     mdl->assertNode(f);
   }
   // add term to the registry
   d_treg.addQuantifierBody(d_qreg.getInstConstantBody(f));
+}
+
+void QuantifiersEngine::notifyAssertedFact(TNode fact)
+{
+  if (d_eagerLiteral)
+  {
+    d_eagerLiteral->notifyAssertedFact(fact);
+  }
+}
+
+void QuantifiersEngine::checkEagerLiteral()
+{
+  if (d_eagerLiteral && !d_qstate.isInConflict()
+      && d_qstate.getEqualityEngine()->consistent())
+  {
+    d_eagerLiteral->check();
+  }
 }
 
 void QuantifiersEngine::eqNotifyNewClass(TNode t)

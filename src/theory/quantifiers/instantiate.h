@@ -239,7 +239,8 @@ class Instantiate : public QuantifiersUtil
   /**
    * Called once at the end of each instantiation round. This prints
    * instantiations added this round to trace inst-per-quant-round, if
-   * applicable, and prints to out if the option debug-inst is enabled.
+   * applicable, and prints to out if the option debug-inst is enabled. Clears
+   * the reported counts, including when the round ran at standard effort.
    */
   void notifyEndRound();
   /** debug print model, called once, before we terminate with sat/unknown. */

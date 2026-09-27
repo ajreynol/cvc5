@@ -37,6 +37,7 @@ namespace quantifiers {
 class QuantifiersModule;
 class FirstOrderModel;
 class Instantiate;
+class InstStrategyEagerLiteral;
 class QModelBuilder;
 class QuantifiersInferenceManager;
 class QuantifiersModules;
@@ -90,6 +91,10 @@ class QuantifiersEngine : protected EnvObj
   void preRegisterQuantifier(Node q);
   /** assert universal quantifier */
   void assertQuantifier(Node q, bool pol);
+  /** Record a SAT fact for optional eager literal instantiation. */
+  void notifyAssertedFact(TNode fact);
+  /** Run the optional literal strategy after standard-effort theory checks. */
+  void checkEagerLiteral();
   /** notification when master equality engine is updated */
   void eqNotifyNewClass(TNode t);
   /** notification when master equality engine merges two classes*/
@@ -215,6 +220,8 @@ class QuantifiersEngine : protected EnvObj
    * The modules utility, which contains all of the quantifiers modules.
    */
   std::unique_ptr<quantifiers::QuantifiersModules> d_qmodules;
+  /** Eager conflict/unit selection from signed predicate facts. */
+  std::unique_ptr<quantifiers::InstStrategyEagerLiteral> d_eagerLiteral;
   /** list of all quantifiers seen */
   std::map<Node, bool> d_quants;
   /** quantifiers pre-registered */

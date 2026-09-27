@@ -467,6 +467,14 @@ void TheoryEngine::check(Theory::Effort effort)
       // Do the checking
       CVC5_FOR_EACH_THEORY;
 
+      if (effort == Theory::EFFORT_STANDARD && !d_inConflict && !d_lemmasAdded
+          && options().quantifiers.eagerInstLiteral && d_quantEngine != nullptr)
+      {
+        // Quantifiers may have no new facts of their own at standard effort.
+        // Run the signed-literal strategy after all theories consumed theirs.
+        d_quantEngine->checkEagerLiteral();
+      }
+
       Trace("theory") << "TheoryEngine::check(" << effort
                       << "): running propagation after the initial check"
                       << endl;
@@ -1242,6 +1250,11 @@ void TheoryEngine::assertFact(TNode literal)
   // Get the atom
   bool polarity = literal.getKind() != Kind::NOT;
   TNode atom = polarity ? literal : literal[0];
+
+  if (options().quantifiers.eagerInstLiteral && d_quantEngine != nullptr)
+  {
+    d_quantEngine->notifyAssertedFact(literal);
+  }
 
   if (logicInfo().isSharingEnabled())
   {

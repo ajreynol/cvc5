@@ -1757,6 +1757,13 @@ set(regress_0_tests
   regress0/quantifiers/clock-10.smt2
   regress0/quantifiers/clock-3.smt2
   regress0/quantifiers/cond-var-elim-binary.smt2
+  regress0/quantifiers/eager-literal-conflict.smt2
+  regress0/quantifiers/eager-literal-fallback.smt2
+  regress0/quantifiers/eager-literal-generative.smt2
+  regress0/quantifiers/eager-literal-incremental.smt2
+  regress0/quantifiers/eager-literal-repeat.smt2
+  regress0/quantifiers/eager-literal-strict.smt2
+  regress0/quantifiers/eager-literal-unit.smt2
   regress0/quantifiers/dd2.seu-mbqi.smt2
   regress0/quantifiers/dd_check-cc_bvxor.smt2
   regress0/quantifiers/dd_check-cc_bvxor-mpath.smt2

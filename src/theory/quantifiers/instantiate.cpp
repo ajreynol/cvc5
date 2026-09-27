@@ -779,6 +779,9 @@ void Instantiate::notifyEndRound()
                               << i.second << ")" << std::endl;
     }
   }
+  // An eager round may run between ordinary rounds. Consume these counts so
+  // its notification cannot print the previous round's instances again.
+  d_instDebugTemp.clear();
 }
 
 void Instantiate::debugPrintModel()

@@ -804,6 +804,22 @@ name   = "Quantifiers"
 ### Conflict-based instantiation options
 
 [[option]]
+  name       = "eagerInstLiteral"
+  category   = "expert"
+  long       = "eager-inst-literal"
+  type       = "bool"
+  default    = "false"
+  help       = "instantiate clausal quantifiers eagerly from falsified flat predicate literals"
+
+[[option]]
+  name       = "eagerInstLiteralBudget"
+  category   = "expert"
+  long       = "eager-inst-literal-budget=N"
+  type       = "uint64_t"
+  default    = "10000"
+  help       = "maximum fact/anchor candidates for eager literal instantiation per check-sat"
+
+[[option]]
   name       = "conflictBasedInst"
   category   = "common"
   long       = "cbqi"

@@ -356,6 +356,9 @@ enum class InferenceId
   QUANTIFIERS_INST_CBQI_CONFLICT,
   // propagating instantiation from conflict-based instantiation
   QUANTIFIERS_INST_CBQI_PROP,
+  /** Instantiation selected by a falsified predicate literal at standard effort. */
+  QUANTIFIERS_INST_EAGER_LITERAL_CONFLICT,
+  QUANTIFIERS_INST_EAGER_LITERAL_UNIT,
   // conflicting instantiation from sub conflict-based instantiation
   QUANTIFIERS_INST_SUB_CONFLICT,
   // unsat core from sub conflict-based instantiation
