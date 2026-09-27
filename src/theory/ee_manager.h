@@ -83,6 +83,12 @@ class EqEngineManager : protected EnvObj
    * @param incomplete Whether we are answering "unknown" instead of "sat".
    */
   virtual void notifyModel(CVC5_UNUSED bool incomplete) {}
+  /**
+   * Return true if the theories of UF and datatypes share one equality engine,
+   * which is possible only in the distributed architecture and only when
+   * option ee-share-uf-dt is enabled.
+   */
+  virtual bool usesSharedUfDtEqualityEngine() const { return false; }
 
  protected:
   /** Reference to the theory engine */

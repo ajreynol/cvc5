@@ -576,6 +576,12 @@ class TheoryEngine : protected EnvObj
   //--------------------------------- end proofs
   /** The combination manager we are using */
   std::unique_ptr<theory::CombinationEngine> d_tc;
+  /**
+   * Whether the theories of UF and datatypes share one equality engine, in
+   * which case either of them may be asked to explain a fact that was sent to
+   * the other. Read from the equality engine manager during finishInit.
+   */
+  bool d_shareUfDtExp;
   /** The shared solver of the above combination engine. */
   theory::SharedSolver* d_sharedSolver;
   /** The quantifiers engine, which is owned by the quantifiers theory */

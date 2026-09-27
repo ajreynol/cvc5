@@ -87,6 +87,12 @@ void CombinationEngine::finishInit()
   d_mmanager->finishInit(meen);
 }
 
+bool CombinationEngine::usesSharedUfDtEqualityEngine() const
+{
+  Assert(d_eemanager != nullptr);
+  return d_eemanager->usesSharedUfDtEqualityEngine();
+}
+
 const EeTheoryInfo* CombinationEngine::getEeTheoryInfo(TheoryId tid) const
 {
   return d_eemanager->getEeTheoryInfo(tid);

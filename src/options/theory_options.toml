@@ -74,6 +74,14 @@ name   = "Theory Layer"
   help = "All applicable theories use the central equality engine."
 
 [[option]]
+  name       = "eeShareUfDt"
+  category   = "expert"
+  long       = "ee-share-uf-dt"
+  type       = "bool"
+  default    = "false"
+  help       = "in the distributed equality engine architecture, the theory of datatypes uses the equality engine of the theory of UF, so that the two share one congruence closure"
+
+[[option]]
   name       = "tcMode"
   category   = "expert"
   long       = "tc-mode=MODE"

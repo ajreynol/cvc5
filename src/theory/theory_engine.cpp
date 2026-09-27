@@ -163,6 +163,9 @@ void TheoryEngine::finishInit()
   // initialize the theory combination manager, which decides and allocates the
   // equality engines to use for all theories.
   d_tc->finishInit();
+  // read whether UF and datatypes share an equality engine, which the equality
+  // engine manager decided during the call above
+  d_shareUfDtExp = d_tc->usesSharedUfDtEqualityEngine();
   // get pointer to the shared solver
   d_sharedSolver = d_tc->getSharedSolver();
 
@@ -221,6 +224,7 @@ TheoryEngine::TheoryEngine(Env& env)
               : nullptr),
       d_tepg(new TheoryEngineProofGenerator(env, userContext())),
       d_tc(nullptr),
+      d_shareUfDtExp(false),
       d_sharedSolver(nullptr),
       d_quantEngine(nullptr),
       d_decManager(new DecisionManager(userContext())),
@@ -1969,6 +1973,30 @@ TrustNode TheoryEngine::getExplanation(
 
     // See if it was sent to the theory by another theory
     PropagationMap::const_iterator find = d_propagationMap.find(toExplain);
+    if (d_shareUfDtExp
+        && (toExplain.d_theory == THEORY_UF
+            || toExplain.d_theory == THEORY_DATATYPES)
+        && (find == d_propagationMap.end()
+            || (*find).second.d_timestamp >= toExplain.d_timestamp))
+    {
+      // The theories of UF and datatypes share one equality engine, so an
+      // explanation given by either of them can mention a fact that was sent
+      // to the other, and sent to it earlier than to this one. When this
+      // theory has no timely entry, look the fact up under its companion:
+      // otherwise we would ask a theory to explain an assertion it had not
+      // received, and it would explain it by itself.
+      NodeTheoryPair toExplainShared(
+          toExplain.d_node,
+          toExplain.d_theory == THEORY_UF ? THEORY_DATATYPES : THEORY_UF,
+          toExplain.d_timestamp);
+      PropagationMap::const_iterator findShared =
+          d_propagationMap.find(toExplainShared);
+      if (findShared != d_propagationMap.end()
+          && (*findShared).second.d_timestamp < toExplain.d_timestamp)
+      {
+        find = findShared;
+      }
+    }
     if (find != d_propagationMap.end())
     {
       Trace("theory::explain")

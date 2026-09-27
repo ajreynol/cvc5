@@ -3343,6 +3343,7 @@ set(regress_1_tests
   regress1/quantifiers/dump-inst-i.smt2
   regress1/quantifiers/dump-inst-proof.smt2
   regress1/quantifiers/dump-inst.smt2
+  regress1/quantifiers/ee-share-uf-dt.smt2
   regress1/quantifiers/eqrange_ex_1.smt2
   regress1/quantifiers/example10714-core-no-miniscope-user.smt2
   regress1/quantifiers/ext-ex-deq-trigger.smt2

@@ -53,6 +53,8 @@ class CombinationEngine : protected EnvObj
 
   /** Get equality engine theory information for theory with identifier tid. */
   const EeTheoryInfo* getEeTheoryInfo(TheoryId tid) const;
+  /** Do the theories of UF and datatypes share one equality engine? */
+  bool usesSharedUfDtEqualityEngine() const;
   //-------------------------- model
   /**
    * Reset the model maintained by this class. This resets all local information

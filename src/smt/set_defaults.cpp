@@ -879,6 +879,18 @@ void SetDefaults::setDefaultsPost(const LogicInfo& logic, Options& opts) const
     // use the arithmetic equality solver by default
     SET_AND_NOTIFY_IF_NOT_USER(
         arith, arithEqSolver, true, "central equality engine");
+    // sharing the equality engine of UF and datatypes is a property of the
+    // distributed architecture, and is subsumed by the central one
+    SET_AND_NOTIFY(theory, eeShareUfDt, false, "central equality engine");
+  }
+  if (opts.theory.eeShareUfDt && isSygus(opts))
+  {
+    // Sharing the equality engine of UF and datatypes changes what the ground
+    // solver propagates about sygus datatype terms, which single-invocation
+    // SyGuS can reconstruct an incorrect solution from: it makes
+    // regress1/sygus/dt-test-ns.sy fail --check-synth-sol. Refuse the
+    // combination until that is understood.
+    SET_AND_NOTIFY(theory, eeShareUfDt, false, "sygus");
   }
 
   if (logic.isHigherOrder())
