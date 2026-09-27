@@ -40,7 +40,8 @@ InstantiationEngine::InstantiationEngine(Env& env,
       d_i_ag(),
       d_quants(),
       d_trdb(d_env, qs, qim, qr, tr),
-      d_quant_rel(nullptr)
+      d_quant_rel(nullptr),
+      d_instChain(nullptr)
 {
   if (options().quantifiers.relevantTriggers)
   {
@@ -48,6 +49,10 @@ InstantiationEngine::InstantiationEngine(Env& env,
   }
   if (options().quantifiers.eMatching)
   {
+    if (options().quantifiers.instChain)
+    {
+      d_instChain.reset(new inst::InstChain(d_env, qs, qim, qr, tr));
+    }
     // these are the instantiation strategies for E-matching
     // user-provided patterns
     if (options().quantifiers.userPatternsQuant != options::UserPatMode::IGNORE)
@@ -129,6 +134,13 @@ void InstantiationEngine::doInstantiationRound(Theory::Effort effort)
     }
     e++;
   }
+  if (d_instChain != nullptr)
+  {
+    // Extend the instantiations made above by matching the ground terms they
+    // introduce, which are not in the equality engine yet and hence are
+    // invisible to the strategies above.
+    d_instChain->check();
+  }
 }
 
 bool InstantiationEngine::needsCheck(Theory::Effort e)
@@ -144,6 +156,10 @@ void InstantiationEngine::reset_round(Theory::Effort e)
   {
     InstStrategy* is = d_instStrategies[i];
     is->processResetInstantiationRound(e);
+  }
+  if (d_instChain != nullptr)
+  {
+    d_instChain->resetRound();
   }
 }
 
@@ -228,6 +244,10 @@ void InstantiationEngine::registerQuantifier(Node q)
         addUserNoPattern(q, p);
       }
     }
+  }
+  if (d_instChain != nullptr)
+  {
+    d_instChain->registerQuantifier(q);
   }
 }
 

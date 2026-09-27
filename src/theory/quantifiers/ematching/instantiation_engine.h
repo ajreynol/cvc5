@@ -17,6 +17,7 @@
 
 #include <vector>
 
+#include "theory/quantifiers/ematching/inst_chain.h"
 #include "theory/quantifiers/ematching/inst_strategy.h"
 #include "theory/quantifiers/ematching/trigger_database.h"
 #include "theory/quantifiers/quant_module.h"
@@ -68,6 +69,8 @@ class InstantiationEngine : public QuantifiersModule
   inst::TriggerDatabase d_trdb;
   /** for computing relevance of quantifiers */
   std::unique_ptr<QuantRelevance> d_quant_rel;
+  /** chained instantiation, allocated only if the option inst-chain is set */
+  std::unique_ptr<inst::InstChain> d_instChain;
 }; /* class InstantiationEngine */
 
 }  // namespace quantifiers

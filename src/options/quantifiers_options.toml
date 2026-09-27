@@ -526,6 +526,30 @@ name   = "Quantifiers"
   help = "Run instantiation at last call effort, after theory combination and and theories report sat."
 
 [[option]]
+  name       = "instChain"
+  category   = "regular"
+  long       = "inst-chain"
+  type       = "bool"
+  default    = "false"
+  help       = "after an instantiation round, match the ground terms occurring in the instantiation lemmas produced by that round against single user triggers, and instantiate from those matches in the same round"
+
+[[option]]
+  name       = "instChainDepth"
+  category   = "regular"
+  long       = "inst-chain-depth=N"
+  type       = "uint64_t"
+  default    = "1"
+  help       = "maximum number of times inst-chain extends a chain of instantiations within a single instantiation round"
+
+[[option]]
+  name       = "instChainLimit"
+  category   = "regular"
+  long       = "inst-chain-limit=N"
+  type       = "uint64_t"
+  default    = "0"
+  help       = "maximum number of instantiations inst-chain may add in a single instantiation round, or 0 for no limit"
+
+[[option]]
   name       = "instWhenPhase"
   category   = "expert"
   long       = "inst-when-phase=N"

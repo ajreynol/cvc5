@@ -340,6 +340,9 @@ enum class InferenceId
   // that are not instantiation lemmas added, per technique.
   // instantiation from E-matching
   QUANTIFIERS_INST_E_MATCHING,
+  // instantiation from matching a ground term of an instantiation lemma that
+  // was produced earlier in the same instantiation round
+  QUANTIFIERS_INST_E_MATCHING_CHAIN,
   // E-matching using simple trigger implementation
   QUANTIFIERS_INST_E_MATCHING_SIMPLE,
   // E-matching using multi-triggers

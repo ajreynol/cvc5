@@ -1793,6 +1793,8 @@ set(regress_0_tests
   regress0/quantifiers/floor.smt2
   regress0/quantifiers/global_negate.smt2
   regress0/quantifiers/horn-ground-pre-post.smt2
+  regress0/quantifiers/inst-chain-simple.smt2
+  regress0/quantifiers/inst-chain-two-quant.smt2
   regress0/quantifiers/is-even-pred.smt2
   regress0/quantifiers/is-int.smt2
   regress0/quantifiers/issue1805.smt2

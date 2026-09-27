@@ -273,6 +273,14 @@ class Instantiate : public QuantifiersUtil
   void getInstantiations(Node q, std::vector<Node>& insts);
   //--------------------------------------end user-level interface utilities
 
+  /**
+   * Get the bodies of the instantiation lemmas that were successfully added
+   * during the current instantiation round, in the order they were added.
+   * This is only maintained when the option inst-chain is enabled; it is
+   * cleared by reset.
+   */
+  const std::vector<Node>& getRoundInstBodies() const;
+
   /** Are proofs enabled for this object? */
   bool isProofEnabled() const;
 
@@ -338,6 +346,11 @@ class Instantiate : public QuantifiersUtil
   std::map<Node, std::vector<Node>> d_recordedInst;
   /** statistics for debugging total instantiations per quantifier per round */
   std::map<Node, uint32_t> d_instDebugTemp;
+  /**
+   * The bodies of the instantiation lemmas added on the current round. Only
+   * maintained when the option inst-chain is enabled.
+   */
+  std::vector<Node> d_roundInstBodies;
   /** list of all instantiations produced for each quantifier
    *
    * We store context (dependent, independent) versions. If incremental solving

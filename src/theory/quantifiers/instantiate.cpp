@@ -68,6 +68,7 @@ bool Instantiate::reset(Theory::Effort e)
   // clear explicitly recorded instantiations
   d_recordedInst.clear();
   d_instDebugTemp.clear();
+  d_roundInstBodies.clear();
   return true;
 }
 
@@ -353,6 +354,13 @@ bool Instantiate::addInstantiationInternal(
   // add to list of instantiations
   InstLemmaList* ill = getOrMkInstLemmaList(q);
   ill->d_list.push_back(body);
+  if (options().quantifiers.instChain)
+  {
+    // remember the body for this round, so that the ground terms it
+    // introduces can be matched by InstChain before we return to the SAT
+    // solver (see theory/quantifiers/ematching/inst_chain.h).
+    d_roundInstBodies.push_back(body);
+  }
   // add to temporary debug statistics (# inst on this round)
   d_instDebugTemp[q]++;
   if (TraceIsOn("inst"))
@@ -398,11 +406,17 @@ bool Instantiate::addInstantiationInternal(
   return true;
 }
 
+const std::vector<Node>& Instantiate::getRoundInstBodies() const
+{
+  return d_roundInstBodies;
+}
+
 bool Instantiate::isLocalInstId(InferenceId id)
 {
   switch (id)
   {
     case InferenceId::QUANTIFIERS_INST_E_MATCHING:
+    case InferenceId::QUANTIFIERS_INST_E_MATCHING_CHAIN:
     case InferenceId::QUANTIFIERS_INST_E_MATCHING_SIMPLE:
     case InferenceId::QUANTIFIERS_INST_E_MATCHING_MT:
     case InferenceId::QUANTIFIERS_INST_E_MATCHING_MTL:
