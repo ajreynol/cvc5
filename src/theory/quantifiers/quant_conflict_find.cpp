@@ -2511,7 +2511,8 @@ QuantConflictFind::QuantConflictFind(Env& env,
                                      TermRegistry& tr)
     : QuantifiersModule(env, qs, qim, qr, tr),
       d_statistics(statisticsRegistry()),
-      d_effort(EFFORT_INVALID)
+      d_effort(EFFORT_INVALID),
+      d_roundsNoInst(0)
 {
 }
 
@@ -2566,6 +2567,21 @@ void QuantConflictFind::registerQuantifier(Node q)
 bool QuantConflictFind::needsCheck(Theory::Effort level)
 {
   return !d_qstate.isConflictingInst() && (level == Theory::EFFORT_FULL);
+}
+
+bool QuantConflictFind::forcesCheck(CVC5_UNUSED Theory::Effort level)
+{
+  // This module asks for a check at every full effort, whereas the
+  // instantiation engine asks for one only at the full efforts allowed by
+  // inst-when and inst-when-phase, so with this module enabled the quantifiers
+  // engine performs a round it would otherwise have skipped. The cost of such
+  // a round is not this module's check but the reset of the quantifiers
+  // engine's utilities, its model and every other module that precedes it.
+  // Under a budget we stop causing rounds once we have spent that many in a
+  // row without adding an instance, and run only in the rounds another module
+  // asks for; adding an instance earns the budget back.
+  int64_t budget = options().quantifiers.cbqiRoundBudget;
+  return budget < 0 || d_roundsNoInst < static_cast<uint64_t>(budget);
 }
 
 void QuantConflictFind::reset_round(CVC5_UNUSED Theory::Effort level)
@@ -2725,6 +2741,15 @@ void QuantConflictFind::check(Theory::Effort level, QEffort quant_e)
       Trace("qcf-engine") << "  Entailment checks = " << (currEt - prevEt)
                           << std::endl;
     }
+  }
+  // maintain the budget of rounds this module may cause, see forcesCheck
+  if (addedLemmas > 0)
+  {
+    d_roundsNoInst = 0;
+  }
+  else
+  {
+    d_roundsNoInst++;
   }
   Trace("qcf-check2") << "QCF : finished check : " << level << std::endl;
   endCallDebug();

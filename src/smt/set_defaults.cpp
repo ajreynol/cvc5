@@ -1673,6 +1673,19 @@ void SetDefaults::setDefaultsQuantifiers(const LogicInfo& logic,
   {
     SET_AND_NOTIFY(quantifiers, conflictBasedInst, true, "cbqi option");
   }
+  if (!opts.quantifiers.conflictBasedInst)
+  {
+    // The round policy of conflict-based instantiation is meaningless when the
+    // module is not constructed. Note these options deliberately do not
+    // re-enable it, unlike cbqi-mode above, so that they can be added to a
+    // configuration that disables cbqi without silently changing it.
+    SET_AND_NOTIFY_VAL_SYM(quantifiers,
+                           cbqiRoundBudget,
+                           static_cast<int64_t>(-1),
+                           "no conflict-based instantiation");
+    SET_AND_NOTIFY(
+        quantifiers, cbqiRoundShare, false, "no conflict-based instantiation");
+  }
   if (opts.quantifiers.cegqiNestedQE)
   {
     SET_AND_NOTIFY(quantifiers, prenexQuantUser, true, "cegqiNestedQE");

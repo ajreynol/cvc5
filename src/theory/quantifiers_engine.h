@@ -159,6 +159,12 @@ class QuantifiersEngine : protected EnvObj
    */
   void checkInternal(Theory::Effort e, IncompleteId& setModelUnsoundId);
   /**
+   * Whether a lemma added at QEFFORT_CONFLICT, which is where conflict-based
+   * instantiation runs, should let the quantifiers round continue to
+   * E-matching instead of ending it. Governed by cbqi-round-share.
+   */
+  bool shareConflictRound() const;
+  /**
    * Return true if we should recheck
    * @param e the effort level
    * @param setModelUnsoundId the incomplete id indicating why we are currently

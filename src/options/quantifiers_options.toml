@@ -843,6 +843,22 @@ name   = "Quantifiers"
   help       = "add all available conflicting instances during conflict-based instantiation"
 
 [[option]]
+  name       = "cbqiRoundBudget"
+  category   = "expert"
+  long       = "cbqi-round-budget=N"
+  type       = "int64_t"
+  default    = "-1"
+  help       = "how many consecutive rounds conflict-based instantiation may cause without adding an instance, after which it only runs in rounds another module asks for (-1 for no limit)"
+
+[[option]]
+  name       = "cbqiRoundShare"
+  category   = "expert"
+  long       = "cbqi-round-share"
+  type       = "bool"
+  default    = "false"
+  help       = "an instance added by conflict-based instantiation does not end the quantifiers round, so that E-matching runs in the same round"
+
+[[option]]
   name       = "cbqiVoExp"
   category   = "expert"
   long       = "cbqi-vo-exp"

@@ -76,6 +76,15 @@ class QuantifiersModule : protected EnvObj
   {
     return e >= Theory::EFFORT_LAST_CALL;
   }
+  /** Forces check.
+   *
+   * Does a check this module needs justify performing a quantifiers round on
+   * its own? A module that returns false is still checked in every round that
+   * happens for another reason, but is never the reason a round happens. The
+   * cost of a round is not only this module's check: the quantifiers engine
+   * resets its utilities, its model and every other module first.
+   */
+  virtual bool forcesCheck(CVC5_UNUSED Theory::Effort e) { return true; }
   /** Needs model.
    *
    * Whether this module needs a model built during a

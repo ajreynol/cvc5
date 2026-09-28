@@ -184,6 +184,11 @@ void QuantifiersEngine::ppNotifyAssertions(const std::vector<Node>& assertions)
     mi->ppNotifyAssertions(assertions);
   }
 }
+bool QuantifiersEngine::shareConflictRound() const
+{
+  return options().quantifiers.cbqiRoundShare;
+}
+
 void QuantifiersEngine::check(Theory::Effort e)
 {
   IncompleteId setModelUnsoundId = IncompleteId::NONE;
@@ -313,7 +318,9 @@ void QuantifiersEngine::checkInternal(Theory::Effort e,
       if (mdl->needsCheck(e))
       {
         qm.push_back(mdl);
-        needsCheck = true;
+        // a module that does not force a check is still checked in this round
+        // if it happens, but does not make it happen, see forcesCheck
+        needsCheck = needsCheck || mdl->forcesCheck(e);
         // can only request model at last call since theory combination can find
         // inconsistencies
         if (e >= Theory::EFFORT_LAST_CALL)
@@ -452,6 +459,11 @@ void QuantifiersEngine::checkInternal(Theory::Effort e,
     }
     Trace("quant-engine-debug")
         << "Check modules that needed check..." << std::endl;
+    // Whether a lemma added at QEFFORT_CONFLICT was allowed not to end this
+    // round, see the option cbqi-round-share. When this is true, the modules
+    // of the following effort are checked although a lemma is already
+    // pending.
+    bool conflictRoundShared = false;
     for (unsigned qef = QuantifiersModule::QEFFORT_CONFLICT;
          qef <= QuantifiersModule::QEFFORT_LAST_CALL;
          ++qef)
@@ -470,7 +482,7 @@ void QuantifiersEngine::checkInternal(Theory::Effort e,
           break;
         }
       }
-      if (!d_qim.hasSentLemma())
+      if (!d_qim.hasSentLemma() || conflictRoundShared)
       {
         // check each module
         for (QuantifiersModule*& mdl : qm)
@@ -497,6 +509,19 @@ void QuantifiersEngine::checkInternal(Theory::Effort e,
       // at LAST_CALL effort.
       if (d_qim.hasSentLemma() || d_qstate.isInConflict())
       {
+        if (quant_e == QuantifiersModule::QEFFORT_CONFLICT
+            && !d_qstate.isInConflict() && shareConflictRound())
+        {
+          // The lemma was added by conflict-based instantiation, which under
+          // this option does not preempt E-matching. Continue to the next
+          // effort with the lemma pending, and count this as an instantiation
+          // round as we would have if nothing had been added here.
+          Trace("quant-engine-debug")
+              << "...conflict effort shares the round." << std::endl;
+          conflictRoundShared = true;
+          d_qstate.incrementInstRoundCounters(e);
+          continue;
+        }
         Assert(d_qim.hasSentLemma() || e != Theory::EFFORT_LAST_CALL);
         break;
       }

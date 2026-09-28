@@ -225,6 +225,11 @@ class QuantConflictFind : public QuantifiersModule
   void registerQuantifier(Node q) override;
   /** needs check */
   bool needsCheck(Theory::Effort level) override;
+  /**
+   * Whether this module makes a quantifiers round happen on its own, see the
+   * option cbqi-round-budget.
+   */
+  bool forcesCheck(Theory::Effort level) override;
   /** reset round */
   void reset_round(Theory::Effort level) override;
   /** check
@@ -318,6 +323,11 @@ class QuantConflictFind : public QuantifiersModule
   std::map<Node, bool> d_irr_quant;
   /** The current effort */
   Effort d_effort;
+  /**
+   * The number of consecutive rounds of this module that added no instance,
+   * which is the budget consulted by forcesCheck.
+   */
+  uint64_t d_roundsNoInst;
 };
 
 std::ostream& operator<<(std::ostream& os, const QuantConflictFind::Effort& e);
