@@ -119,6 +119,14 @@ name   = "Arithmetic Theory"
   help       = "sets the maximum row length to be used in propagation"
 
 [[option]]
+  name       = "arithIntRepair"
+  category   = "expert"
+  long       = "arith-int-repair"
+  type       = "bool"
+  default    = "false"
+  help       = "try exact tableau assignment repairs before integer cuts and branching in linear logics"
+
+[[option]]
   name       = "arithDioSolver"
   category   = "expert"
   long       = "dio-solver"

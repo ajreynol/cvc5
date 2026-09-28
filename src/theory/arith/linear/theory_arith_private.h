@@ -576,6 +576,24 @@ class TheoryArithPrivate : protected EnvObj
   bool hasIntegerModel();
 
   /**
+   * Try to repair fractional integer inputs in a feasible rational model by
+   * changing one nonbasic variable at a time. Each accepted change respects all
+   * bounds and preserves every currently integral integer assignment. The
+   * search is bounded and does not establish integer infeasibility on failure.
+   * Used only in linear logics, before committing the model and checking
+   * disequalities.
+   */
+  void tryRepairIntegerModel();
+  /**
+   * Try setting nonbasic v to value, checking its entire column before changing
+   * any assignment. Consume budget for the candidate and each affected row.
+   * The caller must ensure that success makes a fractional input integral.
+   */
+  bool tryIntegerRepair(ArithVar v,
+                        const DeltaRational& value,
+                        uint32_t& budget);
+
+  /**
    * Looks for through the variables starting at d_nextIntegerCheckVar
    * for the first integer variable that is between its upper and lower bounds
    * that has a non-integer assignment.
@@ -830,6 +848,8 @@ class TheoryArithPrivate : protected EnvObj
     TimerStat d_newPropTime;
 
     IntStat d_externalBranchAndBounds;
+    IntStat d_integerRepairAttempts;
+    IntStat d_integerRepairs;
 
     IntStat d_initialTableauSize;
     IntStat d_currSetToSmaller;

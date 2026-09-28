@@ -48,6 +48,11 @@ set(regress_0_tests
   regress0/arith/incorrect1.smtv1.smt2
   regress0/arith/int-eq-conflict-simple.smt2
   regress0/arith/int-geq-tighten-simple.smt2
+  regress0/arith/int-repair-fallback.smt2
+  regress0/arith/int-repair-incremental.smt2
+  regress0/arith/int-repair-mixed.smt2
+  regress0/arith/int-repair-negative.smt2
+  regress0/arith/int-repair-positive.smt2
   regress0/arith/integers/ackermann1.smt2
   regress0/arith/integers/ackermann2.smt2
   regress0/arith/integers/ackermann3.smt2
@@ -1794,6 +1799,7 @@ set(regress_0_tests
   regress0/quantifiers/global_negate.smt2
   regress0/quantifiers/horn-ground-pre-post.smt2
   regress0/quantifiers/is-even-pred.smt2
+  regress0/quantifiers/int-repair.smt2
   regress0/quantifiers/is-int.smt2
   regress0/quantifiers/issue1805.smt2
   regress0/quantifiers/issue11066-fresh-binders.smt2

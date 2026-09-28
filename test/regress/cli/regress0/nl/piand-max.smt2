@@ -1,5 +1,6 @@
 ; REQUIRES: unrestricted-mode
 ; COMMAND-LINE: --sat-solver=minisat
+; COMMAND-LINE: --sat-solver=minisat --arith-int-repair
 ; EXPECT: unsat
 (set-logic QF_NIA)
 (declare-const k Int)

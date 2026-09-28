@@ -281,6 +281,8 @@ TheoryArithPrivate::Statistics::Statistics(StatisticsRegistry& reg,
       d_newPropTime(reg.registerTimer(name + "newPropTimer")),
       d_externalBranchAndBounds(
           reg.registerInt(name + "externalBranchAndBounds")),
+      d_integerRepairAttempts(reg.registerInt(name + "integerRepairAttempts")),
+      d_integerRepairs(reg.registerInt(name + "integerRepairs")),
       d_initialTableauSize(reg.registerInt(name + "initialTableauSize")),
       d_currSetToSmaller(reg.registerInt(name + "currSetToSmaller")),
       d_smallerSetToCurr(reg.registerInt(name + "smallerSetToCurr")),
@@ -2048,6 +2050,133 @@ bool TheoryArithPrivate::hasIntegerModel()
   }
 }
 
+void TheoryArithPrivate::tryRepairIntegerModel()
+{
+  Assert(logicInfo().isLinear());
+  Assert(d_qflraStatus == Result::SAT);
+  // Bound the optional search, including input, row, and column visits. On
+  // exhaustion the normal DIO and branch-and-bound checks still run.
+  uint32_t budget = 1000;
+  ArithVar numVars = d_partialModel.getNumberOfVariables();
+  ArithVar v = d_nextIntegerCheckVar;
+  for (ArithVar visited = 0; visited < numVars && budget > 0; ++visited)
+  {
+    --budget;
+    if (isIntegerInput(v) && !d_partialModel.integralAssignment(v))
+    {
+      // Copy: an accepted update also changes basic assignments in this row.
+      DeltaRational old = d_partialModel.getAssignment(v);
+      DeltaRational targets[] = {DeltaRational(old.floor()),
+                                 DeltaRational(old.ceiling())};
+      bool repaired = false;
+      for (const DeltaRational& target : targets)
+      {
+        if (budget == 0)
+        {
+          break;
+        }
+        if (d_partialModel.strictlyLessThanLowerBound(v, target)
+            || d_partialModel.strictlyGreaterThanUpperBound(v, target))
+        {
+          continue;
+        }
+        if (!d_tableau.isBasic(v))
+        {
+          repaired = tryIntegerRepair(v, target, budget);
+        }
+        else
+        {
+          // v = sum a_i * x_i. Moving x_i by (target - old) / a_i
+          // repairs v without pivoting or changing any tableau equation.
+          for (Tableau::RowIterator ri = d_tableau.basicRowIterator(v);
+               !ri.atEnd() && budget > 0;
+               ++ri)
+          {
+            --budget;
+            const Tableau::Entry& entry = *ri;
+            ArithVar nb = entry.getColVar();
+            if (nb == v)
+            {
+              continue;
+            }
+            DeltaRational value = d_partialModel.getAssignment(nb)
+                                  + (target - old) / entry.getCoefficient();
+            if (tryIntegerRepair(nb, value, budget))
+            {
+              repaired = true;
+              break;
+            }
+          }
+        }
+        if (repaired)
+        {
+          Assert(d_partialModel.getAssignment(v) == target);
+          ++d_statistics.d_integerRepairs;
+          d_hasDoneWorkSinceCut = true;
+          Trace("arith-int-repair")
+              << "repaired " << d_partialModel.asNode(v) << " from " << old
+              << " to " << target << std::endl;
+          break;
+        }
+      }
+    }
+    v = (v + 1 == numVars) ? 0 : v + 1;
+  }
+}
+
+bool TheoryArithPrivate::tryIntegerRepair(ArithVar v,
+                                          const DeltaRational& value,
+                                          uint32_t& budget)
+{
+  Assert(!d_tableau.isBasic(v));
+  if (budget == 0)
+  {
+    return false;
+  }
+  --budget;
+  ++d_statistics.d_integerRepairAttempts;
+  auto canSet = [this](ArithVar x, const DeltaRational& val) {
+    return !d_partialModel.strictlyLessThanLowerBound(x, val)
+           && !d_partialModel.strictlyGreaterThanUpperBound(x, val)
+           && (!isInteger(x) || !d_partialModel.integralAssignment(x)
+               || val.isIntegral());
+  };
+  if (!canSet(v, value))
+  {
+    return false;
+  }
+  DeltaRational diff = value - d_partialModel.getAssignment(v);
+  for (Tableau::ColIterator ci = d_tableau.colIterator(v); !ci.atEnd(); ++ci)
+  {
+    if (budget == 0)
+    {
+      return false;
+    }
+    --budget;
+    const Tableau::Entry& entry = *ci;
+    ArithVar basic = d_tableau.rowIndexToBasic(entry.getRowIndex());
+    DeltaRational val =
+        d_partialModel.getAssignment(basic) + diff * entry.getCoefficient();
+    if (!canSet(basic, val))
+    {
+      return false;
+    }
+  }
+  // No mutation occurs until all affected bounds and integral assignments have
+  // been checked. Updating through the linear equality module preserves the
+  // tableau and its bound bookkeeping. Disequalities are checked subsequently.
+  Trace("arith-int-repair")
+      << "move " << d_partialModel.asNode(v) << " from "
+      << d_partialModel.getAssignment(v) << " to " << value << std::endl;
+  d_linEq.update(v, value);
+  while (d_errorSet.moreSignals())
+  {
+    d_errorSet.popSignal();
+  }
+  Assert(d_errorSet.errorEmpty());
+  return true;
+}
+
 Node flattenAndSort(NodeManager* nm, Node n)
 {
   Kind k = n.getKind();
@@ -3810,6 +3939,16 @@ bool TheoryArithPrivate::postCheck(Theory::Effort effortLevel)
 
   Trace("arith::ems") << "ems: " << emmittedConflictOrSplit
                       << "post solveInteger" << endl;
+
+  // The nonlinear extension also uses this rational assignment. Repairing its
+  // abstraction can disrupt its refinement strategy, so restrict this heuristic
+  // to linear logics.
+  if (options().arith.arithIntRepair && logicInfo().isLinear()
+      && !emmittedConflictOrSplit && Theory::fullEffort(effortLevel)
+      && d_qflraStatus == Result::SAT)
+  {
+    tryRepairIntegerModel();
+  }
 
   switch (d_qflraStatus)
   {
