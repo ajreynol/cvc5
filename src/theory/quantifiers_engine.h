@@ -166,6 +166,23 @@ class QuantifiersEngine : protected EnvObj
    */
   bool shouldRecheck(CVC5_UNUSED Theory::Effort e,
                      IncompleteId setModelUnsoundId);
+  /**
+   * Deactivate, for this round, the asserted quantified formulas that are not
+   * part of the relevance manager's current relevant selection, that is, those
+   * the SAT solver assigned true but does not need in order to satisfy the
+   * input on the current branch. This implements option rlv-quant and does
+   * nothing when that option is off.
+   *
+   * In mode FULL the filter applies only below last call, so a quantified
+   * formula that is filtered here is still instantiated at last call. In mode
+   * STRICT it applies at every effort, which is model-unsound; the caller is
+   * told so through the return value.
+   *
+   * @param e the effort level
+   * @return true if a quantified formula was filtered in a way that makes the
+   * result model-unsound, i.e. "unknown" must be answered in place of "sat".
+   */
+  bool markRelevantQuantifiers(Theory::Effort e);
   //---------------------- private initialization
   /**
    * Finish initialize, which passes pointers to the objects that quantifiers

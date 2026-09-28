@@ -40,6 +40,10 @@ class QuantifiersStatistics
   IntStat d_simple_triggers;
   IntStat d_multi_triggers;
   IntStat d_red_alpha_equiv;
+  /** Asserted quantified formulas kept by the rlv-quant filter */
+  IntStat d_rlvQuantKept;
+  /** Asserted quantified formulas skipped by the rlv-quant filter */
+  IntStat d_rlvQuantFiltered;
 };
 
 }  // namespace quantifiers

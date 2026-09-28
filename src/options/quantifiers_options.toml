@@ -526,6 +526,24 @@ name   = "Quantifiers"
   help = "Run instantiation at last call effort, after theory combination and and theories report sat."
 
 [[option]]
+  name       = "rlvQuantMode"
+  category   = "regular"
+  long       = "rlv-quant=MODE"
+  type       = "RlvQuantMode"
+  default    = "OFF"
+  help       = "which asserted quantified formulas are instantiated, based on the relevant selection computed by the relevance manager"
+  help_mode  = "Relevance filtering modes for asserted quantified formulas."
+[[option.mode.OFF]]
+  name = "off"
+  help = "Instantiate every asserted quantified formula."
+[[option.mode.FULL]]
+  name = "full"
+  help = "At full effort, do not instantiate an asserted quantified formula that is not in the current relevant selection; consider all of them at last call."
+[[option.mode.STRICT]]
+  name = "strict"
+  help = "Never instantiate an asserted quantified formula that is not in the current relevant selection, including at last call. This is model-unsound, so \"unknown\" is answered in place of \"sat\" when a quantified formula was filtered."
+
+[[option]]
   name       = "instWhenPhase"
   category   = "expert"
   long       = "inst-when-phase=N"

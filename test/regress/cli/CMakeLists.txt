@@ -1885,6 +1885,8 @@ set(regress_0_tests
   regress0/quantifiers/quant-model-simplification.smt2
   regress0/quantifiers/quant-qid-decl.smt2
   regress0/quantifiers/rew-to-scala.smt2
+  regress0/quantifiers/rlv-quant-nested.smt2
+  regress0/quantifiers/rlv-quant-unsat.smt2
   regress0/quantifiers/selector-trigger.smt2
   regress0/quantifiers/simp-len.smt2
   regress0/quantifiers/simp-typ-test.smt2

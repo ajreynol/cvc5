@@ -226,6 +226,13 @@ bool QuantifiersEngine::shouldRecheck(CVC5_UNUSED Theory::Effort e,
   {
     return false;
   }
+  // If we withheld quantified formulas from instantiation because they are
+  // outside the relevant selection, widening the term database cannot change
+  // that, so rechecking would not make progress.
+  if (setModelUnsoundId == IncompleteId::QUANTIFIERS_RLV_FILTER)
+  {
+    return false;
+  }
   // do not recheck with sygus
   if (options().quantifiers.sygus)
   {
@@ -261,6 +268,58 @@ bool QuantifiersEngine::shouldRecheck(CVC5_UNUSED Theory::Effort e,
     return recheck;
   }
   return false;
+}
+
+bool QuantifiersEngine::markRelevantQuantifiers(Theory::Effort e)
+{
+  options::RlvQuantMode mode = options().quantifiers.rlvQuantMode;
+  if (mode == options::RlvQuantMode::OFF)
+  {
+    return false;
+  }
+  // The relevant selection is only computed, and only valid to ask for, within
+  // a full effort check of the theory engine, which covers the full and last
+  // call quantifier rounds and nothing else.
+  if (e != Theory::EFFORT_FULL && e != Theory::EFFORT_LAST_CALL)
+  {
+    return false;
+  }
+  // In mode FULL, last call considers every asserted quantified formula, so a
+  // quantified formula filtered at full effort is delayed rather than dropped
+  // and the answer stays model-sound.
+  if (e == Theory::EFFORT_LAST_CALL && mode != options::RlvQuantMode::STRICT)
+  {
+    return false;
+  }
+  QuantifiersStatistics& stats = d_qstate.getStats();
+  Valuation& val = d_qstate.getValuation();
+  bool filtered = false;
+  size_t nquant = d_model->getNumAssertedQuantifiers();
+  for (size_t i = 0; i < nquant; i++)
+  {
+    Node q = d_model->getAssertedQuantifier(i);
+    if (!d_model->isQuantifierActive(q))
+    {
+      // some other module already deactivated it for this round
+      continue;
+    }
+    // Ask whether q belongs to a subset of the asserted literals that
+    // propositionally entails the input. A quantified formula the SAT solver
+    // assigned true but does not need on this branch is not in it.
+    if (val.isRelevant(q))
+    {
+      ++(stats.d_rlvQuantKept);
+      continue;
+    }
+    Trace("quant-engine-debug")
+        << "Filter irrelevant quantified formula " << q << std::endl;
+    d_model->setQuantifierActive(q, false);
+    ++(stats.d_rlvQuantFiltered);
+    filtered = true;
+  }
+  // Only STRICT reaches here at last call, and only there does filtering mean
+  // we may miss instantiations that a model must satisfy.
+  return filtered && e == Theory::EFFORT_LAST_CALL;
 }
 
 void QuantifiersEngine::checkInternal(Theory::Effort e,
@@ -425,6 +484,15 @@ void QuantifiersEngine::checkInternal(Theory::Effort e,
     // reset the model
     Trace("quant-engine-debug") << "Reset model..." << std::endl;
     d_model->reset_round();
+
+    // deactivate the asserted quantified formulas that relevancy says this
+    // branch does not need (option rlv-quant)
+    if (markRelevantQuantifiers(e))
+    {
+      // we filtered at last call, so we may not claim the model is a model of
+      // the quantified formulas we skipped
+      setModelUnsoundId = IncompleteId::QUANTIFIERS_RLV_FILTER;
+    }
 
     // reset the modules
     Trace("quant-engine-debug") << "Resetting all modules..." << std::endl;

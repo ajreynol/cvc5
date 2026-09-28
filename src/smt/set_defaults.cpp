@@ -1511,6 +1511,12 @@ void SetDefaults::setDefaultsQuantifiers(const LogicInfo& logic,
   {
     SET_AND_NOTIFY(quantifiers, enumInst, true, "full-saturate-quant");
   }
+  if (opts.quantifiers.rlvQuantMode != options::RlvQuantMode::OFF)
+  {
+    // the relevant selection this mode filters on is computed by the
+    // relevance manager, which is only constructed if this option is set
+    SET_AND_NOTIFY(theory, relevanceFilter, true, "rlv-quant");
+  }
   if (opts.arrays.arraysExp)
   {
     // Allows to answer sat more often by default.
