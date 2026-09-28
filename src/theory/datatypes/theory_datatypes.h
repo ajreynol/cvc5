@@ -31,6 +31,7 @@
 #include "theory/theory_state.h"
 #include "theory/uf/equality_engine.h"
 #include "util/hash.h"
+#include "util/statistics_stats.h"
 
 namespace cvc5::internal {
 namespace theory {
@@ -325,6 +326,23 @@ class TheoryDatatypes : public Theory
   DatatypesProofRuleChecker d_checker;
   /** The care pair argument callback, used for theory combination */
   CarePairArgumentCallback d_cpacb;
+  /** Statistics for --dt-split-order */
+  struct Statistics
+  {
+    Statistics(StatisticsRegistry& sr);
+    /**
+     * Number of splitting lemmas whose tester order --dt-split-order actually
+     * changed, that is, where the base constructor was not already in the
+     * position the mode asks for.
+     */
+    IntStat d_splitReordered;
+    /**
+     * Number of splitting lemmas left in declaration order because no base
+     * constructor could be determined for the datatype.
+     */
+    IntStat d_splitNoBaseCons;
+  };
+  Statistics d_statistics;
 }; /* class TheoryDatatypes */
 
 }  // namespace datatypes

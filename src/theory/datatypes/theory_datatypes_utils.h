@@ -91,6 +91,25 @@ Node mkTester(Node n, int i, const DType& dt);
  * are the constructors of n's type (dt).
  */
 Node mkSplit(Node n, const DType& dt);
+/** get base constructor index
+ *
+ * Returns the index of the base constructor of datatype dt of type tn, that
+ * is, the constructor cvc5 uses to build a ground term of tn, which by
+ * construction does not require recursing through tn itself. This is the
+ * constructor z3's mk_split biases its decision towards. Returns
+ * dt.getNumConstructors() if no such constructor could be determined, e.g. if
+ * the datatype is not well founded.
+ */
+size_t getBaseConstructorIndex(TypeNode tn, const DType& dt);
+/** make tester split with the given constructor moved
+ *
+ * As mkSplit, except that the tester for constructor cindex is moved to the
+ * front of the disjunction if first is true, and to the back otherwise. The
+ * remaining testers keep their declaration order. Note the result is logically
+ * equivalent to mkSplit but is a different node, so it cannot be justified by
+ * the DT_SPLIT proof rule, whose conclusion is mkSplit.
+ */
+Node mkSplitMoveCons(Node n, const DType& dt, size_t cindex, bool first);
 /** returns true iff n is a constructor term with no datatype children */
 bool isNullaryApplyConstructor(Node n);
 /** returns true iff c is a constructor with no datatype children */

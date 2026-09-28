@@ -133,6 +133,48 @@ Node mkSplit(Node n, const DType& dt)
   return splits.size() == 1 ? splits[0] : nm->mkNode(Kind::OR, splits);
 }
 
+size_t getBaseConstructorIndex(TypeNode tn, const DType& dt)
+{
+  size_t ncons = dt.getNumConstructors();
+  // The ground term of tn is built by a constructor that terminates the
+  // recursion, which is what we are after here. It is computed once and
+  // cached by DType.
+  Node gt = dt.mkGroundTerm(tn);
+  if (!gt.isNull() && gt.getKind() == Kind::APPLY_CONSTRUCTOR)
+  {
+    size_t index = indexOf(gt.getOperator());
+    if (index < ncons)
+    {
+      return index;
+    }
+  }
+  return ncons;
+}
+
+Node mkSplitMoveCons(Node n, const DType& dt, size_t cindex, bool first)
+{
+  size_t ncons = dt.getNumConstructors();
+  Assert(cindex < ncons);
+  std::vector<Node> splits;
+  if (first)
+  {
+    splits.push_back(mkTester(n, cindex, dt));
+  }
+  for (size_t i = 0; i < ncons; i++)
+  {
+    if (i != cindex)
+    {
+      splits.push_back(mkTester(n, i, dt));
+    }
+  }
+  if (!first)
+  {
+    splits.push_back(mkTester(n, cindex, dt));
+  }
+  NodeManager* nm = n.getNodeManager();
+  return splits.size() == 1 ? splits[0] : nm->mkNode(Kind::OR, splits);
+}
+
 bool isNullaryApplyConstructor(Node n)
 {
   Assert(n.getKind() == Kind::APPLY_CONSTRUCTOR);

@@ -1150,6 +1150,14 @@ bool SetDefaults::incompatibleWithProofs(Options& opts,
     reason << "deep restarts";
     return true;
   }
+  if (opts.datatypes.dtSplitOrder != options::DtSplitOrderMode::NONE)
+  {
+    // the conclusion of the DT_SPLIT proof rule is the splitting lemma in
+    // constructor declaration order, so a reordered one cannot be proven by
+    // it.
+    reason << "datatype split ordering";
+    return true;
+  }
   // specific to SAT solver
   if (opts.prop.satSolver == options::SatSolverMode::MINISAT)
   {

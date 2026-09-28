@@ -62,7 +62,8 @@ TheoryDatatypes::TheoryDatatypes(Env& env,
       d_im(env, *this, d_state),
       d_notify(d_im, *this),
       d_checker(nodeManager()),
-      d_cpacb(*this)
+      d_cpacb(*this),
+      d_statistics(statisticsRegistry())
 {
   d_true = nodeManager()->mkConst(true);
   d_zero = nodeManager()->mkConstInt(Rational(0));
@@ -1989,10 +1990,42 @@ void TheoryDatatypes::checkSplit()
       {
         Trace("dt-split") << "*************Split for constructors on " << n
                           << endl;
-        Node lemma = utils::mkSplit(n, dt);
+        // The order of the testers within the split determines which
+        // constructor the justification heuristic tries to satisfy first,
+        // since it processes the children of a disjunction in order.
+        Node lemma;
+        options::DtSplitOrderMode som = options().datatypes.dtSplitOrder;
+        if (som != options::DtSplitOrderMode::NONE)
+        {
+          size_t bindex = utils::getBaseConstructorIndex(tn, dt);
+          if (bindex < dt.getNumConstructors())
+          {
+            bool first = (som == options::DtSplitOrderMode::BASE_FIRST);
+            lemma = utils::mkSplitMoveCons(n, dt, bindex, first);
+            if (bindex != (first ? 0 : dt.getNumConstructors() - 1))
+            {
+              ++d_statistics.d_splitReordered;
+            }
+          }
+          else
+          {
+            ++d_statistics.d_splitNoBaseCons;
+          }
+        }
+        if (lemma.isNull())
+        {
+          lemma = utils::mkSplit(n, dt);
+        }
         Trace("dt-split-debug") << "Split lemma is : " << lemma << std::endl;
         sentLemma = d_im.sendDtLemma(
             lemma, InferenceId::DATATYPES_SPLIT, LemmaProperty::SEND_ATOMS);
+        if (sentLemma && options().datatypes.dtSplitPreferPhase
+            && lemma.getKind() == Kind::OR)
+        {
+          // ask for the first tester of the split to be tried positively,
+          // which is the base constructor when dtSplitOrder is base-first.
+          d_im.preferPhase(lemma[0], true);
+        }
       }
       if (sentLemma && !options().datatypes.dtBlastSplits)
       {
@@ -2000,6 +2033,12 @@ void TheoryDatatypes::checkSplit()
       }
     }
   }
+}
+
+TheoryDatatypes::Statistics::Statistics(StatisticsRegistry& sr)
+    : d_splitReordered(sr.registerInt("TheoryDatatypes::splitReordered")),
+      d_splitNoBaseCons(sr.registerInt("TheoryDatatypes::splitNoBaseCons"))
+{
 }
 
 TNode TheoryDatatypes::getRepresentative(TNode a)

@@ -18,6 +18,32 @@ name   = "Datatypes Theory"
   help       = "do binary splits for datatype constructor types"
 
 [[option]]
+  name       = "dtSplitOrder"
+  category   = "expert"
+  long       = "dt-split-order=MODE"
+  type       = "DtSplitOrderMode"
+  default    = "NONE"
+  help       = "order of the constructor testers within a datatype splitting lemma"
+  help_mode  = "Order of the constructor testers within a datatype splitting lemma. The base constructor is the one cvc5 uses to build a ground term of the datatype, that is, one that does not require recursing through the datatype itself. Since the conclusion of the DT_SPLIT proof rule is fixed, any mode other than none is incompatible with proofs and unsat cores."
+[[option.mode.NONE]]
+  name = "none"
+  help = "testers appear in the order the constructors are declared"
+[[option.mode.BASE_FIRST]]
+  name = "base-first"
+  help = "the tester for the base constructor appears first, the rest in declaration order"
+[[option.mode.BASE_LAST]]
+  name = "base-last"
+  help = "the tester for the base constructor appears last, the rest in declaration order; a control for base-first"
+
+[[option]]
+  name       = "dtSplitPreferPhase"
+  category   = "expert"
+  long       = "dt-split-prefer-phase"
+  type       = "bool"
+  default    = "false"
+  help       = "ask the SAT solver to decide the first tester of a datatype splitting lemma positively first"
+
+[[option]]
   name       = "cdtBisimilar"
   category   = "expert"
   long       = "cdt-bisimilar"
