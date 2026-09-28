@@ -16,6 +16,7 @@
 #define CVC5__DECISION__ASSERTION_LIST_H
 
 #include <iosfwd>
+#include <memory>
 #include <unordered_set>
 #include <vector>
 
@@ -57,18 +58,25 @@ class AssertionList
    * corresponding to skolem definitions.
    * @param ic The context on which the current index of the assertions
    * depends on. This is typically the SAT context.
-   * @param dyn Whether to use a dynamic ordering of the assertions. If this
+   * @param useDyn Whether to use a dynamic ordering of the assertions. If this
    * flag is true, then getNextAssertion will return the most important next
    * assertion to consider based on heuristics in response to notifyStatus.
+   * @param useRoundRobin Whether to interleave assertions with non-null groups.
    */
   AssertionList(context::Context* ac,
                 context::Context* ic,
-                bool useDyn = false);
-  virtual ~AssertionList() {}
-  /** Presolve, which clears the dynamic assertion order */
+                bool useDyn = false,
+                bool useRoundRobin = false);
+  virtual ~AssertionList();
+  /** Presolve: reset traversal cursors and clear the dynamic assertion order. */
   void presolve();
-  /** Add the assertion n */
-  void addAssertion(TNode n);
+  /**
+   * Add n, optionally in group. With round robin enabled, grouped assertions
+   * occupy the same slots in the list, but are selected cyclically by group,
+   * FIFO within each group. Ungrouped assertions keep their original positions.
+   * The dynamic activity order, if enabled, is still consulted first.
+   */
+  void addAssertion(TNode n, TNode group = TNode::null());
   /**
    * Get the next assertion and increment d_assertionIndex.
    */
@@ -88,6 +96,9 @@ class AssertionList
   context::CDList<Node> d_assertions;
   /** The index of the next assertion to satify */
   context::CDO<size_t> d_assertionIndex;
+  /** Optional round-robin state, with the same assertion and index contexts. */
+  class RoundRobin;
+  std::unique_ptr<RoundRobin> d_roundRobin;
   // --------------------------- dynamic assertions
   /** are we using dynamic assertions? */
   bool d_usingDynamic;

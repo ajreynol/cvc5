@@ -25,11 +25,10 @@ JustificationStrategy::JustificationStrategy(Env& env,
                                              prop::CDCLTSatSolver* ss,
                                              prop::CnfStream* cs)
     : DecisionEngine(env, ss, cs),
-      d_assertions(
-          userContext(),
-          context(),
-          options()
-              .decision.jhRlvOrder),  // assertions are user-context dependent
+      d_assertions(userContext(),
+                   context(),
+                   options().decision.jhRlvOrder,
+                   options().decision.jhInstRoundRobin),
       d_localAssertions(
           context(), context()),  // local assertions are SAT-context dependent
       d_jcache(context(), ss, cs),
@@ -447,10 +446,45 @@ JustifyNode JustificationStrategy::getNextJustifyNode(
 
 bool JustificationStrategy::isDone() { return !refreshCurrentAssertion(); }
 
-void JustificationStrategy::addAssertions(const std::vector<TNode>& lems)
+TNode JustificationStrategy::getInstQuantifier(TNode lem)
+{
+  if (lem.getKind() == Kind::IMPLIES && lem[0].getKind() == Kind::FORALL)
+  {
+    return lem[0];
+  }
+  TNode q;
+  if (lem.getKind() == Kind::OR)
+  {
+    for (TNode c : lem)
+    {
+      if (c.getKind() == Kind::NOT && c[0].getKind() == Kind::FORALL)
+      {
+        if (!q.isNull())
+        {
+          return TNode::null();
+        }
+        q = c[0];
+      }
+    }
+  }
+  return q;
+}
+
+void JustificationStrategy::addAssertions(const std::vector<TNode>& lems,
+                                          bool isLemma)
 {
   Trace("jh-assert") << "addAssertions " << lems << std::endl;
-  insertToAssertionList(lems, false);
+  if (isLemma && options().decision.jhInstRoundRobin)
+  {
+    for (TNode lem : lems)
+    {
+      insertToAssertionList({lem}, false, getInstQuantifier(lem));
+    }
+  }
+  else
+  {
+    insertToAssertionList(lems, false);
+  }
 }
 
 void JustificationStrategy::addLocalAssertions(const std::vector<TNode>& lems)
@@ -460,7 +494,7 @@ void JustificationStrategy::addLocalAssertions(const std::vector<TNode>& lems)
 }
 
 void JustificationStrategy::insertToAssertionList(
-    const std::vector<TNode>& lems, bool local)
+    const std::vector<TNode>& lems, bool local, TNode group)
 {
   std::vector<TNode> toProcess(lems.begin(), lems.end());
   AssertionList& al = local ? d_localAssertions : d_assertions;
@@ -495,7 +529,7 @@ void JustificationStrategy::insertToAssertionList(
     }
     else if (!expr::isTheoryAtom(currAtom))
     {
-      al.addAssertion(curr);
+      al.addAssertion(curr, group);
       // take stats
       sizeStat.maxAssign(al.size());
     }

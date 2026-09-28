@@ -865,6 +865,7 @@ set(regress_0_tests
   regress0/decision/error20.smtv1.smt2
   regress0/decision/error3.delta01.smtv1.smt2
   regress0/decision/issue8296-sk-def-before-assert.smt2
+  regress0/decision/jh-inst-round-robin.smt2
   regress0/decision/pp-regfile.delta01.smtv1.smt2
   regress0/decision/pp-regfile.delta02.smtv1.smt2
   regress0/decision/quant-ex1.smt2

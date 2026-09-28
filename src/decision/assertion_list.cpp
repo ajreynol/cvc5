@@ -12,8 +12,101 @@
 
 #include "decision/assertion_list.h"
 
+#include "context/cdhashmap.h"
+
 namespace cvc5::internal {
 namespace decision {
+
+/**
+ * A permutation of the grouped slots in an AssertionList. Queues and slot
+ * membership have assertion lifetime; all consumption state backtracks with
+ * the assertion index. Thus a grouped slot always has a pending group member,
+ * including after new lemmas arrive during search or after backtracking.
+ */
+class AssertionList::RoundRobin
+{
+ public:
+  struct Group
+  {
+    Group(context::Context* ac, context::Context* ic) : d_queue(ac), d_index(ic)
+    {
+    }
+    context::CDList<Node> d_queue;
+    context::CDO<size_t> d_index;
+  };
+
+  RoundRobin(context::Context* ac, context::Context* ic)
+      : d_ac(ac),
+        d_ic(ic),
+        d_slots(ac),
+        d_order(ac),
+        d_groups(ac),
+        d_nextGroup(ic)
+  {
+  }
+
+  void presolve()
+  {
+    d_nextGroup = 0;
+    for (const auto& entry : d_groups)
+    {
+      entry.second->d_index = 0;
+    }
+  }
+
+  void add(TNode n, TNode group)
+  {
+    d_slots.push_back(!group.isNull());
+    if (group.isNull())
+    {
+      return;
+    }
+    auto it = d_groups.find(group);
+    if (it == d_groups.end())
+    {
+      d_groups.insert(group, std::make_shared<Group>(d_ac, d_ic));
+      d_order.push_back(group);
+      it = d_groups.find(group);
+    }
+    it->second->d_queue.push_back(n);
+    Trace("jh-inst-round-robin")
+        << "enqueue " << group << " : " << n << std::endl;
+  }
+
+  TNode next(size_t slot, TNode original)
+  {
+    if (!d_slots[slot])
+    {
+      return original;
+    }
+    const size_t size = d_order.size();
+    for (size_t i = 0; i < size; ++i)
+    {
+      size_t index = d_nextGroup.get() % size;
+      d_nextGroup = index + 1;
+      TNode q = d_order[index];
+      Group& group = *d_groups.find(q)->second;
+      size_t qi = group.d_index.get();
+      if (qi < group.d_queue.size())
+      {
+        group.d_index = qi + 1;
+        TNode n = group.d_queue[qi];
+        Trace("jh-inst-round-robin")
+            << "select " << q << " : " << n << std::endl;
+        return n;
+      }
+    }
+    Unreachable() << "Grouped assertion slot without a pending assertion";
+  }
+
+ private:
+  context::Context* d_ac;
+  context::Context* d_ic;
+  context::CDList<bool> d_slots;
+  context::CDList<Node> d_order;
+  context::CDHashMap<Node, std::shared_ptr<Group>> d_groups;
+  context::CDO<size_t> d_nextGroup;
+};
 
 const char* toString(DecisionStatus s)
 {
@@ -35,13 +128,18 @@ std::ostream& operator<<(std::ostream& out, DecisionStatus s)
 
 AssertionList::AssertionList(context::Context* ac,
                              context::Context* ic,
-                             bool useDyn)
+                             bool useDyn,
+                             bool useRoundRobin)
     : d_assertions(ac),
       d_assertionIndex(ic),
+      d_roundRobin(useRoundRobin ? std::make_unique<RoundRobin>(ac, ic)
+                                 : nullptr),
       d_usingDynamic(useDyn),
       d_dindex(ic)
 {
 }
+
+AssertionList::~AssertionList() = default;
 
 void AssertionList::presolve()
 {
@@ -49,9 +147,20 @@ void AssertionList::presolve()
   d_assertionIndex = 0;
   d_dlist.clear();
   d_dindex = 0;
+  if (d_roundRobin != nullptr)
+  {
+    d_roundRobin->presolve();
+  }
 }
 
-void AssertionList::addAssertion(TNode n) { d_assertions.push_back(n); }
+void AssertionList::addAssertion(TNode n, TNode group)
+{
+  d_assertions.push_back(n);
+  if (d_roundRobin != nullptr)
+  {
+    d_roundRobin->add(n, group);
+  }
+}
 
 TNode AssertionList::getNextAssertion()
 {
@@ -79,7 +188,9 @@ TNode AssertionList::getNextAssertion()
   d_assertionIndex = d_assertionIndex + 1;
   Trace("jh-status") << "Assertion " << d_assertions[fromIndex].getId()
                      << std::endl;
-  return d_assertions[fromIndex];
+  return d_roundRobin == nullptr
+             ? TNode(d_assertions[fromIndex])
+             : d_roundRobin->next(fromIndex, d_assertions[fromIndex]);
 }
 size_t AssertionList::size() const { return d_assertions.size(); }
 

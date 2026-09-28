@@ -193,7 +193,7 @@ void TheoryProxy::notifyAssertion(Node a,
   {
     // Otherwise, if it is not a skolem definition, or we are treating
     // skolem definitions as ordinary assertions, we add it now.
-    d_decisionEngine->addAssertions({a});
+    d_decisionEngine->addAssertions({a}, isLemma);
   }
   // Otherwise, it is a skolem definition that will be activated dynamically
   // in TheoryProxy::theoryCheck.

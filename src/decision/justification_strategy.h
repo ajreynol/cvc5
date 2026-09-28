@@ -144,8 +144,11 @@ class JustificationStrategy : public DecisionEngine
    * Adds assertions lems to satisfy that persist in the user context.
    * All input assertions and lemmas not marked "local" are added via this call.
    * @param lems The lemmas to add.
+   * @param isLemma Whether these are theory lemmas rather than input
+   * assertions.
    */
-  void addAssertions(const std::vector<TNode>& lems) override;
+  void addAssertions(const std::vector<TNode>& lems,
+                     bool isLemma = false) override;
   /**
    * Adds assertions lems to satisfy that persist in the SAT context.
    * This is triggered when a literal lit is sent to TheoryEngine that contains
@@ -160,7 +163,16 @@ class JustificationStrategy : public DecisionEngine
    * Helper method to insert assertions in `lems` to `d_assertions` or
    * `d_localAssertions` when `local` is true.
    */
-  void insertToAssertionList(const std::vector<TNode>& lems, bool local);
+  void insertToAssertionList(const std::vector<TNode>& lems,
+                             bool local,
+                             TNode group = TNode::null());
+  /**
+   * Get the single quantifier guarding a lemma (q => body, or its disjunctive
+   * form), or null if there is none or it is ambiguous. This is only an
+   * ordering hint: other lemmas retain FIFO order, even if they came from
+   * instantiation.
+   */
+  static TNode getInstQuantifier(TNode lem);
   /**
    * Refresh current assertion. This ensures that d_stack has a current
    * assertion to satisfy. If it does not already have one, we take the next

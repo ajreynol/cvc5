@@ -47,8 +47,11 @@ class DecisionEngine : protected EnvObj
    * Adds assertions lems to satisfy that persist in the user context.
    * All input assertions and relevant lemmas are added via this call.
    * @param lems The lemmas to add.
+   * @param isLemma Whether these are theory lemmas rather than input
+   * assertions.
    */
-  virtual void addAssertions(const std::vector<TNode>& lems) = 0;
+  virtual void addAssertions(const std::vector<TNode>& lems,
+                             bool isLemma = false) = 0;
   /**
    * Adds assertions lems to satisfy that persist in the SAT context.
    * By default, only skolem definitions from input and lemmas are added via
@@ -75,7 +78,8 @@ class DecisionEngineEmpty : public DecisionEngine
  public:
   DecisionEngineEmpty(Env& env);
   bool isDone() override;
-  void addAssertions(const std::vector<TNode>& lems) override;
+  void addAssertions(const std::vector<TNode>& lems,
+                     bool isLemma = false) override;
 
  protected:
   prop::SatLiteral getNextInternal(bool& stopSearch) override;

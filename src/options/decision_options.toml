@@ -44,6 +44,14 @@ name   = "Decision Heuristics"
   help       = "maintain activity-based ordering for decision justification heuristic"
 
 [[option]]
+  name       = "jhInstRoundRobin"
+  category   = "expert"
+  long       = "jh-inst-round-robin"
+  type       = "bool"
+  default    = "false"
+  help       = "interleave quantifier-guarded lemmas by quantifier in the justification heuristic"
+
+[[option]]
   name       = "jhSkolemRlvMode"
   category   = "expert"
   long       = "jh-skolem-rlv=MODE"
