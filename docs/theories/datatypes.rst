@@ -51,6 +51,30 @@ Semantics
 The decision procedure for inductive datatypes is described in
 :cite:`BarrettST07`.
 
+Eliminating Single-Constructor Datatypes
+---------------------------------------
+
+The experimental option ``--dt-elim`` inlines datatypes with a single
+constructor during preprocessing. For example, if ``Pair`` has fields of type
+``Int`` and ``Bool``, a constant of type ``Pair`` becomes two constants. A
+function ``Pair -> Pair`` becomes two functions, each taking an ``Int`` and a
+``Bool``, with respective result types ``Int`` and ``Bool``.
+
+Inlining also applies to quantified variables and fields of other datatypes.
+Nested products are flattened recursively, and datatypes with multiple
+constructors are rebuilt when their fields change. Parametric datatypes are
+handled at each concrete instantiation. A datatype with a single nullary
+constructor contributes no components, so its arguments and results disappear.
+
+Inlining through arrays, sets, bags, sequences, or other unsupported type
+constructors raises a logic exception. These containers may still appear as
+fields when their own types do not need to change. Codatatypes requiring
+translation, nested recursive datatypes, and unsupported operations on
+translated datatypes (such as ``dt.size``) also raise logic exceptions.
+The option supports incremental solving but is incompatible with model
+production and SyGuS. Quantifier annotations, including instantiation patterns,
+are omitted from the translated assertions.
+
 Example Declarations
 --------------------
 

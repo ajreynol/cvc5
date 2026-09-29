@@ -2,6 +2,14 @@ id     = "DATATYPES"
 name   = "Datatypes Theory"
 
 [[option]]
+  name       = "dtElim"
+  category   = "expert"
+  long       = "dt-elim"
+  type       = "bool"
+  default    = "false"
+  help       = "inline single-constructor datatypes in preprocessing (no model generation; unsupported type contexts raise logic exceptions)"
+
+[[option]]
   name       = "dtPoliteOptimize"
   category   = "expert"
   long       = "dt-polite-optimize"

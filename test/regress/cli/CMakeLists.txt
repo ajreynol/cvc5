@@ -749,6 +749,14 @@ set(regress_0_tests
   regress0/cvc3.userdoc.06.cvc.smt2
   regress0/cvc5-printing.cpp-sample.smt2
   regress0/datatypes/4482-unc-simp-one.smt2
+  regress0/datatypes/dt-elim-array.smt2
+  regress0/datatypes/dt-elim-nested.smt2
+  regress0/datatypes/dt-elim-quantifiers.smt2
+  regress0/datatypes/dt-elim-recursive.smt2
+  regress0/datatypes/dt-elim-sequence.smt2
+  regress0/datatypes/dt-elim-set.smt2
+  regress0/datatypes/dt-elim-uf.smt2
+  regress0/datatypes/dt-elim-unit.smt2
   regress0/datatypes/boolean-equality.cvc.smt2
   regress0/datatypes/boolean-terms-datatype.cvc.smt2
   regress0/datatypes/boolean-terms-parametric-datatype-1.cvc.smt2

@@ -18,6 +18,7 @@
 #include "options/arith_options.h"
 #include "options/base_options.h"
 #include "options/bv_options.h"
+#include "options/datatypes_options.h"
 #include "options/ff_options.h"
 #include "options/quantifiers_options.h"
 #include "options/sep_options.h"
@@ -157,6 +158,13 @@ bool ProcessAssertions::apply(AssertionPipeline& ap)
   // We do not call theory-specific expand definitions here, since we want
   // to give the opportunity to rewrite/preprocess terms before expansion.
   applyPass("apply-substs", ap);
+  if (options().datatypes.dtElim)
+  {
+    applyPass("dt-elim", ap);
+    // In incremental mode, earlier checks may have learned substitutions for
+    // the component symbols that dt-elim has just reintroduced.
+    applyPass("apply-substs", ap);
+  }
   Trace("smt-proc")
       << "ProcessAssertions::processAssertions() : post-definition-expansion"
       << endl;

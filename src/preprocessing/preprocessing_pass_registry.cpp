@@ -30,6 +30,7 @@
 #include "preprocessing/passes/bv_to_bool.h"
 #include "preprocessing/passes/bv_to_int.h"
 #include "preprocessing/passes/distinct_elim.h"
+#include "preprocessing/passes/dt_elim.h"
 #include "preprocessing/passes/extended_rewriter_pass.h"
 #include "preprocessing/passes/ff_bitsum.h"
 #include "preprocessing/passes/ff_disjunctive_bit.h"
@@ -123,6 +124,7 @@ PreprocessingPass* callCtor(PreprocessingPassContext* ppCtx)
 PreprocessingPassRegistry::PreprocessingPassRegistry()
 {
   registerPassInfo("apply-substs", callCtor<ApplySubsts>);
+  registerPassInfo("dt-elim", callCtor<DtElim>);
   registerPassInfo("bv-gauss", callCtor<BVGauss>);
   registerPassInfo("static-learning", callCtor<StaticLearning>);
   registerPassInfo("ite-simp", callCtor<ITESimp>);

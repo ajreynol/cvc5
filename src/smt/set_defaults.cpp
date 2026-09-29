@@ -1077,6 +1077,11 @@ bool SetDefaults::usesSygus(const Options& opts) const
 bool SetDefaults::usesInputConversion(const Options& opts,
                                       std::ostream& reason) const
 {
+  if (opts.datatypes.dtElim)
+  {
+    reason << "dt-elim";
+    return true;
+  }
   if (opts.smt.solveBVAsInt != options::SolveBVAsIntMode::OFF)
   {
     reason << "solveBVAsInt";
@@ -1182,6 +1187,11 @@ bool SetDefaults::incompatibleWithProofs(Options& opts,
 bool SetDefaults::incompatibleWithModels(const Options& opts,
                                          std::ostream& reason) const
 {
+  if (opts.datatypes.dtElim)
+  {
+    reason << "dt-elim";
+    return true;
+  }
   if (opts.smt.unconstrainedSimpWasSetByUser && opts.smt.unconstrainedSimp)
   {
     reason << "unconstrained-simp";
