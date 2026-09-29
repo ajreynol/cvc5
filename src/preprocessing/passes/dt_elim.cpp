@@ -310,14 +310,9 @@ const DtElim::Terms& DtElim::convert(Node n)
       {
         visit.emplace_back(cur.getOperator(), false);
       }
-      // Quantifier annotations can refer to the old representation even when
-      // the body does not change. Omit these optional instantiation hints.
-      size_t end = cur.getNumChildren();
-      if (cur.getKind() == Kind::FORALL || cur.getKind() == Kind::EXISTS)
-      {
-        end = 2;
-      }
-      for (size_t i = 0; i < end; ++i)
+      // Annotations use the same translation as the body, including symbols
+      // that occur only in a pattern and the components of bound variables.
+      for (size_t i = 0; i < cur.getNumChildren(); ++i)
       {
         visit.emplace_back(cur[i], false);
       }
@@ -337,6 +332,27 @@ DtElim::Terms DtElim::convertNode(Node n)
   if (k == Kind::BOUND_VAR_LIST)
   {
     return children(n, 0, n.getNumChildren());
+  }
+  if (k == Kind::INST_PATTERN || k == Kind::INST_PATTERN_LIST)
+  {
+    // Keep all components of a pattern term in the same multi-pattern. In
+    // particular, splitting f(x) must not turn the terms of an existing
+    // multi-pattern into independent alternatives. Separate INST_PATTERN
+    // children of a pattern list remain separate alternatives.
+    Terms cs = children(n, 0, n.getNumChildren());
+    // Terms of a nullary product disappear. Neither an empty pattern nor an
+    // empty pattern list is a valid node.
+    return cs.empty() ? Terms{} : Terms{nm->mkNode(k, cs)};
+  }
+  if (k == Kind::INST_NO_PATTERN)
+  {
+    // A no-pattern excludes one term, so exclude each component separately.
+    Terms result;
+    for (Node c : d_terms.at(n[0]))
+    {
+      result.push_back(nm->mkNode(k, c));
+    }
+    return result;
   }
   TypeNode tn = n.getType();
   const Types& ts = convertType(tn);
@@ -365,15 +381,16 @@ DtElim::Terms DtElim::convertNode(Node n)
       return body;
     }
     Node bvl = nm->mkNode(Kind::BOUND_VAR_LIST, vars);
-    if (n.getNumChildren() == 2 && bvl == n[0] && body.size() == 1
-        && body[0] == n[1])
-    {
-      return {n};
-    }
     Terms result;
     for (Node b : body)
     {
-      result.push_back(nm->mkNode(k, bvl, b));
+      Terms cs{bvl, b};
+      if (n.getNumChildren() == 3)
+      {
+        const Terms& annotations = d_terms.at(n[2]);
+        cs.insert(cs.end(), annotations.begin(), annotations.end());
+      }
+      result.push_back(nm->mkNode(k, cs));
     }
     return result;
   }

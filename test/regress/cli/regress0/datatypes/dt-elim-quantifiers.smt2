@@ -1,4 +1,5 @@
 ; COMMAND-LINE: --dt-elim
+; COMMAND-LINE: --dt-elim --no-cbqi --user-pat=strict
 ; EXPECT: unsat
 (set-logic ALL)
 (declare-datatype Pair ((pair (first Int) (second Bool))))

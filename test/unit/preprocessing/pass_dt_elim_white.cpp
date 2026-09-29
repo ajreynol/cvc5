@@ -17,6 +17,7 @@
 #include "smt/logic_exception.h"
 #include "test_smt.h"
 #include "util/rational.h"
+#include "util/string.h"
 
 namespace cvc5::internal {
 namespace test {
@@ -202,12 +203,97 @@ TEST_F(TestPPWhiteDtElim, annotations)
                       nm->mkNode(Kind::BOUND_VAR_LIST, x),
                       nm->mkNode(Kind::APPLY_UF, p, x),
                       nm->mkNode(Kind::INST_PATTERN_LIST, pattern));
-  // The body and bound variable do not change, but retaining the annotation
-  // would leave an occurrence of Pair in the translated assertion.
+  // Symbols that occur only in patterns must also be translated, even when
+  // the body and bound variables do not change.
   Node result = d_pass->convert(q)[0];
-  EXPECT_EQ(result.getNumChildren(), 2);
+  ASSERT_EQ(result.getNumChildren(), 3);
   EXPECT_EQ(result[0], q[0]);
   EXPECT_EQ(result[1], q[1]);
+  Node translated = result[2][0][0];
+  EXPECT_EQ(translated.getOperator(), d_pass->convert(f)[0]);
+  ASSERT_EQ(translated.getNumChildren(), 3);
+  EXPECT_EQ(translated[0], x);
+  EXPECT_EQ(translated[1], d_pass->convert(a)[0]);
+  EXPECT_EQ(translated[2], d_pass->convert(a)[1]);
+  EXPECT_EQ(result.getType(true), d_bool);
+}
+
+TEST_F(TestPPWhiteDtElim, patternGroupsAndAttributes)
+{
+  NodeManager* nm = d_nodeManager.get();
+  Node x = NodeManager::mkBoundVar(d_pair);
+  Node f = nm->mkVar("f", nm->mkFunctionType({d_pair}, d_pair));
+  Node g = nm->mkVar("g", nm->mkFunctionType({d_pair}, d_bool));
+  Node fx = nm->mkNode(Kind::APPLY_UF, f, x);
+  Node gx = nm->mkNode(Kind::APPLY_UF, g, x);
+  Node qid = nm->mkNode(Kind::INST_ATTRIBUTE,
+                        nm->mkConst(String("qid")),
+                        nm->mkVar("product_quantifier", d_bool));
+  Node patterns = nm->mkNode(Kind::INST_PATTERN_LIST,
+                             {nm->mkNode(Kind::INST_PATTERN, fx, gx),
+                              nm->mkNode(Kind::INST_PATTERN, fx),
+                              nm->mkNode(Kind::INST_NO_PATTERN, fx),
+                              qid});
+  for (Kind k : {Kind::FORALL, Kind::EXISTS})
+  {
+    Node q = nm->mkNode(
+        k, nm->mkNode(Kind::BOUND_VAR_LIST, x), fx.eqNode(x), patterns);
+    Node result = d_pass->convert(q)[0];
+    ASSERT_EQ(result.getNumChildren(), 3);
+    ASSERT_EQ(result[0].getNumChildren(), 2);
+    EXPECT_EQ(result[0][0], d_pass->convert(x)[0]);
+    EXPECT_EQ(result[0][1], d_pass->convert(x)[1]);
+    const std::vector<Node>& fs = d_pass->convert(fx);
+    Node gs = d_pass->convert(gx)[0];
+    ASSERT_EQ(result[2].getNumChildren(), 5);
+    EXPECT_EQ(result[2][0], nm->mkNode(Kind::INST_PATTERN, fs[0], fs[1], gs));
+    EXPECT_EQ(result[2][1], nm->mkNode(Kind::INST_PATTERN, fs[0], fs[1]));
+    EXPECT_EQ(result[2][2], nm->mkNode(Kind::INST_NO_PATTERN, fs[0]));
+    EXPECT_EQ(result[2][3], nm->mkNode(Kind::INST_NO_PATTERN, fs[1]));
+    EXPECT_EQ(result[2][4], qid);
+    EXPECT_EQ(result.getType(true), d_bool);
+    EXPECT_FALSE(expr::hasFreeVar(result));
+    EXPECT_EQ(d_pass->convert(result)[0], result);
+  }
+}
+
+TEST_F(TestPPWhiteDtElim, unchangedAnnotations)
+{
+  NodeManager* nm = d_nodeManager.get();
+  Node x = NodeManager::mkBoundVar(d_int);
+  Node f = nm->mkVar("f", nm->mkFunctionType({d_int}, d_bool));
+  Node fx = nm->mkNode(Kind::APPLY_UF, f, x);
+  Node patterns =
+      nm->mkNode(Kind::INST_PATTERN_LIST, nm->mkNode(Kind::INST_PATTERN, fx));
+  Node q = nm->mkNode(
+      Kind::FORALL, nm->mkNode(Kind::BOUND_VAR_LIST, x), fx, patterns);
+  EXPECT_EQ(d_pass->convert(q)[0], q);
+}
+
+TEST_F(TestPPWhiteDtElim, emptyPatterns)
+{
+  NodeManager* nm = d_nodeManager.get();
+  TypeNode unit = product("Unit", {});
+  Node x = NodeManager::mkBoundVar(d_int);
+  Node f = nm->mkVar("f", nm->mkFunctionType({d_int}, unit));
+  Node p = nm->mkVar("p", nm->mkFunctionType({d_int}, d_bool));
+  Node fx = nm->mkNode(Kind::APPLY_UF, f, x);
+  Node px = nm->mkNode(Kind::APPLY_UF, p, x);
+  Node patterns = nm->mkNode(Kind::INST_PATTERN_LIST,
+                             nm->mkNode(Kind::INST_PATTERN, fx),
+                             nm->mkNode(Kind::INST_NO_PATTERN, fx));
+  Node bvl = nm->mkNode(Kind::BOUND_VAR_LIST, x);
+  Node q = nm->mkNode(Kind::FORALL, bvl, px, patterns);
+  Node result = d_pass->convert(q)[0];
+  EXPECT_EQ(result, nm->mkNode(Kind::FORALL, bvl, px));
+  EXPECT_EQ(result.getType(true), d_bool);
+  // Removing an empty term must retain the other terms in its multi-pattern.
+  patterns = nm->mkNode(Kind::INST_PATTERN_LIST,
+                        nm->mkNode(Kind::INST_PATTERN, fx, px));
+  result = d_pass->convert(nm->mkNode(Kind::FORALL, bvl, px, patterns))[0];
+  ASSERT_EQ(result.getNumChildren(), 3);
+  EXPECT_EQ(result[2][0], nm->mkNode(Kind::INST_PATTERN, px));
+  EXPECT_EQ(result.getType(true), d_bool);
 }
 
 TEST_F(TestPPWhiteDtElim, unsupportedContainers)

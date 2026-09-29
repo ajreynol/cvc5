@@ -36,6 +36,11 @@ namespace passes {
  * are resolved together, after inlining product fields. Parametric datatypes
  * are translated at each concrete instantiation.
  *
+ * Quantifier annotations are translated with the body. Components of a pattern
+ * term remain together in a multi-pattern; separate pattern alternatives are
+ * preserved. No-pattern annotations exclude each component separately. Empty
+ * patterns disappear when all their terms have nullary product types.
+ *
  * Arrays, sets, sequences, and other type constructors cannot contain a type
  * that changes. Codatatypes requiring translation, nested recursive datatypes,
  * and unsupported operators on translated types raise LogicException.
