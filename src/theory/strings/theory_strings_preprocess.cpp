@@ -356,15 +356,6 @@ Node StringsPreprocess::reduce(Node t,
     Node lem = nm->mkNode(Kind::GEQ, leni, one);
     conc.push_back(lem);
 
-    // An upper bound on the length of itost, which is the maximum of n and
-    // one. This is the case since a non-negative integer n has at most
-    // max(n,1) digits. Note this bound is not implied by the constraints
-    // below, since inferring it would require reasoning about the exponential
-    // growth of the accumulator U.
-    Node ngeq1 = nm->mkNode(Kind::GEQ, n, one);
-    lem = nm->mkNode(Kind::LEQ, leni, nm->mkNode(Kind::ITE, ngeq1, n, one));
-    conc.push_back(lem);
-
     lem = n.eqNode(nm->mkNode(Kind::APPLY_UF, u, leni));
     conc.push_back(lem);
 
@@ -413,7 +404,6 @@ Node StringsPreprocess::reduce(Node t,
     // IF n>=0
     // THEN:
     //   len( itost ) >= 1 ^
-    //   len( itost ) <= ite( n>=1, n, 1 ) ^
     //   n = U( len( itost ) ) ^ U( 0 ) = 0 ^
     //   forall x. (x>=0 ^ x < str.len(itost)) =>
     //     U( x+1 ) = (str.code( str.at(itost, x) )-48) + 10*U( x ) ^

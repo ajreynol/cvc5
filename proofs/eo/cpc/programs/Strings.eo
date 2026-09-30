@@ -570,7 +570,6 @@
         (eo::define ((R (@strings_itos_result n)))
         (ite (>= n 0)
           (and (>= (str.len k) 1)
-               (<= (str.len k) (ite (>= n 1) n 1))
                (= n (R (str.len k)))
                (= 0 (R 0))
                (forall ((@var.str_index Int))
