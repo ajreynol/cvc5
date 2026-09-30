@@ -767,6 +767,8 @@
           (= t (eo::neg 1)))))
     (($mk_str_eager_reduction (str.to_int s))
         (>= (str.to_int s) -1))
+    (($mk_str_eager_reduction (str.from_int n))
+        (<= (str.len (str.from_int n)) (ite (>= n 1) n 1)))
     (($mk_str_eager_reduction (str.contains x y))
         (eo::define ((k1 (@purify ($str_first_ctn_pre x y))))
         (eo::define ((k2 (@purify ($str_first_ctn_post x y))))

@@ -249,7 +249,7 @@ bool EoPrinter::isHandled(const Options& opts, const ProofNode* pfn)
       }
       return k == Kind::STRING_CONTAINS || k == Kind::STRING_INDEXOF
              || k == Kind::STRING_INDEXOF_RE || k == Kind::STRING_IN_REGEXP
-             || k == Kind::STRING_STOI;
+             || k == Kind::STRING_STOI || k == Kind::STRING_ITOS;
     }
     break;
     //

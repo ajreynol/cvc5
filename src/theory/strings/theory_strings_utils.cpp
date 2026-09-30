@@ -551,6 +551,19 @@ Node eagerReduce(Node t, SkolemCache* sc, uint32_t alphaCard)
     // (>= (str.to_int x) (- 1))
     lemma = nm->mkNode(Kind::GEQ, t, nm->mkConstInt(Rational(-1)));
   }
+  else if (tk == Kind::STRING_ITOS)
+  {
+    // (<= (str.len (str.from_int n)) (ite (>= n 1) n 1))
+    // This holds since a non-negative integer n has at most max(n,1) digits.
+    // Note this bound is not implied by the reduction of str.from_int, since
+    // inferring it would require reasoning inductively about its accumulator.
+    Node one = nm->mkConstInt(Rational(1));
+    Node n = t[0];
+    lemma = nm->mkNode(
+        Kind::LEQ,
+        nm->mkNode(Kind::STRING_LENGTH, t),
+        nm->mkNode(Kind::ITE, nm->mkNode(Kind::GEQ, n, one), n, one));
+  }
   else if (tk == Kind::STRING_CONTAINS)
   {
     // ite( (str.contains s r), (= s (str.++ sk1 r sk2)), (not (= s r)))

@@ -242,6 +242,14 @@ void TermRegistry::registerTermInternal(Node n)
     //  for variables, split on empty vs positive length
     //  for concat/const/replace, introduce proxy var and state length relation
     regTermLem = getRegisterTermLemma(n);
+    if (n.getKind() == Kind::STRING_ITOS)
+    {
+      // also send the eager reduction lemma, which bounds its length
+      TrustNode eagerRedLem = eagerReduceTrusted(n);
+      Trace("strings-lemma")
+          << "Strings::Lemma REG-TERM : " << eagerRedLem << std::endl;
+      d_im->trustedLemma(eagerRedLem, InferenceId::STRINGS_REGISTER_TERM);
+    }
   }
   else
   {
