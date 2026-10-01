@@ -67,6 +67,22 @@ void CircuitPropagator::initialize()
 void CircuitPropagator::assertTrue(TNode assertion)
 {
   Trace("circuit-prop") << "TRUE: " << assertion << std::endl;
+  if (isProofEnabled())
+  {
+    // Ensure we have a proof of true, which may be required if true appears
+    // as a child of a formula, e.g. (= true (and A B)). Otherwise, true
+    // would be a free assumption of our proofs, which may lead to cyclic
+    // proofs when connecting to the proofs of preprocessed assertions.
+    Node btrue = nodeManager()->mkConst(true);
+    if (!d_epg->hasProofFor(btrue))
+    {
+      ProofNodeManager* pnm = d_env.getProofNodeManager();
+      std::shared_ptr<ProofNode> pfRefl =
+          pnm->mkNode(ProofRule::REFL, {}, {btrue});
+      d_epg->setProofFor(btrue,
+                         pnm->mkNode(ProofRule::TRUE_ELIM, {pfRefl}, {}));
+    }
+  }
   if (assertion.getKind() == Kind::CONST_BOOLEAN && !assertion.getConst<bool>())
   {
     makeConflict(assertion);
@@ -105,16 +121,6 @@ void CircuitPropagator::assignAndEnqueue(TNode n,
   Trace("circuit-prop") << "CircuitPropagator::assign(" << n << ", "
                         << (value ? "true" : "false") << ")" << std::endl;
 
-  if (n.getKind() == Kind::CONST_BOOLEAN)
-  {
-    // Assigning a constant to the opposite value is dumb
-    if (value != n.getConst<bool>())
-    {
-      makeConflict(n);
-      return;
-    }
-  }
-
   if (isProofEnabled())
   {
     if (proof == nullptr)
@@ -133,6 +139,18 @@ void CircuitPropagator::assignAndEnqueue(TNode n,
                   << *proof << std::endl;
       }
       addProof(expected, std::move(proof));
+    }
+  }
+
+  if (n.getKind() == Kind::CONST_BOOLEAN)
+  {
+    // Assigning a constant to the opposite value is dumb. Note that the proof
+    // of this assignment was recorded above, e.g. if n is false, then proof
+    // is a proof of false.
+    if (value != n.getConst<bool>())
+    {
+      makeConflict(n);
+      return;
     }
   }
 
@@ -162,21 +180,22 @@ void CircuitPropagator::makeConflict(Node n)
   ProofGenerator* g = nullptr;
   if (isProofEnabled())
   {
-    if (d_epg->hasProofFor(bfalse))
+    // if we already have a proof of false, e.g. if n is false, we use it
+    if (!d_epg->hasProofFor(bfalse))
     {
-      return;
-    }
-    ProofCircuitPropagator pcp(d_env.getNodeManager(),
-                               d_env.getProofNodeManager());
-    if (n == bfalse)
-    {
-      d_epg->setProofFor(bfalse, pcp.assume(bfalse));
-    }
-    else
-    {
-      // Use nPf to ensure deterministic node ID assignments
-      Pf nPf = pcp.assume(n);
-      d_epg->setProofFor(bfalse, pcp.conflict(nPf, pcp.assume(n.negate())));
+      ProofCircuitPropagator pcp(d_env.getNodeManager(),
+                                 d_env.getProofNodeManager());
+      if (n == bfalse)
+      {
+        d_epg->setProofFor(bfalse, pcp.assume(bfalse));
+      }
+      else
+      {
+        // Use nPf to ensure deterministic node ID assignments
+        Pf nPf = pcp.assume(n);
+        d_epg->setProofFor(bfalse,
+                           pcp.conflict(nPf, pcp.assume(n.negate())));
+      }
     }
     g = d_proofInternal.get();
     Trace("circuit-prop") << "Added conflict " << *d_epg->getProofFor(bfalse)

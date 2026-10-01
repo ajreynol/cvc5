@@ -34,6 +34,12 @@ class TheoryBoolRewriter : public TheoryRewriter
   TheoryBoolRewriter(NodeManager* nm);
   RewriteResponse preRewrite(TNode node) override;
   RewriteResponse postRewrite(TNode node) override;
+  /**
+   * Rewrite equality extended. This applies rewrites to Boolean equalities
+   * whose result is not an equality or constant, e.g. (= x true) ---> x,
+   * (= x false) ---> (not x), and MACRO_BOOL_EQ_CONST_EQ.
+   */
+  Node rewriteEqualityExt(Node node) override;
 
   /**
    * Rewrite n based on the proof rewrite rule id.

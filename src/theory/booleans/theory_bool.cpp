@@ -33,7 +33,11 @@ namespace booleans {
 TheoryBool::TheoryBool(Env& env, OutputChannel& out, Valuation valuation)
     : Theory(THEORY_BOOL, env, out, valuation),
       d_rewriter(nodeManager()),
-      d_checker(nodeManager())
+      d_checker(nodeManager()),
+      d_psrewPg(env.isTheoryProofProducing()
+                    ? new TrustProofGenerator(
+                          env, TrustId::MACRO_THEORY_REWRITE_RCONS_SIMPLE, {})
+                    : nullptr)
 {
 }
 
@@ -84,6 +88,19 @@ bool TheoryBool::ppAssert(TrustNode tin, TrustSubstitutionMap& outSubstitutions)
 
   // the positive Boolean equality case is handled in the default way
   return Theory::ppAssert(tin, outSubstitutions);
+}
+
+TrustNode TheoryBool::ppStaticRewrite(TNode atom)
+{
+  if (atom.getKind() == Kind::EQUAL)
+  {
+    Node ret = d_rewriter.rewriteEqualityExt(atom);
+    if (ret != atom)
+    {
+      return TrustNode::mkTrustRewrite(atom, ret, d_psrewPg.get());
+    }
+  }
+  return TrustNode::null();
 }
 
 TheoryRewriter* TheoryBool::getTheoryRewriter() { return &d_rewriter; }

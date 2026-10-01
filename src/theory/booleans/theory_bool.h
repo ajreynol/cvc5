@@ -16,6 +16,7 @@
 #define CVC5__THEORY__BOOLEANS__THEORY_BOOL_H
 
 #include "context/context.h"
+#include "proof/trust_proof_generator.h"
 #include "theory/booleans/proof_checker.h"
 #include "theory/booleans/theory_bool_rewriter.h"
 #include "theory/theory.h"
@@ -35,6 +36,11 @@ class TheoryBool : public Theory
   ProofRuleChecker* getProofChecker() override;
 
   bool ppAssert(TrustNode tin, TrustSubstitutionMap& outSubstitutions) override;
+  /**
+   * Static rewrite, which applies extended equality rewrites to Boolean
+   * equalities, e.g. (= x true) ---> x.
+   */
+  TrustNode ppStaticRewrite(TNode atom) override;
 
   std::string identify() const override;
 
@@ -43,6 +49,8 @@ class TheoryBool : public Theory
   TheoryBoolRewriter d_rewriter;
   /** Proof rule checker */
   BoolProofRuleChecker d_checker;
+  /** For proof of ppStaticRewrite */
+  std::shared_ptr<TrustProofGenerator> d_psrewPg;
 }; /* class TheoryBool */
 
 }  // namespace booleans

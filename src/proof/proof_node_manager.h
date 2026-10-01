@@ -15,6 +15,7 @@
 #ifndef CVC5__PROOF__PROOF_NODE_MANAGER_H
 #define CVC5__PROOF__PROOF_NODE_MANAGER_H
 
+#include <unordered_set>
 #include <vector>
 
 #include "cvc5/cvc5_proof_rule.h"
@@ -211,6 +212,18 @@ class ProofNodeManager
   ProofChecker* d_checker;
   /** the true node */
   Node d_true;
+  /** the false node */
+  Node d_false;
+  /**
+   * Returns a proof of a whose free assumptions are in ac, if a is a literal
+   * that corresponds to an equality with a Boolean constant in ac, or vice
+   * versa, e.g. (not p) from assumption (= false p). Returns nullptr if no
+   * such proof exists. The assumption used is added to acu.
+   */
+  std::shared_ptr<ProofNode> proveBoolConstEqLit(
+      const Node& a,
+      const std::unordered_set<Node>& ac,
+      std::unordered_set<Node>& acu);
   /** Check internal
    *
    * This returns the result of proof checking a ProofNode with the provided

@@ -135,7 +135,19 @@ Node FunctionConst::getLambdaForArrayRepresentationRec(
         {
           AssertEqual(a[1].getType(), bvl[bvlIndex].getType());
           AssertEqual(val.getType(), body.getType());
-          Node cond = bvl[bvlIndex].eqNode(a[1]);
+          Node cond;
+          if (a[1].getKind() == Kind::CONST_BOOLEAN)
+          {
+            // use the literal instead of an equality with a Boolean
+            // constant, e.g. x instead of (= x true), since the latter is
+            // not rewritten to the former.
+            cond = a[1].getConst<bool>() ? Node(bvl[bvlIndex])
+                                         : bvl[bvlIndex].notNode();
+          }
+          else
+          {
+            cond = bvl[bvlIndex].eqNode(a[1]);
+          }
           ret = NodeManager::mkNode(Kind::ITE, cond, val, body);
         }
       }

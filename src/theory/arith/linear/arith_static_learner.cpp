@@ -503,6 +503,8 @@ std::shared_ptr<ProofNode> ArithStaticLearner::getProofFor(Node fact)
           // ------------------- MACRO_ARITH_SCALE_SUM_UB
           // c + (n1-n2) >= n1
           // ------------------ MACRO_SR_PRED_TRANSFORM
+          // c >= n2
+          // ------------------ TRUE_INTRO
           // (c >= n2) = true
           // where n1, n2 are numeral constants such that n1 >= n2. The same
           // goes for the other relations.
@@ -532,7 +534,8 @@ std::shared_ptr<ProofNode> ArithStaticLearner::getProofFor(Node fact)
             cdp.addStep(
                 meq, ProofRule::MACRO_ARITH_SCALE_SUM_UB, premises, coeff);
             Trace("arith-static-pf") << "- got " << meq << std::endl;
-            cdp.addStep(eq, ProofRule::MACRO_SR_PRED_TRANSFORM, {meq}, {eq});
+            cdp.addStep(b, ProofRule::MACRO_SR_PRED_TRANSFORM, {meq}, {b});
+            cdp.addStep(eq, ProofRule::TRUE_INTRO, {b}, {});
             continue;
           }
         }

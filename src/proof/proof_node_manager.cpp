@@ -32,6 +32,7 @@ ProofNodeManager::ProofNodeManager(NodeManager* nm,
     : d_opts(opts), d_rewriter(rr), d_checker(pc)
 {
   d_true = nm->mkConst(true);
+  d_false = nm->mkConst(false);
   // we always allocate a proof checker, regardless of the proof checking mode
   Assert(d_checker != nullptr);
 }
@@ -101,6 +102,72 @@ std::shared_ptr<ProofNode> ProofNodeManager::mkTrans(
     return children[0];
   }
   return mkNode(ProofRule::TRANS, children, {}, expected);
+}
+
+std::shared_ptr<ProofNode> ProofNodeManager::proveBoolConstEqLit(
+    const Node& a,
+    const std::unordered_set<Node>& ac,
+    std::unordered_set<Node>& acu)
+{
+  // proves (= t c) from the assumptions, possibly via symmetry
+  auto proveEq = [&](const Node& t,
+                     const Node& c) -> std::shared_ptr<ProofNode> {
+    Node eq = t.eqNode(c);
+    if (ac.find(eq) != ac.end())
+    {
+      acu.insert(eq);
+      return mkAssume(eq);
+    }
+    Node eqs = c.eqNode(t);
+    if (ac.find(eqs) != ac.end())
+    {
+      acu.insert(eqs);
+      return mkNode(ProofRule::SYMM, {mkAssume(eqs)}, {}, eq);
+    }
+    return nullptr;
+  };
+  std::shared_ptr<ProofNode> pf;
+  // a is p, justified by (= p true)
+  pf = proveEq(a, d_true);
+  if (pf != nullptr)
+  {
+    return mkNode(ProofRule::TRUE_ELIM, {pf}, {}, a);
+  }
+  // a is (not p), justified by (= p false)
+  if (a.getKind() == Kind::NOT)
+  {
+    pf = proveEq(a[0], d_false);
+    if (pf != nullptr)
+    {
+      return mkNode(ProofRule::FALSE_ELIM, {pf}, {}, a);
+    }
+  }
+  // a is (= p c) or (= c p) for Boolean constant c, justified by p or (not p)
+  if (a.getKind() == Kind::EQUAL && a[0].getType().isBoolean())
+  {
+    for (size_t i = 0; i < 2; i++)
+    {
+      if (!a[i].isConst() || a[1 - i].isConst())
+      {
+        continue;
+      }
+      Node p = a[1 - i];
+      bool pol = a[i].getConst<bool>();
+      Node lit = pol ? p : p.notNode();
+      if (ac.find(lit) == ac.end())
+      {
+        continue;
+      }
+      acu.insert(lit);
+      Node eq = p.eqNode(a[i]);
+      pf = mkNode(pol ? ProofRule::TRUE_INTRO : ProofRule::FALSE_INTRO,
+                  {mkAssume(lit)},
+                  {},
+                  eq);
+      return i == 1 ? pf : mkNode(ProofRule::SYMM, {pf}, {}, a);
+    }
+  }
+  return nullptr;
 }
 
 std::shared_ptr<ProofNode> ProofNodeManager::mkScope(
@@ -218,6 +285,22 @@ std::shared_ptr<ProofNode> ProofNodeManager::mkScope(
       }
       Trace("pnm-scope") << "...finished" << std::endl;
       acu.insert(aMatch);
+      continue;
+    }
+    // Otherwise, it may be an equality with a Boolean constant whose
+    // correspondence to a literal is not captured by rewriting, e.g. the
+    // free assumption (not p) where the assumption is (= false p). This is
+    // common for proofs from the proof equality engine.
+    std::shared_ptr<ProofNode> pfBc = proveBoolConstEqLit(a, ac, acu);
+    if (pfBc != nullptr)
+    {
+      Trace("pnm-scope") << "- justify via Boolean constant equality\n";
+      for (std::shared_ptr<ProofNode> pfs : fa.second)
+      {
+        Assert(pfs->getResult() == a);
+        updateNode(pfs.get(), pfBc.get());
+      }
+      Trace("pnm-scope") << "...finished" << std::endl;
       continue;
     }
     if (!ensureClosed)
