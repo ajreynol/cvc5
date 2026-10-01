@@ -193,8 +193,7 @@ void CircuitPropagator::makeConflict(Node n)
       {
         // Use nPf to ensure deterministic node ID assignments
         Pf nPf = pcp.assume(n);
-        d_epg->setProofFor(bfalse,
-                           pcp.conflict(nPf, pcp.assume(n.negate())));
+        d_epg->setProofFor(bfalse, pcp.conflict(nPf, pcp.assume(n.negate())));
       }
     }
     g = d_proofInternal.get();
