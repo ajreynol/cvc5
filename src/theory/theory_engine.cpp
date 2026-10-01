@@ -1020,6 +1020,12 @@ void TheoryEngine::notifyPreprocessedAssertions(
   }
 }
 
+bool TheoryEngine::isRewrittenOrTrue(TNode lit) const
+{
+  Node litr = rewrite(lit);
+  return litr == lit || (litr.isConst() && litr.getConst<bool>());
+}
+
 bool TheoryEngine::markPropagation(TNode assertion,
                                    TNode originalAssertion,
                                    theory::TheoryId toTheoryId,
@@ -1089,6 +1095,9 @@ void TheoryEngine::assertToTheory(TNode assertion,
       // Send to the apropriate theory
       theory::Theory* toTheory = theoryOf(toTheoryId);
       // We assert it, and we know it's preregistereed
+      Assert(isRewrittenOrTrue(assertion))
+          << "Asserting non-rewritten literal to theory (no sharing): "
+          << assertion << " rewrites to " << rewrite(assertion);
       toTheory->assertFact(assertion, true);
       // Mark that we have more information
       d_factsAsserted = true;
@@ -1149,6 +1158,9 @@ void TheoryEngine::assertToTheory(TNode assertion,
       bool preregistered = d_propEngine->isSatLiteral(assertion)
                            && d_env.theoryOf(assertion) == toTheoryId;
       // We assert it
+      Assert(isRewrittenOrTrue(assertion))
+          << "Asserting non-rewritten literal to theory (from SAT): "
+          << assertion << " rewrites to " << rewrite(assertion);
       theoryOf(toTheoryId)->assertFact(assertion, preregistered);
       // Mark that we have more information
       d_factsAsserted = true;
@@ -1212,15 +1224,25 @@ void TheoryEngine::assertToTheory(TNode assertion,
     }
   }
 
-  // Try and assert (note that we assert the non-normalized one)
+  // Try and assert the normalized literal. If it rewrites to true, e.g. the
+  // disequality (not (= x (+ x 1))), we assert the original one.
+  Node toAssert =
+      normalizedLiteral.isConst() ? Node(assertion) : normalizedLiteral;
+  Assert(toAssert.getKind() == Kind::EQUAL
+         || (toAssert.getKind() == Kind::NOT
+             && toAssert[0].getKind() == Kind::EQUAL))
+      << "Unexpected normal form " << toAssert << " of " << assertion;
   if (markPropagation(
-          assertion, originalAssertion, toTheoryIdProp, fromTheoryId))
+          toAssert, originalAssertion, toTheoryIdProp, fromTheoryId))
   {
     // Check if has been pre-registered with the theory
-    bool preregistered = d_propEngine->isSatLiteral(assertion)
-                         && d_env.theoryOf(assertion) == toTheoryId;
+    bool preregistered = d_propEngine->isSatLiteral(toAssert)
+                         && d_env.theoryOf(toAssert) == toTheoryId;
     // Assert away
-    theoryOf(toTheoryId)->assertFact(assertion, preregistered);
+    Assert(isRewrittenOrTrue(toAssert))
+        << "Asserting non-rewritten literal to theory (theory propagation): "
+        << toAssert << " rewrites to " << rewrite(toAssert);
+    theoryOf(toTheoryId)->assertFact(toAssert, preregistered);
     d_factsAsserted = true;
   }
 

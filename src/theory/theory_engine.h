@@ -503,6 +503,12 @@ class TheoryEngine : protected EnvObj
                       theory::TheoryId fromTheoryId);
 
   /**
+   * Returns true if lit is in rewritten form, or if it rewrites to true. All
+   * literals asserted to theories should satisfy this.
+   */
+  bool isRewrittenOrTrue(TNode lit) const;
+
+  /**
    * Marks a theory propagation from a theory to a theory where a
    * theory could be the THEORY_SAT_SOLVER for literals coming from
    * or being propagated to the SAT solver. If the receiving theory
