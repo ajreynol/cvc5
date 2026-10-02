@@ -7,8 +7,7 @@
 # directory for licensing information.
 # #############################################################################
 #
-# [[ Add one-line brief description here ]]
-#
-# [[ Add lengthier description here ]]
-# \todo document this file
+# Unit tests for proof utilities.
 ##
+
+cvc5_add_unit_test_black(proof_node_updater_black proof)

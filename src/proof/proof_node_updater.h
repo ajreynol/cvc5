@@ -102,7 +102,8 @@ class ProofNodeUpdater : protected EnvObj
    * @param env Reference to the environment
    * @param cb The callback to apply to each node
    * @param mergeSubproofs Whether to automatically merge subproofs within
-   * the same SCOPE that prove the same fact.
+   * the same SCOPE that prove the same fact, preferring proofs without TRUST
+   * or TRUST_THEORY_REWRITE steps that require reconstruction.
    * @param autoSym Whether intermediate CDProof objects passed to updater
    * callbacks automatically introduce SYMM steps.
    */
@@ -183,6 +184,7 @@ class ProofNodeUpdater : protected EnvObj
    * assumptions
    * @param cfaAllowed The free assumptions this proof is globally allowed to
    * have.
+   * @param trustFree Cache of proofs that contain no trusted steps.
    */
   void runFinalize(std::shared_ptr<ProofNode> cur,
                    const std::vector<Node>& fa,
@@ -190,16 +192,31 @@ class ProofNodeUpdater : protected EnvObj
                    std::map<Node, std::vector<std::shared_ptr<ProofNode>>>&
                        resCacheNcWaiting,
                    std::unordered_map<const ProofNode*, bool>& cfaMap,
-                   const std::unordered_set<Node>& cfaAllowed);
+                   const std::unordered_set<Node>& cfaAllowed,
+                   std::unordered_set<std::shared_ptr<ProofNode>>& trustFree);
   /**
    * Check for merging. Returns true if the result of cur is already in the
-   * result cache (resCache). If so, we update the contents of cur to the
-   * contents of the given proof node and update the contents of cfaMap.
+   * result cache (resCache) and we merge it. At pre-visit, a cached proof
+   * containing trusted steps is not used, so that cur can be processed first.
+   * At post-visit, cur replaces such a cached proof if it contains no trusted
+   * steps and only allowed assumptions. Otherwise the cached proof is used.
+   * We update cur in place and record that it has only allowed assumptions in
+   * cfaMap.
    */
   bool checkMergeProof(
       std::shared_ptr<ProofNode>& cur,
       const std::map<Node, std::shared_ptr<ProofNode>>& resCache,
-      std::unordered_map<const ProofNode*, bool>& cfaMap);
+      std::unordered_map<const ProofNode*, bool>& cfaMap,
+      const std::unordered_set<Node>& cfaAllowed,
+      std::unordered_set<std::shared_ptr<ProofNode>>& trustFree,
+      bool preVisit);
+  /**
+   * Does pn contain TRUST or TRUST_THEORY_REWRITE steps? Cache only proofs
+   * without such steps: merging may remove trusted steps from a previously
+   * finalized proof. Shared pointers keep cached nodes alive during processing.
+   */
+  bool containsTrust(std::shared_ptr<ProofNode> pn,
+                     std::unordered_set<std::shared_ptr<ProofNode>>& trustFree);
   /**
    * Pre-simplify, which is called on every proof node prior to updating
    * them based on the callback. This performs initial checks for the

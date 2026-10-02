@@ -119,6 +119,8 @@ void ProofNodeUpdater::processInternal(std::shared_ptr<ProofNode> pf,
   std::map<Node, std::vector<std::shared_ptr<ProofNode>>> resCacheNcWaiting;
   // Map from proof nodes to whether they contain assumptions
   std::unordered_map<const ProofNode*, bool> cfaMap;
+  // Cache only negative answers: later merges may eliminate trusted steps.
+  std::unordered_set<std::shared_ptr<ProofNode>> trustFree;
   std::unordered_set<Node> cfaAllowed;
   cfaAllowed.insert(fa.begin(), fa.end());
   std::shared_ptr<ProofNode> pft = pf;
@@ -149,7 +151,7 @@ void ProofNodeUpdater::processInternal(std::shared_ptr<ProofNode> pf,
       // necessary, but is done anyways in case there are any other references
       // to this proof that are not handled by this loop, that is, proof
       // nodes having this as a child that are not subproofs of pf.
-      if (checkMergeProof(cur, resCache, cfaMap))
+      if (checkMergeProof(cur, resCache, cfaMap, cfaAllowed, trustFree, true))
       {
         Trace("pf-process-merge") << "...merged on previsit" << std::endl;
         visited[cur] = true;
@@ -168,7 +170,13 @@ void ProofNodeUpdater::processInternal(std::shared_ptr<ProofNode> pf,
         // no further changes should be made to cur according to the callback
         Trace("pf-process-debug")
             << "...marked to not continue update." << std::endl;
-        runFinalize(cur, fa, resCache, resCacheNcWaiting, cfaMap, cfaAllowed);
+        runFinalize(cur,
+                    fa,
+                    resCache,
+                    resCacheNcWaiting,
+                    cfaMap,
+                    cfaAllowed,
+                    trustFree);
         continue;
       }
       traversing.push_back(cur);
@@ -211,23 +219,8 @@ void ProofNodeUpdater::processInternal(std::shared_ptr<ProofNode> pf,
         Assert(fa.size() >= args.size());
         fa.resize(fa.size() - args.size());
       }
-      // maybe found a proof in the meantime, i.e. a subproof of the current
-      // proof with the same result. Same as above, updating the contents here
-      // is typically not necessary since references to this proof will be
-      // replaced.
-      // maybe found a proof in the meantime, i.e. a subproof of the current
-      // proof with the same result. Same as above, updating the contents here
-      // is typically not necessary since references to this proof will be
-      // replaced.
-      if (!checkMergeProof(cur, resCache, cfaMap))
-      {
-        runFinalize(cur, fa, resCache, resCacheNcWaiting, cfaMap, cfaAllowed);
-      }
-      else
-      {
-        Trace("pf-process-merge") << "...merged on postvisit " << id << " / "
-                                  << cur->getRule() << std::endl;
-      }
+      runFinalize(
+          cur, fa, resCache, resCacheNcWaiting, cfaMap, cfaAllowed, trustFree);
       // call the finalize callback, independent of whether it was merged
       d_cb.finalize(cur);
     }
@@ -434,7 +427,8 @@ void ProofNodeUpdater::runFinalize(
     std::map<Node, std::shared_ptr<ProofNode>>& resCache,
     std::map<Node, std::vector<std::shared_ptr<ProofNode>>>& resCacheNcWaiting,
     std::unordered_map<const ProofNode*, bool>& cfaMap,
-    const std::unordered_set<Node>& cfaAllowed)
+    const std::unordered_set<Node>& cfaAllowed,
+    std::unordered_set<std::shared_ptr<ProofNode>>& trustFree)
 {
   // run update (marked as post-visit) to a fixed point
   bool dummyContinueUpdate;
@@ -444,6 +438,12 @@ void ProofNodeUpdater::runFinalize(
   }
   if (d_mergeSubproofs)
   {
+    // Compare only after post-visit updates, which may eliminate trusted steps.
+    if (checkMergeProof(cur, resCache, cfaMap, cfaAllowed, trustFree, false))
+    {
+      Trace("pf-process-merge") << "...merged on postvisit" << std::endl;
+      return;
+    }
     Node res = cur->getResult();
     // cache the result if we don't contain an assumption
     if (!expr::containsAssumption(cur.get(), cfaMap, cfaAllowed))
@@ -514,7 +514,10 @@ void ProofNodeUpdater::runFinalize(
 bool ProofNodeUpdater::checkMergeProof(
     std::shared_ptr<ProofNode>& cur,
     const std::map<Node, std::shared_ptr<ProofNode>>& resCache,
-    std::unordered_map<const ProofNode*, bool>& cfaMap)
+    std::unordered_map<const ProofNode*, bool>& cfaMap,
+    const std::unordered_set<Node>& cfaAllowed,
+    std::unordered_set<std::shared_ptr<ProofNode>>& trustFree,
+    bool preVisit)
 {
   if (d_mergeSubproofs)
   {
@@ -525,12 +528,63 @@ bool ProofNodeUpdater::checkMergeProof(
     {
       ProofNodeManager* pnm = d_env.getProofNodeManager();
       Assert(pnm != nullptr);
+      if (containsTrust(itc->second, trustFree))
+      {
+        if (preVisit)
+        {
+          // Give this proof a chance to avoid reconstruction after updating.
+          return false;
+        }
+        if (!expr::containsAssumption(cur.get(), cfaMap, cfaAllowed)
+            && !containsTrust(cur, trustFree))
+        {
+          // Update the representative in place, including references from
+          // parents already finalized. This cannot introduce a cycle: cur
+          // contains no trusted steps, so it cannot contain the cached proof.
+          Trace("pf-process-merge")
+              << "...prefer proof without trusted steps" << std::endl;
+          pnm->updateNode(itc->second.get(), cur.get());
+        }
+      }
       // already have a proof, merge it into this one
       pnm->updateNode(cur.get(), itc->second.get());
       // does not contain free assumptions since the range of resCache does
       // not contain free assumptions
       cfaMap[cur.get()] = false;
       return true;
+    }
+  }
+  return false;
+}
+
+bool ProofNodeUpdater::containsTrust(
+    std::shared_ptr<ProofNode> pn,
+    std::unordered_set<std::shared_ptr<ProofNode>>& trustFree)
+{
+  std::vector<std::pair<std::shared_ptr<ProofNode>, bool>> visit;
+  visit.emplace_back(pn, false);
+  while (!visit.empty())
+  {
+    auto [cur, postVisit] = visit.back();
+    visit.pop_back();
+    if (trustFree.find(cur) != trustFree.end())
+    {
+      continue;
+    }
+    ProofRule id = cur->getRule();
+    if (id == ProofRule::TRUST || id == ProofRule::TRUST_THEORY_REWRITE)
+    {
+      return true;
+    }
+    if (postVisit)
+    {
+      trustFree.insert(cur);
+      continue;
+    }
+    visit.emplace_back(cur, true);
+    for (const std::shared_ptr<ProofNode>& cp : cur->getChildren())
+    {
+      visit.emplace_back(cp, false);
     }
   }
   return false;
