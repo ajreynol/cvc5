@@ -186,10 +186,10 @@ bool BvElimSolver::getEqualityElimSet(Node svt,
       // (t udiv low(s)) * inv(s udiv low(s))
       Node low = mkLowBit(s);
       Node sodd = NodeManager::mkNode(Kind::BITVECTOR_UDIV, s, low);
-      terms.push_back(NodeManager::mkNode(
-          Kind::BITVECTOR_MULT,
-          NodeManager::mkNode(Kind::BITVECTOR_UDIV, t, low),
-          mkOddInverse(sodd)));
+      terms.push_back(
+          NodeManager::mkNode(Kind::BITVECTOR_MULT,
+                              NodeManager::mkNode(Kind::BITVECTOR_UDIV, t, low),
+                              mkOddInverse(sodd)));
     }
     break;
     case Kind::BITVECTOR_UDIV:
@@ -209,9 +209,8 @@ bool BvElimSolver::getEqualityElimSet(Node svt,
       }
       else
       {
-        terms.push_back(NodeManager::mkNode(Kind::BITVECTOR_SUB,
-                                            mkLog2(mkLowBit(t)),
-                                            mkLog2(mkLowBit(s))));
+        terms.push_back(NodeManager::mkNode(
+            Kind::BITVECTOR_SUB, mkLog2(mkLowBit(t)), mkLog2(mkLowBit(s))));
         terms.push_back(bvw);
       }
       break;
@@ -222,9 +221,8 @@ bool BvElimSolver::getEqualityElimSet(Node svt,
       }
       else
       {
-        terms.push_back(NodeManager::mkNode(Kind::BITVECTOR_SUB,
-                                            mkLog2(mkHighBit(s)),
-                                            mkLog2(mkHighBit(t))));
+        terms.push_back(NodeManager::mkNode(
+            Kind::BITVECTOR_SUB, mkLog2(mkHighBit(s)), mkLog2(mkHighBit(t))));
         terms.push_back(bvw);
       }
       break;
@@ -241,9 +239,8 @@ bool BvElimSolver::getEqualityElimSet(Node svt,
             Kind::BITVECTOR_ASHR, s, bv::utils::mkConst(nm, w, w - 1));
         Node sm = NodeManager::mkNode(Kind::BITVECTOR_XOR, s, m);
         Node tm = NodeManager::mkNode(Kind::BITVECTOR_XOR, t, m);
-        terms.push_back(NodeManager::mkNode(Kind::BITVECTOR_SUB,
-                                            mkLog2(mkHighBit(sm)),
-                                            mkLog2(mkHighBit(tm))));
+        terms.push_back(NodeManager::mkNode(
+            Kind::BITVECTOR_SUB, mkLog2(mkHighBit(sm)), mkLog2(mkHighBit(tm))));
         terms.push_back(bvw);
       }
       break;
