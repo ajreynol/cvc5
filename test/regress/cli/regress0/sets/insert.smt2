@@ -1,4 +1,3 @@
-; REQUIRES: no-safe-mode
 (set-option :produce-models true)
 (set-logic QF_UFLIAFS)
 (set-info :status sat)

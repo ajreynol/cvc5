@@ -367,7 +367,6 @@ bool EoPrinter::isHandledTheoryRewrite(const Options& opts,
     case ProofRewriteRule::ARITH_POW_ELIM:
     case ProofRewriteRule::ARRAYS_SELECT_CONST:
     case ProofRewriteRule::LAMBDA_ELIM:
-    case ProofRewriteRule::SETS_INSERT_ELIM:
       // only supported in unrestricted builds
       if (opts.base.safeMode == options::SafeMode::UNRESTRICTED)
       {

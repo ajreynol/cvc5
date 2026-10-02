@@ -1,4 +1,3 @@
-; REQUIRES: no-safe-mode
 ; COMMAND-LINE: --incremental
 ; EXPECT: sat
 ; EXPECT: sat

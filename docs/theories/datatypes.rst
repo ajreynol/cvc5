@@ -47,6 +47,8 @@ whose semantics are described below.
 
 Datatype declarations do not introduce symbols named ``is-C``. Use the indexed
 tester application ``((_ is C) t)`` to test whether ``t`` has constructor ``C``.
+The legacy tester names ``is-C`` are only available when parsing with
+``--parsing-mode=lenient``.
 
 Semantics
 ---------
