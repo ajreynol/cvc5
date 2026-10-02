@@ -95,7 +95,17 @@ void BvInstantiator::processLiteral(CegInstantiator* ci,
     CegInstantiatorBvInverterQuery m(ci);
     unsigned iid = d_inst_id_counter;
     Trace("cegqi-bv") << "Solve lit to bv inverter : " << slit << std::endl;
-    Node inst = d_inverter->solveBvLit(sv, slit, path, &m);
+    Node inst;
+    if (options().quantifiers.cegqiBvElim)
+    {
+      // choose a term from an elimination set instead of using
+      // invertibility conditions
+      inst = d_elimSolver.solveBvLit(sv, slit, path, pvs, &m);
+    }
+    else
+    {
+      inst = d_inverter->solveBvLit(sv, slit, path, &m);
+    }
     if (!inst.isNull())
     {
       inst = rewrite(inst);

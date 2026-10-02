@@ -1718,6 +1718,14 @@ name   = "Quantifiers"
   help       = "use word-level inversion approach for counterexample-guided quantifier instantiation for bit-vectors"
 
 [[option]]
+  name       = "cegqiBvElim"
+  category   = "expert"
+  long       = "cegqi-bv-elim"
+  type       = "bool"
+  default    = "false"
+  help       = "when using the word-level inversion approach for bit-vectors, solve literals by choosing terms from elimination sets instead of using invertibility conditions"
+
+[[option]]
   name       = "cegqiBvInterleaveValue"
   category   = "expert"
   long       = "cegqi-bv-interleave-value"

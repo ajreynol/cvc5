@@ -17,6 +17,7 @@
 
 #include <unordered_map>
 
+#include "theory/quantifiers/bv_elim_solver.h"
 #include "theory/quantifiers/bv_inverter.h"
 #include "theory/quantifiers/cegqi/ceg_bv_instantiator_utils.h"
 #include "theory/quantifiers/cegqi/instantiator.h"
@@ -103,6 +104,8 @@ class BvInstantiator : public Instantiator
  private:
   /** pointer to the bv inverter class */
   BvInverter* d_inverter;
+  /** The elimination set solver, used if --cegqi-bv-elim is enabled */
+  BvElimSolver d_elimSolver;
   /** Utility class */
   BvInstantiatorUtil d_util;
   //--------------------------------solved forms
