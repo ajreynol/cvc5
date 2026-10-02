@@ -93,6 +93,14 @@ name   = "Proof"
   help       = "merge subproofs in final proof post-processor"
 
 [[option]]
+  name       = "proofPpLemmaUnits"
+  category   = "expert"
+  long       = "proof-pp-lemma-units"
+  type       = "bool"
+  default    = "true"
+  help       = "in the propositional proof, shorten lemmas whose assumptions are resolved by unit clauses by substituting the units into the proof of the lemma"
+
+[[option]]
   name       = "proofGranularityMode"
   category   = "common"
   long       = "proof-granularity=MODE"
