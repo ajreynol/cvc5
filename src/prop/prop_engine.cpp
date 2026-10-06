@@ -237,6 +237,12 @@ void PropEngine::assertTrustedLemmaInternal(theory::InferenceId id,
     }
     d_localLemmas.insert(node);
   }
+  if (d_ppm != nullptr)
+  {
+    // trim the lemma based on unit facts
+    trn = d_ppm->trimLemma(trn);
+    node = trn.getNode();
+  }
   Trace("prop::lemmas") << "assertLemma(" << node << ")" << std::endl;
   if (isOutputOn(OutputTag::LEMMAS))
   {
@@ -362,6 +368,11 @@ void PropEngine::assertLemmasInternal(
     d_theoryProxy->notifyAssertion(lem.getProven(), lem.d_skolem, true, local);
   }
   Trace("prop") << "Finish " << trn << std::endl;
+}
+
+TrustNode PropEngine::trimLemma(const TrustNode& trn)
+{
+  return d_ppm != nullptr ? d_ppm->trimLemma(trn) : trn;
 }
 
 void PropEngine::notifyExplainedPropagation(TrustNode texp)

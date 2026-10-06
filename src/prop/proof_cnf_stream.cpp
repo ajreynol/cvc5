@@ -48,10 +48,11 @@ void ProofCnfStream::convertAndAssert(
     Trace("cnf") << "ProofCnfStream::convertAndAssert: pg: " << pg->identify()
                  << "\n";
     Node toJustify = negated ? node.notNode() : static_cast<Node>(node);
+    // Note that the proofs of trimmed lemmas may depend on input assertions.
     d_proof->addLazyStep(toJustify,
                          pg,
                          TrustId::NONE,
-                         true,
+                         !d_ppm->isTrimmedLemmaGenerator(pg),
                          "ProofCnfStream::convertAndAssert:cnf");
   }
   convertAndAssert(node, negated);
@@ -113,6 +114,8 @@ void ProofCnfStream::convertAndAssert(TNode node, bool negated)
       // dedicated manner above
       d_ppm->normalizeAndRegister(nnode, d_input, false);
       d_cnfStream.assertClause(nnode, lit);
+      // notify that this literal is now a unit fact
+      d_ppm->notifyUnitFact(nnode);
     }
   }
   Trace("cnf") << pop;

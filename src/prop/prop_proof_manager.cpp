@@ -15,6 +15,7 @@
 #include "expr/skolem_manager.h"
 #include "options/base_options.h"
 #include "options/main_options.h"
+#include "options/prop_options.h"
 #include "printer/printer.h"
 #include "proof/proof_ensure_closed.h"
 #include "proof/proof_node_algorithm.h"
@@ -58,6 +59,7 @@ PropPfManager::PropPfManager(Env& env,
           env, nullptr, userContext(), "ProofCnfStream::LazyCDProof", false),
       d_pfpp(new ProofPostprocess(env, &d_proof)),
       d_pfCnfStream(env, cnf, this),
+      d_trimmer(env, &d_proof),
       d_plog(nullptr),
       d_satSolver(satSolver),
       d_assertions(userContext()),
@@ -95,6 +97,7 @@ void PropPfManager::convertAndAssert(theory::InferenceId id,
                                      ProofGenerator* pg)
 {
   d_currLemmaId = id;
+  d_trimmer.notifyAsserted(negated ? node.notNode() : Node(node));
   d_pfCnfStream.convertAndAssert(node, negated, removable, input, pg);
   d_currLemmaId = theory::InferenceId::NONE;
   // if input, register the assertion in the proof manager
@@ -460,13 +463,16 @@ void PropPfManager::notifyExplainedPropagation(TrustNode trn)
       << proven << ", proofLogging=" << proofLogging << "\n";
   if (proofLogging)
   {
-    Assert(trn.getGenerator()->getProofFor(proven)->isClosed());
+    // Note that if the propagation was trimmed, its proof may depend on the
+    // input assertions.
+    Assert(isTrimmedLemmaGenerator(trn.getGenerator())
+           || trn.getGenerator()->getProofFor(proven)->isClosed());
     Trace("cnf-steps") << proven << " by explainPropagation "
                        << trn.identifyGenerator() << std::endl;
     d_proof.addLazyStep(proven,
                         trn.getGenerator(),
                         TrustId::NONE,
-                        true,
+                        !isTrimmedLemmaGenerator(trn.getGenerator()),
                         "PropPfManager::notifyExplainedPropagation");
   }
   // since the propagation is added directly to the SAT solver via theoryProxy,
@@ -517,6 +523,28 @@ void PropPfManager::notifyExplainedPropagation(TrustNode trn)
   {
     d_proof.addTrustedStep(clauseExp, TrustId::THEORY_LEMMA, {}, {});
   }
+}
+
+void PropPfManager::notifyUnitFact(const Node& lit)
+{
+  if (options().prop.lemmaTrimUnits)
+  {
+    d_trimmer.notifyUnitFact(lit);
+  }
+}
+
+bool PropPfManager::isTrimmedLemmaGenerator(ProofGenerator* pg) const
+{
+  return pg == &d_trimmer;
+}
+
+TrustNode PropPfManager::trimLemma(const TrustNode& trn)
+{
+  if (!options().prop.lemmaTrimUnits)
+  {
+    return trn;
+  }
+  return d_trimmer.trim(trn);
 }
 
 Node PropPfManager::getLastExplainedPropagation() const

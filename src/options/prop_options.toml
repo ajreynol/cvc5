@@ -108,3 +108,11 @@ name   = "SAT Layer"
 [[option.mode.LAZY]]
   name = "lazy"
   help = "Preregister literals when they are asserted by the SAT solver."
+
+[[option]]
+  name       = "lemmaTrimUnits"
+  category   = "expert"
+  long       = "lemma-trim-units"
+  type       = "bool"
+  default    = "true"
+  help       = "when producing proofs, remove antecedents of lemmas that are unit facts asserted at the top level before giving them to the SAT solver"

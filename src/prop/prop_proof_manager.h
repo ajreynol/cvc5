@@ -21,6 +21,7 @@
 #include "context/cdo.h"
 #include "proof/lazy_proof.h"
 #include "proof/proof_node_manager.h"
+#include "prop/lemma_units_trimmer.h"
 #include "prop/proof_cnf_stream.h"
 #include "prop/proof_post_processor.h"
 #include "smt/env_obj.h"
@@ -184,6 +185,22 @@ class PropPfManager : protected EnvObj
    * solver.
    */
   LazyCDProof* getCnfProof();
+  /**
+   * Notify that lit was asserted as a unit fact to the SAT solver, whose proof
+   * is available in d_proof.
+   */
+  void notifyUnitFact(const Node& lit);
+  /**
+   * Trim the given lemma, conflict or explained propagation based on the unit
+   * facts notified above, see LemmaUnitsTrimmer. Returns trn if it cannot be
+   * trimmed.
+   */
+  TrustNode trimLemma(const TrustNode& trn);
+  /**
+   * Is pg the generator for trimmed lemmas? Note that the proofs of trimmed
+   * lemmas may depend on input assertions.
+   */
+  bool isTrimmedLemmaGenerator(ProofGenerator* pg) const;
 
  private:
   /** Retrieve the proofs for clauses derived from the input */
@@ -214,6 +231,8 @@ class PropPfManager : protected EnvObj
   std::unique_ptr<prop::ProofPostprocess> d_pfpp;
   /** Proof-producing CNF converter */
   ProofCnfStream d_pfCnfStream;
+  /** Trims lemmas based on unit facts */
+  LemmaUnitsTrimmer d_trimmer;
   /** Pointer to the proof logger of the environment */
   ProofLogger* d_plog;
   /**

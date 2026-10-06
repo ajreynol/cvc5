@@ -291,6 +291,8 @@ void TheoryProxy::explainPropagation(SatLiteral l, SatClause& explanation)
   Trace("prop-explain") << "explainPropagation(" << lNode << ")" << std::endl;
 
   TrustNode tte = d_theoryEngine->getExplanation(lNode);
+  // trim the explanation based on unit facts
+  tte = d_propEngine->trimLemma(tte);
   Node theoryExplanation = tte.getNode();
   Assert(!d_env.isTheoryProofProducing() || tte.getGenerator());
   if (isOutputOn(OutputTag::LEMMAS))

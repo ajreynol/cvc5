@@ -257,6 +257,8 @@ libcvc5_add_sources(
   prop/learned_db.h
   prop/lemma_inprocess.cpp
   prop/lemma_inprocess.h
+  prop/lemma_units_trimmer.cpp
+  prop/lemma_units_trimmer.h
   prop/minisat/core/Dimacs.h
   prop/minisat/core/Solver.cc
   prop/minisat/core/Solver.h

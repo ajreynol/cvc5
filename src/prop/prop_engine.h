@@ -136,6 +136,12 @@ class PropEngine : protected EnvObj
                    theory::LemmaProperty p);
 
   /**
+   * Trim the given lemma, conflict or explained propagation based on the unit
+   * facts asserted to the SAT solver, if proofs are enabled. Returns trn if it
+   * cannot be trimmed.
+   */
+  TrustNode trimLemma(const TrustNode& trn);
+  /**
    * This is called when a theory propagation was explained with texp.
    * In other words, texp corresponds to a formula that was added to the SAT
    * solver. This method is only used for proofs. It stores the proof of the

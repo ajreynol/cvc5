@@ -70,17 +70,18 @@ class ProofPostprocessCallback : protected EnvObj,
               const std::vector<Node>& args,
               CDProof* cdp,
               bool& continueUpdate) override;
-  /**
-   * Whether a given proof is blocked for further updates.  An example of a
-   * blocked proof node is one integrated into this class via an external proof
-   * generator. */
-  bool isBlocked(std::shared_ptr<ProofNode> pfn);
 
  private:
   /**
    * Blocks a proof, so that it is not further updated by a post processor of
    * this class's proof. */
   void addBlocked(std::shared_ptr<ProofNode> pfn);
+
+  /**
+   * Whether a given proof is blocked for further updates.  An example of a
+   * blocked proof node is one integrated into this class via an external proof
+   * generator. */
+  bool isBlocked(std::shared_ptr<ProofNode> pfn);
   /** The cnf stream proof generator */
   ProofGenerator* d_pg;
   /** Blocked proofs.
@@ -112,49 +113,6 @@ class ProofPostprocess : protected EnvObj
   void process(std::shared_ptr<ProofNode> pf);
 
  private:
-  /**
-   * Shorten lemmas in the resolution steps of pf using unit premises.
-   *
-   * For each (CHAIN_/CHAIN_M_)RESOLUTION step of the propositional proof pf
-   * (i.e. not within the proofs of lemmas or preprocessed assertions), if one
-   * of its premises is a clause derived from a proof
-   *   (SCOPE P :args (A_1 ... A_n))
-   * using only clausification steps, and the step has unit premises proving
-   * each of the A_i, then we replace the assumptions A_i in P by the proofs of
-   * those units, remove the units from the resolution, and replace the
-   * premise by P itself, avoiding SCOPE and clausification steps altogether.
-   *
-   * Each modified resolution step is checked by the proof checker, and we
-   * leave the step unchanged if this check fails.
-   */
-  void shortenLemmasWithUnits(std::shared_ptr<ProofNode> pf);
-  /**
-   * Apply the above technique to resolution step pn, return true if pn
-   * was modified.
-   */
-  bool shortenLemmasWithUnitsStep(ProofNode* pn);
-  /**
-   * Get the literal eliminated from the i^th premise of a resolution step
-   * whose polarities and pivots are given by pols and pivs.
-   */
-  static Node getEliminatedLiteral(const std::vector<Node>& pols,
-                                   const std::vector<Node>& pivs,
-                                   size_t i);
-  /**
-   * Find a SCOPE that pn is derived from using only clausification steps,
-   * return nullptr if none exists.
-   */
-  std::shared_ptr<ProofNode> findLemmaScope(std::shared_ptr<ProofNode> pn);
-  /**
-   * Make a proof node, checked by the proof checker, or return nullptr if
-   * it does not check. If expected is non-null, we also require the
-   * conclusion to be expected.
-   */
-  std::shared_ptr<ProofNode> mkCheckedNode(
-      ProofRule id,
-      const std::vector<std::shared_ptr<ProofNode>>& children,
-      const std::vector<Node>& args,
-      Node expected = Node::null());
   /** The post process callback */
   ProofPostprocessCallback d_cb;
 };

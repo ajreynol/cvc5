@@ -18,6 +18,9 @@
 #define CVC5__PROOF__EO_PROOF_PRINTER_H
 
 #include <iostream>
+#include <map>
+#include <unordered_map>
+#include <vector>
 
 #include "context/cdhashmap.h"
 #include "context/cdhashset.h"
@@ -140,6 +143,26 @@ class EoPrinter : protected EnvObj
   void printProofInternal(EoPrintChannel* out,
                           const ProofNode* pn,
                           bool addToCache);
+  /**
+   * Get the maximal subproofs of the body of pn, which is an application of
+   * ProofRule::SCOPE, that do not depend on the assumptions of pn. We print
+   * these subproofs before printing the assumptions of pn, which ensures they
+   * are printed in the context outside of pn, so that they can be shared with
+   * other parts of the proof.
+   */
+  void getScopeIndependentSubproofs(const ProofNode* pn,
+                                    std::vector<const ProofNode*>& pfs);
+  /**
+   * Compute whether the subproofs of pn have free assumptions in assumps,
+   * which is a sorted vector, and store the result in dep. This takes into
+   * account the assumptions bound by nested SCOPEs, whose results are cached
+   * in scache. Returns true if pn depends on assumps.
+   */
+  bool dependsOnAssumptions(
+      const ProofNode* pn,
+      const std::vector<Node>& assumps,
+      std::map<std::pair<const ProofNode*, std::vector<Node>>, bool>& scache,
+      std::unordered_map<const ProofNode*, bool>& dep);
   /**
    * Helper for print. Prints a (dummy) step concluding the formula assumed by
    * pn, which is expected to be an application of ProofRule::ASSUME that is
