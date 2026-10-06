@@ -782,6 +782,15 @@ void QuantifiersEngine::eqNotifyMerge(TNode t1, TNode t2)
   d_treg.eqNotifyMerge(t1, t2);
 }
 
+void QuantifiersEngine::getEqNotifyListeners(
+    std::vector<eq::EqualityEngineNotify*>& ns)
+{
+  if (d_qmodules->d_eagerInst != nullptr)
+  {
+    ns.push_back(d_qmodules->d_eagerInst->getEqNotify());
+  }
+}
+
 void QuantifiersEngine::markRelevant(Node q) { d_model->markRelevant(q); }
 
 void QuantifiersEngine::getInstantiationTermVectors(

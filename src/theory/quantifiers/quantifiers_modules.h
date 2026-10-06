@@ -17,6 +17,7 @@
 
 #include "theory/quantifiers/alpha_equivalence.h"
 #include "theory/quantifiers/conjecture_generator.h"
+#include "theory/quantifiers/eager/eager_inst_engine.h"
 #include "theory/quantifiers/ematching/instantiation_engine.h"
 #include "theory/quantifiers/fmf/bounded_integers.h"
 #include "theory/quantifiers/fmf/full_model_check.h"
@@ -101,6 +102,8 @@ class QuantifiersModules
   std::unique_ptr<InstStrategyMbqi> d_mbqi;
   /** Oracle engine */
   std::unique_ptr<OracleEngine> d_oracleEngine;
+  /** Eager (z3-style) E-matching */
+  std::unique_ptr<eager::EagerInstEngine> d_eagerInst;
 };
 
 }  // namespace quantifiers

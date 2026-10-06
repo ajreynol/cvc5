@@ -832,6 +832,24 @@ libcvc5_add_sources(
   theory/quantifiers/conjecture_generator.h
   theory/quantifiers/dynamic_rewrite.cpp
   theory/quantifiers/dynamic_rewrite.h
+  theory/quantifiers/eager/approx_set.cpp
+  theory/quantifiers/eager/approx_set.h
+  theory/quantifiers/eager/eager_inst_engine.cpp
+  theory/quantifiers/eager/eager_inst_engine.h
+  theory/quantifiers/eager/egraph.cpp
+  theory/quantifiers/eager/egraph.h
+  theory/quantifiers/eager/inner_arith.cpp
+  theory/quantifiers/eager/inner_arith.h
+  theory/quantifiers/eager/inner_egraph.cpp
+  theory/quantifiers/eager/inner_egraph.h
+  theory/quantifiers/eager/inner_smt_solver.cpp
+  theory/quantifiers/eager/inner_smt_solver.h
+  theory/quantifiers/eager/inst_queue.cpp
+  theory/quantifiers/eager/inst_queue.h
+  theory/quantifiers/eager/mam.cpp
+  theory/quantifiers/eager/mam.h
+  theory/quantifiers/eager/trail.cpp
+  theory/quantifiers/eager/trail.h
   theory/quantifiers/ematching/candidate_generator.cpp
   theory/quantifiers/ematching/candidate_generator.h
   theory/quantifiers/ematching/ho_trigger.cpp

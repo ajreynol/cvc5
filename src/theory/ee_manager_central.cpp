@@ -122,6 +122,24 @@ void EqEngineManagerCentral::initializeTheories()
       d_masterEqualityEngine = &d_centralEqualityEngine;
       d_centralEENotify.d_newClassNotify.push_back(d_masterEENotify.get());
     }
+    // Modules of quantifiers may observe the master equality engine directly,
+    // e.g. eager E-matching, in which case they need the merge and disequality
+    // notifications as well, which the master notify class does not get here.
+    std::vector<eq::EqualityEngineNotify*> qeNotify;
+    qe->getEqNotifyListeners(qeNotify);
+    for (eq::EqualityEngineNotify* n : qeNotify)
+    {
+      if (masterEqToCentral)
+      {
+        d_centralEENotify.d_newClassNotify.push_back(n);
+        d_centralEENotify.d_mergeNotify.push_back(n);
+        d_centralEENotify.d_disequalNotify.push_back(n);
+      }
+      else
+      {
+        d_masterEENotify->addListener(n);
+      }
+    }
   }
 
   // allocate equality engines per theory

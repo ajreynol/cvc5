@@ -292,6 +292,70 @@ name   = "Quantifiers"
   default    = "true"
   help       = "whether to do heuristic E-matching"
 
+### Eager E-matching options, see theory/quantifiers/eager/README.md
+
+[[option]]
+  name       = "eagerInst"
+  category   = "expert"
+  long       = "eager-inst"
+  type       = "bool"
+  default    = "false"
+  help       = "use eager E-matching, following the design of z3; runs alongside the ordinary (lazy) instantiation"
+
+[[option]]
+  name       = "eagerInstOutput"
+  category   = "expert"
+  long       = "eager-inst-output=MODE"
+  type       = "EagerInstOutputMode"
+  default    = "INNER"
+  help       = "where the instances found by eager E-matching are sent"
+  help_mode  = "Output modes for eager E-matching."
+[[option.mode.INNER]]
+  name = "inner"
+  help = "Give the instances to the inner SMT solver, which manages their addition and deletion and reports conflicts and propagations."
+[[option.mode.LEMMA]]
+  name = "lemma"
+  help = "Send the instances to the lemma channel, as ordinary instantiation does. For validating the matcher only."
+
+[[option]]
+  name       = "eagerInstMatchMode"
+  category   = "expert"
+  long       = "eager-inst-match-mode=MODE"
+  type       = "EagerInstMatchMode"
+  default    = "CHECK"
+  help       = "when eager E-matching runs the matcher"
+  help_mode  = "Modes for when eager E-matching runs the matcher."
+[[option.mode.CHECK]]
+  name = "check"
+  help = "Run the matcher during check at standard effort, which is the closest cvc5 has to z3's propagation fixpoint."
+[[option.mode.NOTIFY]]
+  name = "notify"
+  help = "Run the matcher directly from the equality engine notifications, which is more eager than z3."
+
+[[option]]
+  name       = "eagerInstFilters"
+  category   = "expert"
+  long       = "eager-inst-filters"
+  type       = "bool"
+  default    = "true"
+  help       = "use the approximate label set filters of eager E-matching"
+
+[[option]]
+  name       = "eagerInstMaxEagerMultipatterns"
+  category   = "expert"
+  long       = "eager-inst-max-eager-multipatterns=N"
+  type       = "uint64_t"
+  default    = "0"
+  help       = "the number of multi-patterns per quantified formula that eager E-matching matches eagerly, the rest being matched at final check (z3: qi.max_multi_patterns)"
+
+[[option]]
+  name       = "eagerInstMaxLazyMultipatternMatching"
+  category   = "expert"
+  long       = "eager-inst-max-lazy-multipattern-matching=N"
+  type       = "uint64_t"
+  default    = "2"
+  help       = "the number of times eager E-matching rematches the patterns it did not match eagerly (z3: qi.max_lazy_multipattern_matching)"
+
 [[option]]
   name       = "termDbMode"
   category   = "regular"

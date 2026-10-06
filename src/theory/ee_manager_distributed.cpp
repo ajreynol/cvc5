@@ -53,6 +53,13 @@ void EqEngineManagerDistributed::initializeTheories()
     QuantifiersEngine* qe = d_te.getQuantifiersEngine();
     Assert(qe != nullptr);
     d_masterEENotify.reset(new quantifiers::MasterNotifyClass(qe));
+    // modules of quantifiers that observe the master equality engine directly
+    std::vector<eq::EqualityEngineNotify*> qeNotify;
+    qe->getEqNotifyListeners(qeNotify);
+    for (eq::EqualityEngineNotify* n : qeNotify)
+    {
+      d_masterEENotify->addListener(n);
+    }
     d_masterEqualityEngine = std::make_unique<eq::EqualityEngine>(
         d_env, c, *d_masterEENotify.get(), "theory::master", false);
   }

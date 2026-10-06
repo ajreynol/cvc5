@@ -22,13 +22,33 @@ MasterNotifyClass::MasterNotifyClass(QuantifiersEngine* qe) : d_quantEngine(qe)
 {
 }
 
+void MasterNotifyClass::addListener(theory::eq::EqualityEngineNotify* n)
+{
+  d_listeners.push_back(n);
+}
+
 void MasterNotifyClass::eqNotifyNewClass(TNode t)
 {
   d_quantEngine->eqNotifyNewClass(t);
+  for (theory::eq::EqualityEngineNotify* n : d_listeners)
+  {
+    n->eqNotifyNewClass(t);
+  }
 }
 void MasterNotifyClass::eqNotifyMerge(TNode t1, TNode t2)
 {
   d_quantEngine->eqNotifyMerge(t1, t2);
+  for (theory::eq::EqualityEngineNotify* n : d_listeners)
+  {
+    n->eqNotifyMerge(t1, t2);
+  }
+}
+void MasterNotifyClass::eqNotifyDisequal(TNode t1, TNode t2, TNode reason)
+{
+  for (theory::eq::EqualityEngineNotify* n : d_listeners)
+  {
+    n->eqNotifyDisequal(t1, t2, reason);
+  }
 }
 
 }  // namespace quantifiers

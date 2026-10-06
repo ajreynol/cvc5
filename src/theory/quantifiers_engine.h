@@ -17,6 +17,7 @@
 
 #include <map>
 #include <unordered_map>
+#include <vector>
 
 #include "context/cdhashmap.h"
 #include "context/cdhashset.h"
@@ -31,6 +32,10 @@ class TheoryEngine;
 namespace theory {
 
 class RepSetIterator;
+
+namespace eq {
+class EqualityEngineNotify;
+}
 
 namespace quantifiers {
 
@@ -94,6 +99,13 @@ class QuantifiersEngine : protected EnvObj
   void eqNotifyNewClass(TNode t);
   /** notification when master equality engine merges two classes*/
   void eqNotifyMerge(TNode t1, TNode t2);
+  /**
+   * Get the notification classes of the modules of this class that observe the
+   * master equality engine directly, e.g. eager E-matching. These are
+   * registered by the equality engine manager, in addition to the notification
+   * class of this object.
+   */
+  void getEqNotifyListeners(std::vector<eq::EqualityEngineNotify*>& ns);
   /** mark relevant quantified formula, this will indicate it should be checked
    * before the others */
   void markRelevant(Node q);

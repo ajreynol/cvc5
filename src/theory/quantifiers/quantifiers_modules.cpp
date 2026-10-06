@@ -68,6 +68,12 @@ void QuantifiersModules::initialize(Env& env,
     d_inst_engine.reset(new InstantiationEngine(env, qs, qim, qr, tr));
     modules.push_back(d_inst_engine.get());
   }
+  if (options.quantifiers.eagerInst)
+  {
+    // Eager E-matching runs alongside the above, it does not replace it.
+    d_eagerInst.reset(new eager::EagerInstEngine(env, qs, qim, qr, tr));
+    modules.push_back(d_eagerInst.get());
+  }
   if (options.quantifiers.cegqi)
   {
     d_i_cbqi.reset(new InstStrategyCegqi(env, qs, qim, qr, tr));
