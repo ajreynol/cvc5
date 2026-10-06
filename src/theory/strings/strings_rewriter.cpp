@@ -28,8 +28,10 @@ StringsRewriter::StringsRewriter(NodeManager* nm,
                                  ArithEntail& ae,
                                  StringsEntail& se,
                                  HistogramStat<Rewrite>* statistics,
-                                 uint32_t alphaCard)
-    : SequencesRewriter(nm, ae, se, statistics), d_alphaCard(alphaCard)
+                                 uint32_t alphaCard,
+                                 bool reLoopAbstract)
+    : SequencesRewriter(nm, ae, se, statistics, reLoopAbstract),
+      d_alphaCard(alphaCard)
 {
 }
 

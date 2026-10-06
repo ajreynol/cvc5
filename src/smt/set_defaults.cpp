@@ -516,6 +516,17 @@ void SetDefaults::finalizeLogic(LogicInfo& logic, Options& opts) const
     }
   }
 
+  // The abstraction refinement scheme for re.loop relies on checking whether
+  // memberships containing re.loop are satisfied in candidate models, which is
+  // done at last call effort. Thus, we require model based reduction.
+  if (opts.strings.stringRegExpLoopAbstract)
+  {
+    OPTION_EXCEPTION_IF_NOT(
+        strings, stringModelBasedReduction, true, "re.loop abstraction");
+    SET_AND_NOTIFY(
+        strings, stringModelBasedReduction, true, "re.loop abstraction");
+  }
+
   // Set default options associated with strings-exp, which is enabled by
   // default if the logic includes strings. Note that enabling stringExp
   // enables quantifiers in the logic, and enables the bounded integer

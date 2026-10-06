@@ -12,7 +12,10 @@
 
 #include "theory/strings/theory_strings_utils.h"
 
+#include <map>
 #include <sstream>
+#include <unordered_set>
+#include <vector>
 
 #include "expr/bound_var_manager.h"
 #include "expr/sequence.h"
@@ -471,6 +474,121 @@ unsigned getLoopMinOccurrences(TNode node)
 {
   Assert(node.getKind() == Kind::REGEXP_LOOP);
   return node.getOperator().getConst<RegExpLoop>().d_loopMinOcc;
+}
+
+bool hasReLoop(TNode r)
+{
+  std::unordered_set<TNode> visited;
+  std::vector<TNode> visit{r};
+  do
+  {
+    TNode cur = visit.back();
+    visit.pop_back();
+    if (!visited.insert(cur).second)
+    {
+      continue;
+    }
+    if (cur.getKind() == Kind::REGEXP_LOOP)
+    {
+      return true;
+    }
+    for (const Node& cn : cur)
+    {
+      // only traverse regular expression subterms
+      if (cn.getType().isRegExp())
+      {
+        visit.push_back(cn);
+      }
+    }
+  } while (!visit.empty());
+  return false;
+}
+
+/**
+ * Returns the polarity of the i^th child of regular expression r, given that
+ * r occurs at polarity pol. All regular expression operators are monotonic in
+ * all their arguments, with the exception of re.comp, and the second argument
+ * of re.diff.
+ */
+bool getReChildPolarity(TNode r, size_t i, bool pol)
+{
+  Kind k = r.getKind();
+  if (k == Kind::REGEXP_COMPLEMENT || (k == Kind::REGEXP_DIFF && i == 1))
+  {
+    return !pol;
+  }
+  return pol;
+}
+
+Node mkReLoopOverApprox(TNode r)
+{
+  if (!hasReLoop(r))
+  {
+    return Node::null();
+  }
+  NodeManager* nm = r.getNodeManager();
+  // Maps (regular expression, polarity) to its approximation, where polarity
+  // true indicates we are computing a superset of the regular expression and
+  // false indicates we are computing a subset.
+  std::map<std::pair<TNode, bool>, Node> visited;
+  std::vector<std::pair<TNode, bool>> visit{{r, true}};
+  do
+  {
+    std::pair<TNode, bool> cur = visit.back();
+    const auto it = visited.find(cur);
+    if (it == visited.end())
+    {
+      if (cur.first.getKind() == Kind::REGEXP_LOOP)
+      {
+        // ((_ re.loop l u) R) is replaced by (re.* R) if we are computing a
+        // superset, and by re.none if we are computing a subset.
+        visit.pop_back();
+        visited[cur] = cur.second ? nm->mkNode(Kind::REGEXP_STAR, cur.first[0])
+                                  : nm->mkNode(Kind::REGEXP_NONE);
+        continue;
+      }
+      visited[cur] = Node::null();
+      for (size_t i = 0, nchild = cur.first.getNumChildren(); i < nchild; i++)
+      {
+        const Node& cn = cur.first[i];
+        if (cn.getType().isRegExp())
+        {
+          visit.emplace_back(cn, getReChildPolarity(cur.first, i, cur.second));
+        }
+      }
+      continue;
+    }
+    visit.pop_back();
+    if (!it->second.isNull())
+    {
+      continue;
+    }
+    std::vector<Node> children;
+    bool childChanged = false;
+    if (cur.first.getMetaKind() == kind::metakind::PARAMETERIZED)
+    {
+      children.push_back(cur.first.getOperator());
+    }
+    for (size_t i = 0, nchild = cur.first.getNumChildren(); i < nchild; i++)
+    {
+      const Node& cn = cur.first[i];
+      if (!cn.getType().isRegExp())
+      {
+        children.push_back(cn);
+        continue;
+      }
+      Node cnv =
+          visited[{cn, getReChildPolarity(cur.first, i, cur.second)}];
+      Assert(!cnv.isNull());
+      childChanged = childChanged || cnv != cn;
+      children.push_back(cnv);
+    }
+    visited[cur] = childChanged ? nm->mkNode(cur.first.getKind(), children)
+                                : Node(cur.first);
+  } while (!visit.empty());
+  Node ret = visited[{r, true}];
+  Assert(!ret.isNull());
+  return ret;
 }
 
 Node mkForallInternal(NodeManager* nm, Node bvl, Node body)

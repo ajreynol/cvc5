@@ -53,7 +53,8 @@ TheoryStrings::TheoryStrings(Env& env, OutputChannel& out, Valuation valuation)
                  d_arithEntail,
                  d_strEntail,
                  &d_statistics.d_rewrites,
-                 d_termReg.getAlphabetCardinality()),
+                 d_termReg.getAlphabetCardinality(),
+                 options().strings.stringRegExpLoopAbstract),
       d_eagerSolver(options().strings.stringEagerSolver
                         ? new EagerSolver(env, d_state)
                         : nullptr),

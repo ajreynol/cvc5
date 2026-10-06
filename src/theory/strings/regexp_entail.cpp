@@ -17,6 +17,7 @@
 #include "theory/strings/theory_strings_utils.h"
 #include "theory/strings/word.h"
 #include "util/rational.h"
+#include "util/regexp.h"
 #include "util/string.h"
 
 using namespace std;
@@ -484,12 +485,13 @@ bool RegExpEntail::testConstStringInRegExp(String& s, TNode r)
 {
   Kind k = r.getKind();
   if (k == Kind::REGEXP_CONCAT || k == Kind::REGEXP_STAR
-      || k == Kind::REGEXP_UNION)
+      || k == Kind::REGEXP_UNION || k == Kind::REGEXP_LOOP)
   {
     // If we can evaluate it via NFA construction, do so. We only do this
-    // for compound regular expressions (re.++, re.*, re.union) which may
-    // have non-trivial NFA constructions, otherwise the check below will
-    // be simpler.
+    // for compound regular expressions (re.++, re.*, re.union, re.loop) which
+    // may have non-trivial NFA constructions, otherwise the check below will
+    // be simpler. Note that evaluating re.loop below is worst-case
+    // exponential, so using the NFA construction is important here.
     if (RegExpEval::canEvaluate(r))
     {
       return RegExpEval::evaluate(s, r);
@@ -660,77 +662,49 @@ bool RegExpEntail::testConstStringInRegExpInternal(String& s,
     case Kind::REGEXP_LOOP:
     {
       NodeManager* nm = r.getNodeManager();
-      uint32_t l = r[1].getConst<Rational>().getNumerator().toUnsignedInt();
-      if (s.size() == index_start)
+      uint32_t l = utils::getLoopMinOccurrences(r);
+      uint32_t u = utils::getLoopMaxOccurrences(r);
+      if (u < l)
       {
-        return l == 0 || testConstStringInRegExpInternal(s, index_start, r[0]);
-      }
-      else if (l == 0 && r[1] == r[2])
-      {
+        // the language is empty
         return false;
       }
-      else
+      size_t rem = s.size() - index_start;
+      if (u == 0)
       {
-        Assert(r.getNumChildren() == 3)
-            << "String rewriter error: LOOP has 2 children";
-        if (l == 0)
+        // note that l = 0 here, the language is the empty string
+        return rem == 0;
+      }
+      if (l == 0 && rem == 0)
+      {
+        return true;
+      }
+      // We check whether s[index_start:] can be decomposed into a first
+      // iteration of r[0] followed by a word in ((_ re.loop l-1 u-1) r[0]).
+      Node lop = nm->mkConst(RegExpLoop(l == 0 ? 0 : l - 1, u - 1));
+      Node r2 = nm->mkNode(Kind::REGEXP_LOOP, lop, r[0]);
+      for (size_t len = 1; len <= rem; len++)
+      {
+        cvc5::internal::String t = s.substr(index_start, len);
+        if (testConstStringInRegExpInternal(t, 0, r[0])
+            && testConstStringInRegExpInternal(s, index_start + len, r2))
         {
-          // R{0,u}
-          uint32_t u = r[2].getConst<Rational>().getNumerator().toUnsignedInt();
-          for (unsigned len = s.size() - index_start; len >= 1; len--)
-          {
-            cvc5::internal::String t = s.substr(index_start, len);
-            if (testConstStringInRegExpInternal(t, 0, r[0]))
-            {
-              if (len + index_start == s.size())
-              {
-                return true;
-              }
-              else
-              {
-                Node num2 = nm->mkConstInt(cvc5::internal::Rational(u - 1));
-                Node r2 = nm->mkNode(Kind::REGEXP_LOOP, r[0], r[1], num2);
-                if (testConstStringInRegExpInternal(s, index_start + len, r2))
-                {
-                  return true;
-                }
-              }
-            }
-          }
-          return false;
-        }
-        else
-        {
-          // R{l,l}
-          Assert(r[1] == r[2])
-              << "String rewriter error: LOOP nums are not equal";
-          if (l > s.size() - index_start)
-          {
-            if (testConstStringInRegExpInternal(s, s.size(), r[0]))
-            {
-              l = s.size() - index_start;
-            }
-            else
-            {
-              return false;
-            }
-          }
-          for (unsigned len = 1; len <= s.size() - index_start; len++)
-          {
-            cvc5::internal::String t = s.substr(index_start, len);
-            if (testConstStringInRegExpInternal(t, 0, r[0]))
-            {
-              Node num2 = nm->mkConstInt(cvc5::internal::Rational(l - 1));
-              Node r2 = nm->mkNode(Kind::REGEXP_LOOP, r[0], num2, num2);
-              if (testConstStringInRegExpInternal(s, index_start + len, r2))
-              {
-                return true;
-              }
-            }
-          }
-          return false;
+          return true;
         }
       }
+      // Alternatively, the first iteration may match the empty string, in
+      // which case we require at least one iteration to be remaining. Note
+      // that this is subsumed by the above if l = 0, since we additionally
+      // consider ((_ re.loop 0 u-1) r[0]) above.
+      if (l > 0)
+      {
+        cvc5::internal::String e;
+        if (testConstStringInRegExpInternal(e, 0, r[0]))
+        {
+          return testConstStringInRegExpInternal(s, index_start, r2);
+        }
+      }
+      return false;
     }
     case Kind::REGEXP_COMPLEMENT:
     {
@@ -876,6 +850,25 @@ Node RegExpEntail::getConstantBoundLengthForRegexp(TNode n, bool isLower) const
     {
       ret = nm->mkConstInt(rr);
     }
+  }
+  else if (k == Kind::REGEXP_LOOP)
+  {
+    uint32_t l = utils::getLoopMinOccurrences(n);
+    uint32_t u = utils::getLoopMaxOccurrences(n);
+    if (u >= l)
+    {
+      // the minimum (resp. maximum) length of ((_ re.loop l u) R) is l (resp.
+      // u) times the minimum (resp. maximum) length of R
+      Node bc = getConstantBoundLengthForRegexp(n[0], isLower);
+      if (!bc.isNull())
+      {
+        Assert(bc.isConst() && bc.getType().isInteger());
+        ret = nm->mkConstInt(bc.getConst<Rational>()
+                             * Rational(isLower ? l : u));
+      }
+    }
+    // Note if u < l, then the language of n is empty, in which case we do not
+    // infer a bound here. Such terms are rewritten to re.none.
   }
   if (ret.isNull() && isLower)
   {

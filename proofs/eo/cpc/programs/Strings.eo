@@ -1103,6 +1103,27 @@
     ($str_mk_re_loop_elim_rec (eo::list_repeat @tlist 0 d) r
       (eo::list_repeat re.++ r n))))
 
+; define: $str_mk_str_in_re_loop_fixed_len
+; args:
+; - s String: The string term of the membership.
+; - l Int: The minimum number of iterations for the re.loop term.
+; - u Int: The maximum number of iterations for the re.loop term.
+; - r RegLan: The regular expression argument of the re.loop term.
+; return: >
+;   The conclusion for ProofRewriteRule::STR_IN_RE_LOOP_FIXED_LEN for the
+;   membership (str.in_re s (re.loop l u r)). This requires that u >= l and
+;   that all strings in the language of r have the same length k with k >= 1,
+;   in which case (str.in_re s (re.* r)) implies that the length of s is a
+;   multiple of k, and hence the loop is captured exactly by the bounds
+;   l*k <= (str.len s) <= u*k.
+(define $str_mk_str_in_re_loop_fixed_len ((s String) (l Int) (u Int) (r RegLan))
+  (eo::define ((k ($str_fixed_len_re r)))
+  (eo::requires (eo::is_neg (eo::add (eo::neg l) u)) false
+  (eo::requires (eo::is_neg (eo::add (eo::neg 1) k)) false
+    (and (str.in_re s (re.* r))
+         (>= (str.len s) (eo::mul l k))
+         (<= (str.len s) (eo::mul u k)))))))
+
 ; program: $str_mk_str_in_re_concat_star_char
 ; args:
 ; - s String: The string term to process.

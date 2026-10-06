@@ -862,6 +862,20 @@ enum class InferenceId
   STRINGS_RE_DELTA_CONF,
   // regular expression derive ???
   STRINGS_RE_DERIVE,
+  // regular expression loop abstraction
+  //   (x in R) => (x in R')
+  // where R' is the result of replacing all re.loop terms in R by the re.* of
+  // their bodies, and hence is a superset of R. This is used when option
+  // --re-loop-abstract is enabled, in which case (x in R) itself is not
+  // processed further until the refinement below is applied.
+  STRINGS_RE_LOOP_ABSTRACT,
+  // regular expression loop refinement
+  //   (x in R) => (x in R')
+  // where R' is the result of eliminating all re.loop terms in R, and hence is
+  // equal to R. This is applied at last call effort for memberships that were
+  // abstracted above and that are not satisfied in the candidate model. The
+  // reverse implication is used for memberships asserted with false polarity.
+  STRINGS_RE_LOOP_REFINE,
   //-------------------- extended function solver
   // Standard extended function inferences from context-dependent rewriting
   // produced by constant substitutions. See Reynolds et al CAV 2017. These are

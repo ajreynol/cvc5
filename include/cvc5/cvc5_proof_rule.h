@@ -4020,6 +4020,22 @@ enum ENUM(ProofRewriteRule)
   EVALUE(STR_REPLACE_RE_ALL_EVAL),
   /**
    * \verbatim embed:rst:leading-asterisk
+   * **Strings -- regular expression loop with fixed length body**
+   *
+   * .. math::
+   *
+   *   \mathit{str.in\_re}(s, re.loop_{l,u}(R)) =
+   *   (\mathit{str.in\_re}(s, re.*(R)) \wedge l \cdot k \leq \mathit{str.len}(s)
+   *   \wedge \mathit{str.len}(s) \leq u \cdot k)
+   *
+   * where :math:`u \geq l` and all strings in the language of :math:`R` have
+   * the same length :math:`k > 0`.
+   *
+   * \endverbatim
+   */
+  EVALUE(STR_IN_RE_LOOP_FIXED_LEN),
+  /**
+   * \verbatim embed:rst:leading-asterisk
    * **Strings -- regular expression loop elimination**
    *
    * .. math::

@@ -126,6 +126,14 @@ name   = "Strings Theory"
   help = "Use aggressive regular expression elimination."
 
 [[option]]
+  name       = "stringRegExpLoopAbstract"
+  category   = "expert"
+  long       = "re-loop-abstract"
+  type       = "bool"
+  default    = "false"
+  help       = "do not eliminate re.loop in the rewriter; instead over-approximate memberships containing re.loop by replacing re.loop with re.*, and refine lazily based on candidate models"
+
+[[option]]
   name       = "stringFlatForms"
   category   = "expert"
   long       = "strings-ff"

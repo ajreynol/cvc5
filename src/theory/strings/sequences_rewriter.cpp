@@ -37,11 +37,13 @@ namespace strings {
 SequencesRewriter::SequencesRewriter(NodeManager* nm,
                                      ArithEntail& ae,
                                      StringsEntail& se,
-                                     HistogramStat<Rewrite>* statistics)
+                                     HistogramStat<Rewrite>* statistics,
+                                     bool reLoopAbstract)
     : TheoryRewriter(nm),
       d_statistics(statistics),
       d_arithEntail(ae),
-      d_stringsEntail(se)
+      d_stringsEntail(se),
+      d_reLoopAbstract(reLoopAbstract)
 {
   d_sigmaStar = nm->mkNode(Kind::REGEXP_STAR, nm->mkNode(Kind::REGEXP_ALLCHAR));
   d_true = nm->mkConst(true);
@@ -61,6 +63,8 @@ SequencesRewriter::SequencesRewriter(NodeManager* nm,
   registerProofRewriteRule(ProofRewriteRule::STR_IN_RE_SIGMA,
                            TheoryRewriteCtx::PRE_DSL);
   registerProofRewriteRule(ProofRewriteRule::STR_IN_RE_SIGMA_STAR,
+                           TheoryRewriteCtx::PRE_DSL);
+  registerProofRewriteRule(ProofRewriteRule::STR_IN_RE_LOOP_FIXED_LEN,
                            TheoryRewriteCtx::PRE_DSL);
   registerProofRewriteRule(ProofRewriteRule::MACRO_SUBSTR_STRIP_SYM_LENGTH,
                            TheoryRewriteCtx::POST_DSL);
@@ -115,6 +119,8 @@ Node SequencesRewriter::rewriteViaRule(ProofRewriteRule id, const Node& n)
     case ProofRewriteRule::STR_IN_RE_SIGMA: return rewriteViaStrInReSigma(n);
     case ProofRewriteRule::STR_IN_RE_SIGMA_STAR:
       return rewriteViaStrInReSigmaStar(n);
+    case ProofRewriteRule::STR_IN_RE_LOOP_FIXED_LEN:
+      return rewriteViaStrInReLoopFixedLen(n);
     case ProofRewriteRule::MACRO_SUBSTR_STRIP_SYM_LENGTH:
     {
       // Rewrite without using the rewriter as a subutility, which ensures
@@ -1227,9 +1233,74 @@ Node SequencesRewriter::rewriteLoopRegExp(TNode node)
   {
     return returnRewrite(node, r, Rewrite::RE_LOOP_STAR);
   }
-  retNode = rewriteViaReLoopElim(node);
-  Assert(!retNode.isNull() && retNode != node);
-  return returnRewrite(node, retNode, Rewrite::RE_LOOP);
+  else if (r.getKind() == Kind::REGEXP_NONE)
+  {
+    // ((_ re.loop l u) re.none) --> (str.to_re "") if l = 0, re.none otherwise,
+    // noting that u >= 1 here.
+    retNode = l == 0
+                  ? nm->mkNode(Kind::STRING_TO_REGEXP,
+                               nm->mkConst(String("")))
+                  : r;
+    return returnRewrite(node, retNode, Rewrite::RE_LOOP_BODY_NONE);
+  }
+  else if (r.getKind() == Kind::STRING_TO_REGEXP && r[0].isConst()
+           && Word::isEmpty(r[0]))
+  {
+    // ((_ re.loop l u) (str.to_re "")) --> (str.to_re ""), noting that u >= 1
+    return returnRewrite(node, r, Rewrite::RE_LOOP_BODY_EMP);
+  }
+  // We eliminate the loop only if it is trivial to do so, i.e. if the
+  // elimination does not duplicate the body r. This is the case when u <= 1,
+  // where the elimination is either r itself (when l = 1) or the union of r
+  // and the empty string (when l = 0). Note we eliminate the loop in all
+  // cases if we are not using the abstraction-refinement scheme for re.loop.
+  if (!d_reLoopAbstract || u <= 1)
+  {
+    retNode = rewriteViaReLoopElim(node);
+    Assert(!retNode.isNull() && retNode != node);
+    return returnRewrite(node, retNode, Rewrite::RE_LOOP);
+  }
+  return node;
+}
+
+Node SequencesRewriter::rewriteViaStrInReLoopFixedLen(const Node& node)
+{
+  if (node.getKind() != Kind::STRING_IN_REGEXP
+      || node[1].getKind() != Kind::REGEXP_LOOP)
+  {
+    return Node::null();
+  }
+  Node r = node[1];
+  uint32_t l = utils::getLoopMinOccurrences(r);
+  uint32_t u = utils::getLoopMaxOccurrences(r);
+  if (u < l)
+  {
+    return Node::null();
+  }
+  Node flen = RegExpEntail::getFixedLengthForRegexp(r[0]);
+  if (flen.isNull())
+  {
+    return Node::null();
+  }
+  Assert(flen.isConst() && flen.getType().isInteger());
+  Rational k = flen.getConst<Rational>();
+  if (k.sgn() <= 0)
+  {
+    // The body only accepts the empty string, in which case the loop is
+    // handled by rewriteLoopRegExp above.
+    return Node::null();
+  }
+  NodeManager* nm = nodeManager();
+  Node len = nm->mkNode(Kind::STRING_LENGTH, node[0]);
+  std::vector<Node> conj;
+  conj.push_back(nm->mkNode(Kind::STRING_IN_REGEXP,
+                            node[0],
+                            nm->mkNode(Kind::REGEXP_STAR, r[0])));
+  conj.push_back(
+      nm->mkNode(Kind::GEQ, len, nm->mkConstInt(k * Rational(l))));
+  conj.push_back(
+      nm->mkNode(Kind::LEQ, len, nm->mkConstInt(k * Rational(u))));
+  return nm->mkNode(Kind::AND, conj);
 }
 
 Node SequencesRewriter::rewriteViaStrEqLenUnifyPrefix(const Node& node)
@@ -2146,6 +2217,17 @@ Node SequencesRewriter::rewriteMembership(TNode node)
     Node one = nm->mkConstInt(Rational(1));
     Node retNode = one.eqNode(nm->mkNode(Kind::STRING_LENGTH, x));
     return returnRewrite(node, retNode, Rewrite::RE_IN_SIGMA);
+  }
+  else if (r.getKind() == Kind::REGEXP_LOOP)
+  {
+    // (str.in_re x ((_ re.loop l u) R)) --->
+    //   (and (str.in_re x (re.* R)) (<= l*k (str.len x)) (<= (str.len x) u*k))
+    // if all strings in R have fixed length k, where k > 0.
+    Node retNode = rewriteViaStrInReLoopFixedLen(node);
+    if (!retNode.isNull())
+    {
+      return returnRewrite(node, retNode, Rewrite::RE_IN_LOOP_FIXED_LEN);
+    }
   }
   else if (r.getKind() == Kind::REGEXP_STAR)
   {

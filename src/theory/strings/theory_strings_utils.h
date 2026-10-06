@@ -222,6 +222,24 @@ unsigned getLoopMaxOccurrences(TNode node);
 /* Get the minimum occurrences of given regexp loop node. */
 unsigned getLoopMinOccurrences(TNode node);
 
+/** Does the regular expression r contain a re.loop term? */
+bool hasReLoop(TNode r);
+
+/**
+ * Compute an over-approximation of the regular expression r in which all
+ * re.loop terms have been eliminated.
+ *
+ * In particular, each re.loop term occurring at a positive position of r is
+ * replaced by the re.* of its body, i.e. ((_ re.loop l u) R) is replaced by
+ * (re.* R), which is a superset of the former. Each re.loop occurring at a
+ * negative position (i.e. beneath an odd number of applications of re.comp)
+ * is replaced by re.none, which is a subset of the former, and hence the
+ * overall result remains a superset of r.
+ *
+ * Returns the null node if r does not contain a re.loop term.
+ */
+Node mkReLoopOverApprox(TNode r);
+
 /**
  * Make internal quantified formula with bound variable list bvl and body.
  * Internally, we get a node corresponding to marking a quantified formula as

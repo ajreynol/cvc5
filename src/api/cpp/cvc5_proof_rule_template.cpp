@@ -360,6 +360,8 @@ const char* toString(cvc5::ProofRewriteRule rule)
     case ProofRewriteRule::STR_REPLACE_RE_EVAL: return "str-replace-re-eval";
     case ProofRewriteRule::STR_REPLACE_RE_ALL_EVAL:
       return "str-replace-re-all-eval";
+    case ProofRewriteRule::STR_IN_RE_LOOP_FIXED_LEN:
+      return "str-in-re-loop-fixed-len";
     case ProofRewriteRule::RE_LOOP_ELIM: return "re-loop-elim";
     case ProofRewriteRule::RE_EQ_ELIM: return "re-eq-elim";
     case ProofRewriteRule::MACRO_RE_INTER_UNION_INCLUSION:

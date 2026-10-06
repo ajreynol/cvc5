@@ -12,7 +12,12 @@
 
 #include "theory/strings/regexp_eval.h"
 
+#include <algorithm>
+#include <cstdint>
+
 #include "theory/strings/theory_strings_utils.h"
+#include "theory/strings/word.h"
+#include "util/regexp.h"
 #include "util/string.h"
 
 using namespace cvc5::internal::kind;
@@ -209,6 +214,46 @@ class NfaState
         sarrows.emplace_back(s, Node::null());
       }
       break;
+      case Kind::REGEXP_LOOP:
+      {
+        // ((_ re.loop l u) R) is unrolled to the concatenation of l copies of
+        // R followed by u-l copies of R that may be skipped. Note that u >= 1
+        // here, since otherwise the term would have been rewritten.
+        uint32_t l = utils::getLoopMinOccurrences(r);
+        uint32_t u = utils::getLoopMaxOccurrences(r);
+        if (u < l)
+        {
+          // the language is empty, s is a dead end with no exit arrows
+          break;
+        }
+        NfaState* curr = s;
+        for (uint32_t i = 0; i < u; i++)
+        {
+          NfaState* body = constructInternal(r[0], scache);
+          if (i < l)
+          {
+            // a mandatory copy, which we must traverse
+            curr->d_children[Node::null()].push_back(body);
+          }
+          else
+          {
+            // An optional copy. We introduce a state that either moves to the
+            // body or skips to the end of the loop.
+            NfaState* opt = allocateState(scache);
+            curr->d_children[Node::null()].push_back(opt);
+            opt->d_children[Node::null()].push_back(body);
+            // skipping the remaining copies moves past the loop
+            sarrows.emplace_back(opt, Node::null());
+          }
+          // the dangling arrows of the body are the dangling arrows of the
+          // next iteration
+          NfaState* next = allocateState(scache);
+          body->connectTo(next);
+          curr = next;
+        }
+        sarrows.emplace_back(curr, Node::null());
+      }
+      break;
       default: Unreachable() << "Unknown regular expression " << r; break;
     }
     return s;
@@ -237,6 +282,80 @@ class NfaState
   /** Current dangling pointers */
   std::vector<std::pair<NfaState*, Node>> d_arrows;
 };
+
+/**
+ * The maximum number of NFA states we are willing to construct for a re.loop
+ * term in NfaState::construct below. Note that re.loop is the only operator
+ * that may require a number of states that is not linear in the size of the
+ * regular expression, since its body is duplicated once per iteration.
+ */
+static constexpr uint64_t s_nfaLoopStateLimit = 100000;
+
+/**
+ * Accumulates into size an upper bound on the number of states that
+ * NfaState::construct requires for r. Returns false if r contains an operator
+ * that we cannot compile to an NFA, or if size exceeds s_nfaLoopStateLimit.
+ *
+ * Note that states are not shared between multiple occurrences of the same
+ * subterm, hence this is computed as a traversal of the term tree. Since we
+ * abort as soon as the bound is exceeded, this takes time linear in
+ * s_nfaLoopStateLimit.
+ */
+static bool computeNfaSize(TNode r, uint64_t& size)
+{
+  switch (r.getKind())
+  {
+    case Kind::STRING_TO_REGEXP:
+      if (!r[0].isConst())
+      {
+        return false;
+      }
+      size += std::max(static_cast<uint64_t>(Word::getLength(r[0])),
+                       static_cast<uint64_t>(1));
+      break;
+    case Kind::REGEXP_RANGE:
+      if (!utils::isCharacterRange(r))
+      {
+        return false;
+      }
+      size += 1;
+      break;
+    case Kind::REGEXP_ALLCHAR: size += 1; break;
+    case Kind::REGEXP_CONCAT:
+    case Kind::REGEXP_UNION:
+    case Kind::REGEXP_STAR:
+      size += 1;
+      for (const Node& rc : r)
+      {
+        if (!computeNfaSize(rc, size))
+        {
+          return false;
+        }
+      }
+      break;
+    case Kind::REGEXP_LOOP:
+    {
+      uint32_t l = utils::getLoopMinOccurrences(r);
+      uint32_t u = utils::getLoopMaxOccurrences(r);
+      if (u < l)
+      {
+        // the language is empty, which requires a single dead end state
+        size += 1;
+        break;
+      }
+      // the body is duplicated u times, with two additional states per copy
+      uint64_t bodySize = 0;
+      if (!computeNfaSize(r[0], bodySize))
+      {
+        return false;
+      }
+      size += 1 + static_cast<uint64_t>(u) * (bodySize + 2);
+    }
+    break;
+    default: return false;
+  }
+  return (size <= s_nfaLoopStateLimit);
+}
 
 bool RegExpEval::canEvaluate(const Node& r)
 {
@@ -274,6 +393,19 @@ bool RegExpEval::canEvaluate(const Node& r)
             visit.push_back(cc);
           }
           break;
+        case Kind::REGEXP_LOOP:
+        {
+          // Unrolling the loop duplicates its body, so we additionally ensure
+          // that the resulting NFA is not too large. Note this also checks
+          // that the body can be compiled to an NFA, hence we do not traverse
+          // into it below.
+          uint64_t size = 0;
+          if (!computeNfaSize(cur, size))
+          {
+            return false;
+          }
+        }
+        break;
         default: return false;
       }
     }

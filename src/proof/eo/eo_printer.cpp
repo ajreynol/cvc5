@@ -336,6 +336,7 @@ bool EoPrinter::isHandledTheoryRewrite(const Options& opts,
     case ProofRewriteRule::STR_IN_RE_CONCAT_STAR_CHAR:
     case ProofRewriteRule::STR_IN_RE_SIGMA:
     case ProofRewriteRule::STR_IN_RE_SIGMA_STAR:
+    case ProofRewriteRule::STR_IN_RE_LOOP_FIXED_LEN:
     case ProofRewriteRule::STR_IN_RE_CONSUME:
     case ProofRewriteRule::STR_INDEXOF_RE_EVAL:
     case ProofRewriteRule::STR_REPLACE_RE_EVAL:

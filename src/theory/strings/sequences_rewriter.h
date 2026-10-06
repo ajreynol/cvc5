@@ -34,7 +34,8 @@ class SequencesRewriter : public TheoryRewriter
   SequencesRewriter(NodeManager* nm,
                     ArithEntail& ae,
                     StringsEntail& se,
-                    HistogramStat<Rewrite>* statistics);
+                    HistogramStat<Rewrite>* statistics,
+                    bool reLoopAbstract = false);
   /** The underlying entailment utilities */
   ArithEntail& getArithEntail();
   StringsEntail& getStringsEntail();
@@ -161,6 +162,21 @@ class SequencesRewriter : public TheoryRewriter
   Node rewriteViaStrEqLenUnify(const Node& n, Rewrite& rule);
   /** Rewrite based on RE_LOOP_ELIM */
   Node rewriteViaReLoopElim(const Node& n);
+  /**
+   * Rewrite a membership into a regular expression loop whose body has a
+   * fixed length, i.e.
+   *   (str.in_re x ((_ re.loop l u) R))
+   * is rewritten to
+   *   (and (str.in_re x (re.* R)) (>= (str.len x) l*k) (<= (str.len x) u*k))
+   * where k is the (non-zero) fixed length of all strings in R. Note this
+   * is an equivalence since (str.in_re x (re.* R)) implies that the length of
+   * x is a multiple of k, hence the length bounds exactly characterize the
+   * admissible number of repetitions of R.
+   *
+   * Returns the null node if node is not a membership of the above form, or
+   * if the body of the loop does not have a (non-zero) fixed length.
+   */
+  Node rewriteViaStrInReLoopFixedLen(const Node& n);
   /** Rewrite based on RE_EQ_ELIM */
   Node rewriteViaReEqElim(const Node& n);
   /** Rewrite based on MACRO_RE_INTER_UNION_INCLUSION */
@@ -375,6 +391,12 @@ class SequencesRewriter : public TheoryRewriter
   Node d_sigmaStar;
   Node d_true;
   Node d_false;
+  /**
+   * Whether we are using the abstraction-refinement scheme for re.loop, in
+   * which case we do not eliminate re.loop terms unless it is trivial to do
+   * so. This corresponds to option strings::stringRegExpLoopAbstract.
+   */
+  bool d_reLoopAbstract;
 }; /* class SequencesRewriter */
 
 }  // namespace strings

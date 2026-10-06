@@ -33,7 +33,8 @@ class StringsRewriter : public SequencesRewriter
                   ArithEntail& ae,
                   StringsEntail& se,
                   HistogramStat<Rewrite>* statistics,
-                  uint32_t alphaCard = 196608);
+                  uint32_t alphaCard = 196608,
+                  bool reLoopAbstract = false);
 
   RewriteResponse postRewrite(TNode node) override;
 

@@ -24,6 +24,7 @@
 #include "smt/env_obj.h"
 #include "theory/strings/extf_solver.h"
 #include "theory/strings/inference_manager.h"
+#include "theory/strings/regexp_entail.h"
 #include "theory/strings/regexp_operation.h"
 #include "theory/strings/sequences_stats.h"
 #include "theory/strings/skolem_cache.h"
@@ -82,6 +83,48 @@ class RegExpSolver : protected EnvObj
    * @param e The current effort.
    */
   void checkInclusions(Theory::Effort e);
+  /**
+   * Process the memberships whose regular expression contains a re.loop term,
+   * which are handled by abstraction refinement when option
+   * --re-loop-abstract is enabled. Assumes d_assertedMems has been computed;
+   * this method removes the memberships it processes from d_assertedMems.
+   *
+   * For each such membership, we mark it as reduced, so that we do not attempt
+   * to unfold it. Moreover:
+   * (1) If it is asserted with true polarity, we add the lemma
+   *       (x in R) => (x in R')
+   * where R' is an over-approximation of R in which all re.loop terms have
+   * been eliminated, together with the length bounds implied by R.
+   * (2) At last call effort, if the membership is not already satisfied in the
+   * candidate model, we refine by adding the lemma
+   *       (x in R) => (x in R'')     (resp. its converse for false polarity)
+   * where R'' is the result of eliminating all re.loop terms in R, and hence
+   * is equivalent to R.
+   *
+   * @param e The current effort.
+   */
+  void checkLoopAbstraction(Theory::Effort e);
+  /**
+   * Helper for the above method, called on a single membership assertion m,
+   * whose atom is atom and whose polarity is pol.
+   */
+  void processLoopMembership(Theory::Effort e,
+                             const Node& m,
+                             const Node& atom,
+                             bool pol);
+  /**
+   * Return the conclusion of the abstraction lemma for atom, which is a
+   * membership (x in R) where R contains a re.loop term. This is the
+   * conjunction of (x in R') for the over-approximation R' of R computed by
+   * utils::mkReLoopOverApprox, and the length bounds on x implied by R.
+   * Returns the null node if no such conclusion could be computed.
+   */
+  Node getLoopAbstractLemma(const Node& atom);
+  /**
+   * Return the membership (x in R'') where R'' is the result of eliminating
+   * all re.loop terms in R, for atom of the form (x in R).
+   */
+  Node getLoopElimMembership(const Node& atom);
   /**
    * Check evaluations, which applies substitutions for normal forms to
    * regular expression memberships and evaluates them, and also calls
@@ -168,8 +211,23 @@ class RegExpSolver : protected EnvObj
   Node getNormalSymRegExp(Node r, std::vector<Node>& nf_exp);
   /** regular expression operation module */
   RegExpOpr d_regexp_opr;
+  /** The regular expression entailment module, for computing length bounds */
+  RegExpEntail d_rent;
   /** Asserted memberships, cached during a full effort check */
   std::map<Node, std::vector<Node>> d_assertedMems;
+  /**
+   * The set of membership atoms containing re.loop for which we have already
+   * sent the abstraction lemma. This is user-context dependent since the
+   * lemma is valid independent of the current assertions.
+   */
+  NodeSet d_loopAbstract;
+  /**
+   * The set of membership assertions containing re.loop for which we have
+   * already sent the refinement lemma, which is also user-context dependent.
+   * Note this contains polarized assertions, since the refinement lemma we
+   * send depends on the polarity of the assertion.
+   */
+  NodeSet d_loopRefine;
 }; /* class TheoryStrings */
 
 }  // namespace strings

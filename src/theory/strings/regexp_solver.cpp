@@ -17,8 +17,10 @@
 #include "options/strings_options.h"
 #include "smt/logic_exception.h"
 #include "theory/ext_theory.h"
+#include "theory/rewriter.h"
 #include "theory/strings/term_registry.h"
 #include "theory/strings/theory_strings_utils.h"
+#include "util/rational.h"
 #include "util/statistics_value.h"
 
 using namespace cvc5::internal::kind;
@@ -40,7 +42,10 @@ RegExpSolver::RegExpSolver(Env& env,
       d_csolver(cs),
       d_esolver(es),
       d_statistics(stats),
-      d_regexp_opr(env, tr.getSkolemCache())
+      d_regexp_opr(env, tr.getSkolemCache()),
+      d_rent(env.getNodeManager(), env.getRewriter()),
+      d_loopAbstract(userContext()),
+      d_loopRefine(userContext())
 {
   d_emptyString = nodeManager()->mkConst(cvc5::internal::String(""));
   d_emptyRegexp = nodeManager()->mkNode(Kind::REGEXP_NONE);
@@ -86,6 +91,15 @@ void RegExpSolver::checkMemberships(Theory::Effort e)
                           << std::endl;
   // compute the memberships
   computeAssertedMemberships();
+  // process memberships containing re.loop, if abstraction is enabled
+  if (options().strings.stringRegExpLoopAbstract)
+  {
+    checkLoopAbstraction(e);
+    if (d_state.isInConflict())
+    {
+      return;
+    }
+  }
   // check for regular expression inclusion
   checkInclusions(e);
   if (d_state.isInConflict())
@@ -102,6 +116,185 @@ void RegExpSolver::checkMemberships(Theory::Effort e)
     }
   }
   checkUnfold(e);
+}
+
+void RegExpSolver::checkLoopAbstraction(Theory::Effort e)
+{
+  Trace("regexp-process") << "Checking re.loop abstraction ... " << std::endl;
+  for (std::pair<const Node, std::vector<Node>>& mr : d_assertedMems)
+  {
+    std::vector<Node> keep;
+    for (const Node& m : mr.second)
+    {
+      bool pol = m.getKind() != Kind::NOT;
+      Node atom = pol ? m : m[0];
+      Assert(atom.getKind() == Kind::STRING_IN_REGEXP);
+      if (!utils::hasReLoop(atom[1]))
+      {
+        keep.push_back(m);
+        continue;
+      }
+      // This membership is handled by abstraction refinement below, and is
+      // not considered by the remainder of the regular expression solver.
+      processLoopMembership(e, m, atom, pol);
+    }
+    mr.second = keep;
+  }
+}
+
+void RegExpSolver::processLoopMembership(Theory::Effort e,
+                                        const Node& m,
+                                        const Node& atom,
+                                        bool pol)
+{
+  Trace("strings-regexp-loop")
+      << "Process re.loop membership " << m << ", effort=" << e << std::endl;
+  // Mark the membership as reduced, so that we never attempt to unfold it.
+  // Note that we do not mark it inactive, since we rely on the extended
+  // function solver to evaluate it in the candidate model below.
+  if (!d_esolver.isReduced(m))
+  {
+    d_esolver.markReduced(m);
+  }
+  // (1) Abstraction. Note we only do this for positive memberships, since
+  // the over-approximation of R gives no information when (x in R) is
+  // asserted false.
+  if (pol && d_loopAbstract.find(atom) == d_loopAbstract.end())
+  {
+    d_loopAbstract.insert(atom);
+    Node conc = getLoopAbstractLemma(atom);
+    if (!conc.isNull())
+    {
+      Trace("strings-regexp-loop") << "...abstract to " << conc << std::endl;
+      std::vector<Node> iexp{m};
+      std::vector<Node> noExplain{m};
+      d_im.sendInference(
+          iexp, noExplain, conc, InferenceId::STRINGS_RE_LOOP_ABSTRACT);
+    }
+  }
+  // (2) Refinement, which is only applied at last call effort for
+  // memberships that are not already satisfied in the candidate model.
+  if (e != Theory::EFFORT_LAST_CALL
+      || d_loopRefine.find(m) != d_loopRefine.end())
+  {
+    return;
+  }
+  if (!d_esolver.isActiveInModel(atom))
+  {
+    Trace("strings-regexp-loop")
+        << "...satisfied in the model, no refinement" << std::endl;
+    return;
+  }
+  Node mem = getLoopElimMembership(atom);
+  if (mem.isNull())
+  {
+    // we were unable to eliminate the loop, we are incomplete
+    d_im.setModelUnsound(IncompleteId::STRINGS_REGEXP_NO_SIMPLIFY);
+    return;
+  }
+  d_loopRefine.insert(m);
+  Node conc = pol ? mem : mem.notNode();
+  Trace("strings-regexp-loop") << "...refine to " << conc << std::endl;
+  std::vector<Node> iexp{m};
+  std::vector<Node> noExplain{m};
+  d_im.sendInference(
+      iexp, noExplain, conc, InferenceId::STRINGS_RE_LOOP_REFINE);
+}
+
+Node RegExpSolver::getLoopAbstractLemma(const Node& atom)
+{
+  Assert(atom.getKind() == Kind::STRING_IN_REGEXP);
+  NodeManager* nm = nodeManager();
+  std::vector<Node> conj;
+  Node rover = utils::mkReLoopOverApprox(atom[1]);
+  if (!rover.isNull() && rover != atom[1])
+  {
+    conj.push_back(nm->mkNode(Kind::STRING_IN_REGEXP, atom[0], rover));
+  }
+  // Add the length bounds implied by the original regular expression, which
+  // are not implied by the over-approximation above.
+  Node len = nm->mkNode(Kind::STRING_LENGTH, atom[0]);
+  for (size_t i = 0; i < 2; i++)
+  {
+    bool isLower = (i == 0);
+    Node b = d_rent.getConstantBoundLengthForRegexp(atom[1], isLower);
+    if (b.isNull() || (isLower && b.getConst<Rational>().sgn() == 0))
+    {
+      // no bound, or a trivial lower bound
+      continue;
+    }
+    conj.push_back(nm->mkNode(isLower ? Kind::GEQ : Kind::LEQ, len, b));
+  }
+  if (conj.empty())
+  {
+    return Node::null();
+  }
+  return nm->mkAnd(conj);
+}
+
+Node RegExpSolver::getLoopElimMembership(const Node& atom)
+{
+  Assert(atom.getKind() == Kind::STRING_IN_REGEXP);
+  NodeManager* nm = nodeManager();
+  Rewriter* rr = d_env.getRewriter();
+  std::unordered_map<TNode, Node> visited;
+  std::vector<TNode> visit{atom[1]};
+  do
+  {
+    TNode cur = visit.back();
+    const auto it = visited.find(cur);
+    if (it == visited.end())
+    {
+      visited[cur] = Node::null();
+      for (const Node& cn : cur)
+      {
+        if (cn.getType().isRegExp())
+        {
+          visit.push_back(cn);
+        }
+      }
+      continue;
+    }
+    visit.pop_back();
+    if (!it->second.isNull())
+    {
+      continue;
+    }
+    std::vector<Node> children;
+    bool childChanged = false;
+    if (cur.getMetaKind() == kind::metakind::PARAMETERIZED)
+    {
+      children.push_back(cur.getOperator());
+    }
+    for (const Node& cn : cur)
+    {
+      if (!cn.getType().isRegExp())
+      {
+        children.push_back(cn);
+        continue;
+      }
+      Node cnv = visited[cn];
+      Assert(!cnv.isNull());
+      childChanged = childChanged || cnv != cn;
+      children.push_back(cnv);
+    }
+    Node ret = childChanged ? nm->mkNode(cur.getKind(), children) : Node(cur);
+    if (ret.getKind() == Kind::REGEXP_LOOP)
+    {
+      Node elim = rr->rewriteViaRule(ProofRewriteRule::RE_LOOP_ELIM, ret);
+      if (elim.isNull())
+      {
+        // should never happen, but we are incomplete if so
+        return Node::null();
+      }
+      ret = elim;
+    }
+    visited[cur] = ret;
+  } while (!visit.empty());
+  Node relim = visited[atom[1]];
+  Assert(!relim.isNull());
+  Assert(!utils::hasReLoop(relim));
+  return nm->mkNode(Kind::STRING_IN_REGEXP, atom[0], relim);
 }
 
 void RegExpSolver::checkInclusions(Theory::Effort e)

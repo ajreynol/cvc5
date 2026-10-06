@@ -593,6 +593,22 @@
   :conclusion (= (re.loop l u r1) r2)
 )
 
+; rule: str-in-re-loop-fixed-len
+; implements: ProofRewriteRule::STR_IN_RE_LOOP_FIXED_LEN
+; args:
+; - eq Bool: The equality between a regular expression membership into a
+; regular expression loop and a formula.
+; requires: >
+;   The right hand side of the equality is the result of rewriting the
+;   membership.
+; conclusion: The given equality.
+(declare-rule str-in-re-loop-fixed-len
+  ((s String) (l Int) (u Int) (r RegLan) (b Bool))
+  :args ((= (str.in_re s (re.loop l u r)) b))
+  :requires ((($str_mk_str_in_re_loop_fixed_len s l u r) b))
+  :conclusion (= (str.in_re s (re.loop l u r)) b)
+)
+
 ; rule: re-eq-elim
 ; implements: ProofRewriteRule::RE_EQ_ELIM
 ; args:
