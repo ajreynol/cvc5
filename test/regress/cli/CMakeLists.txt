@@ -187,6 +187,8 @@ set(regress_0_tests
   regress0/arrays/issue12805-to-real-index.smt2
   regress0/arrays/issue12805-to-real-index-2.smt2
   regress0/arrays/issue12805-to-real-index-3.smt2
+  regress0/arrays/issue13040-to-real-index.smt2
+  regress0/arrays/issue13040-to-real-index-2.smt2
   regress0/arrays/proj-issue322-has-term.smt2
   regress0/arrays/proj-issue391-minisat-elim.smt2
   regress0/arrays/proj-issue467-cm.smt2
@@ -320,8 +322,13 @@ set(regress_0_tests
   regress0/bv/abstract/murxla-a2f5f3aa83d5a854.min.smt2
   regress0/bv/abstract/murxla-cc7db96bcf2e620d.min.smt2
   regress0/bv/abstract/murxla-d9523963f3a24521.min.smt2
+  regress0/bv/abstract/nary-mul-const-factor.smt2
+  regress0/bv/abstract/nary-mul-shared-prefix.smt2
+  regress0/bv/abstract/nary-mul-tier4.smt2
   regress0/bv/abstract/red-bench-8002.smt2
   regress0/bv/abstract/sat-mul-refine.smt2
+  regress0/bv/abstract/sat-nary-mul-refine.smt2
+  regress0/bv/abstract/unsat-nary-mul-odd.smt2
   regress0/bv/abstract/unsatcore1.smt2
   regress0/bv/ackermann1.smt2
   regress0/bv/ackermann2.smt2
@@ -688,6 +695,8 @@ set(regress_0_tests
   regress0/bv/issue10796-invalid-post-assert-logic-string.smt2
   regress0/bv/issue12336-xor-simp.smt2
   regress0/bv/issue12336-xor-simp-s.smt2
+  regress0/bv/issue13039.smt2
+  regress0/bv/issue13039-2-concat.smt2
   regress0/bv/le-elim-conv.smt2
   regress0/bv/macro-rewrites.smt2
   regress0/bv/mul-neg-unsat.smt2
@@ -3191,6 +3200,7 @@ set(regress_1_tests
   regress1/nl/issue11386-2-nl-cov-cyclic.smt2
   regress1/nl/issue11386-3-nl-cov-cyclic.smt2
   regress1/nl/issue12376-nl-comp-pf.smt2
+  regress1/nl/issue12810-exp-approx-below.smt2
   regress1/nl/issue13002-exp-secant-above.smt2
   regress1/nl/issue13002-exp-secant-bound.smt2
   regress1/nl/issue3300-approx-sqrt-witness.smt2
