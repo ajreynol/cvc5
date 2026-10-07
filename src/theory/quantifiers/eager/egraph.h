@@ -272,7 +272,8 @@ class EGraph : protected EnvObj
   void updateChildrenPlbls(ENode* e, size_t h);
   /** The key of the congruence table entry of e, under the current classes */
   CgKey mkCgKey(ENode* e) const;
-  /** Make e the owner of its congruence table entry, or point it at the owner */
+  /** Make e the owner of its congruence table entry, or point it at the owner
+   */
   void cgInsert(ENode* e);
   /** Remove the congruence table entry owned by e */
   void cgErase(ENode* e);

@@ -177,6 +177,7 @@ did anything, which keeps the search going.
 | `ENode`, `EGraph` | `egraph.{h,cpp}` | `smt_enode.h` + the e-graph part of `smt_context` |
 | instructions, `CodeTree`, `Compiler`, `Interpreter`, `PathTree`, `Mam` | `mam.{h,cpp}` | all of `mam.cpp` |
 | `Fingerprints`, `InstQueue` | `inst_queue.{h,cpp}` | `fingerprints.{h,cpp}`, `qi_queue.{h,cpp}` |
+| `PatternInference` | `pattern_inference.{h,cpp}` | `ast/pattern/pattern_inference.cpp` |
 | `InnerEGraph` | `inner_egraph.{h,cpp}` | — (z3 reuses the main e-graph) |
 | `InnerArith` | `inner_arith.{h,cpp}` | — (z3 reuses `theory_arith`) |
 | `InnerSmtSolver` | `inner_smt_solver.{h,cpp}` | the instance-holding part of `smt_context` |
@@ -217,15 +218,53 @@ be correct when read, and reads only happen through these entry points.
 
 ### 3.3 When do we match?
 
-z3 matches inside the propagation fixpoint. The closest cvc5 hook is
-`Theory::postCheck(EFFORT_STANDARD)`, i.e. `QuantifiersModule::check` with
-`needsCheck(e)` true for standard effort, which runs once per
-propagation-to-fixpoint per decision level. `--eager-inst-match-mode` selects:
+z3 calls its quantifier manager from `context::propagate`, i.e. once per round
+of the propagation fixpoint, and that call both runs the matcher and turns the
+matches into instances (`quantifier_manager::imp::propagate`). The cvc5
+analogue is `Theory::propagate(Effort)`, so `TheoryQuantifiers` declares the
+`propagate` property and `EagerInstEngine::propagate` runs `Mam::match()`
+followed by `InstQueue::instantiate()` there. That path produces no output.
 
-* `check` (default, closest to z3): accumulate candidates in the code trees,
-  run `Mam::match()` from `check` at standard effort.
-* `notify`: run `Mam::match()` directly from the e-graph notification, i.e.
-  strictly more eagerly than z3. Reentrancy-sensitive; for experiments.
+What the inner solver derives is flushed separately, from
+`TheoryQuantifiers::postCheck` before the quantifiers round, where cvc5 expects
+output.
+
+We deliberately do **not** make the module request a check at standard effort:
+that would force a full quantifiers round (resetting every utility, module and
+the model) at every propagation, which changes what the other quantifiers
+modules see. An earlier version did, and it changed the answer of
+`regress1/quantifiers/issue4433-nqe.smt2`.
+
+`--eager-inst-match-mode=notify` runs `Mam::match()` directly from the e-graph
+notifications, which is strictly more eager than z3. It finds the same matches
+(a candidate is executed exactly once either way, and a match enabled by a
+later merge is found by the merge path at that later point), just earlier and
+in a different order.
+
+### 3.4 Pattern inference
+
+Most quantified formulas carry no usable pattern annotation, and which
+instances exist at all is decided by the inferred patterns, so matching z3
+requires inferring the same ones. `PatternInference` is a port of z3's
+`pattern_inference_cfg` with z3's default parameters: `pi.arith=1`
+(conservative), `pi.block_loop_patterns`, `pi.decompose_patterns`,
+`pi.max_multi_patterns=0`, `pi.avoid_skolems`.
+
+The passes, in z3's order: collect the candidate subterms (applications that
+contain a variable of the quantifier, contain no variable bound inside the
+body, and are not forbidden), drop the strictly smaller ones
+(`filter_looping_patterns` via `smaller_pattern`), drop the ones that contain a
+sub-candidate with the same variables (`filter_bigger_patterns`), turn the
+candidates that bind every variable into unary patterns, and build at most one
+multi-pattern out of the rest. Arithmetic is forbidden in the first pass,
+allowed inside patterns in the second, and allowed as the top symbol of a
+pattern in the third. `mk_pattern`'s decomposition is included, which is why
+z3 and we both infer `(h x)` for `(forall x. p (f (h x)))` and `((+ x 1))` for
+`(forall x. p (f (+ x 1)))`.
+
+cvc5's `PatternTermSelector` is not used: it ranks candidates differently and
+does not decompose, so it would make the instances differ from z3's for reasons
+unrelated to the matcher.
 
 ## 4. The e-graph mirror
 
@@ -296,7 +335,17 @@ global. So instances go into a solver we control:
 
 Until `InnerSmtSolver` is complete, `--eager-inst-output=lemma` forwards each
 instance straight to cvc5's lemma channel. That is only a bring-up aid for
-validating the matcher against the lazy implementation; `inner` is the design.
+validating the matcher; `inner` is the design. Two things to know about it:
+
+* It respects cvc5's quantifier ownership, since a module that owns a
+  quantified formula may claim to be complete for it and would be wrong if
+  somebody else instantiated it. The inner solver does not need this, because it
+  keeps its instances to itself.
+* Even so, it perturbs the other quantifiers modules by construction. With
+  `--sygus-inst` on `regress0/quantifiers/issue8466-syqi-bool.smt2`, the extra
+  instances lead to a model that `--debug-check-models` rejects. The default
+  (`inner`) path is unaffected, and the regression suite passes with
+  `--eager-inst` on every quantifiers benchmark.
 
 ## 7. Plug-in points in cvc5 (all of the edits outside this directory)
 
@@ -313,7 +362,12 @@ validating the matcher against the lazy implementation; `inner` is the design.
   register the module's listener — in the central architecture directly in the
   central notify lists (the master notify is only registered for new classes
   there), otherwise through `MasterNotifyClass`.
-* `theory/quantifiers_engine.{h,cpp}`: expose the listeners of the modules.
+* `theory/quantifiers_engine.{h,cpp}`: expose the listeners of the modules, and
+  `eagerPropagate`/`eagerCheck`.
+* `theory/quantifiers/kinds.toml`: the quantifiers theory declares the
+  `propagate` property, so that `Theory::propagate` is called for it.
+* `theory/quantifiers/theory_quantifiers.{h,cpp}`: `propagate` runs the
+  matcher, `postCheck` flushes what the inner solver derived (section 3.3).
 
 ## 8. Deliberate deviations from z3
 
@@ -326,64 +380,92 @@ validating the matcher against the lazy implementation; `inner` is the design.
    (`default_qm_plugin::propagate`, the `m_new_enode_qhead` loop).
 3. Instances go to `InnerSmtSolver`, not to the SAT solver (section 6).
 4. Cost function fixed rather than parsed (section 5).
-5. Matching runs at `postCheck(STANDARD)` rather than inside propagation
+5. The instance queue is drained one round later than z3 drains it: z3 creates
+   the instance in the same `propagate` call that found the match, and so do
+   we, but what the inner solver derives from it is reported at the next check
    (section 3.3).
-6. The mirror has no congruence table, so it has no congruence-root flag.
-   Where z3's `collect_parents` skips a parent that is congruent to another
-   member of its own class (`enode::get_cg`), we keep it. This yields extra
-   candidates, never fewer; the duplicates are removed by `Fingerprints`. The
-   interpreter will need the same treatment for `BIND`, where z3 relies on
-   `enode::is_cgr` to visit one application per congruence class: we will
-   deduplicate on the tuple of argument representatives instead.
+6. Instantiation constants: cvc5 puts the inst-constant form of a quantified
+   formula into the master equality engine, as a device of
+   counterexample-guided instantiation. Those terms do not denote, so the
+   mirror drops anything containing one, as `TermDb::addTerm` does. An instance
+   built from one is not entailed, and feeding such instances to the SAT solver
+   turned `unsat` into `sat` on several `cegqi` regressions before this filter
+   was added.
 7. Ground terms occurring in patterns: z3 internalizes them into the solver
    (`mk_enode` in `mam.cpp`), so the solver reasons about them. We only add
    them to the mirror, which means equalities involving a pattern ground term
    that is otherwise unknown to cvc5 are never reported to us. See section 10.
+8. Pattern inference omits z3's `pi.pull_quantifiers` pass, so a quantifier
+   whose only candidate patterns lie under a nested quantifier gets none, and
+   the pattern database (`pi.use_database`, off by default in z3).
+9. Preprocessing: patterns are inferred from cvc5's preprocessed body, z3's
+   from z3's. Where the two preprocessors disagree, the patterns and hence the
+   instances disagree.
 
 ## 9. Status and implementation plan
 
-What is implemented and exercised:
+Implemented:
 
 * the notification path from the master equality engine, in both the central
   and the distributed equality engine architectures;
-* `EGraph`: terms, classes, parent lists, the two label sets, generations, and
-  backtracking of all of it through `Trail`, with the pre-merge notification
-  (`-t eager-egraph`);
-* label filter maintenance (`markChildLabel`/`markParentLabel`) and the
-  inverted path index `m_pc`/`m_pp`, built from the patterns by
-  `updateFilters`;
-* the merge path: `processPc`/`processPp`/`collectParents`, i.e. candidate
-  discovery from merges (`-t eager-mam`);
-* the new-term path: candidates queued on the code tree of their symbol;
+* `EGraph`: classes, parent lists, the congruence table (hence `isCgr` and
+  `getENodeEqTo`), the two label sets, generations, and backtracking of all of
+  it through `Trail`, with the pre-merge notification (`-t eager-egraph`);
+* the label filters and the inverted path index `m_pc`/`m_pp`, and the merge
+  path `processPc`/`processPp`/`collectParents` (`-t eager-mam`);
+* `Compiler`: multi-pattern to code tree, and insertion into an existing tree
+  with prefix sharing, `CHOOSE`/`NOOP` splitting, `find_best_child`, the
+  `FILTER`/`CFILTER` compatibility rules, `GET_CGR` and `IS_CGR`
+  (`-t eager-mam-compiler`);
+* `Interpreter`: the whole instruction set including `CONTINUE` with depth-1
+  and depth-2 joints, and the backtracking stack (`-t eager-mam-exec`);
+* `matchNewPatterns`, i.e. matching a newly added pattern against the terms
+  that already exist, through a throwaway code tree;
+* `PatternInference` (section 3.4);
 * `InstQueue` with `Fingerprints`, the cost/threshold split and the delayed
   entries; `InnerSmtSolver`'s instance store with retraction, over an
   `InnerEGraph` that is a congruence closure with an explicit undo log;
-* the module, the options, and the statistics (`-t eager-inst-stats`).
+* the module, the options, the statistics (`-t eager-inst-stats`) and the match
+  log used for comparing against z3 (`-t eager-inst-match`).
 
-What is not implemented yet, so no instance is produced yet:
+Not implemented yet:
 
-* `Compiler` (pattern -> instructions) and `Interpreter` (the machine loop);
-* `matchNewPatterns`, which needs the compiler;
 * the Boolean search of `InnerSmtSolver::check`, `InnerArith`, and
-  `InnerEGraph::explain`;
-* our own pattern inference, so only annotated quantifiers are matched.
+  `InnerEGraph::explain`, so the inner solver stores instances but derives
+  nothing from them yet;
+* z3's `pi.pull_quantifiers` pass and pattern database.
 
-Plan:
+Remaining plan:
 
-1. **(done)** callbacks, e-graph mirror, filters and path index, queue,
-   instance store, module/option wiring, design doc.
-2. `Compiler`: multi-pattern -> code tree, including insertion into an
-   existing tree with prefix sharing, `CFILTER`/`FILTER`/`PFILTER` placement,
-   and `GET_CGR`/`IS_CGR`.
-3. `Interpreter`: the main loop and `backtrack_stack`, `CONTINUE` with depth-2
-   joints.
-4. `PathTree` tables `m_pc`/`m_pp` + `collect_parents`, i.e. the merge path.
-5. `InstQueue` + `Fingerprints`, validated against lazy E-matching on
-   regressions (same instances modulo order).
-6. `InnerSmtSolver` + `InnerEGraph`; then `InnerArith`.
-7. Our own pattern selection (z3 `ast/pattern/pattern_inference.cpp`), so that
-   we do not inherit `PatternTermSelector`'s choices.
+1. `InnerSmtSolver::check`: a Boolean search over the instance clauses with
+   `InnerEGraph` as the theory, and the export of conflicts.
+2. `InnerArith`: a retractable simplex, without which the inner solver cannot
+   see most of the conflicts it exists to find.
+3. `InnerEGraph::explain`, to export minimized conflicts rather than the whole
+   set of instances used.
+4. Performance: the congruence table and the code tree map are `std::map` with
+   `Node`/vector keys; z3 uses hash tables with small ids. The path trees and
+   the throwaway trees of `matchNewPatterns` are never freed.
 
+## 9.1 Comparing against z3
+
+`-t eager-inst-match` logs one line per match, with the bindings canonicalized
+to their class representatives, which is what z3 logs for a match
+(`log_add_instance`, under `trace=true`). `contrib/compare-eager-ematching.py`
+parses z3's `z3.log` and our trace and compares the multisets of bindings; it is
+the test harness for "do we produce the instances z3 produces".
+
+On a battery of 15 small benchmarks covering unary, nested, ground-argument,
+multi-pattern (2 and 3 terms), shared-top-symbol, `IS_CGR`, congruence,
+merge-driven and inferred-pattern cases, run with cvc5's own instantiation
+strategies disabled (`--no-e-matching --no-cegqi --no-enum-inst --no-cbqi
+--no-mbqi`) and z3's model-based instantiation disabled (`smt.mbqi=false`), 13
+produce *identical* match multisets. The two that differ are ones where z3
+stopped matching as soon as it had a conflict and we did two more matches, i.e.
+our set is a strict superset; the patterns and the matches agree.
+
+On large real benchmarks the comparison is dominated by preprocessing
+differences between the two solvers (deviation 9) rather than by the matcher.
 ## 10. Open questions
 
 * Do we need `eqNotifyPreMerge` in `EqualityEngine` after all? The mirror

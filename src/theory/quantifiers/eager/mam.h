@@ -612,7 +612,10 @@ class Interpreter : protected EnvObj
    * z3: interpreter::mk_depth2_vector. Returns false if the joint gives no
    * vector at all, which z3 signals with a null pointer.
    */
-  bool mkDepth2Vector(const Joint& j, TNode f, size_t i, std::vector<ENode*>& v);
+  bool mkDepth2Vector(const Joint& j,
+                      TNode f,
+                      size_t i,
+                      std::vector<ENode*>& v);
   /** z3: interpreter::init_continue */
   ENode* initContinue(const Continue* c, size_t expectedNumArgs);
   /** z3: interpreter::update_max_generation */

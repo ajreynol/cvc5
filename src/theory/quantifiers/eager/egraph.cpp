@@ -74,7 +74,16 @@ bool EGraph::isTracked(TNode n)
   }
   // terms with variables in them are not ground, hence are not candidates for
   // matching and cannot be arguments of the terms we match against
-  return !expr::hasBoundVar(n);
+  if (expr::hasBoundVar(n))
+  {
+    return false;
+  }
+  // Instantiation constants stand for the universally quantified holes of a
+  // quantified formula; they are in the master equality engine because of
+  // counterexample-guided instantiation, but they are not real terms, so an
+  // instance built from one would not be entailed. cvc5's TermDb::addTerm
+  // excludes them for the same reason.
+  return !expr::hasSubtermKind(Kind::INST_CONSTANT, n);
 }
 
 EGraph::CgKey EGraph::mkCgKey(ENode* e) const

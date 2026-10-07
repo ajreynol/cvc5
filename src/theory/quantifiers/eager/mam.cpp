@@ -64,9 +64,7 @@ std::ostream& operator<<(std::ostream& out, const Instruction& i)
     case Opcode::INIT3:
     case Opcode::INIT4:
     case Opcode::INIT5:
-    case Opcode::INIT6:
-      out << "(INIT" << initArity(i.d_opcode) << ")";
-      break;
+    case Opcode::INIT6: out << "(INIT" << initArity(i.d_opcode) << ")"; break;
     case Opcode::INITN:
       out << "(INITN " << static_cast<const InitN&>(i).d_numArgs << ")";
       break;
@@ -327,11 +325,11 @@ GetCgr* CodeTreeManager::mkGetCgr(Node label,
                                   const std::vector<size_t>& iregs)
 {
   ApproxSet s(d_egraph.getLabelHash(label));
-  GetCgr* r = own(new GetCgr(
-      opcodeFor(Opcode::GET_CGR1, Opcode::GET_CGRN, iregs.size()),
-      label,
-      s,
-      oreg));
+  GetCgr* r = own(
+      new GetCgr(opcodeFor(Opcode::GET_CGR1, Opcode::GET_CGRN, iregs.size()),
+                 label,
+                 s,
+                 oreg));
   r->d_iregs = iregs;
   return r;
 }
@@ -538,9 +536,7 @@ bool Compiler::allArgsAreBoundVars(TNode n) const
   return true;
 }
 
-void Compiler::getStatsCore(TNode n,
-                            size_t& sz,
-                            size_t& numUnboundVars) const
+void Compiler::getStatsCore(TNode n, size_t& sz, size_t& numUnboundVars) const
 {
   sz++;
   if (isGround(n))
@@ -1276,9 +1272,8 @@ void Compiler::insertInto(Instruction* head, size_t firstMpIdx)
           Check* chk = static_cast<Check*>(curr);
           if (isCompatible(chk))
           {
-            d_todo.erase(
-                std::remove(d_todo.begin(), d_todo.end(), chk->d_reg),
-                d_todo.end());
+            d_todo.erase(std::remove(d_todo.begin(), d_todo.end(), chk->d_reg),
+                         d_todo.end());
             setCheckMark(chk->d_reg, CheckMark::NOT_CHECKED);
             d_compatible.push_back(curr);
           }
@@ -1310,9 +1305,8 @@ void Compiler::insertInto(Instruction* head, size_t firstMpIdx)
           Compare* cmp = static_cast<Compare*>(curr);
           if (isCompatible(cmp))
           {
-            d_todo.erase(
-                std::remove(d_todo.begin(), d_todo.end(), cmp->d_reg2),
-                d_todo.end());
+            d_todo.erase(std::remove(d_todo.begin(), d_todo.end(), cmp->d_reg2),
+                         d_todo.end());
             setCheckMark(cmp->d_reg2, CheckMark::NOT_CHECKED);
             size_t varId;
             if (isPatVar(getRegister(cmp->d_reg1), varId))
@@ -1459,8 +1453,8 @@ CodeTree* Compiler::mkTree(TNode q,
 {
   // z3: compiler::mk_tree
   TNode p = mp[firstIdx];
-  CodeTree* t = d_ctm.mkCodeTree(
-      p.getOperator(), p.getNumChildren(), filterCandidates);
+  CodeTree* t =
+      d_ctm.mkCodeTree(p.getOperator(), p.getNumChildren(), filterCandidates);
   t->d_patterns.push_back(mp);
   d_isTmpTree = false;
   init(t, q, mp, firstIdx);
@@ -1501,8 +1495,8 @@ void Compiler::insert(
     }
     t->d_numChoices = d_numChoices;
   }
-  Trace("eager-mam-compiler") << "Mam: tree after inserting " << mp << ":"
-                              << std::endl;
+  Trace("eager-mam-compiler")
+      << "Mam: tree after inserting " << mp << ":" << std::endl;
   if (TraceIsOn("eager-mam-compiler"))
   {
     t->display(Trace("eager-mam-compiler"));
@@ -1678,8 +1672,8 @@ bool Interpreter::mkDepth2Vector(const Joint& j,
   }
   for (ENode* p : n->getParents())
   {
-    if (p->getLabel() == j.d_label && p->getNumArgs() > j.d_argPos
-        && p->isCgr() && p->getArg(j.d_argPos)->getRoot() == n)
+    if (p->getLabel() == j.d_label && p->getNumArgs() > j.d_argPos && p->isCgr()
+        && p->getArg(j.d_argPos)->getRoot() == n)
     {
       ENode* pr = p->getRoot();
       for (ENode* p2 : pr->getParents())
@@ -2315,8 +2309,8 @@ void Mam::processPp(ENode* r1, ENode* r2)
           d_pp[h1 * ApproxSet::capacity + h2];
       if (h1 == h2)
       {
-        collectParents(
-            n1->getNumParents() <= n2->getNumParents() ? n1 : n2, pt.first);
+        collectParents(n1->getNumParents() <= n2->getNumParents() ? n1 : n2,
+                       pt.first);
       }
       else if (n1->getNumParents() <= n2->getNumParents())
       {
@@ -2494,8 +2488,8 @@ void Mam::matchNewPatterns()
   // matched against the terms that already exist. z3 does this with a
   // throwaway code tree per top symbol, so that the permanent trees are not
   // re-run over all of their candidates.
-  Trace("eager-mam") << "Mam: match " << d_newPatterns.size()
-                     << " new patterns" << std::endl;
+  Trace("eager-mam") << "Mam: match " << d_newPatterns.size() << " new patterns"
+                     << std::endl;
   std::map<Node, CodeTree*> tmpTrees;
   for (const std::pair<Node, Node>& qp : d_newPatterns)
   {

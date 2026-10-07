@@ -21,7 +21,8 @@ namespace theory {
 namespace quantifiers {
 namespace eager {
 
-/** The number of extra multi-patterns z3 creates by default (pi.max_multi_patterns) */
+/** The number of extra multi-patterns z3 creates by default
+ * (pi.max_multi_patterns) */
 static const size_t s_maxMultiPatterns = 0;
 /** Limit on the case splits of the multi-pattern search. z3: MAX_SPLITS */
 static const size_t s_maxSplits = 32;
@@ -127,8 +128,8 @@ bool PatternInference::isForbidden(TNode n) const
 }
 
 void PatternInference::addCandidate(TNode n,
-                                   const VarSet& freeVars,
-                                   size_t size)
+                                    const VarSet& freeVars,
+                                    size_t size)
 {
   for (const Node& np : d_noPatterns)
   {
@@ -563,10 +564,8 @@ void PatternInference::candidatesToMultiPatterns(
         d_candidateInfo.find(n);
     Assert(e != d_candidateInfo.end());
     const VarSet& s = e->second.first;
-    bool subset = std::includes(curr.d_freeVars.begin(),
-                                curr.d_freeVars.end(),
-                                s.begin(),
-                                s.end());
+    bool subset = std::includes(
+        curr.d_freeVars.begin(), curr.d_freeVars.end(), s.begin(), s.end());
     if (!subset)
     {
       PrePattern newP = curr;
@@ -590,9 +589,9 @@ void PatternInference::candidatesToMultiPatterns(
 }
 
 void PatternInference::mkPatterns(TNode q,
-                                 TNode body,
-                                 const std::vector<Node>& noPatterns,
-                                 std::vector<Node>& result)
+                                  TNode body,
+                                  const std::vector<Node>& noPatterns,
+                                  std::vector<Node>& result)
 {
   // z3: pattern_inference_cfg::mk_patterns
   d_numBindings = q[0].getNumChildren();
@@ -627,11 +626,9 @@ void PatternInference::mkPatterns(TNode q,
   if (numExtraMultiPatterns > 0 && !tmp1.empty())
   {
     // the order is not total, so the sort has to be stable to be reproducible
-    std::stable_sort(tmp1.begin(),
-                     tmp1.end(),
-                     [this](TNode n1, TNode n2) {
-                       return patternWeightLt(n1, n2);
-                     });
+    std::stable_sort(tmp1.begin(), tmp1.end(), [this](TNode n1, TNode n2) {
+      return patternWeightLt(n1, n2);
+    });
     candidatesToMultiPatterns(numExtraMultiPatterns, tmp1, result);
   }
 }

@@ -12,6 +12,7 @@
 
 #include "theory/quantifiers/eager/eager_inst_engine.h"
 
+#include "expr/node_algorithm.h"
 #include "options/quantifiers_options.h"
 #include "theory/quantifiers/quantifiers_state.h"
 
@@ -142,6 +143,14 @@ void EagerInstEngine::assertNode(Node q)
   {
     return;
   }
+  if (expr::hasSubtermKind(Kind::INST_CONSTANT, q))
+  {
+    // the inst-constant form of a quantified formula, which is a device of
+    // counterexample-guided instantiation rather than an asserted formula
+    Trace("eager-inst") << "EagerInst: skip inst-constant quantifier " << q
+                        << std::endl;
+    return;
+  }
   Node qn = q;
   d_trail.onPop([this, qn]() { d_asserted.erase(qn); });
   if (TraceIsOn("eager-inst-match"))
@@ -223,8 +232,7 @@ void EagerInstEngine::flush(CVC5_UNUSED Theory::Effort e)
     Node conf = d_inner.getConflict();
     Assert(!conf.isNull());
     Trace("eager-inst") << "EagerInst: inner conflict " << conf << std::endl;
-    d_qim.addPendingLemma(conf,
-                          InferenceId::QUANTIFIERS_INST_E_MATCHING_EAGER);
+    d_qim.addPendingLemma(conf, InferenceId::QUANTIFIERS_INST_E_MATCHING_EAGER);
   }
   for (const std::pair<Node, Node>& p : d_inner.getPropagations())
   {
@@ -262,12 +270,22 @@ void EagerInstEngine::check(Theory::Effort e, QEffort quantE)
   }
 }
 
-void EagerInstEngine::addInstance(CVC5_UNUSED TNode q,
+void EagerInstEngine::addInstance(TNode q,
                                   CVC5_UNUSED const std::vector<Node>& terms,
                                   TNode lemma,
                                   CVC5_UNUSED uint32_t generation)
 {
-  // the bring-up path, --eager-inst-output=lemma
+  // The bring-up path, --eager-inst-output=lemma. A module that owns a
+  // quantified formula is responsible for it and may claim to be complete for
+  // it, so instantiating it here would break that claim; the inner solver does
+  // not have this problem, since it keeps its instances to itself.
+  QuantifiersModule* owner = d_qreg.getOwner(q);
+  if (owner != nullptr && owner != this)
+  {
+    Trace("eager-inst") << "EagerInst: not sending an instance of " << q
+                        << ", owned by " << owner->identify() << std::endl;
+    return;
+  }
   d_qim.addPendingLemma(lemma, InferenceId::QUANTIFIERS_INST_E_MATCHING_EAGER);
 }
 

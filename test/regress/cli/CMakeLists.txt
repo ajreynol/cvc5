@@ -1866,6 +1866,8 @@ set(regress_0_tests
   regress0/quantifiers/dd.javafe-ieval.smt2
   regress0/quantifiers/delta-simp.smt2
   regress0/quantifiers/double-pattern.smt2
+  regress0/quantifiers/eager-inst-infer-pattern.smt2
+  regress0/quantifiers/eager-inst-simple.smt2
   regress0/quantifiers/ex3.smt2
   regress0/quantifiers/ex6.smt2
   regress0/quantifiers/floor.smt2
