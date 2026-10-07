@@ -401,7 +401,8 @@ class InnerSmtSolver : protected EnvObj,
    */
   std::vector<TermId> d_touched;
   size_t d_touchedHead;
-  /** The assignments from d_exportHead on have not been considered for export */
+  /** The assignments from d_exportHead on have not been considered for export
+   */
   size_t d_exportHead;
   /**
    * The number of scopes of the trail at the last time the state was saved.

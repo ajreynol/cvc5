@@ -74,10 +74,7 @@ class InnerEGraph : protected EnvObj
   /** The next term in the class of t, cyclically */
   TermId getNext(TermId t) const { return d_terms[t].d_next; }
   /** The number of terms in the class of t */
-  size_t getClassSize(TermId t) const
-  {
-    return d_terms[find(t)].d_classSize;
-  }
+  size_t getClassSize(TermId t) const { return d_terms[find(t)].d_classSize; }
   /** Set the listener, which must outlive this object */
   void setListener(InnerEGraphListener* l) { d_listener = l; }
 
