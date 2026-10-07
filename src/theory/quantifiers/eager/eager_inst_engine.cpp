@@ -324,10 +324,6 @@ void EagerInstEngine::addInstance(CVC5_UNUSED TNode q,
 
 void EagerInstEngine::traceStats() const
 {
-  if (!TraceIsOn("eager-inst-stats"))
-  {
-    return;
-  }
   const Mam::Stats& ms = d_mam.getStats();
   const InstQueue::Stats& qs = d_queue.getStats();
   const InnerSmtSolver::Stats& is = d_inner.getStats();
