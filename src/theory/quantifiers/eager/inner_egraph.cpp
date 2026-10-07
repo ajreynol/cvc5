@@ -64,6 +64,7 @@ InnerEGraph::TermId InnerEGraph::addTerm(TNode n)
   term.d_classSize = 1;
   term.d_cgOwner = false;
   term.d_pfParent = undefinedTerm;
+  term.d_constTerm = n.isConst() ? t : undefinedTerm;
   term.d_pfCongruence = false;
   d_terms.push_back(term);
   d_termMap[n] = t;
@@ -112,6 +113,22 @@ bool InnerEGraph::assertEq(TermId a, TermId b, TNode reason)
   return assertEqInternal(a, b, reason, false);
 }
 
+bool InnerEGraph::checkConstClash(TermId r1, TermId r2)
+{
+  // Two distinct constants cannot be equal. z3's e-graph reports the same
+  // conflict for two interpreted roots (context::add_eq).
+  TermId c1 = d_terms[r1].d_constTerm;
+  TermId c2 = d_terms[r2].d_constTerm;
+  if (c1 == undefinedTerm || c2 == undefinedTerm
+      || d_terms[c1].d_node == d_terms[c2].d_node)
+  {
+    return true;
+  }
+  d_conflict.clear();
+  explain(c1, c2, d_conflict);
+  return false;
+}
+
 bool InnerEGraph::assertEqInternal(TermId a,
                                    TermId b,
                                    TNode reason,
@@ -127,6 +144,10 @@ bool InnerEGraph::assertEqInternal(TermId a,
   // about, not between their representatives, since that is what the
   // explanation has to reconstruct.
   addProofEdge(a, b, reason, congruence);
+  if (!checkConstClash(ra, rb))
+  {
+    return false;
+  }
   if (d_terms[ra].d_classSize > d_terms[rb].d_classSize)
   {
     std::swap(ra, rb);
@@ -146,6 +167,10 @@ bool InnerEGraph::assertEqInternal(TermId a,
       continue;
     }
     addProofEdge(c.first, c.second, Node::null(), true);
+    if (!checkConstClash(rc1, rc2))
+    {
+      return false;
+    }
     if (d_terms[rc1].d_classSize > d_terms[rc2].d_classSize)
     {
       std::swap(rc1, rc2);
@@ -308,6 +333,14 @@ void InnerEGraph::merge(TermId a, TermId b)
   } while (curr != a);
   std::swap(d_terms[a].d_next, d_terms[b].d_next);
   d_terms[b].d_classSize += d_terms[a].d_classSize;
+  // the constant of the class, if any, moves to the new representative
+  if (d_terms[a].d_constTerm != undefinedTerm
+      && d_terms[b].d_constTerm == undefinedTerm)
+  {
+    d_undo.push_back(
+        UndoEntry(UndoEntry::Kind::CONST_TERM, b, d_terms[b].d_constTerm));
+    d_terms[b].d_constTerm = d_terms[a].d_constTerm;
+  }
   d_undo.push_back(UndoEntry(
       UndoEntry::Kind::PARENTS, b, undefinedTerm, d_terms[b].d_parents.size()));
   d_terms[b].d_parents.insert(d_terms[b].d_parents.end(),
@@ -430,6 +463,7 @@ void InnerEGraph::undo(const UndoEntry& e)
       d_diseqs.resize(e.d_size);
       d_reasons.erase(std::pair<TermId, TermId>(e.d_a, e.d_b));
       break;
+    case UndoEntry::Kind::CONST_TERM: d_terms[e.d_a].d_constTerm = e.d_b; break;
     case UndoEntry::Kind::PROOF_EDGE:
       d_terms[e.d_a].d_pfParent = e.d_b;
       d_terms[e.d_a].d_pfReason = e.d_key.first;

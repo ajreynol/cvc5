@@ -321,8 +321,13 @@ the shape the instances call for: an instance clause is `(or (not q) body)` and
 `q` holds in the outer context, so the clause behaves as `body` does, and most
 bodies are units.
 
-* `addInstance(q, bindings, lemma)` stores the clause, interns its atoms, and
-  internalizes its terms into `InnerEGraph`. Atoms, clauses and terms are
+* `addInstance(q, bindings, lemma)` **CNF-encodes** the instance (Tseitin, with
+  each compound subformula serving as its own definitional atom so that shared
+  structure is shared), interns the atoms, and internalizes the terms into
+  `InnerEGraph`. z3 internalizes an instance body the same way
+  (`context::internalize_instance`). This matters: on the target benchmarks
+  every instance body contains `and`/`or`, so taking a non-clausal body as an
+  opaque atom — which an earlier version did — meant almost nothing propagated. Atoms, clauses and terms are
   retracted together when the scope the instance was added at is popped, as
   z3's `qi_queue::pop_scope` does with its instance store.
 * `InnerEGraph` is a congruence closure with an explicit undo log, so a
@@ -356,6 +361,9 @@ bodies are units.
   merging it with `true` or `false` when it is assigned, which is how
   congruence over predicates is obtained; `true` and `false` are asserted
   disequal once.
+* Two distinct constants in one class are a conflict, as in z3's e-graph
+  (`context::add_eq`'s interpreted-roots check). The class of each
+  representative carries a constant member if it has one.
 * `InnerArith` will do the same for linear arithmetic. The instances eager
   matching produces are often arithmetic-heavy, and without an arithmetic
   solver the inner solver cannot detect most of the conflicts it is there to

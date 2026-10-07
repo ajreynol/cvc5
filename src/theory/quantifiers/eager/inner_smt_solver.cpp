@@ -12,6 +12,7 @@
 
 #include "theory/quantifiers/eager/inner_smt_solver.h"
 
+#include <algorithm>
 #include <ostream>
 
 #include "theory/quantifiers/quantifiers_state.h"
@@ -185,7 +186,8 @@ size_t InnerSmtSolver::getAtom(TNode atom)
     addWatch(lhs, id);
     addWatch(rhs, id);
   }
-  else if (atom.getNumChildren() > 0 && atom.hasOperator() && !atom.isClosure())
+  else if (atom.getNumChildren() > 0 && atom.hasOperator() && !atom.isClosure()
+           && !needsDefinition(atom))
   {
     TermId t = d_egraph.addTerm(atom);
     d_atoms[id].d_term = t;
@@ -230,27 +232,192 @@ InnerSmtSolver::Value InnerSmtSolver::value(LitId l) const
   return v == Value::TRUE ? Value::FALSE : Value::TRUE;
 }
 
-void InnerSmtSolver::getClauseLits(TNode body, std::vector<LitId>& lits)
+bool InnerSmtSolver::needsDefinition(TNode f)
 {
-  // An instance body that is not a clause is not broken down: a conjunction or
-  // an equivalence is taken as an opaque atom, which loses propagation but
-  // stays sound. z3 internalizes the body fully instead.
-  if (body.getKind() == Kind::OR)
+  switch (f.getKind())
   {
-    for (const Node& d : body)
+    case Kind::AND:
+    case Kind::OR:
+    case Kind::IMPLIES:
+    case Kind::XOR: return true;
+    case Kind::ITE: return f.getType().isBoolean();
+    case Kind::EQUAL: return f[0].getType().isBoolean();
+    default: return false;
+  }
+}
+
+InnerSmtSolver::LitId InnerSmtSolver::litFor(TNode f)
+{
+  if (f.getKind() == Kind::NOT)
+  {
+    return litNot(litFor(f[0]));
+  }
+  return mkLit(getAtom(f), false);
+}
+
+void InnerSmtSolver::defineAtom(TNode f, size_t instance)
+{
+  size_t a = getAtom(f);
+  if (d_atoms[a].d_defined)
+  {
+    return;
+  }
+  d_atoms[a].d_defined = true;
+  LitId x = mkLit(a, false);
+  switch (f.getKind())
+  {
+    case Kind::AND:
     {
-      lits.push_back(getLit(d));
+      // x -> each child, and all children -> x
+      std::vector<LitId> all{x};
+      for (const Node& c : f)
+      {
+        LitId l = litFor(c);
+        addClause({litNot(x), l}, instance);
+        all.push_back(litNot(l));
+      }
+      addClause(all, instance);
+    }
+    break;
+    case Kind::OR:
+    {
+      // x -> some child, and each child -> x
+      std::vector<LitId> all{litNot(x)};
+      for (const Node& c : f)
+      {
+        LitId l = litFor(c);
+        addClause({x, litNot(l)}, instance);
+        all.push_back(l);
+      }
+      addClause(all, instance);
+    }
+    break;
+    case Kind::IMPLIES:
+    {
+      LitId a0 = litFor(f[0]);
+      LitId b0 = litFor(f[1]);
+      addClause({litNot(x), litNot(a0), b0}, instance);
+      addClause({x, a0}, instance);
+      addClause({x, litNot(b0)}, instance);
+    }
+    break;
+    case Kind::EQUAL:
+    case Kind::XOR:
+    {
+      // x <-> (a = b) for EQUAL, x <-> (a != b) for XOR
+      LitId a0 = litFor(f[0]);
+      LitId b0 = litFor(f[1]);
+      LitId e = f.getKind() == Kind::XOR ? litNot(x) : x;
+      addClause({litNot(e), litNot(a0), b0}, instance);
+      addClause({litNot(e), a0, litNot(b0)}, instance);
+      addClause({e, a0, b0}, instance);
+      addClause({e, litNot(a0), litNot(b0)}, instance);
+    }
+    break;
+    case Kind::ITE:
+    {
+      LitId c0 = litFor(f[0]);
+      LitId t0 = litFor(f[1]);
+      LitId e0 = litFor(f[2]);
+      addClause({litNot(c0), litNot(x), t0}, instance);
+      addClause({litNot(c0), x, litNot(t0)}, instance);
+      addClause({c0, litNot(x), e0}, instance);
+      addClause({c0, x, litNot(e0)}, instance);
+    }
+    break;
+    default: Unreachable(); break;
+  }
+}
+
+InnerSmtSolver::LitId InnerSmtSolver::encode(TNode f, size_t instance)
+{
+  // Define the connectives of f bottom up. The traversal is iterative because
+  // an instance body can be deep.
+  std::vector<std::pair<TNode, bool>> visit{{f, false}};
+  std::unordered_set<TNode> done;
+  std::vector<TNode> order;
+  while (!visit.empty())
+  {
+    TNode c = visit.back().first;
+    if (done.find(c) != done.end())
+    {
+      visit.pop_back();
+      continue;
+    }
+    if (!visit.back().second)
+    {
+      visit.back().second = true;
+      if (c.getKind() == Kind::NOT)
+      {
+        visit.push_back({c[0], false});
+      }
+      else if (needsDefinition(c))
+      {
+        for (const Node& cc : c)
+        {
+          visit.push_back({cc, false});
+        }
+      }
+      continue;
+    }
+    visit.pop_back();
+    done.insert(c);
+    order.push_back(c);
+  }
+  for (TNode c : order)
+  {
+    if (needsDefinition(c))
+    {
+      defineAtom(c, instance);
+    }
+  }
+  return litFor(f);
+}
+
+void InnerSmtSolver::addFormula(TNode f, size_t instance)
+{
+  // A top level conjunction is asserted conjunct by conjunct, and a top level
+  // disjunction becomes one clause, so that neither needs a definition.
+  if (f.getKind() == Kind::AND)
+  {
+    for (const Node& c : f)
+    {
+      addFormula(c, instance);
     }
     return;
   }
-  lits.push_back(getLit(body));
+  if (f.getKind() == Kind::OR)
+  {
+    std::vector<LitId> lits;
+    for (const Node& c : f)
+    {
+      lits.push_back(encode(c, instance));
+    }
+    addClause(lits, instance);
+    return;
+  }
+  addClause({encode(f, instance)}, instance);
 }
 
 void InnerSmtSolver::addClause(const std::vector<LitId>& lits, size_t instance)
 {
-  d_clauses.push_back(Clause{lits, instance});
-  size_t idx = d_clauses.size() - 1;
+  // The encoding of a formula can produce a clause with a repeated or opposite
+  // pair of literals, which is either redundant or a tautology.
+  std::vector<LitId> cl;
   for (LitId l : lits)
+  {
+    if (std::find(cl.begin(), cl.end(), litNot(l)) != cl.end())
+    {
+      return;
+    }
+    if (std::find(cl.begin(), cl.end(), l) == cl.end())
+    {
+      cl.push_back(l);
+    }
+  }
+  d_clauses.push_back(Clause{cl, instance});
+  size_t idx = d_clauses.size() - 1;
+  for (LitId l : cl)
   {
     std::vector<size_t>& occ = d_atoms[litAtom(l)].d_occurs;
     if (occ.empty() || occ.back() != idx)
@@ -277,9 +444,7 @@ void InnerSmtSolver::addInstance(TNode q,
   // body does. It is examined at the next round. Like the rest of the state,
   // it is dropped when the current scope is popped, as in z3's
   // qi_queue::pop_scope.
-  std::vector<LitId> lits;
-  getClauseLits(lemma, lits);
-  addClause(lits, n);
+  addFormula(lemma, n);
   // the new terms that the outer solver knows about
   for (TermId t = numTerms, nterms = d_egraph.getNumTerms(); t < nterms; t++)
   {

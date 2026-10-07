@@ -137,6 +137,13 @@ class InnerEGraph : protected EnvObj
     uint32_t d_classSize;
     /** the parents of this term's class, maintained on the representative */
     std::vector<TermId> d_parents;
+    /**
+     * A constant in this term's class, if there is one, maintained on the
+     * representative. Two distinct constants in one class are a conflict; z3's
+     * e-graph does the same with its interpreted roots
+     * (context::add_eq, the interpreted roots check).
+     */
+    TermId d_constTerm;
     /** whether this term owns an entry of the congruence table */
     bool d_cgOwner;
     /** the key of that entry */
@@ -164,7 +171,8 @@ class InnerEGraph : protected EnvObj
       CG_INSERT,
       CG_ERASE,
       DISEQ,
-      PROOF_EDGE
+      PROOF_EDGE,
+      CONST_TERM
     };
     UndoEntry(Kind k,
               TermId a = undefinedTerm,
@@ -210,6 +218,11 @@ class InnerEGraph : protected EnvObj
   bool assertEqInternal(TermId a, TermId b, TNode reason, bool congruence);
   /** Set the conflict to the violation of the i^th disequality */
   void setDiseqConflict(size_t i);
+  /**
+   * Check that the classes of r1 and r2, which are about to be merged, do not
+   * hold two distinct constants. Returns false on a conflict.
+   */
+  bool checkConstClash(TermId r1, TermId r2);
   /** Add the proof forest edge from a to b. z3: euf::egraph proof forest */
   void addProofEdge(TermId a, TermId b, TNode reason, bool congruence);
   /** Make a the root of its proof tree, reversing the path to the old root */

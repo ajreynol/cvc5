@@ -201,6 +201,12 @@ class InnerSmtSolver : protected EnvObj,
     /** for an equality, the two sides */
     TermId d_lhs = InnerEGraph::undefinedTerm;
     TermId d_rhs = InnerEGraph::undefinedTerm;
+    /**
+     * Whether this atom stands for a Boolean connective whose defining clauses
+     * have been added, i.e. whether it is a Tseitin definition rather than a
+     * theory atom.
+     */
+    bool d_defined = false;
   };
   /** An element of the assignment trail */
   struct Assignment
@@ -282,7 +288,24 @@ class InnerSmtSolver : protected EnvObj,
   /** The value of a literal */
   Value value(LitId l) const;
   /** Decompose a clause formula into literals */
-  void getClauseLits(TNode body, std::vector<LitId>& lits);
+  /**
+   * Assert the formula f, which belongs to the given instance, by adding its
+   * clauses. z3 internalizes the body of an instance in the same way
+   * (context::internalize_instance).
+   */
+  void addFormula(TNode f, size_t instance);
+  /**
+   * The literal standing for the formula f, adding the defining clauses of the
+   * Boolean connectives inside it. The formula itself is used as its own
+   * definitional atom, so the encoding of a shared subformula is shared.
+   */
+  LitId encode(TNode f, size_t instance);
+  /** The literal of f, assuming its connectives are already defined */
+  LitId litFor(TNode f);
+  /** Add the clauses defining the atom of the connective f */
+  void defineAtom(TNode f, size_t instance);
+  /** Does f stand for a Boolean connective that gets defining clauses? */
+  static bool needsDefinition(TNode f);
   /** Add a clause, which belongs to the given instance */
   void addClause(const std::vector<LitId>& lits, size_t instance);
   /** Note that the atom watches the term t, to be revisited on merges */
