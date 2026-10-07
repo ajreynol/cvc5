@@ -848,6 +848,8 @@ libcvc5_add_sources(
   theory/quantifiers/eager/inst_queue.h
   theory/quantifiers/eager/mam.cpp
   theory/quantifiers/eager/mam.h
+  theory/quantifiers/eager/pattern_inference.cpp
+  theory/quantifiers/eager/pattern_inference.h
   theory/quantifiers/eager/trail.cpp
   theory/quantifiers/eager/trail.h
   theory/quantifiers/ematching/candidate_generator.cpp

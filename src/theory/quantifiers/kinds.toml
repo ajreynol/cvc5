@@ -8,7 +8,7 @@
 id                 = "THEORY_QUANTIFIERS"
 base_class         = "::cvc5::internal::theory::quantifiers::TheoryQuantifiers"
 base_class_header  = "theory/quantifiers/theory_quantifiers.h"
-properties         = ["check", "presolve"]
+properties         = ["check", "propagate", "presolve"]
 typechecker_header = "theory/quantifiers/theory_quantifiers_type_rules.h"
 
 [rewriter]

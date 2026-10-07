@@ -31,6 +31,7 @@ ENode::ENode(Node n,
       d_root(this),
       d_next(this),
       d_classSize(1),
+      d_cgr(this),
       d_lblHash(-1),
       d_generation(generation),
       d_mark(false),
@@ -74,6 +75,54 @@ bool EGraph::isTracked(TNode n)
   // terms with variables in them are not ground, hence are not candidates for
   // matching and cannot be arguments of the terms we match against
   return !expr::hasBoundVar(n);
+}
+
+EGraph::CgKey EGraph::mkCgKey(ENode* e) const
+{
+  std::vector<ENode*> roots;
+  roots.reserve(e->getNumArgs());
+  for (size_t i = 0, nargs = e->getNumArgs(); i < nargs; i++)
+  {
+    roots.push_back(e->getArg(i)->getRoot());
+  }
+  return CgKey(e->getLabel(), roots);
+}
+
+void EGraph::cgInsert(ENode* e)
+{
+  CgKey key = mkCgKey(e);
+  std::map<CgKey, ENode*>::const_iterator it = d_cg.find(key);
+  if (it == d_cg.end())
+  {
+    d_cg[key] = e;
+    e->d_cgr = e;
+    e->d_cgKey = key;
+    return;
+  }
+  // e is congruent to a node that already owns the entry; e is not a
+  // congruence representative. The two are in the same class as soon as the
+  // master equality engine has propagated the congruence, which it reports to
+  // us as an ordinary merge.
+  e->d_cgr = it->second;
+}
+
+void EGraph::cgErase(ENode* e)
+{
+  Assert(e->isCgr());
+  d_cg.erase(e->d_cgKey);
+  e->d_cgKey = CgKey(Node::null(), std::vector<ENode*>());
+}
+
+ENode* EGraph::getENodeEqTo(TNode label, const std::vector<ENode*>& args) const
+{
+  std::vector<ENode*> roots;
+  roots.reserve(args.size());
+  for (ENode* a : args)
+  {
+    roots.push_back(a->getRoot());
+  }
+  std::map<CgKey, ENode*>::const_iterator it = d_cg.find(CgKey(label, roots));
+  return it == d_cg.end() ? nullptr : it->second;
 }
 
 ENode* EGraph::getENode(TNode n) const
@@ -126,6 +175,10 @@ ENode* EGraph::addTerm(TNode n)
     for (size_t i = 0, nargs = e->getNumArgs(); i < nargs; i++)
     {
       e->getArg(i)->getRoot()->d_parents.push_back(e);
+    }
+    if (e->getNumArgs() > 0)
+    {
+      cgInsert(e);
     }
   }
   // this is the label maintenance half of z3's mam::relevant_eh
@@ -195,7 +248,21 @@ void EGraph::merge(ENode* r1, ENode* r2)
                                  r2->d_classSize,
                                  static_cast<uint32_t>(r2->d_parents.size()),
                                  r2->d_lbls,
-                                 r2->d_plbls});
+                                 r2->d_plbls,
+                                 d_cgUndo.size()});
+  // The parents of the class being absorbed have a congruence key that is
+  // about to become stale. z3 does the same in two steps around the splice
+  // (remove_parents_from_cg_table / reinsert_parents_into_cg_table).
+  const std::vector<ENode*> parents1(r1->d_parents.begin(),
+                                     r1->d_parents.end());
+  for (ENode* p : parents1)
+  {
+    d_cgUndo.push_back(CgUndo{p, p->d_cgr, p->d_cgKey, p->isCgr()});
+    if (p->isCgr())
+    {
+      cgErase(p);
+    }
+  }
   // re-root the class of r1
   ENode* curr = r1;
   do
@@ -212,6 +279,12 @@ void EGraph::merge(ENode* r1, ENode* r2)
   // z3: add_eq_eh, r2_lbls |= r1_lbls; r2_plbls |= r1_plbls
   r2->d_lbls |= r1->d_lbls;
   r2->d_plbls |= r1->d_plbls;
+  // re-insert the parents under their new keys, which is where congruences
+  // become visible
+  for (ENode* p : parents1)
+  {
+    cgInsert(p);
+  }
 }
 
 void EGraph::popMerges(size_t n)
@@ -234,6 +307,27 @@ void EGraph::popMerges(size_t n)
     r2->d_parents.resize(m.d_numParents2);
     r2->d_lbls = m.d_lbls2;
     r2->d_plbls = m.d_plbls2;
+    // undo the congruence table changes of this merge, in two passes so that
+    // a key that moved from one node to another is restored correctly
+    for (size_t i = d_cgUndo.size(); i-- > m.d_cgUndoBegin;)
+    {
+      ENode* p = d_cgUndo[i].d_node;
+      if (p->isCgr())
+      {
+        cgErase(p);
+      }
+    }
+    for (size_t i = d_cgUndo.size(); i-- > m.d_cgUndoBegin;)
+    {
+      const CgUndo& cu = d_cgUndo[i];
+      cu.d_node->d_cgr = cu.d_oldCgr;
+      cu.d_node->d_cgKey = cu.d_oldKey;
+      if (cu.d_wasOwner)
+      {
+        d_cg[cu.d_oldKey] = cu.d_node;
+      }
+    }
+    d_cgUndo.resize(m.d_cgUndoBegin);
     d_merges.pop_back();
   }
 }
@@ -255,6 +349,10 @@ void EGraph::popTerms(size_t n)
       std::vector<ENode*>& os = d_opMap[e->getLabel()];
       Assert(!os.empty() && os.back() == e);
       os.pop_back();
+      if (e->getNumArgs() > 0 && e->isCgr())
+      {
+        cgErase(e);
+      }
     }
     d_nodeMap.erase(e->getNode());
     d_enodes.pop_back();

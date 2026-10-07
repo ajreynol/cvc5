@@ -89,6 +89,17 @@ void InstQueue::onMatch(TNode q,
     d_stats.d_numDuplicates++;
     return;
   }
+  if (TraceIsOn("eager-inst-match"))
+  {
+    // the bindings are canonicalized to their representatives, as z3 does when
+    // it logs a match, so that the two can be compared
+    Trace("eager-inst-match") << "MATCH " << q.getId();
+    for (ENode* b : bindings)
+    {
+      Trace("eager-inst-match") << " " << b->getRoot()->getNode();
+    }
+    Trace("eager-inst-match") << std::endl;
+  }
   std::vector<Node> terms;
   terms.reserve(bindings.size());
   for (ENode* b : bindings)

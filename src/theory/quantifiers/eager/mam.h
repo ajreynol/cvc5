@@ -45,7 +45,8 @@ namespace eager {
 
 /**
  * The opcodes of the machine. This is exactly z3's opcode enumeration
- * (mam.cpp), including the unrolled forms for small arities.
+ * (mam.cpp), including the unrolled forms for small arities, which we keep so
+ * that a code tree prints the same way z3's does.
  */
 enum class Opcode
 {
@@ -59,8 +60,7 @@ enum class Opcode
   INIT6,
   INITN,
   // Try each application of a label in the class of a register, binding its
-  // arguments to consecutive registers. This is the only backtracking point
-  // besides CHOOSE.
+  // arguments to consecutive registers. This is a backtracking point.
   BIND1,
   BIND2,
   BIND3,
@@ -173,7 +173,7 @@ struct GetENode : public Instruction
 /** CHOOSE and NOOP. z3: struct choose */
 struct Choose : public Instruction
 {
-  Choose(Opcode op) : Instruction(op), d_alt(nullptr) {}
+  Choose(Opcode op, Choose* alt) : Instruction(op), d_alt(alt) {}
   Choose* d_alt;
 };
 
@@ -228,13 +228,14 @@ struct Yield : public Instruction
   }
   Node d_quant;
   Node d_pattern;
+  /** the register holding the binding of each bound variable, in order */
   std::vector<size_t> d_bindings;
 };
 
 /**
  * A joint of a CONTINUE instruction, which constrains which applications are
- * worth considering for the next pattern of a multi-pattern. z3: struct joint2
- * and the NULL_TAG/GROUND_TERM_TAG/VAR_TAG/NESTED_VAR_TAG tagging of
+ * worth considering for the next pattern term of a multi-pattern. z3: struct
+ * joint2 and the NULL_TAG/GROUND_TERM_TAG/VAR_TAG/NESTED_VAR_TAG tagging of
  * cont::m_joints.
  */
 struct Joint
@@ -270,7 +271,7 @@ struct Continue : public Instruction
   Node d_label;
   size_t d_numArgs;
   size_t d_oreg;
-  /** a singleton set containing the label */
+  /** a singleton set containing the label, empty if filters are off */
   ApproxSet d_lblSet;
   std::vector<Joint> d_joints;
 };
@@ -287,14 +288,18 @@ class CodeTree
   friend class Compiler;
   friend class CodeTreeManager;
   friend class Interpreter;
+  friend class Mam;
 
  public:
   CodeTree(Node rootLabel, size_t numArgs, bool filterCandidates);
   /** The top symbol of the first pattern term of every pattern in this tree */
   TNode getRootLabel() const { return d_rootLabel; }
-  size_t getNumArgs() const { return d_numArgs; }
+  /** The arity the candidates must have. z3: code_tree::expected_num_args */
+  size_t getExpectedNumArgs() const { return d_numArgs; }
   size_t getNumRegs() const { return d_numRegs; }
   size_t getNumChoices() const { return d_numChoices; }
+  /** Whether duplicate candidates are filtered out when executing */
+  bool filterCandidates() const { return d_filterCandidates; }
   Instruction* getRoot() const { return d_root; }
 
   /** Are there candidates queued for this tree? */
@@ -310,6 +315,10 @@ class CodeTree
  private:
   /** Print the instructions reachable from head */
   void displaySeq(std::ostream& out, Instruction* head, size_t indent) const;
+  /** Print the alternatives of a choice point */
+  void displayChildren(std::ostream& out,
+                       Choose* firstChild,
+                       size_t indent) const;
   Node d_rootLabel;
   size_t d_numArgs;
   bool d_filterCandidates;
@@ -333,22 +342,51 @@ class CodeTree
 class CodeTreeManager
 {
  public:
-  CodeTreeManager();
+  CodeTreeManager(EGraph& eg, Trail& trail);
   ~CodeTreeManager();
   /** Allocate a tree whose first pattern term has top symbol label */
   CodeTree* mkCodeTree(Node label, size_t numArgs, bool filterCandidates);
-  /** Allocate an instruction, taking ownership */
-  template <class T, class... Args>
-  T* mkInstruction(Args&&... args)
+
+  //----------------------------------------------- instruction constructors
+  Instruction* mkInit(size_t numArgs);
+  Compare* mkCompare(size_t reg1, size_t reg2);
+  Check* mkCheck(size_t reg, ENode* e);
+  Filter* mkFilter(size_t reg, ApproxSet s);
+  Filter* mkPFilter(size_t reg, ApproxSet s);
+  Filter* mkCFilter(size_t reg, ApproxSet s);
+  GetENode* mkGetENode(size_t oreg, ENode* e);
+  Choose* mkChoose(Choose* alt);
+  Choose* mkNoop();
+  Bind* mkBind(Node label, size_t numArgs, size_t ireg, size_t oreg);
+  GetCgr* mkGetCgr(Node label, size_t oreg, const std::vector<size_t>& iregs);
+  IsCgr* mkIsCgr(Node label, size_t ireg, const std::vector<size_t>& iregs);
+  Yield* mkYield(Node q, Node pat, const std::vector<size_t>& bindings);
+  Continue* mkCont(Node label,
+                   size_t numArgs,
+                   size_t oreg,
+                   ApproxSet s,
+                   const std::vector<Joint>& joints);
+  //------------------------------------------- end instruction constructors
+
+  /** Set the successor of instr, recording the old value on the trail */
+  void setNext(Instruction* instr, Instruction* next);
+  /** Record the number of registers of tree on the trail */
+  void saveNumRegs(CodeTree* tree);
+  /** Record the number of choice points of tree on the trail */
+  void saveNumChoices(CodeTree* tree);
+  /** Add h to the label set of a filter, recording the old value */
+  void insertNewLblHash(Filter* instr, size_t h);
+
+ private:
+  /** Take ownership of an instruction */
+  template <class T>
+  T* own(T* i)
   {
-    T* i = new T(std::forward<Args>(args)...);
     d_instructions.emplace_back(i);
     return i;
   }
-  /** Drop everything */
-  void reset();
-
- private:
+  EGraph& d_egraph;
+  Trail& d_trail;
   std::vector<std::unique_ptr<Instruction>> d_instructions;
   std::vector<std::unique_ptr<CodeTree>> d_trees;
 };
@@ -422,21 +460,110 @@ class MamListener
 class Compiler : protected EnvObj
 {
  public:
-  Compiler(Env& env, EGraph& eg, CodeTreeManager& ctm);
+  Compiler(Env& env, EGraph& eg, CodeTreeManager& ctm, bool useFilters);
   /**
-   * Compile the multi-pattern mp of q, with the patIdx^th pattern term taken
+   * Compile the multi-pattern mp of q, with the firstIdx^th pattern term taken
    * as the first one, into a fresh code tree.
    */
-  CodeTree* mkTree(TNode q, TNode mp, size_t patIdx, bool filterCandidates);
+  CodeTree* mkTree(TNode q, TNode mp, size_t firstIdx, bool filterCandidates);
   /**
    * Insert the multi-pattern mp of q into the existing tree t, with the
-   * patIdx^th pattern term taken as the first one.
+   * firstIdx^th pattern term taken as the first one. A temporary tree is one
+   * that is thrown away after matching, so no undo information is recorded.
    */
-  void insert(CodeTree* t, TNode q, TNode mp, size_t patIdx, bool isTmpTree);
+  void insert(CodeTree* t, TNode q, TNode mp, size_t firstIdx, bool isTmpTree);
 
  private:
+  /** Whether a register has already been constrained by a filter */
+  enum class CheckMark
+  {
+    NOT_CHECKED,
+    CHECK_SET,
+    CHECK_SINGLETON
+  };
+  /** Prepare to compile mp into t. z3: compiler::init */
+  void init(CodeTree* t, TNode q, TNode mp, size_t firstIdx);
+  void setRegister(size_t reg, TNode p);
+  TNode getRegister(size_t reg) const;
+  CheckMark getCheckMark(size_t reg) const;
+  void setCheckMark(size_t reg, CheckMark cm);
+  /** Is n a bound variable of the quantifier being compiled? */
+  bool isPatVar(TNode n, size_t& varId) const;
+  /** Is n ground, i.e. free of the bound variables of the quantifier? */
+  static bool isGround(TNode n);
+  /** The enode of the ground pattern term n. z3: mk_enode */
+  ENode* mkENode(TNode n);
+  /** z3: compiler::all_args_are_bound_vars */
+  bool allArgsAreBoundVars(TNode n) const;
+  /** z3: compiler::get_stats */
+  void getStats(TNode n, size_t& sz, size_t& numUnboundVars) const;
+  void getStatsCore(TNode n, size_t& sz, size_t& numUnboundVars) const;
+  /** z3: compiler::get_num_bound_vars */
+  size_t getNumBoundVars(TNode n, bool& hasUnboundVars) const;
+  size_t getNumBoundVarsCore(TNode n, bool& hasUnboundVars) const;
+  /** z3: compiler::linearise_core */
+  void lineariseCore();
+  /** z3: compiler::gen_mp_filter */
+  size_t genMpFilter(TNode n);
+  /** z3: compiler::linearise_multi_pattern */
+  void lineariseMultiPattern(size_t firstIdx);
+  /** z3: compiler::linearise */
+  void linearise(Instruction* head, size_t firstIdx);
+  /** z3: compiler::set_next */
+  void setNext(Instruction* instr, Instruction* next);
+  /** z3: compiler::find_best_child */
+  Choose* findBestChild(Choose* firstChild);
+  /** z3: compiler::get_compatibility_measure */
+  size_t getCompatibilityMeasure(Choose* child, bool& simple);
+  /** z3: compiler::get_pat_lbl_hash */
+  size_t getPatLblHash(size_t reg);
+  //--------------------------------------------- compatibility of instructions
+  bool isCompatible(Bind* instr);
+  bool isCompatible(Compare* instr);
+  bool isCompatible(Check* instr);
+  bool isCompatible(Filter* instr);
+  bool isCompatible(Continue* instr);
+  bool isCfilterCompatible(Filter* instr);
+  bool isSemiCompatible(Check* instr);
+  bool isSemiCompatible(Filter* instr);
+  //----------------------------------------- end compatibility of instructions
+  /** z3: compiler::insert(instruction*, unsigned) */
+  void insertInto(Instruction* head, size_t firstMpIdx);
+
   EGraph& d_egraph;
   CodeTreeManager& d_ctm;
+  bool d_useFilters;
+  /** The pattern term held by each register */
+  std::vector<Node> d_registers;
+  /** The registers whose patterns still have to be processed */
+  std::vector<size_t> d_todo;
+  /** Scratch list used while linearising */
+  std::vector<size_t> d_aux;
+  /** For each bound variable, the register it is bound in, or -1 */
+  std::vector<int64_t> d_vars;
+  /** The index of each bound variable of the quantifier being compiled */
+  std::map<Node, size_t> d_varIndex;
+  Node d_quant;
+  Node d_mp;
+  CodeTree* d_tree;
+  size_t d_numChoices;
+  bool d_isTmpTree;
+  /** Which pattern terms of the multi-pattern have been compiled */
+  std::vector<bool> d_mpAlreadyProcessed;
+  /** The register each pattern term was first matched in */
+  std::map<Node, size_t> d_matchedExprs;
+  /** The check mark of each register */
+  std::vector<CheckMark> d_mark;
+  /** Scratch lists used while measuring compatibility and inserting */
+  std::vector<size_t> d_toReset;
+  std::vector<Instruction*> d_compatible;
+  std::vector<Instruction*> d_incompatible;
+  std::vector<Instruction*> d_seq;
+  /**
+   * Set when a ground pattern term could not be given an enode, in which case
+   * the pattern is not compiled.
+   */
+  bool d_failed;
 };
 
 /**
@@ -446,12 +573,12 @@ class Compiler : protected EnvObj
 class Interpreter : protected EnvObj
 {
  public:
-  Interpreter(Env& env, EGraph& eg, Mam& mam);
+  Interpreter(Env& env, EGraph& eg, Mam& mam, bool useFilters);
   /** Prepare to execute t */
   void init(CodeTree* t);
   /**
    * Run t on all of its queued candidates. Returns false if execution was
-   * interrupted.
+   * interrupted. z3: interpreter::execute.
    */
   bool execute(CodeTree* t);
   /** Run t on the single candidate n. z3: interpreter::execute_core */
@@ -463,26 +590,63 @@ class Interpreter : protected EnvObj
   {
     const Instruction* d_instr = nullptr;
     uint32_t d_oldMaxGeneration = 0;
-    /** for CHOOSE */
+    /** for BIND, the application currently bound */
     ENode* d_curr = nullptr;
-    /** for BIND, the remaining applications to try */
-    std::vector<ENode*> d_rest;
+    /** for CONTINUE, the candidates and the position in them */
+    const std::vector<ENode*>* d_rest = nullptr;
+    std::vector<ENode*> d_restOwned;
     size_t d_restIdx = 0;
   };
+  /** z3: interpreter::get_first_f_app */
+  ENode* getFirstFApp(TNode lbl, size_t numExpectedArgs, ENode* curr);
+  /** z3: interpreter::get_next_f_app */
+  ENode* getNextFApp(TNode lbl,
+                     size_t numExpectedArgs,
+                     ENode* first,
+                     ENode* curr);
+  /** z3: interpreter::exec_is_cgr */
+  bool execIsCgr(const IsCgr* instr);
+  /** z3: interpreter::mk_depth1_vector */
+  void mkDepth1Vector(ENode* n, TNode f, size_t i, std::vector<ENode*>& v);
+  /**
+   * z3: interpreter::mk_depth2_vector. Returns false if the joint gives no
+   * vector at all, which z3 signals with a null pointer.
+   */
+  bool mkDepth2Vector(const Joint& j, TNode f, size_t i, std::vector<ENode*>& v);
+  /** z3: interpreter::init_continue */
+  ENode* initContinue(const Continue* c, size_t expectedNumArgs);
+  /** z3: interpreter::update_max_generation */
+  void updateMaxGeneration(ENode* n);
+  /** z3: interpreter::get_min_max_top_generation */
+  void getMinMaxTopGeneration(uint32_t& min, uint32_t& max);
+  /**
+   * Resume from the most recent choice point, setting the program counter.
+   * Returns false if there is no alternative left, i.e. execution is done.
+   */
+  bool backtrack();
+  /** Set the registers oreg..oreg+n-1 from the arguments of app */
+  void setRegisters(size_t oreg, ENode* app, size_t numArgs);
+
   EGraph& d_egraph;
   Mam& d_mam;
+  bool d_useFilters;
   /** The registers */
   std::vector<ENode*> d_registers;
   /** The bindings of the bound variables */
   std::vector<ENode*> d_bindings;
-  /** The backtracking stack */
+  /** Scratch list used by GET_CGR and IS_CGR */
+  std::vector<ENode*> d_args;
+  /** The backtracking stack and its height */
   std::vector<BacktrackPoint> d_backtrack;
+  size_t d_top;
   /** The program counter */
   const Instruction* d_pc;
   /** The maximum generation of an enode processed so far */
   uint32_t d_maxGeneration;
   /** The top-level pattern instances, for the generation bookkeeping */
   std::vector<ENode*> d_patternInstances;
+  std::vector<uint32_t> d_minTopGeneration;
+  std::vector<uint32_t> d_maxTopGeneration;
 };
 
 /**
@@ -544,6 +708,8 @@ class Mam : protected EnvObj, public EGraphListener
     uint64_t d_numMerges = 0;
     /** calls to match */
     uint64_t d_numMatchCalls = 0;
+    /** code tree executions */
+    uint64_t d_numExecutions = 0;
     /** matches found */
     uint64_t d_numMatches = 0;
   };
@@ -567,6 +733,8 @@ class Mam : protected EnvObj, public EGraphListener
    * pat, which occurs at the path p within the patIdx^th pattern term of mp.
    */
   void updateFilters(TNode pat, Path* p, TNode q, TNode mp, size_t patIdx);
+  /** Update them for all of the pattern terms of mp */
+  void updateFilters(TNode q, TNode mp);
   /** z3: mam_impl::update_vars */
   void updateVars(size_t varId, Path* p, TNode q, TNode mp);
   /** The first ground argument of pat and its position. z3: get_ground_arg */
@@ -588,17 +756,6 @@ class Mam : protected EnvObj, public EGraphListener
   void updatePc(size_t h1, size_t h2, Path* p, TNode q, TNode mp);
   /** z3: mam_impl::update_pp */
   void updatePp(size_t h1, size_t h2, Path* p1, Path* p2, TNode q, TNode mp);
-  /**
-   * Are n1 and n2 equal, taking the merge currently being processed into
-   * account? z3: mam_impl::is_eq.
-   */
-  bool isEqModPending(ENode* n1, ENode* n2) const;
-  /**
-   * Update the label filters for the multi-pattern mp of q, i.e. mark the
-   * labels whose applications must be tracked in the label sets of the
-   * e-graph. z3: mam_impl::update_filters.
-   */
-  void updateFilters(TNode q, TNode mp);
   /** Collect the ground terms of mp. z3: mam_impl::collect_ground_exprs */
   void collectGroundTerms(TNode q, TNode mp);
   /**
@@ -612,6 +769,11 @@ class Mam : protected EnvObj, public EGraphListener
   void processPp(ENode* r1, ENode* r2);
   /** Match the patterns added since the last call. z3: match_new_patterns */
   void matchNewPatterns();
+  /**
+   * Are n1 and n2 equal, taking the merge currently being processed into
+   * account? z3: mam_impl::is_eq.
+   */
+  bool isEqModPending(ENode* n1, ENode* n2) const;
 
   EGraph& d_egraph;
   Trail& d_trail;

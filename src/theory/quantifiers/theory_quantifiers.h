@@ -57,6 +57,12 @@ class TheoryQuantifiers : public Theory
   bool ppAssert(TrustNode tin, TrustSubstitutionMap& outSubstitutions) override;
   void ppNotifyAssertions(const std::vector<Node>& assertions) override;
   //--------------------------------- standard check
+  /**
+   * Propagate, called once per round of the propagation fixpoint of the theory
+   * engine. This is where eager E-matching runs, mirroring the call to the
+   * quantifier manager from z3's context::propagate.
+   */
+  void propagate(Effort level) override;
   /** Post-check, called after the fact queue of the theory is processed. */
   void postCheck(Effort level) override;
   /** Pre-notify fact, return true if processed. */

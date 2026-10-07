@@ -31,6 +31,7 @@
 #include "theory/quantifiers/eager/inner_smt_solver.h"
 #include "theory/quantifiers/eager/inst_queue.h"
 #include "theory/quantifiers/eager/mam.h"
+#include "theory/quantifiers/eager/pattern_inference.h"
 #include "theory/quantifiers/eager/trail.h"
 #include "theory/quantifiers/quant_module.h"
 #include "theory/uf/equality_engine_notify.h"
@@ -103,8 +104,20 @@ class EagerInstEngine : public QuantifiersModule, public InstanceSink
   void notifyDisequal(TNode t1, TNode t2, TNode reason);
   //--------------------------------------- end notifications
 
+  /**
+   * Run the matcher and queue what it finds. Called once per round of the
+   * propagation fixpoint of the theory engine, which is where z3 calls its
+   * quantifier manager (context::propagate). Produces no output.
+   */
+  void propagate(Theory::Effort e);
+  /**
+   * Report the conflicts and propagations of the inner SMT solver. Called at
+   * the start of a check of the quantifiers theory, so that output happens at a
+   * point where cvc5 expects it.
+   */
+  void flush(Theory::Effort e);
+
   //------------------------------------------- QuantifiersModule
-  bool needsCheck(Theory::Effort e) override;
   void check(Theory::Effort e, QEffort quantE) override;
   /** z3: default_qm_plugin::assign_eh, which compiles the patterns of q */
   void assertNode(Node q) override;
@@ -130,8 +143,6 @@ class EagerInstEngine : public QuantifiersModule, public InstanceSink
    * 3.2.
    */
   void syncScopes();
-  /** Run the matcher and process what it found */
-  void doMatch();
   /** The multi-patterns of q, from its annotation */
   void getPatterns(TNode q, std::vector<Node>& pats) const;
   /** Print the statistics under -t eager-inst */
@@ -150,6 +161,8 @@ class EagerInstEngine : public QuantifiersModule, public InstanceSink
    * default_qm_plugin::m_lazy_mam.
    */
   Mam d_lazyMam;
+  /** Pattern inference, for the quantifiers with no usable annotation */
+  PatternInference d_patInfer;
   /** The instance queue */
   InstQueue d_queue;
   /** The inner SMT solver */

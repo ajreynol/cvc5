@@ -42,6 +42,7 @@ EagerInstEngine::EagerInstEngine(Env& env,
       d_egraph(env, d_trail),
       d_mam(env, d_egraph, d_trail, options().quantifiers.eagerInstFilters),
       d_lazyMam(env, d_egraph, d_trail, options().quantifiers.eagerInstFilters),
+      d_patInfer(env),
       d_queue(env, d_trail),
       d_inner(env, d_trail),
       d_trailLevel(0),
@@ -96,9 +97,9 @@ void EagerInstEngine::notifyNewClass(TNode t)
 {
   syncScopes();
   d_egraph.addTerm(t);
-  if (d_matchOnNotify)
+  if (d_matchOnNotify && d_mam.hasWork())
   {
-    doMatch();
+    d_mam.match();
   }
 }
 
@@ -106,9 +107,9 @@ void EagerInstEngine::notifyMerge(TNode t1, TNode t2)
 {
   syncScopes();
   d_egraph.assertEq(t1, t2);
-  if (d_matchOnNotify)
+  if (d_matchOnNotify && d_mam.hasWork())
   {
-    doMatch();
+    d_mam.match();
   }
 }
 
@@ -143,13 +144,23 @@ void EagerInstEngine::assertNode(Node q)
   }
   Node qn = q;
   d_trail.onPop([this, qn]() { d_asserted.erase(qn); });
+  if (TraceIsOn("eager-inst-match"))
+  {
+    Node name = d_qreg.getQuantAttributes().getQuantName(q);
+    Trace("eager-inst-match")
+        << "QUANT " << q.getId() << " "
+        << (name.isNull() ? std::string("?") : name.getName()) << std::endl;
+  }
   std::vector<Node> pats;
   getPatterns(q, pats);
   if (pats.empty())
   {
-    // TODO: infer patterns, i.e. the analogue of z3's
-    // ast/pattern/pattern_inference.cpp. Until then only annotated quantifiers
-    // are matched eagerly. See README.md section 9, step 7.
+    // z3: pattern_inference_cfg::reduce_quantifier, which runs during
+    // preprocessing for the quantifiers that carry no pattern annotation
+    d_patInfer.getPatterns(q, pats);
+  }
+  if (pats.empty())
+  {
     Trace("eager-inst") << "EagerInst: no patterns for " << q << std::endl;
     return;
   }
@@ -189,11 +200,41 @@ void EagerInstEngine::assertNode(Node q)
   }
 }
 
-bool EagerInstEngine::needsCheck(Theory::Effort e)
+void EagerInstEngine::propagate(CVC5_UNUSED Theory::Effort e)
 {
-  // z3 runs the matcher inside its propagation fixpoint; standard effort is
-  // the closest thing cvc5 has. See README.md section 3.3.
-  return e >= Theory::EFFORT_STANDARD;
+  // z3: quantifier_manager::imp::propagate, which runs the matcher and then
+  // turns the matches it reported into instances
+  syncScopes();
+  if (d_mam.hasWork())
+  {
+    d_mam.match();
+  }
+  if (d_queue.hasWork())
+  {
+    d_queue.instantiate();
+  }
+}
+
+void EagerInstEngine::flush(CVC5_UNUSED Theory::Effort e)
+{
+  syncScopes();
+  if (!d_inner.check())
+  {
+    Node conf = d_inner.getConflict();
+    Assert(!conf.isNull());
+    Trace("eager-inst") << "EagerInst: inner conflict " << conf << std::endl;
+    d_qim.addPendingLemma(conf,
+                          InferenceId::QUANTIFIERS_INST_E_MATCHING_EAGER);
+  }
+  for (const std::pair<Node, Node>& p : d_inner.getPropagations())
+  {
+    Trace("eager-inst") << "EagerInst: inner propagation " << p.first
+                        << " from " << p.second << std::endl;
+    d_qim.addPendingLemma(p.second.impNode(p.first),
+                          InferenceId::QUANTIFIERS_INST_E_MATCHING_EAGER);
+  }
+  d_inner.clearPropagations();
+  traceStats();
 }
 
 void EagerInstEngine::check(Theory::Effort e, QEffort quantE)
@@ -203,7 +244,7 @@ void EagerInstEngine::check(Theory::Effort e, QEffort quantE)
     return;
   }
   syncScopes();
-  doMatch();
+  propagate(e);
   if (e >= Theory::EFFORT_LAST_CALL)
   {
     // z3: qi_queue::final_check_eh followed by
@@ -219,34 +260,6 @@ void EagerInstEngine::check(Theory::Effort e, QEffort quantE)
       d_queue.instantiate();
     }
   }
-  traceStats();
-}
-
-void EagerInstEngine::doMatch()
-{
-  if (d_mam.hasWork())
-  {
-    d_mam.match();
-  }
-  if (d_queue.hasWork())
-  {
-    d_queue.instantiate();
-  }
-  if (!d_inner.check())
-  {
-    Node conf = d_inner.getConflict();
-    Assert(!conf.isNull());
-    Trace("eager-inst") << "EagerInst: inner conflict " << conf << std::endl;
-    d_qim.addPendingLemma(conf, InferenceId::QUANTIFIERS_INST_E_MATCHING_EAGER);
-  }
-  for (const std::pair<Node, Node>& p : d_inner.getPropagations())
-  {
-    Trace("eager-inst") << "EagerInst: inner propagation " << p.first
-                        << " from " << p.second << std::endl;
-    d_qim.addPendingLemma(p.second.impNode(p.first),
-                          InferenceId::QUANTIFIERS_INST_E_MATCHING_EAGER);
-  }
-  d_inner.clearPropagations();
 }
 
 void EagerInstEngine::addInstance(CVC5_UNUSED TNode q,

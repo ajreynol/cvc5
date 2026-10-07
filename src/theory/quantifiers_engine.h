@@ -85,6 +85,17 @@ class QuantifiersEngine : protected EnvObj
   void ppNotifyAssertions(const std::vector<Node>& assertions);
   /** check at level */
   void check(Theory::Effort e);
+  /**
+   * Run eager E-matching, if enabled. This is called once per round of the
+   * propagation fixpoint of the theory engine, which is where z3 runs its
+   * matcher. It collects instances but produces no output.
+   */
+  void eagerPropagate(Theory::Effort e);
+  /**
+   * Flush what eager E-matching found, if enabled: the conflicts and
+   * propagations of the inner SMT solver.
+   */
+  void eagerCheck(Theory::Effort e);
   /** notify that theories were combined */
   void notifyCombineTheories();
   /** preRegister quantifier

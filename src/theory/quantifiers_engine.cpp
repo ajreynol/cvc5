@@ -791,6 +791,22 @@ void QuantifiersEngine::getEqNotifyListeners(
   }
 }
 
+void QuantifiersEngine::eagerPropagate(Theory::Effort e)
+{
+  if (d_qmodules->d_eagerInst != nullptr)
+  {
+    d_qmodules->d_eagerInst->propagate(e);
+  }
+}
+
+void QuantifiersEngine::eagerCheck(Theory::Effort e)
+{
+  if (d_qmodules->d_eagerInst != nullptr)
+  {
+    d_qmodules->d_eagerInst->flush(e);
+  }
+}
+
 void QuantifiersEngine::markRelevant(Node q) { d_model->markRelevant(q); }
 
 void QuantifiersEngine::getInstantiationTermVectors(

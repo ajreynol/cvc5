@@ -83,10 +83,19 @@ class ENode
   bool hasLblHash() const { return d_lblHash >= 0; }
   size_t getLblHash() const { return static_cast<size_t>(d_lblHash); }
   /**
-   * The generation of this term: 0 for terms from the input, g for terms
-   * introduced by an instance of generation g. z3: context::get_generation.
+   * The congruence representative of this node, i.e. the node that owns the
+   * entry of the congruence table for this node's label and argument
+   * representatives. z3: enode::get_cg.
    */
-  uint32_t getGeneration() const { return d_generation; }
+  ENode* getCgr() const { return d_cgr; }
+  /** Is this node its own congruence representative? z3: enode::is_cgr */
+  bool isCgr() const { return d_cgr == this; }
+  /**
+   * The generation of this term: 0 for terms from the input, g for terms
+   * introduced by an instance of generation g. As in z3, this is the
+   * generation of the congruence representative (context::get_generation).
+   */
+  uint32_t getGeneration() const { return d_cgr->d_generation; }
   /** Is this node the same as or equal to e? */
   bool isEqualTo(const ENode* e) const { return d_root == e->d_root; }
 
@@ -119,6 +128,10 @@ class ENode
   /** Label sets (root only) */
   ApproxSet d_lbls;
   ApproxSet d_plbls;
+  /** The congruence representative of this node */
+  ENode* d_cgr;
+  /** The key of the congruence table entry this node owns, if it owns one */
+  std::pair<Node, std::vector<ENode*>> d_cgKey;
   /** The label hash of this node if it is a pattern ground term, else -1 */
   int32_t d_lblHash;
   /** The generation */
@@ -159,6 +172,9 @@ class EGraphListener
 class EGraph : protected EnvObj
 {
  public:
+  /** The key of the congruence table: a label and the argument classes */
+  using CgKey = std::pair<Node, std::vector<ENode*>>;
+
   EGraph(Env& env, Trail& trail);
   ~EGraph();
 
@@ -186,6 +202,11 @@ class EGraph : protected EnvObj
 
   /** The node for n, or nullptr if n is not in the e-graph */
   ENode* getENode(TNode n) const;
+  /**
+   * The application of label to the classes of args, if the e-graph contains
+   * one, else nullptr. z3: context::get_enode_eq_to.
+   */
+  ENode* getENodeEqTo(TNode label, const std::vector<ENode*>& args) const;
   /** Are t1 and t2 in the same class of this e-graph? */
   bool areEqual(TNode t1, TNode t2) const;
   /** The disequalities asserted so far, in assertion order */
@@ -196,6 +217,15 @@ class EGraph : protected EnvObj
 
   /** The label hash of op. z3: label_hasher */
   size_t getLabelHash(TNode op) { return d_lblHasher(op); }
+  /**
+   * The label hash of the term n, i.e. of its operator, or of n itself if n is
+   * a leaf. z3 takes the declaration of the enode, which for a constant is the
+   * constant itself.
+   */
+  size_t getLabelHashForTerm(TNode n)
+  {
+    return d_lblHasher(n.hasOperator() ? Node(n.getOperator()) : Node(n));
+  }
 
   //-------------------------------------------- label tracking
   /**
@@ -240,6 +270,12 @@ class EGraph : protected EnvObj
   void updateLbls(ENode* e, size_t h);
   /** Add h to the parent label sets of the classes of e's arguments */
   void updateChildrenPlbls(ENode* e, size_t h);
+  /** The key of the congruence table entry of e, under the current classes */
+  CgKey mkCgKey(ENode* e) const;
+  /** Make e the owner of its congruence table entry, or point it at the owner */
+  void cgInsert(ENode* e);
+  /** Remove the congruence table entry owned by e */
+  void cgErase(ENode* e);
   /** Perform the union of the classes of r1 and r2, r1 into r2 */
   void merge(ENode* r1, ENode* r2);
   /** Undo term creations until only n nodes remain */
@@ -267,6 +303,14 @@ class EGraph : protected EnvObj
    private:
     EGraph& d_eg;
   };
+  /** What is needed to undo the congruence table change of one node */
+  struct CgUndo
+  {
+    ENode* d_node;
+    ENode* d_oldCgr;
+    CgKey d_oldKey;
+    bool d_wasOwner;
+  };
   /** What is needed to undo one merge */
   struct MergeRecord
   {
@@ -278,6 +322,8 @@ class EGraph : protected EnvObj
     uint32_t d_numParents2;
     ApproxSet d_lbls2;
     ApproxSet d_plbls2;
+    /** where the congruence table undo entries of this merge start */
+    size_t d_cgUndoBegin;
   };
 
   /** The trail, owned by the engine */
@@ -297,6 +343,10 @@ class EGraph : protected EnvObj
   std::unordered_set<Node> d_isPlbl;
   /** Asserted disequalities */
   std::vector<std::pair<Node, Node>> d_diseqs;
+  /** The congruence table. z3: smt::cg_table */
+  std::map<CgKey, ENode*> d_cg;
+  /** The congruence table undo entries of the merges on the merge stack */
+  std::vector<CgUndo> d_cgUndo;
   /** The merge stack */
   std::vector<MergeRecord> d_merges;
   /** Trail views */

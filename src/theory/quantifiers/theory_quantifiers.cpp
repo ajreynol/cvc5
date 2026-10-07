@@ -164,8 +164,17 @@ bool TheoryQuantifiers::collectModelValues(
   return true;
 }
 
+void TheoryQuantifiers::propagate(Effort level)
+{
+  // Run eager E-matching, which is independent of the quantifiers rounds below
+  // and only collects instances; it sends nothing to the output channel.
+  d_qengine->eagerPropagate(level);
+}
+
 void TheoryQuantifiers::postCheck(Effort level)
 {
+  // flush what eager E-matching found, before the quantifiers round
+  d_qengine->eagerCheck(level);
   // call the quantifiers engine to check
   getQuantifiersEngine()->check(level);
 }
