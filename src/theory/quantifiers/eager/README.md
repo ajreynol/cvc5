@@ -529,6 +529,53 @@ Remaining plan:
    disequalities after each merge. The path trees and the
    throwaway trees of `matchNewPatterns` are never freed.
 
+## 9.0 Evaluation on the target benchmarks
+
+The configuration, which `contrib/eval-eager-inst.py` implements:
+
+* benchmarks `~/benchmarks/quant-07-25` (Verus/Sundance), 300 chosen at random
+* baseline `--no-cbqi --user-pat=strict`, test the same plus `--eager-inst`
+* 15 second timeout, production build, 10 benchmarks in parallel on 24 cores
+* measured at commit `fb7bd94c60`
+
+```
+baseline solved      269
+test solved          266  (-3)
+  solved only by test     0
+  solved only by baseline 3
+answer disagreements 0
+wrong vs :status     0
+commonly solved      266, baseline 117.0s, test 128.1s (+9%)
+```
+
+So eager E-matching is **sound** on 300 real benchmarks — no disagreement with the
+baseline and no answer contradicting a benchmark's own `(set-info :status ...)` — and
+currently a **small net loss**: three benchmarks lost to the timeout and about 9% more
+time.
+
+Where the cost is: it is proportional to work, not a fixed cost. The 225 benchmarks the
+baseline solves in under 0.5s cost only +0.86s in total, while each slow benchmark takes
+20-25% longer. There is almost no upside anywhere: the largest single improvement over
+266 benchmarks is 0.28s.
+
+Splitting the cost with `--eager-inst-output=none`, which matches but discards the
+instances, on the 44 benchmarks the baseline takes at least 0.5s on:
+
+| configuration | commonly solved | baseline | test | |
+| --- | --- | --- | --- | --- |
+| matcher only (`output=none`) | 44 | 128.8s | 139.2s | +8% |
+| matcher and inner solver | 44 | 123.8s | 132.9s | +7% |
+
+The two are indistinguishable, and the baseline itself varies by about 4% between runs at
+this level of parallelism, so the honest reading is: **the overhead is the e-graph mirror
+and the matcher, the inner solver is close to free, and the inner solver is not yet
+earning its place.** Neither configuration solves anything the baseline does not.
+
+That sets the agenda. Making eager E-matching a win needs either the matcher to cost
+much less (section 9 item 3: the `std::map`s keyed on `Node` and on vectors of pointers,
+and the per-round rework) or the inner solver to find conflicts the outer solver does not
+find on its own, which is what decisions and arithmetic are for.
+
 ## 9.1 Comparing against z3
 
 `-t eager-inst-match` logs one line per match, with the bindings canonicalized

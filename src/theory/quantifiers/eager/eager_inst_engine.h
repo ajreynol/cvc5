@@ -186,6 +186,8 @@ class EagerInstEngine : public QuantifiersModule, public InstanceSink
   uint32_t d_numLazyMatches;
   /** Whether to send instances to cvc5's lemma channel */
   bool d_outputLemmas;
+  /** Whether the instances are given to the inner SMT solver */
+  bool d_useInner;
   /** Whether to run the matcher from the notifications */
   bool d_matchOnNotify;
 };

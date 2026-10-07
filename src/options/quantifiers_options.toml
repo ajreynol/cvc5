@@ -316,6 +316,9 @@ name   = "Quantifiers"
 [[option.mode.LEMMA]]
   name = "lemma"
   help = "Send the instances to the lemma channel, as ordinary instantiation does. For validating the matcher only."
+[[option.mode.NONE]]
+  name = "none"
+  help = "Discard the instances, so that only the cost of matching is incurred. For measuring how much of the cost of eager E-matching is the matcher and how much is the inner SMT solver."
 
 [[option]]
   name       = "eagerInstMatchMode"

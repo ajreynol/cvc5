@@ -62,13 +62,19 @@ EagerInstEngine::EagerInstEngine(Env& env,
   d_egraph.addListener(&d_mam);
   d_mam.setListener(&d_queue);
   d_lazyMam.setListener(&d_queue);
+  // With no sink the instances are discarded once they have been found, which
+  // isolates the cost of matching from the cost of the inner solver.
+  bool useInner = options().quantifiers.eagerInstOutput
+                  == options::EagerInstOutputMode::INNER;
   d_queue.setSink(d_outputLemmas ? static_cast<InstanceSink*>(this)
-                                 : static_cast<InstanceSink*>(&d_inner));
-  if (!d_outputLemmas)
+                                 : (useInner ? static_cast<InstanceSink*>(&d_inner)
+                                             : nullptr));
+  if (useInner)
   {
     // the inner solver follows the outer classes of its terms
     d_egraph.addListener(&d_inner);
   }
+  d_useInner = useInner;
 }
 
 EagerInstEngine::~EagerInstEngine() {}
@@ -248,6 +254,11 @@ void EagerInstEngine::propagate(CVC5_UNUSED Theory::Effort e)
 
 void EagerInstEngine::flush(CVC5_UNUSED Theory::Effort e)
 {
+  if (!d_useInner)
+  {
+    traceStats();
+    return;
+  }
   syncScopes();
   bool ok = d_inner.check();
   // Whatever the inner solver exports has the effect of instantiating the
