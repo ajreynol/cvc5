@@ -213,7 +213,9 @@ z3 pushes/pops the mam and the queue explicitly from `smt_context`. We do not
 get push notifications from cvc5's `Context`, so every public entry point of
 `EagerInstEngine` first calls `syncScopes()`, which compares
 `context()->getLevel()` with the level our `Trail` is at and pushes/pops the
-difference. Since all of our state is private, the only requirement is that it
+difference. The level alone misses a pop followed by a push back to the same
+level between two calls, so a context-dependent copy of the last synced level
+(`d_syncedLevel`) tells how many of our scopes the context still has. Since all of our state is private, the only requirement is that it
 be correct when read, and reads only happen through these entry points.
 
 ### 3.3 When do we match?
@@ -331,11 +333,25 @@ bodies are units.
   congruence edge. That is what makes a minimized conflict possible.
 * **The outer assignment is read, not pushed.** The atoms the inner solver
   cares about are known, so `check()` asks the outer solver for their value
-  (`Valuation::hasSatValue`), and asks the master equality engine for the
-  equalities and disequalities that hold between the terms it knows
-  (`syncOuterEqualities`). Each such fact is entailed by the outer context,
+  (`Valuation::hasSatValue`). Equalities and disequalities between its terms
+  come from the e-graph mirror, which the solver listens to: each mirror class
+  that contains one of our terms has an *anchor*, one such term. A new term in
+  an anchored class, or a mirror merge of two anchored classes, gives an outer
+  equality between anchors; an outer disequality between two anchored classes
+  gives an outer disequality. Each such fact is entailed by the outer context,
   whatever reason the master equality engine had for it, so each is sound as a
-  root of an explanation.
+  root of an explanation. A disequality between classes that were not both
+  anchored is caught later: when our congruence closure merges classes, the
+  outer classes the merged class contains are tested pairwise with
+  `areDisequal` (`checkTouchedClasses`).
+* **It is incremental.** What a round derives stays until the outer scope it
+  was derived at is popped: the state is saved on the first change in each
+  scope of the trail and restored when that scope is popped, which also
+  retracts the instances added in it. Each round only processes what changed:
+  the clauses added since the last round, the pending outer facts, and the
+  atoms watching a term whose class was merged (collected from the merge
+  notifications of `InnerEGraph`). A round that ends in a conflict is undone,
+  so the state is never left inconsistent.
 * A predicate application is given a presence in the congruence closure by
   merging it with `true` or `false` when it is assigned, which is how
   congruence over predicates is obtained; `true` and `false` are asserted
@@ -500,8 +516,9 @@ Remaining plan:
    its own clauses.
 3. Performance: the congruence tables and the code tree map are `std::map` with
    `Node`/vector keys; z3 uses hash tables with small ids. The inner solver
-   redoes its propagation from scratch each round, and its search for outer
-   disequalities is quadratic in the number of classes. The path trees and the
+   evaluates a clause in full on each visit (no watched literals), reads the
+   value of every unassigned atom each round, and `InnerEGraph` scans all of its
+   disequalities after each merge. The path trees and the
    throwaway trees of `matchNewPatterns` are never freed.
 
 ## 9.1 Comparing against z3

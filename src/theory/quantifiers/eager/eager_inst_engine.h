@@ -27,6 +27,7 @@
 #include <memory>
 #include <unordered_set>
 
+#include "context/cdo.h"
 #include "theory/quantifiers/eager/egraph.h"
 #include "theory/quantifiers/eager/inner_smt_solver.h"
 #include "theory/quantifiers/eager/inst_queue.h"
@@ -171,6 +172,13 @@ class EagerInstEngine : public QuantifiersModule, public InstanceSink
   std::unordered_set<Node> d_asserted;
   /** The scope level our trail is at */
   size_t d_trailLevel;
+  /**
+   * The level of the last call to syncScopes, as seen from the current
+   * context. It is less than d_trailLevel when the context popped below
+   * d_trailLevel and pushed back since then, which the level alone does not
+   * show.
+   */
+  context::CDO<size_t> d_syncedLevel;
   /**
    * The number of times the final-check matcher has been run, as z3 bounds
    * this by qi.max_lazy_multipattern_matching.

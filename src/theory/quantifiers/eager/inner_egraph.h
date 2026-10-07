@@ -34,6 +34,21 @@ namespace quantifiers {
 namespace eager {
 
 /**
+ * Interface for the consumer of the merges of an InnerEGraph, implemented by
+ * the inner SMT solver to find the atoms a merge may imply.
+ */
+class InnerEGraphListener
+{
+ public:
+  virtual ~InnerEGraphListener() {}
+  /**
+   * Called when the class of a is about to be absorbed into the class of b.
+   * Both are representatives and the classes are still separate.
+   */
+  virtual void notifyMerge(size_t a, size_t b) = 0;
+};
+
+/**
  * A congruence closure over the terms of the instances the inner solver holds.
  */
 class InnerEGraph : protected EnvObj
@@ -54,6 +69,17 @@ class InnerEGraph : protected EnvObj
   TermId getTerm(TNode n) const;
   /** The term of an identifier */
   TNode getNode(TermId t) const { return d_terms[t].d_node; }
+  /** Is the term t of Boolean type? */
+  bool isBoolean(TermId t) const { return d_terms[t].d_isBool; }
+  /** The next term in the class of t, cyclically */
+  TermId getNext(TermId t) const { return d_terms[t].d_next; }
+  /** The number of terms in the class of t */
+  size_t getClassSize(TermId t) const
+  {
+    return d_terms[find(t)].d_classSize;
+  }
+  /** Set the listener, which must outlive this object */
+  void setListener(InnerEGraphListener* l) { d_listener = l; }
 
   /**
    * Assert that a and b are equal, justified by reason. Returns false if this
@@ -62,6 +88,13 @@ class InnerEGraph : protected EnvObj
   bool assertEq(TermId a, TermId b, TNode reason);
   /** Assert that a and b are disequal, justified by reason */
   bool assertDiseq(TermId a, TermId b, TNode reason);
+  /**
+   * Check that no asserted disequality is violated. A merge made while adding
+   * a term (a congruence) can violate one without being reported, since
+   * addTerm has no way to fail. Returns false if one is violated, in which
+   * case getConflict describes why.
+   */
+  bool checkDisequalities();
   /** Are a and b in the same class? */
   bool areEqual(TermId a, TermId b) const { return find(a) == find(b); }
   /** The representative of a */
@@ -99,6 +132,8 @@ class InnerEGraph : protected EnvObj
   {
     Node d_node;
     Node d_label;
+    /** whether d_node is of Boolean type */
+    bool d_isBool;
     std::vector<TermId> d_args;
     TermId d_find;
     TermId d_next;
@@ -176,6 +211,8 @@ class InnerEGraph : protected EnvObj
    * asserted, or the null node if this is a congruence.
    */
   bool assertEqInternal(TermId a, TermId b, TNode reason, bool congruence);
+  /** Set the conflict to the violation of the i^th disequality */
+  void setDiseqConflict(size_t i);
   /** Add the proof forest edge from a to b. z3: euf::egraph proof forest */
   void addProofEdge(TermId a, TermId b, TNode reason, bool congruence);
   /** Make a the root of its proof tree, reversing the path to the old root */
@@ -211,6 +248,8 @@ class InnerEGraph : protected EnvObj
   std::vector<UndoEntry> d_undo;
   /** The reasons of the current conflict */
   std::vector<Node> d_conflict;
+  /** The listener, if any */
+  InnerEGraphListener* d_listener;
 };
 
 }  // namespace eager

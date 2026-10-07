@@ -48,7 +48,6 @@ std::ostream& operator<<(std::ostream& out, const ENode& e)
 EGraph::EGraph(Env& env, Trail& trail)
     : EnvObj(env),
       d_trail(trail),
-      d_listener(nullptr),
       d_termStack(*this),
       d_mergeStack(*this),
       d_generation(0)
@@ -210,9 +209,9 @@ ENode* EGraph::addTerm(TNode n)
     }
   }
   // the candidate collection half of z3's mam::relevant_eh
-  if (d_listener != nullptr)
+  for (EGraphListener* l : d_listeners)
   {
-    d_listener->notifyNewENode(e);
+    l->notifyNewENode(e);
   }
   return e;
 }
@@ -241,9 +240,9 @@ void EGraph::assertEq(TNode t1, TNode t2)
   // Notify before the union, which is where z3 calls mam::add_eq_eh: the two
   // classes must still be separate for the matcher to find the terms that the
   // merge makes congruent.
-  if (d_listener != nullptr)
+  for (EGraphListener* l : d_listeners)
   {
-    d_listener->notifyPreMerge(r1, r2);
+    l->notifyPreMerge(r1, r2);
   }
   merge(r1, r2);
 }
@@ -372,11 +371,19 @@ void EGraph::popTerms(size_t n)
 
 void EGraph::assertDiseq(TNode t1, TNode t2, CVC5_UNUSED TNode reason)
 {
-  addTerm(t1);
-  addTerm(t2);
+  ENode* e1 = addTerm(t1);
+  ENode* e2 = addTerm(t2);
   size_t sz = d_diseqs.size();
   d_diseqs.emplace_back(t1, t2);
   d_trail.onPop([this, sz]() { d_diseqs.resize(sz); });
+  if (e1 == nullptr || e2 == nullptr)
+  {
+    return;
+  }
+  for (EGraphListener* l : d_listeners)
+  {
+    l->notifyDiseq(e1, e2);
+  }
 }
 
 void EGraph::updateLbls(ENode* e, size_t h)

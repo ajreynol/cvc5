@@ -22,6 +22,9 @@
  * the quantified formulas whose instances it used, which is entailed by the
  * assertions however the inner solver derived it.
  *
+ * The solver is incremental: what it derives stays until the scope it was
+ * derived at is popped, and each round only processes what changed since the
+ * previous one.
  * See theory/quantifiers/eager/README.md section 6.
  */
 
@@ -31,10 +34,14 @@
 #define CVC5__THEORY__QUANTIFIERS__EAGER__INNER_SMT_SOLVER_H
 
 #include <map>
+#include <set>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "expr/node.h"
 #include "smt/env_obj.h"
+#include "theory/quantifiers/eager/egraph.h"
 #include "theory/quantifiers/eager/inner_arith.h"
 #include "theory/quantifiers/eager/inner_egraph.h"
 #include "theory/quantifiers/eager/inst_queue.h"
@@ -51,11 +58,18 @@ namespace eager {
 
 /**
  * The inner SMT solver.
+ *
+ * It listens to the e-graph mirror to learn which of its terms are equal or
+ * disequal in the outer solver, and to its own congruence closure to learn
+ * which atoms a merge may imply.
  */
-class InnerSmtSolver : protected EnvObj, public InstanceSink
+class InnerSmtSolver : protected EnvObj,
+                       public InstanceSink,
+                       public EGraphListener,
+                       public InnerEGraphListener
 {
  public:
-  InnerSmtSolver(Env& env, Trail& trail, QuantifiersState& qs);
+  InnerSmtSolver(Env& env, Trail& trail, QuantifiersState& qs, EGraph& mirror);
   ~InnerSmtSolver();
 
   //---------------------------------------------------- InstanceSink
@@ -69,6 +83,20 @@ class InnerSmtSolver : protected EnvObj, public InstanceSink
                    TNode lemma,
                    uint32_t generation) override;
   //------------------------------------------------ end InstanceSink
+
+  //-------------------------------------------------- EGraphListener
+  /** A term of the outer solver appeared, which may be one of ours */
+  void notifyNewENode(ENode* e) override;
+  /** Two classes of the outer solver are about to be merged */
+  void notifyPreMerge(ENode* r1, ENode* r2) override;
+  /** Two classes of the outer solver were asserted disequal */
+  void notifyDiseq(ENode* e1, ENode* e2) override;
+  //---------------------------------------------- end EGraphListener
+
+  //--------------------------------------------- InnerEGraphListener
+  /** Our congruence closure is about to merge the class of a into that of b */
+  void notifyMerge(size_t a, size_t b) override;
+  //----------------------------------------- end InnerEGraphListener
 
   /**
    * Do a round of reasoning over the instances and the current outer
@@ -124,17 +152,21 @@ class InnerSmtSolver : protected EnvObj, public InstanceSink
     uint64_t d_numPropagations = 0;
     /** literals assigned, over all rounds */
     uint64_t d_numAssignments = 0;
+    /** equalities and disequalities taken from the outer solver */
+    uint64_t d_numOuterFacts = 0;
   };
   const Stats& getStats() const { return d_stats; }
 
  private:
   /** A literal, i.e. an atom index together with a polarity */
   using LitId = size_t;
+  using TermId = InnerEGraph::TermId;
   static LitId mkLit(size_t atom, bool neg) { return 2 * atom + (neg ? 1 : 0); }
   static size_t litAtom(LitId l) { return l / 2; }
   static bool litNeg(LitId l) { return (l & 1) != 0; }
   static LitId litNot(LitId l) { return l ^ 1; }
   static constexpr LitId undefinedLit = static_cast<LitId>(-1);
+  static constexpr size_t noIndex = static_cast<size_t>(-1);
 
   /** The value of an atom */
   enum class Value
@@ -160,13 +192,15 @@ class InnerSmtSolver : protected EnvObj, public InstanceSink
     Node d_node;
     /** its value, if any */
     Value d_value = Value::UNDEF;
+    /** if assigned, its position in d_assignTrail */
+    size_t d_trailIndex = noIndex;
     /** the clauses it occurs in, in increasing order */
     std::vector<size_t> d_occurs;
     /** the term of the congruence closure it stands for */
-    InnerEGraph::TermId d_term = InnerEGraph::undefinedTerm;
+    TermId d_term = InnerEGraph::undefinedTerm;
     /** for an equality, the two sides */
-    InnerEGraph::TermId d_lhs = InnerEGraph::undefinedTerm;
-    InnerEGraph::TermId d_rhs = InnerEGraph::undefinedTerm;
+    TermId d_lhs = InnerEGraph::undefinedTerm;
+    TermId d_rhs = InnerEGraph::undefinedTerm;
   };
   /** An element of the assignment trail */
   struct Assignment
@@ -196,16 +230,49 @@ class InnerSmtSolver : protected EnvObj, public InstanceSink
     Node d_lemma;
     /** the generation of the terms it introduces */
     uint32_t d_generation;
-    /** the checkpoints to restore to when it is retracted */
-    size_t d_egraphCheckpoint;
-    size_t d_arithCheckpoint;
-    /** the number of clauses and atoms before it was added */
-    size_t d_numClauses;
-    size_t d_numAtoms;
   };
+  /**
+   * An equality or disequality between two of our terms that holds in the
+   * outer solver, waiting to be asserted.
+   */
+  struct OuterFact
+  {
+    TermId d_a;
+    TermId d_b;
+    bool d_pol;
+  };
+  /**
+   * The sizes of everything this solver accumulates, so that it can go back
+   * to an earlier state: when a scope is popped, and when a round ends in a
+   * conflict.
+   */
+  struct Checkpoint
+  {
+    size_t d_egraph;
+    size_t d_arith;
+    size_t d_instances;
+    size_t d_clauses;
+    size_t d_atoms;
+    size_t d_assign;
+    size_t d_clauseHead;
+    size_t d_outerFacts;
+    size_t d_outerFactHead;
+    size_t d_candidates;
+    size_t d_candidateHead;
+    size_t d_touched;
+    size_t d_touchedHead;
+    size_t d_exportHead;
+  };
+  /** The current state, as a checkpoint */
+  Checkpoint mkCheckpoint() const;
+  /** Go back to the state of the checkpoint c */
+  void restoreTo(const Checkpoint& c);
+  /**
+   * Called before anything is changed. The first time this happens in a scope
+   * of the trail, the state is saved, to be restored when the scope is popped.
+   */
+  void ensureScopeSaved();
 
-  /** Retract the instances after the n^th */
-  void retractInstancesFrom(size_t n);
   /** The index of the atom for the formula atom, creating it if needed */
   size_t getAtom(TNode atom);
   /** The literal for the formula lit, which may be a negation */
@@ -218,16 +285,34 @@ class InnerSmtSolver : protected EnvObj, public InstanceSink
   void getClauseLits(TNode body, std::vector<LitId>& lits);
   /** Add a clause, which belongs to the given instance */
   void addClause(const std::vector<LitId>& lits, size_t instance);
+  /** Note that the atom watches the term t, to be revisited on merges */
+  void addWatch(TermId t, size_t atom);
 
-  /** Take the current value of the inner atoms from the outer solver */
-  void syncOuter();
+  //---------------------------------------- the link to the outer solver
+  /** The anchor of the outer class r, or undefinedTerm */
+  TermId getAnchor(ENode* r) const;
+  /** Make t the anchor of the outer class r */
+  void setAnchor(ENode* r, TermId t);
   /**
-   * Take from the master equality engine the equalities and disequalities that
-   * hold between the terms this solver knows about. The outer context entails
-   * each of them, so each is sound as a root of an explanation, whatever the
-   * reason the master equality engine had for it.
+   * Our term t is in the outer class whose representative is r. Make it the
+   * anchor of r, or if r has one, note that t is equal to it.
    */
-  void syncOuterEqualities();
+  void linkToOuter(TermId t, ENode* r);
+  /** Note an outer fact, to be asserted at the next round */
+  void addOuterFact(TermId a, TermId b, bool pol);
+  /** Take the current value of the inner atoms from the outer solver */
+  bool syncOuter();
+  /** Assert the outer facts that are pending */
+  bool processOuterFacts();
+  /**
+   * For the classes merged since the last time, check whether two of the
+   * outer classes they now contain are disequal in the outer solver.
+   */
+  bool checkTouchedClasses(bool& progress);
+  /** Assign the literal for atom with the given polarity as an outer fact */
+  bool assignOuter(TNode atom, bool pol);
+  //------------------------------------ end the link to the outer solver
+
   /**
    * Assign l, with the given reason. Returns false if l was already false, in
    * which case the conflict explanation has been recorded.
@@ -235,12 +320,17 @@ class InnerSmtSolver : protected EnvObj, public InstanceSink
   bool assign(LitId l, ReasonKind kind, size_t clause, std::vector<LitId> exp);
   /** Tell the theory about a newly assigned literal */
   bool assertToTheory(LitId l);
+  /**
+   * Examine the clause c under the current assignment, assigning its last
+   * unassigned literal or recording a conflict. Returns false on a conflict.
+   */
+  bool visitClause(size_t c);
   /** Propagate to a fixed point. Returns false on a conflict. */
   bool propagate();
-  /** Look for literals the congruence closure implies. */
+  /** Assign the atoms that the congruence closure implies */
   bool theoryPropagate(bool& progress);
-  /** Undo everything the current round assigned */
-  void resetRound();
+  /** The literals in our atoms for the explanation exp of the theory */
+  void toLits(const std::vector<Node>& exp, std::vector<LitId>& lits) const;
   /**
    * Collect the outer literals and the instances that the assignment of l
    * depends on.
@@ -253,8 +343,8 @@ class InnerSmtSolver : protected EnvObj, public InstanceSink
   Node mkConflict(const std::vector<LitId>& exp);
   /** Record that the exported clauses rely on these instances */
   void noteUsedInstances(const std::set<size_t>& instances);
-  /** Assign the literal for atom with the given polarity as an outer fact */
-  bool assignOuter(TNode atom, bool pol);
+  /** Export the propagations derived since the last round */
+  void exportPropagations();
   /** The negation of the formula of a literal */
   static Node negate(TNode lit);
 
@@ -262,6 +352,8 @@ class InnerSmtSolver : protected EnvObj, public InstanceSink
   Trail& d_trail;
   /** The quantifiers state, used to read the outer assignment */
   QuantifiersState& d_qstate;
+  /** The e-graph mirror, i.e. the outer equivalence classes */
+  EGraph& d_mirror;
   /** The instances, in the order they were added */
   std::vector<Instance> d_instances;
   /** The congruence closure */
@@ -272,9 +364,13 @@ class InnerSmtSolver : protected EnvObj, public InstanceSink
   std::vector<Atom> d_atoms;
   /** Map from formulas to atom indices */
   std::map<Node, size_t> d_atomMap;
+  /** For each term, the atoms to revisit when its class is merged */
+  std::vector<std::vector<size_t>> d_watches;
   /** The clauses of the inner problem */
   std::vector<Clause> d_clauses;
-  /** The assignment of the current round, in order */
+  /** The clauses from d_clauseHead on have not been examined yet */
+  size_t d_clauseHead;
+  /** The assignment, in order */
   std::vector<Assignment> d_assignTrail;
   /** The literals whose consequences have not been processed yet */
   std::vector<LitId> d_queue;
@@ -283,10 +379,36 @@ class InnerSmtSolver : protected EnvObj, public InstanceSink
   /** The clause the conflict came from, if any */
   size_t d_conflictClause;
   /** The terms true and false of the congruence closure */
-  InnerEGraph::TermId d_trueTerm;
-  InnerEGraph::TermId d_falseTerm;
-  /** The checkpoint the current round started from */
-  size_t d_roundCheckpoint;
+  TermId d_trueTerm;
+  TermId d_falseTerm;
+  /**
+   * For each class of the mirror, identified by its representative, one of our
+   * terms in it, if any.
+   */
+  std::unordered_map<ENode*, TermId> d_anchors;
+  /** The outer facts, those from d_outerFactHead on not yet asserted */
+  std::vector<OuterFact> d_outerFacts;
+  size_t d_outerFactHead;
+  /**
+   * The atoms that a merge may have made implied, those from
+   * d_candidateHead on not yet examined.
+   */
+  std::vector<size_t> d_candidates;
+  size_t d_candidateHead;
+  /**
+   * The terms whose classes were merged into, those from d_touchedHead on not
+   * yet checked against the outer disequalities.
+   */
+  std::vector<TermId> d_touched;
+  size_t d_touchedHead;
+  /** The assignments from d_exportHead on have not been considered for export */
+  size_t d_exportHead;
+  /**
+   * The number of scopes of the trail at the last time the state was saved.
+   * Restored by the trail, so that it tells whether the current scope has
+   * been saved.
+   */
+  uint32_t d_savedScope;
   /** The conflict to export */
   Node d_conflict;
   /** The propagations to export, as (literal, explanation) pairs */

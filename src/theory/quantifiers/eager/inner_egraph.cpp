@@ -22,7 +22,7 @@ namespace theory {
 namespace quantifiers {
 namespace eager {
 
-InnerEGraph::InnerEGraph(Env& env) : EnvObj(env) {}
+InnerEGraph::InnerEGraph(Env& env) : EnvObj(env), d_listener(nullptr) {}
 
 InnerEGraph::~InnerEGraph() {}
 
@@ -57,6 +57,7 @@ InnerEGraph::TermId InnerEGraph::addTerm(TNode n)
   Term term;
   term.d_node = n;
   term.d_label = n.hasOperator() ? n.getOperator() : Node::null();
+  term.d_isBool = n.getType().isBoolean();
   term.d_args = args;
   term.d_find = t;
   term.d_next = t;
@@ -153,22 +154,33 @@ bool InnerEGraph::assertEqInternal(TermId a,
     repairParents(rc1, cong);
   }
   // a disequality asserted earlier may now be violated
-  for (const std::pair<TermId, TermId>& d : d_diseqs)
+  return checkDisequalities();
+}
+
+bool InnerEGraph::checkDisequalities()
+{
+  for (size_t i = 0, ndeqs = d_diseqs.size(); i < ndeqs; i++)
   {
-    if (find(d.first) == find(d.second))
+    if (find(d_diseqs[i].first) == find(d_diseqs[i].second))
     {
-      d_conflict.clear();
-      explain(d.first, d.second, d_conflict);
-      std::map<std::pair<TermId, TermId>, Node>::const_iterator itr =
-          d_reasons.find(d);
-      if (itr != d_reasons.end() && !itr->second.isNull())
-      {
-        d_conflict.push_back(itr->second);
-      }
+      setDiseqConflict(i);
       return false;
     }
   }
   return true;
+}
+
+void InnerEGraph::setDiseqConflict(size_t i)
+{
+  const std::pair<TermId, TermId>& d = d_diseqs[i];
+  d_conflict.clear();
+  explain(d.first, d.second, d_conflict);
+  std::map<std::pair<TermId, TermId>, Node>::const_iterator itr =
+      d_reasons.find(d);
+  if (itr != d_reasons.end() && !itr->second.isNull())
+  {
+    d_conflict.push_back(itr->second);
+  }
 }
 
 void InnerEGraph::addProofEdge(TermId a,
@@ -282,6 +294,10 @@ void InnerEGraph::explain(TermId a, TermId b, std::vector<Node>& exp) const
 void InnerEGraph::merge(TermId a, TermId b)
 {
   Assert(find(a) == a && find(b) == b);
+  if (d_listener != nullptr)
+  {
+    d_listener->notifyMerge(a, b);
+  }
   d_undo.push_back(UndoEntry(UndoEntry::Kind::MERGE, a, b));
   // re-root the class of a
   TermId curr = a;

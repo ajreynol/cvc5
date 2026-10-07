@@ -47,8 +47,9 @@ EagerInstEngine::EagerInstEngine(Env& env,
       d_lazyMam(env, d_egraph, d_trail, options().quantifiers.eagerInstFilters),
       d_patInfer(env),
       d_queue(env, d_trail),
-      d_inner(env, d_trail, qs),
+      d_inner(env, d_trail, qs, d_egraph),
       d_trailLevel(0),
+      d_syncedLevel(context(), 0),
       d_numLazyMatches(0),
       d_outputLemmas(options().quantifiers.eagerInstOutput
                      == options::EagerInstOutputMode::LEMMA),
@@ -58,11 +59,16 @@ EagerInstEngine::EagerInstEngine(Env& env,
   // The e-graph feeds the eager matcher. z3 additionally feeds the lazy
   // matcher, but only for the label maintenance (relevant_eh with lazy=true),
   // which here is done once by the e-graph for both.
-  d_egraph.setListener(&d_mam);
+  d_egraph.addListener(&d_mam);
   d_mam.setListener(&d_queue);
   d_lazyMam.setListener(&d_queue);
   d_queue.setSink(d_outputLemmas ? static_cast<InstanceSink*>(this)
                                  : static_cast<InstanceSink*>(&d_inner));
+  if (!d_outputLemmas)
+  {
+    // the inner solver follows the outer classes of its terms
+    d_egraph.addListener(&d_inner);
+  }
 }
 
 EagerInstEngine::~EagerInstEngine() {}
@@ -72,27 +78,30 @@ void EagerInstEngine::presolve() { syncScopes(); }
 void EagerInstEngine::syncScopes()
 {
   size_t level = static_cast<size_t>(context()->getLevel());
-  if (level == d_trailLevel)
+  // The scopes of our trail above the last level synced at that the context
+  // still has were popped by the context, even if it has pushed back to the
+  // same level since.
+  size_t valid = std::min(level, d_syncedLevel.get());
+  if (level == d_trailLevel && valid == d_trailLevel)
   {
     return;
   }
-  if (level < d_trailLevel)
+  if (valid < d_trailLevel)
   {
     // z3's pop_scope additionally drops the pending matching work and the
     // pending instances
     d_mam.clearWork();
     d_lazyMam.clearWork();
     d_queue.clearWork();
-    d_trail.popScope(d_trailLevel - level);
+    d_trail.popScope(d_trailLevel - valid);
+    d_trailLevel = valid;
   }
-  else
+  for (size_t i = d_trailLevel; i < level; i++)
   {
-    for (size_t i = d_trailLevel; i < level; i++)
-    {
-      d_trail.pushScope();
-    }
+    d_trail.pushScope();
   }
   d_trailLevel = level;
+  d_syncedLevel = level;
   Trace("eager-inst-debug") << "EagerInst: now at level " << level << std::endl;
 }
 
@@ -257,8 +266,15 @@ void EagerInstEngine::flush(CVC5_UNUSED Theory::Effort e)
     std::vector<Node> terms = used[0].second;
     Trace("eager-inst") << "EagerInst: instantiate " << used[0].first
                         << std::endl;
-    inst->addInstantiation(
-        used[0].first, terms, InferenceId::QUANTIFIERS_INST_E_MATCHING_EAGER);
+    // We are outside of a round of instantiation, where the term database
+    // that the entailment check relies on is stale. The check would fail
+    // anyway: the instance is falsified or propagating, not entailed.
+    inst->addInstantiation(used[0].first,
+                           terms,
+                           InferenceId::QUANTIFIERS_INST_E_MATCHING_EAGER,
+                           Node::null(),
+                           false,
+                           false);
     d_inner.clearPropagations();
     traceStats();
     return;

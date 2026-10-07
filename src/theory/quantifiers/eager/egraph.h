@@ -163,6 +163,11 @@ class EGraphListener
    * context::add_eq, before the parents of r1 are touched).
    */
   virtual void notifyPreMerge(ENode* r1, ENode* r2) = 0;
+  /**
+   * Called when the classes of e1 and e2 are asserted disequal. Only the inner
+   * SMT solver cares; the matcher does not.
+   */
+  virtual void notifyDiseq(CVC5_UNUSED ENode* e1, CVC5_UNUSED ENode* e2) {}
 };
 
 /**
@@ -178,8 +183,11 @@ class EGraph : protected EnvObj
   EGraph(Env& env, Trail& trail);
   ~EGraph();
 
-  /** Set the listener, which must outlive this object */
-  void setListener(EGraphListener* l) { d_listener = l; }
+  /**
+   * Add a listener, which must outlive this object. Listeners are notified in
+   * the order they were added.
+   */
+  void addListener(EGraphListener* l) { d_listeners.push_back(l); }
 
   //-------------------------------------------- the master e-graph interface
   /**
@@ -330,7 +338,7 @@ class EGraph : protected EnvObj
   /** The trail, owned by the engine */
   Trail& d_trail;
   /** The listener */
-  EGraphListener* d_listener;
+  std::vector<EGraphListener*> d_listeners;
   /** The label hasher */
   LabelHasher d_lblHasher;
   /** All nodes, in creation order */

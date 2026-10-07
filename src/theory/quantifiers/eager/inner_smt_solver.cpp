@@ -13,11 +13,8 @@
 #include "theory/quantifiers/eager/inner_smt_solver.h"
 
 #include <ostream>
-#include <set>
-#include <unordered_set>
 
 #include "theory/quantifiers/quantifiers_state.h"
-#include "theory/uf/equality_engine.h"
 
 namespace cvc5::internal {
 namespace theory {
@@ -30,19 +27,24 @@ namespace eager {
  * free, so the number is bounded.
  */
 static const size_t s_maxPropagationsPerRound = 8;
-/**
- * The number of classes above which the search for outer disequalities, which
- * is quadratic, is skipped.
- */
-static const size_t s_maxClassesForDiseqScan = 200;
 
-InnerSmtSolver::InnerSmtSolver(Env& env, Trail& trail, QuantifiersState& qs)
+InnerSmtSolver::InnerSmtSolver(Env& env,
+                               Trail& trail,
+                               QuantifiersState& qs,
+                               EGraph& mirror)
     : EnvObj(env),
       d_trail(trail),
       d_qstate(qs),
+      d_mirror(mirror),
       d_egraph(env),
       d_arith(env),
-      d_roundCheckpoint(0)
+      d_clauseHead(0),
+      d_conflictClause(0),
+      d_outerFactHead(0),
+      d_candidateHead(0),
+      d_touchedHead(0),
+      d_exportHead(0),
+      d_savedScope(0)
 {
   NodeManager* nm = nodeManager();
   d_trueTerm = d_egraph.addTerm(nm->mkConst(true));
@@ -50,7 +52,7 @@ InnerSmtSolver::InnerSmtSolver(Env& env, Trail& trail, QuantifiersState& qs)
   // true and false are distinct, with no reason: the explanation of a conflict
   // that uses it does not have to mention it
   d_egraph.assertDiseq(d_trueTerm, d_falseTerm, Node::null());
-  d_roundCheckpoint = d_egraph.checkpoint();
+  d_egraph.setListener(this);
 }
 
 InnerSmtSolver::~InnerSmtSolver() {}
@@ -59,6 +61,106 @@ Node InnerSmtSolver::negate(TNode lit)
 {
   return lit.getKind() == Kind::NOT ? Node(lit[0]) : lit.notNode();
 }
+
+//------------------------------------------------------------- state saving
+
+InnerSmtSolver::Checkpoint InnerSmtSolver::mkCheckpoint() const
+{
+  return Checkpoint{d_egraph.checkpoint(),
+                    d_arith.checkpoint(),
+                    d_instances.size(),
+                    d_clauses.size(),
+                    d_atoms.size(),
+                    d_assignTrail.size(),
+                    d_clauseHead,
+                    d_outerFacts.size(),
+                    d_outerFactHead,
+                    d_candidates.size(),
+                    d_candidateHead,
+                    d_touched.size(),
+                    d_touchedHead,
+                    d_exportHead};
+}
+
+void InnerSmtSolver::restoreTo(const Checkpoint& c)
+{
+  // the assignment
+  for (size_t i = d_assignTrail.size(); i-- > c.d_assign;)
+  {
+    Atom& a = d_atoms[litAtom(d_assignTrail[i].d_lit)];
+    a.d_value = Value::UNDEF;
+    a.d_trailIndex = noIndex;
+  }
+  d_assignTrail.resize(c.d_assign);
+  d_queue.clear();
+  d_conflictExp.clear();
+  // the clauses
+  for (size_t ci = c.d_clauses, nc = d_clauses.size(); ci < nc; ci++)
+  {
+    for (LitId l : d_clauses[ci].d_lits)
+    {
+      std::vector<size_t>& occ = d_atoms[litAtom(l)].d_occurs;
+      while (!occ.empty() && occ.back() >= c.d_clauses)
+      {
+        occ.pop_back();
+      }
+    }
+  }
+  d_clauses.resize(c.d_clauses);
+  // the atoms, which are at the end of the watch lists they are on
+  for (size_t ai = d_atoms.size(); ai-- > c.d_atoms;)
+  {
+    const Atom& a = d_atoms[ai];
+    for (TermId t : {a.d_term, a.d_lhs, a.d_rhs})
+    {
+      if (t != InnerEGraph::undefinedTerm && t < d_watches.size())
+      {
+        std::vector<size_t>& w = d_watches[t];
+        while (!w.empty() && w.back() >= c.d_atoms)
+        {
+          w.pop_back();
+        }
+      }
+    }
+    d_atomMap.erase(a.d_node);
+  }
+  d_atoms.resize(c.d_atoms);
+  // the theories
+  d_egraph.restoreTo(c.d_egraph);
+  d_arith.restoreTo(c.d_arith);
+  if (d_watches.size() > d_egraph.getNumTerms())
+  {
+    d_watches.resize(d_egraph.getNumTerms());
+  }
+  d_stats.d_numRetracted += d_instances.size() - c.d_instances;
+  d_instances.resize(c.d_instances);
+  // the work lists
+  d_clauseHead = c.d_clauseHead;
+  d_outerFacts.resize(c.d_outerFacts);
+  d_outerFactHead = c.d_outerFactHead;
+  d_candidates.resize(c.d_candidates);
+  d_candidateHead = c.d_candidateHead;
+  d_touched.resize(c.d_touched);
+  d_touchedHead = c.d_touchedHead;
+  // what was exported before c stays exported
+  d_exportHead = std::min(d_exportHead, c.d_assign);
+}
+
+void InnerSmtSolver::ensureScopeSaved()
+{
+  uint32_t n = static_cast<uint32_t>(d_trail.getNumScopes());
+  if (n == 0 || d_savedScope == n)
+  {
+    // nothing to undo at the outermost scope, or saved already
+    return;
+  }
+  d_trail.restore(&d_savedScope);
+  d_savedScope = n;
+  Checkpoint c = mkCheckpoint();
+  d_trail.onPop([this, c]() { restoreTo(c); });
+}
+
+//--------------------------------------------------------- atoms, clauses
 
 size_t InnerSmtSolver::getAtom(TNode atom)
 {
@@ -69,22 +171,38 @@ size_t InnerSmtSolver::getAtom(TNode atom)
   }
   size_t id = d_atoms.size();
   d_atoms.push_back(Atom());
-  Atom& a = d_atoms.back();
-  a.d_node = atom;
+  d_atoms.back().d_node = atom;
   d_atomMap[atom] = id;
   // Give the atom a presence in the congruence closure, so that congruence
   // reasons about it. An equality is handled through its two sides; anything
   // else is a term that is merged with true or false when it is assigned.
   if (atom.getKind() == Kind::EQUAL && !atom[0].getType().isBoolean())
   {
-    a.d_lhs = d_egraph.addTerm(atom[0]);
-    a.d_rhs = d_egraph.addTerm(atom[1]);
+    TermId lhs = d_egraph.addTerm(atom[0]);
+    TermId rhs = d_egraph.addTerm(atom[1]);
+    d_atoms[id].d_lhs = lhs;
+    d_atoms[id].d_rhs = rhs;
+    addWatch(lhs, id);
+    addWatch(rhs, id);
   }
   else if (atom.getNumChildren() > 0 && atom.hasOperator() && !atom.isClosure())
   {
-    a.d_term = d_egraph.addTerm(atom);
+    TermId t = d_egraph.addTerm(atom);
+    d_atoms[id].d_term = t;
+    addWatch(t, id);
   }
+  // the congruence closure may imply it already
+  d_candidates.push_back(id);
   return id;
+}
+
+void InnerSmtSolver::addWatch(TermId t, size_t atom)
+{
+  if (d_watches.size() <= t)
+  {
+    d_watches.resize(d_egraph.getNumTerms());
+  }
+  d_watches[t].push_back(atom);
 }
 
 InnerSmtSolver::LitId InnerSmtSolver::getLit(TNode lit)
@@ -147,67 +265,159 @@ void InnerSmtSolver::addInstance(TNode q,
                                  TNode lemma,
                                  uint32_t generation)
 {
-  Instance inst;
-  inst.d_quant = q;
-  inst.d_terms = terms;
-  inst.d_lemma = lemma;
-  inst.d_generation = generation;
-  inst.d_egraphCheckpoint = d_egraph.checkpoint();
-  inst.d_arithCheckpoint = d_arith.checkpoint();
-  inst.d_numClauses = d_clauses.size();
-  inst.d_numAtoms = d_atoms.size();
+  ensureScopeSaved();
+  size_t numTerms = d_egraph.getNumTerms();
   size_t n = d_instances.size();
-  d_instances.push_back(inst);
+  d_instances.push_back(Instance{q, terms, lemma, generation});
   d_stats.d_numInstances++;
   Trace("eager-inner") << "InnerSmtSolver: add instance " << lemma
                        << ", generation " << generation << std::endl;
   // The clause of the instance. Its first literal is (not q), which is false
   // because q is asserted in the outer context, so the clause behaves as the
-  // body does.
+  // body does. It is examined at the next round. Like the rest of the state,
+  // it is dropped when the current scope is popped, as in z3's
+  // qi_queue::pop_scope.
   std::vector<LitId> lits;
   getClauseLits(lemma, lits);
   addClause(lits, n);
-  // The terms of the instance are now part of the congruence closure, so a
-  // round must not undo them.
-  d_roundCheckpoint = d_egraph.checkpoint();
-  // instances are dropped when the scope they were added at is popped, as in
-  // z3's qi_queue::pop_scope
-  d_trail.onPop([this, n]() { retractInstancesFrom(n); });
+  // the new terms that the outer solver knows about
+  for (TermId t = numTerms, nterms = d_egraph.getNumTerms(); t < nterms; t++)
+  {
+    if (d_egraph.isBoolean(t))
+    {
+      continue;
+    }
+    ENode* e = d_mirror.getENode(d_egraph.getNode(t));
+    if (e != nullptr)
+    {
+      linkToOuter(t, e->getRoot());
+    }
+  }
 }
 
-void InnerSmtSolver::retractInstancesFrom(size_t n)
+//---------------------------------------------- the link to the outer solver
+
+InnerSmtSolver::TermId InnerSmtSolver::getAnchor(ENode* r) const
 {
-  if (d_instances.size() <= n)
+  std::unordered_map<ENode*, TermId>::const_iterator it = d_anchors.find(r);
+  return it == d_anchors.end() ? InnerEGraph::undefinedTerm : it->second;
+}
+
+void InnerSmtSolver::setAnchor(ENode* r, TermId t)
+{
+  TermId old = getAnchor(r);
+  d_anchors[r] = t;
+  if (d_trail.getNumScopes() > 0)
+  {
+    d_trail.onPop([this, r, old]() {
+      if (old == InnerEGraph::undefinedTerm)
+      {
+        d_anchors.erase(r);
+      }
+      else
+      {
+        d_anchors[r] = old;
+      }
+    });
+  }
+}
+
+void InnerSmtSolver::linkToOuter(TermId t, ENode* r)
+{
+  TermId a = getAnchor(r);
+  if (a == InnerEGraph::undefinedTerm)
+  {
+    setAnchor(r, t);
+  }
+  else if (a != t)
+  {
+    addOuterFact(a, t, true);
+  }
+}
+
+void InnerSmtSolver::addOuterFact(TermId a, TermId b, bool pol)
+{
+  d_outerFacts.push_back(OuterFact{a, b, pol});
+}
+
+void InnerSmtSolver::notifyNewENode(ENode* e)
+{
+  TermId t = d_egraph.getTerm(e->getNode());
+  if (t == InnerEGraph::undefinedTerm || d_egraph.isBoolean(t))
   {
     return;
   }
-  const Instance& first = d_instances[n];
-  // the clauses and atoms of the retracted instances
-  for (size_t c = first.d_numClauses, nc = d_clauses.size(); c < nc; c++)
-  {
-    for (LitId l : d_clauses[c].d_lits)
-    {
-      std::vector<size_t>& occ = d_atoms[litAtom(l)].d_occurs;
-      while (!occ.empty() && occ.back() >= first.d_numClauses)
-      {
-        occ.pop_back();
-      }
-    }
-  }
-  d_clauses.resize(first.d_numClauses);
-  for (size_t a = first.d_numAtoms, na = d_atoms.size(); a < na; a++)
-  {
-    d_atomMap.erase(d_atoms[a].d_node);
-  }
-  d_atoms.resize(first.d_numAtoms);
-  d_egraph.restoreTo(first.d_egraphCheckpoint);
-  d_arith.restoreTo(first.d_arithCheckpoint);
-  d_stats.d_numRetracted += d_instances.size() - n;
-  d_instances.resize(n);
-  d_roundCheckpoint = d_egraph.checkpoint();
+  ensureScopeSaved();
+  linkToOuter(t, e->getRoot());
 }
 
-void InnerSmtSolver::syncOuter()
+void InnerSmtSolver::notifyPreMerge(ENode* r1, ENode* r2)
+{
+  // r1 is absorbed into r2, so r2 inherits the anchor of r1 if it has none,
+  // and otherwise the two anchors are now equal
+  TermId a1 = getAnchor(r1);
+  if (a1 == InnerEGraph::undefinedTerm)
+  {
+    return;
+  }
+  ensureScopeSaved();
+  TermId a2 = getAnchor(r2);
+  if (a2 == InnerEGraph::undefinedTerm)
+  {
+    setAnchor(r2, a1);
+  }
+  else
+  {
+    addOuterFact(a1, a2, true);
+  }
+}
+
+void InnerSmtSolver::notifyDiseq(ENode* e1, ENode* e2)
+{
+  // A disequality between classes that contain none of our terms is not
+  // recorded. If we later have terms in both and merge them, the merge is
+  // checked against the outer disequalities (checkTouchedClasses).
+  TermId a1 = getAnchor(e1->getRoot());
+  TermId a2 = getAnchor(e2->getRoot());
+  if (a1 == InnerEGraph::undefinedTerm || a2 == InnerEGraph::undefinedTerm)
+  {
+    return;
+  }
+  ensureScopeSaved();
+  addOuterFact(a1, a2, false);
+}
+
+void InnerSmtSolver::notifyMerge(size_t a, size_t b)
+{
+  // the class of b is checked against the outer disequalities later
+  d_touched.push_back(b);
+  // The atoms the merge may imply are those watching a term of one of the two
+  // classes: an equality has a side in each, and a predicate application is
+  // implied when its class meets that of true or false. So it is enough to
+  // visit the class that does not contain true or false, which is a unless a
+  // contains one of them.
+  TermId s = a;
+  TermId rt = d_egraph.find(d_trueTerm);
+  TermId rf = d_egraph.find(d_falseTerm);
+  if (a == rt || a == rf)
+  {
+    s = b;
+  }
+  TermId t = s;
+  do
+  {
+    if (t < d_watches.size())
+    {
+      for (size_t atom : d_watches[t])
+      {
+        d_candidates.push_back(atom);
+      }
+    }
+    t = d_egraph.getNext(t);
+  } while (t != s);
+}
+
+bool InnerSmtSolver::syncOuter()
 {
   // The outer assignment is read rather than pushed: the atoms the inner solver
   // cares about are known, so their values can be asked for. A literal taken
@@ -226,9 +436,10 @@ void InnerSmtSolver::syncOuter()
     }
     if (!assign(mkLit(i, !v), ReasonKind::OUTER, 0, {}))
     {
-      return;
+      return false;
     }
   }
+  return true;
 }
 
 bool InnerSmtSolver::assignOuter(TNode atom, bool pol)
@@ -237,68 +448,79 @@ bool InnerSmtSolver::assignOuter(TNode atom, bool pol)
   return assign(l, ReasonKind::OUTER, 0, {});
 }
 
-void InnerSmtSolver::syncOuterEqualities()
+bool InnerSmtSolver::processOuterFacts()
 {
-  eq::EqualityEngine* ee = d_qstate.getEqualityEngine();
-  if (ee == nullptr)
+  // Each fact holds in the outer context, whatever the reason the master
+  // equality engine had for it, so each is sound as a root of an explanation.
+  while (d_outerFactHead < d_outerFacts.size())
   {
-    return;
-  }
-  // group the terms of this solver by their class in the master equality engine
-  std::map<Node, std::vector<Node>> byRep;
-  for (InnerEGraph::TermId t = 0, nterms = d_egraph.getNumTerms(); t < nterms;
-       t++)
-  {
-    Node n = d_egraph.getNode(t);
-    if (n.getType().isBoolean() || !ee->hasTerm(n))
+    OuterFact f = d_outerFacts[d_outerFactHead++];
+    Node a = d_egraph.getNode(f.d_a);
+    Node b = d_egraph.getNode(f.d_b);
+    if (a == b || (f.d_pol && d_egraph.areEqual(f.d_a, f.d_b)))
     {
       continue;
     }
-    byRep[d_qstate.getRepresentative(n)].push_back(n);
-  }
-  Trace("eager-inner-debug")
-      << "  outer: " << d_egraph.getNumTerms() << " terms in " << byRep.size()
-      << " classes" << std::endl;
-  for (const std::pair<const Node, std::vector<Node>>& g : byRep)
-  {
-    for (size_t i = 1, nts = g.second.size(); i < nts; i++)
+    d_stats.d_numOuterFacts++;
+    if (!assignOuter(a.eqNode(b), f.d_pol))
     {
-      if (!assignOuter(g.second[0].eqNode(g.second[i]), true))
-      {
-        return;
-      }
+      return false;
     }
   }
-  // TODO: this is quadratic in the number of classes; z3 does not need it at
-  // all, since its instances live in the solver that owns the disequalities.
-  if (byRep.size() > s_maxClassesForDiseqScan)
-  {
-    Trace("eager-inner") << "InnerSmtSolver: skipping the disequality scan, "
-                         << byRep.size() << " classes" << std::endl;
-    return;
-  }
-  for (std::map<Node, std::vector<Node>>::const_iterator i1 = byRep.begin();
-       i1 != byRep.end();
-       ++i1)
-  {
-    std::map<Node, std::vector<Node>>::const_iterator i2 = i1;
-    for (++i2; i2 != byRep.end(); ++i2)
-    {
-      if (i1->second[0].getType() != i2->second[0].getType())
-      {
-        continue;
-      }
-      if (!d_qstate.areDisequal(i1->first, i2->first))
-      {
-        continue;
-      }
-      if (!assignOuter(i1->second[0].eqNode(i2->second[0]), false))
-      {
-        return;
-      }
-    }
-  }
+  return true;
 }
+
+bool InnerSmtSolver::checkTouchedClasses(bool& progress)
+{
+  // z3 does not need this, since its instances live in the solver that owns
+  // the disequalities. We only look at the classes that grew: a disequality
+  // between two outer classes can only be violated by a merge of ours that
+  // puts them in the same class, and a disequality asserted after that merge
+  // is reported by notifyDiseq.
+  std::unordered_set<TermId> done;
+  while (d_touchedHead < d_touched.size())
+  {
+    TermId r = d_egraph.find(d_touched[d_touchedHead++]);
+    if (d_egraph.isBoolean(r) || !done.insert(r).second)
+    {
+      continue;
+    }
+    // one term for each of the outer classes in the class of r
+    std::vector<TermId> reps;
+    std::unordered_set<ENode*> seen;
+    TermId t = r;
+    do
+    {
+      ENode* e = d_mirror.getENode(d_egraph.getNode(t));
+      if (e != nullptr && seen.insert(e->getRoot()).second)
+      {
+        reps.push_back(t);
+      }
+      t = d_egraph.getNext(t);
+    } while (t != r);
+    for (size_t i = 0, nreps = reps.size(); i < nreps; i++)
+    {
+      TNode ni = d_egraph.getNode(reps[i]);
+      for (size_t j = i + 1; j < nreps; j++)
+      {
+        TNode nj = d_egraph.getNode(reps[j]);
+        if (!d_qstate.areDisequal(ni, nj))
+        {
+          continue;
+        }
+        d_stats.d_numOuterFacts++;
+        progress = true;
+        if (!assignOuter(ni.eqNode(nj), false))
+        {
+          return false;
+        }
+      }
+    }
+  }
+  return true;
+}
+
+//------------------------------------------------------------ propagation
 
 bool InnerSmtSolver::assign(LitId l,
                             ReasonKind kind,
@@ -315,36 +537,49 @@ bool InnerSmtSolver::assign(LitId l,
     // l is implied but its negation is already assigned
     d_conflictExp.clear();
     d_conflictExp.push_back(litNot(l));
-    if (kind == ReasonKind::CLAUSE)
+    switch (kind)
     {
-      for (LitId cl : d_clauses[clause].d_lits)
-      {
-        if (cl != l)
+      case ReasonKind::OUTER:
+        // l is not assigned, so collectRoots takes it as the outer fact it is
+        d_conflictExp.push_back(l);
+        break;
+      case ReasonKind::CLAUSE:
+        // every literal of the clause is false
+        for (LitId cl : d_clauses[clause].d_lits)
         {
-          d_conflictExp.push_back(litNot(cl));
+          if (cl != l)
+          {
+            d_conflictExp.push_back(litNot(cl));
+          }
         }
-      }
-      // the instance of the clause is part of the explanation, which
-      // collectRoots picks up from the clause of the implied literal; add the
-      // literal itself so that its clause is visited
-      d_conflictExp.push_back(l);
-      d_assignTrail.push_back(Assignment{l, kind, clause, {}});
-    }
-    else
-    {
-      for (LitId e : exp)
-      {
-        d_conflictExp.push_back(e);
-      }
+        d_conflictClause = clause;
+        break;
+      case ReasonKind::THEORY:
+        d_conflictExp.insert(d_conflictExp.end(), exp.begin(), exp.end());
+        break;
     }
     return false;
   }
-  d_atoms[litAtom(l)].d_value = litNeg(l) ? Value::FALSE : Value::TRUE;
-  d_assignTrail.push_back(Assignment{l, kind, clause, exp});
+  Atom& a = d_atoms[litAtom(l)];
+  a.d_value = litNeg(l) ? Value::FALSE : Value::TRUE;
+  a.d_trailIndex = d_assignTrail.size();
+  d_assignTrail.push_back(Assignment{l, kind, clause, std::move(exp)});
   d_queue.push_back(l);
   d_stats.d_numAssignments++;
   Trace("eager-inner-debug") << "  assign " << getLitNode(l) << std::endl;
   return assertToTheory(l);
+}
+
+void InnerSmtSolver::toLits(const std::vector<Node>& exp,
+                            std::vector<LitId>& lits) const
+{
+  for (const Node& e : exp)
+  {
+    std::map<Node, size_t>::const_iterator it =
+        d_atomMap.find(e.getKind() == Kind::NOT ? e[0] : e);
+    Assert(it != d_atomMap.end());
+    lits.push_back(mkLit(it->second, e.getKind() == Kind::NOT));
+  }
 }
 
 bool InnerSmtSolver::assertToTheory(LitId l)
@@ -371,72 +606,67 @@ bool InnerSmtSolver::assertToTheory(LitId l)
   // the congruence closure gives the explanation as the literals that were
   // asserted to it
   d_conflictExp.clear();
-  for (const Node& e : d_egraph.getConflict())
-  {
-    std::map<Node, size_t>::const_iterator it =
-        d_atomMap.find(e.getKind() == Kind::NOT ? e[0] : e);
-    Assert(it != d_atomMap.end());
-    d_conflictExp.push_back(mkLit(it->second, e.getKind() == Kind::NOT));
-  }
+  toLits(d_egraph.getConflict(), d_conflictExp);
   return false;
+}
+
+bool InnerSmtSolver::visitClause(size_t c)
+{
+  const Clause& cl = d_clauses[c];
+  LitId unassigned = undefinedLit;
+  size_t numUnassigned = 0;
+  for (LitId cli : cl.d_lits)
+  {
+    Value v = value(cli);
+    if (v == Value::TRUE)
+    {
+      return true;
+    }
+    if (v == Value::UNDEF)
+    {
+      unassigned = cli;
+      if (++numUnassigned > 1)
+      {
+        return true;
+      }
+    }
+  }
+  if (numUnassigned == 0)
+  {
+    // every literal is false
+    d_conflictExp.clear();
+    for (LitId cli : cl.d_lits)
+    {
+      d_conflictExp.push_back(litNot(cli));
+    }
+    // the instance of the clause itself is part of the explanation
+    d_conflictClause = c;
+    return false;
+  }
+  return assign(unassigned, ReasonKind::CLAUSE, c, {});
 }
 
 bool InnerSmtSolver::propagate()
 {
   for (;;)
   {
+    // the clauses added since the last round
+    while (d_clauseHead < d_clauses.size())
+    {
+      if (!visitClause(d_clauseHead++))
+      {
+        return false;
+      }
+    }
     while (!d_queue.empty())
     {
       LitId l = d_queue.back();
       d_queue.pop_back();
       // the clauses in which l is false
-      LitId nl = litNot(l);
-      const std::vector<size_t> occ = d_atoms[litAtom(nl)].d_occurs;
-      for (size_t c : occ)
+      size_t atom = litAtom(litNot(l));
+      for (size_t i = 0; i < d_atoms[atom].d_occurs.size(); i++)
       {
-        if (c >= d_clauses.size())
-        {
-          continue;
-        }
-        const Clause& cl = d_clauses[c];
-        LitId unassigned = undefinedLit;
-        bool satisfied = false;
-        size_t numUnassigned = 0;
-        for (LitId cli : cl.d_lits)
-        {
-          Value v = value(cli);
-          if (v == Value::TRUE)
-          {
-            satisfied = true;
-            break;
-          }
-          if (v == Value::UNDEF)
-          {
-            unassigned = cli;
-            numUnassigned++;
-            if (numUnassigned > 1)
-            {
-              break;
-            }
-          }
-        }
-        if (satisfied || numUnassigned > 1)
-        {
-          continue;
-        }
-        if (numUnassigned == 0)
-        {
-          // every literal is false
-          d_conflictExp.clear();
-          for (LitId cli : cl.d_lits)
-          {
-            d_conflictExp.push_back(litNot(cli));
-          }
-          // the instance of the clause itself is part of the explanation
-          d_conflictClause = c;
-          return false;
-        }
-        if (!assign(unassigned, ReasonKind::CLAUSE, c, {}))
+        if (!visitClause(d_atoms[atom].d_occurs[i]))
         {
           return false;
         }
@@ -447,7 +677,11 @@ bool InnerSmtSolver::propagate()
     {
       return false;
     }
-    if (!progress)
+    if (!progress && !checkTouchedClasses(progress))
+    {
+      return false;
+    }
+    if (!progress && d_queue.empty())
     {
       return true;
     }
@@ -456,31 +690,27 @@ bool InnerSmtSolver::propagate()
 
 bool InnerSmtSolver::theoryPropagate(bool& progress)
 {
-  // TODO: z3 finds the atoms a merge implies through the congruence table; we
-  // scan the unassigned atoms, which is fine while the inner problem is small.
-  for (size_t i = 0, natoms = d_atoms.size(); i < natoms; i++)
+  // The candidates are the atoms watching a term whose class was merged,
+  // collected by notifyMerge. z3 finds them through the congruence table.
+  while (d_candidateHead < d_candidates.size())
   {
-    Atom& a = d_atoms[i];
-    if (a.d_value != Value::UNDEF)
+    size_t i = d_candidates[d_candidateHead++];
+    if (i >= d_atoms.size() || d_atoms[i].d_value != Value::UNDEF)
     {
       continue;
     }
+    const Atom& a = d_atoms[i];
     bool implied = false;
     bool pol = true;
     if (a.d_lhs != InnerEGraph::undefinedTerm)
     {
-      if (d_egraph.areEqual(a.d_lhs, a.d_rhs))
-      {
-        implied = true;
-        pol = true;
-      }
+      implied = d_egraph.areEqual(a.d_lhs, a.d_rhs);
     }
     else if (a.d_term != InnerEGraph::undefinedTerm)
     {
       if (d_egraph.areEqual(a.d_term, d_trueTerm))
       {
         implied = true;
-        pol = true;
       }
       else if (d_egraph.areEqual(a.d_term, d_falseTerm))
       {
@@ -502,15 +732,9 @@ bool InnerSmtSolver::theoryPropagate(bool& progress)
       d_egraph.explain(a.d_term, pol ? d_trueTerm : d_falseTerm, exp);
     }
     std::vector<LitId> expLits;
-    for (const Node& e : exp)
-    {
-      std::map<Node, size_t>::const_iterator it =
-          d_atomMap.find(e.getKind() == Kind::NOT ? e[0] : e);
-      Assert(it != d_atomMap.end());
-      expLits.push_back(mkLit(it->second, e.getKind() == Kind::NOT));
-    }
+    toLits(exp, expLits);
     progress = true;
-    if (!assign(mkLit(i, !pol), ReasonKind::THEORY, 0, expLits))
+    if (!assign(mkLit(i, !pol), ReasonKind::THEORY, 0, std::move(expLits)))
     {
       return false;
     }
@@ -518,17 +742,7 @@ bool InnerSmtSolver::theoryPropagate(bool& progress)
   return true;
 }
 
-void InnerSmtSolver::resetRound()
-{
-  for (const Assignment& a : d_assignTrail)
-  {
-    d_atoms[litAtom(a.d_lit)].d_value = Value::UNDEF;
-  }
-  d_assignTrail.clear();
-  d_queue.clear();
-  d_conflictExp.clear();
-  d_egraph.restoreTo(d_roundCheckpoint);
-}
+//------------------------------------------------------------ explanations
 
 void InnerSmtSolver::collectRoots(LitId l,
                                   std::set<Node>& outerLits,
@@ -545,27 +759,21 @@ void InnerSmtSolver::collectRoots(LitId l,
       continue;
     }
     // find how curr was assigned
-    const Assignment* asgn = nullptr;
-    for (size_t i = d_assignTrail.size(); i-- > 0;)
+    const Atom& at = d_atoms[litAtom(curr)];
+    if (at.d_trailIndex == noIndex
+        || d_assignTrail[at.d_trailIndex].d_lit != curr)
     {
-      if (d_assignTrail[i].d_lit == curr)
-      {
-        asgn = &d_assignTrail[i];
-        break;
-      }
-    }
-    if (asgn == nullptr)
-    {
-      // not assigned by us, so it is as good as an outer fact
+      // not assigned by us, so it is an outer fact
       outerLits.insert(getLitNode(curr));
       continue;
     }
-    switch (asgn->d_kind)
+    const Assignment& asgn = d_assignTrail[at.d_trailIndex];
+    switch (asgn.d_kind)
     {
       case ReasonKind::OUTER: outerLits.insert(getLitNode(curr)); break;
       case ReasonKind::CLAUSE:
       {
-        const Clause& cl = d_clauses[asgn->d_clause];
+        const Clause& cl = d_clauses[asgn.d_clause];
         if (cl.d_instance < d_instances.size())
         {
           instances.insert(cl.d_instance);
@@ -580,10 +788,7 @@ void InnerSmtSolver::collectRoots(LitId l,
       }
       break;
       case ReasonKind::THEORY:
-        for (LitId e : asgn->d_exp)
-        {
-          todo.push_back(e);
-        }
+        todo.insert(todo.end(), asgn.d_exp.begin(), asgn.d_exp.end());
         break;
     }
   }
@@ -635,49 +840,19 @@ Node InnerSmtSolver::mkConflict(const std::vector<LitId>& exp)
   return disjuncts.size() == 1 ? disjuncts[0] : nm->mkNode(Kind::OR, disjuncts);
 }
 
-bool InnerSmtSolver::check()
+void InnerSmtSolver::exportPropagations()
 {
-  d_stats.d_numChecks++;
-  d_conflict = Node::null();
-  d_usedInstantiations.clear();
-  d_conflictClause = d_clauses.size();
-  if (d_clauses.empty())
-  {
-    return true;
-  }
-  resetRound();
-  syncOuter();
-  if (d_conflictExp.empty())
-  {
-    syncOuterEqualities();
-  }
-  bool ok = d_conflictExp.empty() && propagate();
-  if (!ok)
-  {
-    d_conflict = mkConflict(d_conflictExp);
-    if (!d_conflict.isNull())
-    {
-      d_stats.d_numConflicts++;
-      Trace("eager-inner") << "InnerSmtSolver: conflict " << d_conflict
-                           << std::endl;
-      resetRound();
-      return false;
-    }
-  }
-  // Export a bounded number of the literals we derived that the outer solver
-  // has a variable for but no value.
+  // Export a bounded number of the literals derived since the last round that
+  // the outer solver has a variable for but no value.
   Valuation& val = d_qstate.getValuation();
-  for (const Assignment& a : d_assignTrail)
+  while (d_exportHead < d_assignTrail.size()
+         && d_propagations.size() < s_maxPropagationsPerRound)
   {
-    if (d_propagations.size() >= s_maxPropagationsPerRound)
-    {
-      break;
-    }
+    const Assignment& a = d_assignTrail[d_exportHead++];
     if (a.d_kind == ReasonKind::OUTER)
     {
       continue;
     }
-    Node lit = getLitNode(a.d_lit);
     Node atom = d_atoms[litAtom(a.d_lit)].d_node;
     if (!val.isSatLiteral(atom) || val.hasSatValue(atom))
     {
@@ -698,19 +873,59 @@ bool InnerSmtSolver::check()
     }
     NodeManager* nm = nodeManager();
     Node exp = conj.size() == 1 ? conj[0] : nm->mkNode(Kind::AND, conj);
-    d_propagations.emplace_back(lit, exp);
+    d_propagations.emplace_back(getLitNode(a.d_lit), exp);
     noteUsedInstances(instances);
     d_stats.d_numPropagations++;
   }
-  resetRound();
+}
+
+bool InnerSmtSolver::check()
+{
+  d_stats.d_numChecks++;
+  d_conflict = Node::null();
+  d_usedInstantiations.clear();
+  d_conflictClause = d_clauses.size();
+  if (d_clauses.empty())
+  {
+    return true;
+  }
+  ensureScopeSaved();
+  // A round that ends in a conflict is undone, so that the state stays
+  // consistent; the outer solver backtracks once it sees the conflict.
+  Checkpoint start = mkCheckpoint();
+  bool ok = true;
+  // The terms of the instances added since the last round may have merged two
+  // classes that are disequal, which the congruence closure does not report
+  // at the time.
+  if (!d_egraph.checkDisequalities())
+  {
+    toLits(d_egraph.getConflict(), d_conflictExp);
+    ok = false;
+  }
+  ok = ok && syncOuter() && processOuterFacts() && propagate();
+  if (!ok)
+  {
+    Node conf = mkConflict(d_conflictExp);
+    restoreTo(start);
+    if (conf.isNull())
+    {
+      return true;
+    }
+    d_conflict = conf;
+    d_stats.d_numConflicts++;
+    Trace("eager-inner") << "InnerSmtSolver: conflict " << d_conflict
+                         << std::endl;
+    return false;
+  }
+  exportPropagations();
   return true;
 }
 
 void InnerSmtSolver::debugPrint(std::ostream& out) const
 {
   out << "inner-smt-solver: " << d_instances.size() << " instances, "
-      << d_clauses.size() << " clauses, " << d_atoms.size() << " atoms"
-      << std::endl;
+      << d_clauses.size() << " clauses, " << d_atoms.size() << " atoms, "
+      << d_assignTrail.size() << " assigned" << std::endl;
   for (const Instance& i : d_instances)
   {
     out << "  " << i.d_lemma << std::endl;
