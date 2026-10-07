@@ -15,6 +15,7 @@
 #include <ostream>
 
 #include "expr/node_algorithm.h"
+#include "theory/quantifiers/term_util.h"
 
 namespace cvc5::internal {
 namespace theory {
@@ -79,11 +80,12 @@ bool EGraph::isTracked(TNode n)
     return false;
   }
   // Instantiation constants stand for the universally quantified holes of a
-  // quantified formula; they are in the master equality engine because of
-  // counterexample-guided instantiation, but they are not real terms, so an
-  // instance built from one would not be entailed. cvc5's TermDb::addTerm
-  // excludes them for the same reason.
-  return !expr::hasSubtermKind(Kind::INST_CONSTANT, n);
+  // quantified formula, and cvc5 marks the terms that represent a
+  // counterexample with the same attribute. Both are in the master equality
+  // engine because of counterexample-guided and sygus instantiation, and it is
+  // model-unsound to instantiate with either, which is why cvc5's
+  // TermDb::addTerm excludes them and Instantiate rejects them outright.
+  return !TermUtil::hasInstConstAttr(Node(n));
 }
 
 EGraph::CgKey EGraph::mkCgKey(ENode* e) const

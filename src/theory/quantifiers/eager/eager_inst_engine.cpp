@@ -14,7 +14,9 @@
 
 #include "expr/node_algorithm.h"
 #include "options/quantifiers_options.h"
+#include "theory/quantifiers/instantiate.h"
 #include "theory/quantifiers/quantifiers_state.h"
+#include "theory/quantifiers/term_util.h"
 
 namespace cvc5::internal {
 namespace theory {
@@ -45,7 +47,7 @@ EagerInstEngine::EagerInstEngine(Env& env,
       d_lazyMam(env, d_egraph, d_trail, options().quantifiers.eagerInstFilters),
       d_patInfer(env),
       d_queue(env, d_trail),
-      d_inner(env, d_trail),
+      d_inner(env, d_trail, qs),
       d_trailLevel(0),
       d_numLazyMatches(0),
       d_outputLemmas(options().quantifiers.eagerInstOutput
@@ -143,12 +145,23 @@ void EagerInstEngine::assertNode(Node q)
   {
     return;
   }
-  if (expr::hasSubtermKind(Kind::INST_CONSTANT, q))
+  if (TermUtil::hasInstConstAttr(q))
   {
     // the inst-constant form of a quantified formula, which is a device of
     // counterexample-guided instantiation rather than an asserted formula
     Trace("eager-inst") << "EagerInst: skip inst-constant quantifier " << q
                         << std::endl;
+    return;
+  }
+  if (!d_qreg.hasOwnership(q, this))
+  {
+    // Another module is responsible for this quantified formula and may claim
+    // to be complete for it, which it would not be if we instantiated it too.
+    // cvc5's lazy E-matching skips the same quantifiers
+    // (InstantiationEngine::shouldProcess). z3 has no such notion, since it has
+    // one instantiation mechanism.
+    Trace("eager-inst") << "EagerInst: skip " << q
+                        << ", owned by another module" << std::endl;
     return;
   }
   Node qn = q;
@@ -227,7 +240,37 @@ void EagerInstEngine::propagate(CVC5_UNUSED Theory::Effort e)
 void EagerInstEngine::flush(CVC5_UNUSED Theory::Effort e)
 {
   syncScopes();
-  if (!d_inner.check())
+  bool ok = d_inner.check();
+  // Whatever the inner solver exports has the effect of instantiating the
+  // quantified formulas whose instances it used, so cvc5's bookkeeping is told
+  // about them; otherwise a module that is responsible for one of them builds
+  // its model as if it had not been instantiated.
+  Instantiate* inst = d_qim.getInstantiate();
+  const std::vector<std::pair<Node, std::vector<Node>>>& used =
+      d_inner.getUsedInstantiations();
+  if (used.size() == 1)
+  {
+    // The clause follows from a single instance, so it is subsumed by that
+    // instantiation. Going through Instantiate rather than sending the clause
+    // directly keeps cvc5's instantiation bookkeeping, rewriting and proof
+    // support in play.
+    std::vector<Node> terms = used[0].second;
+    Trace("eager-inst") << "EagerInst: instantiate " << used[0].first
+                        << std::endl;
+    inst->addInstantiation(
+        used[0].first, terms, InferenceId::QUANTIFIERS_INST_E_MATCHING_EAGER);
+    d_inner.clearPropagations();
+    traceStats();
+    return;
+  }
+  for (const std::pair<Node, std::vector<Node>>& ui : used)
+  {
+    if (!inst->existsInstantiation(ui.first, ui.second))
+    {
+      inst->recordInstantiation(ui.first, ui.second);
+    }
+  }
+  if (!ok)
   {
     Node conf = d_inner.getConflict();
     Assert(!conf.isNull());
@@ -270,22 +313,12 @@ void EagerInstEngine::check(Theory::Effort e, QEffort quantE)
   }
 }
 
-void EagerInstEngine::addInstance(TNode q,
+void EagerInstEngine::addInstance(CVC5_UNUSED TNode q,
                                   CVC5_UNUSED const std::vector<Node>& terms,
                                   TNode lemma,
                                   CVC5_UNUSED uint32_t generation)
 {
-  // The bring-up path, --eager-inst-output=lemma. A module that owns a
-  // quantified formula is responsible for it and may claim to be complete for
-  // it, so instantiating it here would break that claim; the inner solver does
-  // not have this problem, since it keeps its instances to itself.
-  QuantifiersModule* owner = d_qreg.getOwner(q);
-  if (owner != nullptr && owner != this)
-  {
-    Trace("eager-inst") << "EagerInst: not sending an instance of " << q
-                        << ", owned by " << owner->identify() << std::endl;
-    return;
-  }
+  // the bring-up path, --eager-inst-output=lemma
   d_qim.addPendingLemma(lemma, InferenceId::QUANTIFIERS_INST_E_MATCHING_EAGER);
 }
 

@@ -72,7 +72,10 @@ class InnerEGraph : protected EnvObj
    * returned false.
    */
   const std::vector<Node>& getConflict() const { return d_conflict; }
-  /** Explain why a and b are equal, appending the reasons to exp */
+  /**
+   * Explain why a and b are equal, appending to exp the literals that were
+   * asserted to this structure and that the equality follows from.
+   */
   void explain(TermId a, TermId b, std::vector<Node>& exp) const;
 
   //----------------------------------------------------------- removal
@@ -106,6 +109,17 @@ class InnerEGraph : protected EnvObj
     bool d_cgOwner;
     /** the key of that entry */
     std::pair<Node, std::vector<TermId>> d_cgKey;
+    /**
+     * The parent of this term in the proof forest, which records why terms are
+     * equal. The forest is independent of the union-find: an edge is added for
+     * each equality that is asserted or derived by congruence, and the path
+     * between two terms in it is the explanation of their equality.
+     */
+    TermId d_pfParent;
+    /** The literal labelling the edge to d_pfParent, null for a congruence */
+    Node d_pfReason;
+    /** Whether the edge to d_pfParent is a congruence rather than a literal */
+    bool d_pfCongruence;
   };
   /** An entry of the undo log */
   struct UndoEntry
@@ -117,7 +131,8 @@ class InnerEGraph : protected EnvObj
       PARENTS,
       CG_INSERT,
       CG_ERASE,
-      DISEQ
+      DISEQ,
+      PROOF_EDGE
     };
     UndoEntry(Kind k,
               TermId a = undefinedTerm,
@@ -134,6 +149,15 @@ class InnerEGraph : protected EnvObj
         : d_kind(k), d_a(a), d_b(undefinedTerm), d_size(0), d_key(key)
     {
     }
+    /** For PROOF_EDGE: restore the proof forest edge of a */
+    UndoEntry(Kind k, TermId a, TermId parent, Node reason, bool congruence)
+        : d_kind(k),
+          d_a(a),
+          d_b(parent),
+          d_size(congruence ? 1 : 0),
+          d_key(reason, std::vector<TermId>())
+    {
+    }
     Kind d_kind;
     TermId d_a;
     TermId d_b;
@@ -143,10 +167,29 @@ class InnerEGraph : protected EnvObj
   /** The congruence key of t under the current representatives */
   CgKey mkCgKey(TermId t) const;
   /** Merge the classes of a and b, a into b */
-  void merge(TermId a, TermId b, TNode reason);
+  void merge(TermId a, TermId b);
   /** Re-insert the parents of the old representative, finding congruences */
   void repairParents(TermId oldRoot,
                      std::vector<std::pair<TermId, TermId>>& cong);
+  /**
+   * Assert that a and b are equal, where reason is the literal that was
+   * asserted, or the null node if this is a congruence.
+   */
+  bool assertEqInternal(TermId a, TermId b, TNode reason, bool congruence);
+  /** Add the proof forest edge from a to b. z3: euf::egraph proof forest */
+  void addProofEdge(TermId a, TermId b, TNode reason, bool congruence);
+  /** Make a the root of its proof tree, reversing the path to the old root */
+  void reorient(TermId a);
+  /** The nearest common ancestor of a and b in the proof forest */
+  TermId proofAncestor(TermId a, TermId b) const;
+  /**
+   * Append to exp the explanation of the proof forest path from a up to the
+   * ancestor c, queueing the argument pairs of the congruence edges on it.
+   */
+  void explainPath(TermId a,
+                   TermId c,
+                   std::vector<Node>& exp,
+                   std::vector<std::pair<TermId, TermId>>& pending) const;
   /** Install t as the owner of the congruence table entry for key */
   void cgInsert(TermId t, const CgKey& key);
   /** Remove the congruence table entry owned by t */

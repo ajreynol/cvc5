@@ -311,41 +311,87 @@ The point of the `InnerSmtSolver` is that an eager matcher produces far more
 instances than the outer SAT solver should see, and that z3's instance
 lifecycle (add at a scope, drop on pop, re-add later at a different cost
 threshold) does not map onto cvc5's lemma channel, which is monotone and
-global. So instances go into a solver we control:
+global. So instances go into a solver we control.
 
-* `addInstance(q, bindings, body)` stores the clause `(or (not q) body)` in a
-  scoped store, assigns it a generation, and internalizes its terms into
-  `InnerEGraph`.
-* `InnerEGraph` is a congruence closure with explicit `removeTerm` /
-  `removeEq`, so a retracted instance's terms leave the structure instead of
-  accumulating — this is why it is not `EqualityEngine`.
-* Trail assignments from cvc5 (`TheoryQuantifiers::preNotifyFact`, and the
-  equalities/disequalities the master e-graph reports) are replayed into the
-  inner solver so that its reasoning is relative to the current outer
-  assignment.
+It is a **propagation-only CDCL(T)**: Boolean unit propagation over the
+instance clauses, with `InnerEGraph` as its theory, and no decisions. That is
+the shape the instances call for: an instance clause is `(or (not q) body)` and
+`q` holds in the outer context, so the clause behaves as `body` does, and most
+bodies are units.
+
+* `addInstance(q, bindings, lemma)` stores the clause, interns its atoms, and
+  internalizes its terms into `InnerEGraph`. Atoms, clauses and terms are
+  retracted together when the scope the instance was added at is popped, as
+  z3's `qi_queue::pop_scope` does with its instance store.
+* `InnerEGraph` is a congruence closure with an explicit undo log, so a
+  retracted instance's terms leave the structure instead of accumulating — this
+  is why it is not `EqualityEngine`. It maintains a **proof forest** beside the
+  union-find: every asserted or derived equality adds an edge, and the path
+  between two terms explains their equality, recursing into the arguments at a
+  congruence edge. That is what makes a minimized conflict possible.
+* **The outer assignment is read, not pushed.** The atoms the inner solver
+  cares about are known, so `check()` asks the outer solver for their value
+  (`Valuation::hasSatValue`), and asks the master equality engine for the
+  equalities and disequalities that hold between the terms it knows
+  (`syncOuterEqualities`). Each such fact is entailed by the outer context,
+  whatever reason the master equality engine had for it, so each is sound as a
+  root of an explanation.
+* A predicate application is given a presence in the congruence closure by
+  merging it with `true` or `false` when it is assigned, which is how
+  congruence over predicates is obtained; `true` and `false` are asserted
+  disequal once.
 * `InnerArith` will do the same for linear arithmetic. The instances eager
   matching produces are often arithmetic-heavy, and without an arithmetic
   solver the inner solver cannot detect most of the conflicts it is there to
   find. Planned as a fresh simplex with retraction, same reason as above.
-* Output: when the inner solver derives a conflict from (outer trail + a set
-  of instances), it exports `¬(trail-part) ∨ ¬(instances-part)` — in practice
-  the instance clauses it used, which are all entailed by the asserted
-  quantified formulas, so the exported lemma is sound regardless of what the
-  inner solver did internally. Propagations are exported the same way.
 
-Until `InnerSmtSolver` is complete, `--eager-inst-output=lemma` forwards each
-instance straight to cvc5's lemma channel. That is only a bring-up aid for
-validating the matcher; `inner` is the design. Two things to know about it:
+### 6.1 What is exported, and why it is sound
 
-* It respects cvc5's quantifier ownership, since a module that owns a
-  quantified formula may claim to be complete for it and would be wrong if
-  somebody else instantiated it. The inner solver does not need this, because it
-  keeps its instances to itself.
-* Even so, it perturbs the other quantifiers modules by construction. With
-  `--sygus-inst` on `regress0/quantifiers/issue8466-syqi-bool.smt2`, the extra
-  instances lead to a model that `--debug-check-models` rejects. The default
-  (`inner`) path is unaffected, and the regression suite passes with
-  `--eager-inst` on every quantifiers benchmark.
+A conflict is exported as the clause
+
+```
+(or  ¬L_1 ... ¬L_k  (not q_1) ... (not q_m) )
+```
+
+where the `L_i` are the outer literals the derivation used and the `q_j` the
+quantified formulas whose instances it used. Each instance is entailed by its
+`q_j`, so the clause is entailed by the assertions no matter how the inner
+solver derived it — the inner solver does not have to be trusted. The
+explanation is collected by walking the implication graph back to its roots;
+since there are no decisions, that is a reachability traversal rather than
+resolution.
+
+Propagations are exported the same way, as `exp => lit`, bounded per round,
+and only for atoms the outer solver already has a variable for.
+
+Two things the export must respect, both found by the regressions:
+
+* **Quantifier ownership.** A module that owns a quantified formula may claim
+  to be complete for it, which it is not if somebody else instantiates it. Like
+  cvc5's lazy E-matching (`InstantiationEngine::shouldProcess`), the module
+  skips the quantifiers it does not own. z3 has no equivalent, having one
+  instantiation mechanism.
+* **Instantiation bookkeeping.** Exporting a clause that mentions `(not q)`
+  instantiates `q` in effect, so the used instantiations are recorded with
+  cvc5's `Instantiate`; when the clause follows from a single instance it is
+  sent through `Instantiate::addInstantiation` instead, which keeps cvc5's
+  rewriting, duplicate filtering and proof support in play.
+
+### 6.2 What it does not find
+
+The inner solver reasons about the terms its instances mention plus the outer
+facts that hold among them. A conflict that additionally needs an outer term
+that no instance mentions is not found: for
+
+```
+(forall ((x U)) (! (= (f x) (g x)) :pattern ((f x))))   (= a b)   (not (= (f a) (g b)))
+```
+
+the instance gives `f(a) = g(a)`, and the contradiction needs `g(b)`, which the
+inner e-graph has no reason to know about. z3 does not have this problem,
+because its instances are internalized into the solver that owns `g(b)`.
+Importing the outer class members and parents of the terms it knows would close
+this, at the cost of duplicating a growing part of the outer e-graph.
 
 ## 7. Plug-in points in cvc5 (all of the edits outside this directory)
 
@@ -384,13 +430,16 @@ validating the matcher; `inner` is the design. Two things to know about it:
    the instance in the same `propagate` call that found the match, and so do
    we, but what the inner solver derives from it is reported at the next check
    (section 3.3).
-6. Instantiation constants: cvc5 puts the inst-constant form of a quantified
-   formula into the master equality engine, as a device of
-   counterexample-guided instantiation. Those terms do not denote, so the
-   mirror drops anything containing one, as `TermDb::addTerm` does. An instance
-   built from one is not entailed, and feeding such instances to the SAT solver
-   turned `unsat` into `sat` on several `cegqi` regressions before this filter
-   was added.
+6. Counterexample terms: cvc5 marks the inst-constant form of a quantified
+   formula, and the terms that sygus instantiation introduces to represent a
+   counterexample, with the instantiation-constant attribute. It is
+   model-unsound to instantiate with those — `Instantiate` rejects them
+   outright — so the mirror drops them, as `TermDb::addTerm` does. Before this
+   filter, instances built from them turned `unsat` into `sat` on several
+   `cegqi` regressions and produced a model that `--debug-check-models`
+   rejected under `--sygus-inst`.
+6a. Quantifier ownership: the module only handles the quantified formulas it
+   owns (section 6.1).
 7. Ground terms occurring in patterns: z3 internalizes them into the solver
    (`mk_enode` in `mam.cpp`), so the solver reasons about them. We only add
    them to the mirror, which means equalities involving a pattern ground term
@@ -428,24 +477,32 @@ Implemented:
 * the module, the options, the statistics (`-t eager-inst-stats`) and the match
   log used for comparing against z3 (`-t eager-inst-match`).
 
+* `InnerSmtSolver`: atom and clause interning with retraction, Boolean unit
+  propagation, the congruence closure as its theory, implication-graph
+  explanations, reading the outer assignment and the outer (dis)equalities, and
+  the export of conflicts and bounded propagations (`-t eager-inner`);
+* `InnerEGraph`: the proof forest and `explain`.
+
 Not implemented yet:
 
-* the Boolean search of `InnerSmtSolver::check`, `InnerArith`, and
-  `InnerEGraph::explain`, so the inner solver stores instances but derives
-  nothing from them yet;
+* `InnerArith`, so an arithmetic conflict among instances is not seen;
+* decisions in the inner solver, so it is propagation-complete but not
+  refutation-complete over its clauses; an instance body that is not a clause
+  is taken as an opaque atom rather than being Tseitin-encoded;
+* importing outer terms into the inner e-graph (section 6.2);
 * z3's `pi.pull_quantifiers` pass and pattern database.
 
 Remaining plan:
 
-1. `InnerSmtSolver::check`: a Boolean search over the instance clauses with
-   `InnerEGraph` as the theory, and the export of conflicts.
-2. `InnerArith`: a retractable simplex, without which the inner solver cannot
+1. `InnerArith`: a retractable simplex, without which the inner solver cannot
    see most of the conflicts it exists to find.
-3. `InnerEGraph::explain`, to export minimized conflicts rather than the whole
-   set of instances used.
-4. Performance: the congruence table and the code tree map are `std::map` with
-   `Node`/vector keys; z3 uses hash tables with small ids. The path trees and
-   the throwaway trees of `matchNewPatterns` are never freed.
+2. Decisions and Tseitin encoding in the inner solver, to make it complete over
+   its own clauses.
+3. Performance: the congruence tables and the code tree map are `std::map` with
+   `Node`/vector keys; z3 uses hash tables with small ids. The inner solver
+   redoes its propagation from scratch each round, and its search for outer
+   disequalities is quadratic in the number of classes. The path trees and the
+   throwaway trees of `matchNewPatterns` are never freed.
 
 ## 9.1 Comparing against z3
 

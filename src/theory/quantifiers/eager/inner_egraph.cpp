@@ -12,7 +12,10 @@
 
 #include "theory/quantifiers/eager/inner_egraph.h"
 
+#include <algorithm>
 #include <ostream>
+#include <set>
+#include <unordered_set>
 
 namespace cvc5::internal {
 namespace theory {
@@ -59,6 +62,8 @@ InnerEGraph::TermId InnerEGraph::addTerm(TNode n)
   term.d_next = t;
   term.d_classSize = 1;
   term.d_cgOwner = false;
+  term.d_pfParent = undefinedTerm;
+  term.d_pfCongruence = false;
   d_terms.push_back(term);
   d_termMap[n] = t;
   d_undo.push_back(UndoEntry(UndoEntry::Kind::ADD_TERM, t));
@@ -84,7 +89,7 @@ InnerEGraph::TermId InnerEGraph::addTerm(TNode n)
     else if (!areEqual(t, itc->second))
     {
       // a congruence, justified by the congruence of the arguments
-      assertEq(t, itc->second, Node::null());
+      assertEqInternal(t, itc->second, Node::null(), true);
     }
   }
   return t;
@@ -103,17 +108,29 @@ InnerEGraph::CgKey InnerEGraph::mkCgKey(TermId t) const
 
 bool InnerEGraph::assertEq(TermId a, TermId b, TNode reason)
 {
+  return assertEqInternal(a, b, reason, false);
+}
+
+bool InnerEGraph::assertEqInternal(TermId a,
+                                   TermId b,
+                                   TNode reason,
+                                   bool congruence)
+{
   TermId ra = find(a);
   TermId rb = find(b);
   if (ra == rb)
   {
     return true;
   }
+  // The proof forest edge is between the terms the equality was asserted
+  // about, not between their representatives, since that is what the
+  // explanation has to reconstruct.
+  addProofEdge(a, b, reason, congruence);
   if (d_terms[ra].d_classSize > d_terms[rb].d_classSize)
   {
     std::swap(ra, rb);
   }
-  merge(ra, rb, reason);
+  merge(ra, rb);
   // process the congruences the merge created, to a fixed point
   std::vector<std::pair<TermId, TermId>> cong;
   repairParents(ra, cong);
@@ -127,11 +144,12 @@ bool InnerEGraph::assertEq(TermId a, TermId b, TNode reason)
     {
       continue;
     }
+    addProofEdge(c.first, c.second, Node::null(), true);
     if (d_terms[rc1].d_classSize > d_terms[rc2].d_classSize)
     {
       std::swap(rc1, rc2);
     }
-    merge(rc1, rc2, Node::null());
+    merge(rc1, rc2);
     repairParents(rc1, cong);
   }
   // a disequality asserted earlier may now be violated
@@ -153,14 +171,118 @@ bool InnerEGraph::assertEq(TermId a, TermId b, TNode reason)
   return true;
 }
 
-void InnerEGraph::merge(TermId a, TermId b, TNode reason)
+void InnerEGraph::addProofEdge(TermId a,
+                               TermId b,
+                               TNode reason,
+                               bool congruence)
+{
+  reorient(a);
+  d_undo.push_back(UndoEntry(UndoEntry::Kind::PROOF_EDGE,
+                             a,
+                             d_terms[a].d_pfParent,
+                             d_terms[a].d_pfReason,
+                             d_terms[a].d_pfCongruence));
+  d_terms[a].d_pfParent = b;
+  d_terms[a].d_pfReason = reason;
+  d_terms[a].d_pfCongruence = congruence;
+}
+
+void InnerEGraph::reorient(TermId a)
+{
+  TermId prev = undefinedTerm;
+  Node prevReason;
+  bool prevCong = false;
+  TermId curr = a;
+  while (curr != undefinedTerm)
+  {
+    TermId next = d_terms[curr].d_pfParent;
+    Node nextReason = d_terms[curr].d_pfReason;
+    bool nextCong = d_terms[curr].d_pfCongruence;
+    d_undo.push_back(UndoEntry(
+        UndoEntry::Kind::PROOF_EDGE, curr, next, nextReason, nextCong));
+    d_terms[curr].d_pfParent = prev;
+    d_terms[curr].d_pfReason = prevReason;
+    d_terms[curr].d_pfCongruence = prevCong;
+    prev = curr;
+    prevReason = nextReason;
+    prevCong = nextCong;
+    curr = next;
+  }
+}
+
+InnerEGraph::TermId InnerEGraph::proofAncestor(TermId a, TermId b) const
+{
+  std::unordered_set<TermId> onPath;
+  for (TermId curr = a; curr != undefinedTerm; curr = d_terms[curr].d_pfParent)
+  {
+    onPath.insert(curr);
+  }
+  for (TermId curr = b; curr != undefinedTerm; curr = d_terms[curr].d_pfParent)
+  {
+    if (onPath.find(curr) != onPath.end())
+    {
+      return curr;
+    }
+  }
+  return undefinedTerm;
+}
+
+void InnerEGraph::explainPath(
+    TermId a,
+    TermId c,
+    std::vector<Node>& exp,
+    std::vector<std::pair<TermId, TermId>>& pending) const
+{
+  TermId curr = a;
+  while (curr != c && curr != undefinedTerm)
+  {
+    TermId parent = d_terms[curr].d_pfParent;
+    if (d_terms[curr].d_pfCongruence)
+    {
+      // the two terms are congruent, so the explanation is the explanation of
+      // their arguments being equal
+      Assert(d_terms[curr].d_args.size() == d_terms[parent].d_args.size());
+      for (size_t i = 0, nargs = d_terms[curr].d_args.size(); i < nargs; i++)
+      {
+        pending.emplace_back(d_terms[curr].d_args[i],
+                             d_terms[parent].d_args[i]);
+      }
+    }
+    else if (!d_terms[curr].d_pfReason.isNull())
+    {
+      exp.push_back(d_terms[curr].d_pfReason);
+    }
+    curr = parent;
+  }
+}
+
+void InnerEGraph::explain(TermId a, TermId b, std::vector<Node>& exp) const
+{
+  std::vector<std::pair<TermId, TermId>> pending{{a, b}};
+  std::set<std::pair<TermId, TermId>> seen;
+  while (!pending.empty())
+  {
+    std::pair<TermId, TermId> curr = pending.back();
+    pending.pop_back();
+    if (curr.first == curr.second || !seen.insert(curr).second)
+    {
+      continue;
+    }
+    TermId c = proofAncestor(curr.first, curr.second);
+    Assert(c != undefinedTerm)
+        << "inner e-graph: explaining an equality that does not hold";
+    explainPath(curr.first, c, exp, pending);
+    explainPath(curr.second, c, exp, pending);
+  }
+  // the same literal may justify several steps
+  std::sort(exp.begin(), exp.end());
+  exp.erase(std::unique(exp.begin(), exp.end()), exp.end());
+}
+
+void InnerEGraph::merge(TermId a, TermId b)
 {
   Assert(find(a) == a && find(b) == b);
   d_undo.push_back(UndoEntry(UndoEntry::Kind::MERGE, a, b));
-  if (!reason.isNull())
-  {
-    d_reasons[std::pair<TermId, TermId>(a, b)] = reason;
-  }
   // re-root the class of a
   TermId curr = a;
   do
@@ -243,16 +365,6 @@ bool InnerEGraph::assertDiseq(TermId a, TermId b, TNode reason)
   return true;
 }
 
-void InnerEGraph::explain(CVC5_UNUSED TermId a,
-                          CVC5_UNUSED TermId b,
-                          CVC5_UNUSED std::vector<Node>& exp) const
-{
-  // TODO: a proof forest over the merges, as in the standard congruence
-  // closure explanation procedure. Until then the inner solver exports the
-  // instance clauses it used rather than a minimized explanation, which is
-  // sound but weaker. See README.md section 6.
-}
-
 void InnerEGraph::restoreTo(size_t c)
 {
   Assert(c <= d_undo.size());
@@ -284,7 +396,6 @@ void InnerEGraph::undo(const UndoEntry& e)
         curr = d_terms[curr].d_next;
       } while (curr != a);
       d_terms[b].d_classSize -= d_terms[a].d_classSize;
-      d_reasons.erase(std::pair<TermId, TermId>(a, b));
     }
     break;
     case UndoEntry::Kind::PARENTS:
@@ -302,6 +413,11 @@ void InnerEGraph::undo(const UndoEntry& e)
     case UndoEntry::Kind::DISEQ:
       d_diseqs.resize(e.d_size);
       d_reasons.erase(std::pair<TermId, TermId>(e.d_a, e.d_b));
+      break;
+    case UndoEntry::Kind::PROOF_EDGE:
+      d_terms[e.d_a].d_pfParent = e.d_b;
+      d_terms[e.d_a].d_pfReason = e.d_key.first;
+      d_terms[e.d_a].d_pfCongruence = e.d_size == 1;
       break;
   }
 }
