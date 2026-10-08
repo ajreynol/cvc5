@@ -2047,12 +2047,34 @@ bool Interpreter::executeCore(CodeTree* t, ENode* n)
         const Yield* y = static_cast<const Yield*>(d_pc);
         size_t numBindings = y->d_bindings.size();
         d_bindings.resize(numBindings);
+        bool wellSorted = true;
         for (size_t i = 0; i < numBindings; i++)
         {
           d_bindings[i] = d_registers[y->d_bindings[i]];
           Assert(d_bindings[i] != nullptr);
+          // z3 identifies the top symbol of a pattern term by its declaration,
+          // which fixes the sorts of the arguments, so a binding always has the
+          // sort of the variable it is bound to. cvc5 shares the operator of an
+          // interpreted application between the instances of a parametric
+          // operator, bvand over two widths for example, so a candidate with
+          // the same operator and arity but a different signature can reach
+          // this point and the sorts have to be checked.
+          if (d_bindings[i]->getNode().getType() != y->d_quant[0][i].getType())
+          {
+            wellSorted = false;
+            break;
+          }
           d_maxGeneration =
               std::max(d_maxGeneration, d_bindings[i]->getGeneration());
+        }
+        if (!wellSorted)
+        {
+          d_mam.notifyIllSortedMatch();
+          if (!backtrack())
+          {
+            return true;
+          }
+          break;
         }
         uint32_t minTop = 0;
         uint32_t maxTop = 0;

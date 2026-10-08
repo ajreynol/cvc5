@@ -698,6 +698,8 @@ class Mam : protected EnvObj, public EGraphListener
                uint32_t maxGeneration,
                uint32_t minTopGeneration,
                uint32_t maxTopGeneration);
+  /** A match was discarded because a binding had the wrong sort */
+  void notifyIllSortedMatch() { d_stats.d_numIllSorted++; }
 
   /** Print the machine */
   void display(std::ostream& out) const;
@@ -715,6 +717,8 @@ class Mam : protected EnvObj, public EGraphListener
     uint64_t d_numExecutions = 0;
     /** matches found */
     uint64_t d_numMatches = 0;
+    /** matches discarded because a binding had the wrong sort */
+    uint64_t d_numIllSorted = 0;
   };
   const Stats& getStats() const { return d_stats; }
 

@@ -1,4 +1,4 @@
-# Eager E-matching (z3-faithful) + Inner SMT solver
+# Eager E-matching (z3-faithful)
 
 Status: **scaffolding**. This directory holds a fresh implementation of
 eager E-matching, modelled as closely as possible on z3's
@@ -159,16 +159,26 @@ did anything, which keeps the search going.
                                                                         EagerEqNotify
                                                                                   │
    EagerInstEngine (QuantifiersModule)                                            │
-     ├── EGraph        mirror of the master e-graph  <───────────────────────────┘
-     │                 union-find, parent lists, cg table, label sets, own trail
+     ├── EGraph        matcher index over the master e-graph  <──────────────────┘
+     │                 class lists, parent lists, label sets, cg table, own trail
      ├── Mam           code trees, compiler, interpreter, pc/pp path trees
      ├── InstQueue     fingerprints, cost, eager threshold, delayed entries
-     └── InnerSmtSolver
-           ├── InnerEGraph   congruence closure with *removal*
-           ├── InnerArith    (planned) own arithmetic solver
-           └── clause store  instances, added/removed z3-style
-                 └── exports conflicts / propagations to cvc5
+     └── Instantiate   the instances become instantiations of their quantified
+                       formulas, exactly as the ordinary (lazy) modules add
+                       theirs; cvc5 then asserts them, their terms reach the
+                       master equality engine, and the matcher sees them
+                       ── this is the loop z3 runs on
+
+     (--eager-inst-output=inner keeps the earlier InnerSmtSolver path, which is
+      off the default path; see 6.3)
 ```
+
+The master equality engine runs the congruence closure, and it is the only
+congruence closure on the default path: the index below derives no equalities of
+its own, it is told about every merge. The instances are added as
+instantiations, so the terms they introduce are internalized by cvc5 and come
+back through the same notifications; nothing feeds the index behind cvc5's
+back.
 
 | our component | file | z3 counterpart |
 | --- | --- | --- |
@@ -178,9 +188,9 @@ did anything, which keeps the search going.
 | instructions, `CodeTree`, `Compiler`, `Interpreter`, `PathTree`, `Mam` | `mam.{h,cpp}` | all of `mam.cpp` |
 | `Fingerprints`, `InstQueue` | `inst_queue.{h,cpp}` | `fingerprints.{h,cpp}`, `qi_queue.{h,cpp}` |
 | `PatternInference` | `pattern_inference.{h,cpp}` | `ast/pattern/pattern_inference.cpp` |
-| `InnerEGraph` | `inner_egraph.{h,cpp}` | — (z3 reuses the main e-graph) |
+| `InnerEGraph` | `inner_egraph.{h,cpp}` | — (off the default path, see 6.3) |
 | `InnerArith` | `inner_arith.{h,cpp}` | — (z3 reuses `theory_arith`) |
-| `InnerSmtSolver` | `inner_smt_solver.{h,cpp}` | the instance-holding part of `smt_context` |
+| `InnerSmtSolver` | `inner_smt_solver.{h,cpp}` | — (off the default path, see 6.3) |
 | `EagerInstEngine`, `EagerEqNotify` | `eager_inst_engine.{h,cpp}` | `quantifier_manager` + `default_qm_plugin` |
 
 ### 3.1 Why we mirror the e-graph instead of reading cvc5's
@@ -204,8 +214,15 @@ are told `t1` and `t2` were merged, our own structure still has them apart, so
 `processPc`/`processPp` see the same thing z3 sees. This is the single most
 important reason the mirror exists.
 
-The mirror is also what makes "own congruence closure, with removal" possible
-for the `InnerSmtSolver` without touching `EqualityEngine`.
+What the index deliberately does **not** do is decide anything. It owns no
+congruence closure of its own: `cgInsert` records which node owns a congruence
+table entry, so that the matcher can skip the congruent duplicates of a
+candidate (z3's `is_cgr`) and answer `get_enode_eq_to`, but it never derives a
+merge from a collision. Every merge it performs was reported by the master
+equality engine. Equality on the default path therefore has exactly one owner.
+
+The congruence table is keyed on the label together with the argument roots,
+with the hash stored in the key, since the matcher looks it up on its hot path.
 
 ### 3.2 Scope handling
 
@@ -283,11 +300,25 @@ unrelated to the matcher.
   returns immediately if already equal, otherwise calls
   `Mam::addEqNotify(r1, r2)` **first** (z3 order), then performs the union and
   the label-set union, pushing undo entries on the `Trail`, then repairs the
-  congruence table and enqueues any congruences it discovers.
+  congruence table. A collision in the repaired table marks a node as not
+  being a congruence root; it never produces a merge, because the master
+  equality engine reports those (see 3.1).
 * Generations: `generation(n)` is the instantiation depth at which `n` was
   created; terms coming from the input have generation 0, terms created by an
-  instance of generation `g` get `g` from the `InstQueue` (z3's
-  `context::internalize_instance(lemma, pr, gen)`).
+  instance of generation `g` get `g`. Since an instance reaches us only after
+  cvc5 has processed the instantiation, the generation is registered for the
+  terms of the instance body when the instance is created
+  (`EGraph::registerGeneration`), and `addTerm` reads it when the term finally
+  arrives. z3 sets the context generation around the internalization of the
+  instance instead (`context::internalize_instance(lemma, pr, gen)`).
+* Well-sortedness: z3 identifies the top symbol of a pattern term by its
+  declaration, which fixes the sorts of the arguments. cvc5 shares the
+  operator node of an interpreted application between the instances of a
+  parametric operator — `bvand` over two widths, for example — so a candidate
+  with the right operator and arity but the wrong signature can reach a yield.
+  The interpreter checks each binding against the sort of the variable it is
+  bound to and discards the match otherwise
+  (`Mam::Stats::d_numIllSorted`).
 
 Removal: the trail supports undo of both scope pops and explicit retraction,
 because the inner solver retracts instances (section 6). The mirror itself
@@ -417,10 +448,36 @@ because its instances are internalized into the solver that owns `g(b)`.
 Importing the outer class members and parents of the terms it knows would close
 this, at the cost of duplicating a growing part of the outer e-graph.
 
+### 6.3 Why it is off the default path
+
+The inner solver was built on the premise that the outer solver should not see
+the volume an eager matcher produces, and that withholding everything but a
+refutation is the way to keep that volume cheap. Measurement showed the premise
+costs more than it saves:
+
+* Withholding the instances breaks the loop the matcher runs on. The terms of
+  an instance are what the next round of matching needs, and keeping them
+  inside the inner solver means the matcher runs essentially once per pattern.
+  On a representative benchmark the matcher saw **1** candidate from 1584
+  merges, and feeding the instance terms into the index by hand (the
+  `--eager-inst-feedback` experiment) only raised the match count from 66 to
+  85, against z3's 121 — a second congruence closure, fed by hand, does not
+  reproduce what cvc5 does for free when it processes an instantiation.
+* Adding the instances as instantiations, which is what z3 does, closes the
+  loop through cvc5: 332k candidates and 464k matches on the same benchmark,
+  21949 instantiations, in the same order of magnitude as z3's 4923–74008 on
+  this family.
+
+So the default path hands the instances to `Instantiate` and lets cvc5
+internalize them. The inner solver, its congruence closure with removal and its
+bounded search remain under `--eager-inst-output=inner`, since what they
+implement is the part of z3's design that cvc5 has no analogue for, but nothing
+on the default path depends on them.
+
 ## 7. Plug-in points in cvc5 (all of the edits outside this directory)
 
 * `options/quantifiers_options.toml`: `--eager-inst` (off by default),
-  `--eager-inst-output=inner|lemma`, `--eager-inst-match-mode=check|notify`,
+  `--eager-inst-output=inst|inner|lemma|none` (`inst` by default, see 6.3), `--eager-inst-match-mode=check|notify`,
   `--eager-inst-filters`, `--eager-inst-max-eager-multipatterns=N`,
   `--eager-inst-max-lazy-multipattern-matching=N`.
 * `theory/inference_id.{h,cpp}`: `QUANTIFIERS_INST_E_MATCHING_EAGER`.
@@ -607,6 +664,69 @@ larger term. Pacing recovers the losses; it does not touch the +37% floor. That 
 what section 9 item 3 is about: the mirror is a second congruence closure over every outer
 term and merge, with `std::map` keyed on `Node` and on vectors of pointers.
 
+### 9.0.2 After the instances became instantiations
+
+The measurements above were taken with the inner solver on the default path. The
+change described in 6.3 replaces that path: the instances become instantiations,
+cvc5 internalizes them, and the loop closes. The mirror also lost its own
+congruence derivation and its `std::map`s. Same 300 benchmarks, 10s, production
+build, baseline `--no-cbqi --user-pat=strict`:
+
+| test configuration | solved vs baseline | commonly solved | time |
+| --- | --- | --- | --- |
+| `--eager-inst` | **-20** | 243 | -22% (see the caveat below) |
+| `--eager-inst --eager-inst-max-contributions=1000` | **-2** | 257 | **+1%** |
+
+No answer disagreements and no contradiction of `:status` in any configuration.
+z3 on the same 300 solves 286.
+
+So with a cap on the number of instantiations — z3's `qi.max_instances` — eager
+E-matching through cvc5's own instantiation path is **cost-neutral**: two
+benchmarks lost, three gained, and the same time on what both solve. That is a
+long way from the `+160%` the inner-solver path cost, and it is the first
+configuration on this branch that is not a clear loss. It is also, as far as the
+matcher is concerned, the architecture z3 has.
+
+Uncapped it loses 20 benchmarks to instantiation volume. The matcher produces
+instances at a rate cvc5's ground solver cannot absorb: on
+`betree__LinkedBranch_v__Refinement_v.22` it adds 21949 instantiations, about
+what z3 does on this family, and the benchmark goes from 1.6s to 13.1s with
+**5.6s of the increase inside `theory::uf::checkTime` alone** (103ms in the
+baseline). The instances are the right instances; what differs is what each one
+costs downstream.
+
+**Methodology caveat, since it is easy to get this wrong.** The time column is
+computed on the benchmarks every configuration in the run solved. A
+configuration that loses the hard benchmarks therefore gets its time measured on
+an easier set, and looks faster than it is. The `-22%` in the first row is that
+artifact: measured against the baseline on the 243 benchmarks both solve, with
+the 23 it lost excluded. Only compare time between two configurations whose
+solved sets are nearly the same, which is why the capped row is the one to read,
+and why a configuration should be compared against the baseline pairwise rather
+than read out of a multi-configuration table.
+
+### 9.0.3 What is left
+
+The remaining gap to z3 (286 vs 262 of 300) is not in the matcher. Two things
+would narrow it:
+
+* **Relevancy.** z3's `relevant_eh` registers only terms its relevancy
+  propagation has marked relevant; our index takes every term the master
+  equality engine sees. We therefore match against a larger e-graph than z3 does
+  and generate instances z3 never considers, which is the most likely cause of
+  the volume that the cap is currently papering over. cvc5 has the machinery
+  (`RelevanceManager`, and `TermDbMode::RELEVANT_ALL_DELAY` is the default for
+  the lazy path for exactly this reason).
+* **Per-instantiation cost.** With z3-like volume, the time lands in cvc5's
+  ground theories (UF, datatypes, arithmetic, CNF conversion), not in the
+  matcher — `time_ematching` falls from 467ms to 71ms when eager matching takes
+  over. cvc5 and z3 differ by 30-100x in instantiations per second end-to-end,
+  and that is a cvc5-wide property rather than a quantifiers one.
+
+The cap (`--eager-inst-max-contributions`) is a crude stand-in for the first of
+these, and `1000` is tuned on this set; it should not be read as a principled
+default.
+
 ## 9.1 Comparing against z3
 
 `-t eager-inst-match` logs one line per match, with the bindings canonicalized
@@ -628,16 +748,19 @@ On large real benchmarks the comparison is dominated by preprocessing
 differences between the two solvers (deviation 9) rather than by the matcher.
 ## 10. Open questions
 
-* Do we need `eqNotifyPreMerge` in `EqualityEngine` after all? The mirror
-  makes it unnecessary, at the cost of duplicating the congruence closure. If
-  the mirror turns out to be the bottleneck, a pre-merge callback plus direct
-  reads of cvc5's structures is the alternative.
+* Do we need `eqNotifyPreMerge` in `EqualityEngine` after all? Answered in
+  part: the index no longer duplicates the congruence closure (3.1), so what a
+  pre-merge callback would save is the lazy union, which is the cheap part. What
+  it cannot save is the per-class parent lists and label sets, which
+  `EqualityEngine` has nowhere to put and which it maintains only over the
+  curried representation.
 * Which notification covers terms that the master e-graph never sees (e.g.
   terms only known to a theory with its own equality engine in the
   non-central architecture)? z3 has one e-graph; we may under-approximate.
-* Generation bookkeeping needs a home: instances created by the inner solver
-  do not enter cvc5's term database, so `generation` must be maintained purely
-  inside `EGraph`/`InnerEGraph`.
+* Generation bookkeeping: handled by registering the generation of an
+  instance's terms when the instance is created and reading it when the term
+  arrives (section 4). Instances created with `--eager-inst-output=inner` still
+  never enter cvc5's term database, so that path keeps its own.
 * Interaction with the lazy path: both will instantiate. Do we let them, or
   does `--eager-inst` eventually imply `--no-e-matching`?
 * Ground terms of patterns (deviation 7): do we register them with cvc5, e.g.
