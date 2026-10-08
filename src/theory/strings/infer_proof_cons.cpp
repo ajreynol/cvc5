@@ -1219,7 +1219,7 @@ bool InferProofCons::convert(Env& env,
     case InferenceId::STRINGS_RE_DELTA_CONF:
     case InferenceId::STRINGS_RE_DERIVE:
     case InferenceId::STRINGS_RE_LOOP_ABSTRACT:
-    case InferenceId::STRINGS_RE_LOOP_REFINE:
+    case InferenceId::STRINGS_RE_LOOP_ELIM:
     case InferenceId::STRINGS_FLOOP:
     case InferenceId::STRINGS_FLOOP_CONFLICT:
     case InferenceId::STRINGS_DEQ_NORM_EMP:

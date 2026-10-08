@@ -4016,6 +4016,7 @@ set(regress_1_tests
   regress1/strings/regexp003.smt2
   regress1/strings/regexp-050-multiply-graft-fuzz-dd.smt2
   regress1/strings/regexp-strat-fix.smt2
+  regress1/strings/re-loop-abstract-lemma-drop.smt2
   regress1/strings/re-loop-abstract-sat.smt2
   regress1/strings/re-loop-abstract.smt2
   regress1/strings/reloop.smt2

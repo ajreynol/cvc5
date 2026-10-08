@@ -537,8 +537,8 @@ const char* toString(InferenceId i)
     case InferenceId::STRINGS_RE_DERIVE: return "STRINGS_RE_DERIVE";
     case InferenceId::STRINGS_RE_LOOP_ABSTRACT:
       return "STRINGS_RE_LOOP_ABSTRACT";
-    case InferenceId::STRINGS_RE_LOOP_REFINE:
-      return "STRINGS_RE_LOOP_REFINE";
+    case InferenceId::STRINGS_RE_LOOP_ELIM:
+      return "STRINGS_RE_LOOP_ELIM";
     case InferenceId::STRINGS_EXTF: return "STRINGS_EXTF";
     case InferenceId::STRINGS_EXTF_N: return "STRINGS_EXTF_N";
     case InferenceId::STRINGS_EXTF_D: return "STRINGS_EXTF_D";

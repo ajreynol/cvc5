@@ -128,10 +128,20 @@ name   = "Strings Theory"
 [[option]]
   name       = "stringRegExpLoopAbstract"
   category   = "expert"
-  long       = "re-loop-abstract"
-  type       = "bool"
-  default    = "false"
-  help       = "do not eliminate re.loop in the rewriter; instead over-approximate memberships containing re.loop by replacing re.loop with re.*, and refine lazily based on candidate models"
+  long       = "re-loop-abstract=MODE"
+  type       = "RegExpLoopAbstractMode"
+  default    = "OFF"
+  help       = "determines how applications of re.loop are handled"
+  help_mode  = "Regular expression loop abstraction modes."
+[[option.mode.OFF]]
+  name = "off"
+  help = "Eliminate re.loop in the rewriter."
+[[option.mode.LAZY]]
+  name = "lazy"
+  help = "Do not eliminate re.loop in the rewriter. Instead, replace memberships containing re.loop by the over-approximation obtained by replacing re.loop with re.*, and add the elimination lazily, only for memberships that are not satisfied in candidate models."
+[[option.mode.EAGER]]
+  name = "eager"
+  help = "Do not eliminate re.loop in the rewriter. Instead, add the elimination for memberships containing re.loop eagerly, together with the over-approximation obtained by replacing re.loop with re.*, which is a redundant lemma."
 
 [[option]]
   name       = "stringFlatForms"

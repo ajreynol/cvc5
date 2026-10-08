@@ -865,17 +865,19 @@ enum class InferenceId
   // regular expression loop abstraction
   //   (x in R) => (x in R')
   // where R' is the result of replacing all re.loop terms in R by the re.* of
-  // their bodies, and hence is a superset of R. This is used when option
-  // --re-loop-abstract is enabled, in which case (x in R) itself is not
-  // processed further until the refinement below is applied.
+  // their bodies, and hence is a superset of R. This is sent when option
+  // --re-loop-abstract is not off. In lazy mode it replaces (x in R), which is
+  // not processed further until the elimination below is applied. In eager
+  // mode it is logically redundant and serves only to guide the search.
   STRINGS_RE_LOOP_ABSTRACT,
-  // regular expression loop refinement
+  // regular expression loop elimination
   //   (x in R) => (x in R')
   // where R' is the result of eliminating all re.loop terms in R, and hence is
-  // equal to R. This is applied at last call effort for memberships that were
-  // abstracted above and that are not satisfied in the candidate model. The
-  // reverse implication is used for memberships asserted with false polarity.
-  STRINGS_RE_LOOP_REFINE,
+  // equal to R. The reverse implication is used for memberships asserted with
+  // false polarity. With --re-loop-abstract=eager this is added immediately,
+  // with --re-loop-abstract=lazy it is added only at last call effort, for
+  // memberships that are not satisfied in the candidate model.
+  STRINGS_RE_LOOP_ELIM,
   //-------------------- extended function solver
   // Standard extended function inferences from context-dependent rewriting
   // produced by constant substitutions. See Reynolds et al CAV 2017. These are

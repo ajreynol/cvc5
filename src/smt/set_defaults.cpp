@@ -516,10 +516,11 @@ void SetDefaults::finalizeLogic(LogicInfo& logic, Options& opts) const
     }
   }
 
-  // The abstraction refinement scheme for re.loop relies on checking whether
-  // memberships containing re.loop are satisfied in candidate models, which is
-  // done at last call effort. Thus, we require model based reduction.
-  if (opts.strings.stringRegExpLoopAbstract)
+  // The lazy abstraction refinement scheme for re.loop relies on checking
+  // whether memberships containing re.loop are satisfied in candidate models,
+  // which is done at last call effort. Thus, we require model based reduction.
+  if (opts.strings.stringRegExpLoopAbstract
+      == options::RegExpLoopAbstractMode::LAZY)
   {
     OPTION_EXCEPTION_IF_NOT(
         strings, stringModelBasedReduction, true, "re.loop abstraction");

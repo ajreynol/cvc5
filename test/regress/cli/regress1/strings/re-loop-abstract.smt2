@@ -1,4 +1,5 @@
-; COMMAND-LINE: --re-loop-abstract
+; COMMAND-LINE: --re-loop-abstract=lazy
+; COMMAND-LINE: --re-loop-abstract=eager
 ; COMMAND-LINE:
 ; EXPECT: unsat
 (set-logic QF_SLIA)

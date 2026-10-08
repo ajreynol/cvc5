@@ -44,8 +44,8 @@ RegExpSolver::RegExpSolver(Env& env,
       d_statistics(stats),
       d_regexp_opr(env, tr.getSkolemCache()),
       d_rent(env.getNodeManager(), env.getRewriter()),
-      d_loopAbstract(userContext()),
-      d_loopRefine(userContext())
+      d_loopAbstract(context()),
+      d_loopElim(context())
 {
   d_emptyString = nodeManager()->mkConst(cvc5::internal::String(""));
   d_emptyRegexp = nodeManager()->mkNode(Kind::REGEXP_NONE);
@@ -92,7 +92,8 @@ void RegExpSolver::checkMemberships(Theory::Effort e)
   // compute the memberships
   computeAssertedMemberships();
   // process memberships containing re.loop, if abstraction is enabled
-  if (options().strings.stringRegExpLoopAbstract)
+  if (options().strings.stringRegExpLoopAbstract
+      != options::RegExpLoopAbstractMode::OFF)
   {
     checkLoopAbstraction(e);
     if (d_state.isInConflict())
@@ -149,8 +150,9 @@ void RegExpSolver::processLoopMembership(Theory::Effort e,
 {
   Trace("strings-regexp-loop")
       << "Process re.loop membership " << m << ", effort=" << e << std::endl;
-  // Mark the membership as reduced, so that we never attempt to unfold it.
-  // Note that we do not mark it inactive, since we rely on the extended
+  // Mark the membership as reduced, so that we never attempt to unfold it;
+  // its semantics is instead given by the elimination lemma below. Note that
+  // we do not mark it inactive, since in lazy mode we rely on the extended
   // function solver to evaluate it in the candidate model below.
   if (!d_esolver.isReduced(m))
   {
@@ -172,18 +174,27 @@ void RegExpSolver::processLoopMembership(Theory::Effort e,
           iexp, noExplain, conc, InferenceId::STRINGS_RE_LOOP_ABSTRACT);
     }
   }
-  // (2) Refinement, which is only applied at last call effort for
-  // memberships that are not already satisfied in the candidate model.
-  if (e != Theory::EFFORT_LAST_CALL
-      || d_loopRefine.find(m) != d_loopRefine.end())
+  // (2) Elimination. In eager mode, we always add the elimination, in which
+  // case the lemma above is redundant and is used only to guide the search.
+  // In lazy mode, the elimination is added only at last call effort, and only
+  // for memberships that are not already satisfied in the candidate model.
+  if (d_loopElim.find(m) != d_loopElim.end())
   {
     return;
   }
-  if (!d_esolver.isActiveInModel(atom))
+  if (options().strings.stringRegExpLoopAbstract
+      == options::RegExpLoopAbstractMode::LAZY)
   {
-    Trace("strings-regexp-loop")
-        << "...satisfied in the model, no refinement" << std::endl;
-    return;
+    if (e != Theory::EFFORT_LAST_CALL)
+    {
+      return;
+    }
+    if (!d_esolver.isActiveInModel(atom))
+    {
+      Trace("strings-regexp-loop")
+          << "...satisfied in the model, no elimination" << std::endl;
+      return;
+    }
   }
   Node mem = getLoopElimMembership(atom);
   if (mem.isNull())
@@ -192,13 +203,13 @@ void RegExpSolver::processLoopMembership(Theory::Effort e,
     d_im.setModelUnsound(IncompleteId::STRINGS_REGEXP_NO_SIMPLIFY);
     return;
   }
-  d_loopRefine.insert(m);
+  d_loopElim.insert(m);
   Node conc = pol ? mem : mem.notNode();
-  Trace("strings-regexp-loop") << "...refine to " << conc << std::endl;
+  Trace("strings-regexp-loop") << "...eliminate to " << conc << std::endl;
   std::vector<Node> iexp{m};
   std::vector<Node> noExplain{m};
   d_im.sendInference(
-      iexp, noExplain, conc, InferenceId::STRINGS_RE_LOOP_REFINE);
+      iexp, noExplain, conc, InferenceId::STRINGS_RE_LOOP_ELIM);
 }
 
 Node RegExpSolver::getLoopAbstractLemma(const Node& atom)

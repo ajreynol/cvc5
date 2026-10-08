@@ -95,11 +95,13 @@ class RegExpSolver : protected EnvObj
    *       (x in R) => (x in R')
    * where R' is an over-approximation of R in which all re.loop terms have
    * been eliminated, together with the length bounds implied by R.
-   * (2) At last call effort, if the membership is not already satisfied in the
-   * candidate model, we refine by adding the lemma
+   * (2) We add the lemma
    *       (x in R) => (x in R'')     (resp. its converse for false polarity)
    * where R'' is the result of eliminating all re.loop terms in R, and hence
-   * is equivalent to R.
+   * is equivalent to R. In eager mode this is done immediately, in which case
+   * the lemma from (1) is logically redundant and serves only to guide the
+   * search. In lazy mode it is done only at last call effort, and only for
+   * memberships that are not already satisfied in the candidate model.
    *
    * @param e The current effort.
    */
@@ -217,17 +219,25 @@ class RegExpSolver : protected EnvObj
   std::map<Node, std::vector<Node>> d_assertedMems;
   /**
    * The set of membership atoms containing re.loop for which we have already
-   * sent the abstraction lemma. This is user-context dependent since the
-   * lemma is valid independent of the current assertions.
+   * sent the abstraction lemma.
+   *
+   * Note that although the lemmas we send are valid independent of the current
+   * assertions, these caches must be SAT-context dependent and *not*
+   * user-context dependent. This is because a pending lemma is discarded if a
+   * conflict is discovered while processing pending facts in the same round
+   * (see InferenceManagerBuffered::doPending). Making the cache SAT-context
+   * dependent ensures that such a lemma is sent again after backtracking,
+   * which is essential for the elimination lemma below, since otherwise the
+   * membership would be left with no semantics at all.
    */
   NodeSet d_loopAbstract;
   /**
    * The set of membership assertions containing re.loop for which we have
-   * already sent the refinement lemma, which is also user-context dependent.
-   * Note this contains polarized assertions, since the refinement lemma we
-   * send depends on the polarity of the assertion.
+   * already sent the elimination lemma. Note this contains polarized
+   * assertions, since the elimination lemma we send depends on the polarity of
+   * the assertion. See note above regarding the choice of context.
    */
-  NodeSet d_loopRefine;
+  NodeSet d_loopElim;
 }; /* class TheoryStrings */
 
 }  // namespace strings
