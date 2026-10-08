@@ -576,6 +576,37 @@ much less (section 9 item 3: the `std::map`s keyed on `Node` and on vectors of p
 and the per-round rework) or the inner solver to find conflicts the outer solver does not
 find on its own, which is what decisions and arithmetic are for.
 
+### 9.0.1 Where the cost is: the contribution sweep
+
+120 benchmarks, production build, 10s, baseline `--no-cbqi --user-pat=strict`, varying how
+much eager E-matching is allowed to contribute
+(`--eager-inst-max-contributions`, and `--eager-inst-output=none` which matches but
+contributes nothing at all):
+
+| test configuration | solved vs baseline | time on commonly solved |
+| --- | --- | --- |
+| `--eager-inst-output=none` (matcher only) | 0 | +37% |
+| `--eager-inst-max-contributions=1` | 0 | +40% |
+| `--eager-inst-max-contributions=4` | 0 | +46% |
+| `--eager-inst-max-contributions=16` | 0 | +48% |
+| `--eager-inst` (no limit) | **-6** | +160% |
+
+No answer disagreements and no contradiction of `:status` in any configuration.
+
+The time column is not comparable across rows: it is computed on the benchmarks both
+sides solved, and the no-limit row loses the six slowest ones, so its baseline total falls
+from ~27s to 15s. The reading that does hold:
+
+* **About +37% is the machinery**, paid with zero contribution: the mirror, the matcher
+  and the inner solver running. Contributing 1, 4 or 16 instantiations adds little on top.
+* **The six losses come from unbounded contribution volume.** Capping at 16 or fewer
+  removes all of them at no additional cost in time.
+
+So the cost splits into a volume problem and a machinery problem, and the machinery is the
+larger term. Pacing recovers the losses; it does not touch the +37% floor. That floor is
+what section 9 item 3 is about: the mirror is a second congruence closure over every outer
+term and merge, with `std::map` keyed on `Node` and on vectors of pointers.
+
 ## 9.1 Comparing against z3
 
 `-t eager-inst-match` logs one line per match, with the bindings canonicalized

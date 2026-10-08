@@ -40,6 +40,7 @@ InnerSmtSolver::InnerSmtSolver(Env& env,
       d_qstate(qs),
       d_mirror(mirror),
       d_inst(nullptr),
+      d_feedback(options().quantifiers.eagerInstFeedback),
       d_egraph(env),
       d_arith(env),
       d_clauseHead(0),
@@ -446,6 +447,11 @@ void InnerSmtSolver::addInstance(TNode q,
     d_stats.d_numAlreadyKnown++;
     return;
   }
+  if (d_feedback)
+  {
+    // the terms of this instance become candidates for further matching
+    feedMirror(lemma);
+  }
   ensureScopeSaved();
   size_t numTerms = d_egraph.getNumTerms();
   size_t n = d_instances.size();
@@ -512,6 +518,39 @@ void InnerSmtSolver::linkToOuter(TermId t, ENode* r)
   else if (a != t)
   {
     addOuterFact(a, t, true);
+  }
+}
+
+void InnerSmtSolver::feedMirror(TNode f)
+{
+  std::vector<TNode> visit{f};
+  std::unordered_set<TNode> visited;
+  while (!visit.empty())
+  {
+    TNode n = visit.back();
+    visit.pop_back();
+    if (!visited.insert(n).second || n.isClosure())
+    {
+      continue;
+    }
+    Kind k = n.getKind();
+    bool connective = k == Kind::NOT || k == Kind::AND || k == Kind::OR
+                      || k == Kind::IMPLIES || k == Kind::XOR
+                      || k == Kind::DISTINCT || k == Kind::EQUAL
+                      || (k == Kind::ITE && n.getType().isBoolean());
+    if (!connective && n.getNumChildren() > 0 && n.hasOperator())
+    {
+      // a term the matcher can match on; addTerm covers its arguments too
+      if (d_mirror.addTerm(n) != nullptr)
+      {
+        d_stats.d_numFedTerms++;
+      }
+      continue;
+    }
+    for (const Node& nc : n)
+    {
+      visit.push_back(nc);
+    }
   }
 }
 

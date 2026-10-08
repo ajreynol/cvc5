@@ -175,6 +175,8 @@ class InnerSmtSolver : protected EnvObj,
     uint64_t d_numDeactivated = 0;
     /** instances not held because cvc5 already had them */
     uint64_t d_numAlreadyKnown = 0;
+    /** terms of instances given to the matcher */
+    uint64_t d_numFedTerms = 0;
   };
   const Stats& getStats() const { return d_stats; }
 
@@ -356,6 +358,17 @@ class InnerSmtSolver : protected EnvObj,
    * anchor of r, or if r has one, note that t is equal to it.
    */
   void linkToOuter(TermId t, ENode* r);
+  /**
+   * Add the terms of the formula f to the e-graph the matcher works on, so
+   * that they can take part in further matching.
+   *
+   * This is what keeps eager E-matching going. In z3 an instance is asserted
+   * to the solver, its terms enter the e-graph, and they are new candidates for
+   * matching, which is where z3's throughput comes from. Our instances stay
+   * here, so without this their terms would never reach the matcher and it
+   * would run roughly once per pattern.
+   */
+  void feedMirror(TNode f);
   /** Note an outer fact, to be asserted at the next round */
   void addOuterFact(TermId a, TermId b, bool pol);
   /** Take the current value of the inner atoms from the outer solver */
@@ -448,6 +461,8 @@ class InnerSmtSolver : protected EnvObj,
   EGraph& d_mirror;
   /** cvc5's instantiation bookkeeping, or null */
   Instantiate* d_inst;
+  /** Whether the terms of an instance are given to the matcher */
+  bool d_feedback;
   /** The instances, in the order they were added */
   std::vector<Instance> d_instances;
   /** The congruence closure */

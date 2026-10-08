@@ -344,6 +344,22 @@ name   = "Quantifiers"
   help       = "report the literals the inner SMT solver of eager E-matching derives, in addition to its conflicts; off by default, so that eager E-matching only sends something to the rest of the solver when its instances are contradictory"
 
 [[option]]
+  name       = "eagerInstFeedback"
+  category   = "expert"
+  long       = "eager-inst-feedback"
+  type       = "bool"
+  default    = "true"
+  help       = "add the terms of an instance to the e-graph that eager E-matching matches against, so that an instance can lead to further matches as it does in z3; without this the matcher runs essentially once per pattern, since the instances are kept inside the inner SMT solver and their terms never reach the matcher"
+
+[[option]]
+  name       = "eagerInstMaxContributions"
+  category   = "expert"
+  long       = "eager-inst-max-contributions=N"
+  type       = "uint64_t"
+  default    = "0"
+  help       = "the number of instantiations and conflict clauses eager E-matching may contribute in total, 0 for no limit; for measuring how much of its effect is due to the volume it contributes"
+
+[[option]]
   name       = "eagerInstInnerBudget"
   category   = "expert"
   long       = "eager-inst-inner-budget=N"

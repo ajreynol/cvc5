@@ -54,7 +54,9 @@ EagerInstEngine::EagerInstEngine(Env& env,
       d_outputLemmas(options().quantifiers.eagerInstOutput
                      == options::EagerInstOutputMode::LEMMA),
       d_matchOnNotify(options().quantifiers.eagerInstMatchMode
-                      == options::EagerInstMatchMode::NOTIFY)
+                      == options::EagerInstMatchMode::NOTIFY),
+      d_maxContributions(options().quantifiers.eagerInstMaxContributions),
+      d_numContributed(0)
 {
   // The e-graph feeds the eager matcher. z3 additionally feeds the lazy
   // matcher, but only for the label maintenance (relevant_eh with lazy=true),
@@ -249,7 +251,7 @@ void EagerInstEngine::propagate(CVC5_UNUSED Theory::Effort e)
 
 void EagerInstEngine::flush(CVC5_UNUSED Theory::Effort e)
 {
-  if (!d_useInner)
+  if (!d_useInner || !mayContribute())
   {
     traceStats();
     return;
@@ -290,6 +292,7 @@ void EagerInstEngine::flush(CVC5_UNUSED Theory::Effort e)
                            Node::null(),
                            false,
                            false);
+    d_numContributed++;
     // cvc5 owns this instance now
     d_inner.deactivateUsedInstances();
     d_inner.clearPropagations();
@@ -314,6 +317,7 @@ void EagerInstEngine::flush(CVC5_UNUSED Theory::Effort e)
       Trace("eager-inst") << "EagerInst: inner conflict " << conf << std::endl;
       d_qim.addPendingLemma(conf,
                             InferenceId::QUANTIFIERS_INST_E_MATCHING_EAGER);
+      d_numContributed++;
       // the instances the conflict used have been handed over
       d_inner.deactivateUsedInstances();
     }

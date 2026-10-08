@@ -148,6 +148,11 @@ class EagerInstEngine : public QuantifiersModule, public InstanceSink
   void syncScopes();
   /** The multi-patterns of q, from its annotation */
   void getPatterns(TNode q, std::vector<Node>& pats) const;
+  /** Whether another contribution is allowed */
+  bool mayContribute() const
+  {
+    return d_maxContributions == 0 || d_numContributed < d_maxContributions;
+  }
   /** Print the statistics under -t eager-inst */
   void traceStats() const;
 
@@ -192,6 +197,10 @@ class EagerInstEngine : public QuantifiersModule, public InstanceSink
   bool d_useInner;
   /** Whether to run the matcher from the notifications */
   bool d_matchOnNotify;
+  /** The number of contributions allowed in total, 0 for no limit */
+  uint64_t d_maxContributions;
+  /** How many have been made */
+  uint64_t d_numContributed;
   /**
    * What has already been contributed at the current scope. A conflict is
    * rederived every round, because the round that found it is undone to keep

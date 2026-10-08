@@ -287,6 +287,16 @@ class EGraph : protected EnvObj
   void cgErase(ENode* e);
   /** Perform the union of the classes of r1 and r2, r1 into r2 */
   void merge(ENode* r1, ENode* r2);
+  /**
+   * Merge the pairs of terms that cgInsert found congruent.
+   *
+   * The master equality engine reports the congruences of the terms it knows
+   * about, but eager E-matching also puts the terms of its instances here, and
+   * cvc5 never sees those, so their congruences have to be derived here or the
+   * matcher works on a structure that is not congruence closed. A congruence is
+   * entailed, so a merge derived this way is as sound as one that was reported.
+   */
+  void processCongruences();
   /** Undo term creations until only n nodes remain */
   void popTerms(size_t n);
   /** Undo merges until only n remain */
@@ -354,6 +364,8 @@ class EGraph : protected EnvObj
   std::vector<std::pair<Node, Node>> d_diseqs;
   /** The congruence table. z3: smt::cg_table */
   std::map<CgKey, ENode*> d_cg;
+  /** Pairs found congruent by cgInsert and not yet merged */
+  std::vector<std::pair<ENode*, ENode*>> d_pendingCong;
   /** The congruence table undo entries of the merges on the merge stack */
   std::vector<CgUndo> d_cgUndo;
   /** The merge stack */

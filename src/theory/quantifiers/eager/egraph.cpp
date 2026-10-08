@@ -109,11 +109,37 @@ void EGraph::cgInsert(ENode* e)
     e->d_cgKey = key;
     return;
   }
-  // e is congruent to a node that already owns the entry; e is not a
-  // congruence representative. The two are in the same class as soon as the
-  // master equality engine has propagated the congruence, which it reports to
-  // us as an ordinary merge.
+  // e is congruent to the node that owns the entry, so it is not a congruence
+  // representative, and the two belong in the same class.
   e->d_cgr = it->second;
+  d_pendingCong.emplace_back(e, it->second);
+}
+
+void EGraph::processCongruences()
+{
+  for (size_t i = 0; i < d_pendingCong.size(); i++)
+  {
+    ENode* a = d_pendingCong[i].first;
+    ENode* b = d_pendingCong[i].second;
+    ENode* r1 = a->getRoot();
+    ENode* r2 = b->getRoot();
+    if (r1 == r2)
+    {
+      continue;
+    }
+    if (r1->getClassSize() > r2->getClassSize())
+    {
+      std::swap(r1, r2);
+    }
+    Trace("eager-egraph") << "EGraph: congruence " << *a << " = " << *b
+                          << std::endl;
+    for (EGraphListener* l : d_listeners)
+    {
+      l->notifyPreMerge(r1, r2);
+    }
+    merge(r1, r2);
+  }
+  d_pendingCong.clear();
 }
 
 void EGraph::cgErase(ENode* e)
@@ -208,6 +234,9 @@ ENode* EGraph::addTerm(TNode n)
       updateChildrenPlbls(e, h);
     }
   }
+  // the terms of the instances of eager E-matching are not known to cvc5, so
+  // their congruences are derived here
+  processCongruences();
   // the candidate collection half of z3's mam::relevant_eh
   for (EGraphListener* l : d_listeners)
   {
@@ -245,6 +274,7 @@ void EGraph::assertEq(TNode t1, TNode t2)
     l->notifyPreMerge(r1, r2);
   }
   merge(r1, r2);
+  processCongruences();
 }
 
 void EGraph::merge(ENode* r1, ENode* r2)
