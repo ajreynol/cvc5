@@ -1,0 +1,217 @@
+id     = "Z3"
+name   = "Z3 Core"
+
+[[option]]
+  name       = "z3"
+  category   = "expert"
+  long       = "z3"
+  type       = "bool"
+  default    = "false"
+  help       = "use the ported Z3 SMT core instead of cvc5's own CDCL(T) engine"
+
+# ---------------------------------------------------------------- core search
+
+[[option]]
+  name       = "z3AutoConfig"
+  category   = "expert"
+  long       = "z3-auto-config"
+  type       = "bool"
+  default    = "true"
+  help       = "configure the ported Z3 core per logic, as Z3's auto_config does"
+
+[[option]]
+  name       = "z3Relevancy"
+  category   = "expert"
+  long       = "z3-relevancy=N"
+  type       = "uint64_t"
+  default    = "2"
+  maximum    = "2"
+  help       = "relevancy propagation level of the ported Z3 core (0 disables it)"
+
+[[option]]
+  name       = "z3CaseSplit"
+  category   = "expert"
+  long       = "z3-case-split=MODE"
+  type       = "Z3CaseSplitMode"
+  default    = "ACTIVITY_DELAY_NEW"
+  help       = "case split strategy of the ported Z3 core"
+  help_mode  = "Case split strategies of the ported Z3 core."
+[[option.mode.ACTIVITY]]
+  name = "activity"
+  help = "Split on the most active variable."
+[[option.mode.ACTIVITY_DELAY_NEW]]
+  name = "activity-delay-new"
+  help = "Split on activity, but delay splits created during the search."
+[[option.mode.ACTIVITY_WITH_CACHE]]
+  name = "activity-with-cache"
+  help = "Split on activity, caching the activity."
+[[option.mode.RELEVANCY]]
+  name = "relevancy"
+  help = "Split on relevancy."
+[[option.mode.RELEVANCY_ACTIVITY]]
+  name = "relevancy-activity"
+  help = "Split on relevancy, breaking ties by activity."
+[[option.mode.RELEVANCY_GOAL]]
+  name = "relevancy-goal"
+  help = "Split on relevancy and the current goal."
+[[option.mode.ACTIVITY_THEORY_AWARE_BRANCHING]]
+  name = "activity-theory-aware-branching"
+  help = "Split on activity, letting theory solvers manipulate the activity."
+
+[[option]]
+  name       = "z3PhaseSelection"
+  category   = "expert"
+  long       = "z3-phase-selection=MODE"
+  type       = "Z3PhaseSelectionMode"
+  default    = "CACHING_CONSERVATIVE"
+  help       = "phase selection strategy of the ported Z3 core"
+  help_mode  = "Phase selection strategies of the ported Z3 core."
+[[option.mode.ALWAYS_FALSE]]
+  name = "always-false"
+  help = "Always try the negative phase first."
+[[option.mode.ALWAYS_TRUE]]
+  name = "always-true"
+  help = "Always try the positive phase first."
+[[option.mode.CACHING]]
+  name = "caching"
+  help = "Reuse the last phase the variable was assigned."
+[[option.mode.CACHING_CONSERVATIVE]]
+  name = "caching-conservative"
+  help = "Reuse the cached phase, turning caching on and off periodically."
+[[option.mode.CACHING_CONSERVATIVE2]]
+  name = "caching-conservative2"
+  help = "Like caching-conservative, alternating the default phase over time."
+[[option.mode.RANDOM]]
+  name = "random"
+  help = "Choose the phase at random."
+[[option.mode.OCCURRENCE]]
+  name = "occurrence"
+  help = "Choose the phase that occurs in more clauses."
+[[option.mode.THEORY]]
+  name = "theory"
+  help = "Let theory solvers choose the phase."
+
+[[option]]
+  name       = "z3RestartStrategy"
+  category   = "expert"
+  long       = "z3-restart-strategy=MODE"
+  type       = "Z3RestartStrategyMode"
+  default    = "IN_OUT_GEOMETRIC"
+  help       = "restart strategy of the ported Z3 core"
+  help_mode  = "Restart strategies of the ported Z3 core."
+[[option.mode.GEOMETRIC]]
+  name = "geometric"
+  help = "Geometrically increasing restart threshold."
+[[option.mode.IN_OUT_GEOMETRIC]]
+  name = "in-out-geometric"
+  help = "Inner/outer geometrically increasing restart threshold."
+[[option.mode.LUBY]]
+  name = "luby"
+  help = "Luby sequence of restart thresholds."
+[[option.mode.FIXED]]
+  name = "fixed"
+  help = "Fixed restart threshold."
+[[option.mode.ARITHMETIC]]
+  name = "arithmetic"
+  help = "Arithmetically increasing restart threshold."
+
+[[option]]
+  name       = "z3RestartInitial"
+  category   = "expert"
+  long       = "z3-restart-initial=N"
+  type       = "uint64_t"
+  default    = "100"
+  help       = "initial restart threshold of the ported Z3 core"
+
+[[option]]
+  name       = "z3RestartFactor"
+  category   = "expert"
+  long       = "z3-restart-factor=F"
+  type       = "double"
+  default    = "1.1"
+  minimum    = "1.0"
+  help       = "restart threshold growth factor of the ported Z3 core"
+
+[[option]]
+  name       = "z3DelayUnits"
+  category   = "expert"
+  long       = "z3-delay-units"
+  type       = "bool"
+  default    = "false"
+  help       = "delay the propagation of unit clauses in the ported Z3 core"
+
+[[option]]
+  name       = "z3RandomSeed"
+  category   = "expert"
+  long       = "z3-random-seed=N"
+  type       = "uint64_t"
+  default    = "0"
+  help       = "random seed of the ported Z3 core"
+
+# --------------------------------------------------- quantifier instantiation
+
+[[option]]
+  name       = "z3Ematching"
+  category   = "expert"
+  long       = "z3-ematching"
+  type       = "bool"
+  default    = "true"
+  help       = "use E-matching for quantifier instantiation in the ported Z3 core"
+
+[[option]]
+  name       = "z3Mbqi"
+  category   = "expert"
+  long       = "z3-mbqi"
+  type       = "bool"
+  default    = "true"
+  help       = "use model based quantifier instantiation in the ported Z3 core"
+
+[[option]]
+  name       = "z3QiCost"
+  category   = "expert"
+  long       = "z3-qi-cost=STR"
+  type       = "std::string"
+  default    = '"(+ weight generation)"'
+  help       = "the cost function used to delay quantifier instantiations"
+
+[[option]]
+  name       = "z3QiNewGen"
+  category   = "expert"
+  long       = "z3-qi-new-gen=STR"
+  type       = "std::string"
+  default    = '"cost"'
+  help       = "how the generation of terms created by an instantiation is set"
+
+[[option]]
+  name       = "z3QiEagerThreshold"
+  category   = "expert"
+  long       = "z3-qi-eager-threshold=F"
+  type       = "double"
+  default    = "10.0"
+  minimum    = "0.0"
+  help       = "instantiations whose cost exceeds this are delayed"
+
+[[option]]
+  name       = "z3QiLazyThreshold"
+  category   = "expert"
+  long       = "z3-qi-lazy-threshold=F"
+  type       = "double"
+  default    = "20.0"
+  minimum    = "0.0"
+  help       = "instantiations whose cost exceeds this are dropped"
+
+[[option]]
+  name       = "z3QiMaxMultiPatterns"
+  category   = "expert"
+  long       = "z3-qi-max-eager-multipatterns=N"
+  type       = "uint64_t"
+  default    = "0"
+  help       = "maximum number of multi-patterns matched eagerly"
+
+[[option]]
+  name       = "z3QiMaxInstances"
+  category   = "expert"
+  long       = "z3-qi-max-instances=N"
+  type       = "uint64_t"
+  default    = "18446744073709551615"
+  help       = "maximum number of quantifier instantiations"

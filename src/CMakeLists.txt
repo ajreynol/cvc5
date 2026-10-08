@@ -370,6 +370,8 @@ libcvc5_add_sources(
   smt/smt_mode.h
   smt/smt_solver.cpp
   smt/smt_solver.h
+  smt/z3_smt_solver.cpp
+  smt/z3_smt_solver.h
   smt/sygus_solver.cpp
   smt/sygus_solver.h
   smt/term_formula_removal.cpp
@@ -1330,6 +1332,21 @@ libcvc5_add_sources(
   theory/uf/type_enumerator.h
   theory/valuation.cpp
   theory/valuation.h
+  z3/ast.cpp
+  z3/ast.h
+  z3/params.cpp
+  z3/params.h
+  z3/types.cpp
+  z3/types.h
+  z3/util/approx_set.cpp
+  z3/util/approx_set.h
+  z3/util/id_var_list.h
+  z3/util/literal.h
+  z3/util/nat_set.h
+  z3/util/region.cpp
+  z3/util/region.h
+  z3/util/trail.h
+  z3/util/util.h
 )
 
 # suppress deprecated warnings to not error in CI
@@ -1382,6 +1399,7 @@ set(options_toml_files
   options/strings_options.toml
   options/theory_options.toml
   options/uf_options.toml
+  options/z3_options.toml
 )
 string(REPLACE "toml" "cpp;" options_gen_cpp_files ${options_toml_files})
 string(REPLACE "toml" "h;"   options_gen_h_files ${options_toml_files})

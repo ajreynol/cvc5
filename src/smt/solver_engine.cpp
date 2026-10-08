@@ -36,6 +36,7 @@
 #include "options/proof_options.h"
 #include "options/quantifiers_options.h"
 #include "options/smt_options.h"
+#include "options/z3_options.h"
 #include "options/theory_options.h"
 #include "preprocessing/passes/synth_rew_rules.h"
 #include "printer/printer.h"
@@ -61,6 +62,7 @@
 #include "smt/smt_driver.h"
 #include "smt/smt_driver_deep_restarts.h"
 #include "smt/smt_solver.h"
+#include "smt/z3_smt_solver.h"
 #include "smt/solver_engine_state.h"
 #include "smt/solver_engine_stats.h"
 #include "smt/sygus_solver.h"
@@ -124,8 +126,15 @@ SolverEngine::SolverEngine(NodeManager* nm, const Options* optr)
   getResourceManager()->registerListener(d_routListener.get());
   // make statistics
   d_stats.reset(new SolverEngineStatistics(d_env->getStatisticsRegistry()));
-  // make the SMT solver
-  d_smtSolver.reset(new SmtSolver(*d_env, *d_stats));
+  // make the SMT solver, which is the ported Z3 core if --z3 is enabled
+  if (d_env->getOptions().z3.z3)
+  {
+    d_smtSolver.reset(new Z3SmtSolver(*d_env, *d_stats));
+  }
+  else
+  {
+    d_smtSolver.reset(new SmtSolver(*d_env, *d_stats));
+  }
   // make the expand definitions utility, used for getting model values
   d_expDef.reset(new ExpandDefs(*d_env.get()));
   // make the context manager
