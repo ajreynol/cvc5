@@ -2911,11 +2911,46 @@ void SmtContext::assertFormula(TNode e)
   {
     popToBaseLvl();
   }
+  pushAssertion(e);
+}
+
+void SmtContext::pushAssertion(TNode e)
+{
+  // Z3 splits a conjunction, and a negated disjunction, into separate
+  // assertions while they are being collected (see
+  // asserted_formulas::push_assertion). This matters beyond saving a Boolean
+  // variable: an assertion is marked relevant when it is asserted, while the
+  // conjuncts of a top-level conjunction never are -- the and-gate only
+  // propagates relevancy to its arguments once the conjunction itself is
+  // assigned, which never happens for a root. cvc5's preprocessor leaves
+  // such conjunctions in place, so the split is done here.
+  if (isTrueNode(e))
+  {
+    return;
+  }
   if (isFalseNode(e))
   {
     d_assertedInconsistent = true;
+    d_assertedFormulas.push_back(e);
+    return;
   }
-  if (!d_hasQuantifiers && expr::hasClosure(e))
+  if (e.getKind() == Kind::AND)
+  {
+    for (const Node& arg : e)
+    {
+      pushAssertion(arg);
+    }
+    return;
+  }
+  if (e.getKind() == Kind::NOT && e[0].getKind() == Kind::OR)
+  {
+    for (const Node& arg : e[0])
+    {
+      pushAssertion(arg.negate());
+    }
+    return;
+  }
+  if (!d_hasQuantifiers && expr::hasClosure(Node(e)))
   {
     d_hasQuantifiers = true;
   }
@@ -4127,6 +4162,10 @@ void SmtContext::registerStatistics()
   add("z3::instancesCheckerSat", d_stats.d_numInstancesCheckerSat);
   add("z3::instancesSimplifyTrue", d_stats.d_numInstancesSimplifyTrue);
   add("z3::missedInstances", d_stats.d_numMissedInstances);
+  add("z3::mamRelevantEh", d_stats.d_numMamRelevantEh);
+  add("z3::mamRelevantApp", d_stats.d_numMamRelevantApp);
+  add("z3::mamTrees", d_stats.d_numMamTrees);
+  add("z3::setRelevant", d_stats.d_numSetRelevant);
   add("z3::mamCandidates", d_stats.d_numMamCandidates);
   add("z3::mamExecs", d_stats.d_numMamExecs);
   add("z3::mamMatches", d_stats.d_numMamMatches);
@@ -4135,6 +4174,9 @@ void SmtContext::registerStatistics()
   add("z3::dtConstructorAx", d_stats.d_numDtConstructorAx);
   add("z3::dtAccessorAx", d_stats.d_numDtAccessorAx);
   add("z3::dtUpdateFieldAx", d_stats.d_numDtUpdateFieldAx);
+  add("z3::bridgeAssumptions", d_stats.d_bridgeAssumptions);
+  add("z3::bridgeAsserted", d_stats.d_bridgeAsserted);
+  add("z3::bridgeTimeMs", d_stats.d_bridgeTimeMs);
   add("z3::bridgeChecks", d_stats.d_numBridgeChecks);
   add("z3::bridgeConflicts", d_stats.d_numBridgeConflicts);
 }

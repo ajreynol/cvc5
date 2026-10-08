@@ -61,6 +61,14 @@ struct Statistics
   uint64_t d_numInstancesSimplifyTrue;
   /** matches that were already instantiated (Z3's missed instantiations) */
   uint64_t d_numMissedInstances;
+  /** relevantEh calls the matcher received */
+  uint64_t d_numMamRelevantEh;
+  /** relevantEh calls for an enode with arguments */
+  uint64_t d_numMamRelevantApp;
+  /** code trees created */
+  uint64_t d_numMamTrees;
+  /** expressions marked relevant */
+  uint64_t d_numSetRelevant;
   /** enodes offered to a code tree as E-matching candidates */
   uint64_t d_numMamCandidates;
   /** code trees executed */
@@ -73,6 +81,12 @@ struct Statistics
   uint64_t d_numDtConstructorAx;
   uint64_t d_numDtAccessorAx;
   uint64_t d_numDtUpdateFieldAx;
+  /** assumptions passed to the subsolver, summed over the calls */
+  uint64_t d_bridgeAssumptions;
+  /** literals asserted to the subsolver permanently */
+  uint64_t d_bridgeAsserted;
+  /** milliseconds spent in the cvc5 subsolver of the theory bridge */
+  uint64_t d_bridgeTimeMs;
   /** calls to the cvc5 subsolver of the theory bridge */
   uint64_t d_numBridgeChecks;
   /** conflicts the cvc5 subsolver of the theory bridge found */

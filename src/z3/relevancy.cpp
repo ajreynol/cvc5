@@ -384,6 +384,7 @@ void RelevancyPropagator::undoTrail(size_t oldLim)
 
 void RelevancyPropagator::setRelevant(TNode n)
 {
+  d_context.getStats().d_numSetRelevant++;
   d_isRelevant.insert(n.getId());
   d_relevantExprs.push_back(n);
   d_context.relevantEh(n);

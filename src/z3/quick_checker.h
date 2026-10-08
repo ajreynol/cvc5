@@ -46,11 +46,36 @@ class QuickChecker
  public:
   QuickChecker(SmtContext& c);
 
-  /** Instantiate the instances the current model falsifies. */
-  bool instantiateUnsat(TNode q);
+  /**
+   * Instantiate the instances the current model falsifies.
+   *
+   * @param conservative Whether the candidate bindings are restricted to the
+   * terms that already occur at the same position under the same symbol, as
+   * Z3 does. Dropping the restriction widens the search in the same way Z3's
+   * model based instantiation does, while still only creating the instances
+   * the current assignment falsifies.
+   */
+  bool instantiateUnsat(TNode q, bool conservative = true);
 
   /** Instantiate the instances the current model does not satisfy. */
-  bool instantiateNotSat(TNode q);
+  bool instantiateNotSat(TNode q, bool conservative = false);
+
+  /**
+   * Add at most one instance of q, from the candidate bindings the collector
+   * proposes, preferring one the current assignment falsifies. This is not a
+   * Z3 method; see z3/enum_inst.h for why it exists.
+   */
+  bool instantiateFirstNew(TNode q);
+
+  /**
+   * Whether an atom with no value under the current assignment counts as
+   * false. The assignment is partial, so the plain check almost never finds a
+   * falsified binding; completing it this way gives a crude but consistent
+   * candidate model, which is the role Z3's model checker plays. Two
+   * congruent atoms are given the same value, since the check works on the
+   * congruence class of the canonical form.
+   */
+  void setTotal(bool total) { d_total = total; }
 
  private:
   using ENodeSet = std::unordered_set<ENode*>;
@@ -122,6 +147,23 @@ class QuickChecker
   bool checkQuantifier(TNode q, bool isTrue);
   Node canonize(TNode n);
   bool processCandidates(TNode q, bool unsat);
+  bool processFirstNew(TNode q);
+
+  /**
+   * Fill the candidates of the variables the collector found none for with
+   * the class representatives of the variable's sort. The collector only
+   * proposes a term that already occurs at the same position under the same
+   * symbol, which for most quantifiers leaves at least one variable with
+   * nothing at all; cvc5's own enumerative instantiation falls back to the
+   * sort in the same way.
+   */
+  void fillBySort(TNode q);
+
+  /** How many terms of a sort may be used as candidates. */
+  static constexpr size_t s_maxBySort = 32;
+
+  /** How many binding tuples instantiateFirstNew may scan. */
+  static constexpr size_t s_maxTuplesPerQuantifier = 2000;
 
   SmtContext& d_context;
   Collector d_collector;
@@ -138,6 +180,7 @@ class QuickChecker
   std::unordered_map<Node, Node> d_canonizeCache;
   size_t d_numBindings;
   ENodeVector d_bindings;
+  bool d_total;
 };
 
 }  // namespace z3

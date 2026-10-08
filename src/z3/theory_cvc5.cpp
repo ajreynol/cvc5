@@ -13,17 +13,21 @@
 #include "z3/theory_cvc5.h"
 
 #include <algorithm>
+#include <chrono>
+#include <fstream>
 #include <sstream>
 #include <unordered_set>
 
 #include "base/output.h"
 #include "options/base_options.h"
 #include "options/option_exception.h"
+#include "options/arith_options.h"
 #include "options/smt_options.h"
 #include "options/z3_options.h"
 #include "smt/env.h"
 #include "smt/set_defaults.h"
 #include "smt/solver_engine.h"
+#include "expr/skolem_manager.h"
 #include "theory/smt_engine_subsolver.h"
 #include "util/result.h"
 #include "z3/ast.h"
@@ -33,9 +37,39 @@
 namespace cvc5::internal {
 namespace z3 {
 
+namespace {
+
+/** Accumulates the wall time of one subsolver check. */
+class BridgeTimer
+{
+ public:
+  BridgeTimer(uint64_t& total,
+              std::chrono::steady_clock::time_point start)
+      : d_total(total), d_start(start)
+  {
+  }
+
+  ~BridgeTimer()
+  {
+    d_total += static_cast<uint64_t>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - d_start)
+            .count());
+  }
+
+ private:
+  uint64_t& d_total;
+  std::chrono::steady_clock::time_point d_start;
+};
+
+}  // namespace
+
 // ----------------------------------------------------------------- bridge
 
-Cvc5Bridge::Cvc5Bridge(SmtContext& ctx) : d_ctx(ctx), d_subFailed(false) {}
+Cvc5Bridge::Cvc5Bridge(SmtContext& ctx)
+    : d_ctx(ctx), d_subFailed(false), d_assertedBaseLvl(0)
+{
+}
 
 Cvc5Bridge::~Cvc5Bridge() {}
 
@@ -66,6 +100,12 @@ void Cvc5Bridge::reset()
   d_atoms.clear();
   d_terms.clear();
   d_antecedents.clear();
+  d_asserted.clear();
+  d_abs.clear();
+  d_satSets.clear();
+  d_satSetsTermsLim = 0;
+  d_unsatCores.clear();
+  d_known.clear();
 }
 
 bool Cvc5Bridge::initSubsolver()
@@ -88,6 +128,12 @@ bool Cvc5Bridge::initSubsolver()
     subOptions.write_smt().unsatAssumptions = true;
     subOptions.write_smt().produceModels = true;
     subOptions.write_base().incrementalSolving = true;
+    // The subsolver is called hundreds of times on a slowly growing set of
+    // literals, so the passes that pay off once on a whole query are a net
+    // loss here.
+    subOptions.write_smt().simplificationMode =
+        options::SimplificationMode::NONE;
+    subOptions.write_smt().staticLearning = false;
     smt::SetDefaults::disableChecking(subOptions);
     theory::SubsolverSetupInfo ssi(env, subOptions);
     theory::initializeSubsolver(env.getNodeManager(), d_sub, ssi);
@@ -120,7 +166,43 @@ bool Cvc5Bridge::mkAssumptions(std::vector<Node>& assumps)
     {
       continue;
     }
-    Node lit = val == L_TRUE ? ab.first : ab.first.notNode();
+    if (!d_ctx.isRelevant(v))
+    {
+      // Z3's theory solvers only ever see the relevant atoms: an assignment
+      // is forwarded to a theory from the atom propagation queue, which an
+      // atom only enters once it is relevant. Dropping the irrelevant ones
+      // keeps the subsolver's job the size Z3's arithmetic solver would see.
+      continue;
+    }
+    Node absAtom = abstract(ab.first);
+    Node lit = val == L_TRUE ? absAtom : absAtom.notNode();
+    if (d_ctx.getAssignLevel(v) <= d_ctx.getBaseLevel())
+    {
+      // A literal the core assigned at its base level never retracts, so it
+      // can be asserted to the subsolver once instead of being re-sent and
+      // re-preprocessed on every call. It is also not needed as an
+      // antecedent of a conflict: conflict resolution drops the literals
+      // assigned at or below the base level anyway.
+      if (d_asserted.insert(lit).second)
+      {
+        d_ctx.getStats().d_bridgeAsserted++;
+        std::vector<Node> one{lit};
+        collectKnown(one);
+        try
+        {
+          d_sub->assertFormula(lit);
+        }
+        catch (const std::exception&)
+        {
+          d_asserted.erase(lit);
+          assumps.push_back(lit);
+          Antecedent a;
+          a.d_lit = Literal(v, val == L_FALSE);
+          d_antecedents[lit] = a;
+        }
+      }
+      continue;
+    }
     if (d_antecedents.count(lit) != 0)
     {
       continue;
@@ -151,8 +233,8 @@ bool Cvc5Bridge::mkAssumptions(std::vector<Node>& assumps)
     {
       continue;
     }
-    Node eq = it->second->getExpr().eqNode(e->getExpr());
-    if (d_antecedents.count(eq) != 0)
+    Node eq = abstract(it->second->getExpr()).eqNode(abstract(e->getExpr()));
+    if (eq[0] == eq[1] || d_antecedents.count(eq) != 0)
     {
       continue;
     }
@@ -167,9 +249,9 @@ bool Cvc5Bridge::mkAssumptions(std::vector<Node>& assumps)
 
 void Cvc5Bridge::collectKnown(const std::vector<Node>& assumps)
 {
-  // Only the terms that occur in an assumption are known to the subsolver;
-  // asking for the value of any other one is pointless and noisy.
-  d_known.clear();
+  // Only the terms that occur in something the subsolver was given are known
+  // to it; asking for the value of any other one is pointless and noisy.
+  // Note d_known is not cleared: the permanent assertions stay known.
   std::vector<TNode> visit;
   for (const Node& a : assumps)
   {
@@ -190,8 +272,10 @@ void Cvc5Bridge::collectKnown(const std::vector<Node>& assumps)
   }
 }
 
-FinalCheckStatus Cvc5Bridge::check()
+FinalCheckStatus Cvc5Bridge::check(bool finalCheck)
 {
+  auto start = std::chrono::steady_clock::now();
+  BridgeTimer timer(d_ctx.getStats().d_bridgeTimeMs, start);
   if (d_atoms.empty() && d_terms.empty())
   {
     return FC_DONE;
@@ -201,8 +285,136 @@ FinalCheckStatus Cvc5Bridge::check()
     d_ctx.markModelUnsound(theory::THEORY_ARITH);
     return FC_DONE;
   }
+  if (d_ctx.getBaseLevel() != d_assertedBaseLvl && !d_asserted.empty())
+  {
+    // The base level moved, so the permanent assertions are no longer known
+    // to hold: start the subsolver over.
+    reset();
+    if (!initSubsolver())
+    {
+      d_ctx.markModelUnsound(theory::THEORY_ARITH);
+      return FC_DONE;
+    }
+  }
+  d_assertedBaseLvl = d_ctx.getBaseLevel();
   std::vector<Node> assumps;
   mkAssumptions(assumps);
+  // Backtracking brings the search back to a set of literals the subsolver
+  // has already judged, and the subsolver is by far the most expensive part
+  // of a final check, so both verdicts are remembered. Note neither depends
+  // on the scope: a set of literals is satisfiable or not on its own.
+  if (d_terms.size() != d_satSetsTermsLim)
+  {
+    // New bridged terms may have made a class shared that was not before, so
+    // the interface reconciliation of the remembered sets no longer applies.
+    d_satSets.clear();
+    d_satSetsTermsLim = d_terms.size();
+  }
+  std::vector<Node> key = assumps;
+  std::sort(key.begin(), key.end());
+  if (d_satSets.count(key) != 0)
+  {
+    return FC_DONE;
+  }
+  std::unordered_set<Node> cur(assumps.begin(), assumps.end());
+  for (const std::vector<Node>& core : d_unsatCores)
+  {
+    bool present = true;
+    for (const Node& c : core)
+    {
+      if (cur.count(c) == 0)
+      {
+        present = false;
+        break;
+      }
+    }
+    if (present)
+    {
+      Trace("z3-bridge") << "cvc5 bridge: replaying a known conflict"
+                         << std::endl;
+      d_ctx.getStats().d_numBridgeConflicts++;
+      mkConflict(core);
+      return FC_CONTINUE;
+    }
+  }
+  d_lastCheckAssignments = d_ctx.getStats().d_numAssignments;
+  d_ctx.getStats().d_bridgeAssumptions += assumps.size();
+  if (d_ctx.getStats().d_numBridgeChecks == 20
+      && getenv("Z3PORT_DUMP_BRIDGE") != nullptr)
+  {
+    // A development hook for inspecting what the subsolver is asked to do.
+    std::ofstream out(getenv("Z3PORT_DUMP_BRIDGE"));
+    out << "(set-logic ALL)\n";
+    std::unordered_set<Node> syms;
+    std::vector<Node> all(d_asserted.begin(), d_asserted.end());
+    all.insert(all.end(), assumps.begin(), assumps.end());
+    std::vector<TNode> visit(all.begin(), all.end());
+    std::unordered_set<TNode> seen;
+    while (!visit.empty())
+    {
+      TNode cur = visit.back();
+      visit.pop_back();
+      if (!seen.insert(cur).second)
+      {
+        continue;
+      }
+      if (cur.isVar())
+      {
+        syms.insert(cur);
+      }
+      if (cur.getMetaKind() == kind::metakind::PARAMETERIZED)
+      {
+        visit.push_back(cur.getOperator());
+      }
+      for (const Node& c : cur)
+      {
+        visit.push_back(c);
+      }
+    }
+    std::unordered_set<TypeNode> sorts;
+    for (const Node& v : syms)
+    {
+      TypeNode tn = v.getType();
+      std::vector<TypeNode> ts{tn};
+      if (tn.isFunction())
+      {
+        ts.assign(tn.begin(), tn.end());
+      }
+      for (const TypeNode& t : ts)
+      {
+        if (t.isUninterpretedSort())
+        {
+          sorts.insert(t);
+        }
+      }
+    }
+    for (const TypeNode& t : sorts)
+    {
+      out << "(declare-sort " << t << " 0)\n";
+    }
+    for (const Node& v : syms)
+    {
+      TypeNode tn = v.getType();
+      out << "(declare-fun " << v << " (";
+      if (tn.isFunction())
+      {
+        for (size_t i = 0, n = tn.getNumChildren() - 1; i < n; ++i)
+        {
+          out << (i == 0 ? "" : " ") << tn[i];
+        }
+        out << ") " << tn.getRangeType() << ")\n";
+      }
+      else
+      {
+        out << ") " << tn << ")\n";
+      }
+    }
+    for (const Node& a : all)
+    {
+      out << "(assert " << a << ")\n";
+    }
+    out << "(check-sat)\n";
+  }
   Trace("z3-bridge") << "cvc5 bridge: check " << assumps.size()
                      << " assumptions, " << d_atoms.size() << " atoms, "
                      << d_terms.size() << " terms" << std::endl;
@@ -231,7 +443,21 @@ FinalCheckStatus Cvc5Bridge::check()
     // The two solvers agree on the literals. Their models still have to agree
     // on the terms they share, which is what the interface equalities below
     // establish.
-    return checkInterface(assumps);
+    FinalCheckStatus st = checkInterface(assumps, finalCheck);
+    if (st == FC_DONE)
+    {
+      if (d_satSets.size() < s_maxCachedSatSets)
+      {
+        d_satSets.insert(key);
+      }
+      // Nothing came of this call, so wait longer before the next one.
+      d_eagerGap = std::min(s_maxEagerGap, d_eagerGap * 2);
+    }
+    else
+    {
+      d_eagerGap = std::max(s_minEagerGap, d_eagerGap / 2);
+    }
+    return st;
   }
   if (r.getStatus() != Result::UNSAT)
   {
@@ -239,9 +465,20 @@ FinalCheckStatus Cvc5Bridge::check()
     return FC_DONE;
   }
   d_ctx.getStats().d_numBridgeConflicts++;
+  d_eagerGap = std::max(s_minEagerGap, d_eagerGap / 2);
+  std::vector<Node> core = d_sub->getUnsatAssumptions();
+  if (d_unsatCores.size() < s_maxCachedCores)
+  {
+    d_unsatCores.push_back(core);
+  }
+  mkConflict(core);
+  return FC_CONTINUE;
+}
+
+void Cvc5Bridge::mkConflict(const std::vector<Node>& core)
+{
   LiteralVector lits;
   ENodePairVector eqs;
-  std::vector<Node> core = d_sub->getUnsatAssumptions();
   for (const Node& a : core)
   {
     auto it = d_antecedents.find(a);
@@ -270,7 +507,63 @@ FinalCheckStatus Cvc5Bridge::check()
                                      lits.data(),
                                      eqs.size(),
                                      eqs.data())));
-  return FC_CONTINUE;
+}
+
+bool Cvc5Bridge::isBridgedType(const TypeNode& tn)
+{
+  return tn.isRealOrInt() || tn.isBitVector();
+}
+
+bool Cvc5Bridge::isBridgedOp(Kind k)
+{
+  if (k == Kind::NOT || k == Kind::EQUAL)
+  {
+    return true;
+  }
+  TheoryId tid = theory::kindToTheoryId(k);
+  return tid == theory::THEORY_ARITH || tid == theory::THEORY_BV;
+}
+
+Node Cvc5Bridge::abstract(TNode t)
+{
+  auto it = d_abs.find(t);
+  if (it != d_abs.end())
+  {
+    return it->second;
+  }
+  Node ret;
+  if (t.getNumChildren() == 0)
+  {
+    // A leaf of a bridged sort is an arithmetic or bit-vector variable or
+    // constant and is kept; anything else cannot occur in a bridged atom
+    // except as an opaque value.
+    ret = isBridgedType(t.getType()) ? Node(t) : mkAbsConst(t);
+  }
+  else if (isBridgedOp(t.getKind()))
+  {
+    std::vector<Node> children;
+    if (t.getMetaKind() == kind::metakind::PARAMETERIZED)
+    {
+      children.push_back(t.getOperator());
+    }
+    for (const Node& c : t)
+    {
+      children.push_back(abstract(c));
+    }
+    ret = d_ctx.getEnv().getNodeManager()->mkNode(t.getKind(), children);
+  }
+  else
+  {
+    ret = mkAbsConst(t);
+  }
+  d_abs[t] = ret;
+  return ret;
+}
+
+Node Cvc5Bridge::mkAbsConst(TNode t)
+{
+  SkolemManager* sm = d_ctx.getEnv().getNodeManager()->getSkolemManager();
+  return sm->mkDummySkolem("z3abs", t.getType());
 }
 
 bool Cvc5Bridge::isBridged(TheoryId tid)
@@ -302,7 +595,13 @@ bool Cvc5Bridge::isSharedClass(ENode* r)
   return false;
 }
 
-FinalCheckStatus Cvc5Bridge::checkInterface(std::vector<Node>& assumps)
+bool Cvc5Bridge::shouldCheckEagerly() const
+{
+  return d_ctx.getStats().d_numAssignments >= d_lastCheckAssignments + d_eagerGap;
+}
+
+FinalCheckStatus Cvc5Bridge::checkInterface(std::vector<Node>& assumps,
+                                            bool finalCheck)
 {
   // Two shared classes the subsolver gives the same value but that the core
   // keeps apart are the one case where the two models may be incompatible.
@@ -313,6 +612,8 @@ FinalCheckStatus Cvc5Bridge::checkInterface(std::vector<Node>& assumps)
   // the next model is examined.
   size_t numExtra = 0;
   size_t extraBase = assumps.size();
+  size_t budget =
+      finalCheck ? s_maxInterfaceChecks : s_maxEagerInterfaceChecks;
   for (;;)
   {
     std::vector<std::pair<ENode*, ENode*>> candidates;
@@ -326,18 +627,27 @@ FinalCheckStatus Cvc5Bridge::checkInterface(std::vector<Node>& assumps)
       assumps.resize(extraBase);
       return FC_DONE;
     }
-    if (numExtra >= s_maxInterfaceChecks)
+    if (numExtra >= budget)
     {
+      assumps.resize(extraBase);
+      if (!finalCheck)
+      {
+        // Outside a final check there is nothing that has to be reconciled.
+        return FC_DONE;
+      }
       // Too many rounds: fall back to splitting on the first candidate and
       // let the search decide it.
       ENode* n1 = candidates.front().first;
       ENode* n2 = candidates.front().second;
-      assumps.resize(extraBase);
       return mkInterfaceSplit(n1, n2);
     }
     ENode* n1 = candidates.front().first;
     ENode* n2 = candidates.front().second;
-    Node diseq = d_ctx.mkEqAtom(n1->getExpr(), n2->getExpr()).notNode();
+    Node diseq = abstract(n1->getExpr())
+                     .eqNode(abstract(n2->getExpr()))
+                     .notNode();
+    Trace("z3-bridge-if") << "  try " << n1->getExpr() << " = "
+                          << n2->getExpr() << std::endl;
     assumps.push_back(diseq);
     numExtra++;
     Result r;
@@ -356,6 +666,7 @@ FinalCheckStatus Cvc5Bridge::checkInterface(std::vector<Node>& assumps)
     {
       // The two can be kept apart; keep the disequality and look at the new
       // model.
+      Trace("z3-bridge-if") << "    not entailed" << std::endl;
       continue;
     }
     if (r.getStatus() != Result::UNSAT)
@@ -435,7 +746,8 @@ void Cvc5Bridge::collectCandidates(
     {
       continue;
     }
-    if (d_known.count(t) == 0)
+    Node at = abstract(t);
+    if (d_known.count(at) == 0)
     {
       // The subsolver has never seen this term, so it does not constrain its
       // value and the core is free to choose one.
@@ -450,7 +762,7 @@ void Cvc5Bridge::collectCandidates(
       std::ostream* old = &WarningChannel.setStream(&dropped);
       try
       {
-        val = d_sub->getValue(t);
+        val = d_sub->getValue(at);
       }
       catch (...)
       {
@@ -599,7 +911,22 @@ FinalCheckStatus TheoryCvc5::finalCheckEh(size_t /*level*/)
     // One subsolver call covers every bridged theory at once.
     return FC_DONE;
   }
-  return d_bridge.check();
+  return d_bridge.check(true);
+}
+
+bool TheoryCvc5::canPropagate()
+{
+  return getParams().d_bridgeEager && d_bridge.isOwner(this)
+         && d_bridge.shouldCheckEagerly();
+}
+
+void TheoryCvc5::propagate()
+{
+  if (!getParams().d_bridgeEager || !d_bridge.isOwner(this))
+  {
+    return;
+  }
+  d_bridge.check(false);
 }
 
 void TheoryCvc5::resetEh()

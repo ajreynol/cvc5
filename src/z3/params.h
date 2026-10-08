@@ -214,6 +214,29 @@ struct Params
   uint32_t d_qiProfileFreq = UINT_MAX;
   QuickCheckerMode d_qiQuickChecker = MC_NO;
   bool d_qiLazyQuickChecker = true;
+  /**
+   * Whether the incomplete model checker restricts the candidate bindings the
+   * way Z3 does. This is not a Z3 parameter: Z3 relies on model based
+   * instantiation, which this port does not have, to find the instances the
+   * restricted search misses.
+   */
+  bool d_qiQuickCheckerConservative = true;
+  /**
+   * Whether to instantiate enumeratively once E-matching is exhausted. This
+   * is not a Z3 parameter either; see z3/enum_inst.h.
+   */
+  bool d_enumInst = false;
+  /** Whether enumerative instantiation may guess a binding; see enum_inst.h */
+  bool d_enumInstFallback = false;
+  /** how many enumerative instances one final check may add */
+  uint32_t d_enumInstMaxPerRound = 8;
+  /**
+   * Whether the bridge to cvc5's theory solvers also runs during
+   * propagation. Z3's own solvers do propagate eagerly, but one subsolver
+   * call is far more expensive than one simplex step, so this costs much
+   * more than it returns.
+   */
+  bool d_bridgeEager = false;
   bool d_qiPromoteUnsat = true;
   uint32_t d_qiMaxInstances = UINT_MAX;
   bool d_qiLazyInstantiation = false;

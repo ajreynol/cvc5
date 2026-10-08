@@ -159,6 +159,54 @@ name   = "Z3 Core"
   help       = "use E-matching for quantifier instantiation in the ported Z3 core"
 
 [[option]]
+  name       = "z3QiLazyQuickChecker"
+  category   = "expert"
+  long       = "z3-qi-lazy-quick-checker"
+  type       = "bool"
+  default    = "true"
+  help       = "do not run the incomplete model checker at final check"
+
+[[option]]
+  name       = "z3QiQuickCheckerConservative"
+  category   = "expert"
+  long       = "z3-qi-quick-checker-conservative"
+  type       = "bool"
+  default    = "true"
+  help       = "restrict the candidate bindings of the model checker as Z3 does"
+
+[[option]]
+  name       = "z3EnumInst"
+  category   = "expert"
+  long       = "z3-enum-inst"
+  type       = "bool"
+  default    = "false"
+  help       = "instantiate enumeratively once E-matching is exhausted, which stands in for Z3's model based instantiation"
+
+[[option]]
+  name       = "z3EnumInstFallback"
+  category   = "expert"
+  long       = "z3-enum-inst-fallback"
+  type       = "bool"
+  default    = "false"
+  help       = "let enumerative instantiation guess a binding when none is falsified"
+
+[[option]]
+  name       = "z3EnumInstMaxPerRound"
+  category   = "expert"
+  long       = "z3-enum-inst-max-per-round=N"
+  type       = "uint64_t"
+  default    = "8"
+  help       = "how many enumerative instances one final check may add"
+
+[[option]]
+  name       = "z3BridgeEager"
+  category   = "expert"
+  long       = "z3-bridge-eager"
+  type       = "bool"
+  default    = "false"
+  help       = "run the cvc5 theory bridge during propagation, not only at final check"
+
+[[option]]
   name       = "z3Mbqi"
   category   = "expert"
   long       = "z3-mbqi"

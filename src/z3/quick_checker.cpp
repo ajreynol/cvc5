@@ -15,6 +15,7 @@
 
 #include "z3/quick_checker.h"
 
+#include "base/output.h"
 #include "expr/node_algorithm.h"
 #include "expr/node_manager.h"
 #include "z3/ast.h"
@@ -195,24 +196,136 @@ void QuickChecker::Collector::operator()(
 // --------------------------------------------------------- quick checker
 
 QuickChecker::QuickChecker(SmtContext& c)
-    : d_context(c), d_collector(c), d_numBindings(0)
+    : d_context(c), d_collector(c), d_numBindings(0), d_total(false)
 {
 }
 
-bool QuickChecker::instantiateUnsat(TNode q)
+bool QuickChecker::instantiateUnsat(TNode q, bool conservative)
 {
   d_candidateVectors.clear();
-  d_collector(q, true, d_candidateVectors);
+  d_collector(q, conservative, d_candidateVectors);
   d_numBindings = getNumDecls(q);
   return processCandidates(q, true);
 }
 
-bool QuickChecker::instantiateNotSat(TNode q)
+bool QuickChecker::instantiateNotSat(TNode q, bool conservative)
 {
   d_candidateVectors.clear();
-  d_collector(q, false, d_candidateVectors);
+  d_collector(q, conservative, d_candidateVectors);
   d_numBindings = getNumDecls(q);
   return processCandidates(q, false);
+}
+
+bool QuickChecker::instantiateFirstNew(TNode q)
+{
+  d_candidateVectors.clear();
+  d_collector(q, true, d_candidateVectors);
+  d_numBindings = getNumDecls(q);
+  fillBySort(q);
+  return processFirstNew(q);
+}
+
+void QuickChecker::fillBySort(TNode q)
+{
+  d_candidateVectors.resize(d_numBindings + 1);
+  for (size_t i = 0; i < d_numBindings; ++i)
+  {
+    if (!d_candidateVectors[i].empty())
+    {
+      continue;
+    }
+    TypeNode tn = q[0][i].getType();
+    std::unordered_set<ENode*> seen;
+    for (ENode* e : d_context.enodes())
+    {
+      if (d_candidateVectors[i].size() >= s_maxBySort)
+      {
+        break;
+      }
+      if (!d_context.isRelevant(e) || e->getExpr().getType() != tn)
+      {
+        continue;
+      }
+      ENode* r = e->getRoot();
+      if (seen.insert(r).second)
+      {
+        d_candidateVectors[i].push_back(e);
+      }
+    }
+  }
+}
+
+bool QuickChecker::processFirstNew(TNode q)
+{
+  std::vector<std::pair<ENode*, ENode*>> emptyUsedENodes;
+  std::vector<size_t> szs;
+  std::vector<size_t> it;
+  for (size_t i = 0; i < d_numBindings; ++i)
+  {
+    size_t sz = d_candidateVectors[i].size();
+    if (sz == 0)
+    {
+      Trace("z3-enum-why") << "  empty candidates for var " << i << std::endl;
+      return false;
+    }
+    szs.push_back(sz);
+    it.push_back(0);
+  }
+  d_bindings.resize(d_numBindings + 1, nullptr);
+  bool haveFallback = false;
+  ENodeVector fallback;
+  size_t scanned = 0;
+  do
+  {
+    if (scanned++ >= s_maxTuplesPerQuantifier)
+    {
+      break;
+    }
+    for (size_t i = 0; i < d_numBindings; ++i)
+    {
+      d_bindings[i] = d_candidateVectors[i][it[i]];
+    }
+    if (d_context.containsInstance(q, d_numBindings, d_bindings.data()))
+    {
+      continue;
+    }
+    bool falsified = checkQuantifier(q, false);
+    if (falsified || !haveFallback)
+    {
+      uint32_t maxGeneration =
+          d_context.getMaxGeneration(d_numBindings, d_bindings.data());
+      if (falsified)
+      {
+        return d_context.addInstance(q,
+                                     TNode::null(),
+                                     d_numBindings,
+                                     d_bindings.data(),
+                                     maxGeneration,
+                                     0,
+                                     0,
+                                     emptyUsedENodes);
+      }
+      haveFallback = true;
+      fallback = d_bindings;
+    }
+  } while (productIteratorNext(szs.size(), szs.data(), it.data()));
+  if (!haveFallback)
+  {
+    Trace("z3-enum-why") << "  all " << scanned << " tuples taken" << std::endl;
+    return false;
+  }
+  Trace("z3-enum-why") << "  fallback after " << scanned << " tuples"
+                       << std::endl;
+  uint32_t maxGeneration =
+      d_context.getMaxGeneration(d_numBindings, fallback.data());
+  return d_context.addInstance(q,
+                               TNode::null(),
+                               d_numBindings,
+                               fallback.data(),
+                               maxGeneration,
+                               0,
+                               0,
+                               emptyUsedENodes);
 }
 
 bool QuickChecker::processCandidates(TNode q, bool unsat)
@@ -353,6 +466,11 @@ bool QuickChecker::checkCore(TNode n, bool isTrue)
       {
         return true;
       }
+      if (d_total)
+      {
+        // Distinct canonical forms are given distinct values.
+        return lhs != rhs;
+      }
       return areDistinct(lhs, rhs);
     }
     default: break;
@@ -370,7 +488,8 @@ bool QuickChecker::checkCore(TNode n, bool isTrue)
   {
     return isTrue == newN.getConst<bool>();
   }
-  return false;
+  // The atom has no value under the assignment.
+  return d_total ? !isTrue : false;
 }
 
 bool QuickChecker::check(TNode n, bool isTrue)

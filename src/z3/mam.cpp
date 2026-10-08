@@ -2860,6 +2860,8 @@ class CodeTreeMap
     if (d_trees[lblId] == nullptr)
     {
       d_trees[lblId] = d_compiler.mkTree(q, mp, firstIdx, false);
+      d_context.getStats().d_numMamTrees++;
+      Trace("z3-mam-tree") << "tree for " << getDecl(p) << std::endl;
       Assert(d_trees[lblId]->expectedNumArgs() == p.getNumChildren());
       d_trailStack.push(MkTreeTrail(d_trees, lblId));
     }
@@ -3231,6 +3233,14 @@ class MamImpl : public Mam
    */
   void relevantEh(ENode* n, bool lazy) override
   {
+    if (!lazy)
+    {
+      d_context.getStats().d_numMamRelevantEh++;
+      if (n->getNumArgs() > 0)
+      {
+        d_context.getStats().d_numMamRelevantApp++;
+      }
+    }
     if (n->hasLblHash())
     {
       updateLbls(n, n->getLblHash());
@@ -3323,7 +3333,16 @@ class MamImpl : public Mam
 
   void addCandidate(ENode* app)
   {
-    addCandidate(d_trees.getCodeTreeFor(app->getDecl()), app);
+    CodeTree* t = d_trees.getCodeTreeFor(app->getDecl());
+    if (t == nullptr)
+    {
+      Trace("z3-mam-nocand") << "no tree for " << app->getDecl() << std::endl;
+    }
+    else
+    {
+      Trace("z3-mam-cand") << "cand " << app->getDecl() << std::endl;
+    }
+    addCandidate(t, app);
   }
 
   bool isPlbl(TNode lbl) const

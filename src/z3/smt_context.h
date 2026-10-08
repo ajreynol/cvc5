@@ -141,6 +141,9 @@ class SmtContext : protected EnvObj
   /** Assert a (preprocessed) formula. */
   void assertFormula(TNode e);
 
+  /** Add e to the asserted formulas, splitting a top-level conjunction. */
+  void pushAssertion(TNode e);
+
   /** Internalize the assertions that have not been internalized yet. */
   void internalizeAssertions();
 

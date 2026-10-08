@@ -1352,6 +1352,8 @@ libcvc5_add_sources(
   z3/dyn_ack.h
   z3/enode.cpp
   z3/enode.h
+  z3/enum_inst.cpp
+  z3/enum_inst.h
   z3/eq_justification.h
   z3/fingerprints.cpp
   z3/fingerprints.h

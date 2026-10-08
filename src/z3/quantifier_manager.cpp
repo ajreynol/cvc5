@@ -30,6 +30,7 @@
 #include "z3/ast.h"
 #include "z3/enode.h"
 #include "z3/mam.h"
+#include "z3/enum_inst.h"
 #include "z3/qi_queue.h"
 #include "z3/quick_checker.h"
 #include "z3/smt_context.h"
@@ -217,7 +218,8 @@ struct QuantifierManager::Imp
     bool result = true;
     for (const Node& q : d_quantifiers)
     {
-      if (checkQuantifier(q) && mc.instantiateUnsat(q))
+      if (checkQuantifier(q)
+          && mc.instantiateUnsat(q, d_params.d_qiQuickCheckerConservative))
       {
         result = false;
       }
@@ -652,6 +654,21 @@ class DefaultQmPlugin : public QuantifierManagerPlugin
         d_lazyMatchingIdx++;
       }
     }
+    if (d_params->d_enumInst && !d_qm->empty() && !d_mam->hasWork()
+        && !d_lazyMam->hasWork())
+    {
+      // E-matching has nothing left to do, which is where Z3 turns to model
+      // based instantiation; see z3/enum_inst.h.
+      if (d_enumInst == nullptr)
+      {
+        d_enumInst.reset(
+            new EnumInst(*d_context, d_params->d_enumInstMaxPerRound));
+      }
+      if (d_enumInst->instantiate(d_qm->quantifiers()))
+      {
+        return FC_CONTINUE;
+      }
+    }
     return FC_DONE;
   }
 
@@ -660,6 +677,7 @@ class DefaultQmPlugin : public QuantifierManagerPlugin
   SmtContext* d_context;
   std::unique_ptr<Mam> d_mam;
   std::unique_ptr<Mam> d_lazyMam;
+  std::unique_ptr<EnumInst> d_enumInst;
   size_t d_newENodeQhead;
   size_t d_lazyMatchingIdx;
   bool d_active;

@@ -85,6 +85,13 @@ void Params::initialize(const Options& opts)
   d_delayUnits = opts.z3.z3DelayUnits;
   d_randomSeed = static_cast<uint32_t>(opts.z3.z3RandomSeed);
   d_ematching = opts.z3.z3Ematching;
+  d_qiLazyQuickChecker = opts.z3.z3QiLazyQuickChecker;
+  d_qiQuickCheckerConservative = opts.z3.z3QiQuickCheckerConservative;
+  d_enumInst = opts.z3.z3EnumInst;
+  d_enumInstFallback = opts.z3.z3EnumInstFallback;
+  d_enumInstMaxPerRound =
+      static_cast<uint32_t>(opts.z3.z3EnumInstMaxPerRound);
+  d_bridgeEager = opts.z3.z3BridgeEager;
   d_mbqi = opts.z3.z3Mbqi;
   d_qiCost = opts.z3.z3QiCost;
   d_qiNewGen = opts.z3.z3QiNewGen;
