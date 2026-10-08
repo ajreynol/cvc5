@@ -47,12 +47,13 @@ EagerInstEngine::EagerInstEngine(Env& env,
       d_lazyMam(env, d_egraph, d_trail, options().quantifiers.eagerInstFilters),
       d_patInfer(env),
       d_queue(env, d_trail),
-      d_inner(env, d_trail, qs, d_egraph),
       d_trailLevel(0),
       d_syncedLevel(context(), 0),
       d_numLazyMatches(0),
       d_outputLemmas(options().quantifiers.eagerInstOutput
                      == options::EagerInstOutputMode::LEMMA),
+      d_outputInst(options().quantifiers.eagerInstOutput
+                   == options::EagerInstOutputMode::INST),
       d_matchOnNotify(options().quantifiers.eagerInstMatchMode
                       == options::EagerInstMatchMode::NOTIFY),
       d_maxContributions(options().quantifiers.eagerInstMaxContributions),
@@ -61,23 +62,26 @@ EagerInstEngine::EagerInstEngine(Env& env,
   // The e-graph feeds the eager matcher. z3 additionally feeds the lazy
   // matcher, but only for the label maintenance (relevant_eh with lazy=true),
   // which here is done once by the e-graph for both.
-  d_inner.setInstantiate(d_qim.getInstantiate());
   d_egraph.addListener(&d_mam);
   d_mam.setListener(&d_queue);
   d_lazyMam.setListener(&d_queue);
-  // With no sink the instances are discarded once they have been found, which
-  // isolates the cost of matching from the cost of the inner solver.
-  bool useInner = options().quantifiers.eagerInstOutput
-                  == options::EagerInstOutputMode::INNER;
-  d_queue.setSink(d_outputLemmas ? static_cast<InstanceSink*>(this)
-                                 : (useInner ? static_cast<InstanceSink*>(&d_inner)
-                                             : nullptr));
-  if (useInner)
+  d_useInner = options().quantifiers.eagerInstOutput
+               == options::EagerInstOutputMode::INNER;
+  if (d_useInner)
   {
-    // the inner solver follows the outer classes of its terms
-    d_egraph.addListener(&d_inner);
+    d_inner.reset(new InnerSmtSolver(env, d_trail, qs, d_egraph));
+    d_inner->setInstantiate(d_qim.getInstantiate());
+    // the inner solver follows the outer classes of its terms, and is the only
+    // consumer of the disequalities
+    d_egraph.addListener(d_inner.get());
+    d_egraph.setTrackDisequalities(true);
   }
-  d_useInner = useInner;
+  // With no sink the instances are discarded once they have been found, which
+  // isolates the cost of matching from the cost of what is done with them.
+  d_queue.setSink(d_useInner ? static_cast<InstanceSink*>(d_inner.get())
+                             : ((d_outputLemmas || d_outputInst)
+                                    ? static_cast<InstanceSink*>(this)
+                                    : nullptr));
 }
 
 EagerInstEngine::~EagerInstEngine() {}
@@ -102,6 +106,7 @@ void EagerInstEngine::syncScopes()
     d_mam.clearWork();
     d_lazyMam.clearWork();
     d_queue.clearWork();
+    d_pendingInsts.clear();
     d_trail.popScope(d_trailLevel - valid);
     d_trailLevel = valid;
   }
@@ -251,41 +256,85 @@ void EagerInstEngine::propagate(CVC5_UNUSED Theory::Effort e)
 
 void EagerInstEngine::flush(CVC5_UNUSED Theory::Effort e)
 {
-  if (!d_useInner || !mayContribute())
+  if (d_useInner)
   {
-    traceStats();
+    flushInner();
+  }
+  else
+  {
+    flushInstances();
+  }
+  traceStats();
+}
+
+void EagerInstEngine::flushInstances()
+{
+  if (d_pendingInsts.empty())
+  {
+    return;
+  }
+  // The instances the matcher found become instantiations of their quantified
+  // formulas. This is how z3 closes the loop: an instance is asserted, its
+  // terms are internalized into the e-graph, and the matcher sees them, so one
+  // instance can lead to the next. Going through Instantiate rather than
+  // sending the clause keeps cvc5's duplicate filter, rewriting, proofs and
+  // bookkeeping in play, and means the module responsible for a quantified
+  // formula knows that it has been instantiated.
+  Instantiate* inst = d_qim.getInstantiate();
+  std::vector<PendingInst> pending;
+  pending.swap(d_pendingInsts);
+  for (PendingInst& pi : pending)
+  {
+    if (!mayContribute())
+    {
+      break;
+    }
+    // We are outside of a round of instantiation, where the term database that
+    // the entailment check relies on is stale, so that check is skipped.
+    if (inst->addInstantiation(pi.d_quant,
+                               pi.d_terms,
+                               InferenceId::QUANTIFIERS_INST_E_MATCHING_EAGER,
+                               Node::null(),
+                               false,
+                               false))
+    {
+      d_numContributed++;
+      Trace("eager-inst") << "EagerInst: instantiate " << pi.d_quant
+                          << std::endl;
+    }
+  }
+}
+
+void EagerInstEngine::flushInner()
+{
+  if (!mayContribute())
+  {
     return;
   }
   syncScopes();
-  bool ok = d_inner.check();
+  bool ok = d_inner->check();
   // Whatever the inner solver exports has the effect of instantiating the
   // quantified formulas whose instances it used, so cvc5's bookkeeping is told
   // about them; otherwise a module that is responsible for one of them builds
   // its model as if it had not been instantiated.
   Instantiate* inst = d_qim.getInstantiate();
   const std::vector<std::pair<Node, std::vector<Node>>>& used =
-      d_inner.getUsedInstantiations();
+      d_inner->getUsedInstantiations();
   if (used.size() == 1)
   {
     // The clause follows from a single instance, so it is subsumed by that
-    // instantiation. Going through Instantiate rather than sending the clause
-    // directly keeps cvc5's instantiation bookkeeping, rewriting and proof
-    // support in play.
+    // instantiation.
     std::vector<Node> terms = used[0].second;
     std::pair<Node, std::vector<Node>> key(used[0].first, terms);
     if (!d_emittedInst.insert(key).second)
     {
       // already contributed at this scope
-      d_inner.clearPropagations();
-      traceStats();
+      d_inner->clearPropagations();
       return;
     }
     d_trail.onPop([this, key]() { d_emittedInst.erase(key); });
     Trace("eager-inst") << "EagerInst: instantiate " << used[0].first
                         << std::endl;
-    // We are outside of a round of instantiation, where the term database
-    // that the entailment check relies on is stale. The check would fail
-    // anyway: the instance is falsified or propagating, not entailed.
     inst->addInstantiation(used[0].first,
                            terms,
                            InferenceId::QUANTIFIERS_INST_E_MATCHING_EAGER,
@@ -294,9 +343,8 @@ void EagerInstEngine::flush(CVC5_UNUSED Theory::Effort e)
                            false);
     d_numContributed++;
     // cvc5 owns this instance now
-    d_inner.deactivateUsedInstances();
-    d_inner.clearPropagations();
-    traceStats();
+    d_inner->deactivateUsedInstances();
+    d_inner->clearPropagations();
     return;
   }
   for (const std::pair<Node, std::vector<Node>>& ui : used)
@@ -308,7 +356,7 @@ void EagerInstEngine::flush(CVC5_UNUSED Theory::Effort e)
   }
   if (!ok)
   {
-    Node conf = d_inner.getConflict();
+    Node conf = d_inner->getConflict();
     Assert(!conf.isNull());
     if (d_emittedConflict.insert(conf).second)
     {
@@ -319,18 +367,17 @@ void EagerInstEngine::flush(CVC5_UNUSED Theory::Effort e)
                             InferenceId::QUANTIFIERS_INST_E_MATCHING_EAGER);
       d_numContributed++;
       // the instances the conflict used have been handed over
-      d_inner.deactivateUsedInstances();
+      d_inner->deactivateUsedInstances();
     }
   }
-  for (const std::pair<Node, Node>& p : d_inner.getPropagations())
+  for (const std::pair<Node, Node>& p : d_inner->getPropagations())
   {
     Trace("eager-inst") << "EagerInst: inner propagation " << p.first
                         << " from " << p.second << std::endl;
     d_qim.addPendingLemma(p.second.impNode(p.first),
                           InferenceId::QUANTIFIERS_INST_E_MATCHING_EAGER);
   }
-  d_inner.clearPropagations();
-  traceStats();
+  d_inner->clearPropagations();
 }
 
 bool EagerInstEngine::needsCheck(Theory::Effort e)
@@ -374,20 +421,33 @@ void EagerInstEngine::check(Theory::Effort e, QEffort quantE)
   }
 }
 
-void EagerInstEngine::addInstance(CVC5_UNUSED TNode q,
-                                  CVC5_UNUSED const std::vector<Node>& terms,
+void EagerInstEngine::addInstance(TNode q,
+                                  const std::vector<Node>& terms,
                                   TNode lemma,
-                                  CVC5_UNUSED uint32_t generation)
+                                  uint32_t generation)
 {
-  // the bring-up path, --eager-inst-output=lemma
-  d_qim.addPendingLemma(lemma, InferenceId::QUANTIFIERS_INST_E_MATCHING_EAGER);
+  if (d_outputLemmas)
+  {
+    // the bring-up path, --eager-inst-output=lemma
+    d_qim.addPendingLemma(lemma,
+                          InferenceId::QUANTIFIERS_INST_E_MATCHING_EAGER);
+    return;
+  }
+  // The terms of the instance reach the e-graph later, when cvc5 has processed
+  // the instantiation and they become relevant, so the generation they belong
+  // to is registered now.
+  d_egraph.registerGeneration(lemma, generation);
+  d_pendingInsts.push_back(PendingInst{q, terms});
 }
 
 void EagerInstEngine::traceStats() const
 {
+  if (!TraceIsOn("eager-inst-stats"))
+  {
+    return;
+  }
   const Mam::Stats& ms = d_mam.getStats();
   const InstQueue::Stats& qs = d_queue.getStats();
-  const InnerSmtSolver::Stats& is = d_inner.getStats();
   Trace("eager-inst-stats")
       << "EagerInst: " << d_egraph.getNumENodes() << " enodes, "
       << ms.d_numMerges << " merges, " << ms.d_numCandidates << " candidates, "
@@ -395,14 +455,20 @@ void EagerInstEngine::traceStats() const
       << " matches; queue: " << qs.d_numMatches << " in, " << qs.d_numDuplicates
       << " duplicates, " << qs.d_numInstances << " instances, "
       << qs.d_numLazyInstances << " lazy, " << qs.d_numTrivial
-      << " trivial; inner: " << is.d_numInstances << " added, "
-      << is.d_numRetracted << " retracted, " << is.d_numChecks << " checks, "
-      << is.d_numConflicts << " conflicts; search: " << is.d_numDecisions
-      << " decisions, " << is.d_numSearchConflicts << " backjumps, "
-      << is.d_numSaturated << " saturated, " << is.d_numBudgetOut
-      << " budget-out, " << is.d_numOuterFacts << " outer facts, "
-      << is.d_numAlreadyKnown << " already known, " << is.d_numDeactivated
-      << " handed off" << std::endl;
+      << " trivial; added " << d_numContributed;
+  if (d_inner != nullptr)
+  {
+    const InnerSmtSolver::Stats& is = d_inner->getStats();
+    Trace("eager-inst-stats")
+        << "; inner: " << is.d_numInstances << " added, " << is.d_numRetracted
+        << " retracted, " << is.d_numChecks << " checks, " << is.d_numConflicts
+        << " conflicts; search: " << is.d_numDecisions << " decisions, "
+        << is.d_numSearchConflicts << " backjumps, " << is.d_numSaturated
+        << " saturated, " << is.d_numBudgetOut << " budget-out, "
+        << is.d_numOuterFacts << " outer facts, " << is.d_numAlreadyKnown
+        << " already known, " << is.d_numDeactivated << " handed off";
+  }
+  Trace("eager-inst-stats") << std::endl;
 }
 
 }  // namespace eager

@@ -50,6 +50,7 @@ EGraph::EGraph(Env& env, Trail& trail)
       d_trail(trail),
       d_termStack(*this),
       d_mergeStack(*this),
+      d_trackDiseqs(false),
       d_generation(0)
 {
 }
@@ -89,81 +90,67 @@ bool EGraph::isTracked(TNode n)
 
 EGraph::CgKey EGraph::mkCgKey(ENode* e) const
 {
-  std::vector<ENode*> roots;
-  roots.reserve(e->getNumArgs());
-  for (size_t i = 0, nargs = e->getNumArgs(); i < nargs; i++)
+  CgKey key;
+  key.d_label = e->getLabel();
+  size_t nargs = e->getNumArgs();
+  key.d_args.reserve(nargs);
+  size_t h = std::hash<TNode>()(key.d_label);
+  for (size_t i = 0; i < nargs; i++)
   {
-    roots.push_back(e->getArg(i)->getRoot());
+    ENode* r = e->getArg(i)->getRoot();
+    key.d_args.push_back(r);
+    h = h * 0x9e3779b97f4a7c15ull + std::hash<const ENode*>()(r);
   }
-  return CgKey(e->getLabel(), roots);
+  key.d_hash = h;
+  return key;
 }
 
 void EGraph::cgInsert(ENode* e)
 {
   CgKey key = mkCgKey(e);
-  std::map<CgKey, ENode*>::const_iterator it = d_cg.find(key);
+  std::unordered_map<CgKey, ENode*, CgKeyHash>::const_iterator it =
+      d_cg.find(key);
   if (it == d_cg.end())
   {
-    d_cg[key] = e;
     e->d_cgr = e;
     e->d_cgKey = key;
+    d_cg[std::move(key)] = e;
     return;
   }
   // e is congruent to the node that owns the entry, so it is not a congruence
-  // representative, and the two belong in the same class.
+  // representative. The two are in the same class already, or will be: the
+  // master equality engine runs the congruence closure and reports the merge.
   e->d_cgr = it->second;
-  d_pendingCong.emplace_back(e, it->second);
-}
-
-void EGraph::processCongruences()
-{
-  for (size_t i = 0; i < d_pendingCong.size(); i++)
-  {
-    ENode* a = d_pendingCong[i].first;
-    ENode* b = d_pendingCong[i].second;
-    ENode* r1 = a->getRoot();
-    ENode* r2 = b->getRoot();
-    if (r1 == r2)
-    {
-      continue;
-    }
-    if (r1->getClassSize() > r2->getClassSize())
-    {
-      std::swap(r1, r2);
-    }
-    Trace("eager-egraph") << "EGraph: congruence " << *a << " = " << *b
-                          << std::endl;
-    for (EGraphListener* l : d_listeners)
-    {
-      l->notifyPreMerge(r1, r2);
-    }
-    merge(r1, r2);
-  }
-  d_pendingCong.clear();
 }
 
 void EGraph::cgErase(ENode* e)
 {
   Assert(e->isCgr());
   d_cg.erase(e->d_cgKey);
-  e->d_cgKey = CgKey(Node::null(), std::vector<ENode*>());
+  e->d_cgKey = CgKey();
 }
 
 ENode* EGraph::getENodeEqTo(TNode label, const std::vector<ENode*>& args) const
 {
-  std::vector<ENode*> roots;
-  roots.reserve(args.size());
+  CgKey key;
+  key.d_label = label;
+  key.d_args.reserve(args.size());
+  size_t h = std::hash<TNode>()(label);
   for (ENode* a : args)
   {
-    roots.push_back(a->getRoot());
+    ENode* r = a->getRoot();
+    key.d_args.push_back(r);
+    h = h * 0x9e3779b97f4a7c15ull + std::hash<const ENode*>()(r);
   }
-  std::map<CgKey, ENode*>::const_iterator it = d_cg.find(CgKey(label, roots));
+  key.d_hash = h;
+  std::unordered_map<CgKey, ENode*, CgKeyHash>::const_iterator it =
+      d_cg.find(key);
   return it == d_cg.end() ? nullptr : it->second;
 }
 
 ENode* EGraph::getENode(TNode n) const
 {
-  std::map<Node, ENode*>::const_iterator it = d_nodeMap.find(n);
+  std::unordered_map<Node, ENode*>::const_iterator it = d_nodeMap.find(n);
   return it == d_nodeMap.end() ? nullptr : it->second;
 }
 
@@ -198,12 +185,22 @@ ENode* EGraph::addTerm(TNode n)
     }
     args.push_back(ec);
   }
+  uint32_t gen = d_generation;
+  if (!d_pendingGen.empty())
+  {
+    std::unordered_map<Node, uint32_t>::const_iterator itg =
+        d_pendingGen.find(n);
+    if (itg != d_pendingGen.end())
+    {
+      gen = itg->second;
+    }
+  }
   d_trail.restoreSize(&d_termStack, d_enodes.size());
-  d_enodes.emplace_back(new ENode(n, label, std::move(args), d_generation));
+  d_enodes.emplace_back(new ENode(n, label, std::move(args), gen));
   e = d_enodes.back().get();
   d_nodeMap[n] = e;
-  Trace("eager-egraph") << "EGraph: add " << n << ", generation "
-                        << d_generation << std::endl;
+  Trace("eager-egraph") << "EGraph: add " << n << ", generation " << gen
+                        << std::endl;
   if (!label.isNull())
   {
     d_opMap[label].push_back(e);
@@ -234,9 +231,6 @@ ENode* EGraph::addTerm(TNode n)
       updateChildrenPlbls(e, h);
     }
   }
-  // the terms of the instances of eager E-matching are not known to cvc5, so
-  // their congruences are derived here
-  processCongruences();
   // the candidate collection half of z3's mam::relevant_eh
   for (EGraphListener* l : d_listeners)
   {
@@ -274,7 +268,6 @@ void EGraph::assertEq(TNode t1, TNode t2)
     l->notifyPreMerge(r1, r2);
   }
   merge(r1, r2);
-  processCongruences();
 }
 
 void EGraph::merge(ENode* r1, ENode* r2)
@@ -401,6 +394,11 @@ void EGraph::popTerms(size_t n)
 
 void EGraph::assertDiseq(TNode t1, TNode t2, CVC5_UNUSED TNode reason)
 {
+  if (!d_trackDiseqs)
+  {
+    // the matcher does not look at disequalities; z3's mam does not either
+    return;
+  }
   ENode* e1 = addTerm(t1);
   ENode* e2 = addTerm(t2);
   size_t sz = d_diseqs.size();
@@ -414,6 +412,27 @@ void EGraph::assertDiseq(TNode t1, TNode t2, CVC5_UNUSED TNode reason)
   {
     l->notifyDiseq(e1, e2);
   }
+}
+
+void EGraph::registerGeneration(TNode t, uint32_t g)
+{
+  // Only the terms we do not have yet matter: a term that is already here has
+  // the generation of the instance that first introduced it, which is the one
+  // z3 keeps as well.
+  std::vector<TNode> visit{t};
+  do
+  {
+    TNode cur = visit.back();
+    visit.pop_back();
+    if (cur.getNumChildren() == 0 || d_nodeMap.find(cur) != d_nodeMap.end()
+        || !d_pendingGen.emplace(cur, g).second)
+    {
+      continue;
+    }
+    Node curn = cur;
+    d_trail.onPop([this, curn]() { d_pendingGen.erase(curn); });
+    visit.insert(visit.end(), cur.begin(), cur.end());
+  } while (!visit.empty());
 }
 
 void EGraph::updateLbls(ENode* e, size_t h)
@@ -495,7 +514,8 @@ void EGraph::setLblHash(ENode* e, size_t h)
 
 const std::vector<ENode*>& EGraph::getENodesForLabel(TNode op) const
 {
-  std::map<Node, std::vector<ENode*>>::const_iterator it = d_opMap.find(op);
+  std::unordered_map<Node, std::vector<ENode*>>::const_iterator it =
+      d_opMap.find(op);
   return it == d_opMap.end() ? d_emptyVec : it->second;
 }
 

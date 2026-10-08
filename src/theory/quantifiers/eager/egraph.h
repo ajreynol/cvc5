@@ -27,6 +27,7 @@
 
 #include <map>
 #include <memory>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -41,6 +42,29 @@ namespace quantifiers {
 namespace eager {
 
 class EGraph;
+class ENode;
+
+/**
+ * The key of the congruence table: a label and the classes of the arguments.
+ * z3: smt::cg_table, which hashes the declaration together with the ids of the
+ * argument roots. The hash is kept in the key so that the table lookups on the
+ * matcher's hot path do not recompute it.
+ */
+struct CgKey
+{
+  CgKey() : d_hash(0) {}
+  Node d_label;
+  std::vector<ENode*> d_args;
+  size_t d_hash;
+  bool operator==(const CgKey& o) const
+  {
+    return d_hash == o.d_hash && d_label == o.d_label && d_args == o.d_args;
+  }
+};
+struct CgKeyHash
+{
+  size_t operator()(const CgKey& k) const { return k.d_hash; }
+};
 
 /**
  * A node of the e-graph mirror. The fields that are only meaningful on the
@@ -131,7 +155,7 @@ class ENode
   /** The congruence representative of this node */
   ENode* d_cgr;
   /** The key of the congruence table entry this node owns, if it owns one */
-  std::pair<Node, std::vector<ENode*>> d_cgKey;
+  CgKey d_cgKey;
   /** The label hash of this node if it is a pattern ground term, else -1 */
   int32_t d_lblHash;
   /** The generation */
@@ -177,8 +201,8 @@ class EGraphListener
 class EGraph : protected EnvObj
 {
  public:
-  /** The key of the congruence table: a label and the argument classes */
-  using CgKey = std::pair<Node, std::vector<ENode*>>;
+  /** The key of the congruence table */
+  using CgKey = eager::CgKey;
 
   EGraph(Env& env, Trail& trail);
   ~EGraph();
@@ -265,6 +289,17 @@ class EGraph : protected EnvObj
   /** The generation assigned to terms added from now on */
   void setGeneration(uint32_t g) { d_generation = g; }
   uint32_t getGeneration() const { return d_generation; }
+  /**
+   * Record that t, and the subterms of t that are not here yet, belong to
+   * generation g. The terms an instance introduces reach us only later, when
+   * cvc5 has processed the instantiation lemma and its terms become relevant,
+   * so the generation they should carry is registered when the instance is
+   * created. z3 does the same thing by setting the generation of the context
+   * around the internalization of the instance (smt_context::internalize).
+   */
+  void registerGeneration(TNode t, uint32_t g);
+  /** Whether disequalities are recorded; only the inner SMT solver wants them */
+  void setTrackDisequalities(bool b) { d_trackDiseqs = b; }
 
   /** Print the e-graph, for debugging */
   void debugPrint(std::ostream& out) const;
@@ -287,16 +322,6 @@ class EGraph : protected EnvObj
   void cgErase(ENode* e);
   /** Perform the union of the classes of r1 and r2, r1 into r2 */
   void merge(ENode* r1, ENode* r2);
-  /**
-   * Merge the pairs of terms that cgInsert found congruent.
-   *
-   * The master equality engine reports the congruences of the terms it knows
-   * about, but eager E-matching also puts the terms of its instances here, and
-   * cvc5 never sees those, so their congruences have to be derived here or the
-   * matcher works on a structure that is not congruence closed. A congruence is
-   * entailed, so a merge derived this way is as sound as one that was reported.
-   */
-  void processCongruences();
   /** Undo term creations until only n nodes remain */
   void popTerms(size_t n);
   /** Undo merges until only n remain */
@@ -354,18 +379,20 @@ class EGraph : protected EnvObj
   /** All nodes, in creation order */
   std::vector<std::unique_ptr<ENode>> d_enodes;
   /** Map from terms to nodes */
-  std::map<Node, ENode*> d_nodeMap;
+  std::unordered_map<Node, ENode*> d_nodeMap;
   /** Map from labels to the applications with that label, in creation order */
-  std::map<Node, std::vector<ENode*>> d_opMap;
+  std::unordered_map<Node, std::vector<ENode*>> d_opMap;
   /** The labels marked by markChildLabel / markParentLabel */
   std::unordered_set<Node> d_isClbl;
   std::unordered_set<Node> d_isPlbl;
   /** Asserted disequalities */
   std::vector<std::pair<Node, Node>> d_diseqs;
+  /** Whether to record disequalities at all */
+  bool d_trackDiseqs;
+  /** The generation registered for a term that is not here yet */
+  std::unordered_map<Node, uint32_t> d_pendingGen;
   /** The congruence table. z3: smt::cg_table */
-  std::map<CgKey, ENode*> d_cg;
-  /** Pairs found congruent by cgInsert and not yet merged */
-  std::vector<std::pair<ENode*, ENode*>> d_pendingCong;
+  std::unordered_map<CgKey, ENode*, CgKeyHash> d_cg;
   /** The congruence table undo entries of the merges on the merge stack */
   std::vector<CgUndo> d_cgUndo;
   /** The merge stack */

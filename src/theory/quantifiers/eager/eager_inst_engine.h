@@ -113,9 +113,10 @@ class EagerInstEngine : public QuantifiersModule, public InstanceSink
    */
   void propagate(Theory::Effort e);
   /**
-   * Report the conflicts and propagations of the inner SMT solver. Called at
-   * the start of a check of the quantifiers theory, so that output happens at a
-   * point where cvc5 expects it.
+   * Send what the matcher found to the rest of the solver: the instantiations
+   * of the pending instances, or, with --eager-inst-output=inner, the conflicts
+   * and propagations of the inner SMT solver. Called from check, so that output
+   * happens at a point where cvc5 expects it.
    */
   void flush(Theory::Effort e);
 
@@ -130,8 +131,9 @@ class EagerInstEngine : public QuantifiersModule, public InstanceSink
 
   //---------------------------------------------------- InstanceSink
   /**
-   * The bring-up sink, used with --eager-inst-output=lemma: forward the
-   * instance to cvc5's lemma channel instead of the inner solver.
+   * With --eager-inst-output=inst, the default, the instance is queued and
+   * turned into an instantiation of q at the next check; with
+   * --eager-inst-output=lemma the lemma is sent to the lemma channel directly.
    */
   void addInstance(TNode q,
                    const std::vector<Node>& terms,
@@ -155,6 +157,10 @@ class EagerInstEngine : public QuantifiersModule, public InstanceSink
   }
   /** Print the statistics under -t eager-inst */
   void traceStats() const;
+  /** Turn the pending instances into instantiations */
+  void flushInstances();
+  /** Report what the inner SMT solver derived */
+  void flushInner();
 
   /** The notification class */
   EagerEqNotify d_notify;
@@ -173,8 +179,14 @@ class EagerInstEngine : public QuantifiersModule, public InstanceSink
   PatternInference d_patInfer;
   /** The instance queue */
   InstQueue d_queue;
-  /** The inner SMT solver */
-  InnerSmtSolver d_inner;
+  /**
+   * The inner SMT solver, allocated only with --eager-inst-output=inner. It is
+   * off the default path: the instances of eager E-matching go to cvc5 as
+   * instantiations, as they do in z3, so that cvc5 processes them, their terms
+   * reach the equality engine, and the matcher sees them. See README.md
+   * section 6.3.
+   */
+  std::unique_ptr<InnerSmtSolver> d_inner;
   /** The quantified formulas whose patterns have been compiled */
   std::unordered_set<Node> d_asserted;
   /** The scope level our trail is at */
@@ -193,8 +205,18 @@ class EagerInstEngine : public QuantifiersModule, public InstanceSink
   uint32_t d_numLazyMatches;
   /** Whether to send instances to cvc5's lemma channel */
   bool d_outputLemmas;
+  /** Whether the instances become instantiations, the default */
+  bool d_outputInst;
   /** Whether the instances are given to the inner SMT solver */
   bool d_useInner;
+  /** One instance waiting to be turned into an instantiation */
+  struct PendingInst
+  {
+    Node d_quant;
+    std::vector<Node> d_terms;
+  };
+  /** The instances the matcher found and that have not been added yet */
+  std::vector<PendingInst> d_pendingInsts;
   /** Whether to run the matcher from the notifications */
   bool d_matchOnNotify;
   /** The number of contributions allowed in total, 0 for no limit */
