@@ -174,7 +174,12 @@ void TheoryQuantifiers::propagate(Effort level)
 void TheoryQuantifiers::postCheck(Effort level)
 {
   // flush what eager E-matching found, before the quantifiers round
-  d_qengine->eagerCheck(level);
+  // Eager E-matching contributes at standard effort here, and at conflict
+  // effort from within the quantifiers round below; never later than that.
+  if (level < Effort::EFFORT_FULL)
+  {
+    d_qengine->eagerCheck(level);
+  }
   // call the quantifiers engine to check
   getQuantifiersEngine()->check(level);
 }

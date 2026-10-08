@@ -15,6 +15,8 @@
 #include <algorithm>
 #include <ostream>
 
+#include "options/quantifiers_options.h"
+#include "theory/quantifiers/instantiate.h"
 #include "theory/quantifiers/quantifiers_state.h"
 
 namespace cvc5::internal {
@@ -37,6 +39,7 @@ InnerSmtSolver::InnerSmtSolver(Env& env,
       d_trail(trail),
       d_qstate(qs),
       d_mirror(mirror),
+      d_inst(nullptr),
       d_egraph(env),
       d_arith(env),
       d_clauseHead(0),
@@ -45,7 +48,10 @@ InnerSmtSolver::InnerSmtSolver(Env& env,
       d_candidateHead(0),
       d_touchedHead(0),
       d_exportHead(0),
-      d_savedScope(0)
+      d_savedScope(0),
+      d_decisionHint(0),
+      d_propagateOut(options().quantifiers.eagerInstPropagate),
+      d_budget(options().quantifiers.eagerInstInnerBudget)
 {
   NodeManager* nm = nodeManager();
   d_trueTerm = d_egraph.addTerm(nm->mkConst(true));
@@ -432,10 +438,19 @@ void InnerSmtSolver::addInstance(TNode q,
                                  TNode lemma,
                                  uint32_t generation)
 {
+  if (d_inst != nullptr && d_inst->existsInstantiation(q, terms))
+  {
+    // cvc5 already has this instantiation, so its body is already asserted in
+    // the outer solver and holding a copy here would only lead to the same
+    // conflict being rederived after every backtrack.
+    d_stats.d_numAlreadyKnown++;
+    return;
+  }
   ensureScopeSaved();
   size_t numTerms = d_egraph.getNumTerms();
   size_t n = d_instances.size();
-  d_instances.push_back(Instance{q, terms, lemma, generation});
+  d_instances.push_back(
+      Instance{q, terms, lemma, generation, d_clauses.size()});
   d_stats.d_numInstances++;
   Trace("eager-inner") << "InnerSmtSolver: add instance " << lemma
                        << ", generation " << generation << std::endl;
@@ -728,7 +743,8 @@ bool InnerSmtSolver::assign(LitId l,
   Atom& a = d_atoms[litAtom(l)];
   a.d_value = litNeg(l) ? Value::FALSE : Value::TRUE;
   a.d_trailIndex = d_assignTrail.size();
-  d_assignTrail.push_back(Assignment{l, kind, clause, std::move(exp)});
+  d_assignTrail.push_back(
+      Assignment{l, kind, clause, std::move(exp), currentLevel()});
   d_queue.push_back(l);
   d_stats.d_numAssignments++;
   Trace("eager-inner-debug") << "  assign " << getLitNode(l) << std::endl;
@@ -778,6 +794,10 @@ bool InnerSmtSolver::assertToTheory(LitId l)
 bool InnerSmtSolver::visitClause(size_t c)
 {
   const Clause& cl = d_clauses[c];
+  if (!cl.d_active)
+  {
+    return true;
+  }
   LitId unassigned = undefinedLit;
   size_t numUnassigned = 0;
   for (LitId cli : cl.d_lits)
@@ -965,6 +985,42 @@ void InnerSmtSolver::noteUsedInstances(const std::set<size_t>& instances)
   {
     d_usedInstantiations.emplace_back(d_instances[i].d_quant,
                                       d_instances[i].d_terms);
+    d_usedInstanceIdx.push_back(i);
+  }
+}
+
+void InnerSmtSolver::deactivateUsedInstances()
+{
+  for (size_t i : d_usedInstanceIdx)
+  {
+    Assert(i < d_instances.size());
+    size_t begin = d_instances[i].d_clauseBegin;
+    size_t end = i + 1 < d_instances.size() ? d_instances[i + 1].d_clauseBegin
+                                            : d_clauses.size();
+    bool any = false;
+    for (size_t c = begin; c < end && c < d_clauses.size(); c++)
+    {
+      if (!d_clauses[c].d_active)
+      {
+        continue;
+      }
+      d_clauses[c].d_active = false;
+      // the index, not a pointer: d_clauses can reallocate. On a pop the
+      // clauses may already have been dropped, hence the bound check.
+      d_trail.onPop([this, c]() {
+        if (c < d_clauses.size())
+        {
+          d_clauses[c].d_active = true;
+        }
+      });
+      any = true;
+    }
+    if (any)
+    {
+      d_stats.d_numDeactivated++;
+      Trace("eager-inner") << "InnerSmtSolver: hand off instance "
+                           << d_instances[i].d_lemma << std::endl;
+    }
   }
 }
 
@@ -1044,11 +1100,193 @@ void InnerSmtSolver::exportPropagations()
   }
 }
 
+size_t InnerSmtSolver::levelOf(LitId l) const
+{
+  size_t idx = d_atoms[litAtom(l)].d_trailIndex;
+  if (idx >= d_assignTrail.size() || d_assignTrail[idx].d_lit != l)
+  {
+    return 0;
+  }
+  return d_assignTrail[idx].d_level;
+}
+
+InnerSmtSolver::LitId InnerSmtSolver::pickDecision()
+{
+  // A clause with no true literal needs one of its literals to become true.
+  // Propagation has already run, so such a clause has at least two unassigned
+  // literals and choosing either of them is a real choice.
+  size_t nc = d_clauses.size();
+  for (size_t k = 0; k < nc; k++)
+  {
+    size_t c = (d_decisionHint + k) % nc;
+    if (!d_clauses[c].d_active)
+    {
+      continue;
+    }
+    LitId cand = undefinedLit;
+    bool satisfied = false;
+    for (LitId l : d_clauses[c].d_lits)
+    {
+      Value v = value(l);
+      if (v == Value::TRUE)
+      {
+        satisfied = true;
+        break;
+      }
+      if (v == Value::UNDEF && cand == undefinedLit)
+      {
+        cand = l;
+      }
+    }
+    if (!satisfied && cand != undefinedLit)
+    {
+      d_decisionHint = c;
+      return cand;
+    }
+  }
+  return undefinedLit;
+}
+
+void InnerSmtSolver::conflictAntecedents(const std::vector<LitId>& exp,
+                                         std::vector<LitId>& ants) const
+{
+  std::unordered_set<LitId> seen;
+  std::vector<LitId> todo;
+  for (LitId l : exp)
+  {
+    if (l != undefinedLit)
+    {
+      todo.push_back(l);
+    }
+  }
+  while (!todo.empty())
+  {
+    LitId curr = todo.back();
+    todo.pop_back();
+    if (!seen.insert(curr).second)
+    {
+      continue;
+    }
+    size_t idx = d_atoms[litAtom(curr)].d_trailIndex;
+    if (idx >= d_assignTrail.size() || d_assignTrail[idx].d_lit != curr)
+    {
+      // not assigned by us, so it is as good as an outer fact
+      ants.push_back(curr);
+      continue;
+    }
+    const Assignment& a = d_assignTrail[idx];
+    switch (a.d_kind)
+    {
+      case ReasonKind::OUTER:
+      case ReasonKind::DECISION: ants.push_back(curr); break;
+      case ReasonKind::CLAUSE:
+        for (LitId cli : d_clauses[a.d_clause].d_lits)
+        {
+          if (cli != curr)
+          {
+            todo.push_back(litNot(cli));
+          }
+        }
+        break;
+      case ReasonKind::THEORY:
+        for (LitId e : a.d_exp)
+        {
+          todo.push_back(e);
+        }
+        break;
+    }
+  }
+}
+
+bool InnerSmtSolver::search()
+{
+  uint64_t conflicts = 0;
+  Checkpoint preSearch = mkCheckpoint();
+  for (;;)
+  {
+    if (propagate())
+    {
+      LitId d = d_budget == 0 ? undefinedLit : pickDecision();
+      if (d == undefinedLit)
+      {
+        // Every clause is satisfied, so the instances are consistent with the
+        // outer facts and there is nothing to report.
+        if (d_decisions.empty())
+        {
+          d_stats.d_numSaturated++;
+        }
+        else
+        {
+          // what the decisions implied is not entailed, so it is undone
+          restoreTo(preSearch);
+          d_decisions.clear();
+        }
+        return true;
+      }
+      d_decisions.push_back(Decision{d, mkCheckpoint()});
+      d_stats.d_numDecisions++;
+      Trace("eager-inner-debug") << "  decide " << getLitNode(d) << " at level "
+                                 << currentLevel() << std::endl;
+      // a decision cannot conflict, it is chosen unassigned
+      assign(d, ReasonKind::DECISION, 0, {});
+      continue;
+    }
+    // A conflict. It only refutes the decisions it used, so it is exportable
+    // only if it used none, i.e. if it follows from the outer facts and the
+    // instances alone.
+    std::vector<LitId> ants;
+    conflictAntecedents(d_conflictExp, ants);
+    size_t maxLevel = 0;
+    for (LitId a : ants)
+    {
+      maxLevel = std::max(maxLevel, levelOf(a));
+    }
+    if (maxLevel == 0)
+    {
+      return false;
+    }
+    conflicts++;
+    d_stats.d_numSearchConflicts++;
+    if (conflicts > d_budget)
+    {
+      d_stats.d_numBudgetOut++;
+      restoreTo(preSearch);
+      d_decisions.clear();
+      d_conflictExp.clear();
+      return true;
+    }
+    // Undo the decision at the deepest level the conflict used and assert its
+    // negation, which the remaining antecedents imply.
+    Assert(maxLevel <= d_decisions.size());
+    LitId dec = d_decisions[maxLevel - 1].d_lit;
+    Checkpoint cp = d_decisions[maxLevel - 1].d_cp;
+    std::vector<LitId> exp;
+    for (LitId a : ants)
+    {
+      if (a != dec)
+      {
+        exp.push_back(a);
+      }
+    }
+    restoreTo(cp);
+    d_decisions.resize(maxLevel - 1);
+    d_conflictExp.clear();
+    Trace("eager-inner-debug") << "  backjump to level " << currentLevel()
+                               << ", flip " << getLitNode(dec) << std::endl;
+    if (!assign(litNot(dec), ReasonKind::THEORY, 0, exp))
+    {
+      // the flip conflicts at this level, which the next iteration resolves
+      continue;
+    }
+  }
+}
+
 bool InnerSmtSolver::check()
 {
   d_stats.d_numChecks++;
   d_conflict = Node::null();
   d_usedInstantiations.clear();
+  d_usedInstanceIdx.clear();
   d_conflictClause = d_clauses.size();
   if (d_clauses.empty())
   {
@@ -1067,7 +1305,7 @@ bool InnerSmtSolver::check()
     toLits(d_egraph.getConflict(), d_conflictExp);
     ok = false;
   }
-  ok = ok && syncOuter() && processOuterFacts() && propagate();
+  ok = ok && syncOuter() && processOuterFacts() && search();
   if (!ok)
   {
     Node conf = mkConflict(d_conflictExp);
@@ -1082,7 +1320,10 @@ bool InnerSmtSolver::check()
                          << std::endl;
     return false;
   }
-  exportPropagations();
+  if (d_propagateOut)
+  {
+    exportPropagations();
+  }
   return true;
 }
 

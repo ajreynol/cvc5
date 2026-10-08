@@ -25,6 +25,7 @@
 #define CVC5__THEORY__QUANTIFIERS__EAGER__EAGER_INST_ENGINE_H
 
 #include <memory>
+#include <set>
 #include <unordered_set>
 
 #include "context/cdo.h"
@@ -119,6 +120,7 @@ class EagerInstEngine : public QuantifiersModule, public InstanceSink
   void flush(Theory::Effort e);
 
   //------------------------------------------- QuantifiersModule
+  bool needsCheck(Theory::Effort e) override;
   void check(Theory::Effort e, QEffort quantE) override;
   /** z3: default_qm_plugin::assign_eh, which compiles the patterns of q */
   void assertNode(Node q) override;
@@ -190,6 +192,15 @@ class EagerInstEngine : public QuantifiersModule, public InstanceSink
   bool d_useInner;
   /** Whether to run the matcher from the notifications */
   bool d_matchOnNotify;
+  /**
+   * What has already been contributed at the current scope. A conflict is
+   * rederived every round, because the round that found it is undone to keep
+   * the state consistent, so without this the same instantiation is sent over
+   * and over.
+   */
+  std::set<std::pair<Node, std::vector<Node>>> d_emittedInst;
+  std::unordered_set<Node> d_emittedConflict;
+
 };
 
 }  // namespace eager

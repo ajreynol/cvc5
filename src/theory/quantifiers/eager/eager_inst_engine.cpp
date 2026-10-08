@@ -59,6 +59,7 @@ EagerInstEngine::EagerInstEngine(Env& env,
   // The e-graph feeds the eager matcher. z3 additionally feeds the lazy
   // matcher, but only for the label maintenance (relevant_eh with lazy=true),
   // which here is done once by the e-graph for both.
+  d_inner.setInstantiate(d_qim.getInstantiate());
   d_egraph.addListener(&d_mam);
   d_mam.setListener(&d_queue);
   d_lazyMam.setListener(&d_queue);
@@ -168,17 +169,11 @@ void EagerInstEngine::assertNode(Node q)
                         << std::endl;
     return;
   }
-  if (!d_qreg.hasOwnership(q, this))
-  {
-    // Another module is responsible for this quantified formula and may claim
-    // to be complete for it, which it would not be if we instantiated it too.
-    // cvc5's lazy E-matching skips the same quantifiers
-    // (InstantiationEngine::shouldProcess). z3 has no such notion, since it has
-    // one instantiation mechanism.
-    Trace("eager-inst") << "EagerInst: skip " << q
-                        << ", owned by another module" << std::endl;
-    return;
-  }
+  // Ownership is deliberately not consulted. This module never takes ownership
+  // of a quantified formula and never claims to be complete for one: it only
+  // contributes instantiations that are already contradictory, and only at
+  // conflict effort or earlier, so it never stops the module that is
+  // responsible for a quantified formula from doing its own job.
   Node qn = q;
   d_trail.onPop([this, qn]() { d_asserted.erase(qn); });
   if (TraceIsOn("eager-inst-match"))
@@ -275,6 +270,15 @@ void EagerInstEngine::flush(CVC5_UNUSED Theory::Effort e)
     // directly keeps cvc5's instantiation bookkeeping, rewriting and proof
     // support in play.
     std::vector<Node> terms = used[0].second;
+    std::pair<Node, std::vector<Node>> key(used[0].first, terms);
+    if (!d_emittedInst.insert(key).second)
+    {
+      // already contributed at this scope
+      d_inner.clearPropagations();
+      traceStats();
+      return;
+    }
+    d_trail.onPop([this, key]() { d_emittedInst.erase(key); });
     Trace("eager-inst") << "EagerInst: instantiate " << used[0].first
                         << std::endl;
     // We are outside of a round of instantiation, where the term database
@@ -286,6 +290,8 @@ void EagerInstEngine::flush(CVC5_UNUSED Theory::Effort e)
                            Node::null(),
                            false,
                            false);
+    // cvc5 owns this instance now
+    d_inner.deactivateUsedInstances();
     d_inner.clearPropagations();
     traceStats();
     return;
@@ -301,8 +307,16 @@ void EagerInstEngine::flush(CVC5_UNUSED Theory::Effort e)
   {
     Node conf = d_inner.getConflict();
     Assert(!conf.isNull());
-    Trace("eager-inst") << "EagerInst: inner conflict " << conf << std::endl;
-    d_qim.addPendingLemma(conf, InferenceId::QUANTIFIERS_INST_E_MATCHING_EAGER);
+    if (d_emittedConflict.insert(conf).second)
+    {
+      Node confn = conf;
+      d_trail.onPop([this, confn]() { d_emittedConflict.erase(confn); });
+      Trace("eager-inst") << "EagerInst: inner conflict " << conf << std::endl;
+      d_qim.addPendingLemma(conf,
+                            InferenceId::QUANTIFIERS_INST_E_MATCHING_EAGER);
+      // the instances the conflict used have been handed over
+      d_inner.deactivateUsedInstances();
+    }
   }
   for (const std::pair<Node, Node>& p : d_inner.getPropagations())
   {
@@ -315,14 +329,30 @@ void EagerInstEngine::flush(CVC5_UNUSED Theory::Effort e)
   traceStats();
 }
 
+bool EagerInstEngine::needsCheck(Theory::Effort e)
+{
+  // Conflict effort is where this module contributes, as QuantConflictFind
+  // does, which also only reports conflicts.
+  return e >= Theory::EFFORT_FULL;
+}
+
 void EagerInstEngine::check(Theory::Effort e, QEffort quantE)
 {
+  if (quantE == QEFFORT_CONFLICT)
+  {
+    // Instantiations are contributed here, at conflict effort, so that they are
+    // seen before the module responsible for a quantified formula acts on it,
+    // and never afterwards.
+    syncScopes();
+    propagate(e);
+    flush(e);
+    return;
+  }
   if (quantE != QEFFORT_STANDARD)
   {
     return;
   }
   syncScopes();
-  propagate(e);
   if (e >= Theory::EFFORT_LAST_CALL)
   {
     // z3: qi_queue::final_check_eh followed by
@@ -363,7 +393,12 @@ void EagerInstEngine::traceStats() const
       << qs.d_numLazyInstances << " lazy, " << qs.d_numTrivial
       << " trivial; inner: " << is.d_numInstances << " added, "
       << is.d_numRetracted << " retracted, " << is.d_numChecks << " checks, "
-      << is.d_numConflicts << " conflicts" << std::endl;
+      << is.d_numConflicts << " conflicts; search: " << is.d_numDecisions
+      << " decisions, " << is.d_numSearchConflicts << " backjumps, "
+      << is.d_numSaturated << " saturated, " << is.d_numBudgetOut
+      << " budget-out, " << is.d_numOuterFacts << " outer facts, "
+      << is.d_numAlreadyKnown << " already known, " << is.d_numDeactivated
+      << " handed off" << std::endl;
 }
 
 }  // namespace eager

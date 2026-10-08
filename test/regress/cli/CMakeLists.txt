@@ -1869,6 +1869,7 @@ set(regress_0_tests
   regress0/quantifiers/eager-inst-infer-pattern.smt2
   regress0/quantifiers/eager-inst-inner-conflict.smt2
   regress0/quantifiers/eager-inst-inner-congruence.smt2
+  regress0/quantifiers/eager-inst-inner-search.smt2
   regress0/quantifiers/eager-inst-simple.smt2
   regress0/quantifiers/ex3.smt2
   regress0/quantifiers/ex6.smt2

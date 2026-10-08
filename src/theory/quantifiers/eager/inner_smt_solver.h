@@ -53,6 +53,7 @@ namespace theory {
 namespace quantifiers {
 
 class QuantifiersState;
+class Instantiate;
 
 namespace eager {
 
@@ -71,6 +72,14 @@ class InnerSmtSolver : protected EnvObj,
  public:
   InnerSmtSolver(Env& env, Trail& trail, QuantifiersState& qs, EGraph& mirror);
   ~InnerSmtSolver();
+
+  /**
+   * Set the instantiation bookkeeping of cvc5, which is consulted to avoid
+   * holding an instance that cvc5 already has. Its record survives
+   * backtracking, which a record of ours cannot: the outer solver pops our
+   * scope when it acts on what we report.
+   */
+  void setInstantiate(Instantiate* i) { d_inst = i; }
 
   //---------------------------------------------------- InstanceSink
   /**
@@ -154,6 +163,18 @@ class InnerSmtSolver : protected EnvObj,
     uint64_t d_numAssignments = 0;
     /** equalities and disequalities taken from the outer solver */
     uint64_t d_numOuterFacts = 0;
+    /** decisions the search made */
+    uint64_t d_numDecisions = 0;
+    /** conflicts the search resolved by backjumping */
+    uint64_t d_numSearchConflicts = 0;
+    /** rounds in which a model of the instances was found */
+    uint64_t d_numSaturated = 0;
+    /** rounds in which the search ran out of budget */
+    uint64_t d_numBudgetOut = 0;
+    /** instances switched off after being handed to cvc5 */
+    uint64_t d_numDeactivated = 0;
+    /** instances not held because cvc5 already had them */
+    uint64_t d_numAlreadyKnown = 0;
   };
   const Stats& getStats() const { return d_stats; }
 
@@ -183,7 +204,9 @@ class InnerSmtSolver : protected EnvObj,
     /** it is the last unassigned literal of a clause */
     CLAUSE,
     /** the congruence closure implies it */
-    THEORY
+    THEORY,
+    /** the search chose it, so it is not implied by anything */
+    DECISION
   };
   /** An atom of the inner problem */
   struct Atom
@@ -217,6 +240,8 @@ class InnerSmtSolver : protected EnvObj,
     size_t d_clause = 0;
     /** for THEORY */
     std::vector<LitId> d_exp;
+    /** the number of decisions in force when it was assigned */
+    size_t d_level = 0;
   };
   /** A clause of the inner problem */
   struct Clause
@@ -224,6 +249,14 @@ class InnerSmtSolver : protected EnvObj,
     std::vector<LitId> d_lits;
     /** the instance it came from, or the number of instances if none */
     size_t d_instance;
+    /**
+     * Whether this clause still takes part in the search. The clauses of an
+     * instance that has been handed to cvc5 are switched off: cvc5 owns that
+     * instance now, so rederiving the same conflict from it every round is
+     * wasted work. z3 does not need this, since an instance it asserts leaves
+     * its queue for the same reason.
+     */
+    bool d_active = true;
   };
   /** One instance held by this solver */
   struct Instance
@@ -236,6 +269,8 @@ class InnerSmtSolver : protected EnvObj,
     Node d_lemma;
     /** the generation of the terms it introduces */
     uint32_t d_generation;
+    /** where its clauses start; they run to those of the next instance */
+    size_t d_clauseBegin = 0;
   };
   /**
    * An equality or disequality between two of our terms that holds in the
@@ -350,6 +385,31 @@ class InnerSmtSolver : protected EnvObj,
   bool visitClause(size_t c);
   /** Propagate to a fixed point. Returns false on a conflict. */
   bool propagate();
+  /**
+   * Search for a refutation of the instances under the current outer
+   * assignment: propagate, and where propagation stops, choose a literal of an
+   * unsatisfied clause and continue. Returns false only if the instances and
+   * the outer facts are contradictory on their own, i.e. if a conflict is
+   * reached with no decision in force, which is the only kind of conflict that
+   * can be exported. Returns true if a model of the clauses was found, or if
+   * the budget ran out, having undone everything the decisions implied.
+   */
+  bool search();
+  /** The number of decisions in force */
+  size_t currentLevel() const { return d_decisions.size(); }
+  /** The level a literal was assigned at, 0 if it is not assigned by us */
+  size_t levelOf(LitId l) const;
+  /**
+   * A literal of a clause that is not yet satisfied, or undefinedLit if every
+   * clause is satisfied.
+   */
+  LitId pickDecision();
+  /**
+   * The decisions and outer facts that the conflict explained by exp depends
+   * on, which are the leaves of its implication graph.
+   */
+  void conflictAntecedents(const std::vector<LitId>& exp,
+                           std::vector<LitId>& ants) const;
   /** Assign the atoms that the congruence closure implies */
   bool theoryPropagate(bool& progress);
   /** The literals in our atoms for the explanation exp of the theory */
@@ -366,6 +426,15 @@ class InnerSmtSolver : protected EnvObj,
   Node mkConflict(const std::vector<LitId>& exp);
   /** Record that the exported clauses rely on these instances */
   void noteUsedInstances(const std::set<size_t>& instances);
+ public:
+  /**
+   * Switch off the instances the last exported clause relied on. They have been
+   * handed to cvc5, which owns them now, so holding them here only leads to the
+   * same conflict being rederived every round.
+   */
+  void deactivateUsedInstances();
+
+ private:
   /** Export the propagations derived since the last round */
   void exportPropagations();
   /** The negation of the formula of a literal */
@@ -377,6 +446,8 @@ class InnerSmtSolver : protected EnvObj,
   QuantifiersState& d_qstate;
   /** The e-graph mirror, i.e. the outer equivalence classes */
   EGraph& d_mirror;
+  /** cvc5's instantiation bookkeeping, or null */
+  Instantiate* d_inst;
   /** The instances, in the order they were added */
   std::vector<Instance> d_instances;
   /** The congruence closure */
@@ -397,6 +468,20 @@ class InnerSmtSolver : protected EnvObj,
   std::vector<Assignment> d_assignTrail;
   /** The literals whose consequences have not been processed yet */
   std::vector<LitId> d_queue;
+  /** A decision of the search, with the state to go back to */
+  struct Decision
+  {
+    LitId d_lit;
+    Checkpoint d_cp;
+  };
+  /** The decisions in force, innermost last */
+  std::vector<Decision> d_decisions;
+  /** Where pickDecision last looked, so that it does not rescan from the start */
+  size_t d_decisionHint;
+  /** Whether the literals the inner solver derives are reported */
+  bool d_propagateOut;
+  /** The conflicts the search may use in one round */
+  uint64_t d_budget;
   /** The explanation of the conflict of the current round */
   std::vector<LitId> d_conflictExp;
   /** The clause the conflict came from, if any */
@@ -439,6 +524,8 @@ class InnerSmtSolver : protected EnvObj,
   std::vector<std::pair<Node, Node>> d_propagations;
   /** The instantiations the exported clauses rely on */
   std::vector<std::pair<Node, std::vector<Node>>> d_usedInstantiations;
+  /** Their indices into d_instances */
+  std::vector<size_t> d_usedInstanceIdx;
   /** Statistics */
   Stats d_stats;
 };

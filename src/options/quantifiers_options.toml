@@ -336,6 +336,22 @@ name   = "Quantifiers"
   help = "Run the matcher directly from the equality engine notifications, which is more eager than z3."
 
 [[option]]
+  name       = "eagerInstPropagate"
+  category   = "expert"
+  long       = "eager-inst-propagate"
+  type       = "bool"
+  default    = "false"
+  help       = "report the literals the inner SMT solver of eager E-matching derives, in addition to its conflicts; off by default, so that eager E-matching only sends something to the rest of the solver when its instances are contradictory"
+
+[[option]]
+  name       = "eagerInstInnerBudget"
+  category   = "expert"
+  long       = "eager-inst-inner-budget=N"
+  type       = "uint64_t"
+  default    = "100"
+  help       = "the number of conflicts the inner SMT solver of eager E-matching may use to search for a refutation of its instances in one round, 0 for no search beyond propagation"
+
+[[option]]
   name       = "eagerInstFilters"
   category   = "expert"
   long       = "eager-inst-filters"
