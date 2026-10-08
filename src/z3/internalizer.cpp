@@ -207,8 +207,8 @@ void SmtContext::mergeCgcGenerations(ENode* e1,
 
   // Push the trail even for a no-op, otherwise e1's generation could not be
   // restored when the merge is undone.
-  pushTrail(MergeCgcGenerationsTrail(
-      *this, e1, e1Generation, e2, e2->d_generation));
+  pushTrail(
+      MergeCgcGenerationsTrail(*this, e1, e1Generation, e2, e2->d_generation));
 
   if (e1Generation >= e2->d_generation)
   {
@@ -231,7 +231,7 @@ void SmtContext::tsVisitChild(TNode n,
 }
 
 bool SmtContext::tsVisitChildren(TNode n,
-                                 bool gateCtx,
+                                 bool /*gateCtx*/,
                                  std::vector<ExprBoolPair>& todo)
 {
   if (isQuantifier(n))
@@ -282,8 +282,8 @@ bool SmtContext::tsVisitChildren(TNode n,
     tsVisitChild(n[2], false, todo, visited);
     return visited;
   }
-  bool newGateCtx = n.getType().isBoolean()
-                    && (isGate(n) || n.getKind() == Kind::NOT);
+  bool newGateCtx =
+      n.getType().isBoolean() && (isGate(n) || n.getKind() == Kind::NOT);
   size_t j = n.getNumChildren();
   while (j > 0)
   {
@@ -314,8 +314,8 @@ void SmtContext::topSortExpr(const Node* exprs,
       {
         setColor(d_tcolors, d_fcolors, curr, gateCtx, s_black);
         const Node* end = exprs + numExprs;
-        if (std::find(exprs, end, curr) == end
-            && curr.getKind() != Kind::NOT && shouldInternalizeRec(curr))
+        if (std::find(exprs, end, curr) == end && curr.getKind() != Kind::NOT
+            && shouldInternalizeRec(curr))
         {
           sortedExprs.push_back(ExprBoolPair(curr, gateCtx));
         }
@@ -373,8 +373,8 @@ void SmtContext::internalizeAssertion(TNode n, uint32_t generation)
 {
   uint32_t oldGeneration = d_generation;
   d_generation = generation;
-  d_stats.d_maxGeneration = std::max<uint64_t>(generation,
-                                               d_stats.d_maxGeneration);
+  d_stats.d_maxGeneration =
+      std::max<uint64_t>(generation, d_stats.d_maxGeneration);
   internalizeDeep(n);
   Assert(n.getType().isBoolean());
   if (isGate(n))
@@ -588,8 +588,8 @@ void SmtContext::internalizeFormula(TNode n, bool gateCtx)
       else
       {
         mkENode(n,
-                true,  /* suppress the arguments: congruence is not used here */
-                true,  /* merge with true/false, since this is not a gate */
+                true, /* suppress the arguments: congruence is not used here */
+                true, /* merge with true/false, since this is not a gate */
                 false /* congruence closure is not enabled */);
         setEnodeFlag(v, false);
         if (getAssignment(v) != L_UNDEF)
@@ -657,8 +657,8 @@ void SmtContext::internalizeDistinct(TNode n, bool gateCtx)
           Kind::NOT, nodeManager()->mkNode(Kind::EQUAL, n[i], n[j])));
     }
   }
-  Node def = diseqs.size() == 1 ? diseqs[0]
-                                : nodeManager()->mkNode(Kind::AND, diseqs);
+  Node def =
+      diseqs.size() == 1 ? diseqs[0] : nodeManager()->mkNode(Kind::AND, diseqs);
   internalizeRec(def, true);
   Literal lDef = getLiteral(def);
   mkGateClause(~l, lDef);
@@ -696,8 +696,8 @@ bool SmtContext::internalizeTheoryAtom(TNode n, bool gateCtx)
     if (!eInternalized(n))
     {
       mkENode(n,
-              true,  /* suppress the arguments: congruence is not used here */
-              true,  /* merge with true/false, since this is not a gate */
+              true, /* suppress the arguments: congruence is not used here */
+              true, /* merge with true/false, since this is not a gate */
               false /* congruence closure is not enabled */);
     }
     else
@@ -720,6 +720,7 @@ bool SmtContext::internalizeTheoryAtom(TNode n, bool gateCtx)
 
 void SmtContext::internalizeQuantifier(TNode q, bool gateCtx)
 {
+  (void)gateCtx;
   Assert(gateCtx);  // a limitation of the current implementation
   Assert(!bInternalized(q));
   if (q.getKind() != Kind::FORALL)
@@ -770,8 +771,7 @@ void SmtContext::internalizeFormulaCore(TNode n, bool gateCtx)
   // A formula needs an enode when it is not in a gate context, or when it has
   // arguments and is not a gate (i.e. an uninterpreted predicate or an
   // equality).
-  if (!eInternalized(n)
-      && (!gateCtx || (!isGateN && n.getNumChildren() > 0)))
+  if (!eInternalized(n) && (!gateCtx || (!isGateN && n.getNumChildren() > 0)))
   {
     bool suppressArgs = isGateN || n.getKind() == Kind::NOT;
     bool mergeTf = !gateCtx;
@@ -964,8 +964,7 @@ void SmtContext::internalizeIteTerm(TNode n)
   mkGateClause(cLit, eq2Lit);
   if (relevancy())
   {
-    RelevancyEh* eh =
-        d_relevancyPropagator->mkTermIteRelevancyEh(n, eq1, eq2);
+    RelevancyEh* eh = d_relevancyPropagator->mkTermIteRelevancyEh(n, eq1, eq2);
     addRelWatch(cLit, eh);
     addRelWatch(~cLit, eh);
     addRelevancyEh(n, eh);
@@ -1320,8 +1319,7 @@ void SmtContext::markForReinit(Clause* cls,
   d_clausesToReinit[scopeLvl].push_back(cls);
 }
 
-uint32_t SmtContext::getMaxIscopeLvl(size_t numLits,
-                                     const Literal* lits) const
+uint32_t SmtContext::getMaxIscopeLvl(size_t numLits, const Literal* lits) const
 {
   uint32_t r = 0;
   for (size_t i = 0; i < numLits; ++i)
@@ -1507,8 +1505,7 @@ Clause* SmtContext::mkClause(size_t numLits,
       {
         d_justifications.push_back(j);
       }
-      setConflict(j == nullptr ? BJustification::mkAxiom()
-                               : BJustification(j));
+      setConflict(j == nullptr ? BJustification::mkAxiom() : BJustification(j));
       Assert(inconsistent());
       return nullptr;
     case 1:
@@ -1551,8 +1548,8 @@ Clause* SmtContext::mkClause(size_t numLits,
       bool saveAtoms = lemma && iscopeLvl > d_baseLvl;
       bool reinit = saveAtoms;
       Assert(!lemma || j == nullptr || !j->inRegion());
-      Clause* cls = Clause::mk(
-          numLits, lits, k, j, delEh, saveAtoms, &d_boolVar2Expr);
+      Clause* cls =
+          Clause::mk(numLits, lits, k, j, delEh, saveAtoms, &d_boolVar2Expr);
       if (lemma)
       {
         cls->setActivity(activity);
@@ -1622,16 +1619,13 @@ void SmtContext::mkClause(Literal l1, Literal l2, Justification* j)
   mkClause(2, ls, j);
 }
 
-void SmtContext::mkClause(Literal l1,
-                          Literal l2,
-                          Literal l3,
-                          Justification* j)
+void SmtContext::mkClause(Literal l1, Literal l2, Literal l3, Justification* j)
 {
   Literal ls[3] = {l1, l2, l3};
   mkClause(3, ls, j);
 }
 
-void SmtContext::mkThClause(TheoryId tid,
+void SmtContext::mkThClause(TheoryId /*tid*/,
                             size_t numLits,
                             Literal* lits,
                             ClauseKind k)
@@ -1639,10 +1633,7 @@ void SmtContext::mkThClause(TheoryId tid,
   mkClause(numLits, lits, nullptr, k);
 }
 
-void SmtContext::mkThAxiom(TheoryId tid, Literal l1)
-{
-  mkThAxiom(tid, 1, &l1);
-}
+void SmtContext::mkThAxiom(TheoryId tid, Literal l1) { mkThAxiom(tid, 1, &l1); }
 
 void SmtContext::mkThAxiom(TheoryId tid, Literal l1, Literal l2)
 {
@@ -1673,10 +1664,7 @@ void SmtContext::mkGateClause(Literal l1, Literal l2, Literal l3)
   mkGateClause(3, ls);
 }
 
-void SmtContext::mkGateClause(Literal l1,
-                              Literal l2,
-                              Literal l3,
-                              Literal l4)
+void SmtContext::mkGateClause(Literal l1, Literal l2, Literal l3, Literal l4)
 {
   Literal ls[4] = {l1, l2, l3, l4};
   mkGateClause(4, ls);

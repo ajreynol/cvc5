@@ -164,7 +164,6 @@ class ENode
   void resetMergeTf() { d_mergeTf = false; }
 
  private:
-
   /** The inline argument array, stored directly after the fixed fields. */
   ENode** argsPtr()
   {
@@ -174,8 +173,8 @@ class ENode
 
   ENode* const* argsPtr() const
   {
-    return reinterpret_cast<ENode* const*>(
-        reinterpret_cast<const char*>(this) + sizeof(ENode));
+    return reinterpret_cast<ENode* const*>(reinterpret_cast<const char*>(this)
+                                           + sizeof(ENode));
   }
 
   static ENode* init(void* mem,
@@ -397,10 +396,7 @@ class ENode
 
   ENodeVector::iterator endParents() { return d_parents.end(); }
 
-  ENodeVector::const_iterator beginParents() const
-  {
-    return d_parents.begin();
-  }
+  ENodeVector::const_iterator beginParents() const { return d_parents.begin(); }
 
   ENodeVector::const_iterator endParents() const { return d_parents.end(); }
 
@@ -442,10 +438,7 @@ class ENode
     return d_thVarList.getVar() == s_nullTheoryVar ? nullptr : &d_thVarList;
   }
 
-  bool hasThVars() const
-  {
-    return d_thVarList.getVar() != s_nullTheoryVar;
-  }
+  bool hasThVars() const { return d_thVarList.getVar() != s_nullTheoryVar; }
 
   size_t getNumThVars() const;
 

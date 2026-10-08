@@ -47,13 +47,15 @@ class RelevancyEh
   virtual ~RelevancyEh() = default;
 
   /** Invoked when n is marked as relevant. */
-  virtual void operator()(RelevancyPropagator& rp, TNode n)
+  virtual void operator()(RelevancyPropagator& rp, TNode /*n*/)
   {
     operator()(rp);
   }
 
   /** Invoked when atom is assigned to val. */
-  virtual void operator()(RelevancyPropagator& rp, TNode atom, bool val)
+  virtual void operator()(RelevancyPropagator& rp,
+                          TNode /*atom*/,
+                          bool /*val*/)
   {
     operator()(rp);
   }
@@ -127,10 +129,7 @@ class RelevancyPropagator
   void markAsRelevant(TNode n);
 
   /** True if the given expression is marked as relevant. */
-  bool isRelevant(TNode n) const
-  {
-    return !enabled() || isRelevantCore(n);
-  }
+  bool isRelevant(TNode n) const { return !enabled() || isRelevantCore(n); }
 
   bool isRelevantCore(TNode n) const
   {

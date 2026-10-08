@@ -88,9 +88,8 @@ ENode* ENode::mk(Region& r,
                  bool updateChildrenParent)
 {
   Assert(owner.getType().isBoolean() || !mergeTf);
-  size_t numArgs = (suppressArgs || !z3::isApp(owner))
-                       ? 0
-                       : owner.getNumChildren();
+  size_t numArgs =
+      (suppressArgs || !z3::isApp(owner)) ? 0 : owner.getNumChildren();
   size_t sz = getENodeSize(numArgs);
   void* mem = r.allocate(sz);
   return init(mem,

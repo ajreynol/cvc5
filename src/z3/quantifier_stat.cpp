@@ -122,9 +122,7 @@ QuantifierStat* QuantifierStatGen::operator()(TNode q, uint32_t generation)
             approxMul(d_caseSplitFactor, depth == 0 ? 4 : 9);
           }
           break;
-        case Kind::ITE:
-          approxMul(d_caseSplitFactor, depth == 0 ? 4 : 9);
-          break;
+        case Kind::ITE: approxMul(d_caseSplitFactor, depth == 0 ? 4 : 9); break;
         default: break;
       }
     }

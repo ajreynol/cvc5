@@ -221,9 +221,7 @@ class ConflictResolution
   LiteralVector d_assumptions;
 };
 
-inline void markLiterals(ConflictResolution& cr,
-                         size_t sz,
-                         const Literal* ls)
+inline void markLiterals(ConflictResolution& cr, size_t sz, const Literal* ls)
 {
   for (size_t i = 0; i < sz; ++i)
   {
@@ -231,12 +229,11 @@ inline void markLiterals(ConflictResolution& cr,
   }
 }
 
-ConflictResolution* mkConflictResolution(
-    SmtContext& ctx,
-    DynAckManager& dackManager,
-    const Params& params,
-    const LiteralVector& assignedLiterals,
-    std::vector<WatchList>& watches);
+ConflictResolution* mkConflictResolution(SmtContext& ctx,
+                                         DynAckManager& dackManager,
+                                         const Params& params,
+                                         const LiteralVector& assignedLiterals,
+                                         std::vector<WatchList>& watches);
 
 }  // namespace z3
 }  // namespace cvc5::internal

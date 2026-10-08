@@ -50,9 +50,8 @@ void QiQueue::setup()
   }
   if (!d_newGenFunction.parse(d_params.d_qiNewGen))
   {
-    Warning() << "z3: invalid new-generation function '"
-              << d_params.d_qiNewGen << "', switching to the default one"
-              << std::endl;
+    Warning() << "z3: invalid new-generation function '" << d_params.d_qiNewGen
+              << "', switching to the default one" << std::endl;
     bool ok = d_newGenFunction.parse("cost");
     AlwaysAssert(ok);
   }
@@ -75,8 +74,7 @@ QuantifierStat* QiQueue::setValues(TNode q,
   d_vals[CV_COST] = cost;
   d_vals[CV_MIN_TOP_GENERATION] = static_cast<float>(minTopGeneration);
   d_vals[CV_MAX_TOP_GENERATION] = static_cast<float>(maxTopGeneration);
-  d_vals[CV_INSTANCES] =
-      static_cast<float>(stat->getNumInstancesCurrBranch());
+  d_vals[CV_INSTANCES] = static_cast<float>(stat->getNumInstancesCurrBranch());
   d_vals[CV_SIZE] = static_cast<float>(stat->getSize());
   d_vals[CV_DEPTH] = static_cast<float>(stat->getDepth());
   d_vals[CV_GENERATION] = static_cast<float>(generation);
@@ -126,8 +124,7 @@ void QiQueue::insert(Fingerprint* f,
                      uint32_t maxTopGeneration)
 {
   TNode q = getQuantifier(f);
-  float cost =
-      getCost(q, pat, generation, minTopGeneration, maxTopGeneration);
+  float cost = getCost(q, pat, generation, minTopGeneration, maxTopGeneration);
   d_newEntries.push_back(Entry(f, cost, generation));
 }
 
@@ -220,8 +217,7 @@ void QiQueue::instantiate(Entry& ent)
 
   Node sInstance = d_context.rewriteInstance(instance);
 
-  if (sInstance.getKind() == Kind::CONST_BOOLEAN
-      && sInstance.getConst<bool>())
+  if (sInstance.getKind() == Kind::CONST_BOOLEAN && sInstance.getConst<bool>())
   {
     stat->incNumInstancesSimplifyTrue();
     return;
@@ -258,9 +254,8 @@ void QiQueue::instantiate(Entry& ent)
 void QiQueue::pushScope()
 {
   Assert(d_context.inconsistent() || d_newEntries.empty());
-  d_scopes.push_back(Scope{d_delayedEntries.size(),
-                           d_instances.size(),
-                           d_instantiatedTrail.size()});
+  d_scopes.push_back(Scope{
+      d_delayedEntries.size(), d_instances.size(), d_instantiatedTrail.size()});
 }
 
 void QiQueue::popScope(size_t numScopes)

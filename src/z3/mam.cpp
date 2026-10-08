@@ -37,7 +37,7 @@ class MamImpl : public Mam
  public:
   MamImpl(SmtContext& ctx) : Mam(ctx) {}
 
-  void addPattern(TNode q, TNode mp) override
+  void addPattern(TNode /*q*/, TNode /*mp*/) override
   {
     // No code tree is built, so this pattern will never fire.
     d_context.markModelUnsound(theory::THEORY_QUANTIFIERS);
@@ -45,17 +45,17 @@ class MamImpl : public Mam
 
   void pushScope() override {}
 
-  void popScope(size_t numScopes) override {}
+  void popScope(size_t /*numScopes*/) override {}
 
   void match() override {}
 
-  void rematch(bool useIrrelevant) override {}
+  void rematch(bool /*useIrrelevant*/) override {}
 
   bool hasWork() const override { return false; }
 
-  void relevantEh(ENode* n, bool lazy) override {}
+  void relevantEh(ENode* /*n*/, bool /*lazy*/) override {}
 
-  void addEqEh(ENode* r1, ENode* r2) override {}
+  void addEqEh(ENode* /*r1*/, ENode* /*r2*/) override {}
 
   void reset() override {}
 
@@ -64,16 +64,16 @@ class MamImpl : public Mam
     out << "mam: the code trees are not ported yet\n";
   }
 
-  void onMatch(TNode q,
-               TNode pat,
-               size_t numBindings,
-               ENode* const* bindings,
-               uint32_t maxGeneration,
-               std::vector<std::pair<ENode*, ENode*>>& usedENodes) override
+  void onMatch(TNode /*q*/,
+               TNode /*pat*/,
+               size_t /*numBindings*/,
+               ENode* const* /*bindings*/,
+               uint32_t /*maxGeneration*/,
+               std::vector<std::pair<ENode*, ENode*>>& /*usedENodes*/) override
   {
   }
 
-  bool isShared(ENode* n) const override { return false; }
+  bool isShared(ENode* /*n*/) const override { return false; }
 };
 
 }  // namespace

@@ -101,8 +101,8 @@ struct QuantifierManager::Imp
     {
       out << "[quantifier_instances] " << getQid(q) << " : " << numInstances
           << " : " << numInstancesSimplifyTrue << " : "
-          << numInstancesCheckerSat << " : " << s->getMaxGeneration()
-          << " : " << s->getMaxCost() << "\n";
+          << numInstancesCheckerSat << " : " << s->getMaxGeneration() << " : "
+          << s->getMaxCost() << "\n";
     }
   }
 
@@ -130,7 +130,7 @@ struct QuantifierManager::Imp
                    uint32_t maxGeneration,
                    uint32_t minTopGeneration,
                    uint32_t maxTopGeneration,
-                   std::vector<std::pair<ENode*, ENode*>>& usedENodes)
+                   std::vector<std::pair<ENode*, ENode*>>& /*usedENodes*/)
   {
     if (d_quantifierStat.count(q) == 0)
     {
@@ -144,8 +144,8 @@ struct QuantifierManager::Imp
         q.getId(), static_cast<uint32_t>(q.getId()), numBindings, bindings);
     if (f != nullptr)
     {
-      d_qiQueue.insert(f, pat, maxGeneration, minTopGeneration,
-                       maxTopGeneration);
+      d_qiQueue.insert(
+          f, pat, maxGeneration, minTopGeneration, maxTopGeneration);
       d_numInstances++;
     }
     return f != nullptr;
@@ -253,10 +253,7 @@ void QuantifierManager::del(TNode q) { d_imp->del(q); }
 
 bool QuantifierManager::empty() const { return d_imp->empty(); }
 
-bool QuantifierManager::isShared(ENode* n) const
-{
-  return d_imp->isShared(n);
-}
+bool QuantifierManager::isShared(ENode* n) const { return d_imp->isShared(n); }
 
 QuantifierStat* QuantifierManager::getStat(TNode q) const
 {
@@ -379,7 +376,7 @@ void QuantifierManager::pop(size_t numScopes)
 
 void QuantifierManager::reset() {}
 
-void QuantifierManager::print(std::ostream& out) const {}
+void QuantifierManager::print(std::ostream& /*out*/) const {}
 
 const std::vector<Node>& QuantifierManager::quantifiers() const
 {
@@ -420,7 +417,7 @@ class DefaultQmPlugin : public QuantifierManagerPlugin
 
   bool modelBased() const override { return d_params->d_mbqi; }
 
-  bool mbqiEnabled(TNode q) const override { return true; }
+  bool mbqiEnabled(TNode /*q*/) const override { return true; }
 
   void add(TNode q) override
   {
@@ -430,7 +427,7 @@ class DefaultQmPlugin : public QuantifierManagerPlugin
     }
   }
 
-  void del(TNode q) override {}
+  void del(TNode /*q*/) override {}
 
   void push() override
   {
@@ -500,10 +497,7 @@ class DefaultQmPlugin : public QuantifierManagerPlugin
     }
   }
 
-  bool useEmatching() const
-  {
-    return d_params->d_ematching && !d_qm->empty();
-  }
+  bool useEmatching() const { return d_params->d_ematching && !d_qm->empty(); }
 
   void addEqEh(ENode* e1, ENode* e2) override
   {

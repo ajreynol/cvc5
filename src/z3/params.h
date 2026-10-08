@@ -183,7 +183,8 @@ struct Params
   uint32_t d_oldClauseRelevancy = 6;
   double d_invClauseDecay = 1;
 
-  // ---------------------------------------------------- dynamic ackermannization
+  // ---------------------------------------------------- dynamic
+  // ackermannization
   DynAckStrategy d_dack = DACK_ROOT;
   bool d_dackEq = false;
   double d_dackFactor = 0.1;
@@ -191,7 +192,8 @@ struct Params
   uint32_t d_dackGc = 2000;
   double d_dackGcInvDecay = 0.8;
 
-  // ---------------------------------------------------- quantifier instantiation
+  // ---------------------------------------------------- quantifier
+  // instantiation
   /**
    * The cost of a quantifier instantiation, as an arithmetic expression over
    * "weight", "generation", "cost", "min_top_generation" and

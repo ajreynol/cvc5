@@ -160,10 +160,7 @@ RelevancyPropagator::~RelevancyPropagator() {}
 
 bool RelevancyPropagator::enabled() const { return d_context.relevancy(); }
 
-Region& RelevancyPropagator::getRegion() const
-{
-  return d_context.getRegion();
-}
+Region& RelevancyPropagator::getRegion() const { return d_context.getRegion(); }
 
 void RelevancyPropagator::addDependency(TNode src, TNode target)
 {

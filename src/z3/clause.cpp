@@ -66,8 +66,7 @@ Clause* Clause::mk(size_t numLits,
     {
       // The Node is constructed in place; releaseAtoms and deallocate run the
       // matching destructor.
-      new (&atoms[i]) AtomEntry{(*boolVar2Expr)[lits[i].var()],
-                                lits[i].sign()};
+      new (&atoms[i]) AtomEntry{(*boolVar2Expr)[lits[i].var()], lits[i].sign()};
     }
   }
   return cls;

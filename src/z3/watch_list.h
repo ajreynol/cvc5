@@ -128,8 +128,7 @@ class WatchList
 
   void insertClause(Clause* c)
   {
-    if (d_data == nullptr
-        || endClsCore() + sizeof(Clause*) >= beginLitsCore())
+    if (d_data == nullptr || endClsCore() + sizeof(Clause*) >= beginLitsCore())
     {
       expand();
     }
@@ -139,8 +138,7 @@ class WatchList
 
   void insertLiteral(const Literal& l)
   {
-    if (d_data == nullptr
-        || beginLitsCore() <= endClsCore() + sizeof(Literal))
+    if (d_data == nullptr || beginLitsCore() <= endClsCore() + sizeof(Literal))
     {
       expand();
     }

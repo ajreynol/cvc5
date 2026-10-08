@@ -169,22 +169,70 @@ class Parser
 
   static bool lookupVar(const std::string& name, size_t& var)
   {
-    if (name == "cost") { var = CV_COST; }
-    else if (name == "min_top_generation") { var = CV_MIN_TOP_GENERATION; }
-    else if (name == "max_top_generation") { var = CV_MAX_TOP_GENERATION; }
-    else if (name == "instances") { var = CV_INSTANCES; }
-    else if (name == "size") { var = CV_SIZE; }
-    else if (name == "depth") { var = CV_DEPTH; }
-    else if (name == "generation") { var = CV_GENERATION; }
-    else if (name == "quant_generation") { var = CV_QUANT_GENERATION; }
-    else if (name == "weight") { var = CV_WEIGHT; }
-    else if (name == "vars") { var = CV_VARS; }
-    else if (name == "pattern_width") { var = CV_PATTERN_WIDTH; }
-    else if (name == "total_instances") { var = CV_TOTAL_INSTANCES; }
-    else if (name == "scope") { var = CV_SCOPE; }
-    else if (name == "nested_quantifiers") { var = CV_NESTED_QUANTIFIERS; }
-    else if (name == "cs_factor") { var = CV_CS_FACTOR; }
-    else { return false; }
+    if (name == "cost")
+    {
+      var = CV_COST;
+    }
+    else if (name == "min_top_generation")
+    {
+      var = CV_MIN_TOP_GENERATION;
+    }
+    else if (name == "max_top_generation")
+    {
+      var = CV_MAX_TOP_GENERATION;
+    }
+    else if (name == "instances")
+    {
+      var = CV_INSTANCES;
+    }
+    else if (name == "size")
+    {
+      var = CV_SIZE;
+    }
+    else if (name == "depth")
+    {
+      var = CV_DEPTH;
+    }
+    else if (name == "generation")
+    {
+      var = CV_GENERATION;
+    }
+    else if (name == "quant_generation")
+    {
+      var = CV_QUANT_GENERATION;
+    }
+    else if (name == "weight")
+    {
+      var = CV_WEIGHT;
+    }
+    else if (name == "vars")
+    {
+      var = CV_VARS;
+    }
+    else if (name == "pattern_width")
+    {
+      var = CV_PATTERN_WIDTH;
+    }
+    else if (name == "total_instances")
+    {
+      var = CV_TOTAL_INSTANCES;
+    }
+    else if (name == "scope")
+    {
+      var = CV_SCOPE;
+    }
+    else if (name == "nested_quantifiers")
+    {
+      var = CV_NESTED_QUANTIFIERS;
+    }
+    else if (name == "cs_factor")
+    {
+      var = CV_CS_FACTOR;
+    }
+    else
+    {
+      return false;
+    }
     return true;
   }
 
@@ -193,23 +241,73 @@ class Parser
   {
     Expr::Kind k;
     size_t minArgs = 2;
-    if (op == "not") { k = Expr::NOT; minArgs = 1; }
-    else if (op == "and") { k = Expr::AND; }
-    else if (op == "or") { k = Expr::OR; }
-    else if (op == "implies") { k = Expr::IMPLIES; }
-    else if (op == "ite") { k = Expr::ITE; minArgs = 3; }
-    else if (op == "=" || op == "iff") { k = Expr::EQ; }
-    else if (op == "xor") { k = Expr::XOR; }
-    else if (op == "+") { k = Expr::ADD; }
-    else if (op == "*") { k = Expr::MUL; }
-    else if (op == "-") { k = args.size() == 1 ? Expr::UMINUS : Expr::SUB;
-                          minArgs = args.size() == 1 ? 1 : 2; }
-    else if (op == "/") { k = Expr::DIV; }
-    else if (op == "<=") { k = Expr::LE; }
-    else if (op == ">=") { k = Expr::GE; }
-    else if (op == "<") { k = Expr::LT; }
-    else if (op == ">") { k = Expr::GT; }
-    else { return nullptr; }
+    if (op == "not")
+    {
+      k = Expr::NOT;
+      minArgs = 1;
+    }
+    else if (op == "and")
+    {
+      k = Expr::AND;
+    }
+    else if (op == "or")
+    {
+      k = Expr::OR;
+    }
+    else if (op == "implies")
+    {
+      k = Expr::IMPLIES;
+    }
+    else if (op == "ite")
+    {
+      k = Expr::ITE;
+      minArgs = 3;
+    }
+    else if (op == "=" || op == "iff")
+    {
+      k = Expr::EQ;
+    }
+    else if (op == "xor")
+    {
+      k = Expr::XOR;
+    }
+    else if (op == "+")
+    {
+      k = Expr::ADD;
+    }
+    else if (op == "*")
+    {
+      k = Expr::MUL;
+    }
+    else if (op == "-")
+    {
+      k = args.size() == 1 ? Expr::UMINUS : Expr::SUB;
+      minArgs = args.size() == 1 ? 1 : 2;
+    }
+    else if (op == "/")
+    {
+      k = Expr::DIV;
+    }
+    else if (op == "<=")
+    {
+      k = Expr::LE;
+    }
+    else if (op == ">=")
+    {
+      k = Expr::GE;
+    }
+    else if (op == "<")
+    {
+      k = Expr::LT;
+    }
+    else if (op == ">")
+    {
+      k = Expr::GT;
+    }
+    else
+    {
+      return nullptr;
+    }
     if (args.size() < minArgs)
     {
       return nullptr;
@@ -230,12 +328,10 @@ float eval(const CostFunction::Expr* f, const std::vector<float>& vals)
   switch (f->d_kind)
   {
     case Expr::NUM: return f->d_num;
-    case Expr::VAR:
-      return f->d_var < vals.size() ? vals[f->d_var] : 1.0f;
+    case Expr::VAR: return f->d_var < vals.size() ? vals[f->d_var] : 1.0f;
     case Expr::TRUE_: return 1.0f;
     case Expr::FALSE_: return 0.0f;
-    case Expr::NOT:
-      return eval(f->d_args[0].get(), vals) == 0.0f ? 1.0f : 0.0f;
+    case Expr::NOT: return eval(f->d_args[0].get(), vals) == 0.0f ? 1.0f : 0.0f;
     case Expr::AND:
       for (const std::unique_ptr<Expr>& a : f->d_args)
       {
@@ -265,33 +361,27 @@ float eval(const CostFunction::Expr* f, const std::vector<float>& vals)
                  ? eval(f->d_args[1].get(), vals)
                  : eval(f->d_args[2].get(), vals);
     case Expr::EQ:
-      return eval(f->d_args[0].get(), vals)
-                     == eval(f->d_args[1].get(), vals)
+      return eval(f->d_args[0].get(), vals) == eval(f->d_args[1].get(), vals)
                  ? 1.0f
                  : 0.0f;
     case Expr::XOR:
-      return eval(f->d_args[0].get(), vals)
-                     != eval(f->d_args[1].get(), vals)
+      return eval(f->d_args[0].get(), vals) != eval(f->d_args[1].get(), vals)
                  ? 1.0f
                  : 0.0f;
     case Expr::LE:
-      return eval(f->d_args[0].get(), vals)
-                     <= eval(f->d_args[1].get(), vals)
+      return eval(f->d_args[0].get(), vals) <= eval(f->d_args[1].get(), vals)
                  ? 1.0f
                  : 0.0f;
     case Expr::GE:
-      return eval(f->d_args[0].get(), vals)
-                     >= eval(f->d_args[1].get(), vals)
+      return eval(f->d_args[0].get(), vals) >= eval(f->d_args[1].get(), vals)
                  ? 1.0f
                  : 0.0f;
     case Expr::LT:
-      return eval(f->d_args[0].get(), vals)
-                     < eval(f->d_args[1].get(), vals)
+      return eval(f->d_args[0].get(), vals) < eval(f->d_args[1].get(), vals)
                  ? 1.0f
                  : 0.0f;
     case Expr::GT:
-      return eval(f->d_args[0].get(), vals)
-                     > eval(f->d_args[1].get(), vals)
+      return eval(f->d_args[0].get(), vals) > eval(f->d_args[1].get(), vals)
                  ? 1.0f
                  : 0.0f;
     case Expr::ADD:
@@ -313,8 +403,7 @@ float eval(const CostFunction::Expr* f, const std::vector<float>& vals)
       return r;
     }
     case Expr::SUB:
-      return eval(f->d_args[0].get(), vals)
-             - eval(f->d_args[1].get(), vals);
+      return eval(f->d_args[0].get(), vals) - eval(f->d_args[1].get(), vals);
     case Expr::UMINUS: return -eval(f->d_args[0].get(), vals);
     case Expr::DIV:
     {

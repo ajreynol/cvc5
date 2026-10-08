@@ -28,6 +28,7 @@
 #ifndef CVC5__Z3__SMT_CONTEXT_H
 #define CVC5__Z3__SMT_CONTEXT_H
 
+#include <deque>
 #include <memory>
 #include <unordered_map>
 #include <unordered_set>
@@ -106,8 +107,12 @@ class SmtContext : protected EnvObj
  public:
   /** The search statistics. Public, as in Z3. */
   Statistics d_stats;
-  /** Handles keeping the counters above registered with cvc5. */
-  std::vector<ReferenceStat<uint64_t>> d_regStats;
+  /**
+   * Handles keeping the counters above registered with cvc5. A deque is used
+   * because a ReferenceStat detaches from its counter when a copy of it is
+   * destroyed, so the stored handles must never be relocated.
+   */
+  std::deque<ReferenceStat<uint64_t>> d_regStats;
 
   SmtContext(Env& env, Params& p);
   virtual ~SmtContext();
@@ -138,10 +143,7 @@ class SmtContext : protected EnvObj
 
   size_t getNumAssertedFormulas() const { return d_assertedFormulas.size(); }
 
-  TNode getAssertedFormula(size_t idx) const
-  {
-    return d_assertedFormulas[idx];
-  }
+  TNode getAssertedFormula(size_t idx) const { return d_assertedFormulas[idx]; }
 
   // -------------------------------------------------------------- search
   /** Run the search. */
@@ -199,10 +201,7 @@ class SmtContext : protected EnvObj
 
   BoolVar getBoolVar(TNode n) const { return d_expr2BoolVar[n.getId()]; }
 
-  BoolVar getBoolVar(const ENode* n) const
-  {
-    return getBoolVar(n->getExpr());
-  }
+  BoolVar getBoolVar(const ENode* n) const { return getBoolVar(n->getExpr()); }
 
   BoolVar getBoolVarOfId(size_t id) const { return d_expr2BoolVar[id]; }
 
@@ -238,8 +237,7 @@ class SmtContext : protected EnvObj
   Literal enode2Literal(const ENode* n) const
   {
     Assert(n->isBool());
-    return n == d_falseENode ? s_falseLiteral
-                             : Literal(enode2BoolVar(n));
+    return n == d_falseENode ? s_falseLiteral : Literal(enode2BoolVar(n));
   }
 
   size_t getNumBoolVars() const { return d_bInternalizedStack.size(); }
@@ -253,19 +251,13 @@ class SmtContext : protected EnvObj
     return static_cast<LBool>(d_assignment[litIdx]);
   }
 
-  LBool getAssignment(Literal l) const
-  {
-    return getLitAssignment(l.index());
-  }
+  LBool getAssignment(Literal l) const { return getLitAssignment(l.index()); }
 
   LBool getAssignment(BoolVar v) const { return getAssignment(Literal(v)); }
 
   const LiteralVector& assignedLiterals() const { return d_assignedLiterals; }
 
-  const WatchList& getWatch(Literal l) const
-  {
-    return d_watches[l.index()];
-  }
+  const WatchList& getWatch(Literal l) const { return d_watches[l.index()]; }
 
   LBool getAssignment(TNode n) const;
 
@@ -335,15 +327,9 @@ class SmtContext : protected EnvObj
   }
 
   /** The scope level at which v was assigned. */
-  uint32_t getAssignLevel(BoolVar v) const
-  {
-    return getBdata(v).d_scopeLvl;
-  }
+  uint32_t getAssignLevel(BoolVar v) const { return getBdata(v).d_scopeLvl; }
 
-  uint32_t getAssignLevel(Literal l) const
-  {
-    return getAssignLevel(l.var());
-  }
+  uint32_t getAssignLevel(Literal l) const { return getAssignLevel(l.var()); }
 
   /** The scope level at which v was internalized. */
   uint32_t getInternLevel(BoolVar v) const
@@ -480,17 +466,11 @@ class SmtContext : protected EnvObj
 
   size_t getNumBInternalized() const { return d_bInternalizedStack.size(); }
 
-  TNode getBInternalized(size_t idx) const
-  {
-    return d_bInternalizedStack[idx];
-  }
+  TNode getBInternalized(size_t idx) const { return d_bInternalizedStack[idx]; }
 
   size_t getNumEInternalized() const { return d_eInternalizedStack.size(); }
 
-  TNode getEInternalized(size_t idx) const
-  {
-    return d_eInternalizedStack[idx];
-  }
+  TNode getEInternalized(size_t idx) const { return d_eInternalizedStack[idx]; }
 
   /** The position in the assignment stack of the decision at scopeLvl. */
   size_t getDecisionLiteralPos(uint32_t scopeLvl) const
@@ -529,10 +509,7 @@ class SmtContext : protected EnvObj
 
   void mkClause(Literal l1, Literal l2, Literal l3, Justification* j);
 
-  void mkThClause(TheoryId tid,
-                  size_t numLits,
-                  Literal* lits,
-                  ClauseKind k);
+  void mkThClause(TheoryId tid, size_t numLits, Literal* lits, ClauseKind k);
 
   void mkThAxiom(TheoryId tid, size_t numLits, Literal* lits)
   {
@@ -671,9 +648,7 @@ class SmtContext : protected EnvObj
 
   void forcePhase(Literal l) { forcePhase(l.var(), !l.sign()); }
 
-  bool containsInstance(TNode q,
-                        size_t numBindings,
-                        ENode* const* bindings);
+  bool containsInstance(TNode q, size_t numBindings, ENode* const* bindings);
 
   bool addInstance(TNode q,
                    TNode pat,
@@ -938,10 +913,7 @@ class SmtContext : protected EnvObj
   void invertTrans(ENode* n);
   TheoryVar getClosestVar(ENode* n, TheoryId thId);
   void mergeTheoryVars(ENode* r2, ENode* r1, EqJustification js);
-  void propagateBoolENodeAssignment(ENode* r1,
-                                    ENode* r2,
-                                    ENode* n1,
-                                    ENode* n2);
+  void propagateBoolENodeAssignment(ENode* r1, ENode* r2, ENode* n1, ENode* n2);
   void propagateBoolENodeAssignmentCore(ENode* source, ENode* target);
   void applyStickyUpdates(ENode* e1,
                           uint32_t e1Generation,
@@ -970,10 +942,7 @@ class SmtContext : protected EnvObj
 
   void setConflict(const BJustification& js, Literal notL);
 
-  void setConflict(const BJustification& js)
-  {
-    setConflict(js, s_nullLiteral);
-  }
+  void setConflict(const BJustification& js) { setConflict(js, s_nullLiteral); }
 
   // ----------------------------------------------------------- the search
   void assignCore(Literal l, BJustification j, bool decision = false);
@@ -1081,9 +1050,7 @@ class SmtContext : protected EnvObj
                     bool gateCtx,
                     std::vector<ExprBoolPair>& todo,
                     bool& visited);
-  bool tsVisitChildren(TNode n,
-                       bool gateCtx,
-                       std::vector<ExprBoolPair>& todo);
+  bool tsVisitChildren(TNode n, bool gateCtx, std::vector<ExprBoolPair>& todo);
   bool shouldInternalizeRec(TNode e) const;
   void topSortExpr(const Node* exprs,
                    size_t numExprs,
@@ -1133,10 +1100,7 @@ class SmtContext : protected EnvObj
   void mkImpliesCnstr(TNode n);
   void mkIffCnstr(TNode n, bool sign);
   void mkIteCnstr(TNode n);
-  bool trackOccs() const
-  {
-    return d_params.d_phaseSelection == PS_OCCURRENCE;
-  }
+  bool trackOccs() const { return d_params.d_phaseSelection == PS_OCCURRENCE; }
   void decRef(Literal l);
   void incRef(Literal l);
   void removeLitOccs(const Clause& cls, size_t numBoolVars);

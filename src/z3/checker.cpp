@@ -34,11 +34,6 @@ bool isTrueNode(TNode n)
   return n.getKind() == Kind::CONST_BOOLEAN && n.getConst<bool>();
 }
 
-bool isFalseNode(TNode n)
-{
-  return n.getKind() == Kind::CONST_BOOLEAN && !n.getConst<bool>();
-}
-
 }  // namespace
 
 Checker::Checker(SmtContext& c)
@@ -126,8 +121,7 @@ bool Checker::checkCore(TNode n, size_t depth, bool isTrue)
                    && check(n[1], depth + 1, false));
       }
       return (check(n[0], depth + 1, true) && check(n[1], depth + 1, false))
-             || (check(n[0], depth + 1, false)
-                 && check(n[1], depth + 1, true));
+             || (check(n[0], depth + 1, false) && check(n[1], depth + 1, true));
     case Kind::XOR:
       if (isTrue)
       {
@@ -149,8 +143,7 @@ bool Checker::checkCore(TNode n, size_t depth, bool isTrue)
           case L_TRUE: return check(n[1], depth + 1, isTrue);
         }
       }
-      return check(n[1], depth + 1, isTrue)
-             && check(n[2], depth + 1, isTrue);
+      return check(n[1], depth + 1, isTrue) && check(n[2], depth + 1, isTrue);
     }
     default: break;
   }
@@ -189,8 +182,8 @@ ENode* Checker::getENodeEqToCore(TNode n)
     }
     buffer.push_back(arg);
   }
-  ENode* e = d_context.getENodeEqTo(
-      getDecl(n), isCommutative(n), num, buffer.data());
+  ENode* e =
+      d_context.getENodeEqTo(getDecl(n), isCommutative(n), num, buffer.data());
   if (e == nullptr)
   {
     return nullptr;

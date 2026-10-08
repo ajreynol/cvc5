@@ -15,9 +15,9 @@
 namespace cvc5::internal {
 namespace z3 {
 
-Theory* mkTheoryArithBridge(SmtContext& ctx) { return nullptr; }
+Theory* mkTheoryArithBridge(SmtContext& /*ctx*/) { return nullptr; }
 
-Theory* mkTheoryBvBridge(SmtContext& ctx) { return nullptr; }
+Theory* mkTheoryBvBridge(SmtContext& /*ctx*/) { return nullptr; }
 
 }  // namespace z3
 }  // namespace cvc5::internal

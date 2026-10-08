@@ -40,12 +40,12 @@ class CaseSplitQueue
   virtual void activityDecreasedEh(BoolVar v) = 0;
   virtual void mkVarEh(BoolVar v) = 0;
   virtual void delVarEh(BoolVar v) = 0;
-  virtual void assignLitEh(Literal l) {}
+  virtual void assignLitEh(Literal /*l*/) {}
   virtual void unassignVarEh(BoolVar v) = 0;
   virtual void relevantEh(TNode n) = 0;
   virtual void initSearchEh() = 0;
   virtual void endSearchEh() = 0;
-  virtual void internalizeInstanceEh(TNode e, uint32_t gen) {}
+  virtual void internalizeInstanceEh(TNode /*e*/, uint32_t /*gen*/) {}
   virtual void reset() = 0;
   virtual void pushScope() = 0;
   virtual void popScope(size_t numScopes) = 0;
@@ -57,9 +57,9 @@ class CaseSplitQueue
   virtual void print(std::ostream& out) = 0;
 
   /** A theory-aware branching hint. */
-  virtual void addTheoryAwareBranchingInfo(BoolVar v,
-                                           double priority,
-                                           LBool phase)
+  virtual void addTheoryAwareBranchingInfo(BoolVar /*v*/,
+                                           double /*priority*/,
+                                           LBool /*phase*/)
   {
   }
 };

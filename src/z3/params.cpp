@@ -93,8 +93,8 @@ void Params::initialize(const Options& opts)
   d_qiMaxEagerMultipatterns =
       static_cast<uint32_t>(opts.z3.z3QiMaxMultiPatterns);
   uint64_t maxInst = opts.z3.z3QiMaxInstances;
-  d_qiMaxInstances = maxInst > UINT_MAX ? UINT_MAX
-                                        : static_cast<uint32_t>(maxInst);
+  d_qiMaxInstances =
+      maxInst > UINT32_MAX ? UINT32_MAX : static_cast<uint32_t>(maxInst);
 }
 
 }  // namespace z3

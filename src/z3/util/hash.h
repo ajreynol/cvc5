@@ -30,15 +30,33 @@ namespace z3 {
 /** Bob Jenkins' 96-bit mixing step. */
 inline void hashMix(uint32_t& a, uint32_t& b, uint32_t& c)
 {
-  a -= b; a -= c; a ^= (c >> 13);
-  b -= c; b -= a; b ^= (a << 8);
-  c -= a; c -= b; c ^= (b >> 13);
-  a -= b; a -= c; a ^= (c >> 12);
-  b -= c; b -= a; b ^= (a << 16);
-  c -= a; c -= b; c ^= (b >> 5);
-  a -= b; a -= c; a ^= (c >> 3);
-  b -= c; b -= a; b ^= (a << 10);
-  c -= a; c -= b; c ^= (b >> 15);
+  a -= b;
+  a -= c;
+  a ^= (c >> 13);
+  b -= c;
+  b -= a;
+  b ^= (a << 8);
+  c -= a;
+  c -= b;
+  c ^= (b >> 13);
+  a -= b;
+  a -= c;
+  a ^= (c >> 12);
+  b -= c;
+  b -= a;
+  b ^= (a << 16);
+  c -= a;
+  c -= b;
+  c ^= (b >> 5);
+  a -= b;
+  a -= c;
+  a ^= (c >> 3);
+  b -= c;
+  b -= a;
+  b ^= (a << 10);
+  c -= a;
+  c -= b;
+  c ^= (b >> 15);
 }
 
 /** Thomas Wang's 32-bit integer hash. */
@@ -121,9 +139,7 @@ uint32_t getCompositeHash(Composite app,
       a += kindHash;
       switch (n)
       {
-        case 2:
-          b += chasher(app, 1);
-          CVC5_FALLTHROUGH;
+        case 2: b += chasher(app, 1); CVC5_FALLTHROUGH;
         case 1: c += chasher(app, 0);
       }
       hashMix(a, b, c);

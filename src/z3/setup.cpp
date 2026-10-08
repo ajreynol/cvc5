@@ -110,8 +110,7 @@ void StaticFeatures::collect(TNode n, std::unordered_set<Node>& visited)
       case Kind::POW2: d_numNonLinear++; break;
       default: break;
     }
-    if (cur.getNumChildren() == 0 && cur.isVar()
-        && tn.isUninterpretedSort())
+    if (cur.getNumChildren() == 0 && cur.isVar() && tn.isUninterpretedSort())
     {
       d_hasUf = true;
     }
@@ -226,7 +225,7 @@ void Setup::setupQfUf()
   d_params.d_randomInitialActivity = IA_RANDOM;
 }
 
-void Setup::setupAuflia(bool simpleArray)
+void Setup::setupAuflia(bool /*simpleArray*/)
 {
   d_params.d_phaseSelection = PS_ALWAYS_FALSE;
   d_params.d_restartStrategy = RS_GEOMETRIC;
@@ -240,11 +239,10 @@ void Setup::setupAuflia(bool simpleArray)
 
 void Setup::setupAuflia(const StaticFeatures& st)
 {
-  d_params.d_qiEagerThreshold =
-      st.d_numQuantifiersWithPatterns == 0 ? 5 : 7;
+  d_params.d_qiEagerThreshold = st.d_numQuantifiersWithPatterns == 0 ? 5 : 7;
 }
 
-void Setup::setupAuflira(bool simpleArray)
+void Setup::setupAuflira(bool /*simpleArray*/)
 {
   d_params.d_phaseSelection = PS_ALWAYS_FALSE;
   d_params.d_qiQuickChecker = MC_UNSAT;

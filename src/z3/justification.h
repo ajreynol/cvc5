@@ -61,7 +61,7 @@ class Justification
    * Mark the antecedents of this justification, using the mark methods of the
    * conflict resolution object.
    */
-  virtual void getAntecedents(ConflictResolution& cr) {}
+  virtual void getAntecedents(ConflictResolution& /*cr*/) {}
 
   /** The theory that produced this object. */
   virtual TheoryId getFromTheory() const { return s_nullTheoryId; }
@@ -169,9 +169,7 @@ class EqRootPropagationJustification : public Justification
 class EqPropagationJustification : public Justification
 {
  public:
-  EqPropagationJustification(ENode* n1, ENode* n2) : d_node1(n1), d_node2(n2)
-  {
-  }
+  EqPropagationJustification(ENode* n1, ENode* n2) : d_node1(n1), d_node2(n2) {}
 
   void getAntecedents(ConflictResolution& cr) override;
 
@@ -242,7 +240,7 @@ class TheoryAxiomJustification : public SimpleTheoryJustification
   {
   }
 
-  void getAntecedents(ConflictResolution& cr) override {}
+  void getAntecedents(ConflictResolution& /*cr*/) override {}
 
   const char* getName() const override { return "theory-axiom"; }
 };
@@ -355,8 +353,7 @@ class ExtTheoryConflictJustification : public ExtTheorySimpleJustification
   const char* getName() const override { return "ext-theory-conflict"; }
 };
 
-class ExtTheoryEqPropagationJustification
-    : public ExtTheorySimpleJustification
+class ExtTheoryEqPropagationJustification : public ExtTheorySimpleJustification
 {
  public:
   ExtTheoryEqPropagationJustification(TheoryId fid,
@@ -383,10 +380,7 @@ class ExtTheoryEqPropagationJustification
   {
   }
 
-  const char* getName() const override
-  {
-    return "ext-theory-eq-propagation";
-  }
+  const char* getName() const override { return "ext-theory-eq-propagation"; }
 
  private:
   ENode* d_lhs;
@@ -404,7 +398,7 @@ class TheoryLemmaJustification : public Justification
  public:
   TheoryLemmaJustification(TheoryId fid) : Justification(false), d_thId(fid) {}
 
-  void getAntecedents(ConflictResolution& cr) override {}
+  void getAntecedents(ConflictResolution& /*cr*/) override {}
 
   TheoryId getFromTheory() const override { return d_thId; }
 

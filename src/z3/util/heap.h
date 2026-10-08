@@ -241,10 +241,10 @@ class Heap : private LT
         break;
       }
       int rightIdx = right(idx);
-      int minIdx = rightIdx < sz
-                           && lessThan(d_values[rightIdx], d_values[leftIdx])
-                       ? rightIdx
-                       : leftIdx;
+      int minIdx =
+          rightIdx < sz && lessThan(d_values[rightIdx], d_values[leftIdx])
+              ? rightIdx
+              : leftIdx;
       int minValue = d_values[minIdx];
       if (!lessThan(minValue, val))
       {

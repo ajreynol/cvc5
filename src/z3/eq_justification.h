@@ -53,8 +53,8 @@ class EqJustification
    * this is the combined justification commutativity + congruence.
    */
   explicit EqJustification(bool commutativity)
-      : d_data(TaggedPtr::boxInt(static_cast<uint32_t>(commutativity),
-                                 CONGRUENCE))
+      : d_data(
+            TaggedPtr::boxInt(static_cast<uint32_t>(commutativity), CONGRUENCE))
   {
   }
 

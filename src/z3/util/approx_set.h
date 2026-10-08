@@ -235,7 +235,10 @@ class ApproxSet : public UApproxSet
   static iterator end() { return iterator(0); }
 
   /** The number of bits set. */
-  uint32_t size() const { return static_cast<uint32_t>(__builtin_popcountll(d_set)); }
+  uint32_t size() const
+  {
+    return static_cast<uint32_t>(__builtin_popcountll(d_set));
+  }
 
   void print(std::ostream& out) const;
 

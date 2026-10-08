@@ -124,6 +124,7 @@ void getNoPatterns(TNode q, std::vector<Node>& noPatterns)
 
 uint32_t getWeight(TNode q)
 {
+  (void)q;
   Assert(isQuantifier(q));
   // cvc5's parser does not retain ":weight", so this is always Z3's default.
   // If weights are ever needed, they would be surfaced here.

@@ -288,8 +288,8 @@ void DynAckManager::propagateEh()
     gc();
     d_numPropagationsSinceLastGc = 0;
   }
-  size_t maxInstances = static_cast<size_t>(d_context.getNumConflicts()
-                                            * d_params.d_dackFactor);
+  size_t maxInstances =
+      static_cast<size_t>(d_context.getNumConflicts() * d_params.d_dackFactor);
   while (d_numInstances < maxInstances && d_qhead < d_toInstantiate.size())
   {
     AppPair p = d_toInstantiate[d_qhead];

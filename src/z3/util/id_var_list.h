@@ -37,8 +37,7 @@ class IdVarList
  public:
   IdVarList() : d_id(nullId), d_var(nullVar), d_next(nullptr) {}
 
-  IdVarList(int t, int v, IdVarList* n = nullptr)
-      : d_id(t), d_var(v), d_next(n)
+  IdVarList(int t, int v, IdVarList* n = nullptr) : d_id(t), d_var(v), d_next(n)
   {
   }
 

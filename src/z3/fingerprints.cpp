@@ -30,8 +30,8 @@ Fingerprint::Fingerprint(
   std::memcpy(d_args, args, sizeof(ENode*) * n);
 }
 
-bool FingerprintSet::FingerprintEqProc::operator()(
-    const Fingerprint* f1, const Fingerprint* f2) const
+bool FingerprintSet::FingerprintEqProc::operator()(const Fingerprint* f1,
+                                                   const Fingerprint* f2) const
 {
   if (f1->getData() != f2->getData())
   {
@@ -187,7 +187,7 @@ void FingerprintSet::print(std::ostream& out) const
 }
 
 bool FingerprintSet::slowContains(uint64_t data,
-                                  uint32_t dataHash,
+                                  uint32_t /*dataHash*/,
                                   size_t numArgs,
                                   ENode* const* args) const
 {

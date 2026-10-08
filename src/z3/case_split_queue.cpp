@@ -132,7 +132,7 @@ class ActCaseSplitQueue : public CaseSplitQueue
     }
   }
 
-  void relevantEh(TNode n) override {}
+  void relevantEh(TNode /*n*/) override {}
 
   void initSearchEh() override {}
 
@@ -142,7 +142,7 @@ class ActCaseSplitQueue : public CaseSplitQueue
 
   void pushScope() override {}
 
-  void popScope(size_t numScopes) override {}
+  void popScope(size_t /*numScopes*/) override {}
 
   void nextCaseSplit(BoolVar& next, LBool& phase) override
   {
@@ -345,11 +345,8 @@ class CactCaseSplitQueue : public ActCaseSplitQueue
  * unassigned child to branch on. The choice among unassigned children follows
  * d_relCaseSplitOrder: 0 takes the first, 1 picks one at random.
  */
-bool hasChildAssignedTo(SmtContext& ctx,
-                        TNode parent,
-                        LBool val,
-                        TNode& undefChild,
-                        uint32_t order)
+bool hasChildAssignedTo(
+    SmtContext& ctx, TNode parent, LBool val, TNode& undefChild, uint32_t order)
 {
   std::vector<Node> undefChildren;
   bool foundUndef = false;
@@ -387,8 +384,7 @@ bool hasChildAssignedTo(SmtContext& ctx,
     }
     else if (undefChildren.size() > 1)
     {
-      undefChild =
-          undefChildren[ctx.getRandomValue() % undefChildren.size()];
+      undefChild = undefChildren[ctx.getRandomValue() % undefChildren.size()];
     }
   }
   return false;
@@ -421,15 +417,15 @@ class RelCaseSplitQueue : public CaseSplitQueue
   {
   }
 
-  void activityIncreasedEh(BoolVar v) override {}
+  void activityIncreasedEh(BoolVar /*v*/) override {}
 
-  void activityDecreasedEh(BoolVar v) override {}
+  void activityDecreasedEh(BoolVar /*v*/) override {}
 
-  void mkVarEh(BoolVar v) override {}
+  void mkVarEh(BoolVar /*v*/) override {}
 
-  void delVarEh(BoolVar v) override {}
+  void delVarEh(BoolVar /*v*/) override {}
 
-  void unassignVarEh(BoolVar v) override {}
+  void unassignVarEh(BoolVar /*v*/) override {}
 
   void relevantEh(TNode n) override
   {
@@ -450,9 +446,9 @@ class RelCaseSplitQueue : public CaseSplitQueue
       Assert(var != s_nullBoolVar);
       bool isAnd = n.getKind() == Kind::AND;
       LBool val = d_context.getAssignment(var);
-      if (!(val == L_UNDEF ||              // n was not assigned yet
-            (isOr && val == L_TRUE) ||     // need to justify a child
-            (isAnd && val == L_FALSE)))    // need to justify a child
+      if (!(val == L_UNDEF ||            // n was not assigned yet
+            (isOr && val == L_TRUE) ||   // need to justify a child
+            (isAnd && val == L_FALSE)))  // need to justify a child
       {
         return;
       }
@@ -491,8 +487,7 @@ class RelCaseSplitQueue : public CaseSplitQueue
 
   void pushScope() override
   {
-    d_scopes.push_back(
-        Scope{d_queue.size(), d_head, d_queue2.size(), d_head2});
+    d_scopes.push_back(Scope{d_queue.size(), d_head, d_queue2.size(), d_head2});
   }
 
   void popScope(size_t numScopes) override
@@ -645,9 +640,9 @@ class RelActCaseSplitQueue : public CaseSplitQueue
   {
   }
 
-  void activityIncreasedEh(BoolVar v) override {}
+  void activityIncreasedEh(BoolVar /*v*/) override {}
 
-  void activityDecreasedEh(BoolVar v) override {}
+  void activityDecreasedEh(BoolVar /*v*/) override {}
 
   void mkVarEh(BoolVar v) override
   {
@@ -859,8 +854,7 @@ class TheoryAwareBranchingQueue : public CaseSplitQueue
       : d_context(ctx),
         d_params(p),
         d_queue(1024,
-                TheoryAwareActLt(ctx.getActivityVector(),
-                                 d_theoryVarPriority))
+                TheoryAwareActLt(ctx.getActivityVector(), d_theoryVarPriority))
   {
   }
 
@@ -902,7 +896,7 @@ class TheoryAwareBranchingQueue : public CaseSplitQueue
     }
   }
 
-  void relevantEh(TNode n) override {}
+  void relevantEh(TNode /*n*/) override {}
 
   void initSearchEh() override {}
 
@@ -912,7 +906,7 @@ class TheoryAwareBranchingQueue : public CaseSplitQueue
 
   void pushScope() override {}
 
-  void popScope(size_t numScopes) override {}
+  void popScope(size_t /*numScopes*/) override {}
 
   void nextCaseSplit(BoolVar& next, LBool& phase) override
   {

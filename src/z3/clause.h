@@ -51,10 +51,7 @@ enum ClauseKind
   CLS_TH_LEMMA
 };
 
-inline bool isAxiom(ClauseKind k)
-{
-  return k == CLS_AUX || k == CLS_TH_AXIOM;
-}
+inline bool isAxiom(ClauseKind k) { return k == CLS_AUX || k == CLS_TH_AXIOM; }
 
 inline bool isLemma(ClauseKind k)
 {
@@ -165,7 +162,10 @@ class Clause
     return d_hasJustification ? *getJustificationAddr() : nullptr;
   }
 
-  size_t getNumAtoms() const { return d_reinternalizeAtoms ? d_numLiterals : 0; }
+  size_t getNumAtoms() const
+  {
+    return d_reinternalizeAtoms ? d_numLiterals : 0;
+  }
 
   TNode getAtom(size_t idx) const
   {
@@ -264,8 +264,8 @@ class Clause
 
   const Literal* litsPtr() const
   {
-    return reinterpret_cast<const Literal*>(
-        reinterpret_cast<const char*>(this) + sizeof(Clause));
+    return reinterpret_cast<const Literal*>(reinterpret_cast<const char*>(this)
+                                            + sizeof(Clause));
   }
 
   const uint32_t* getActivityAddr() const
@@ -312,8 +312,7 @@ class Clause
     {
       addr++;
     }
-    return reinterpret_cast<AtomEntry*>(
-        const_cast<Justification**>(addr));
+    return reinterpret_cast<AtomEntry*>(const_cast<Justification**>(addr));
   }
 
   friend class SmtContext;

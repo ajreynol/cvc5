@@ -271,8 +271,7 @@ uint32_t ConflictResolution::getMaxLvl(Literal consequent, BJustification js)
   return r;
 }
 
-void ConflictResolution::processAntecedent(Literal antecedent,
-                                           size_t& numMarks)
+void ConflictResolution::processAntecedent(Literal antecedent, size_t& numMarks)
 {
   BoolVar var = antecedent.var();
   uint32_t lvl = d_ctx.getAssignLevel(var);
@@ -304,7 +303,7 @@ void ConflictResolution::processAntecedent(Literal antecedent,
   }
 }
 
-void ConflictResolution::processJustification(Literal consequent,
+void ConflictResolution::processJustification(Literal /*consequent*/,
                                               Justification* js,
                                               size_t& numMarks)
 {
@@ -372,8 +371,7 @@ bool ConflictResolution::initializeResolve(BJustification conflict,
   return true;
 }
 
-void ConflictResolution::finalizeResolve(BJustification conflict,
-                                         Literal notL)
+void ConflictResolution::finalizeResolve(BJustification /*conflict*/, Literal /*notL*/)
 {
   unmarkJustifications(0);
 
@@ -557,8 +555,7 @@ bool ConflictResolution::processAntecedentForMinimization(Literal antecedent)
   return true;
 }
 
-bool ConflictResolution::processJustificationForMinimization(
-    Justification* js)
+bool ConflictResolution::processJustificationForMinimization(Justification* js)
 {
   LiteralVector& antecedents = d_tmpLiteralVector;
   antecedents.clear();
@@ -826,12 +823,11 @@ void ConflictResolution::mkUnsatCore(BJustification conflict, Literal notL)
   resetUnmarkAndJustifications(0, 0);
 }
 
-ConflictResolution* mkConflictResolution(
-    SmtContext& ctx,
-    DynAckManager& dackManager,
-    const Params& params,
-    const LiteralVector& assignedLiterals,
-    std::vector<WatchList>& watches)
+ConflictResolution* mkConflictResolution(SmtContext& ctx,
+                                         DynAckManager& dackManager,
+                                         const Params& params,
+                                         const LiteralVector& assignedLiterals,
+                                         std::vector<WatchList>& watches)
 {
   return new ConflictResolution(
       ctx, dackManager, params, assignedLiterals, watches);

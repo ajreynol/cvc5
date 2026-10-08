@@ -39,11 +39,8 @@ class FingerprintSet;
 class Fingerprint
 {
  public:
-  Fingerprint(Region& r,
-              uint64_t d,
-              uint32_t dHash,
-              size_t n,
-              ENode* const* args);
+  Fingerprint(
+      Region& r, uint64_t d, uint32_t dHash, size_t n, ENode* const* args);
 
   uint64_t getData() const { return d_data; }
   uint32_t getDataHash() const { return d_dataHash; }
@@ -81,9 +78,8 @@ class FingerprintSet
     bool operator()(const Fingerprint* f1, const Fingerprint* f2) const;
   };
 
-  using Set = std::unordered_set<Fingerprint*,
-                                 FingerprintHashProc,
-                                 FingerprintEqProc>;
+  using Set =
+      std::unordered_set<Fingerprint*, FingerprintHashProc, FingerprintEqProc>;
 
  public:
   FingerprintSet(Region& r) : d_region(r) {}

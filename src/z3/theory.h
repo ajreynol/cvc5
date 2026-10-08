@@ -101,10 +101,7 @@ class Theory
     return r;
   }
 
-  bool isRepresentative(TheoryVar v) const
-  {
-    return getRepresentative(v) == v;
-  }
+  bool isRepresentative(TheoryVar v) const { return getRepresentative(v) == v; }
 
   size_t getNumVars() const { return d_var2ENode.size(); }
 
@@ -124,14 +121,14 @@ class Theory
    * Invoked when a theory atom is used during conflict resolution, which lets
    * the theory bump the activity of the enodes in the atom.
    */
-  virtual void conflictResolutionEh(TNode atom, BoolVar v) {}
+  virtual void conflictResolutionEh(TNode /*atom*/, BoolVar /*v*/) {}
 
   // ----------------------------------------------- model generation
   /** True if the theory supports model construction. */
   virtual bool buildModels() const { return true; }
 
   /** The value of n in the current model, if the theory can produce one. */
-  virtual bool getValue(ENode* n, Node& r) { return false; }
+  virtual bool getValue(ENode* /*n*/, Node& /*r*/) { return false; }
 
  protected:
   virtual TheoryVar mkVar(ENode* n)
@@ -167,7 +164,7 @@ class Theory
   virtual bool internalizeAtom(TNode atom, bool gateCtx) = 0;
 
   /** Invoked after the given equality atom is internalized. */
-  virtual void internalizeEqEh(TNode atom, BoolVar v) {}
+  virtual void internalizeEqEh(TNode /*atom*/, BoolVar /*v*/) {}
 
   /**
    * Invoked by the core when a term is being internalized. The theory may
@@ -178,13 +175,13 @@ class Theory
   virtual bool internalizeTerm(TNode term) = 0;
 
   /** Apply the (interpreted) sort constraints of s to the given enode. */
-  virtual void applySortCnstr(ENode* n, const TypeNode& s) {}
+  virtual void applySortCnstr(ENode* /*n*/, const TypeNode& /*s*/) {}
 
   /** Invoked when a truth value is assigned to the given Boolean variable. */
-  virtual void assignEh(BoolVar v, bool isTrue) {}
+  virtual void assignEh(BoolVar /*v*/, bool /*isTrue*/) {}
 
   /** Let the theory determine the phase of a variable. */
-  virtual LBool getPhase(BoolVar v) { return L_UNDEF; }
+  virtual LBool getPhase(BoolVar /*v*/) { return L_UNDEF; }
 
   /** Equality propagation (v1 = v2): core to theory. */
   virtual void newEqEh(TheoryVar v1, TheoryVar v2) = 0;
@@ -196,7 +193,7 @@ class Theory
   virtual void newDiseqEh(TheoryVar v1, TheoryVar v2) = 0;
 
   /** Invoked when the theory application n is marked as relevant. */
-  virtual void relevantEh(TNode n) {}
+  virtual void relevantEh(TNode /*n*/) {}
 
   /** Invoked when a new backtracking point is created. */
   virtual void pushScopeEh();
@@ -214,7 +211,7 @@ class Theory
    * Invoked when the core has assigned a truth value to every Boolean
    * variable without detecting an inconsistency.
    */
-  virtual FinalCheckStatus finalCheckEh(size_t level) { return FC_DONE; }
+  virtual FinalCheckStatus finalCheckEh(size_t /*level*/) { return FC_DONE; }
 
   /**
    * The number of priority levels this theory supports for final checks. The
@@ -227,10 +224,10 @@ class Theory
    * Parametric theories (e.g. arrays) should implement this; see
    * SmtContext::isShared.
    */
-  virtual bool isShared(TheoryVar v) const { return false; }
+  virtual bool isShared(TheoryVar /*v*/) const { return false; }
 
   /** True if n under parent p is in a beta redex position. */
-  virtual bool isBetaRedex(ENode* p, ENode* n) const { return false; }
+  virtual bool isBetaRedex(ENode* /*p*/, ENode* /*n*/) const { return false; }
 
   /** True if the theory has something to propagate. */
   virtual bool canPropagate() { return false; }
@@ -239,7 +236,7 @@ class Theory
   virtual void propagate() {}
 
   /** Let a theory contribute to disequality propagation. */
-  virtual Justification* whyIsDiseq(TheoryVar v1, TheoryVar v2)
+  virtual Justification* whyIsDiseq(TheoryVar /*v1*/, TheoryVar /*v2*/)
   {
     return nullptr;
   }

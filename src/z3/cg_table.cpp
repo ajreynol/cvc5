@@ -87,10 +87,9 @@ CgTable::Table CgTable::mkTableFor(ENode* n)
     case 2:
       if (n->isCommutative())
       {
-        return Table{BINARY_COMM,
-                     new CommTable(0,
-                                   CgCommHash(),
-                                   CgCommEq(&d_commutativity))};
+        return Table{
+            BINARY_COMM,
+            new CommTable(0, CgCommHash(), CgCommEq(&d_commutativity))};
       }
       return Table{BINARY, new BinaryTable()};
     default: return Table{NARY, new NaryTable()};
@@ -288,6 +287,7 @@ void CgTable::print(std::ostream& out) const
 
 bool CgTable::checkInvariant() const
 {
+#ifdef CVC5_ASSERTIONS
   for (const Table& t : d_tables)
   {
     switch (t.d_kind)
@@ -318,6 +318,7 @@ bool CgTable::checkInvariant() const
         break;
     }
   }
+#endif
   return true;
 }
 

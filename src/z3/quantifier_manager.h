@@ -158,7 +158,7 @@ class QuantifierManagerPlugin
   virtual bool modelBased() const = 0;
 
   /** True if model based instantiation may instantiate q. */
-  virtual bool mbqiEnabled(TNode q) const { return true; }
+  virtual bool mbqiEnabled(TNode /*q*/) const { return true; }
 
   /**
    * The core invokes this to check whether the candidate model satisfies the

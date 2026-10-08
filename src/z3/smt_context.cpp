@@ -235,7 +235,7 @@ Node SmtContext::mkEqAtom(TNode lhs, TNode rhs)
   return nodeManager()->mkNode(Kind::EQUAL, lhs, rhs);
 }
 
-void SmtContext::setJustification(BoolVar v,
+void SmtContext::setJustification(BoolVar /*v*/,
                                   BoolVarData& d,
                                   const BJustification& j)
 {
@@ -269,8 +269,7 @@ void SmtContext::assignCore(Literal l, BJustification j, bool decision)
   d.d_phase = newPhase;
 
   if (d.isAtom()
-      && (relevancyLvl() == 0
-          || (relevancyLvl() == 1 && !d.isQuantifier())
+      && (relevancyLvl() == 0 || (relevancyLvl() == 1 && !d.isQuantifier())
           || isRelevantCore(l)))
   {
     d_atomPropagationQueue.push_back(l);
@@ -784,8 +783,8 @@ void SmtContext::mergeTheoryVars(ENode* n2, ENode* n1, EqJustification js)
         d_params.d_newCore2ThEq ? getClosestVar(n2, t2) : l2->getVar();
     Assert(v2 != s_nullTheoryVar);
     Assert(t2 != s_nullTheoryId);
-    TheoryVar v1 = d_params.d_newCore2ThEq ? getClosestVar(n1, t2)
-                                           : r1->getThVar(t2);
+    TheoryVar v1 =
+        d_params.d_newCore2ThEq ? getClosestVar(n1, t2) : r1->getThVar(t2);
 
     if (v1 != s_nullTheoryVar)
     {
@@ -864,8 +863,7 @@ void SmtContext::propagateBoolENodeAssignment(ENode* r1,
   }
 }
 
-void SmtContext::propagateBoolENodeAssignmentCore(ENode* source,
-                                                  ENode* target)
+void SmtContext::propagateBoolENodeAssignmentCore(ENode* source, ENode* target)
 {
   // source and target are Boolean enodes that were proved equal, and the
   // variable of source is assigned; copy the assignment across the class.
@@ -948,7 +946,7 @@ void SmtContext::undoAddEq(ENode* r1, ENode* n1, size_t r2NumParents)
     }
     ENode* cg = parent->d_cg;
     if (parent->isTrueEq()
-        || !(parent == cg            // root of its class before and after
+        || !(parent == cg                 // root of its class before and after
              || !congruent(parent, cg)))  // root before but not after
     {
       continue;
@@ -1062,6 +1060,9 @@ void SmtContext::applyStickyUpdates(ENode* e1,
 void SmtContext::restoreTheoryVars(ENode* r2, ENode* r1)
 {
   // Delete any theory variable v2 of r2 that is no longer equivalent to r2.
+  // Any such variable must instead be equivalent to r1, which is what the
+  // assertion below checks.
+  (void)r1;
   Assert(r2->getRoot() == r2);
   TheoryVarList* newL2 = nullptr;
   TheoryVarList* l2 = r2->getThVarListPtr();
@@ -1127,8 +1128,7 @@ bool SmtContext::addDiseq(ENode* n1, ENode* n2)
                                            : r1->d_thVarList.getVar();
     TheoryVar v2 = d_params.d_newCore2ThEq ? getClosestVar(n2, t1)
                                            : r2->d_thVarList.getVar();
-    if (t1 != s_nullTheoryId && v1 != s_nullTheoryVar
-        && v2 != s_nullTheoryVar
+    if (t1 != s_nullTheoryId && v1 != s_nullTheoryVar && v2 != s_nullTheoryVar
         && t1 == static_cast<TheoryId>(r2->d_thVarList.getId()))
     {
       if (getTheory(t1)->useDiseqs())
@@ -1148,8 +1148,8 @@ bool SmtContext::addDiseq(ENode* n1, ENode* n2)
       Theory* th = getTheory(t1);
       if (th->useDiseqs())
       {
-        TheoryVar v2 = d_params.d_newCore2ThEq ? getClosestVar(n2, t1)
-                                               : r2->getThVar(t1);
+        TheoryVar v2 =
+            d_params.d_newCore2ThEq ? getClosestVar(n2, t1) : r2->getThVar(t1);
         if (v2 != s_nullTheoryVar)
         {
           pushNewThDiseq(t1, v1, v2);
@@ -1193,8 +1193,8 @@ bool SmtContext::isDiseqCore(ENode* n1,
     {
       ENode::delDummy(self->d_isDiseqTmp);
     }
-    self->d_isDiseqTmpExpr = nodeManager()->mkNode(
-        Kind::EQUAL, n1->getExpr(), n2->getExpr());
+    self->d_isDiseqTmpExpr =
+        nodeManager()->mkNode(Kind::EQUAL, n1->getExpr(), n2->getExpr());
     // The dummy enode's arguments are overwritten below, so the enodes of the
     // arguments do not need to be internalized.
     self->d_isDiseqTmp = ENode::mkDummy(d_app2ENode, self->d_isDiseqTmpExpr);
@@ -1324,7 +1324,6 @@ void SmtContext::setGeneration(ENode* e, uint32_t generation)
   cgr->d_generation = generation;
 }
 
-
 bool SmtContext::propagateEqs()
 {
   size_t i = 0;
@@ -1345,9 +1344,7 @@ bool SmtContext::propagateEqs()
 bool SmtContext::propagateAtoms()
 {
   Assert(!inconsistent());
-  for (size_t i = 0;
-       i < d_atomPropagationQueue.size() && !getCancelFlag();
-       ++i)
+  for (size_t i = 0; i < d_atomPropagationQueue.size() && !getCancelFlag(); ++i)
   {
     Assert(!inconsistent());
     Literal l = d_atomPropagationQueue[i];
@@ -1382,10 +1379,9 @@ bool SmtContext::propagateAtoms()
         if (!addDiseq(getENode(lhs), getENode(rhs)) && !inconsistent())
         {
           Literal nEq = Literal(l.var(), true);
-          setConflict(
-              BJustification(mkJustification(
-                  EqPropagationJustification(getENode(lhs), getENode(rhs)))),
-              nEq);
+          setConflict(BJustification(mkJustification(EqPropagationJustification(
+                          getENode(lhs), getENode(rhs)))),
+                      nEq);
         }
       }
     }
@@ -1468,8 +1464,7 @@ void SmtContext::propagateBoolVarENode(BoolVar v)
   }
   // Move the truth value to the other members of the equivalence class if
   // n is the root, or the variable of the root is unassigned.
-  if (n == r
-      || !isRelevant(r)  // needed to fix a propagation bug
+  if (n == r || !isRelevant(r)  // needed to fix a propagation bug
       || getAssignment(enode2BoolVar(r)) != val)
   {
     ENode* first = n;
@@ -1728,8 +1723,7 @@ bool SmtContext::propagateTheories()
 
 void SmtContext::propagateThEqs()
 {
-  for (size_t i = 0; i < d_thEqPropagationQueue.size() && !inconsistent();
-       ++i)
+  for (size_t i = 0; i < d_thEqPropagationQueue.size() && !inconsistent(); ++i)
   {
     NewThEq curr = d_thEqPropagationQueue[i];
     Theory* th = getTheory(curr.d_thId);
@@ -1741,8 +1735,7 @@ void SmtContext::propagateThEqs()
 
 void SmtContext::propagateThDiseqs()
 {
-  for (size_t i = 0;
-       i < d_thDiseqPropagationQueue.size() && !inconsistent();
+  for (size_t i = 0; i < d_thDiseqPropagationQueue.size() && !inconsistent();
        ++i)
   {
     NewThEq curr = d_thDiseqPropagationQueue[i];
@@ -1851,10 +1844,8 @@ bool SmtContext::containsInstance(TNode q,
                                   size_t numBindings,
                                   ENode* const* bindings)
 {
-  return d_fingerprints.contains(q.getId(),
-                                 static_cast<uint32_t>(q.getId()),
-                                 numBindings,
-                                 bindings);
+  return d_fingerprints.contains(
+      q.getId(), static_cast<uint32_t>(q.getId()), numBindings, bindings);
 }
 
 bool SmtContext::addInstance(TNode q,
@@ -1954,8 +1945,7 @@ bool SmtContext::guess(BoolVar var, LBool phase)
     case PS_ALWAYS_FALSE: return false;
     case PS_ALWAYS_TRUE: return true;
     case PS_RANDOM: return d_random() % 2 == 0;
-    case PS_OCCURRENCE:
-      return d_litOccs[l.index()] > d_litOccs[(~l).index()];
+    case PS_OCCURRENCE: return d_litOccs[l.index()] > d_litOccs[(~l).index()];
   }
   Unreachable();
   return false;
@@ -2402,8 +2392,7 @@ void SmtContext::reinitClauses(size_t numScopes, size_t numBoolVars)
           bool gateCtx = atom.getKind() != Kind::NOT;
           internalize(atom, gateCtx);
           Assert(bInternalized(atom));
-          BoolVar v = getBoolVar(atom);
-          Literal l(v, sign);
+          Literal l(getBoolVar(atom), sign);
           cls->setLiteral(j, l);
           if (cls->getKind() == CLS_TH_LEMMA)
           {
@@ -2446,8 +2435,8 @@ void SmtContext::reinitClauses(size_t numScopes, size_t numBoolVars)
           setConflict(BJustification(cls));
           keep = true;
         }
-        else if (getAssignment(l2) == L_FALSE
-                 && getAssignment(l1) == L_UNDEF && isUnitClause(cls))
+        else if (getAssignment(l2) == L_FALSE && getAssignment(l1) == L_UNDEF
+                 && isUnitClause(cls))
         {
           assign(l1, BJustification(cls));
           keep = true;
@@ -2764,8 +2753,7 @@ void SmtContext::delInactiveLemmas1()
 {
   // Delete (approximately) half of the low activity lemmas.
   size_t sz = d_lemmas.size();
-  size_t startAt =
-      d_baseLvl == 0 ? 0 : d_baseScopes[d_baseLvl - 1].d_lemmasLim;
+  size_t startAt = d_baseLvl == 0 ? 0 : d_baseScopes[d_baseLvl - 1].d_lemmasLim;
   Assert(startAt <= sz);
   if (startAt + d_params.d_recentLemmasSize >= sz)
   {
@@ -2773,9 +2761,8 @@ void SmtContext::delInactiveLemmas1()
   }
   size_t endAt = sz - d_params.d_recentLemmasSize;
   Assert(startAt < endAt);
-  std::stable_sort(d_lemmas.begin() + startAt,
-                   d_lemmas.begin() + endAt,
-                   ClauseLt());
+  std::stable_sort(
+      d_lemmas.begin() + startAt, d_lemmas.begin() + endAt, ClauseLt());
   size_t startDelAt = (startAt + endAt) / 2;
   size_t i = startDelAt;
   size_t j = i;
@@ -2825,8 +2812,7 @@ void SmtContext::delInactiveLemmas2()
   // group it is in. A clause with many unassigned literals counts as less
   // relevant.
   size_t sz = d_lemmas.size();
-  size_t startAt =
-      d_baseLvl == 0 ? 0 : d_baseScopes[d_baseLvl - 1].d_lemmasLim;
+  size_t startAt = d_baseLvl == 0 ? 0 : d_baseScopes[d_baseLvl - 1].d_lemmasLim;
   Assert(startAt <= sz);
   size_t realSz = sz - startAt;
   if (realSz == 0)
@@ -2834,8 +2820,9 @@ void SmtContext::delInactiveLemmas2()
     return;
   }
   // the index of the first lemma considered "new"
-  size_t newFirstIdx = startAt + (realSz / d_params.d_newOldRatio)
-                                     * (d_params.d_newOldRatio - 1);
+  size_t newFirstIdx =
+      startAt
+      + (realSz / d_params.d_newOldRatio) * (d_params.d_newOldRatio - 1);
   Assert(newFirstIdx <= sz);
   size_t i = startAt;
   size_t j = i;
@@ -2867,8 +2854,8 @@ void SmtContext::delInactiveLemmas2()
     }
     d_lemmas[j] = cls;
     j++;
-    cls->setActivity(static_cast<uint32_t>(cls->getActivity()
-                                           / d_params.d_invClauseDecay));
+    cls->setActivity(
+        static_cast<uint32_t>(cls->getActivity() / d_params.d_invClauseDecay));
   }
   Assert(j <= sz);
   d_lemmas.resize(j);
@@ -3336,32 +3323,28 @@ void SmtContext::incLimits()
     {
       case RS_GEOMETRIC:
         d_restartThreshold = static_cast<uint64_t>(
-            static_cast<double>(d_restartThreshold)
-            * d_params.d_restartFactor);
+            static_cast<double>(d_restartThreshold) * d_params.d_restartFactor);
         break;
       case RS_IN_OUT_GEOMETRIC:
         d_restartThreshold = static_cast<uint64_t>(
-            static_cast<double>(d_restartThreshold)
-            * d_params.d_restartFactor);
+            static_cast<double>(d_restartThreshold) * d_params.d_restartFactor);
         if (d_restartThreshold > d_restartOuterThreshold)
         {
           d_restartThreshold = d_params.d_restartInitial;
-          d_restartOuterThreshold = static_cast<uint64_t>(
-              static_cast<double>(d_restartOuterThreshold)
-              * d_params.d_restartFactor);
+          d_restartOuterThreshold =
+              static_cast<uint64_t>(static_cast<double>(d_restartOuterThreshold)
+                                    * d_params.d_restartFactor);
         }
         break;
       case RS_LUBY:
         d_lubyIdx++;
-        d_restartThreshold =
-            static_cast<uint64_t>(getLuby(d_lubyIdx))
-            * d_params.d_restartInitial;
+        d_restartThreshold = static_cast<uint64_t>(getLuby(d_lubyIdx))
+                             * d_params.d_restartInitial;
         break;
       case RS_FIXED: break;
       case RS_ARITHMETIC:
         d_restartThreshold = static_cast<uint64_t>(
-            static_cast<double>(d_restartThreshold)
-            + d_params.d_restartFactor);
+            static_cast<double>(d_restartThreshold) + d_params.d_restartFactor);
         break;
     }
   }
@@ -3637,9 +3620,8 @@ FinalCheckStatus SmtContext::finalCheck()
       else if (st == FC_GIVEUP)
       {
         f = THEORY;
-        if (std::find(d_incompleteTheories.begin(),
-                      d_incompleteTheories.end(),
-                      th)
+        if (std::find(
+                d_incompleteTheories.begin(), d_incompleteTheories.end(), th)
             == d_incompleteTheories.end())
         {
           d_incompleteTheories.push_back(th);
@@ -3739,8 +3721,7 @@ bool SmtContext::resolveConflict()
   // have to be recreated, so instead the unit is remembered and reasserted
   // after every backtrack, and only one level is popped.
   bool delayForcedRestart =
-      d_params.d_delayUnits && numLits == 1
-      && conflictLvl > d_searchLvl + 1
+      d_params.d_delayUnits && numLits == 1 && conflictLvl > d_searchLvl + 1
       && d_unitsToReassert.size() < d_params.d_delayUnitsThreshold;
 
   if (delayForcedRestart)
@@ -3808,8 +3789,7 @@ bool SmtContext::resolveConflict()
       unit = unit[0];
       unitSign = !unitSign;
     }
-    d_unitsToReassert.push_back(
-        ReplayUnit{unit, unitSign, isRelevant(unit)});
+    d_unitsToReassert.push_back(ReplayUnit{unit, unitSign, isRelevant(unit)});
   }
 
   d_conflictResolution->releaseLemmaAtoms();
@@ -4093,8 +4073,12 @@ void SmtContext::printStatistics(std::ostream& out) const
 void SmtContext::registerStatistics()
 {
   StatisticsRegistry& reg = statisticsRegistry();
+  // Note the handle is stored first and only then pointed at the counter:
+  // the temporary returned by registerReference detaches the counter when it
+  // is destroyed at the end of the statement.
   auto add = [&](const char* name, const uint64_t& v) {
-    d_regStats.push_back(reg.registerReference<uint64_t>(name, v, false));
+    d_regStats.push_back(reg.registerReference<uint64_t>(name, false));
+    d_regStats.back().set(v);
   };
   add("z3::propagations", d_stats.d_numPropagations);
   add("z3::binPropagations", d_stats.d_numBinPropagations);
