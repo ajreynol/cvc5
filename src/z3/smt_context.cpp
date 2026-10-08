@@ -26,6 +26,7 @@
 #include "util/resource_manager.h"
 #include "util/statistics_registry.h"
 #include "z3/quantifier_manager.h"
+#include "z3/theory_cvc5.h"
 #include "z3/util/luby.h"
 #include "z3/util/util.h"
 
@@ -67,6 +68,9 @@ SmtContext::SmtContext(Env& env, Params& p)
       d_params(p),
       d_relevancyLvl(p.d_relevancyLvl),
       d_normalizer(env.getNodeManager()),
+      d_connNormalizer(env.getNodeManager()),
+      d_nnf(env.getNodeManager()),
+      d_patternInference(env.getNodeManager(), d_params),
       d_qmanager(nullptr),
       d_relevancyPropagator(new RelevancyPropagator(*this)),
       d_random(p.d_randomSeed),
@@ -3219,6 +3223,12 @@ LBool SmtContext::checkFinalize(LBool r)
   {
     r = L_UNDEF;
   }
+  if (r == L_TRUE && d_unsupported)
+  {
+    d_lastSearchFailure = THEORY;
+    d_unknown = "the input uses a construct the ported core does not support";
+    r = L_UNDEF;
+  }
   if (r == L_TRUE && isModelUnsound())
   {
     // Some theory was internalized without a plugin, so the satisfying
@@ -3233,6 +3243,15 @@ LBool SmtContext::checkFinalize(LBool r)
 void SmtContext::markModelUnsound(TheoryId tid)
 {
   d_modelUnsoundTheories.insert(static_cast<int32_t>(tid));
+}
+
+Cvc5Bridge& SmtContext::getCvc5Bridge()
+{
+  if (d_cvc5Bridge == nullptr)
+  {
+    d_cvc5Bridge.reset(new Cvc5Bridge(*this));
+  }
+  return *d_cvc5Bridge;
 }
 
 ConfigMode SmtContext::getConfigMode(bool useStaticFeatures) const
@@ -4105,6 +4124,19 @@ void SmtContext::registerStatistics()
   add("z3::assignments", d_stats.d_numAssignments);
   add("z3::instances", d_stats.d_numInstances);
   add("z3::lazyInstances", d_stats.d_numLazyInstances);
+  add("z3::instancesCheckerSat", d_stats.d_numInstancesCheckerSat);
+  add("z3::instancesSimplifyTrue", d_stats.d_numInstancesSimplifyTrue);
+  add("z3::missedInstances", d_stats.d_numMissedInstances);
+  add("z3::mamCandidates", d_stats.d_numMamCandidates);
+  add("z3::mamExecs", d_stats.d_numMamExecs);
+  add("z3::mamMatches", d_stats.d_numMamMatches);
+  add("z3::dtOccursCheck", d_stats.d_numDtOccursCheck);
+  add("z3::dtSplits", d_stats.d_numDtSplits);
+  add("z3::dtConstructorAx", d_stats.d_numDtConstructorAx);
+  add("z3::dtAccessorAx", d_stats.d_numDtAccessorAx);
+  add("z3::dtUpdateFieldAx", d_stats.d_numDtUpdateFieldAx);
+  add("z3::bridgeChecks", d_stats.d_numBridgeChecks);
+  add("z3::bridgeConflicts", d_stats.d_numBridgeConflicts);
 }
 
 std::ostream& SmtContext::printLastFailure(std::ostream& out) const

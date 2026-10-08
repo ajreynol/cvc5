@@ -38,6 +38,8 @@
 #include "smt/env_obj.h"
 #include "util/statistics_stats.h"
 #include "z3/ast.h"
+#include "z3/nnf.h"
+#include "z3/pattern_inference.h"
 #include "z3/b_justification.h"
 #include "z3/bool_var_data.h"
 #include "z3/case_split_queue.h"
@@ -66,6 +68,7 @@ namespace z3 {
 
 class ModelGenerator;
 class QuantifierManager;
+class Cvc5Bridge;
 
 /** The reason for an "unknown" result from check(). */
 enum Failure
@@ -484,6 +487,26 @@ class SmtContext : protected EnvObj
   /** The canonicalizer for quantifiers; see z3/ast.h. */
   QuantifierNormalizer& getNormalizer() { return d_normalizer; }
 
+  PatternInference& getPatternInference() { return d_patternInference; }
+
+  ConnectiveNormalizer& getConnectiveNormalizer() { return d_connNormalizer; }
+
+  Nnf& getNnf() { return d_nnf; }
+
+  /** The environment of the enclosing cvc5 solver. */
+  const Env& getEnv() const { return d_env; }
+
+  /** The shared state of the bridges to cvc5's own theory solvers. */
+  Cvc5Bridge& getCvc5Bridge();
+
+  /**
+   * Record that the input uses a construct this port does not support, so
+   * that the search answers "unknown" instead of guessing.
+   */
+  void markUnsupported() { d_unsupported = true; }
+
+  bool isUnsupported() const { return d_unsupported; }
+
   /**
    * Internalize the body of a quantifier instance. Unlike a plain assertion,
    * the case split queue is told about it, so that a relevancy-based queue can
@@ -815,6 +838,15 @@ class SmtContext : protected EnvObj
    */
   Node rewriteInstance(TNode n) const { return rewrite(n); }
 
+  /**
+   * A dense id for a declaration, created on demand. This is the counterpart
+   * of Z3's func_decl::get_small_id, which the E-matching engine uses to index
+   * its tables by function symbol.
+   */
+  uint32_t getDeclId(TNode decl);
+  /** The dense id of decl, or UINT32_MAX if it has none yet. */
+  uint32_t getDeclIdOption(TNode decl) const;
+
   /** The equality atom to create during the search for lhs = rhs. */
   Node mkEqAtom(TNode lhs, TNode rhs);
 
@@ -1107,9 +1139,6 @@ class SmtContext : protected EnvObj
   void addLitOccs(const Clause& cls);
   void addScores(size_t n, const Literal* lits);
 
-  /** A dense id for a declaration, created on demand. */
-  uint32_t getDeclId(TNode decl);
-  uint32_t getDeclIdOption(TNode decl) const;
 
   void init();
   void flush();
@@ -1119,6 +1148,12 @@ class SmtContext : protected EnvObj
   uint32_t d_relevancyLvl;
   Region d_region;
   QuantifierNormalizer d_normalizer;
+  ConnectiveNormalizer d_connNormalizer;
+  Nnf d_nnf;
+  std::unique_ptr<Cvc5Bridge> d_cvc5Bridge;
+  PatternInference d_patternInference;
+  /** true if the input uses a construct that is not supported */
+  bool d_unsupported = false;
   std::unique_ptr<QuantifierManager> d_qmanager;
   std::unique_ptr<RelevancyPropagator> d_relevancyPropagator;
   RandomGen d_random;

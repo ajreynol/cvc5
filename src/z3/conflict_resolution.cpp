@@ -683,15 +683,10 @@ void ConflictResolution::minimizeLemma()
 
 void ConflictResolution::reset()
 {
-  d_todoJs.clear();
-  d_todoJsQhead = 0;
-  d_todoEqs.clear();
-  d_alreadyProcessedEqs.clear();
-  d_lemma.clear();
-  d_lemmaAtoms.clear();
-  d_assumptions.clear();
-  d_unmark.clear();
-  d_lemmaMinStack.clear();
+  // In Z3 this resets the proof-generation caches only, which this port does
+  // not have, so there is nothing to do. In particular the lemma must *not*
+  // be cleared here: popScopeCore calls this while resolveConflict is still
+  // rebuilding the literals and atoms of the lemma it just derived.
 }
 
 void ConflictResolution::processAntecedentForUnsatCore(Literal antecedent)

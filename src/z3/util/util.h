@@ -53,6 +53,24 @@ void reservex(std::vector<T>& v, size_t sz, const T& def)
   }
 }
 
+/**
+ * Advance the iterator it over the product of n ranges, where sz[i] is the
+ * size of the i-th range. Returns false once the product is exhausted.
+ */
+inline bool productIteratorNext(size_t n, const size_t* sz, size_t* it)
+{
+  for (size_t i = 0; i < n; ++i)
+  {
+    it[i]++;
+    if (it[i] < sz[i])
+    {
+      return true;
+    }
+    it[i] = 0;
+  }
+  return false;
+}
+
 }  // namespace z3
 }  // namespace cvc5::internal
 

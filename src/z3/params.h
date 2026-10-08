@@ -227,6 +227,33 @@ struct Params
   bool d_mbqiTrace = false;
   uint32_t d_mbqiForceTemplate = 10;
 
+  // ---------------------------------------------------- pattern inference
+  /** How arithmetic symbols may be used in an inferred pattern. */
+  enum ArithPatternInferenceKind
+  {
+    /** do not infer patterns with arithmetic terms */
+    AP_NO,
+    /** infer patterns with arithmetic terms only if there is no other option */
+    AP_CONSERVATIVE,
+    /** always use patterns with arithmetic terms */
+    AP_FULL
+  };
+
+  bool d_piEnabled = true;
+  uint32_t d_piMaxMultiPatterns = 0;
+  bool d_piBlockLoopPatterns = true;
+  bool d_piDecomposePatterns = true;
+  ArithPatternInferenceKind d_piArith = AP_CONSERVATIVE;
+  uint32_t d_piArithWeight = 5;
+  uint32_t d_piNonNestedArithWeight = 10;
+  int32_t d_piNopatWeight = -1;
+  bool d_piAvoidSkolems = true;
+  bool d_piWarnings = false;
+
+  // ---------------------------------------------------- datatypes
+  /** 0 - eager, 1 - lazy for infinite types, 2 - lazy */
+  uint32_t d_dtLazySplits = 1;
+
   // ---------------------------------------------------- misc
   bool d_autoConfig = true;
   bool d_model = true;

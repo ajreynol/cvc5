@@ -577,7 +577,29 @@ void SmtContext::internalizeFormula(TNode n, bool gateCtx)
     updateGeneration(n);
 
     // An enode is still necessary if n is not in a gate context and is an
-    // application.
+    // application. A quantifier is handled here as well: Z3 relies on its own
+    // preprocessing to keep quantifiers out of term positions, which cvc5's
+    // does not, so the enode has to be built rather than assumed away. Note
+    // that such a quantifier may be assigned false, which assignQuantifier
+    // ignores, hence the model-unsoundness mark.
+    if (!gateCtx && isQuantifier(n))
+    {
+      markUnsupported();
+      markModelUnsound(theory::THEORY_QUANTIFIERS);
+      if (!eInternalized(n))
+      {
+        mkENode(n,
+                true, /* suppress the arguments */
+                true, /* merge with true/false, since this is not a gate */
+                false /* congruence closure is not enabled */);
+        setEnodeFlag(v, false);
+        if (getAssignment(v) != L_UNDEF)
+        {
+          propagateBoolVarENode(v);
+        }
+      }
+      return;
+    }
     if (!gateCtx && isApp(n))
     {
       if (eInternalized(n))
@@ -720,14 +742,34 @@ bool SmtContext::internalizeTheoryAtom(TNode n, bool gateCtx)
 
 void SmtContext::internalizeQuantifier(TNode q, bool gateCtx)
 {
-  (void)gateCtx;
-  Assert(gateCtx);  // a limitation of the current implementation
   Assert(!bInternalized(q));
   if (q.getKind() != Kind::FORALL)
   {
-    Unreachable() << "z3: internalization of exists is not supported";
+    // Z3's preprocessing puts every formula in a form where only universal
+    // quantifiers survive, so its internalizer has no case for exists.
+    markUnsupported();
+    markModelUnsound(theory::THEORY_QUANTIFIERS);
+    mkBoolVar(q);
+    return;
   }
   BoolVar v = mkBoolVar(q);
+  if (!gateCtx)
+  {
+    // Z3 asserts gateCtx here: its rewriter guarantees a quantifier only ever
+    // occurs as an argument of a gate. cvc5's preprocessor gives no such
+    // guarantee -- a Boolean-sorted argument of an uninterpreted function is
+    // enough to break it -- so rather than following Z3 into undefined
+    // behaviour the query is answered "unknown".
+    Trace("z3") << "unsupported: quantifier in a non-gate context: " << q
+                << std::endl;
+    markUnsupported();
+    markModelUnsound(theory::THEORY_QUANTIFIERS);
+    mkENode(q,
+            true, /* suppress the arguments */
+            true, /* merge with true/false, since this is not a gate */
+            false /* congruence closure is not enabled */);
+    setEnodeFlag(v, false);
+  }
   uint32_t generation = d_generation;
   auto it = d_cachedGeneration.find(q);
   if (it != d_cachedGeneration.end())

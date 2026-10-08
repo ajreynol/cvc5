@@ -79,9 +79,17 @@ void Z3SmtSolver::assertToInternal(preprocessing::AssertionPipeline& ap)
   // Rewrite the quantifiers of each assertion over the canonical variables
   // the core and the E-matching engine expect; see z3/ast.h.
   z3::QuantifierNormalizer& norm = d_ctx->getNormalizer();
+  // Z3 infers patterns for the quantifiers that carry no :pattern annotation
+  // as part of its own preprocessing, so that step is run here, on the
+  // normalized form, before the formula reaches the core.
+  z3::PatternInference& pi = d_ctx->getPatternInference();
+  z3::ConnectiveNormalizer& cn = d_ctx->getConnectiveNormalizer();
+  // The core relies on every universal quantifier occurring positively, which
+  // Z3 establishes with its own nnf pass; see z3/nnf.h.
+  z3::Nnf& nnf = d_ctx->getNnf();
   for (const Node& a : ap.ref())
   {
-    d_ctx->assertFormula(norm.normalize(a));
+    d_ctx->assertFormula(pi.apply(norm.normalize(cn.normalize(nnf.convert(a)))));
   }
 }
 

@@ -135,10 +135,25 @@ void getNoPatterns(TNode q, std::vector<Node>& noPatterns);
  * zero as in Z3. The weight is a term of the quantifier instantiation cost
  * function.
  */
+/** Z3's default quantifier weight. */
+constexpr uint32_t s_defaultWeight = 1;
+
 uint32_t getWeight(TNode q);
+
+/**
+ * Set the weight of q, as Z3's pattern inference does for the quantifiers
+ * whose only usable pattern contains arithmetic.
+ */
+void setWeight(TNode q, uint32_t w);
 
 /** The ":qid" of q as a string, or the empty string if it has none. */
 std::string getQid(TNode q);
+
+/** Attribute holding one plus the weight of a quantifier. */
+struct QuantWeightTag
+{
+};
+using QuantWeightAttr = expr::Attribute<QuantWeightTag, uint64_t>;
 
 /**
  * Attribute caching the term depth, so that the internalizer's check for
@@ -157,6 +172,24 @@ uint32_t getDepth(TNode n);
  * Rewrites quantifiers into the canonical de Bruijn-level form the core and
  * the E-matching engine expect. See the comment at the top of this file.
  */
+/**
+ * Rewrites the Boolean connectives Z3's rewriter eliminates before
+ * internalization: (=> a b) becomes (or (not a) b), and (xor a b) becomes
+ * (not (= a b)). The internalizer's notion of a "gate" is Z3's, which does
+ * not cover these two, so they have to be gone by the time it runs.
+ */
+class ConnectiveNormalizer
+{
+ public:
+  ConnectiveNormalizer(NodeManager* nm) : d_nm(nm) {}
+
+  Node normalize(TNode n);
+
+ private:
+  NodeManager* d_nm;
+  std::unordered_map<Node, Node> d_cache;
+};
+
 class QuantifierNormalizer
 {
  public:

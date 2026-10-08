@@ -31,6 +31,7 @@
 #include "z3/enode.h"
 #include "z3/mam.h"
 #include "z3/qi_queue.h"
+#include "z3/quick_checker.h"
 #include "z3/smt_context.h"
 #include "z3/util/trail.h"
 
@@ -148,6 +149,10 @@ struct QuantifierManager::Imp
           f, pat, maxGeneration, minTopGeneration, maxTopGeneration);
       d_numInstances++;
     }
+    else
+    {
+      d_context.getStats().d_numMissedInstances++;
+    }
     return f != nullptr;
   }
 
@@ -193,6 +198,48 @@ struct QuantifierManager::Imp
     d_qiQueue.instantiate();
   }
 
+  bool checkQuantifier(TNode q) const
+  {
+    return d_context.isRelevant(q) && d_context.getAssignment(q) == L_TRUE;
+  }
+
+  /**
+   * Instantiate the quantifiers the current model falsifies. Returns false if
+   * new instances were created, which means the search is not done.
+   */
+  bool quickCheckQuantifiers()
+  {
+    if (d_params.d_qiQuickChecker == MC_NO || d_quantifiers.empty())
+    {
+      return true;
+    }
+    QuickChecker mc(d_context);
+    bool result = true;
+    for (const Node& q : d_quantifiers)
+    {
+      if (checkQuantifier(q) && mc.instantiateUnsat(q))
+      {
+        result = false;
+      }
+    }
+    if (d_params.d_qiQuickChecker == MC_UNSAT || !result)
+    {
+      d_qiQueue.instantiate();
+      return result;
+    }
+    // MC_NO_SAT creates too many irrelevant instances to be worth it; model
+    // based instantiation is the better option there.
+    for (const Node& q : d_quantifiers)
+    {
+      if (checkQuantifier(q) && mc.instantiateNotSat(q))
+      {
+        result = false;
+      }
+    }
+    d_qiQueue.instantiate();
+    return result;
+  }
+
   FinalCheckStatus finalCheckEh(bool full)
   {
     if (!full)
@@ -206,6 +253,11 @@ struct QuantifierManager::Imp
       result = presult;
     }
     if (d_context.canPropagate())
+    {
+      result = FC_CONTINUE;
+    }
+    if (result == FC_DONE && !d_params.d_qiLazyQuickChecker
+        && !quickCheckQuantifiers())
     {
       result = FC_CONTINUE;
     }
@@ -449,6 +501,22 @@ class DefaultQmPlugin : public QuantifierManagerPlugin
     if (!d_params->d_ematching)
     {
       return;
+    }
+    if (TraceIsOn("z3-qpat"))
+    {
+      size_t numPats = 0;
+      if (q.getNumChildren() == 3)
+      {
+        for (const Node& a : q[2])
+        {
+          if (a.getKind() == Kind::INST_PATTERN)
+          {
+            numPats++;
+          }
+        }
+      }
+      Trace("z3-qpat") << "[assign-quant] pats=" << numPats << " " << q
+                       << std::endl;
     }
     // A multi-pattern is only matched eagerly up to a bound, since matching
     // one is much more expensive than matching a unary pattern. The bound is

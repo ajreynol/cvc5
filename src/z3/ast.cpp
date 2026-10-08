@@ -124,11 +124,21 @@ void getNoPatterns(TNode q, std::vector<Node>& noPatterns)
 
 uint32_t getWeight(TNode q)
 {
-  (void)q;
   Assert(isQuantifier(q));
-  // cvc5's parser does not retain ":weight", so this is always Z3's default.
-  // If weights are ever needed, they would be surfaced here.
-  return 0;
+  // cvc5's parser does not retain ":weight", so the only weights seen here
+  // are the ones pattern inference assigns. The default is Z3's, which is 1
+  // and not 0: with weight 0 the cost of an instance is its generation, the
+  // generation of the enodes an instance creates is its cost, and so every
+  // instance has cost 0 and matching loops are never broken. See the long
+  // comment on the "weight 0" performance bug in Z3's qi_params.h.
+  uint64_t cached = q.getAttribute(QuantWeightAttr());
+  return cached == 0 ? s_defaultWeight : static_cast<uint32_t>(cached - 1);
+}
+
+void setWeight(TNode q, uint32_t w)
+{
+  Assert(isQuantifier(q));
+  q.setAttribute(QuantWeightAttr(), static_cast<uint64_t>(w) + 1);
 }
 
 std::string getQid(TNode q)
@@ -190,6 +200,51 @@ uint32_t getDepth(TNode n)
     cur.setAttribute(TermDepthAttr(), maxChild + 1);
   }
   return static_cast<uint32_t>(n.getAttribute(TermDepthAttr()));
+}
+
+Node ConnectiveNormalizer::normalize(TNode n)
+{
+  if (n.getNumChildren() == 0)
+  {
+    return n;
+  }
+  auto it = d_cache.find(n);
+  if (it != d_cache.end())
+  {
+    return it->second;
+  }
+  std::vector<Node> children;
+  if (n.getMetaKind() == kind::metakind::PARAMETERIZED)
+  {
+    children.push_back(n.getOperator());
+  }
+  bool changed = false;
+  for (const Node& nc : n)
+  {
+    Node ncc = normalize(nc);
+    changed = changed || ncc != nc;
+    children.push_back(ncc);
+  }
+  Node ret;
+  Kind k = n.getKind();
+  if (k == Kind::IMPLIES)
+  {
+    Assert(children.size() == 2);
+    ret = d_nm->mkNode(Kind::OR,
+                       children[0].notNode(),
+                       children[1]);
+  }
+  else if (k == Kind::XOR)
+  {
+    Assert(children.size() == 2);
+    ret = d_nm->mkNode(Kind::EQUAL, children[0], children[1]).notNode();
+  }
+  else
+  {
+    ret = changed ? d_nm->mkNode(k, children) : Node(n);
+  }
+  d_cache[n] = ret;
+  return ret;
 }
 
 QuantifierNormalizer::QuantifierNormalizer(NodeManager* nm) : d_nm(nm) {}

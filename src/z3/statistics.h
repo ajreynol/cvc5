@@ -55,6 +55,28 @@ struct Statistics
   uint64_t d_numInstances;
   /** instantiations dropped because their cost exceeded the lazy threshold */
   uint64_t d_numLazyInstances;
+  /** instances the checker found already satisfied */
+  uint64_t d_numInstancesCheckerSat;
+  /** instances whose body simplified to true */
+  uint64_t d_numInstancesSimplifyTrue;
+  /** matches that were already instantiated (Z3's missed instantiations) */
+  uint64_t d_numMissedInstances;
+  /** enodes offered to a code tree as E-matching candidates */
+  uint64_t d_numMamCandidates;
+  /** code trees executed */
+  uint64_t d_numMamExecs;
+  /** matches the matching abstract machine reported */
+  uint64_t d_numMamMatches;
+  /** datatype occurs checks, splits and axioms */
+  uint64_t d_numDtOccursCheck;
+  uint64_t d_numDtSplits;
+  uint64_t d_numDtConstructorAx;
+  uint64_t d_numDtAccessorAx;
+  uint64_t d_numDtUpdateFieldAx;
+  /** calls to the cvc5 subsolver of the theory bridge */
+  uint64_t d_numBridgeChecks;
+  /** conflicts the cvc5 subsolver of the theory bridge found */
+  uint64_t d_numBridgeConflicts;
 
   Statistics() { reset(); }
 

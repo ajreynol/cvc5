@@ -197,6 +197,7 @@ void QiQueue::instantiate(Entry& ent)
     // The instance is already satisfied, so creating it would be wasted
     // work. It still counts as an instantiation, as it does in Z3.
     stat->incNumInstancesCheckerSat();
+    d_context.getStats().d_numInstancesCheckerSat++;
     return;
   }
 
@@ -220,6 +221,7 @@ void QiQueue::instantiate(Entry& ent)
   if (sInstance.getKind() == Kind::CONST_BOOLEAN && sInstance.getConst<bool>())
   {
     stat->incNumInstancesSimplifyTrue();
+    d_context.getStats().d_numInstancesSimplifyTrue++;
     return;
   }
 
@@ -248,6 +250,9 @@ void QiQueue::instantiate(Entry& ent)
   d_stats.d_numInstances++;
   d_context.getStats().d_numInstances++;
   uint32_t gen = getNewGen(q, generation, ent.d_cost);
+  Trace("z3-qi") << "[instance] q" << q.getId() << " gen " << generation
+                 << " cost " << ent.d_cost << " newgen " << gen << std::endl;
+  Trace("z3-qi-lemma") << "  lemma: " << lemma << std::endl;
   d_context.internalizeInstance(lemma, gen);
 }
 

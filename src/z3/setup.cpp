@@ -19,6 +19,7 @@
 #include "theory/logic_info.h"
 #include "theory/theory.h"
 #include "z3/theory_cvc5.h"
+#include "z3/theory_datatype.h"
 
 namespace cvc5::internal {
 namespace z3 {
@@ -280,9 +281,11 @@ void Setup::setupBv()
 
 void Setup::setupDatatypes()
 {
-  // The datatypes plugin is not ported yet; until it is, datatype terms are
-  // treated as uninterpreted and the core reports "unknown" rather than
-  // "sat". See SmtContext::markModelUnsound.
+  if (d_ctx.getTheory(theory::THEORY_DATATYPES) != nullptr)
+  {
+    return;
+  }
+  d_ctx.registerPlugin(mkTheoryDatatype(d_ctx));
 }
 
 void SmtContext::setupContext(bool useStaticFeatures)

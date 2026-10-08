@@ -1360,7 +1360,11 @@ libcvc5_add_sources(
   z3/justification.h
   z3/mam.cpp
   z3/mam.h
+  z3/nnf.cpp
+  z3/nnf.h
   z3/params.cpp
+  z3/pattern_inference.cpp
+  z3/pattern_inference.h
   z3/params.h
   z3/qi_queue.cpp
   z3/qi_queue.h
@@ -1368,6 +1372,8 @@ libcvc5_add_sources(
   z3/quantifier_manager.h
   z3/quantifier_stat.cpp
   z3/quantifier_stat.h
+  z3/quick_checker.cpp
+  z3/quick_checker.h
   z3/relevancy.cpp
   z3/relevancy.h
   z3/setup.cpp
@@ -1380,6 +1386,8 @@ libcvc5_add_sources(
   z3/theory.h
   z3/theory_cvc5.cpp
   z3/theory_cvc5.h
+  z3/theory_datatype.cpp
+  z3/theory_datatype.h
   z3/types.cpp
   z3/types.h
   z3/util/approx_set.cpp
@@ -1395,6 +1403,7 @@ libcvc5_add_sources(
   z3/util/region.h
   z3/util/tagged_ptr.h
   z3/util/trail.h
+  z3/util/union_find.h
   z3/util/uint_set.h
   z3/util/util.h
   z3/watch_list.cpp
