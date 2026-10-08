@@ -12,9 +12,12 @@
 
 #include "smt/z3_smt_solver.h"
 
+#include "options/base_options.h"
 #include "preprocessing/assertion_pipeline.h"
 #include "smt/env.h"
 #include "smt/logic_exception.h"
+#include "z3/ast.h"
+#include "z3/smt_context.h"
 
 namespace cvc5::internal {
 namespace smt {
@@ -32,24 +35,82 @@ void Z3SmtSolver::finishInit()
   // Build the TheoryEngine and PropEngine, which the preprocessor and the
   // model-building paths still require.
   SmtSolver::finishInit();
+  d_ctx.reset(new z3::SmtContext(d_env, d_params));
 }
 
-void Z3SmtSolver::resetAssertions() { SmtSolver::resetAssertions(); }
+void Z3SmtSolver::resetAssertions()
+{
+  SmtSolver::resetAssertions();
+  d_ctx.reset(new z3::SmtContext(d_env, d_params));
+}
 
-void Z3SmtSolver::interrupt() { SmtSolver::interrupt(); }
+void Z3SmtSolver::interrupt()
+{
+  SmtSolver::interrupt();
+  if (d_ctx != nullptr)
+  {
+    d_ctx->interrupt();
+  }
+}
 
-void Z3SmtSolver::pushPropContext() {}
+void Z3SmtSolver::pushPropContext()
+{
+  Assert(d_ctx != nullptr);
+  d_ctx->push();
+}
 
-void Z3SmtSolver::popPropContext() {}
+void Z3SmtSolver::popPropContext()
+{
+  Assert(d_ctx != nullptr);
+  d_ctx->pop(1);
+}
 
-void Z3SmtSolver::resetTrail() {}
+void Z3SmtSolver::resetTrail()
+{
+  if (d_ctx != nullptr)
+  {
+    d_ctx->popToBaseLvl();
+  }
+}
 
-void Z3SmtSolver::assertToInternal(preprocessing::AssertionPipeline& ap) {}
+void Z3SmtSolver::assertToInternal(preprocessing::AssertionPipeline& ap)
+{
+  Assert(d_ctx != nullptr);
+  // Rewrite the quantifiers of each assertion over the canonical variables
+  // the core and the E-matching engine expect; see z3/ast.h.
+  z3::QuantifierNormalizer& norm = d_ctx->getNormalizer();
+  for (const Node& a : ap.ref())
+  {
+    d_ctx->assertFormula(norm.normalize(a));
+  }
+}
 
 Result Z3SmtSolver::checkSatInternal()
 {
-  throw LogicException(
-      "The ported Z3 core (--z3) is not yet able to answer check-sat.");
+  Assert(d_ctx != nullptr);
+  if (options().base.preprocessOnly)
+  {
+    return Result(Result::UNKNOWN, UnknownExplanation::REQUIRES_FULL_CHECK);
+  }
+  z3::LBool r = d_ctx->check();
+  switch (r)
+  {
+    case z3::L_TRUE: return Result(Result::SAT);
+    case z3::L_FALSE: return Result(Result::UNSAT);
+    default: break;
+  }
+  UnknownExplanation why = UnknownExplanation::UNKNOWN_REASON;
+  switch (d_ctx->getLastSearchFailure())
+  {
+    case z3::MEMOUT:
+    case z3::RESOURCE_LIMIT: why = UnknownExplanation::RESOURCEOUT; break;
+    case z3::CANCELED: why = UnknownExplanation::INTERRUPTED; break;
+    case z3::NUM_CONFLICTS:
+    case z3::THEORY:
+    case z3::QUANTIFIERS: why = UnknownExplanation::INCOMPLETE; break;
+    default: break;
+  }
+  return Result(Result::UNKNOWN, why);
 }
 
 }  // namespace smt

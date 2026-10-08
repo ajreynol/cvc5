@@ -1334,19 +1334,71 @@ libcvc5_add_sources(
   theory/valuation.h
   z3/ast.cpp
   z3/ast.h
+  z3/b_justification.h
+  z3/bool_var_data.h
+  z3/case_split_queue.cpp
+  z3/case_split_queue.h
+  z3/cg_table.cpp
+  z3/cg_table.h
+  z3/checker.cpp
+  z3/checker.h
+  z3/clause.cpp
+  z3/clause.h
+  z3/conflict_resolution.cpp
+  z3/conflict_resolution.h
+  z3/cost_function.cpp
+  z3/cost_function.h
+  z3/dyn_ack.cpp
+  z3/dyn_ack.h
+  z3/enode.cpp
+  z3/enode.h
+  z3/eq_justification.h
+  z3/fingerprints.cpp
+  z3/fingerprints.h
+  z3/internalizer.cpp
+  z3/justification.cpp
+  z3/justification.h
+  z3/mam.cpp
+  z3/mam.h
   z3/params.cpp
   z3/params.h
+  z3/qi_queue.cpp
+  z3/qi_queue.h
+  z3/quantifier_manager.cpp
+  z3/quantifier_manager.h
+  z3/quantifier_stat.cpp
+  z3/quantifier_stat.h
+  z3/relevancy.cpp
+  z3/relevancy.h
+  z3/setup.cpp
+  z3/setup.h
+  z3/smt_context.cpp
+  z3/smt_context.h
+  z3/statistics.cpp
+  z3/statistics.h
+  z3/theory.cpp
+  z3/theory.h
+  z3/theory_cvc5.cpp
+  z3/theory_cvc5.h
   z3/types.cpp
   z3/types.h
   z3/util/approx_set.cpp
   z3/util/approx_set.h
+  z3/util/hash.h
+  z3/util/heap.h
   z3/util/id_var_list.h
   z3/util/literal.h
+  z3/util/luby.h
   z3/util/nat_set.h
+  z3/util/random_gen.h
   z3/util/region.cpp
   z3/util/region.h
+  z3/util/tagged_ptr.h
   z3/util/trail.h
+  z3/util/uint_set.h
   z3/util/util.h
+  z3/watch_list.cpp
+  z3/watch_list.h
 )
 
 # suppress deprecated warnings to not error in CI
