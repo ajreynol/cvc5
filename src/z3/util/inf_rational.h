@@ -40,9 +40,7 @@ class InfRational
   {
   }
   InfRational(const Rational& r) : d_first(r), d_second(0) {}
-  InfRational(const Rational& r, const Rational& i) : d_first(r), d_second(i)
-  {
-  }
+  InfRational(const Rational& r, const Rational& i) : d_first(r), d_second(i) {}
 
   size_t hash() const { return d_first.hash() ^ (d_second.hash() + 1); }
 

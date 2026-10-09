@@ -19,8 +19,8 @@
 
 #include "expr/dtype.h"
 #include "expr/dtype_cons.h"
-#include "expr/node_manager.h"
 #include "expr/node_algorithm.h"
+#include "expr/node_manager.h"
 #include "theory/datatypes/theory_datatypes_utils.h"
 #include "z3/ast.h"
 #include "z3/justification.h"
@@ -42,13 +42,10 @@ namespace dtutils = theory::datatypes::utils;
 class DtEqJustification : public ExtTheoryEqPropagationJustification
 {
  public:
-  DtEqJustification(TheoryId fid,
-                    SmtContext& ctx,
-                    Literal antecedent,
-                    ENode* lhs,
-                    ENode* rhs)
+  DtEqJustification(
+      TheoryId fid, SmtContext& ctx, Literal antecedent, ENode* lhs, ENode* rhs)
       : ExtTheoryEqPropagationJustification(
-          fid, ctx, 1, &antecedent, 0, nullptr, lhs, rhs)
+            fid, ctx, 1, &antecedent, 0, nullptr, lhs, rhs)
   {
   }
 
@@ -788,10 +785,7 @@ void TheoryDatatype::resetEh()
   Theory::resetEh();
 }
 
-void TheoryDatatype::mergeEh(TheoryVar v1,
-                             TheoryVar v2,
-                             TheoryVar,
-                             TheoryVar)
+void TheoryDatatype::mergeEh(TheoryVar v1, TheoryVar v2, TheoryVar, TheoryVar)
 {
   // v1 is the new root
   SmtContext& ctx = getContext();
@@ -806,8 +800,8 @@ void TheoryDatatype::mergeEh(TheoryVar v1,
     {
       ENodePair p(d1->d_constructor, d2->d_constructor);
       Assert(d1->d_constructor->getRoot() == d2->d_constructor->getRoot());
-      ctx.setConflict(ctx.mkJustification(ExtTheoryConflictJustification(
-          getId(), ctx, 0, nullptr, 1, &p)));
+      ctx.setConflict(ctx.mkJustification(
+          ExtTheoryConflictJustification(getId(), ctx, 0, nullptr, 1, &p)));
     }
     if (d1->d_constructor == nullptr)
     {
@@ -817,8 +811,7 @@ void TheoryDatatype::mergeEh(TheoryVar v1,
       {
         size_t cIdx = constructorIdx(d2->d_constructor->getExpr());
         ENode* recognizer = d1->d_recognizers[cIdx];
-        if (recognizer != nullptr
-            && ctx.getAssignment(recognizer) == L_FALSE)
+        if (recognizer != nullptr && ctx.getAssignment(recognizer) == L_FALSE)
         {
           signRecognizerConflict(d2->d_constructor, recognizer);
           return;
@@ -930,13 +923,8 @@ void TheoryDatatype::propagateRecognizer(TheoryVar v, ENode* recognizer)
   if (numUnassigned == 0)
   {
     Assert(!lits.empty());
-    ctx.setConflict(ctx.mkJustification(
-        ExtTheoryConflictJustification(getId(),
-                                       ctx,
-                                       lits.size(),
-                                       lits.data(),
-                                       eqs.size(),
-                                       eqs.data())));
+    ctx.setConflict(ctx.mkJustification(ExtTheoryConflictJustification(
+        getId(), ctx, lits.size(), lits.data(), eqs.size(), eqs.data())));
   }
   else if (numUnassigned == 1)
   {
@@ -955,15 +943,15 @@ void TheoryDatatype::propagateRecognizer(TheoryVar v, ENode* recognizer)
       consequent = Literal(ctx.enode2BoolVar(r));
     }
     ctx.markAsRelevant(consequent);
-    ctx.assign(consequent,
-               ctx.mkJustification(
-                   ExtTheoryPropagationJustification(getId(),
-                                                     ctx,
-                                                     lits.size(),
-                                                     lits.data(),
-                                                     eqs.size(),
-                                                     eqs.data(),
-                                                     consequent)));
+    ctx.assign(
+        consequent,
+        ctx.mkJustification(ExtTheoryPropagationJustification(getId(),
+                                                              ctx,
+                                                              lits.size(),
+                                                              lits.data(),
+                                                              eqs.size(),
+                                                              eqs.data(),
+                                                              consequent)));
   }
   else
   {
@@ -1060,8 +1048,7 @@ bool TheoryDatatype::getValue(ENode* n, Node& r)
     return false;
   }
   v = static_cast<TheoryVar>(d_find.find(v));
-  if (static_cast<size_t>(v) >= d_varData.size()
-      || d_varData[v] == nullptr)
+  if (static_cast<size_t>(v) >= d_varData.size() || d_varData[v] == nullptr)
   {
     return false;
   }

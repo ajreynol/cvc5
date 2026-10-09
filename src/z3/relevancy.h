@@ -53,9 +53,7 @@ class RelevancyEh
   }
 
   /** Invoked when atom is assigned to val. */
-  virtual void operator()(RelevancyPropagator& rp,
-                          TNode /*atom*/,
-                          bool /*val*/)
+  virtual void operator()(RelevancyPropagator& rp, TNode /*atom*/, bool /*val*/)
   {
     operator()(rp);
   }

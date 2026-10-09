@@ -15,8 +15,8 @@
 
 #include "expr/node_algorithm.h"
 #include "expr/node_manager.h"
-#include "theory/quantifiers/quantifiers_attributes.h"
 #include "smt/env.h"
+#include "theory/quantifiers/quantifiers_attributes.h"
 #include "theory/rewriter.h"
 #include "theory/theory.h"
 #include "util/string.h"
@@ -242,9 +242,7 @@ Node ConnectiveNormalizer::normalize(TNode n)
   if (k == Kind::IMPLIES)
   {
     Assert(children.size() == 2);
-    ret = d_nm->mkNode(Kind::OR,
-                       children[0].notNode(),
-                       children[1]);
+    ret = d_nm->mkNode(Kind::OR, children[0].notNode(), children[1]);
   }
   else if (k == Kind::XOR)
   {

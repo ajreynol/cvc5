@@ -113,10 +113,8 @@ inline Node mkGe(NodeManager* nm, TNode a, TNode b)
 }
 inline Node mkMul(NodeManager* nm, TNode a, TNode b)
 {
-  return nm->mkNode(isNumeral(a) || isNumeral(b) ? Kind::MULT
-                                                 : Kind::NONLINEAR_MULT,
-                    a,
-                    b);
+  return nm->mkNode(
+      isNumeral(a) || isNumeral(b) ? Kind::MULT : Kind::NONLINEAR_MULT, a, b);
 }
 inline Node mkAdd(NodeManager* nm, TNode a, TNode b)
 {

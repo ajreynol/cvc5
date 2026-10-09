@@ -39,9 +39,6 @@
 #include "smt/env_obj.h"
 #include "util/statistics_stats.h"
 #include "z3/ast.h"
-#include "z3/nnf.h"
-#include "z3/pattern_inference.h"
-#include "z3/push_app_ite.h"
 #include "z3/b_justification.h"
 #include "z3/bool_var_data.h"
 #include "z3/case_split_queue.h"
@@ -53,7 +50,10 @@
 #include "z3/eq_justification.h"
 #include "z3/fingerprints.h"
 #include "z3/justification.h"
+#include "z3/nnf.h"
 #include "z3/params.h"
+#include "z3/pattern_inference.h"
+#include "z3/push_app_ite.h"
 #include "z3/relevancy.h"
 #include "z3/statistics.h"
 #include "z3/theory.h"
@@ -1160,7 +1160,6 @@ class SmtContext : protected EnvObj
   void removeLitOccs(const Clause& cls, size_t numBoolVars);
   void addLitOccs(const Clause& cls);
   void addScores(size_t n, const Literal* lits);
-
 
   void init();
   void flush();

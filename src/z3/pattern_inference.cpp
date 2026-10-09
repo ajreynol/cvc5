@@ -365,7 +365,8 @@ void PatternInference::collectSaveCandidate(TNode n)
       boundVars.remove(base + i);
     }
     collectSave(
-        n, new CollectInfo(bodyInfo->d_freeVars, boundVars, bodyInfo->d_size + 1));
+        n,
+        new CollectInfo(bodyInfo->d_freeVars, boundVars, bodyInfo->d_size + 1));
     return;
   }
 
@@ -723,10 +724,10 @@ bool PatternInference::hasPreferredPatterns(
 }
 
 void PatternInference::mkPatterns(size_t baseLevel,
-                                 size_t numBindings,
-                                 TNode n,
-                                 const std::vector<Node>& noPatterns,
-                                 std::vector<Node>& result)
+                                  size_t numBindings,
+                                  TNode n,
+                                  const std::vector<Node>& noPatterns,
+                                  std::vector<Node>& result)
 {
   d_baseLevel = baseLevel;
   d_numBindings = numBindings;

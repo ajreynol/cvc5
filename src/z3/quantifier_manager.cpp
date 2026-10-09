@@ -29,8 +29,8 @@
 #include "base/output.h"
 #include "z3/ast.h"
 #include "z3/enode.h"
-#include "z3/mam.h"
 #include "z3/enum_inst.h"
+#include "z3/mam.h"
 #include "z3/qi_queue.h"
 #include "z3/quick_checker.h"
 #include "z3/smt_context.h"
@@ -556,9 +556,8 @@ class DefaultQmPlugin : public QuantifierManagerPlugin
           }
         }
       }
-      Trace("z3-qpat") << "[assign-quant] q" << q.getId()
-                       << " pats=" << numPats << " arity" << arities.str()
-                       << " " << q << std::endl;
+      Trace("z3-qpat") << "[assign-quant] q" << q.getId() << " pats=" << numPats
+                       << " arity" << arities.str() << " " << q << std::endl;
     }
     // A multi-pattern is only matched eagerly up to a bound, since matching
     // one is much more expensive than matching a unary pattern. The bound is
@@ -706,10 +705,9 @@ class DefaultQmPlugin : public QuantifierManagerPlugin
       d_context->d_inForcedRematch = false;
       if (d_context->getStats().d_numInstances != before)
       {
-        Trace("z3-rematch")
-            << "force rematch found "
-            << (d_context->getStats().d_numInstances - before)
-            << " new instances" << std::endl;
+        Trace("z3-rematch") << "force rematch found "
+                            << (d_context->getStats().d_numInstances - before)
+                            << " new instances" << std::endl;
         return FC_CONTINUE;
       }
     }

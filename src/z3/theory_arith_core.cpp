@@ -315,8 +315,8 @@ void TheoryArith::addRowEntry(size_t rId, const Numeral& coeff, TheoryVar v)
 
   cEntry.d_rowId = static_cast<int>(rId);
   cEntry.d_rowIdx = rIdx;
-  d_stats.d_tableauMaxColumns = std::max(d_stats.d_tableauMaxColumns,
-                                         static_cast<uint64_t>(v) + 1);
+  d_stats.d_tableauMaxColumns =
+      std::max(d_stats.d_tableauMaxColumns, static_cast<uint64_t>(v) + 1);
 }
 
 void TheoryArith::internalizeInternalMonomial(TNode m, size_t rId)
@@ -333,8 +333,8 @@ void TheoryArith::internalizeInternalMonomial(TNode m, size_t rId)
     }
   }
   Rational val1, val2;
-  if (arith::isMul(m) && m.getNumChildren() == 2
-      && arith::isNumeral(m[0], val1) && isApp(m[0]) && isApp(m[1]))
+  if (arith::isMul(m) && m.getNumChildren() == 2 && arith::isNumeral(m[0], val1)
+      && isApp(m[0]) && isApp(m[1]))
   {
     TNode arg1 = m[0];
     TNode arg2 = m[1];
@@ -539,10 +539,10 @@ TheoryVar TheoryArith::internalizeIdiv(TNode n)
     foundUnderspecifiedOp(n);
   }
   NodeManager* nm = d_ctx.getEnv().getNodeManager();
-  Node mod = nm->mkNode(arith::isTotalDivOp(n) ? Kind::INTS_MODULUS_TOTAL
-                                                : Kind::INTS_MODULUS,
-                        n[0],
-                        n[1]);
+  Node mod = nm->mkNode(
+      arith::isTotalDivOp(n) ? Kind::INTS_MODULUS_TOTAL : Kind::INTS_MODULUS,
+      n[0],
+      n[1]);
   d_ctx.internalize(mod, false);
   if (d_ctx.relevancy())
   {
@@ -639,18 +639,14 @@ void TheoryArith::mkAxiom(TNode ante, TNode conseq, bool simplifyConseq)
   }
 }
 
-void TheoryArith::mkDivAxiom(TNode p, TNode q)
-{
-  mkDivAxiom(p, q, true);
-}
+void TheoryArith::mkDivAxiom(TNode p, TNode q) { mkDivAxiom(p, q, true); }
 
 void TheoryArith::mkDivAxiom(TNode p, TNode q, bool total)
 {
   if (!isZero(q))
   {
     NodeManager* nm = d_ctx.getEnv().getNodeManager();
-    Node div =
-        nm->mkNode(total ? Kind::DIVISION_TOTAL : Kind::DIVISION, p, q);
+    Node div = nm->mkNode(total ? Kind::DIVISION_TOTAL : Kind::DIVISION, p, q);
     // Z3 uses a real zero; q may be an integer in cvc5.
     Node zero = NodeManager::mkConstRealOrInt(q.getType(), Rational(0));
     Node eqz = nm->mkNode(Kind::EQUAL, q, zero);
@@ -672,8 +668,9 @@ void TheoryArith::mkIdivModAxioms(TNode dividend, TNode divisor)
 void TheoryArith::mkIdivModAxioms(TNode dividend, TNode divisor, bool total)
 {
   NodeManager* nm = d_ctx.getEnv().getNodeManager();
-  Node div = nm->mkNode(
-      total ? Kind::INTS_DIVISION_TOTAL : Kind::INTS_DIVISION, dividend, divisor);
+  Node div = nm->mkNode(total ? Kind::INTS_DIVISION_TOTAL : Kind::INTS_DIVISION,
+                        dividend,
+                        divisor);
   Node mod = nm->mkNode(
       total ? Kind::INTS_MODULUS_TOTAL : Kind::INTS_MODULUS, dividend, divisor);
   if (!isZero(divisor))
@@ -681,13 +678,13 @@ void TheoryArith::mkIdivModAxioms(TNode dividend, TNode divisor, bool total)
     // if divisor is zero, then idiv and mod are uninterpreted functions.
     Node zero = nm->mkConstInt(Rational(0));
     Node one = nm->mkConstInt(Rational(1));
-    Node absDivisor = nm->mkNode(
-        Kind::SUB,
-        nm->mkNode(Kind::ITE,
-                   nm->mkNode(Kind::LT, divisor, zero),
-                   nm->mkNode(Kind::SUB, zero, divisor),
-                   divisor),
-        one);
+    Node absDivisor =
+        nm->mkNode(Kind::SUB,
+                   nm->mkNode(Kind::ITE,
+                              nm->mkNode(Kind::LT, divisor, zero),
+                              nm->mkNode(Kind::SUB, zero, divisor),
+                              divisor),
+                   one);
     absDivisor = d_ctx.rewriteInstance(absDivisor);
     Node eqz = nm->mkNode(Kind::EQUAL, divisor, zero);
     Node qr = arith::mkAdd(nm, arith::mkMul(nm, divisor, div), mod);
@@ -730,8 +727,8 @@ void TheoryArith::mkIdivModAxioms(TNode dividend, TNode divisor, bool total)
       mkAxiom(eqz, divGe, false);
     }
 
-    if (d_params.d_arithEnumConstMod && arith::isNumeral(divisor, k)
-        && isPos(k) && k < Rational(8))
+    if (d_params.d_arithEnumConstMod && arith::isNumeral(divisor, k) && isPos(k)
+        && k < Rational(8))
     {
       Rational j(0);
       LiteralVector lits;
@@ -796,8 +793,8 @@ void TheoryArith::mkToIntAxiom(TNode n)
     return;
   }
   Node toR = nm->mkNode(Kind::TO_REAL, n);
-  Node diff = arith::mkAdd(
-      nm, x, arith::mkMul(nm, nm->mkConstReal(Rational(-1)), toR));
+  Node diff =
+      arith::mkAdd(nm, x, arith::mkMul(nm, nm->mkConstReal(Rational(-1)), toR));
 
   Node lo = arith::mkGe(nm, diff, nm->mkConstReal(Rational(0)));
   Node hi = arith::mkGe(nm, diff, nm->mkConstReal(Rational(1)));
@@ -830,10 +827,10 @@ void TheoryArith::mkIsIntAxiom(TNode n)
   Assert(arith::isIsInt(n));
   NodeManager* nm = d_ctx.getEnv().getNodeManager();
   TNode x = n[0];
-  Node eq = nm->mkNode(
-      Kind::EQUAL,
-      nm->mkNode(Kind::TO_REAL, nm->mkNode(Kind::TO_INTEGER, x)),
-      x);
+  Node eq =
+      nm->mkNode(Kind::EQUAL,
+                 nm->mkNode(Kind::TO_REAL, nm->mkNode(Kind::TO_INTEGER, x)),
+                 x);
   mkAxiom(n.notNode(), eq);
   mkAxiom(eq.notNode(), n);
 }
@@ -905,7 +902,6 @@ TheoryVar TheoryArith::internalizeNumeral(TNode n, const Numeral& val)
   d_value[v] = ival;
   return v;
 }
-
 
 TheoryVar TheoryArith::internalizeTermCore(TNode n)
 {
@@ -1021,8 +1017,8 @@ size_t TheoryArith::mkRow()
   d_inToCheck.assureDomain(r);
   Assert(d_rows[r].size() == 0);
   Assert(d_rows[r].numEntries() == 0);
-  d_stats.d_tableauMaxRows = std::max(d_stats.d_tableauMaxRows,
-                                      static_cast<uint64_t>(d_rows.size()));
+  d_stats.d_tableauMaxRows =
+      std::max(d_stats.d_tableauMaxRows, static_cast<uint64_t>(d_rows.size()));
   return r;
 }
 
@@ -2273,8 +2269,7 @@ TheoryVar TheoryArith::selectPivotCore(TheoryVar xI, Numeral& outAIJ)
         else if (num == bestSoFar && colSz == bestColSz)
         {
           n++;
-          if (static_cast<unsigned>(d_random()) % static_cast<unsigned>(n)
-              == 0)
+          if (static_cast<unsigned>(d_random()) % static_cast<unsigned>(n) == 0)
           {
             result = xJ;
             outAIJ = aIJ;
@@ -2726,8 +2721,8 @@ size_t TheoryArith::implyBoundForMonomial(const Row& r, int idx, bool isLower)
     {
       if (!it->isDead() && idx != idx2)
       {
-        Bound* b = getBound(
-            it->d_var, isLower ? isPos(it->d_coeff) : isNeg(it->d_coeff));
+        Bound* b = getBound(it->d_var,
+                            isLower ? isPos(it->d_coeff) : isNeg(it->d_coeff));
         Assert(b);
         impliedK.submul(it->d_coeff, b->getValue());
       }
@@ -2739,7 +2734,8 @@ size_t TheoryArith::implyBoundForMonomial(const Row& r, int idx, bool isLower)
       Bound* curr = lower(entry.d_var);
       if (curr == nullptr || impliedK > curr->getValue())
       {
-        count += mkImpliedBound(r, idx, isLower, entry.d_var, B_LOWER, impliedK);
+        count +=
+            mkImpliedBound(r, idx, isLower, entry.d_var, B_LOWER, impliedK);
       }
     }
     else
@@ -2748,7 +2744,8 @@ size_t TheoryArith::implyBoundForMonomial(const Row& r, int idx, bool isLower)
       Bound* curr = upper(entry.d_var);
       if (curr == nullptr || impliedK < curr->getValue())
       {
-        count += mkImpliedBound(r, idx, isLower, entry.d_var, B_UPPER, impliedK);
+        count +=
+            mkImpliedBound(r, idx, isLower, entry.d_var, B_UPPER, impliedK);
       }
     }
   }
@@ -2795,7 +2792,8 @@ size_t TheoryArith::implyBoundForAllMonomials(const Row& r, bool isLower)
         if (curr == nullptr || impliedK > curr->getValue())
         {
           // improved lower bound
-          count += mkImpliedBound(r, idx, isLower, it->d_var, B_LOWER, impliedK);
+          count +=
+              mkImpliedBound(r, idx, isLower, it->d_var, B_LOWER, impliedK);
         }
       }
       else
@@ -2805,7 +2803,8 @@ size_t TheoryArith::implyBoundForAllMonomials(const Row& r, bool isLower)
         if (curr == nullptr || impliedK < curr->getValue())
         {
           // improved upper bound
-          count += mkImpliedBound(r, idx, isLower, it->d_var, B_UPPER, impliedK);
+          count +=
+              mkImpliedBound(r, idx, isLower, it->d_var, B_UPPER, impliedK);
         }
       }
     }
@@ -2813,11 +2812,8 @@ size_t TheoryArith::implyBoundForAllMonomials(const Row& r, bool isLower)
   return count;
 }
 
-void TheoryArith::explainBound(const Row& r,
-                               int idx,
-                               bool isLower,
-                               InfNumeral& delta,
-                               Antecedents& ante)
+void TheoryArith::explainBound(
+    const Row& r, int idx, bool isLower, InfNumeral& delta, Antecedents& ante)
 {
   Assert(delta >= InfNumeral());
 
@@ -3036,14 +3032,14 @@ void TheoryArith::assignBoundLiteral(
   else
   {
     d_ctx.assign(l,
-                 d_ctx.mkJustification(ExtTheoryPropagationJustification(
-                     getId(),
-                     d_ctx,
-                     ante.lits().size(),
-                     ante.lits().data(),
-                     ante.eqs().size(),
-                     ante.eqs().data(),
-                     l)));
+                 d_ctx.mkJustification(
+                     ExtTheoryPropagationJustification(getId(),
+                                                       d_ctx,
+                                                       ante.lits().size(),
+                                                       ante.lits().data(),
+                                                       ante.eqs().size(),
+                                                       ante.eqs().data(),
+                                                       l)));
   }
 }
 
@@ -3212,8 +3208,7 @@ void TheoryArith::refineEpsilon()
       {
         continue;
       }
-      Rational value =
-          val.getRational() + d_epsilon * val.getInfinitesimal();
+      Rational value = val.getRational() + d_epsilon * val.getInfinitesimal();
       auto it = mapping.find(value);
       if (it != mapping.end())
       {
@@ -3531,9 +3526,7 @@ Node TheoryArith::mkEqAtom(TNode lhs, TNode rhs)
 template void TheoryArith::addRowEntry<false>(size_t,
                                               const Numeral&,
                                               TheoryVar);
-template void TheoryArith::addRowEntry<true>(size_t,
-                                             const Numeral&,
-                                             TheoryVar);
+template void TheoryArith::addRowEntry<true>(size_t, const Numeral&, TheoryVar);
 template void TheoryArith::pivot<false>(TheoryVar,
                                         TheoryVar,
                                         const Numeral&,

@@ -15,26 +15,25 @@
 
 #include "z3/smt_context.h"
 
-#include <fstream>
-
 #include <algorithm>
 #include <cmath>
+#include <fstream>
 
 #include "base/output.h"
 #include "expr/node_algorithm.h"
 #include "expr/node_manager.h"
+#include "options/smt_options.h"
+#include "options/z3_options.h"
 #include "printer/printer.h"
 #include "smt/env.h"
 #include "smt/print_benchmark.h"
+#include "smt/set_defaults.h"
+#include "smt/solver_engine.h"
+#include "theory/smt_engine_subsolver.h"
 #include "theory/theory.h"
 #include "util/resource_manager.h"
 #include "util/statistics_registry.h"
 #include "z3/quantifier_manager.h"
-#include "options/smt_options.h"
-#include "options/z3_options.h"
-#include "smt/set_defaults.h"
-#include "smt/solver_engine.h"
-#include "theory/smt_engine_subsolver.h"
 #include "z3/theory_cvc5.h"
 #include "z3/util/luby.h"
 #include "z3/util/util.h"
@@ -2984,7 +2983,8 @@ void SmtContext::pushAssertion(TNode e)
   // conjunction distributes.
   if (e.getKind() == Kind::ITE)
   {
-    pushAssertion(d_env.getNodeManager()->mkNode(Kind::OR, e[0].negate(), e[1]));
+    pushAssertion(
+        d_env.getNodeManager()->mkNode(Kind::OR, e[0].negate(), e[1]));
     pushAssertion(d_env.getNodeManager()->mkNode(Kind::OR, Node(e[0]), e[2]));
     return;
   }
@@ -3003,7 +3003,8 @@ void SmtContext::pushAssertion(TNode e)
       {
         for (const Node& arg : conj)
         {
-          pushAssertion(d_env.getNodeManager()->mkNode(Kind::OR, Node(rest), arg));
+          pushAssertion(
+              d_env.getNodeManager()->mkNode(Kind::OR, Node(rest), arg));
         }
         return;
       }

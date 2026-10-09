@@ -90,10 +90,7 @@ class ArithEqRelevancyEh : public RelevancyEh
 
 ArithEqAdapter::ArithEqAdapter(Theory& owner) : d_owner(owner) {}
 
-SmtContext& ArithEqAdapter::getContext() const
-{
-  return d_owner.getContext();
-}
+SmtContext& ArithEqAdapter::getContext() const { return d_owner.getContext(); }
 
 void ArithEqAdapter::mkAxioms(ENode* n1, ENode* n2)
 {
@@ -196,8 +193,8 @@ void ArithEqAdapter::mkAxioms(ENode* n1, ENode* n2)
   }
   if (ctx.relevancy())
   {
-    RelevancyEh* eh = ctx.mkRelevancyEh(ArithEqRelevancyEh(
-        n1->getExpr(), n2->getExpr(), t1EqT2, le, ge));
+    RelevancyEh* eh = ctx.mkRelevancyEh(
+        ArithEqRelevancyEh(n1->getExpr(), n2->getExpr(), t1EqT2, le, ge));
     ctx.addRelevancyEh(n1->getExpr(), eh);
     ctx.addRelevancyEh(n2->getExpr(), eh);
   }

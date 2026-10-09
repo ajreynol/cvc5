@@ -132,8 +132,7 @@ class LabelHasher
     uint32_t b = 3;
     uint32_t c = lblId;
     hashMix(a, b, c);
-    d_lbl2Hash[lblId] =
-        static_cast<int8_t>(c & (approxSetCapacity() - 1));
+    d_lbl2Hash[lblId] = static_cast<int8_t>(c & (approxSetCapacity() - 1));
   }
 
   SmtContext& d_ctx;
@@ -304,8 +303,8 @@ struct GetCgr : public Instr
   }
   const uint32_t* iregsPtr() const
   {
-    return reinterpret_cast<const uint32_t*>(
-        reinterpret_cast<const char*>(this) + sizeof(GetCgr));
+    return reinterpret_cast<const uint32_t*>(reinterpret_cast<const char*>(this)
+                                             + sizeof(GetCgr));
   }
 };
 
@@ -321,8 +320,8 @@ struct Yield : public Instr
   }
   const uint32_t* bindingsPtr() const
   {
-    return reinterpret_cast<const uint32_t*>(
-        reinterpret_cast<const char*>(this) + sizeof(Yield));
+    return reinterpret_cast<const uint32_t*>(reinterpret_cast<const char*>(this)
+                                             + sizeof(Yield));
   }
 };
 
@@ -338,8 +337,8 @@ struct IsCgr : public Instr
   }
   const uint32_t* iregsPtr() const
   {
-    return reinterpret_cast<const uint32_t*>(
-        reinterpret_cast<const char*>(this) + sizeof(IsCgr));
+    return reinterpret_cast<const uint32_t*>(reinterpret_cast<const char*>(this)
+                                             + sizeof(IsCgr));
   }
 };
 
@@ -443,8 +442,8 @@ std::ostream& operator<<(std::ostream& out, const Instr& instr)
     case CONTINUE:
     {
       const Cont& c = static_cast<const Cont&>(instr);
-      out << "(CONTINUE " << c.d_label << " " << c.d_numArgs << " "
-          << c.d_oreg << " " << c.d_lblSet << " (";
+      out << "(CONTINUE " << c.d_label << " " << c.d_numArgs << " " << c.d_oreg
+          << " " << c.d_lblSet << " (";
       for (uint16_t i = 0; i < c.d_numArgs; ++i)
       {
         if (i > 0)
@@ -484,16 +483,16 @@ std::ostream& operator<<(std::ostream& out, const Instr& instr)
     case PFILTER:
     {
       const Filter& f = static_cast<const Filter&>(instr);
-      const char* op = instr.d_opcode == FILTER
-                           ? "FILTER"
-                           : (instr.d_opcode == CFILTER ? "CFILTER"
-                                                        : "PFILTER");
+      const char* op =
+          instr.d_opcode == FILTER
+              ? "FILTER"
+              : (instr.d_opcode == CFILTER ? "CFILTER" : "PFILTER");
       out << "(" << op << " " << f.d_reg << " " << f.d_lblSet << ")";
       break;
     }
     case GET_ENODE:
-      out << "(GET_ENODE "
-          << static_cast<const GetENodeInstr&>(instr).d_oreg << " #"
+      out << "(GET_ENODE " << static_cast<const GetENodeInstr&>(instr).d_oreg
+          << " #"
           << static_cast<const GetENodeInstr&>(instr).d_enode->getOwnerId()
           << ")";
       break;
@@ -511,10 +510,7 @@ class CodeTreeManager;
 class CodeTree
 {
  public:
-  CodeTree(LabelHasher& h,
-           TNode lbl,
-           uint16_t numArgs,
-           bool filterCandidates)
+  CodeTree(LabelHasher& h, TNode lbl, uint16_t numArgs, bool filterCandidates)
       : d_lblHasher(h),
         d_rootLbl(lbl),
         d_numArgs(numArgs),
@@ -607,9 +603,7 @@ class CodeTree
     }
   }
 
-  void printChildren(std::ostream& out,
-                     Choose* firstChild,
-                     size_t indent) const
+  void printChildren(std::ostream& out, Choose* firstChild, size_t indent) const
   {
     Choose* curr = firstChild;
     while (curr != nullptr)
@@ -696,8 +690,7 @@ class CodeTreeManager
 
   GetENodeInstr* mkGetENode(uint32_t reg, ENode* n)
   {
-    GetENodeInstr* s =
-        mkInstr<GetENodeInstr>(GET_ENODE, sizeof(GetENodeInstr));
+    GetENodeInstr* s = mkInstr<GetENodeInstr>(GET_ENODE, sizeof(GetENodeInstr));
     s->d_oreg = reg;
     s->d_enode = n;
     return s;
@@ -720,8 +713,7 @@ class CodeTreeManager
   Bind* mkBind(TNode lbl, uint16_t numArgs, uint32_t ireg, uint32_t oreg)
   {
     Assert(numArgs >= 1);
-    Opcode op =
-        numArgs <= 6 ? static_cast<Opcode>(BIND1 + numArgs - 1) : BINDN;
+    Opcode op = numArgs <= 6 ? static_cast<Opcode>(BIND1 + numArgs - 1) : BINDN;
     Bind* r = mkInstr<Bind>(op, sizeof(Bind));
     r->d_label = lbl;
     r->d_numArgs = numArgs;
@@ -737,10 +729,10 @@ class CodeTreeManager
                    const uint32_t* iregs)
   {
     Assert(numArgs >= 1);
-    Opcode op = numArgs <= 6 ? static_cast<Opcode>(GET_CGR1 + numArgs - 1)
-                             : GET_CGRN;
-    GetCgr* r = mkInstr<GetCgr>(
-        op, sizeof(GetCgr) + numArgs * sizeof(uint32_t));
+    Opcode op =
+        numArgs <= 6 ? static_cast<Opcode>(GET_CGR1 + numArgs - 1) : GET_CGRN;
+    GetCgr* r =
+        mkInstr<GetCgr>(op, sizeof(GetCgr) + numArgs * sizeof(uint32_t));
     r->d_label = lbl;
     r->d_lblSet.insert(d_lblHasher(lbl));
     r->d_commutative = commutative;
@@ -771,11 +763,10 @@ class CodeTreeManager
                  const uint32_t* bindings)
   {
     Assert(numBindings >= 1);
-    Opcode op = numBindings <= 6
-                    ? static_cast<Opcode>(YIELD1 + numBindings - 1)
-                    : YIELDN;
-    Yield* y = mkInstr<Yield>(
-        op, sizeof(Yield) + numBindings * sizeof(uint32_t));
+    Opcode op = numBindings <= 6 ? static_cast<Opcode>(YIELD1 + numBindings - 1)
+                                 : YIELDN;
+    Yield* y =
+        mkInstr<Yield>(op, sizeof(Yield) + numBindings * sizeof(uint32_t));
     y->d_qa = qa;
     y->d_pat = pat;
     y->d_numBindings = numBindings;
@@ -790,8 +781,8 @@ class CodeTreeManager
                const TaggedPtr* joints)
   {
     Assert(numArgs >= 1);
-    Cont* r = mkInstr<Cont>(CONTINUE,
-                            sizeof(Cont) + numArgs * sizeof(TaggedPtr));
+    Cont* r =
+        mkInstr<Cont>(CONTINUE, sizeof(Cont) + numArgs * sizeof(TaggedPtr));
     r->d_label = lbl;
     r->d_numArgs = numArgs;
     r->d_oreg = oreg;
@@ -851,7 +842,6 @@ class CodeTreeManager
   Region& d_region;
 };
 
-
 // ----------------------------------------------------------------- compiler
 
 /**
@@ -884,8 +874,7 @@ class Compiler
   {
     TNode p = mp[firstIdx];
     uint16_t numArgs = static_cast<uint16_t>(p.getNumChildren());
-    CodeTree* r =
-        d_ctManager.mkCodeTree(getDecl(p), numArgs, filterCandidates);
+    CodeTree* r = d_ctManager.mkCodeTree(getDecl(p), numArgs, filterCandidates);
     init(r, qa, mp, firstIdx);
     linearise(r->d_root, firstIdx);
     r->d_numChoices = d_numChoices;
@@ -940,8 +929,7 @@ class Compiler
 
   TNode getRegister(uint32_t reg) const
   {
-    return reg < d_registers.size() ? TNode(d_registers[reg])
-                                    : TNode::null();
+    return reg < d_registers.size() ? TNode(d_registers[reg]) : TNode::null();
   }
 
   CheckMark getCheckMark(uint32_t reg) const
@@ -1057,8 +1045,8 @@ class Compiler
         uint32_t varId = varIndex(p);
         if (d_vars[varId] != -1)
         {
-          d_seq.push_back(d_ctManager.mkCompare(
-              static_cast<uint32_t>(d_vars[varId]), reg));
+          d_seq.push_back(
+              d_ctManager.mkCompare(static_cast<uint32_t>(d_vars[varId]), reg));
         }
         else
         {
@@ -1111,8 +1099,7 @@ class Compiler
           uint32_t numUnboundVars;
           getStats(p, sz, numUnboundVars);
           if (numUnboundVars == 0 || sz > firstAppSz
-              || (sz == firstAppSz
-                  && numUnboundVars < firstAppNumUnboundVars))
+              || (sz == firstAppSz && numUnboundVars < firstAppNumUnboundVars))
           {
             d_aux.push_back(firstAppReg);
             firstApp = p;
@@ -1163,8 +1150,7 @@ class Compiler
           setRegister(oreg + j, firstApp[j]);
           d_aux.push_back(oreg + j);
         }
-        d_seq.push_back(
-            d_ctManager.mkBind(lbl, numArgs, firstAppReg, oreg));
+        d_seq.push_back(d_ctManager.mkBind(lbl, numArgs, firstAppReg, oreg));
         d_numChoices++;
       }
       setCheckMark(firstAppReg, NOT_CHECKED);
@@ -1376,10 +1362,10 @@ class Compiler
             {
               continue;
             }
-            Joint2* newJoint = d_ctManager.mkJoint2(
-                getDecl(curr),
-                static_cast<uint32_t>(k),
-                static_cast<uint32_t>(d_vars[varId]));
+            Joint2* newJoint =
+                d_ctManager.mkJoint2(getDecl(curr),
+                                     static_cast<uint32_t>(k),
+                                     static_cast<uint32_t>(d_vars[varId]));
             joints.push_back(TaggedPtr::tag(newJoint, NESTED_VAR_TAG));
             break;  // found a joint
           }
@@ -1476,8 +1462,7 @@ class Compiler
     while (currChild != nullptr)
     {
       bool simple = false;
-      uint32_t currCompatibility =
-          getCompatibilityMeasure(currChild, simple);
+      uint32_t currCompatibility = getCompatibilityMeasure(currChild, simple);
       if (simple)
       {
         numTooSimple++;
@@ -1500,7 +1485,8 @@ class Compiler
   bool isCompatible(Bind* instr) const
   {
     TNode n = getRegister(instr->d_ireg);
-    return !n.isNull() && isApp(n)
+    return !n.isNull()
+           && isApp(n)
            // binding a ground term would be wasteful, and the rest of the
            // code assumes it does not happen
            && !isGroundPat(n) && getDecl(n) == instr->d_label
@@ -1664,8 +1650,7 @@ class Compiler
           {
             weight += 2;
           }
-          else if (d_useFilters
-                   && isSemiCompatible(static_cast<Check*>(curr)))
+          else if (d_useFilters && isSemiCompatible(static_cast<Check*>(curr)))
           {
             weight += 1;
           }
@@ -2114,8 +2099,7 @@ class Interpreter
       min = d_minTopGeneration.back();
       max = d_maxTopGeneration.back();
     }
-    for (size_t i = d_minTopGeneration.size();
-         i < d_patternInstances.size();
+    for (size_t i = d_minTopGeneration.size(); i < d_patternInstances.size();
          ++i)
     {
       uint32_t curr = d_context.getGeneration(d_patternInstances[i]);
@@ -2151,8 +2135,7 @@ class Interpreter
 
   void updateMaxGeneration(ENode* n)
   {
-    d_maxGeneration =
-        std::max(d_maxGeneration, d_context.getGeneration(n));
+    d_maxGeneration = std::max(d_maxGeneration, d_context.getGeneration(n));
   }
 
   /**
@@ -2252,9 +2235,8 @@ class Interpreter
     n = n->getRoot();
     for (ENode* p : n->getConstParents())
     {
-      if (p->getDecl() == f && i < p->getNumArgs()
-          && d_context.isRelevant(p) && p->isCgr()
-          && p->getArg(i)->getRoot() == n)
+      if (p->getDecl() == f && i < p->getNumArgs() && d_context.isRelevant(p)
+          && p->isCgr() && p->getArg(i)->getRoot() == n)
       {
         v->push_back(p);
       }
@@ -2481,8 +2463,7 @@ main_loop:
     case INIT6:
     {
       d_app = d_registers[0];
-      uint16_t expected =
-          static_cast<uint16_t>(d_pc->d_opcode - INIT1 + 1);
+      uint16_t expected = static_cast<uint16_t>(d_pc->d_opcode - INIT1 + 1);
       if (d_app->getNumArgs() != expected)
       {
         goto backtrack;
@@ -2623,9 +2604,9 @@ main_loop:
       {
         d_bindings[i] = d_registers[bnds[i]];
       }
-      d_maxGeneration = std::max(
-          d_maxGeneration,
-          d_context.getMaxGeneration(d_numArgs, d_bindings.data()));
+      d_maxGeneration =
+          std::max(d_maxGeneration,
+                   d_context.getMaxGeneration(d_numArgs, d_bindings.data()));
       if (d_context.getCancelFlag())
       {
         return false;
@@ -2664,8 +2645,7 @@ main_loop:
       {
         d_args[i] = d_registers[iregs[i]];
         if (d_useFilters
-            && c->d_lblSet.emptyIntersection(
-                d_args[i]->getRoot()->getPlbls()))
+            && c->d_lblSet.emptyIntersection(d_args[i]->getRoot()->getPlbls()))
         {
           goto backtrack;
         }
@@ -2757,8 +2737,7 @@ backtrack:
       {
         d_b = static_cast<const Bind*>(bp.d_instr);
         d_n1 = d_registers[d_b->d_ireg];
-        d_app =
-            getNextFApp(d_b->d_label, d_b->d_numArgs, d_n1, bp.d_curr);
+        d_app = getNextFApp(d_b->d_label, d_b->d_numArgs, d_n1, bp.d_curr);
         if (d_app == nullptr)
         {
           d_top--;
@@ -2861,8 +2840,9 @@ class CodeTreeMap
     {
       d_trees[lblId] = d_compiler.mkTree(q, mp, firstIdx, false);
       d_context.getStats().d_numMamTrees++;
-      Trace("z3-mam-order") << "mkTree for " << getDecl(p) << " lvl="
-                            << d_context.getScopeLevel() << std::endl;
+      Trace("z3-mam-order")
+          << "mkTree for " << getDecl(p) << " lvl=" << d_context.getScopeLevel()
+          << std::endl;
       Trace("z3-mam-tree") << "tree for " << getDecl(p) << std::endl;
       Assert(d_trees[lblId]->expectedNumArgs() == p.getNumChildren());
       d_trailStack.push(MkTreeTrail(d_trees, lblId));
@@ -2877,16 +2857,16 @@ class CodeTreeMap
       // crash.
       if (tree->expectedNumArgs() == p.getNumChildren())
       {
-        Trace("z3-mam-newpat") << "  insert into existing tree for "
-                               << getDecl(p) << std::endl;
+        Trace("z3-mam-newpat")
+            << "  insert into existing tree for " << getDecl(p) << std::endl;
         d_compiler.insert(tree, q, mp, firstIdx, false);
       }
       else
       {
-        Trace("z3-mam-newpat") << "  ARITY MISMATCH for " << getDecl(p)
-                               << ": tree expects " << tree->expectedNumArgs()
-                               << " but pattern has " << p.getNumChildren()
-                               << std::endl;
+        Trace("z3-mam-newpat")
+            << "  ARITY MISMATCH for " << getDecl(p) << ": tree expects "
+            << tree->expectedNumArgs() << " but pattern has "
+            << p.getNumChildren() << std::endl;
       }
     }
   }
@@ -3069,7 +3049,6 @@ bool isFlatAssociative(ENode* n)
   return NodeManager::isNAryKind(n->getExpr().getKind());
 }
 
-
 // ----------------------------------------- matching abstract machine impl
 
 class MamImpl : public Mam
@@ -3179,9 +3158,9 @@ class MamImpl : public Mam
   {
     for (CodeTree* t : d_toMatch)
     {
-      Trace("z3-mam-order") << "match tree " << t->getRootLbl() << " with "
-                            << t->getCandidates().size() << " candidates"
-                            << std::endl;
+      Trace("z3-mam-order")
+          << "match tree " << t->getRootLbl() << " with "
+          << t->getCandidates().size() << " candidates" << std::endl;
       Assert(t->hasCandidates());
       if (!d_interpreter.execute(t))
       {
@@ -3232,9 +3211,14 @@ class MamImpl : public Mam
     uint32_t minGen = 0;
     uint32_t maxGen = 0;
     d_interpreter.getMinMaxTopGeneration(minGen, maxGen);
-    d_context.addInstance(
-        q, pat, numBindings, bindings, maxGeneration, minGen, maxGen,
-        usedENodes);
+    d_context.addInstance(q,
+                          pat,
+                          numBindings,
+                          bindings,
+                          maxGeneration,
+                          minGen,
+                          maxGen,
+                          usedENodes);
   }
 
   bool isShared(ENode* n) const override
@@ -3357,9 +3341,9 @@ class MamImpl : public Mam
     CodeTree* t = d_trees.getCodeTreeFor(app->getDecl());
     if (TraceIsOn("z3-mam-order"))
     {
-      Trace("z3-mam-order") << "addCandidate " << app->getExpr()
-                            << " tree=" << (t != nullptr) << " lvl="
-                            << d_context.getScopeLevel() << std::endl;
+      Trace("z3-mam-order")
+          << "addCandidate " << app->getExpr() << " tree=" << (t != nullptr)
+          << " lvl=" << d_context.getScopeLevel() << std::endl;
     }
     if (t == nullptr)
     {
@@ -3403,8 +3387,7 @@ class MamImpl : public Mam
     {
       return;
     }
-    d_trailStack.push(
-        SetBitvectorTrail<std::vector<bool>>(d_isClbl, lblId));
+    d_trailStack.push(SetBitvectorTrail<std::vector<bool>>(d_isClbl, lblId));
     Assert(d_isClbl[lblId]);
     uint8_t h = d_lblHasher(lbl);
     for (ENode* app : d_context.enodesOf(lbl))
@@ -3439,8 +3422,7 @@ class MamImpl : public Mam
     {
       return;
     }
-    d_trailStack.push(
-        SetBitvectorTrail<std::vector<bool>>(d_isPlbl, lblId));
+    d_trailStack.push(SetBitvectorTrail<std::vector<bool>>(d_isPlbl, lblId));
     Assert(d_isPlbl[lblId]);
     uint8_t h = d_lblHasher(lbl);
     for (ENode* app : d_context.enodesOf(lbl))
@@ -3764,8 +3746,7 @@ class MamImpl : public Mam
         // miss potential new matches.
         ENode* currChild = n->getRoot();
 
-        if (d_useFilters
-            && currChild->getPlbls().emptyIntersection(filter))
+        if (d_useFilters && currChild->getPlbls().emptyIntersection(filter))
         {
           continue;
         }
@@ -3811,8 +3792,7 @@ class MamImpl : public Mam
                         // the child of the parent is equal to the expected
                         // ground argument.
                         || isEq(currTree->d_groundArg,
-                                currParent->getArg(
-                                    currTree->d_groundArgIdx))))
+                                currParent->getArg(currTree->d_groundArgIdx))))
                 {
                   if (currTree->d_code != nullptr)
                   {
@@ -3968,9 +3948,9 @@ class MamImpl : public Mam
       uint32_t lblId = d_context.getDeclId(lbl);
       CodeTree* tmpTree = d_tmpTrees[lblId];
       Assert(tmpTree != nullptr);
-      Trace("z3-mam-newpat") << "  running tree for " << lbl << " over "
-                             << d_context.enodesOf(lbl).size() << " enodes"
-                             << std::endl;
+      Trace("z3-mam-newpat")
+          << "  running tree for " << lbl << " over "
+          << d_context.enodesOf(lbl).size() << " enodes" << std::endl;
       d_interpreter.init(tmpTree);
       for (size_t i = 0; i < d_context.enodesOf(lbl).size(); ++i)
       {

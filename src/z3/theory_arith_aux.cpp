@@ -324,8 +324,7 @@ std::ostream& TheoryArith::Bound::print(const TheoryArith& th,
                                         std::ostream& out) const
 {
   return out << "v" << getVar() << " "
-             << (getBoundKind() == B_LOWER ? ">=" : "<=") << " "
-             << getValue();
+             << (getBoundKind() == B_LOWER ? ">=" : "<=") << " " << getValue();
 }
 
 // -----------------------------------
@@ -390,8 +389,7 @@ std::ostream& TheoryArith::Atom::print(const TheoryArith& th,
 std::ostream& TheoryArith::EqBound::print(const TheoryArith& th,
                                           std::ostream& out) const
 {
-  return out << "#" << d_lhs->getOwnerId() << " " << d_lhs->getExpr()
-             << " = "
+  return out << "#" << d_lhs->getOwnerId() << " " << d_lhs->getExpr() << " = "
              << "#" << d_rhs->getOwnerId() << " " << d_rhs->getExpr();
 }
 
@@ -444,8 +442,7 @@ void TheoryArith::setBound(Bound* newBound, bool upper)
  * Return the ColEntry that points to a base row that contains the given
  * variable. Return nullptr if no row contains v.
  */
-const TheoryArith::ColEntry* TheoryArith::getABaseRowThatContains(
-    TheoryVar v)
+const TheoryArith::ColEntry* TheoryArith::getABaseRowThatContains(TheoryVar v)
 {
   while (true)
   {
@@ -813,8 +810,9 @@ std::ostream& TheoryArith::DerivedBound::print(const TheoryArith& th,
   return out;
 }
 
-void TheoryArith::JustifiedDerivedBound::pushJustification(
-    Antecedents& a, const Numeral& coeff, bool proofsEnabled)
+void TheoryArith::JustifiedDerivedBound::pushJustification(Antecedents& a,
+                                                           const Numeral& coeff,
+                                                           bool proofsEnabled)
 {
   for (size_t i = 0; i < d_lits.size(); ++i)
   {
@@ -936,7 +934,8 @@ void TheoryArith::mkBoundFromRow(TheoryVar v,
       }
       Bound* b = getBound(w, useUpper);
       Assert(b);
-      accumulateJustification(*b, *newBound, e.d_coeff, d_tmpLitSet, d_tmpEqSet);
+      accumulateJustification(
+          *b, *newBound, e.d_coeff, d_tmpLitSet, d_tmpEqSet);
     }
   }
 }
@@ -960,35 +959,35 @@ void TheoryArith::addTmpRow(Row& r1, const Numeral& coeff, const Row& r2)
   // loop over variables in row2,
   // add terms in row2 to row1.
   //
-#define ADD_TMP_ROW(_SET_COEFF_, _ADD_COEFF_)          \
-  for (const RowEntry& e : r2)                         \
-  {                                                    \
-    if (!e.isDead())                                   \
-    {                                                  \
-      TheoryVar v = e.d_var;                           \
-      int pos = d_varPos[v];                           \
-      if (pos == -1)                                   \
-      {                                                \
-        /* variable v is not in row1 */                \
-        int rowIdx;                                    \
-        RowEntry& rEntry = r1.addRowEntry(rowIdx);     \
-        rEntry.d_var = v;                              \
-        _SET_COEFF_;                                   \
-      }                                                \
-      else                                             \
-      {                                                \
-        /* variable v is in row1 */                    \
-        RowEntry& rEntry = r1[pos];                    \
-        Assert(rEntry.d_var == v);                     \
-        _ADD_COEFF_;                                   \
-        if (rEntry.d_coeff.isZero())                   \
-        {                                              \
-          r1.delRowEntry(pos);                         \
-        }                                              \
-        d_varPos[v] = -1;                              \
-      }                                                \
-    }                                                  \
-  }                                                    \
+#define ADD_TMP_ROW(_SET_COEFF_, _ADD_COEFF_)      \
+  for (const RowEntry& e : r2)                     \
+  {                                                \
+    if (!e.isDead())                               \
+    {                                              \
+      TheoryVar v = e.d_var;                       \
+      int pos = d_varPos[v];                       \
+      if (pos == -1)                               \
+      {                                            \
+        /* variable v is not in row1 */            \
+        int rowIdx;                                \
+        RowEntry& rEntry = r1.addRowEntry(rowIdx); \
+        rEntry.d_var = v;                          \
+        _SET_COEFF_;                               \
+      }                                            \
+      else                                         \
+      {                                            \
+        /* variable v is in row1 */                \
+        RowEntry& rEntry = r1[pos];                \
+        Assert(rEntry.d_var == v);                 \
+        _ADD_COEFF_;                               \
+        if (rEntry.d_coeff.isZero())               \
+        {                                          \
+          r1.delRowEntry(pos);                     \
+        }                                          \
+        d_varPos[v] = -1;                          \
+      }                                            \
+    }                                              \
+  }                                                \
   ((void)0)
 
   if (coeff.isOne())
@@ -997,13 +996,13 @@ void TheoryArith::addTmpRow(Row& r1, const Numeral& coeff, const Row& r2)
   }
   else if (isMinusOne(coeff))
   {
-    ADD_TMP_ROW(rEntry.d_coeff = e.d_coeff; rEntry.d_coeff = -rEntry.d_coeff,
-                rEntry.d_coeff -= e.d_coeff);
+    ADD_TMP_ROW(rEntry.d_coeff = e.d_coeff;
+                rEntry.d_coeff = -rEntry.d_coeff, rEntry.d_coeff -= e.d_coeff);
   }
   else
   {
-    ADD_TMP_ROW(rEntry.d_coeff = e.d_coeff; rEntry.d_coeff *= coeff,
-                rEntry.d_coeff += e.d_coeff * coeff);
+    ADD_TMP_ROW(rEntry.d_coeff = e.d_coeff;
+                rEntry.d_coeff *= coeff, rEntry.d_coeff += e.d_coeff * coeff);
   }
 #undef ADD_TMP_ROW
 
@@ -1067,7 +1066,7 @@ bool TheoryArith::isSafeToLeave(TheoryVar x,
  *   gain_k := (upper_bound(x_ik) - value(x_ik))/coeff_k
  */
 bool TheoryArith::pickVarToLeave(
-    TheoryVar xJ,         // non-base variable to increment/decrement
+    TheoryVar xJ,  // non-base variable to increment/decrement
     bool inc,
     Numeral& aIJ,         // coefficient of x_i
     InfNumeral& minGain,  // minimal required gain on x_j (integral value on
@@ -1142,7 +1141,7 @@ void TheoryArith::normalizeGain(const Numeral& divisor,
 
 /** Initialize gains for x based on the bounds for x. */
 void TheoryArith::initGains(
-    TheoryVar x,          // non-base variable to increment/decrement
+    TheoryVar x,  // non-base variable to increment/decrement
     bool inc,
     InfNumeral& minGain,  // min value to increment, -1 if rational
     InfNumeral& maxGain)  // max value to decrement, -1 if unbounded
@@ -1285,8 +1284,7 @@ TheoryArith::MaxMinT TheoryArith::maxMin(Row& r,
   size_t round = 0;
   MaxMinT result = OPTIMIZED;
   hasShared = false;
-  size_t maxEfforts =
-      10 + (static_cast<unsigned>(d_ctx.getRandomValue()) % 20);
+  size_t maxEfforts = 10 + (static_cast<unsigned>(d_ctx.getRandomValue()) % 20);
   while (bestEfforts < maxEfforts && !d_ctx.getCancelFlag())
   {
     TheoryVar xJ = s_nullTheoryVar;
@@ -1350,8 +1348,7 @@ TheoryArith::MaxMinT TheoryArith::maxMin(Row& r,
         minGain = currMinGain;
         inc = currInc;
       }
-      else if (currMaxGain.isZero()
-               && (xI == s_nullTheoryVar || currXI < xI))
+      else if (currMaxGain.isZero() && (xI == s_nullTheoryVar || currXI < xI))
       {
         xI = currXI;
         xJ = currXJ;
@@ -1620,32 +1617,32 @@ bool TheoryArith::getFreedomInterval(TheoryVar xJ,
   l.reset();
   u.reset();
   m = Numeral(1);
-#define IS_FIXED()                  \
-  {                                 \
-    if (!infL && !infU && l == u)   \
-    {                               \
-      goto fi_succeeded;            \
-    }                               \
+#define IS_FIXED()                \
+  {                               \
+    if (!infL && !infU && l == u) \
+    {                             \
+      goto fi_succeeded;          \
+    }                             \
   }
-#define SET_LOWER(VAL)              \
-  {                                 \
-    const InfNumeral& _VAL = VAL;   \
-    if (infL || _VAL > l)           \
-    {                               \
-      l = _VAL;                     \
-      infL = false;                 \
-    }                               \
-    IS_FIXED();                     \
+#define SET_LOWER(VAL)            \
+  {                               \
+    const InfNumeral& _VAL = VAL; \
+    if (infL || _VAL > l)         \
+    {                             \
+      l = _VAL;                   \
+      infL = false;               \
+    }                             \
+    IS_FIXED();                   \
   }
-#define SET_UPPER(VAL)              \
-  {                                 \
-    const InfNumeral& _VAL = VAL;   \
-    if (infU || _VAL < u)           \
-    {                               \
-      u = _VAL;                     \
-      infU = false;                 \
-    }                               \
-    IS_FIXED();                     \
+#define SET_UPPER(VAL)            \
+  {                               \
+    const InfNumeral& _VAL = VAL; \
+    if (infU || _VAL < u)         \
+    {                             \
+      u = _VAL;                   \
+      infU = false;               \
+    }                             \
+    IS_FIXED();                   \
   }
 
   if (lower(xJ))
@@ -1747,24 +1744,24 @@ bool TheoryArith::tryToImplyEq(TheoryVar v1, TheoryVar v2)
 
   d_tmpRow.saveVarPos(d_varPos);
 
-#define ADD_ENTRY(COEFF, VAR)                          \
-  {                                                    \
-    int pos = d_varPos[VAR];                           \
-    if (pos == -1)                                     \
-    {                                                  \
-      addTmpRowEntry<false>(d_tmpRow, COEFF, VAR);     \
-    }                                                  \
-    else                                               \
-    {                                                  \
-      RowEntry& rEntry = d_tmpRow[pos];                \
-      Assert(rEntry.d_var == VAR);                     \
-      rEntry.d_coeff += COEFF;                         \
-      if (rEntry.d_coeff.isZero())                     \
-      {                                                \
-        d_tmpRow.delRowEntry(pos);                     \
-      }                                                \
-      d_varPos[VAR] = -1;                              \
-    }                                                  \
+#define ADD_ENTRY(COEFF, VAR)                      \
+  {                                                \
+    int pos = d_varPos[VAR];                       \
+    if (pos == -1)                                 \
+    {                                              \
+      addTmpRowEntry<false>(d_tmpRow, COEFF, VAR); \
+    }                                              \
+    else                                           \
+    {                                              \
+      RowEntry& rEntry = d_tmpRow[pos];            \
+      Assert(rEntry.d_var == VAR);                 \
+      rEntry.d_coeff += COEFF;                     \
+      if (rEntry.d_coeff.isZero())                 \
+      {                                            \
+        d_tmpRow.delRowEntry(pos);                 \
+      }                                            \
+      d_varPos[VAR] = -1;                          \
+    }                                              \
   }
 
   if (isNonBase(v2))
@@ -1883,8 +1880,10 @@ bool TheoryArith::randomUpdate(TheoryVar v)
       range = static_cast<unsigned>(r.getNumerator().getUnsignedLong());
     }
     InfNumeral newVal =
-        l + m * (InfNumeral(static_cast<int>(
-                static_cast<unsigned>(d_random()) % (range + 1))));
+        l
+        + m
+              * (InfNumeral(static_cast<int>(static_cast<unsigned>(d_random())
+                                             % (range + 1))));
     setValue(v, newVal);
     return true;
   }
@@ -1919,8 +1918,7 @@ void TheoryArith::mutateAssignment()
     {
       candidates.push_back(v);
     }
-    else if (!isFixed(other)
-             && d_tmpVarSet.find(other) == d_tmpVarSet.end())
+    else if (!isFixed(other) && d_tmpVarSet.find(other) == d_tmpVarSet.end())
     {
       d_tmpVarSet.insert(other);
       candidates.push_back(other);
@@ -2018,9 +2016,8 @@ bool TheoryArith::assumeEqs()
 
   if (result)
   {
-    d_ctx.pushTrail(
-        RestoreVector<std::vector<std::pair<TheoryVar, TheoryVar>>>(
-            d_assumeEqCandidates, oldSz));
+    d_ctx.pushTrail(RestoreVector<std::vector<std::pair<TheoryVar, TheoryVar>>>(
+        d_assumeEqCandidates, oldSz));
   }
   return delayedAssumeEqs();
 }

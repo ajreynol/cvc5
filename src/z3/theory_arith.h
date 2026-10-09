@@ -57,8 +57,8 @@ namespace z3 {
 struct TheoryArithStats
 {
   uint64_t d_conflicts = 0, d_addRows = 0, d_pivots = 0, d_diseqCs = 0,
-           d_gomoryCuts = 0, d_branches = 0, d_gcdTests = 0,
-           d_gcdConflicts = 0, d_patches = 0, d_patchesSucc = 0;
+           d_gomoryCuts = 0, d_branches = 0, d_gcdTests = 0, d_gcdConflicts = 0,
+           d_patches = 0, d_patchesSucc = 0;
   uint64_t d_assertLower = 0, d_assertUpper = 0, d_assertDiseq = 0,
            d_core2thEqs = 0, d_core2thDiseqs = 0;
   uint64_t d_th2coreEqs = 0, d_th2coreDiseqs = 0, d_boundProps = 0,
@@ -113,7 +113,10 @@ class TheoryArith : public Theory
   const TheoryArithStats& getStats() const { return d_stats; }
 
   /** The number of equality axioms the adapter created. */
-  uint64_t getNumEqAxioms() const { return d_arithEqAdapter.getStats().d_numEqAxioms; }
+  uint64_t getNumEqAxioms() const
+  {
+    return d_arithEqAdapter.getStats().d_numEqAxioms;
+  }
 
  protected:
   // ------------------------------------------------------- mi_ext
@@ -332,7 +335,10 @@ class TheoryArith : public Theory
     }
     virtual ~Bound() = default;
     TheoryVar getVar() const { return d_var; }
-    BoundKind getBoundKind() const { return static_cast<BoundKind>(d_boundKind); }
+    BoundKind getBoundKind() const
+    {
+      return static_cast<BoundKind>(d_boundKind);
+    }
     bool isAtom() const { return d_atom; }
     const InfNumeral& getValue() const { return d_value; }
     virtual bool hasJustification() const { return false; }
@@ -372,7 +378,8 @@ class TheoryArith : public Theory
     {
       a.pushLit(Literal(getBoolVar(), !d_isTrue), coeff, proofsEnabled);
     }
-    std::ostream& print(const TheoryArith& th, std::ostream& out) const override;
+    std::ostream& print(const TheoryArith& th,
+                        std::ostream& out) const override;
 
    protected:
     BoolVar d_bvar;
@@ -385,11 +392,8 @@ class TheoryArith : public Theory
   class EqBound : public Bound
   {
    public:
-    EqBound(TheoryVar v,
-            const InfNumeral& val,
-            BoundKind k,
-            ENode* lhs,
-            ENode* rhs)
+    EqBound(
+        TheoryVar v, const InfNumeral& val, BoundKind k, ENode* lhs, ENode* rhs)
         : Bound(v, val, k, false), d_lhs(lhs), d_rhs(rhs)
     {
       Assert(d_lhs->getRoot() == d_rhs->getRoot());
@@ -402,7 +406,8 @@ class TheoryArith : public Theory
       Assert(d_lhs->getRoot() == d_rhs->getRoot());
       a.pushEq(ENodePair(d_lhs, d_rhs), coeff, proofsEnabled);
     }
-    std::ostream& print(const TheoryArith& th, std::ostream& out) const override;
+    std::ostream& print(const TheoryArith& th,
+                        std::ostream& out) const override;
 
    private:
     ENode* d_lhs;
@@ -427,7 +432,8 @@ class TheoryArith : public Theory
     {
       d_eqs.push_back(p);
     }
-    std::ostream& print(const TheoryArith& th, std::ostream& out) const override;
+    std::ostream& print(const TheoryArith& th,
+                        std::ostream& out) const override;
 
    protected:
     LiteralVector d_lits;
@@ -648,10 +654,7 @@ class TheoryArith : public Theory
            && d_numConflicts < d_params.d_arithPropagationThreshold;
   }
   bool propagateDiseqs() const { return false; }
-  bool randomInitialValue() const
-  {
-    return d_params.d_arithRandomInitialValue;
-  }
+  bool randomInitialValue() const { return d_params.d_arithRandomInitialValue; }
   int randomLower() const { return d_params.d_arithRandomLower; }
   int randomUpper() const { return d_params.d_arithRandomUpper; }
   size_t blandsRuleThreshold() const
@@ -847,7 +850,10 @@ class TheoryArith : public Theory
   Atoms::iterator first(AtomKind kind, Atoms::iterator it, Atoms::iterator end);
   struct CompareAtoms
   {
-    bool operator()(Atom* a1, Atom* a2) const { return a1->getK() < a2->getK(); }
+    bool operator()(Atom* a1, Atom* a2) const
+    {
+      return a1->getK() < a2->getK();
+    }
   };
   bool defaultInternalizer() const override { return false; }
   bool internalizeAtom(TNode n, bool gateCtx) override;
@@ -954,7 +960,9 @@ class TheoryArith : public Theory
   // ------------------------------------------------ bound propagation
   void markRowForBoundProp(size_t r1);
   void addColumnRowsToTouchedRows(TheoryVar v);
-  void isRowUsefulForBoundProp(const Row& r, int& lowerIdx, int& upperIdx) const;
+  void isRowUsefulForBoundProp(const Row& r,
+                               int& lowerIdx,
+                               int& upperIdx) const;
   size_t implyBoundForMonomial(const Row& r, int idx, bool lower);
   size_t implyBoundForAllMonomials(const Row& r, bool lower);
   void explainBound(const Row& r,
@@ -968,11 +976,8 @@ class TheoryArith : public Theory
                         TheoryVar v,
                         BoundKind kind,
                         const InfNumeral& k);
-  void assignBoundLiteral(Literal l,
-                          const Row& r,
-                          size_t idx,
-                          bool lower,
-                          InfNumeral& delta);
+  void assignBoundLiteral(
+      Literal l, const Row& r, size_t idx, bool lower, InfNumeral& delta);
   void propagateBounds();
 
   // ------------------------------------------------ freedom intervals
@@ -1095,7 +1100,10 @@ class TheoryArith : public Theory
     OPTIMIZED,
     BEST_EFFORT
   };
-  MaxMinT maxMin(TheoryVar v, bool max, bool maintainIntegrality, bool& hasShared);
+  MaxMinT maxMin(TheoryVar v,
+                 bool max,
+                 bool maintainIntegrality,
+                 bool& hasShared);
   bool hasInterfaceEquality(TheoryVar v);
   bool maxMin(const std::vector<TheoryVar>& vars);
 
@@ -1103,13 +1111,19 @@ class TheoryArith : public Theory
   bool unboundedGain(const InfNumeral& maxGain) const;
   bool safeGain(const InfNumeral& minGain, const InfNumeral& maxGain) const;
   void normalizeGain(const Numeral& divisor, InfNumeral& maxGain) const;
-  void initGains(TheoryVar x, bool inc, InfNumeral& minGain, InfNumeral& maxGain);
+  void initGains(TheoryVar x,
+                 bool inc,
+                 InfNumeral& minGain,
+                 InfNumeral& maxGain);
   bool updateGains(bool inc,
                    TheoryVar xI,
                    const Numeral& aIJ,
                    InfNumeral& minGain,
                    InfNumeral& maxGain);
-  bool moveToBound(TheoryVar xI, bool inc, size_t& bestEfforts, bool& hasShared);
+  bool moveToBound(TheoryVar xI,
+                   bool inc,
+                   size_t& bestEfforts,
+                   bool& hasShared);
   bool pickVarToLeave(TheoryVar xJ,
                       bool inc,
                       Numeral& aIJ,
@@ -1158,8 +1172,8 @@ class TheoryArith : public Theory
 
  protected:
   // Declarations each part of the port adds, kept in a file of its own.
-#include "z3/theory_arith_core_decls.inc"
 #include "z3/theory_arith_aux_decls.inc"
+#include "z3/theory_arith_core_decls.inc"
 #include "z3/theory_arith_eqint_decls.inc"
 #include "z3/theory_arith_nlpp_decls.inc"
 };

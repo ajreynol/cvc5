@@ -594,9 +594,8 @@ class RelCaseSplitQueue : public CaseSplitQueue
             Trace("z3-csq-detail") << "PARENT " << curr << std::endl;
             for (const Node& c : curr)
             {
-              Trace("z3-csq-detail")
-                  << "  CHILD " << d_context.getAssignment(c) << " " << c
-                  << std::endl;
+              Trace("z3-csq-detail") << "  CHILD " << d_context.getAssignment(c)
+                                     << " " << c << std::endl;
             }
           }
           Literal l = d_context.getLiteral(undefChild);
@@ -857,9 +856,8 @@ class RelActCaseSplitQueue : public CaseSplitQueue
             Trace("z3-csq-detail") << "PARENT " << curr << std::endl;
             for (const Node& c : curr)
             {
-              Trace("z3-csq-detail")
-                  << "  CHILD " << d_context.getAssignment(c) << " " << c
-                  << std::endl;
+              Trace("z3-csq-detail") << "  CHILD " << d_context.getAssignment(c)
+                                     << " " << c << std::endl;
             }
           }
           Literal l = d_context.getLiteral(undefChild);

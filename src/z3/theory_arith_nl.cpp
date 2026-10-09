@@ -61,8 +61,7 @@ bool TheoryArith::checkMonomialAssignment(TheoryVar v, bool& computedEpsilon)
     val *= vVal;
   }
   vVal = getValue(v, computedEpsilon);
-  Trace("z3-arith") << "v" << v << " := " << vVal << " == " << val
-                    << std::endl;
+  Trace("z3-arith") << "v" << v << " := " << vVal << " == " << val << std::endl;
   return vVal == val;
 }
 
@@ -321,10 +320,10 @@ FinalCheckStatus TheoryArith::processNonLinear()
   }
 
   // Not ported: the rest of Z3's process_non_linear (the d_nlRounds limit
-  // d_params.d_nlArithRounds, elim_quasi_base_rows, move_non_base_vars_to_bounds,
-  // max_min_nl_vars, and the interval propagation, cross nested consistency,
-  // Groebner basis and nonlinear branching strategies) only runs with
-  // smt.arith.nl=true. Give up instead.
+  // d_params.d_nlArithRounds, elim_quasi_base_rows,
+  // move_non_base_vars_to_bounds, max_min_nl_vars, and the interval
+  // propagation, cross nested consistency, Groebner basis and nonlinear
+  // branching strategies) only runs with smt.arith.nl=true. Give up instead.
   return FC_GIVEUP;
 }
 

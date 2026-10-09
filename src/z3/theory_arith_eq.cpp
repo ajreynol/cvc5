@@ -229,9 +229,8 @@ void TheoryArith::propagateCheapEq(size_t rid)
       {
         x2 = itf->second;
       }
-      if (itf != d_fixedVarTable.end()
-          && x2 < static_cast<int>(getNumVars()) && isFixed(x2)
-          && lowerBound(x2).getRational() == k &&
+      if (itf != d_fixedVarTable.end() && x2 < static_cast<int>(getNumVars())
+          && isFixed(x2) && lowerBound(x2).getRational() == k &&
           // We must check whether x2 is an integer.
           // The table d_fixedVarTable is not restored during backtrack. So,
           // it may contain invalid (key -> value) pairs.
@@ -340,15 +339,14 @@ void TheoryArith::propagateEqToCore(TheoryVar x,
   const LiteralVector& lits = antecedents.lits();
   Justification* js =
       d_ctx.mkJustification(ExtTheoryEqPropagationJustification(getId(),
-                                                                 d_ctx,
-                                                                 lits.size(),
-                                                                 lits.data(),
-                                                                 eqs.size(),
-                                                                 eqs.data(),
-                                                                 ex,
-                                                                 ey));
-  Trace("z3-arith") << "detected equality: v" << x << " = v" << y
-                    << std::endl;
+                                                                d_ctx,
+                                                                lits.size(),
+                                                                lits.data(),
+                                                                eqs.size(),
+                                                                eqs.data(),
+                                                                ex,
+                                                                ey));
+  Trace("z3-arith") << "detected equality: v" << x << " = v" << y << std::endl;
   d_ctx.assignEq(ex, ey, EqJustification(js));
 }
 

@@ -167,8 +167,7 @@ void QuickChecker::Collector::collect(TNode n, TNode f, size_t idx)
   collectCore(n, f, idx);
 }
 
-void QuickChecker::Collector::saveResult(
-    std::vector<ENodeVector>& candidates)
+void QuickChecker::Collector::saveResult(std::vector<ENodeVector>& candidates)
 {
   candidates.resize(d_numVars + 1);
   for (size_t i = 0; i < d_numVars; ++i)
@@ -182,8 +181,9 @@ void QuickChecker::Collector::saveResult(
   }
 }
 
-void QuickChecker::Collector::operator()(
-    TNode q, bool conservative, std::vector<ENodeVector>& candidates)
+void QuickChecker::Collector::operator()(TNode q,
+                                         bool conservative,
+                                         std::vector<ENodeVector>& candidates)
 {
   bool saved = d_conservative;
   d_conservative = conservative;
@@ -426,8 +426,7 @@ bool QuickChecker::checkCore(TNode n, bool isTrue)
   }
   switch (n.getKind())
   {
-    case Kind::CONST_BOOLEAN:
-      return n.getConst<bool>() ? isTrue : !isTrue;
+    case Kind::CONST_BOOLEAN: return n.getConst<bool>() ? isTrue : !isTrue;
     case Kind::NOT: return check(n[0], !isTrue);
     case Kind::OR: return isTrue ? anyArg(n, true) : allArgs(n, false);
     case Kind::AND: return isTrue ? allArgs(n, true) : anyArg(n, false);
@@ -547,10 +546,8 @@ Node QuickChecker::canonize(TNode n)
   }
   if (hasArgENodes)
   {
-    ENode* e = d_context.getENodeEqTo(getDecl(n),
-                                      isCommutative(n),
-                                      newArgENodes.size(),
-                                      newArgENodes.data());
+    ENode* e = d_context.getENodeEqTo(
+        getDecl(n), isCommutative(n), newArgENodes.size(), newArgENodes.data());
     if (e != nullptr)
     {
       Node r = e->getRoot()->getExpr();

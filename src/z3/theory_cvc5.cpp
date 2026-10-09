@@ -18,15 +18,15 @@
 #include <unordered_set>
 
 #include "base/output.h"
+#include "expr/skolem_manager.h"
+#include "options/arith_options.h"
 #include "options/base_options.h"
 #include "options/option_exception.h"
-#include "options/arith_options.h"
 #include "options/smt_options.h"
 #include "options/z3_options.h"
 #include "smt/env.h"
 #include "smt/set_defaults.h"
 #include "smt/solver_engine.h"
-#include "expr/skolem_manager.h"
 #include "theory/smt_engine_subsolver.h"
 #include "util/rational.h"
 #include "util/result.h"
@@ -43,8 +43,7 @@ namespace {
 class BridgeTimer
 {
  public:
-  BridgeTimer(uint64_t& total,
-              std::chrono::steady_clock::time_point start)
+  BridgeTimer(uint64_t& total, std::chrono::steady_clock::time_point start)
       : d_total(total), d_start(start)
   {
   }
@@ -503,13 +502,13 @@ void Cvc5Bridge::mkConflict(const std::vector<Node>& core)
   Trace("z3-bridge") << "cvc5 bridge: conflict with " << lits.size()
                      << " literals and " << eqs.size() << " equalities"
                      << std::endl;
-  d_ctx.setConflict(d_ctx.mkJustification(
-      ExtTheoryConflictJustification(theory::THEORY_ARITH,
-                                     d_ctx,
-                                     lits.size(),
-                                     lits.data(),
-                                     eqs.size(),
-                                     eqs.data())));
+  d_ctx.setConflict(
+      d_ctx.mkJustification(ExtTheoryConflictJustification(theory::THEORY_ARITH,
+                                                           d_ctx,
+                                                           lits.size(),
+                                                           lits.data(),
+                                                           eqs.size(),
+                                                           eqs.data())));
 }
 
 bool Cvc5Bridge::isBridgedType(const TypeNode& tn)
@@ -654,10 +653,10 @@ void Cvc5Bridge::linearizeMonomials()
         continue;
       }
       Node kn = nm->mkConstRealOrInt(t.getType(), k);
-      conclusion = free.empty()
-                       ? m.second.eqNode(kn)
-                       : m.second.eqNode(
-                           nm->mkNode(Kind::MULT, kn, abstract(free[0])));
+      conclusion =
+          free.empty()
+              ? m.second.eqNode(kn)
+              : m.second.eqNode(nm->mkNode(Kind::MULT, kn, abstract(free[0])));
     }
     else
     {
@@ -668,16 +667,15 @@ void Cvc5Bridge::linearizeMonomials()
         continue;
       }
       premises.push_back(abstract(t[1]).eqNode(v));
-      conclusion =
-          m.second.eqNode(nm->mkNode(t.getKind(), abstract(t[0]), v));
+      conclusion = m.second.eqNode(nm->mkNode(t.getKind(), abstract(t[0]), v));
     }
-    Node lem = premises.empty()
-                   ? conclusion
-                   : nm->mkNode(Kind::IMPLIES,
-                                premises.size() == 1
-                                    ? premises[0]
-                                    : nm->mkNode(Kind::AND, premises),
-                                conclusion);
+    Node lem =
+        premises.empty()
+            ? conclusion
+            : nm->mkNode(Kind::IMPLIES,
+                         premises.size() == 1 ? premises[0]
+                                              : nm->mkNode(Kind::AND, premises),
+                         conclusion);
     if (d_linLemmas.insert(lem).second)
     {
       // Valid by the definition of the abstraction, so it is asserted once
@@ -771,7 +769,8 @@ bool Cvc5Bridge::isBridged(TheoryId tid)
 
 bool Cvc5Bridge::shouldCheckEagerly() const
 {
-  return d_ctx.getStats().d_numAssignments >= d_lastCheckAssignments + d_eagerGap;
+  return d_ctx.getStats().d_numAssignments
+         >= d_lastCheckAssignments + d_eagerGap;
 }
 
 Node Cvc5Bridge::getModelValue(TNode t)
@@ -992,8 +991,7 @@ bool Cvc5Bridge::propagateFixedGroup(std::vector<Node>& assumps,
   {
     diseqs.push_back(abstract(e->getExpr()).eqNode(val).notNode());
   }
-  Node query =
-      diseqs.size() == 1 ? diseqs[0] : nm->mkNode(Kind::OR, diseqs);
+  Node query = diseqs.size() == 1 ? diseqs[0] : nm->mkNode(Kind::OR, diseqs);
   size_t base = assumps.size();
   assumps.push_back(query);
   Result r;
@@ -1067,16 +1065,15 @@ bool Cvc5Bridge::propagateFixedGroup(std::vector<Node>& assumps,
     Trace("z3-bridge") << "cvc5 bridge: fixed " << e->getExpr() << " = " << val
                        << std::endl;
     d_ctx.getStats().d_numPropagatedEqs++;
-    Justification* js =
-        d_ctx.mkJustification(ExtTheoryEqPropagationJustification(
-            theory::THEORY_ARITH,
-            d_ctx,
-            lits.size(),
-            lits.data(),
-            eqs.size(),
-            eqs.data(),
-            e,
-            ec));
+    Justification* js = d_ctx.mkJustification(
+        ExtTheoryEqPropagationJustification(theory::THEORY_ARITH,
+                                            d_ctx,
+                                            lits.size(),
+                                            lits.data(),
+                                            eqs.size(),
+                                            eqs.data(),
+                                            e,
+                                            ec));
     d_ctx.assignEq(e, ec, EqJustification(js));
     propagated = true;
   }
@@ -1224,9 +1221,9 @@ bool TheoryCvc5::assumeInterfaceEqs()
         numValued++;
       }
     }
-    Trace("z3-bridge-share") << "assume_eqs: " << num << " vars, "
-                             << numShared << " relevant+shared, " << numValued
-                             << " with a value" << std::endl;
+    Trace("z3-bridge-share")
+        << "assume_eqs: " << num << " vars, " << numShared
+        << " relevant+shared, " << numValued << " with a value" << std::endl;
   }
   ModelValueTable table(d_bridge, *this);
   return assumeEqs(table);

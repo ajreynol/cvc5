@@ -202,8 +202,7 @@ TheoryVar TheoryArith::findInfeasibleIntBaseVar()
     for (const Row& row : d_rows)
     {
       TheoryVar v = row.getBaseVar();
-      if (v != s_nullTheoryVar && isBase(v) && isInt(v)
-          && !getValue(v).isInt())
+      if (v != s_nullTheoryVar && isBase(v) && isInt(v) && !getValue(v).isInt())
       {
         if (abs(getValue(v)) < smallValue)
         {
@@ -226,8 +225,7 @@ TheoryVar TheoryArith::findInfeasibleIntBaseVar()
     for (const Row& row : d_rows)
     {
       TheoryVar v = row.getBaseVar();
-      if (v != s_nullTheoryVar && isBase(v) && isInt(v)
-          && !getValue(v).isInt())
+      if (v != s_nullTheoryVar && isBase(v) && isInt(v) && !getValue(v).isInt())
       {
         selectVar(v);
       }
@@ -403,7 +401,7 @@ class TheoryArith::GomoryCutJustification
                          Antecedents& /*bounds*/,
                          Literal consequent)
       : ExtTheoryPropagationJustification(
-          fid, ctx, numLits, lits, numEqs, eqs, consequent)
+            fid, ctx, numLits, lits, numEqs, eqs, consequent)
   {
   }
   TheoryId getFromTheory() const override { return s_nullTheoryId; }
@@ -689,13 +687,13 @@ bool TheoryArith::gcdTest(const Row& r)
     Antecedents ante(*this);
     d_stats.d_gcdConflicts++;
     collectFixedVarJustifications(r, ante);
-    d_ctx.setConflict(
-        d_ctx.mkJustification(ExtTheoryConflictJustification(getId(),
-                                                             d_ctx,
-                                                             ante.lits().size(),
-                                                             ante.lits().data(),
-                                                             ante.eqs().size(),
-                                                             ante.eqs().data())));
+    d_ctx.setConflict(d_ctx.mkJustification(
+        ExtTheoryConflictJustification(getId(),
+                                       d_ctx,
+                                       ante.lits().size(),
+                                       ante.lits().data(),
+                                       ante.eqs().size(),
+                                       ante.eqs().data())));
     return false;
   }
 
@@ -779,13 +777,13 @@ bool TheoryArith::extGcdTest(const Row& r,
   {
     d_stats.d_gcdConflicts++;
     collectFixedVarJustifications(r, ante);
-    d_ctx.setConflict(
-        d_ctx.mkJustification(ExtTheoryConflictJustification(getId(),
-                                                             d_ctx,
-                                                             ante.lits().size(),
-                                                             ante.lits().data(),
-                                                             ante.eqs().size(),
-                                                             ante.eqs().data())));
+    d_ctx.setConflict(d_ctx.mkJustification(
+        ExtTheoryConflictJustification(getId(),
+                                       d_ctx,
+                                       ante.lits().size(),
+                                       ante.lits().data(),
+                                       ante.eqs().size(),
+                                       ante.eqs().data())));
     return false;
   }
 
@@ -808,8 +806,7 @@ bool TheoryArith::gcdTest()
   for (const Row& e : d_rows)
   {
     TheoryVar v = e.getBaseVar();
-    if (v != s_nullTheoryVar && isInt(v) && !getValue(v).isInt()
-        && !gcdTest(e))
+    if (v != s_nullTheoryVar && isInt(v) && !getValue(v).isInt() && !gcdTest(e))
     {
       if (d_params.d_arithAdaptiveGcd)
       {

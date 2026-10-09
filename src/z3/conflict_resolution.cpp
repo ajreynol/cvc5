@@ -371,7 +371,8 @@ bool ConflictResolution::initializeResolve(BJustification conflict,
   return true;
 }
 
-void ConflictResolution::finalizeResolve(BJustification /*conflict*/, Literal /*notL*/)
+void ConflictResolution::finalizeResolve(BJustification /*conflict*/,
+                                         Literal /*notL*/)
 {
   unmarkJustifications(0);
 
