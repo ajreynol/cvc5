@@ -254,13 +254,39 @@ name   = "Z3 Core"
   help       = "run cvc5's rewriter over each assertion after NNF and after pattern inference, as Z3's reduce_asserted_formulas does"
 
 [[option]]
+  name       = "z3Preset"
+  category   = "expert"
+  long       = "z3-preset=MODE"
+  type       = "Z3PresetMode"
+  default    = "DEFAULT"
+  help       = "a named Z3 configuration; it sets the --z3-* options the user did not set explicitly"
+  help_mode  = "Named configurations of the ported Z3 core."
+[[option.mode.DEFAULT]]
+  name = "default"
+  help = "Z3's own defaults, with auto configuration."
+[[option.mode.VERUS]]
+  name = "verus"
+  help = "The options Verus runs Z3 with: auto_config=false smt.mbqi=false smt.case_split=3 smt.qi.eager_threshold=100 smt.delay_units=true pi.enabled=false."
+
+[[option]]
+  name       = "z3PatternInference"
+  category   = "expert"
+  long       = "z3-pattern-inference"
+  type       = "bool"
+  default    = "true"
+  help       = "infer patterns for quantifiers that have none, as Z3's pi.enabled does"
+
+[[option]]
   name       = "z3NgLiftIte"
   category   = "expert"
   long       = "z3-ng-lift-ite=MODE"
   type       = "Z3LiftIteMode"
-  default    = "CONSERVATIVE"
-  help       = "lift if-then-else out of non-ground applications, as Z3's ng_lift_ite does (setup_AUFLIA sets it to conservative)"
+  default    = "AUTO"
+  help       = "lift if-then-else out of non-ground applications, as Z3's ng_lift_ite does"
   help_mode  = "If-then-else lifting modes of the ported Z3 preprocessing."
+[[option.mode.AUTO]]
+  name = "auto"
+  help = "Conservative when --z3-auto-config is on (Z3's setup_AUFLIA sets it for a quantified input), none otherwise."
 [[option.mode.NONE]]
   name = "none"
   help = "Do not lift."

@@ -92,8 +92,7 @@ void Params::initialize(const Options& opts)
   d_caseSplitStrategy = toCaseSplitStrategy(opts.z3.z3CaseSplit);
   d_phaseSelection = toPhaseSelection(opts.z3.z3PhaseSelection);
   d_restartStrategy = toRestartStrategy(opts.z3.z3RestartStrategy);
-  d_randomInitialActivity =
-      toInitialActivity(opts.z3.z3RandomInitialActivity);
+  d_randomInitialActivity = toInitialActivity(opts.z3.z3RandomInitialActivity);
   d_restartInitial = static_cast<uint32_t>(opts.z3.z3RestartInitial);
   d_restartFactor = opts.z3.z3RestartFactor;
   d_delayUnits = opts.z3.z3DelayUnits;
@@ -103,8 +102,7 @@ void Params::initialize(const Options& opts)
   d_qiQuickCheckerConservative = opts.z3.z3QiQuickCheckerConservative;
   d_enumInst = opts.z3.z3EnumInst;
   d_enumInstFallback = opts.z3.z3EnumInstFallback;
-  d_enumInstMaxPerRound =
-      static_cast<uint32_t>(opts.z3.z3EnumInstMaxPerRound);
+  d_enumInstMaxPerRound = static_cast<uint32_t>(opts.z3.z3EnumInstMaxPerRound);
   d_bridgeEager = opts.z3.z3BridgeEager;
   d_forceRematch = opts.z3.z3ForceRematch;
   d_mbqi = opts.z3.z3Mbqi;
@@ -118,6 +116,41 @@ void Params::initialize(const Options& opts)
   uint64_t maxInst = opts.z3.z3QiMaxInstances;
   d_qiMaxInstances =
       maxInst > UINT32_MAX ? UINT32_MAX : static_cast<uint32_t>(maxInst);
+  d_piEnabled = opts.z3.z3PatternInference;
+  if (opts.z3.z3Preset == options::Z3PresetMode::VERUS)
+  {
+    // The options Verus passes to Z3 (auto_config=false smt.mbqi=false
+    // smt.case_split=3 smt.qi.eager_threshold=100 smt.delay_units=true
+    // pi.enabled=false). Its smt.arith.solver=2 and smt.arith.nl=false have
+    // no counterpart, since arithmetic goes through the cvc5 bridge, and
+    // rewriter.sort_disjunctions=false none either, since the rewriter is
+    // cvc5's.
+    const options::HolderZ3& z = opts.z3;
+    if (!z.z3AutoConfigWasSetByUser) d_autoConfig = false;
+    if (!z.z3MbqiWasSetByUser) d_mbqi = false;
+    if (!z.z3CaseSplitWasSetByUser) d_caseSplitStrategy = CS_RELEVANCY;
+    if (!z.z3QiEagerThresholdWasSetByUser) d_qiEagerThreshold = 100.0;
+    if (!z.z3DelayUnitsWasSetByUser) d_delayUnits = true;
+    if (!z.z3PatternInferenceWasSetByUser) d_piEnabled = false;
+  }
+  switch (opts.z3.z3NgLiftIte)
+  {
+    case options::Z3LiftIteMode::NONE: d_ngLiftIte = LI_NONE; break;
+    case options::Z3LiftIteMode::CONSERVATIVE:
+      d_ngLiftIte = LI_CONSERVATIVE;
+      break;
+    case options::Z3LiftIteMode::FULL: d_ngLiftIte = LI_FULL; break;
+    default:
+      // In Z3 the default is LI_NONE and setup_AUFLIA / setup_AUFLIRA, which
+      // setup_unknown(st) reaches for any quantified input under auto
+      // configuration, raise it to LI_CONSERVATIVE. The lifting only applies
+      // to non-ground terms, so on an input without quantifiers the two are
+      // the same. It has to be decided here rather than in Setup, because the
+      // port preprocesses each assertion as it is asserted, before the first
+      // check configures the context.
+      d_ngLiftIte = d_autoConfig ? LI_CONSERVATIVE : LI_NONE;
+      break;
+  }
 }
 
 }  // namespace z3

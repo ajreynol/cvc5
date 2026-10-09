@@ -279,6 +279,17 @@ struct Params
   /** 0 - eager, 1 - lazy for infinite types, 2 - lazy */
   uint32_t d_dtLazySplits = 1;
 
+  // ---------------------------------------------------- preprocessing
+  /** How if-then-else is lifted out of applications (Z3's lift_ite_kind). */
+  enum LiftIteKind
+  {
+    LI_NONE,
+    LI_CONSERVATIVE,
+    LI_FULL
+  };
+  /** m_ng_lift_ite: lifting out of non-ground applications only. */
+  LiftIteKind d_ngLiftIte = LI_NONE;
+
   // ---------------------------------------------------- misc
   bool d_autoConfig = true;
   bool d_model = true;

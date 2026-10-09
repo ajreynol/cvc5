@@ -241,7 +241,56 @@ while a satisfying assignment is only an assignment of an abstraction and is
 reported as "unknown". So `--z3` will never claim "sat" on a problem it cannot
 actually reason about.
 
+## Configurations: Z3's defaults and Verus's
+
+The benchmarks in `~/benchmarks/quant-07-25` come from Verus, and Verus does
+not run Z3 with its defaults. It passes
+
+    auto_config=false smt.mbqi=false smt.case_split=3
+    smt.qi.eager_threshold=100 smt.delay_units=true smt.arith.solver=2
+    smt.arith.nl=false pi.enabled=false rewriter.sort_disjunctions=false
+
+and the reference times in the names of the files under `slow/` were measured
+that way: on `slow/cs72...`, Z3 4.16.0 times out at 10s with its defaults and
+answers in 0.08s with these. With `auto_config=false`, `setup` takes
+`CFG_BASIC`, so none of `setup_AUFLIA`'s settings apply either -- no "always
+false" phase, no geometric restarts, no `ng_lift_ite`, no pattern database.
+
+`--z3-preset=verus` selects that configuration; it sets each corresponding
+`--z3-*` option that was not given explicitly (`--z3-auto-config`,
+`--z3-mbqi`, `--z3-case-split=relevancy`, `--z3-qi-eager-threshold=100`,
+`--z3-delay-units`, `--z3-pattern-inference`), so any one of them can still be
+overridden. `--z3-ng-lift-ite` defaults to `auto`, which follows
+`--z3-auto-config` the way Z3's own parameter follows `setup_AUFLIA`.
+`smt.arith.solver` and `rewriter.sort_disjunctions` have no counterpart,
+because arithmetic goes through the cvc5 bridge and the rewriter is cvc5's.
+Neither does `smt.arith.nl=false` yet, and that one is visible: the bridge
+still does nonlinear reasoning, which is the whole of the port's advantage
+over Verus's Z3 on the sample (11 benchmarks Z3 answers "unknown" on, all
+solved by Z3 too once `smt.arith.nl=true`).
+
 ## Where it stands
+
+Measured 2026-10-09 on a fixed 300-benchmark sample of
+`~/benchmarks/quant-07-25` (seeded `random.sample` over all 6124 `.smt2`
+files; logics UFDTLIA 171, UFDTNIA 53, ALL 49, UFBVDTNIA 25, UFBVDTLIA 2),
+10 second limit, Z3 4.16.0, on one machine:
+
+| | unsat | unknown | timeout |
+|---|---|---|---|
+| z3, defaults | 279 | 0 | 21 |
+| z3, Verus options | 278 | 18 | 4 |
+| cvc5 `--user-pat=strict --no-cbqi` (baseline) | 272 | 0 | 28 |
+| cvc5 `--z3` | 271 | 12 | 17 |
+| cvc5 `--z3 --z3-preset=verus` | 264 | 19 | 17 |
+
+No answer contradicts another. Against Z3 with Verus's options, the preset
+solves 11 benchmarks Z3 does not (all nonlinear, see above) and misses 25
+that Z3 solves: 13 time out and 12 saturate. On the 253 both solve, the
+median slowdown is 2.1x.
+
+The earlier measurements below were taken on a different 300-benchmark sample
+that was not kept, and the cvc5 row there did not record its options.
 
 Measured on a 300-benchmark sample of `~/benchmarks/quant-07-25` (UFDT(N)IA
 and UFBVDT(N)IA verification queries from Verus) with a 10 second limit, all

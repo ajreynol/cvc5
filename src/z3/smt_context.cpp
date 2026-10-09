@@ -89,8 +89,7 @@ SmtContext::SmtContext(Env& env, Params& p)
       d_assertionRewriter(env),
       d_nnf(env.getNodeManager()),
       d_ngPushAppIte(env.getNodeManager(),
-                     env.getOptions().z3.z3NgLiftIte
-                         == options::Z3LiftIteMode::CONSERVATIVE),
+                     p.d_ngLiftIte == Params::LI_CONSERVATIVE),
       d_patternInference(env.getNodeManager(), d_params),
       d_qmanager(nullptr),
       d_relevancyPropagator(new RelevancyPropagator(*this)),

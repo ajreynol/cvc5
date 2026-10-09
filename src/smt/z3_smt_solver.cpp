@@ -96,8 +96,7 @@ void Z3SmtSolver::assertToInternal(preprocessing::AssertionPipeline& ap)
   // Z3's ng_lift_ite, which reduce() runs after the rewrite that follows NNF
   // and follows with another rewrite (reduce_and_solve); see
   // z3/push_app_ite.h.
-  const bool doLiftIte =
-      options().z3.z3NgLiftIte != options::Z3LiftIteMode::NONE;
+  const bool doLiftIte = d_ctx->getParams().d_ngLiftIte != z3::Params::LI_NONE;
   z3::NgPushAppIte& lift = d_ctx->getNgPushAppIte();
   for (const Node& a : ap.ref())
   {
