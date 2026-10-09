@@ -47,6 +47,8 @@ struct Statistics
   uint64_t d_numInterfaceEqs;
   uint64_t d_maxGeneration;
   uint64_t d_numMinimizedLits;
+  /** literals in the learned clauses, summed, for the average clause size */
+  uint64_t d_numLearnedLits;
   uint64_t d_numChecks;
   uint64_t d_numSimplifications;
   uint64_t d_numDelClauses;

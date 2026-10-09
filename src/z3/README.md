@@ -195,11 +195,15 @@ three solvers answering only `unsat` or `unknown`:
 
 | | solved | unknown | timeout | total time |
 |---|---|---|---|---|
-| z3 | 289 | 0 | 11 | 169s |
-| cvc5 | 273 | 0 | 27 | 439s |
-| cvc5 `--z3` | 210 | 65 | 25 | 374s |
+| z3 | 289 | 0 | 11 | 170s |
+| cvc5 | 273 | 0 | 27 | 449s |
+| cvc5 `--z3` | 209-210 | 63-65 | 25-28 | 374-397s |
 
-No answer of any of the three contradicts another on this sample.
+(two runs, the spread is run-to-run noise.) No answer of any of the three
+contradicts another on this sample. The same 300 files run through an
+assertions build with a 20 second limit produce no assertion failure and no
+crash; the only non-answers are the 29 timeouts that limit implies for a build
+roughly five times slower.
 
 The port began this round of work at 106 solved; the datatypes plugin, the two
 preprocessing invariants above, the default quantifier weight and the
@@ -212,12 +216,29 @@ which to pick the next binding.
 
 ## Known performance differences
 
-The congruence table is backed by `std::unordered_set`, which chains and
-allocates a node per element, where Z3 uses its own open-addressing
-`chashtable`. The table is hot in E-matching-heavy problems, so this is the
-first place to look if the port is slower than Z3 by a constant factor. On a
-pure QF_UF benchmark the port is about 3.5x slower than Z3 with a comparable
-number of conflicts, which is the size of this constant factor.
+Two separate things, measured on a hard crafted QF_UF benchmark run through
+cvc5's preprocessor so that both solvers get the identical formula:
+
+1. **Search quality.** The port needs about 3.4x the conflicts Z3 does
+   (123k vs 36k) in its best configuration. Everything *per* conflict matches
+   Z3 closely -- propagations per conflict 28 vs 24, added equalities per
+   conflict 170 vs 166, minimized literals per conflict 11.5 vs 9.7 -- so the
+   difference is in which conflicts the search finds, not in the cost of
+   finding them. The heuristics were audited against Z3 line by line
+   (`guess`, `updatePhaseCacheCounter`, `assignCore`'s phase saving,
+   `delInactiveLemmas1`, activity bumping and decay, the random variable
+   frequency) and all agree, so whatever is left is subtler than a missing
+   rule. One concrete symptom worth starting from: `PS_CACHING_CONSERVATIVE2`,
+   the phase selection `setup_QF_UF` chooses, costs the port 2.8x against its
+   own default while it costs Z3 only 1.25x, which suggests the phase cache is
+   not behaving the same way even though the code reads the same.
+2. **Constant factor.** With the search work held equal the port is about 1.4x
+   slower per unit of work. The congruence table is the first suspect: it is
+   backed by `std::unordered_set`, which chains and allocates a node per
+   element, where Z3 uses its own open-addressing `chashtable`.
+
+Neither is what limits `--z3` on the benchmark set above -- the 65 unknown
+answers are -- but both would have to go to claim parity.
 
 Run with `--stats-all` to get the core's own counters (`z3::conflicts`,
 `z3::decisions`, `z3::propagations`, `z3::addEq`, ...), which are named to line

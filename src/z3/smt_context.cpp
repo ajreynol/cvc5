@@ -3832,6 +3832,7 @@ bool SmtContext::resolveConflict()
   // The cache is reset manually, since popScopeCore does not do it.
   resetCacheGeneration();
 
+  d_stats.d_numLearnedLits += numLits;
   mkClause(numLits, lits, nullptr, CLS_LEARNED);
   if (delayForcedRestart)
   {
@@ -4154,6 +4155,7 @@ void SmtContext::registerStatistics()
   add("z3::interfaceEqs", d_stats.d_numInterfaceEqs);
   add("z3::maxGeneration", d_stats.d_maxGeneration);
   add("z3::minimizedLits", d_stats.d_numMinimizedLits);
+  add("z3::learnedLits", d_stats.d_numLearnedLits);
   add("z3::checks", d_stats.d_numChecks);
   add("z3::simplifications", d_stats.d_numSimplifications);
   add("z3::assignments", d_stats.d_numAssignments);

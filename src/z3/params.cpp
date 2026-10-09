@@ -71,6 +71,18 @@ RestartStrategy toRestartStrategy(options::Z3RestartStrategyMode m)
   }
 }
 
+InitialActivity toInitialActivity(options::Z3InitialActivityMode m)
+{
+  switch (m)
+  {
+    case options::Z3InitialActivityMode::ZERO: return IA_ZERO;
+    case options::Z3InitialActivityMode::RANDOM: return IA_RANDOM;
+    case options::Z3InitialActivityMode::RANDOM_WHEN_SEARCHING:
+      return IA_RANDOM_WHEN_SEARCHING;
+    default: return IA_RANDOM_WHEN_SEARCHING;
+  }
+}
+
 }  // namespace
 
 void Params::initialize(const Options& opts)
@@ -80,6 +92,8 @@ void Params::initialize(const Options& opts)
   d_caseSplitStrategy = toCaseSplitStrategy(opts.z3.z3CaseSplit);
   d_phaseSelection = toPhaseSelection(opts.z3.z3PhaseSelection);
   d_restartStrategy = toRestartStrategy(opts.z3.z3RestartStrategy);
+  d_randomInitialActivity =
+      toInitialActivity(opts.z3.z3RandomInitialActivity);
   d_restartInitial = static_cast<uint32_t>(opts.z3.z3RestartInitial);
   d_restartFactor = opts.z3.z3RestartFactor;
   d_delayUnits = opts.z3.z3DelayUnits;

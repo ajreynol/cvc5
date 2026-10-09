@@ -14,7 +14,6 @@
 
 #include <algorithm>
 #include <chrono>
-#include <fstream>
 #include <sstream>
 #include <unordered_set>
 
@@ -339,82 +338,6 @@ FinalCheckStatus Cvc5Bridge::check(bool finalCheck)
   }
   d_lastCheckAssignments = d_ctx.getStats().d_numAssignments;
   d_ctx.getStats().d_bridgeAssumptions += assumps.size();
-  if (d_ctx.getStats().d_numBridgeChecks == 20
-      && getenv("Z3PORT_DUMP_BRIDGE") != nullptr)
-  {
-    // A development hook for inspecting what the subsolver is asked to do.
-    std::ofstream out(getenv("Z3PORT_DUMP_BRIDGE"));
-    out << "(set-logic ALL)\n";
-    std::unordered_set<Node> syms;
-    std::vector<Node> all(d_asserted.begin(), d_asserted.end());
-    all.insert(all.end(), assumps.begin(), assumps.end());
-    std::vector<TNode> visit(all.begin(), all.end());
-    std::unordered_set<TNode> seen;
-    while (!visit.empty())
-    {
-      TNode cur = visit.back();
-      visit.pop_back();
-      if (!seen.insert(cur).second)
-      {
-        continue;
-      }
-      if (cur.isVar())
-      {
-        syms.insert(cur);
-      }
-      if (cur.getMetaKind() == kind::metakind::PARAMETERIZED)
-      {
-        visit.push_back(cur.getOperator());
-      }
-      for (const Node& c : cur)
-      {
-        visit.push_back(c);
-      }
-    }
-    std::unordered_set<TypeNode> sorts;
-    for (const Node& v : syms)
-    {
-      TypeNode tn = v.getType();
-      std::vector<TypeNode> ts{tn};
-      if (tn.isFunction())
-      {
-        ts.assign(tn.begin(), tn.end());
-      }
-      for (const TypeNode& t : ts)
-      {
-        if (t.isUninterpretedSort())
-        {
-          sorts.insert(t);
-        }
-      }
-    }
-    for (const TypeNode& t : sorts)
-    {
-      out << "(declare-sort " << t << " 0)\n";
-    }
-    for (const Node& v : syms)
-    {
-      TypeNode tn = v.getType();
-      out << "(declare-fun " << v << " (";
-      if (tn.isFunction())
-      {
-        for (size_t i = 0, n = tn.getNumChildren() - 1; i < n; ++i)
-        {
-          out << (i == 0 ? "" : " ") << tn[i];
-        }
-        out << ") " << tn.getRangeType() << ")\n";
-      }
-      else
-      {
-        out << ") " << tn << ")\n";
-      }
-    }
-    for (const Node& a : all)
-    {
-      out << "(assert " << a << ")\n";
-    }
-    out << "(check-sat)\n";
-  }
   Trace("z3-bridge") << "cvc5 bridge: check " << assumps.size()
                      << " assumptions, " << d_atoms.size() << " atoms, "
                      << d_terms.size() << " terms" << std::endl;

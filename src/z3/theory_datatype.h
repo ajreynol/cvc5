@@ -78,7 +78,7 @@ class TheoryDatatype : public Theory
   void popScopeEh(size_t numScopes) override;
   FinalCheckStatus finalCheckEh(size_t level) override;
   void resetEh() override;
-  bool isShared(TheoryVar v) const override { return false; }
+  bool isShared(TheoryVar /*v*/) const override { return false; }
 
  private:
   /** The state the theory keeps for one equivalence class. */

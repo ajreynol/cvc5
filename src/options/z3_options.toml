@@ -92,6 +92,21 @@ name   = "Z3 Core"
   help = "Let theory solvers choose the phase."
 
 [[option]]
+  name       = "z3RandomInitialActivity"
+  category   = "expert"
+  long       = "z3-random-initial-activity=MODE"
+  type       = "Z3InitialActivityMode"
+  default    = "RANDOM_WHEN_SEARCHING"
+  help       = "how the initial activity of a Boolean variable is chosen in the ported Z3 core"
+  help_mode  = "How the initial activity of a Boolean variable is chosen."
+[[option.mode.ZERO]]
+  name = "zero"
+[[option.mode.RANDOM]]
+  name = "random"
+[[option.mode.RANDOM_WHEN_SEARCHING]]
+  name = "random-when-searching"
+
+[[option]]
   name       = "z3RestartStrategy"
   category   = "expert"
   long       = "z3-restart-strategy=MODE"
