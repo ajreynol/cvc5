@@ -115,6 +115,24 @@ enum QuickCheckerMode
   MC_NO_SAT
 };
 
+/** Z3's bound_prop_mode (theory_arith_params.h). */
+enum BoundPropMode
+{
+  BP_NONE,
+  /** only used for implying literals */
+  BP_SIMPLE,
+  /** adds new literals, but only refines finite bounds */
+  BP_REFINE
+};
+
+/** Z3's arith_pivot_strategy. */
+enum ArithPivotStrategy
+{
+  ARITH_PIVOT_SMALLEST,
+  ARITH_PIVOT_GREATEST_ERROR,
+  ARITH_PIVOT_LEAST_ERROR
+};
+
 /**
  * The parameters of the ported core, mirroring the subset of Z3's smt_params
  * that the ported components consult.
@@ -293,6 +311,51 @@ struct Params
   // ---------------------------------------------------- arithmetic
   /** smt.arith.nl: nonlinear reasoning in the arithmetic solver. */
   bool d_arithNl = true;
+  /**
+   * Whether arithmetic is the native port of Z3's theory_arith (smt.arith.
+   * solver=2) rather than the bridge to cvc5's solver.
+   */
+  bool d_arithNative = false;
+  // theory_arith_params, with the values updt_params gives them from the
+  // parameter defaults where it sets them.
+  bool d_arithEq2ineq = false;
+  bool d_arithProcessAllEqs = false;
+  uint32_t d_arithBlandsRuleThreshold = 1000;
+  bool d_arithPropagateEqs = true;
+  /** arith.propagation_mode defaults to 1 */
+  BoundPropMode d_arithBoundProp = BP_SIMPLE;
+  bool d_arithStrongerLemmas = true;
+  bool d_arithSkipRowsWithBigCoeffs = true;
+  uint32_t d_arithMaxLemmaSize = 128;
+  uint32_t d_arithSmallLemmaSize = 16;
+  bool d_arithReflect = true;
+  bool d_arithIgnoreInt = false;
+  uint32_t d_arithLazyPivotingLvl = 0;
+  uint32_t d_arithRandomSeed = 0;
+  bool d_arithRandomInitialValue = false;
+  int32_t d_arithRandomLower = -1000;
+  int32_t d_arithRandomUpper = 1000;
+  bool d_arithAdaptive = false;
+  double d_arithAdaptiveAssertionThreshold = 0.2;
+  double d_arithAdaptivePropagationThreshold = 0.4;
+  bool d_arithEagerEqAxioms = true;
+  uint32_t d_arithBranchCutRatio = 2;
+  bool d_arithIntEqBranching = false;
+  bool d_arithEnumConstMod = false;
+  /** arith.epsilon = 1.0, i.e. rational(100000, 100000) */
+  int32_t d_arithEpsilonNum = 1;
+  bool d_arithGcdTest = true;
+  bool d_arithEagerGcd = false;
+  bool d_arithAdaptiveGcd = false;
+  uint32_t d_arithPropagationThreshold = UINT_MAX;
+  ArithPivotStrategy d_arithPivotStrategy = ARITH_PIVOT_SMALLEST;
+  bool d_arithEqBounds = false;
+  bool d_arithAddBinaryBounds = false;
+  bool d_arithLazyAdapter = false;
+  /** nonlinear: only the parts used with smt.arith.nl=false are ported */
+  bool d_nlArithPropagateLinearMonomials = true;
+  uint32_t d_nlArithRounds = 1024;
+  bool d_nlArithBranching = true;
 
   // ---------------------------------------------------- misc
   bool d_autoConfig = true;

@@ -118,14 +118,14 @@ void Params::initialize(const Options& opts)
       maxInst > UINT32_MAX ? UINT32_MAX : static_cast<uint32_t>(maxInst);
   d_piEnabled = opts.z3.z3PatternInference;
   d_arithNl = opts.z3.z3ArithNl;
+  d_arithNative = opts.z3.z3Arith == options::Z3ArithMode::NATIVE;
   if (opts.z3.z3Preset == options::Z3PresetMode::VERUS)
   {
     // The options Verus passes to Z3 (auto_config=false smt.mbqi=false
     // smt.case_split=3 smt.qi.eager_threshold=100 smt.delay_units=true
-    // pi.enabled=false smt.arith.nl=false). Its smt.arith.solver=2 has no
-    // counterpart, since arithmetic goes through the cvc5 bridge, and
-    // rewriter.sort_disjunctions=false none either, since the rewriter is
-    // cvc5's.
+    // pi.enabled=false smt.arith.nl=false smt.arith.solver=2).
+    // rewriter.sort_disjunctions=false has no counterpart, since the
+    // rewriter is cvc5's.
     const options::HolderZ3& z = opts.z3;
     if (!z.z3AutoConfigWasSetByUser) d_autoConfig = false;
     if (!z.z3MbqiWasSetByUser) d_mbqi = false;
@@ -134,6 +134,8 @@ void Params::initialize(const Options& opts)
     if (!z.z3DelayUnitsWasSetByUser) d_delayUnits = true;
     if (!z.z3PatternInferenceWasSetByUser) d_piEnabled = false;
     if (!z.z3ArithNlWasSetByUser) d_arithNl = false;
+    // smt.arith.solver=2
+    if (!z.z3ArithWasSetByUser) d_arithNative = true;
   }
   switch (opts.z3.z3NgLiftIte)
   {

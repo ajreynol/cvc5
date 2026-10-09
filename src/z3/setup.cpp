@@ -18,6 +18,7 @@
 #include "expr/node_manager.h"
 #include "theory/logic_info.h"
 #include "theory/theory.h"
+#include "z3/theory_arith.h"
 #include "z3/theory_cvc5.h"
 #include "z3/theory_datatype.h"
 
@@ -263,7 +264,11 @@ void Setup::setupArith()
   {
     return;
   }
-  Theory* th = mkTheoryArithBridge(d_ctx);
+  // smt.arith.solver=2 is theory_mi_arith: setup_arith, setup_i_arith and
+  // setup_mi_arith all register it, since m_arith_int_only is false. Without
+  // it, arithmetic goes through the bridge to cvc5's solver.
+  Theory* th = d_params.d_arithNative ? new TheoryArith(d_ctx)
+                                      : mkTheoryArithBridge(d_ctx);
   if (th != nullptr)
   {
     d_ctx.registerPlugin(th);

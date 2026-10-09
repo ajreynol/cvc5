@@ -277,6 +277,21 @@ name   = "Z3 Core"
   help       = "infer patterns for quantifiers that have none, as Z3's pi.enabled does"
 
 [[option]]
+  name       = "z3Arith"
+  category   = "expert"
+  long       = "z3-arith=MODE"
+  type       = "Z3ArithMode"
+  default    = "BRIDGE"
+  help       = "how the ported core solves arithmetic"
+  help_mode  = "Arithmetic solvers of the ported Z3 core."
+[[option.mode.BRIDGE]]
+  name = "bridge"
+  help = "Hand the assigned arithmetic literals to a cvc5 subsolver at final check."
+[[option.mode.NATIVE]]
+  name = "native"
+  help = "The port of Z3's simplex-based theory_arith (smt.arith.solver=2)."
+
+[[option]]
   name       = "z3ArithNl"
   category   = "expert"
   long       = "z3-arith-nl"
@@ -352,6 +367,14 @@ name   = "Z3 Core"
   type       = "uint64_t"
   default    = "200000"
   help       = "resource limit of one call to the cvc5 theory bridge subsolver, 0 for none"
+
+[[option]]
+  name       = "z3BridgeActivation"
+  category   = "expert"
+  long       = "z3-bridge-activation"
+  type       = "bool"
+  default    = "false"
+  help       = "give each literal the bridge assumes an activation atom, asserted once, instead of re-sending (and re-preprocessing) the literal on every subsolver call"
 
 [[option]]
   name       = "z3BridgeEager"

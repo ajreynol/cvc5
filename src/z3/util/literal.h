@@ -128,7 +128,15 @@ inline bool operator!=(const Literal& l1, const Literal& l2)
   return l1.d_val != l2.d_val;
 }
 
-std::ostream& operator<<(std::ostream& out, Literal l);
+/** Z3's operator<< for sat::literal. */
+inline std::ostream& operator<<(std::ostream& out, Literal l)
+{
+  if (l == s_nullLiteral)
+  {
+    return out << "null";
+  }
+  return out << (l.sign() ? "-" : "") << l.var();
+}
 
 using LiteralVector = std::vector<Literal>;
 

@@ -231,6 +231,20 @@ class Cvc5Bridge
   /** A fresh constant standing for the opaque term t. */
   Node mkAbsConst(TNode t);
 
+  /**
+   * checkSat on the subsolver. Each literal assumption is replaced by an
+   * activation atom whose implication was asserted once (see activation),
+   * so the subsolver preprocesses a literal the first time it is used rather
+   * than on every call; other assumptions are passed as they are.
+   */
+  Result checkSub(const std::vector<Node>& assumps);
+
+  /** The unsat assumptions of the last checkSub, as the literals assumed. */
+  std::vector<Node> unsatCore();
+
+  /** The activation atom of the literal lit, asserting (=> act lit). */
+  Node activation(const Node& lit);
+
   SmtContext& d_ctx;
   std::unique_ptr<SolverEngine> d_sub;
   bool d_subFailed;
@@ -243,6 +257,9 @@ class Cvc5Bridge
   std::unordered_map<Node, Antecedent> d_antecedents;
   /** the terms the last set of assumptions mentions */
   std::unordered_set<Node> d_known;
+  /** the activation atom of each literal, and the literal of each atom */
+  std::unordered_map<Node, Node> d_actOf;
+  std::unordered_map<Node, Node> d_litOf;
   /** the abstraction of each term, which is stable across the search */
   std::unordered_map<Node, Node> d_abs;
   /**

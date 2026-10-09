@@ -51,6 +51,9 @@ are the values in `smt_params.h`.
 | `theory_datatype.{h,cpp}` | `smt/theory_datatype.*` |
 | `pattern_inference.{h,cpp}` | `ast/pattern/pattern_inference.*` |
 | `push_app_ite.{h,cpp}` | `ast/rewriter/push_app_ite.*` |
+| `theory_arith.h`, `theory_arith_{core,aux,eq,int,nl,pp}.cpp` | `smt/theory_arith.h`, `smt/theory_arith_{core,aux,eq,int,nl,pp}.h` (`theory_mi_arith`) |
+| `arith_eq_adapter.{h,cpp}` | `smt/arith_eq_adapter.*` |
+| `util/inf_rational.h`, `util/numeral.h` | `util/inf_rational.h`, the parts of `util/rational.h` cvc5's `Rational` lacks |
 | `setup.{h,cpp}`, `params.{h,cpp}` | `smt/smt_setup.cpp`, `params/smt_params.*`, `params/qi_params.*`, `params/pattern_inference_params.*` |
 | `util/*` | the corresponding files in Z3's `src/util` |
 
@@ -205,7 +208,20 @@ Following the instruction to reuse cvc5's own solvers where they exist:
   closure (`enode.*`, `cg_table.*`), as in Z3.
 - **Datatypes** are a port of Z3's `theory_datatype`, which plugs straight
   into the ported `z3::Theory` interface.
-- **Arithmetic and bit-vectors** go through `theory_cvc5.{h,cpp}`, which is
+- **Arithmetic** is, with `--z3-arith=native` (which the Verus preset
+  selects), a port of Z3's `theory_arith<mi_ext>` -- the simplex-based solver
+  `smt.arith.solver=2` selects, and so the one Verus runs: rows and columns,
+  bounds over rationals with an infinitesimal, `make_feasible` with Bland's
+  rule, bound propagation, fixed-variable and offset equalities, `assume_eqs`
+  with `random_update`, the integer layer (GCD tests, branching, Gomory
+  cuts), and of the nonlinear part what runs with `smt.arith.nl=false`
+  (`propagate_linear_monomials`, `check_monomial_assignments`). Not ported:
+  `theory_opt`, the Groebner basis and interval reasoning of
+  `smt.arith.nl=true`, `arith_eq_solver` (only used with
+  `arith.int_eq_branch`). cvc5's total division operators get one extra axiom
+  each, fixing their value at a zero divisor (`mkTotalDivZeroAxiom`).
+- **Bit-vectors, and arithmetic under `--z3-arith=bridge`** (the default
+  outside the Verus preset), go through `theory_cvc5.{h,cpp}`, which is
   not from Z3. It is a Nelson-Oppen style bridge: the core owns the Boolean
   structure, the equalities and the instantiation, and at each final check the
   assigned arithmetic and bit-vector literals are handed to a cvc5 subsolver
@@ -255,6 +271,26 @@ Following the instruction to reuse cvc5's own solvers where they exist:
   expensive through an assumption interface. Making the bridge mirror the
   core's scopes with push/pop, asserting literals as they are assigned instead
   of resending them, is the change that would make these queries affordable.
+
+Measured on `slow/cs112` (Z3 0.1s, the port times out), the bridge is where
+the port loses: 8.4 of 10 seconds, in about 600 subsolver calls, every one of
+which ends in an arithmetic conflict over roughly 650 assumed literals. Z3 has
+3 arithmetic conflicts on the same query -- its simplex propagates bounds (62)
+and fixed-variable equalities (82) as literals are assigned, so its search
+never builds the inconsistent assignments the port only discovers at final
+check. Two cheaper fixes were tried and do not change that:
+
+- `--z3-bridge-activation` asserts each literal once as `(=> act lit)` and
+  assumes only `act`. It removes the 40% of each call cvc5 spent
+  re-preprocessing the assumptions (mostly `ppRewriteEq`), but what remains is
+  the search itself, which cvc5 restarts from an empty trail on every
+  `checkSat`, and over the sample the permanent implications cost more than
+  they save (261 against 262), so it is off by default. Mirroring the core's
+  scopes with push/pop would not help for the same reason.
+- `--z3-bridge-eager` still stalls on this query.
+
+What was missing is incremental, propagating arithmetic -- Z3's
+`theory_arith`, which is now ported (see "The theories").
 
 **This is arranged to be sound, not silently wrong.** When a term of a theory
 with no plugin is internalized, or a pattern is registered that will never
@@ -323,14 +359,21 @@ files; logics UFDTLIA 171, UFDTNIA 53, ALL 49, UFBVDTNIA 25, UFBVDTLIA 2),
 | z3, Verus options | 278 | 18 | 4 |
 | cvc5 `--user-pat=strict --no-cbqi` (baseline) | 272 | 0 | 28 |
 | cvc5 `--z3` | 274 | 0 | 26 |
-| cvc5 `--z3 --z3-preset=verus` | 262 | 17 | 21 |
+| cvc5 `--z3 --z3-preset=verus` (native arithmetic) | 273 | 19 | 8 |
+| the same with `--z3-arith=bridge` | 262 | 17 | 21 |
 
-No answer contradicts another. With the preset the port misses 17 of the
-benchmarks Verus's Z3 solves, and every one of them is a timeout: there is no
-longer a benchmark where the port saturates and Z3 does not. The sequence that got it there, each step measured on the same
+No answer contradicts another, and the port solves nothing Verus's Z3 does
+not. It misses 5 of Z3's: 4 time out and 1 saturates. The port of
+`theory_arith` is what closed most of the gap: on `slow/cs112`, which times
+out with the bridge, the port now answers in 0.2s with 190 conflicts, 593
+decisions and 954 instances, against Z3's 181, 527 and 630 -- the bridge
+spent 8.4 of its 10 seconds finding, at final check, arithmetic conflicts
+that the simplex never lets the search reach. On the 250-odd benchmarks both
+arithmetic configurations solve, the native one takes 77s against 136s. The sequence that got it there, each step measured on the same
 sample: the preset as first defined, 264; `--no-z3-arith-nl`, 251, with no
 benchmark solved that Z3 does not; naming quantifiers below atoms and leaving
-Boolean arguments unpurified, 257; the monomial treatment above, 262. The same two changes took the default
+Boolean arguments unpurified, 257; the monomial treatment above, 262;
+native arithmetic, 273. The same two changes took the default
 configuration from 271 (12 unknown) to 274 (none).
 
 The earlier measurements below were taken on a different 300-benchmark sample

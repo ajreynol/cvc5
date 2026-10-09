@@ -102,6 +102,8 @@ void Cvc5Bridge::reset()
   d_antecedents.clear();
   d_asserted.clear();
   d_abs.clear();
+  d_actOf.clear();
+  d_litOf.clear();
   d_monomials.clear();
   d_linLemmas.clear();
   d_haveModel = false;
@@ -387,7 +389,7 @@ FinalCheckStatus Cvc5Bridge::check(bool finalCheck)
   Result r;
   try
   {
-    r = d_sub->checkSat(assumps);
+    r = checkSub(assumps);
   }
   catch (const std::exception& e)
   {
@@ -467,7 +469,7 @@ FinalCheckStatus Cvc5Bridge::check(bool finalCheck)
   }
   d_ctx.getStats().d_numBridgeConflicts++;
   d_eagerGap = std::max(s_minEagerGap, d_eagerGap / 2);
-  std::vector<Node> core = d_sub->getUnsatAssumptions();
+  std::vector<Node> core = unsatCore();
   if (d_unsatCores.size() < s_maxCachedCores)
   {
     d_unsatCores.push_back(core);
@@ -715,6 +717,47 @@ bool Cvc5Bridge::checkMonomials()
   return true;
 }
 
+Result Cvc5Bridge::checkSub(const std::vector<Node>& assumps)
+{
+  if (!d_ctx.getEnv().getOptions().z3.z3BridgeActivation)
+  {
+    return d_sub->checkSat(assumps);
+  }
+  std::vector<Node> acts;
+  acts.reserve(assumps.size());
+  for (const Node& a : assumps)
+  {
+    acts.push_back(d_antecedents.count(a) != 0 ? activation(a) : a);
+  }
+  return d_sub->checkSat(acts);
+}
+
+std::vector<Node> Cvc5Bridge::unsatCore()
+{
+  std::vector<Node> core;
+  for (const Node& a : d_sub->getUnsatAssumptions())
+  {
+    auto it = d_litOf.find(a);
+    core.push_back(it == d_litOf.end() ? a : it->second);
+  }
+  return core;
+}
+
+Node Cvc5Bridge::activation(const Node& lit)
+{
+  auto it = d_actOf.find(lit);
+  if (it != d_actOf.end())
+  {
+    return it->second;
+  }
+  NodeManager* nm = d_ctx.getEnv().getNodeManager();
+  Node act = nm->getSkolemManager()->mkDummySkolem("z3act", nm->booleanType());
+  d_sub->assertFormula(nm->mkNode(Kind::IMPLIES, act, lit));
+  d_actOf[lit] = act;
+  d_litOf[act] = lit;
+  return act;
+}
+
 Node Cvc5Bridge::mkAbsConst(TNode t)
 {
   SkolemManager* sm = d_ctx.getEnv().getNodeManager()->getSkolemManager();
@@ -810,7 +853,7 @@ bool Cvc5Bridge::trySeparate(std::vector<Node>& assumps,
   Result r;
   try
   {
-    r = d_sub->checkSat(assumps);
+    r = checkSub(assumps);
   }
   catch (const std::exception&)
   {
@@ -926,7 +969,7 @@ void Cvc5Bridge::restoreModel(std::vector<Node>& assumps)
   Result r;
   try
   {
-    r = d_sub->checkSat(assumps);
+    r = checkSub(assumps);
   }
   catch (const std::exception&)
   {
@@ -956,7 +999,7 @@ bool Cvc5Bridge::propagateFixedGroup(std::vector<Node>& assumps,
   Result r;
   try
   {
-    r = d_sub->checkSat(assumps);
+    r = checkSub(assumps);
   }
   catch (const std::exception&)
   {
@@ -973,7 +1016,7 @@ bool Cvc5Bridge::propagateFixedGroup(std::vector<Node>& assumps,
   LiteralVector lits;
   ENodePairVector eqs;
   bool ok = true;
-  for (const Node& a : d_sub->getUnsatAssumptions())
+  for (const Node& a : unsatCore())
   {
     if (a == query)
     {

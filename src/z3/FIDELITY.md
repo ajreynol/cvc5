@@ -45,7 +45,17 @@ sample.
 
 ## Not faithful, and live on this benchmark set
 
-### Arithmetic and bit-vectors — the one non-mechanical divergence
+### Arithmetic — ported (`--z3-arith=native`, the Verus preset)
+
+Z3's `theory_mi_arith` is ported; see README, "The theories", for what is
+and is not. Known differences: cvc5's normal form for atoms (`>=`, and `<=`
+only from the theory itself) rather than Z3's; cvc5's total division
+operators, which get an extra axiom for a zero divisor; `ABS`, transcendentals
+and `iand` are unsupported (they taint the model rather than being
+reasoned about). The bridge description below applies to `--z3-arith=bridge`
+and to bit-vectors.
+
+### Arithmetic (bridge) and bit-vectors — the one non-mechanical divergence
 
 Z3 runs `theory_arith`/`theory_lra` and `theory_bv` inside the core. Per the
 instruction to reuse cvc5's solvers, `theory_cvc5.{h,cpp}` is instead a

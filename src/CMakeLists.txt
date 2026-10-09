@@ -1332,6 +1332,9 @@ libcvc5_add_sources(
   theory/uf/type_enumerator.h
   theory/valuation.cpp
   theory/valuation.h
+  z3/arith_eq_adapter.cpp
+  z3/arith_eq_adapter.h
+  z3/arith_util.h
   z3/ast.cpp
   z3/ast.h
   z3/b_justification.h
@@ -1388,6 +1391,13 @@ libcvc5_add_sources(
   z3/statistics.h
   z3/theory.cpp
   z3/theory.h
+  z3/theory_arith.h
+  z3/theory_arith_aux.cpp
+  z3/theory_arith_core.cpp
+  z3/theory_arith_eq.cpp
+  z3/theory_arith_int.cpp
+  z3/theory_arith_nl.cpp
+  z3/theory_arith_pp.cpp
   z3/theory_cvc5.cpp
   z3/theory_cvc5.h
   z3/theory_datatype.cpp
@@ -1398,10 +1408,12 @@ libcvc5_add_sources(
   z3/util/approx_set.h
   z3/util/hash.h
   z3/util/heap.h
+  z3/util/inf_rational.h
   z3/util/id_var_list.h
   z3/util/literal.h
   z3/util/luby.h
   z3/util/nat_set.h
+  z3/util/numeral.h
   z3/util/random_gen.h
   z3/util/region.cpp
   z3/util/region.h
