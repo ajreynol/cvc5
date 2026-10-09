@@ -41,6 +41,8 @@
 #include "z3/types.h"
 
 namespace cvc5::internal {
+
+class Env;
 namespace z3 {
 
 /**
@@ -192,6 +194,34 @@ class ConnectiveNormalizer
   NodeManager* d_nm;
   /** Whether a conjunction is rewritten as a negated disjunction. */
   bool d_eliminateAnd;
+  std::unordered_map<Node, Node> d_cache;
+};
+
+/**
+ * Runs the rewriter over an assertion, which is Z3's
+ * asserted_formulas::m_reduce_asserted_formulas. Z3's reduce() applies it
+ * twice -- immediately after NNF and again after pattern inference -- and
+ * nnf_cnf applies it to every formula it produces before pushing it. Without
+ * it the structure that NNF and skolemization build is never simplified: a
+ * disjunct that is itself a disjunction stays nested and costs the core an
+ * auxiliary Boolean variable and a gate, a conjunct of a conjunction likewise,
+ * and nothing that has become constant is folded away.
+ *
+ * The ground parts go to cvc5's rewriter. A quantifier is rebuilt from its
+ * rewritten body rather than handed to the rewriter whole, because cvc5's
+ * quantifiers rewriter restructures quantifiers -- miniscoping, variable
+ * elimination, prenexing -- and in Z3 that is the job of separate passes of
+ * reduce(), each with its own parameter, not of the rewriter.
+ */
+class AssertionRewriter
+{
+ public:
+  AssertionRewriter(Env& env) : d_env(env) {}
+
+  Node rewrite(TNode n);
+
+ private:
+  Env& d_env;
   std::unordered_map<Node, Node> d_cache;
 };
 

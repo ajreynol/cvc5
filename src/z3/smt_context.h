@@ -504,6 +504,8 @@ class SmtContext : protected EnvObj
 
   ConnectiveNormalizer& getConnectiveNormalizer() { return d_connNormalizer; }
 
+  AssertionRewriter& getAssertionRewriter() { return d_assertionRewriter; }
+
   Nnf& getNnf() { return d_nnf; }
 
   /** The environment of the enclosing cvc5 solver. */
@@ -1165,6 +1167,7 @@ class SmtContext : protected EnvObj
   Region d_region;
   QuantifierNormalizer d_normalizer;
   ConnectiveNormalizer d_connNormalizer;
+  AssertionRewriter d_assertionRewriter;
   Nnf d_nnf;
   std::unique_ptr<Cvc5Bridge> d_cvc5Bridge;
   PatternInference d_patternInference;

@@ -246,6 +246,14 @@ name   = "Z3 Core"
   help       = "hand the saturated state's ground literals to a full cvc5 subsolver and report what it says"
 
 [[option]]
+  name       = "z3RewriteAssertions"
+  category   = "expert"
+  long       = "z3-rewrite-assertions"
+  type       = "bool"
+  default    = "true"
+  help       = "run cvc5's rewriter over each assertion after NNF and after pattern inference, as Z3's reduce_asserted_formulas does"
+
+[[option]]
   name       = "z3EliminateAnd"
   category   = "expert"
   long       = "z3-eliminate-and"

@@ -13,6 +13,7 @@
 #include "smt/z3_smt_solver.h"
 
 #include "options/base_options.h"
+#include "options/z3_options.h"
 #include "preprocessing/assertion_pipeline.h"
 #include "smt/env.h"
 #include "smt/logic_exception.h"
@@ -87,9 +88,20 @@ void Z3SmtSolver::assertToInternal(preprocessing::AssertionPipeline& ap)
   // The core relies on every universal quantifier occurring positively, which
   // Z3 establishes with its own nnf pass; see z3/nnf.h.
   z3::Nnf& nnf = d_ctx->getNnf();
+  // Z3's asserted_formulas::reduce() rewrites every formula right after NNF
+  // and again after pattern inference; nnf_cnf rewrites each formula it
+  // produces as well. Both are here, around the rest of the pipeline.
+  z3::AssertionRewriter& rw = d_ctx->getAssertionRewriter();
+  const bool doRewrite = options().z3.z3RewriteAssertions;
   for (const Node& a : ap.ref())
   {
-    d_ctx->assertFormula(pi.apply(norm.normalize(cn.normalize(nnf.convert(a)))));
+    Node res = nnf.convert(a);
+    if (doRewrite)
+    {
+      res = rw.rewrite(res);
+    }
+    res = pi.apply(norm.normalize(cn.normalize(res)));
+    d_ctx->assertFormula(doRewrite ? rw.rewrite(res) : res);
   }
 }
 

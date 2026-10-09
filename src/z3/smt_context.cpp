@@ -86,6 +86,7 @@ SmtContext::SmtContext(Env& env, Params& p)
       d_normalizer(env.getNodeManager()),
       d_connNormalizer(env.getNodeManager(),
                        env.getOptions().z3.z3EliminateAnd),
+      d_assertionRewriter(env),
       d_nnf(env.getNodeManager()),
       d_patternInference(env.getNodeManager(), d_params),
       d_qmanager(nullptr),
