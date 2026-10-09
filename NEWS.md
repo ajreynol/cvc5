@@ -1,7 +1,7 @@
 This file contains a summary of important user-visible changes.
 
-cvc5 1.4.2 prerelease
-=====================
+cvc5 1.4.2
+==========
 
 - Adds techniques for returning "sat" when the returned candidate model
   happens to satisfy the set of input assertions (`--model-verify`).
@@ -11,6 +11,11 @@ cvc5 1.4.2 prerelease
   `(set.insert a b S)` is constructed as `(set.insert a (set.insert b S))`.
   This impacts the children of such terms when inspected via the API, as well
   as how they are printed.
+
+- The **bit-vector abstraction refinement strategy** (`--bv-abstraction`) now
+  also abstracts n-ary multiplications, i.e., `bvmul` with more than two
+  arguments, which were previously not abstracted. They are left-associated
+  into a chain of binary multiplications, each abstracted separately. (#12935)
 
 - Fixes a **refutation soundness** issue in the bit-vector rewrite rule for
   signed comparisons of multiplications, which was incorrectly applied when
