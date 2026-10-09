@@ -80,6 +80,13 @@ the missing propagation affordable.
 - cvc5's term formula removal purified Boolean arguments, so a pattern such as
   `(ext_eq false ...)` stopped matching. Skipped under `--z3`
   (`--z3-native-term-formulas`); the core handles both, as Z3's does.
+- Z3's `reduce()` begins with `propagate_values`, which the port assumed
+  cvc5's preprocessor covered. It does not substitute unit literals into the
+  other assertions; `propagate_values.{h,cpp}` now does. Z3's `is_gt` orders
+  by declaration id where Z3 has one; the port uses node ids, the nearest
+  analogue.
+- `smt.arith.nl=false` is now `theory_arith`'s behaviour, not a give-up: see
+  README, "Configurations".
 - `getQid` did not recognise the parser's current `:qid` representation, so
   `--z3-qi-profile` printed empty names. Diagnostic only.
 

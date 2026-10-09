@@ -145,6 +145,13 @@ Two more things the port's input has to look like for Z3's search to apply:
   benchmarks the Verus preset answered "unknown" on stayed unknown: Z3
   closed every one of them, and the instances it made that the port could
   not were exactly those of the definitions.
+- **Unit assertions are propagated first** (`propagate_values.{h,cpp}`,
+  `--z3-propagate-values`). `reduce()` starts with `propagate_values`: one
+  forward and one backward pass, each rewriting every assertion under the
+  substitution the others induce. It is a small change to the formula --
+  three fuel guards on the first benchmark it was measured on -- but it is
+  what made the port's first 437 instances on that benchmark come out in
+  exactly Z3's order, where before even the first three differed.
 - **Boolean arguments and term if-then-else are left alone.** cvc5's theory
   preprocessing purifies every Boolean term in a term position, so
   `(ext_eq false T a b)` reaches the core as `(ext_eq k T a b)` with
@@ -287,11 +294,28 @@ them can still be overridden. `--z3-ng-lift-ite` defaults to `auto`, which follo
 `--z3-auto-config` the way Z3's own parameter follows `setup_AUFLIA`.
 `smt.arith.solver` and `rewriter.sort_disjunctions` have no counterpart,
 because arithmetic goes through the cvc5 bridge and the rewriter is cvc5's.
-`smt.arith.nl=false` is `--no-z3-arith-nl`, which runs the bridge's
-subsolver with `--nl-ext=none --no-nl-cov`: the linear relaxation, a check of
-the model, and otherwise "unknown" -- what `theory_arith::process_non_linear`
-does with `m_nl_arith` off. Without it the port solved 11 benchmarks Verus's
-Z3 answers "unknown" on, all of which Z3 solves too with `smt.arith.nl=true`.
+`smt.arith.nl=false` is `--no-z3-arith-nl`. It reproduces what
+`theory_arith` does with `m_nl_arith` off, which is more than giving up:
+
+- A monomial is an opaque variable of the simplex, so the bridge abstracts a
+  product of two non-numerals, and a division by a non-numeral, as a fresh
+  constant. The subsolver then always has a model, and the interface
+  equalities are decided on it -- `final_check_core` runs `assume_eqs`
+  before `process_non_linear`, and those equalities feed E-matching.
+  Letting the subsolver answer "unknown" on the nonlinear query instead (its
+  `--nl-ext=none`) loses exactly that: 4 benchmarks Z3 closes saturated.
+- `propagate_linear_monomials` runs on every propagation: once all factors of
+  a monomial but one are fixed, the linear equality that follows is
+  asserted. The bridge asserts the same lemma to its subsolver,
+  `(=> (= a k) (= m (* k b)))` over the abstractions, when the core has
+  merged a factor with a numeral (Z3 asks for equal bounds). Verus's
+  `(Mul x SLICE_SIZE)` with `SLICE_SIZE` fixed by a fuel axiom needs it.
+- At final check, after the interface equalities, `check_monomial_assignments`:
+  if the model gives some monomial a value other than the product of its
+  factors' values, the bridge gives up, which taints the model.
+
+Without the option the port solved 11 benchmarks Verus's Z3 answers
+"unknown" on, all of which Z3 solves too with `smt.arith.nl=true`.
 
 ## Where it stands
 
@@ -306,14 +330,18 @@ files; logics UFDTLIA 171, UFDTNIA 53, ALL 49, UFBVDTNIA 25, UFBVDTLIA 2),
 | z3, Verus options | 278 | 18 | 4 |
 | cvc5 `--user-pat=strict --no-cbqi` (baseline) | 272 | 0 | 28 |
 | cvc5 `--z3` | 274 | 0 | 26 |
-| cvc5 `--z3 --z3-preset=verus` | 257 | 22 | 21 |
+| cvc5 `--z3 --z3-preset=verus` | 263 | 17 | 20 |
 
-No answer contradicts another. With the preset the port now solves a subset
-of what Verus's Z3 solves, and misses 21 of Z3's: 16 time out and 5
-saturate. The sequence that got it there, each step measured on the same
+No answer contradicts another. With the preset the port misses 16 of the
+benchmarks Verus's Z3 solves, and every one of them is a timeout: there is no
+longer a benchmark where the port saturates and Z3 does not. (The default
+configuration's row is from the run before `propagate_values`; with it, 272
+and one "unknown", on a benchmark Z3 solves from the port's own formula, so
+the search is merely sensitive to the change there.) The sequence that got it there, each step measured on the same
 sample: the preset as first defined, 264; `--no-z3-arith-nl`, 251, with no
 benchmark solved that Z3 does not; naming quantifiers below atoms and leaving
-Boolean arguments unpurified, 257. The same two changes took the default
+Boolean arguments unpurified, 257; the monomial treatment above, 262;
+`propagate_values`, 263. The same two changes took the default
 configuration from 271 (12 unknown) to 274 (none).
 
 The earlier measurements below were taken on a different 300-benchmark sample
@@ -415,6 +443,14 @@ exist for that:
   assigned relevant ground literals together with every quantified assertion.
   If cvc5 reports that file unsat, saturation was premature, and
   `--dump-instantiations` names instances that would have closed it.
+- `-t z3-events` prints every decision (`DECIDE`, with `PHASE`), every
+  instance (`INSTANCE`) and every final check, which lines up with Z3's
+  `-tr:decide_detail -tr:qi_queue` on the same formula. Run Z3 with
+  `tactic.default_tactic=smt` for this: with a logic set it otherwise runs a
+  tactic pipeline (`solve-eqs`, `lia2card`, `elim-uncnstr`, ...) before the
+  core, which renames variables -- and which, measured, none of the
+  benchmarks the port times out on need. `-t z3-csq-detail` adds the parent
+  disjunction and the value of each child at every relevancy case split.
 - `--z3-check-saturated` hands just the ground literals to a full cvc5
   subsolver. "sat" means the ground reasoning is consistent and a quantifier
   instance is missing; "unsat" means a theory of the port is too weak.

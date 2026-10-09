@@ -83,19 +83,28 @@ Node Nnf::mkName(TNode q, const std::vector<Node>& scope)
   // gen_name: the name is applied to the variables of q's free de Bruijn
   // indices, index 0 first; an index q does not use is filled with true. A
   // variable of scope at position j has de Bruijn index scope.size()-1-j.
+  // used_vars visits patterns as well as bodies, at every depth, and a Verus
+  // pattern may mention an enclosing variable no body uses.
+  // expr::getFreeVariables skips patterns, so the scope variables that occur
+  // anywhere below q are collected directly: being bound outside q, every
+  // occurrence of one is free in q.
+  std::unordered_set<Node> inScope(scope.begin(), scope.end());
   std::unordered_set<Node> fvs;
-  expr::getFreeVariables(q, fvs);
-  // used_vars visits the patterns as well as the body, and a Verus pattern
-  // may mention an enclosing variable the body does not use.
-  if (q.getNumChildren() == 3)
+  std::unordered_set<TNode> visited;
+  std::vector<TNode> visit{q};
+  while (!visit.empty())
   {
-    std::unordered_set<Node> pfvs;
-    expr::getFreeVariables(q[2], pfvs);
-    for (const Node& v : q[0])
+    TNode cur = visit.back();
+    visit.pop_back();
+    if (!visited.insert(cur).second)
     {
-      pfvs.erase(v);
+      continue;
     }
-    fvs.insert(pfvs.begin(), pfvs.end());
+    if (inScope.count(cur) != 0)
+    {
+      fvs.insert(cur);
+    }
+    visit.insert(visit.end(), cur.begin(), cur.end());
   }
   size_t numVars = 0;
   for (size_t j = 0, ns = scope.size(); j < ns; j++)

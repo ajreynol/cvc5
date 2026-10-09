@@ -28,6 +28,7 @@
 #include "smt/solver_engine.h"
 #include "expr/skolem_manager.h"
 #include "theory/smt_engine_subsolver.h"
+#include "util/rational.h"
 #include "util/result.h"
 #include "z3/ast.h"
 #include "z3/justification.h"
@@ -101,6 +102,8 @@ void Cvc5Bridge::reset()
   d_antecedents.clear();
   d_asserted.clear();
   d_abs.clear();
+  d_monomials.clear();
+  d_linLemmas.clear();
   d_haveModel = false;
   d_satSets.clear();
   d_satSetsTermsLim = 0;
@@ -272,6 +275,10 @@ bool Cvc5Bridge::mkAssumptions(std::vector<Node>& assumps)
     assumps.push_back(eq);
   }
   collectKnown(assumps);
+  if (!d_ctx.getParams().d_arithNl)
+  {
+    linearizeMonomials();
+  }
   return true;
 }
 
@@ -392,7 +399,7 @@ FinalCheckStatus Cvc5Bridge::check(bool finalCheck)
   }
   d_ctx.getStats().d_numBridgeChecks++;
   d_haveModel = r.getStatus() == Result::SAT;
-  if (r.getStatus() == Result::SAT)
+  if (d_haveModel)
   {
     // The two solvers agree on the literals. Their models still have to agree
     // on the terms they share, which is what the interface equalities below
@@ -429,9 +436,18 @@ FinalCheckStatus Cvc5Bridge::check(bool finalCheck)
         st = assumeInterfaceEqs();
       }
     }
+    // process_non_linear comes last in theory_arith's final check, after
+    // assume_eqs: with smt.arith.nl=false it answers FC_DONE if the
+    // assignment happens to satisfy every monomial and FC_GIVEUP otherwise.
+    bool monomialsOk = true;
+    if (st == FC_DONE && !d_monomials.empty() && !checkMonomials())
+    {
+      monomialsOk = false;
+      d_ctx.markModelUnsound(theory::THEORY_ARITH);
+    }
     if (st == FC_DONE)
     {
-      if (d_satSets.size() < s_maxCachedSatSets)
+      if (monomialsOk && d_satSets.size() < s_maxCachedSatSets)
       {
         d_satSets.insert(key);
       }
@@ -524,6 +540,18 @@ Node Cvc5Bridge::abstract(TNode t)
     // except as an opaque value.
     ret = isBridgedType(t.getType()) ? Node(t) : mkAbsConst(t);
   }
+  else if (!d_ctx.getParams().d_arithNl && isNonlinear(t))
+  {
+    // smt.arith.nl=false: the simplex sees a monomial as a variable of its
+    // own, so the subsolver gets an opaque constant. Its arguments are still
+    // abstracted, since linearizeMonomials and checkMonomials refer to them.
+    for (const Node& c : t)
+    {
+      abstract(c);
+    }
+    ret = mkAbsConst(t);
+    d_monomials.emplace_back(t, ret);
+  }
   else if (isBridgedOp(t.getKind()))
   {
     std::vector<Node> children;
@@ -543,6 +571,148 @@ Node Cvc5Bridge::abstract(TNode t)
   }
   d_abs[t] = ret;
   return ret;
+}
+
+bool Cvc5Bridge::isNonlinear(TNode t)
+{
+  switch (t.getKind())
+  {
+    case Kind::NONLINEAR_MULT: return true;
+    case Kind::DIVISION:
+    case Kind::DIVISION_TOTAL:
+    case Kind::INTS_DIVISION:
+    case Kind::INTS_DIVISION_TOTAL:
+    case Kind::INTS_MODULUS:
+    case Kind::INTS_MODULUS_TOTAL: return !t[1].isConst();
+    default: return false;
+  }
+}
+
+Node Cvc5Bridge::getFixedValue(TNode t)
+{
+  if (t.isConst())
+  {
+    return t;
+  }
+  if (!d_ctx.eInternalized(t))
+  {
+    return Node::null();
+  }
+  ENode* e = d_ctx.getENode(t);
+  ENode* n = e;
+  do
+  {
+    if (n->getExpr().isConst())
+    {
+      return n->getExpr();
+    }
+    n = n->getNext();
+  } while (n != e);
+  return Node::null();
+}
+
+void Cvc5Bridge::linearizeMonomials()
+{
+  NodeManager* nm = d_ctx.getEnv().getNodeManager();
+  for (const std::pair<Node, Node>& m : d_monomials)
+  {
+    if (d_known.count(m.second) == 0)
+    {
+      continue;
+    }
+    TNode t = m.first;
+    std::vector<Node> premises;
+    Node conclusion;
+    if (t.getKind() == Kind::NONLINEAR_MULT)
+    {
+      Rational k(1);
+      std::vector<Node> free;
+      for (const Node& c : t)
+      {
+        Node v = getFixedValue(c);
+        if (v.isNull())
+        {
+          free.push_back(c);
+          continue;
+        }
+        Node prem = abstract(c).eqNode(v);
+        if (v.getConst<Rational>().isZero())
+        {
+          // One of the factors is zero, which fixes the product.
+          premises = {prem};
+          k = Rational(0);
+          free.clear();
+          break;
+        }
+        premises.push_back(prem);
+        k *= v.getConst<Rational>();
+      }
+      if (free.size() > 1)
+      {
+        continue;
+      }
+      Node kn = nm->mkConstRealOrInt(t.getType(), k);
+      conclusion = free.empty()
+                       ? m.second.eqNode(kn)
+                       : m.second.eqNode(
+                           nm->mkNode(Kind::MULT, kn, abstract(free[0])));
+    }
+    else
+    {
+      // A division by a fixed divisor is linear.
+      Node v = getFixedValue(t[1]);
+      if (v.isNull() || v.getConst<Rational>().isZero())
+      {
+        continue;
+      }
+      premises.push_back(abstract(t[1]).eqNode(v));
+      conclusion =
+          m.second.eqNode(nm->mkNode(t.getKind(), abstract(t[0]), v));
+    }
+    Node lem = premises.empty()
+                   ? conclusion
+                   : nm->mkNode(Kind::IMPLIES,
+                                premises.size() == 1
+                                    ? premises[0]
+                                    : nm->mkNode(Kind::AND, premises),
+                                conclusion);
+    if (d_linLemmas.insert(lem).second)
+    {
+      // Valid by the definition of the abstraction, so it is asserted once
+      // and for all rather than assumed.
+      d_sub->assertFormula(lem);
+    }
+  }
+}
+
+bool Cvc5Bridge::checkMonomials()
+{
+  NodeManager* nm = d_ctx.getEnv().getNodeManager();
+  for (const std::pair<Node, Node>& m : d_monomials)
+  {
+    if (d_known.count(m.second) == 0)
+    {
+      continue;
+    }
+    std::vector<Node> children;
+    for (const Node& c : m.first)
+    {
+      children.push_back(abstract(c));
+    }
+    Node def = nm->mkNode(m.first.getKind(), children);
+    try
+    {
+      if (d_sub->getValue(m.second) != d_sub->getValue(def))
+      {
+        return false;
+      }
+    }
+    catch (const std::exception&)
+    {
+      return false;
+    }
+  }
+  return true;
 }
 
 Node Cvc5Bridge::mkAbsConst(TNode t)

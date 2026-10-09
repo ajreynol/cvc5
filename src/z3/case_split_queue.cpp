@@ -571,6 +571,17 @@ class RelCaseSplitQueue : public CaseSplitQueue
         if (!hasChildAssignedTo(
                 d_context, curr, val, undefChild, d_params.d_relCaseSplitOrder))
         {
+          Trace("z3-events") << "CSQ andor" << std::endl;
+          if (TraceIsOn("z3-csq-detail"))
+          {
+            Trace("z3-csq-detail") << "PARENT " << curr << std::endl;
+            for (const Node& c : curr)
+            {
+              Trace("z3-csq-detail")
+                  << "  CHILD " << d_context.getAssignment(c) << " " << c
+                  << std::endl;
+            }
+          }
           Literal l = d_context.getLiteral(undefChild);
           next = l.var();
           phase = l.sign() ? L_FALSE : L_TRUE;
@@ -580,6 +591,7 @@ class RelCaseSplitQueue : public CaseSplitQueue
       else if (val == L_UNDEF)
       {
         Assert(intern && d_context.getBoolVar(curr) == next);
+        Trace("z3-events") << "CSQ cand" << std::endl;
         phase = L_UNDEF;
         return;
       }
@@ -820,6 +832,17 @@ class RelActCaseSplitQueue : public CaseSplitQueue
         if (!hasChildAssignedTo(
                 d_context, curr, val, undefChild, d_params.d_relCaseSplitOrder))
         {
+          Trace("z3-events") << "CSQ andor" << std::endl;
+          if (TraceIsOn("z3-csq-detail"))
+          {
+            Trace("z3-csq-detail") << "PARENT " << curr << std::endl;
+            for (const Node& c : curr)
+            {
+              Trace("z3-csq-detail")
+                  << "  CHILD " << d_context.getAssignment(c) << " " << c
+                  << std::endl;
+            }
+          }
           Literal l = d_context.getLiteral(undefChild);
           next = l.var();
           phase = l.sign() ? L_FALSE : L_TRUE;
@@ -829,6 +852,7 @@ class RelActCaseSplitQueue : public CaseSplitQueue
       else if (val == L_UNDEF)
       {
         Assert(intern && d_context.getBoolVar(curr) == next);
+        Trace("z3-events") << "CSQ cand" << std::endl;
         phase = L_UNDEF;
         return;
       }

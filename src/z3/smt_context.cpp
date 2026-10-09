@@ -1963,8 +1963,12 @@ bool SmtContext::guess(BoolVar var, LBool phase)
     case PS_CACHING_CONSERVATIVE2:
       if (d_phaseCacheOn && d.d_phaseAvailable)
       {
+        Trace("z3-events") << "PHASESEL cached " << d_bdata[var].d_phase
+                           << std::endl;
         return d_bdata[var].d_phase;
       }
+      Trace("z3-events") << "PHASESEL default cacheOn " << d_phaseCacheOn
+                         << " available " << d.d_phaseAvailable << std::endl;
       return d_phaseDefault;
     case PS_ALWAYS_FALSE: return false;
     case PS_ALWAYS_TRUE: return true;
@@ -1992,6 +1996,8 @@ bool SmtContext::decide()
   d_stats.d_numDecisions++;
 
   pushScope();
+  Trace("z3-events") << "DECIDE " << boolVar2Expr(var) << std::endl;
+  Trace("z3-events") << "PHASE " << (isPos ? "pos" : "neg") << std::endl;
 
   Literal l(var, false);
   if (!isPos)
@@ -3856,6 +3862,7 @@ bool SmtContext::resourceLimitsExceeded()
 FinalCheckStatus SmtContext::finalCheck()
 {
   d_stats.d_numFinalChecks++;
+  Trace("z3-events") << "FINALCHECK " << d_stats.d_numFinalChecks << std::endl;
 
   FinalCheckStatus ok = d_qmanager->finalCheckEh(false);
   if (ok != FC_DONE)

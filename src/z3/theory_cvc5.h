@@ -37,6 +37,7 @@
 #include <vector>
 
 #include "expr/node.h"
+#include "util/result.h"
 #include "z3/theory.h"
 
 namespace cvc5::internal {
@@ -199,6 +200,31 @@ class Cvc5Bridge
   /** True if applications of k belong to a bridged theory. */
   static bool isBridgedOp(Kind k);
 
+  /**
+   * True if t is a nonlinear arithmetic term: a product of two non-numeral
+   * factors, or an integer or real division by a non-numeral. With
+   * smt.arith.nl=false these are what theory_arith keeps as monomials,
+   * opaque variables of the simplex.
+   */
+  static bool isNonlinear(TNode t);
+
+  /**
+   * propagate_linear_monomials: for each nonlinear term in the current query
+   * whose factors are all fixed but one, give the subsolver the linear
+   * equality that follows. A factor is fixed here when the core has merged
+   * it with a numeral, where Z3's theory_arith asks for equal bounds.
+   */
+  void linearizeMonomials();
+
+  /**
+   * check_monomial_assignments: whether the subsolver's model gives every
+   * nonlinear term in the current query the value of its definition.
+   */
+  bool checkMonomials();
+
+  /** The numeral t is merged with in the core, or null. */
+  Node getFixedValue(TNode t);
+
   /** True if terms of type tn are bridged. */
   static bool isBridgedType(const TypeNode& tn);
 
@@ -219,6 +245,13 @@ class Cvc5Bridge
   std::unordered_set<Node> d_known;
   /** the abstraction of each term, which is stable across the search */
   std::unordered_map<Node, Node> d_abs;
+  /**
+   * With smt.arith.nl=false, each nonlinear term with its abstraction
+   * constant.
+   */
+  std::vector<std::pair<Node, Node>> d_monomials;
+  /** the linearization lemmas already given to the subsolver */
+  std::unordered_set<Node> d_linLemmas;
   /** whether the subsolver's last check left a model to read values from */
   bool d_haveModel = false;
   /**

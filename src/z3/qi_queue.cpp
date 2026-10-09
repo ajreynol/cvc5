@@ -220,6 +220,7 @@ void QiQueue::instantiate(Entry& ent)
       vars.begin(), vars.end(), subs.begin(), subs.end());
 
   Trace("z3-qi-raw") << "RAWINST " << instance << std::endl;
+  Trace("z3-events") << "INSTANCE " << instance << std::endl;
   const std::string& dumpTo =
       d_context.getEnv().getOptions().z3.z3DumpInstances;
   if (!dumpTo.empty())

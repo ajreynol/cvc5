@@ -18,6 +18,7 @@
 #include "smt/env.h"
 #include "smt/logic_exception.h"
 #include "z3/ast.h"
+#include "z3/propagate_values.h"
 #include "z3/smt_context.h"
 
 namespace cvc5::internal {
@@ -116,7 +117,13 @@ void Z3SmtSolver::assertToInternal(preprocessing::AssertionPipeline& ap)
     res = pi.apply(norm.normalize(cn.normalize(res)));
     d_ctx->assertFormula(doRewrite ? rw.rewrite(res) : res);
   };
-  for (const Node& a : ap.ref())
+  // Z3's reduce() begins with propagate_values, over all the assertions.
+  std::vector<Node> fmls(ap.ref().begin(), ap.ref().end());
+  if (options().z3.z3PropagateValues)
+  {
+    z3::PropagateValues(rw).apply(fmls);
+  }
+  for (const Node& a : fmls)
   {
     Node res = nnf.convert(a);
     // Naming a quantifier below an atom introduces definitions, which
