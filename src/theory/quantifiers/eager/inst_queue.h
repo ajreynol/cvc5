@@ -54,6 +54,21 @@ class InstanceSink
 };
 
 /**
+ * Decides whether an instance is worth creating now, given the current
+ * assignment. z3's analogue is smt::quick_checker, used through
+ * qi.quick_checker and qi.promote_unsat: an instance whose body is already
+ * false under the assignment is a conflict and is worth creating whatever its
+ * cost, while one whose body is not yet determined only adds work.
+ */
+class InstanceEvaluator
+{
+ public:
+  virtual ~InstanceEvaluator() {}
+  /** Is the instance whose (substituted, rewritten) body is body worth it? */
+  virtual bool isUseful(TNode body) = 0;
+};
+
+/**
  * The duplicate filter: the set of (quantified formula, bindings up to
  * equality) pairs that have already been turned into an instance. This is the
  * only duplicate filter of eager E-matching; it is deliberately not shared
@@ -89,6 +104,11 @@ class InstQueue : protected EnvObj, public MamListener
 
   /** Set the sink, which must outlive this object */
   void setSink(InstanceSink* s) { d_sink = s; }
+  /**
+   * Set the evaluator that decides which instances are worth creating, or
+   * nullptr to create all of them. It must outlive this object.
+   */
+  void setEvaluator(InstanceEvaluator* e) { d_eval = e; }
 
   //--------------------------------------------------- MamListener
   /** z3: quantifier_manager::imp::add_instance */
@@ -128,6 +148,8 @@ class InstQueue : protected EnvObj, public MamListener
     uint64_t d_numLazyInstances = 0;
     /** instances that simplified to true */
     uint64_t d_numTrivial = 0;
+    /** instances the evaluator rejected */
+    uint64_t d_numNotUseful = 0;
   };
   const Stats& getStats() const { return d_stats; }
 
@@ -163,6 +185,8 @@ class InstQueue : protected EnvObj, public MamListener
   Trail& d_trail;
   /** The sink */
   InstanceSink* d_sink;
+  /** The evaluator, or nullptr if every instance is created */
+  InstanceEvaluator* d_eval;
   /** The duplicate filter */
   Fingerprints d_fps;
   /** Entries that have not been processed yet. z3: m_new_entries */

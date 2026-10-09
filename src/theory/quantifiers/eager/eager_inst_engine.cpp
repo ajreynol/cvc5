@@ -17,6 +17,7 @@
 #include "theory/quantifiers/instantiate.h"
 #include "theory/quantifiers/quantifiers_state.h"
 #include "theory/quantifiers/term_util.h"
+#include "theory/valuation.h"
 
 namespace cvc5::internal {
 namespace theory {
@@ -57,6 +58,7 @@ EagerInstEngine::EagerInstEngine(Env& env,
       d_matchOnNotify(options().quantifiers.eagerInstMatchMode
                       == options::EagerInstMatchMode::NOTIFY),
       d_relevantOnly(options().quantifiers.eagerInstRelevant),
+      d_quickCheck(options().quantifiers.eagerInstQuickCheck),
       d_factCursor(context()),
       d_maxContributions(options().quantifiers.eagerInstMaxContributions),
       d_numContributed(0)
@@ -84,6 +86,10 @@ EagerInstEngine::EagerInstEngine(Env& env,
   }
   // With no sink the instances are discarded once they have been found, which
   // isolates the cost of matching from the cost of what is done with them.
+  if (d_quickCheck != options::EagerInstQuickCheckMode::ALL)
+  {
+    d_queue.setEvaluator(this);
+  }
   d_queue.setSink(d_useInner ? static_cast<InstanceSink*>(d_inner.get())
                              : ((d_outputLemmas || d_outputInst)
                                     ? static_cast<InstanceSink*>(this)
@@ -478,6 +484,133 @@ void EagerInstEngine::addInstance(TNode q,
   d_pendingInsts.push_back(PendingInst{q, terms});
 }
 
+int EagerInstEngine::evalAtom(TNode n) const
+{
+  if (n.isConst())
+  {
+    return n.getConst<bool>() ? 1 : -1;
+  }
+  // The equality engine decides the equalities between the terms it has,
+  // including the ones the SAT solver has no literal for, which is most of the
+  // equalities an instance introduces.
+  if (n.getKind() == Kind::EQUAL && d_qstate.hasTerm(n[0])
+      && d_qstate.hasTerm(n[1]))
+  {
+    if (d_qstate.areEqual(n[0], n[1]))
+    {
+      return 1;
+    }
+    if (d_qstate.areDisequal(n[0], n[1]))
+    {
+      return -1;
+    }
+  }
+  Valuation& val = d_qstate.getValuation();
+  bool value;
+  if (val.isSatLiteral(n) && val.hasSatValue(n, value))
+  {
+    return value ? 1 : -1;
+  }
+  return 0;
+}
+
+int EagerInstEngine::evalFormula(TNode n, size_t& numUnknown) const
+{
+  switch (n.getKind())
+  {
+    case Kind::NOT: return -evalFormula(n[0], numUnknown);
+    case Kind::AND:
+    case Kind::OR:
+    {
+      // false for AND, true for OR
+      int dominant = n.getKind() == Kind::AND ? -1 : 1;
+      bool anyUnknown = false;
+      for (const Node& nc : n)
+      {
+        int r = evalFormula(nc, numUnknown);
+        if (r == dominant)
+        {
+          return dominant;
+        }
+        if (r == 0)
+        {
+          anyUnknown = true;
+        }
+      }
+      return anyUnknown ? 0 : -dominant;
+    }
+    case Kind::IMPLIES:
+    {
+      int r0 = evalFormula(n[0], numUnknown);
+      if (r0 == -1)
+      {
+        return 1;
+      }
+      int r1 = evalFormula(n[1], numUnknown);
+      if (r1 == 1)
+      {
+        return 1;
+      }
+      return (r0 == 1 && r1 == -1) ? -1 : 0;
+    }
+    case Kind::ITE:
+    {
+      int rc = evalFormula(n[0], numUnknown);
+      if (rc == 1)
+      {
+        return evalFormula(n[1], numUnknown);
+      }
+      if (rc == -1)
+      {
+        return evalFormula(n[2], numUnknown);
+      }
+      // both branches agreeing determines the value whatever the condition is
+      int r1 = evalFormula(n[1], numUnknown);
+      int r2 = evalFormula(n[2], numUnknown);
+      return r1 == r2 ? r1 : 0;
+    }
+    case Kind::XOR:
+    {
+      int r0 = evalFormula(n[0], numUnknown);
+      int r1 = evalFormula(n[1], numUnknown);
+      return (r0 == 0 || r1 == 0) ? 0 : -(r0 * r1);
+    }
+    default: break;
+  }
+  if (n.getKind() == Kind::EQUAL && n[0].getType().isBoolean())
+  {
+    int r0 = evalFormula(n[0], numUnknown);
+    int r1 = evalFormula(n[1], numUnknown);
+    return (r0 == 0 || r1 == 0) ? 0 : r0 * r1;
+  }
+  int r = evalAtom(n);
+  if (r == 0)
+  {
+    numUnknown++;
+  }
+  return r;
+}
+
+bool EagerInstEngine::isUseful(TNode body)
+{
+  // z3: smt::quick_checker, used for qi.promote_unsat. The instance is
+  // (or (not q) body) with q asserted, so it is a conflict exactly when body
+  // is false under the current assignment.
+  size_t numUnknown = 0;
+  int r = evalFormula(body, numUnknown);
+  if (r == -1)
+  {
+    return true;
+  }
+  if (d_quickCheck == options::EagerInstQuickCheckMode::CONFLICT_PROP)
+  {
+    // one undetermined literal away from false, so adding the instance
+    // propagates that literal
+    return r == 0 && numUnknown == 1;
+  }
+  return false;
+}
+
 void EagerInstEngine::traceStats() const
 {
   if (!TraceIsOn("eager-inst-stats"))
@@ -494,7 +627,8 @@ void EagerInstEngine::traceStats() const
       << " matches; queue: " << qs.d_numMatches << " in, " << qs.d_numDuplicates
       << " duplicates, " << qs.d_numInstances << " instances, "
       << qs.d_numLazyInstances << " lazy, " << qs.d_numTrivial
-      << " trivial; added " << d_numContributed;
+      << " trivial, " << qs.d_numNotUseful << " not useful; added "
+      << d_numContributed;
   if (d_inner != nullptr)
   {
     const InnerSmtSolver::Stats& is = d_inner->getStats();

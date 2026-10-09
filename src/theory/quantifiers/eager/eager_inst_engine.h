@@ -82,7 +82,9 @@ class EagerEqNotify : public theory::eq::EqualityEngineNotify
 /**
  * Eager E-matching.
  */
-class EagerInstEngine : public QuantifiersModule, public InstanceSink
+class EagerInstEngine : public QuantifiersModule,
+                        public InstanceSink,
+                        public InstanceEvaluator
 {
  public:
   EagerInstEngine(Env& env,
@@ -142,6 +144,15 @@ class EagerInstEngine : public QuantifiersModule, public InstanceSink
                    uint32_t generation) override;
   //------------------------------------------------ end InstanceSink
 
+  //---------------------------------------------------- InstanceEvaluator
+  /**
+   * With --eager-inst-quick-check, an instance is only created if its body is
+   * already false under the current assignment, or, in the prop mode, if it is
+   * one literal away from being false.
+   */
+  bool isUseful(TNode body) override;
+  //------------------------------------------------ end InstanceEvaluator
+
  private:
   /**
    * Align our trail with the current context level, pushing or popping scopes
@@ -156,6 +167,14 @@ class EagerInstEngine : public QuantifiersModule, public InstanceSink
   {
     return d_maxContributions == 0 || d_numContributed < d_maxContributions;
   }
+  /**
+   * Three-valued evaluation of the formula n under the current assignment:
+   * 1 if true, -1 if false, 0 if not determined. Counts the leaves that are
+   * not determined in numUnknown, which the prop mode needs.
+   */
+  int evalFormula(TNode n, size_t& numUnknown) const;
+  /** Three-valued evaluation of an atom */
+  int evalAtom(TNode n) const;
   /** Print the statistics under -t eager-inst */
   void traceStats() const;
   /**
@@ -202,6 +221,8 @@ class EagerInstEngine : public QuantifiersModule, public InstanceSink
   std::unordered_set<Node> d_asserted;
   /** Whether matching is restricted to the terms of the asserted facts */
   bool d_relevantOnly;
+  /** Which instances are worth creating */
+  options::EagerInstQuickCheckMode d_quickCheck;
   /**
    * How many facts of each theory sweepFacts has seen, keyed on the theory id.
    * Context dependent, as the fact lists themselves are, so that a pop takes

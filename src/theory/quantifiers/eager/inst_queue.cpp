@@ -45,6 +45,7 @@ InstQueue::InstQueue(Env& env, Trail& trail)
     : EnvObj(env),
       d_trail(trail),
       d_sink(nullptr),
+      d_eval(nullptr),
       d_fps(trail),
       d_eagerThreshold(10.0),
       d_lazyThreshold(20.0)
@@ -179,6 +180,15 @@ void InstQueue::instantiate(Entry& ent)
   if (body.isConst() && body.getConst<bool>())
   {
     d_stats.d_numTrivial++;
+    return;
+  }
+  if (d_eval != nullptr && !d_eval->isUseful(body))
+  {
+    // Not worth creating now. Unlike z3, which holds such an instance in the
+    // delayed queue, we drop it: cvc5's own E-matching runs alongside and is
+    // responsible for the instances that are merely useful, so holding ours
+    // would duplicate its work rather than add to it.
+    d_stats.d_numNotUseful++;
     return;
   }
   NodeManager* nm = nodeManager();

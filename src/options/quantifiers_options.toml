@@ -332,6 +332,24 @@ name   = "Quantifiers"
   help       = "match only against the terms that occur in an asserted fact, which is the closest cvc5 has to z3's relevancy: z3 adds a term to its e-graph when it is internalized but only matches it once its relevancy propagation marks it relevant, while the master equality engine of cvc5 reports every term of the problem"
 
 [[option]]
+  name       = "eagerInstQuickCheck"
+  category   = "expert"
+  long       = "eager-inst-quick-check=MODE"
+  type       = "EagerInstQuickCheckMode"
+  default    = "CONFLICT"
+  help       = "which of the instances eager E-matching finds are created"
+  help_mode  = "Modes for which instances eager E-matching creates."
+[[option.mode.ALL]]
+  name = "all"
+  help = "Create every instance the matcher finds, as z3 does. Since cvc5's own E-matching runs alongside, this duplicates much of its work."
+[[option.mode.CONFLICT]]
+  name = "conflict"
+  help = "Create only the instances whose body is already false under the current assignment, i.e. the ones that are immediately a conflict (z3: qi.promote_unsat)."
+[[option.mode.CONFLICT_PROP]]
+  name = "conflict-prop"
+  help = "Create the instances whose body is already false, and those that are one undetermined literal away from being false, which propagate that literal."
+
+[[option]]
   name       = "eagerInstMatchMode"
   category   = "expert"
   long       = "eager-inst-match-mode=MODE"
