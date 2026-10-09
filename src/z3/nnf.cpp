@@ -12,7 +12,11 @@
 
 #include "z3/nnf.h"
 
+#include <algorithm>
+#include <unordered_set>
+
 #include "expr/node_algorithm.h"
+#include "expr/node_builder.h"
 #include "expr/node_manager.h"
 #include "expr/skolem_manager.h"
 #include "z3/ast.h"
@@ -23,7 +27,140 @@ namespace z3 {
 Node Nnf::convert(TNode n)
 {
   std::vector<Node> scope;
-  return convertRec(n, true, scope);
+  Node r = convertRec(n, true, scope);
+  // nnf::operator(): the definitions introduced while converting are
+  // converted in turn, which may introduce more, and are then reversed.
+  size_t first = d_defs.size();
+  for (size_t i = 0; i < d_todoDefs.size(); i++)
+  {
+    Node def = d_todoDefs[i];
+    d_defs.push_back(convertRec(def, true, scope));
+  }
+  d_todoDefs.clear();
+  std::reverse(d_defs.begin() + first, d_defs.end());
+  return r;
+}
+
+std::vector<Node> Nnf::takeDefinitions()
+{
+  std::vector<Node> defs;
+  defs.swap(d_defs);
+  return defs;
+}
+
+Node Nnf::nameQuantifiers(TNode n, const std::vector<Node>& scope)
+{
+  // name_exprs_core is a rewriter whose get_subst replaces a subterm the
+  // predicate accepts, without descending into it; the predicate of the
+  // quantifier label namer accepts quantifiers.
+  if (n.getKind() == Kind::FORALL || n.getKind() == Kind::EXISTS)
+  {
+    return mkName(n, scope);
+  }
+  if (n.isClosure() || !expr::hasClosure(Node(n)))
+  {
+    return n;
+  }
+  NodeBuilder nb(d_nm, n.getKind());
+  if (n.getMetaKind() == kind::metakind::PARAMETERIZED)
+  {
+    nb << n.getOperator();
+  }
+  for (const Node& nc : n)
+  {
+    nb << nameQuantifiers(nc, scope);
+  }
+  return nb.constructNode();
+}
+
+Node Nnf::mkName(TNode q, const std::vector<Node>& scope)
+{
+  auto it = d_names.find(q);
+  if (it != d_names.end())
+  {
+    return it->second;
+  }
+  // gen_name: the name is applied to the variables of q's free de Bruijn
+  // indices, index 0 first; an index q does not use is filled with true. A
+  // variable of scope at position j has de Bruijn index scope.size()-1-j.
+  std::unordered_set<Node> fvs;
+  expr::getFreeVariables(q, fvs);
+  // used_vars visits the patterns as well as the body, and a Verus pattern
+  // may mention an enclosing variable the body does not use.
+  if (q.getNumChildren() == 3)
+  {
+    std::unordered_set<Node> pfvs;
+    expr::getFreeVariables(q[2], pfvs);
+    for (const Node& v : q[0])
+    {
+      pfvs.erase(v);
+    }
+    fvs.insert(pfvs.begin(), pfvs.end());
+  }
+  size_t numVars = 0;
+  for (size_t j = 0, ns = scope.size(); j < ns; j++)
+  {
+    if (fvs.find(scope[j]) != fvs.end())
+    {
+      numVars = std::max(numVars, ns - j);
+    }
+  }
+  std::vector<Node> args;
+  std::vector<TypeNode> argTypes;
+  for (size_t i = 0; i < numVars; i++)
+  {
+    TNode v = scope[scope.size() - 1 - i];
+    if (fvs.find(v) != fvs.end())
+    {
+      args.push_back(v);
+      argTypes.push_back(v.getType());
+    }
+    else
+    {
+      args.push_back(d_nm->mkConst(true));
+      argTypes.push_back(d_nm->booleanType());
+    }
+  }
+  SkolemManager* sm = d_nm->getSkolemManager();
+  Node name;
+  if (args.empty())
+  {
+    name = sm->mkDummySkolem("z3name", d_nm->booleanType());
+  }
+  else
+  {
+    TypeNode ft = d_nm->mkFunctionType(argTypes, d_nm->booleanType());
+    std::vector<Node> children{sm->mkDummySkolem("z3name", ft)};
+    children.insert(children.end(), args.begin(), args.end());
+    name = d_nm->mkNode(Kind::APPLY_UF, children);
+  }
+  d_names[q] = name;
+  // mk_definition for a Boolean expression: (or (not n) q) and (or n (not
+  // q)), each closed over the variables it uses with n as its only pattern
+  // and no qid (bound_vars, then elim_unused_vars). The bound variables are
+  // listed outermost first, as the reversed var_sorts are.
+  std::vector<Node> bvs;
+  for (const Node& v : scope)
+  {
+    if (fvs.find(v) != fvs.end())
+    {
+      bvs.push_back(v);
+    }
+  }
+  Node conj[2] = {d_nm->mkNode(Kind::OR, name.negate(), q),
+                  d_nm->mkNode(Kind::OR, name, q.negate())};
+  if (!bvs.empty())
+  {
+    Node bvl = d_nm->mkNode(Kind::BOUND_VAR_LIST, bvs);
+    Node pat = d_nm->mkNode(Kind::INST_PATTERN_LIST,
+                            d_nm->mkNode(Kind::INST_PATTERN, name));
+    for (Node& c : conj)
+    {
+      c = d_nm->mkNode(Kind::FORALL, bvl, c, pat);
+    }
+  }
+  d_todoDefs.push_back(d_nm->mkNode(Kind::AND, conj[0], conj[1]));
+  return name;
 }
 
 Node Nnf::mkSkolem(TNode v, const std::vector<Node>& scope)
@@ -173,12 +310,14 @@ Node Nnf::convertCore(TNode n, bool pol, const std::vector<Node>& scope)
     }
     default: break;
   }
-  // A quantifier below an operator the normal form does not descend into,
-  // such as a term if-then-else or an uninterpreted predicate. Leaving it
-  // alone would break the positive-polarity invariant, so the caller is
-  // responsible for noticing; in practice cvc5's preprocessor does not
-  // produce such a formula.
-  return pol ? Node(n) : n.negate();
+  // An atom with a quantifier below it, e.g. (= (f x) (B (forall y P))):
+  // process_default. The quantifier cannot reach the core in either polarity
+  // from inside a term, so it is replaced by a fresh name whose definition
+  // is asserted separately; converting the definition is what skolemizes
+  // the quantifier's negative half. Verus emits these for every lambda whose
+  // body is a quantified formula.
+  Node named = nameQuantifiers(n, scope);
+  return pol ? named : named.negate();
 }
 
 }  // namespace z3

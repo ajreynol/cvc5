@@ -277,6 +277,22 @@ name   = "Z3 Core"
   help       = "infer patterns for quantifiers that have none, as Z3's pi.enabled does"
 
 [[option]]
+  name       = "z3ArithNl"
+  category   = "expert"
+  long       = "z3-arith-nl"
+  type       = "bool"
+  default    = "true"
+  help       = "let the arithmetic bridge reason about nonlinear terms, as Z3's smt.arith.nl does; when off, a nonlinear subproblem the linear relaxation does not refute makes the bridge give up"
+
+[[option]]
+  name       = "z3NativeTermFormulas"
+  category   = "expert"
+  long       = "z3-native-term-formulas"
+  type       = "bool"
+  default    = "true"
+  help       = "leave term if-then-else and Boolean terms in term positions to the ported core, which handles them as Z3 does, instead of purifying them in cvc5's theory preprocessing"
+
+[[option]]
   name       = "z3NgLiftIte"
   category   = "expert"
   long       = "z3-ng-lift-ite=MODE"

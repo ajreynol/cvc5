@@ -117,12 +117,13 @@ void Params::initialize(const Options& opts)
   d_qiMaxInstances =
       maxInst > UINT32_MAX ? UINT32_MAX : static_cast<uint32_t>(maxInst);
   d_piEnabled = opts.z3.z3PatternInference;
+  d_arithNl = opts.z3.z3ArithNl;
   if (opts.z3.z3Preset == options::Z3PresetMode::VERUS)
   {
     // The options Verus passes to Z3 (auto_config=false smt.mbqi=false
     // smt.case_split=3 smt.qi.eager_threshold=100 smt.delay_units=true
-    // pi.enabled=false). Its smt.arith.solver=2 and smt.arith.nl=false have
-    // no counterpart, since arithmetic goes through the cvc5 bridge, and
+    // pi.enabled=false smt.arith.nl=false). Its smt.arith.solver=2 has no
+    // counterpart, since arithmetic goes through the cvc5 bridge, and
     // rewriter.sort_disjunctions=false none either, since the rewriter is
     // cvc5's.
     const options::HolderZ3& z = opts.z3;
@@ -132,6 +133,7 @@ void Params::initialize(const Options& opts)
     if (!z.z3QiEagerThresholdWasSetByUser) d_qiEagerThreshold = 100.0;
     if (!z.z3DelayUnitsWasSetByUser) d_delayUnits = true;
     if (!z.z3PatternInferenceWasSetByUser) d_piEnabled = false;
+    if (!z.z3ArithNlWasSetByUser) d_arithNl = false;
   }
   switch (opts.z3.z3NgLiftIte)
   {

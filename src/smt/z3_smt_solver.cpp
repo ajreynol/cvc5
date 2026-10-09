@@ -98,9 +98,9 @@ void Z3SmtSolver::assertToInternal(preprocessing::AssertionPipeline& ap)
   // z3/push_app_ite.h.
   const bool doLiftIte = d_ctx->getParams().d_ngLiftIte != z3::Params::LI_NONE;
   z3::NgPushAppIte& lift = d_ctx->getNgPushAppIte();
-  for (const Node& a : ap.ref())
-  {
-    Node res = nnf.convert(a);
+  // The rest of the pipeline, applied to a formula already in negation
+  // normal form.
+  auto assertNnf = [&](Node res) {
     if (doRewrite)
     {
       res = rw.rewrite(res);
@@ -115,6 +115,17 @@ void Z3SmtSolver::assertToInternal(preprocessing::AssertionPipeline& ap)
     }
     res = pi.apply(norm.normalize(cn.normalize(res)));
     d_ctx->assertFormula(doRewrite ? rw.rewrite(res) : res);
+  };
+  for (const Node& a : ap.ref())
+  {
+    Node res = nnf.convert(a);
+    // Naming a quantifier below an atom introduces definitions, which
+    // nnf_cnf pushes ahead of the formula.
+    for (const Node& def : nnf.takeDefinitions())
+    {
+      assertNnf(def);
+    }
+    assertNnf(res);
   }
 }
 

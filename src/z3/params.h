@@ -290,6 +290,10 @@ struct Params
   /** m_ng_lift_ite: lifting out of non-ground applications only. */
   LiftIteKind d_ngLiftIte = LI_NONE;
 
+  // ---------------------------------------------------- arithmetic
+  /** smt.arith.nl: nonlinear reasoning in the arithmetic solver. */
+  bool d_arithNl = true;
+
   // ---------------------------------------------------- misc
   bool d_autoConfig = true;
   bool d_model = true;

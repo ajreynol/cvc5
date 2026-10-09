@@ -139,6 +139,13 @@ class TheoryPreprocessor : protected EnvObj
   /** The term formula remover */
   RemoveTermFormulas d_tfr;
   /**
+   * Whether term formula removal is skipped. Under --z3 the ported core
+   * internalizes term if-then-else and Boolean terms in term positions itself,
+   * as Z3 does; purifying them would change the terms patterns match against,
+   * e.g. (f false x) would become (f k x) with (not k) asserted separately.
+   */
+  bool d_skipTermFormulaRemoval;
+  /**
    * A term conversion proof generator storing preprocessing and rewriting
    * steps, which is done until fixed point in the inner traversal of this
    * class for theory atoms in step [2] above.

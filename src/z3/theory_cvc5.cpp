@@ -149,6 +149,19 @@ bool Cvc5Bridge::initSubsolver()
       subOptions.write_base().perCallResourceLimit =
           env.getOptions().z3.z3BridgeRlimitPer;
     }
+    if (!d_ctx.getParams().d_arithNl)
+    {
+      // smt.arith.nl=false: theory_arith treats each monomial as an opaque
+      // variable of the simplex and, at final check, answers FC_DONE if the
+      // assignment happens to satisfy every monomial and FC_GIVEUP otherwise
+      // (process_non_linear). cvc5's nonlinear extension with no
+      // linearization and no cylindrical algebraic coverings does the same:
+      // the linear abstraction, then a check of the model, then "unknown".
+      subOptions.write_arith().nlExt = options::NlExtMode::NONE;
+      subOptions.write_arith().nlExtWasSetByUser = true;
+      subOptions.write_arith().nlCov = false;
+      subOptions.write_arith().nlCovWasSetByUser = true;
+    }
     smt::SetDefaults::disableChecking(subOptions);
     theory::SubsolverSetupInfo ssi(env, subOptions);
     theory::initializeSubsolver(env.getNodeManager(), d_sub, ssi);

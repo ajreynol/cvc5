@@ -70,6 +70,19 @@ Making it mirror the core's scopes with push/pop, asserting literals as they
 are assigned instead of resending assumptions, is the change that would make
 the missing propagation affordable.
 
+### NNF and term formulas — fixed 2026-10-09
+
+- Z3's NNF names a quantifier that occurs below an atom (`process_default`,
+  quantifier label namer, `defined_names::mk_name`). The port left it in place,
+  where the core can assert it in neither polarity; `Nnf::nameQuantifiers`
+  now does what Z3 does. Verus emits this shape for every lambda with a
+  quantified body.
+- cvc5's term formula removal purified Boolean arguments, so a pattern such as
+  `(ext_eq false ...)` stopped matching. Skipped under `--z3`
+  (`--z3-native-term-formulas`); the core handles both, as Z3's does.
+- `getQid` did not recognise the parser's current `:qid` representation, so
+  `--z3-qi-profile` printed empty names. Diagnostic only.
+
 ### Preprocessing — Z3's `asserted_formulas::reduce()`
 
 The port runs cvc5's Preprocessor (per instruction) and then three of Z3's own

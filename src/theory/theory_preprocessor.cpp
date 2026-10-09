@@ -14,6 +14,7 @@
 
 #include "expr/skolem_manager.h"
 #include "expr/term_context_stack.h"
+#include "options/z3_options.h"
 #include "proof/lazy_proof.h"
 #include "smt/logic_exception.h"
 #include "theory/logic_info.h"
@@ -30,6 +31,8 @@ TheoryPreprocessor::TheoryPreprocessor(Env& env, TheoryEngine& engine)
       d_engine(engine),
       d_cache(userContext()),
       d_tfr(env),
+      d_skipTermFormulaRemoval(options().z3.z3
+                               && options().z3.z3NativeTermFormulas),
       d_tpg(nullptr),
       d_tpgRew(nullptr),
       d_tspg(nullptr),
@@ -263,7 +266,11 @@ TrustNode TheoryPreprocessor::theoryPreprocess(
       bool inQuant, inTerm;
       RtfTermContext::getFlags(nodeVal, inQuant, inTerm);
       Assert(!inQuant);
-      TrustNode currTrn = d_tfr.runCurrent(node, inTerm, newLem);
+      TrustNode currTrn;
+      if (!d_skipTermFormulaRemoval)
+      {
+        currTrn = d_tfr.runCurrent(node, inTerm, newLem);
+      }
       // if we replaced by a skolem, we do not recurse
       if (!currTrn.isNull())
       {

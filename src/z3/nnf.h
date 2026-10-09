@@ -42,8 +42,18 @@ class Nnf
  public:
   Nnf(NodeManager* nm) : d_nm(nm) {}
 
-  /** The negation normal form of the assertion n. */
+  /**
+   * The negation normal form of the assertion n. Naming a quantifier that
+   * occurs below an atom introduces definitions; they are collected, already
+   * in negation normal form, and returned by takeDefinitions.
+   */
   Node convert(TNode n);
+
+  /**
+   * The definitions the last call to convert introduced, in the order Z3's
+   * nnf_cnf pushes them, which is before the formula itself.
+   */
+  std::vector<Node> takeDefinitions();
 
  private:
   /**
@@ -58,7 +68,22 @@ class Nnf
   /** A fresh skolem of the type of v, applied to the variables in scope. */
   Node mkSkolem(TNode v, const std::vector<Node>& scope);
 
+  /**
+   * The atom n with every quantifier below it replaced by its name; Z3's
+   * process_default, with the quantifier label namer of NNF_SKOLEM mode.
+   */
+  Node nameQuantifiers(TNode n, const std::vector<Node>& scope);
+
+  /** defined_names::mk_name for the quantifier q under scope. */
+  Node mkName(TNode q, const std::vector<Node>& scope);
+
   NodeManager* d_nm;
+  /** defined_names::m_expr2name: a quantifier is named once. */
+  std::unordered_map<Node, Node> d_names;
+  /** The definitions still to be converted (nnf's m_todo_defs). */
+  std::vector<Node> d_todoDefs;
+  /** The converted definitions, returned by takeDefinitions. */
+  std::vector<Node> d_defs;
 };
 
 }  // namespace z3

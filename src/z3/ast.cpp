@@ -19,6 +19,7 @@
 #include "smt/env.h"
 #include "theory/rewriter.h"
 #include "theory/theory.h"
+#include "util/string.h"
 
 namespace cvc5::internal {
 namespace z3 {
@@ -152,10 +153,19 @@ std::string getQid(TNode q)
   }
   for (const Node& p : q[2])
   {
-    if (p.getKind() == Kind::INST_ATTRIBUTE && p.getNumChildren() > 0
-        && p[0].getAttribute(theory::QuantNameAttribute()))
+    if (p.getKind() != Kind::INST_ATTRIBUTE || p.getNumChildren() < 2)
     {
-      return p[0].getName();
+      continue;
+    }
+    // The parser builds (INST_ATTRIBUTE "qid" name). QuantNameAttribute is
+    // only set on the first child once cvc5's quantifiers module has
+    // processed the attribute, which never happens under --z3, so the
+    // string is checked as well.
+    if (p[0].getAttribute(theory::QuantNameAttribute())
+        || (p[0].getKind() == Kind::CONST_STRING
+            && p[0].getConst<String>() == String("qid")))
+    {
+      return p[1].getName();
     }
   }
   return "";

@@ -130,6 +130,29 @@ come along: cvc5 selects triggers inside its quantifiers module rather than
 annotating the formula, so a quantifier without a `:pattern` would reach the
 core with no trigger at all.
 
+Two more things the port's input has to look like for Z3's search to apply:
+
+- **A quantifier below an atom is named.** Verus encodes a lambda whose body
+  is quantified as `(= (apply (lambda7 ...) x) (B (not (forall ...))))`: the
+  quantifier sits inside a term, where the core can assert it in neither
+  polarity. Z3's NNF (`process_default` with the quantifier label namer)
+  replaces it by `z3name!k(vars)` and asserts the two halves of its
+  definition separately, each a quantifier with `z3name!k(vars)` as its only
+  pattern and no qid; converting the negative half is what skolemizes the
+  quantifier. `Nnf::nameQuantifiers` does the same, including Z3's argument
+  order (by de Bruijn index, with `true` for an index that is not used) and
+  counting variables that only a pattern mentions. Without it 9 of the 14
+  benchmarks the Verus preset answered "unknown" on stayed unknown: Z3
+  closed every one of them, and the instances it made that the port could
+  not were exactly those of the definitions.
+- **Boolean arguments and term if-then-else are left alone.** cvc5's theory
+  preprocessing purifies every Boolean term in a term position, so
+  `(ext_eq false T a b)` reaches the core as `(ext_eq k T a b)` with
+  `(not k)` asserted beside it, and a pattern `(ext_eq false ...)` no longer
+  matches it syntactically. The core internalizes both natively, as Z3's
+  does, so under `--z3` term formula removal is skipped
+  (`--z3-native-term-formulas`, on by default).
+
 Two details of Z3's AST that the port has to reproduce because the search
 depends on them numerically:
 
@@ -259,15 +282,16 @@ false" phase, no geometric restarts, no `ng_lift_ite`, no pattern database.
 `--z3-preset=verus` selects that configuration; it sets each corresponding
 `--z3-*` option that was not given explicitly (`--z3-auto-config`,
 `--z3-mbqi`, `--z3-case-split=relevancy`, `--z3-qi-eager-threshold=100`,
-`--z3-delay-units`, `--z3-pattern-inference`), so any one of them can still be
-overridden. `--z3-ng-lift-ite` defaults to `auto`, which follows
+`--z3-delay-units`, `--z3-pattern-inference`, `--z3-arith-nl`), so any one of
+them can still be overridden. `--z3-ng-lift-ite` defaults to `auto`, which follows
 `--z3-auto-config` the way Z3's own parameter follows `setup_AUFLIA`.
 `smt.arith.solver` and `rewriter.sort_disjunctions` have no counterpart,
 because arithmetic goes through the cvc5 bridge and the rewriter is cvc5's.
-Neither does `smt.arith.nl=false` yet, and that one is visible: the bridge
-still does nonlinear reasoning, which is the whole of the port's advantage
-over Verus's Z3 on the sample (11 benchmarks Z3 answers "unknown" on, all
-solved by Z3 too once `smt.arith.nl=true`).
+`smt.arith.nl=false` is `--no-z3-arith-nl`, which runs the bridge's
+subsolver with `--nl-ext=none --no-nl-cov`: the linear relaxation, a check of
+the model, and otherwise "unknown" -- what `theory_arith::process_non_linear`
+does with `m_nl_arith` off. Without it the port solved 11 benchmarks Verus's
+Z3 answers "unknown" on, all of which Z3 solves too with `smt.arith.nl=true`.
 
 ## Where it stands
 
@@ -281,13 +305,16 @@ files; logics UFDTLIA 171, UFDTNIA 53, ALL 49, UFBVDTNIA 25, UFBVDTLIA 2),
 | z3, defaults | 279 | 0 | 21 |
 | z3, Verus options | 278 | 18 | 4 |
 | cvc5 `--user-pat=strict --no-cbqi` (baseline) | 272 | 0 | 28 |
-| cvc5 `--z3` | 271 | 12 | 17 |
-| cvc5 `--z3 --z3-preset=verus` | 264 | 19 | 17 |
+| cvc5 `--z3` | 274 | 0 | 26 |
+| cvc5 `--z3 --z3-preset=verus` | 257 | 22 | 21 |
 
-No answer contradicts another. Against Z3 with Verus's options, the preset
-solves 11 benchmarks Z3 does not (all nonlinear, see above) and misses 25
-that Z3 solves: 13 time out and 12 saturate. On the 253 both solve, the
-median slowdown is 2.1x.
+No answer contradicts another. With the preset the port now solves a subset
+of what Verus's Z3 solves, and misses 21 of Z3's: 16 time out and 5
+saturate. The sequence that got it there, each step measured on the same
+sample: the preset as first defined, 264; `--no-z3-arith-nl`, 251, with no
+benchmark solved that Z3 does not; naming quantifiers below atoms and leaving
+Boolean arguments unpurified, 257. The same two changes took the default
+configuration from 271 (12 unknown) to 274 (none).
 
 The earlier measurements below were taken on a different 300-benchmark sample
 that was not kept, and the cvc5 row there did not record its options.
