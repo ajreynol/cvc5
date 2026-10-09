@@ -8,7 +8,9 @@ where that holds and where it does not, checked against the two source trees
 
 Measured state at the time of writing, on a 300-benchmark sample of
 `~/benchmarks/quant-07-25` with a 10s limit: z3 289 solved, cvc5 274,
-`cvc5 --z3` 276.
+`cvc5 --z3` 276. The cvc5 figure did not record its options; the baseline is
+`cvc5 --user-pat=strict --no-cbqi`, which is still to be measured on this
+sample.
 
 ## Verified faithful
 
@@ -78,12 +80,13 @@ and have no port equivalent:
 | pass | default | status |
 |---|---|---|
 | `m_reduce_asserted_formulas` | on | **done** — `AssertionRewriter` runs cvc5's rewriter after NNF and after pattern inference. Quantifiers are rebuilt from rewritten bodies with the pattern list carried across, because cvc5's quantifiers rewriter does miniscoping, prenexing and variable elimination, which in Z3 are separate passes with their own parameters. |
-| `m_ng_lift_ite` | `LI_CONSERVATIVE` via `setup_AUFLIA` | **missing.** Lifts `(f s (ite c t1 t2))` to `(ite c (f s t1) (f s t2))` for non-ground terms, so it fires inside quantifier bodies and changes which terms exist for triggers to match. |
+| `m_ng_lift_ite` | `LI_CONSERVATIVE` via `setup_AUFLIA` | **done** — `push_app_ite.{h,cpp}`, `--z3-ng-lift-ite`. Lifts `(f s (ite c t1 t2))` to `(ite c (f s t1) (f s t2))` for non-ground terms, so it fires inside quantifier bodies and changes which terms exist for triggers to match. Unlike the eager threshold, `setup_AUFLIA`'s override here is live: `setup_context` runs before `internalize_assertions` calls `reduce()`. |
 | `m_pi_pull_quantifiers` | on | **missing.** When pattern inference finds no trigger, Z3 pulls nested quantifiers and retries. The port gives up, and the quantifier reaches the core triggerless. cvc5's `QuantifiersRewriter::mergePrenex` is the nearest existing machinery. |
-| `m_distribute_forall` | on | **missing.** `forall X (and F1..Fn)` becomes a conjunction of foralls, only for quantifiers with no patterns and no no-patterns. It runs *before* pattern inference, so each conjunct gets its own trigger. |
+| `m_distribute_forall` | **off** (`preprocessor_params.h`, Z3 4.16.0; no setup turns it on) | **not needed.** Earlier listed as on, which was wrong. `forall X (and F1..Fn)` becomes a conjunction of foralls, only for quantifiers with no patterns and no no-patterns. It runs *before* pattern inference, so each conjunct gets its own trigger. |
 | `flatten_clauses` | on | **half done.** `SmtContext::pushAssertion` does the top-level if-then-else and the distribute-over-a-conjunction case when the other side is a literal. Z3 also distributes when the conjunction's reference count is 1, for which there is no equally cheap test here. |
 | `m_refine_inj_axiom` | on | **missing.** |
 | `m_pi_use_database` | on via `setup_AUFLIA` | **missing** (pattern database). |
+| `m_eliminate_bounds` | on via `setup_AUFLIA` | **missing.** `cheap_quant_fourier_motzkin` (`elim_bounds_rw`), runs just before pattern inference on formulas with quantifiers. Not previously listed. |
 | `set_eliminate_and(true)` | on | **implemented, deliberately off.** `--z3-eliminate-and`. The one knowingly unfaithful default: on the formula studied most closely it does exactly what it should (decisions 3469 → 2856 against Z3's 2590, Boolean variables 7406 → 7076, instances 2171 → 2049) and over the sample it costs nine solved benchmarks. Something downstream is tuned to the conjunctions being there. |
 
 The outer layer — `propagate_values`, `solve_eqs`, `elim_unconstrained`,
@@ -117,14 +120,15 @@ binding with.
 
 ## Order of remaining mechanical work
 
-1. `m_ng_lift_ite = LI_CONSERVATIVE` — active on every benchmark here.
+1. ~~`m_ng_lift_ite = LI_CONSERVATIVE`~~ — done.
 2. `m_pi_pull_quantifiers` — triggerless quantifiers are dead weight in the
    core.
-3. `m_distribute_forall` — better triggers for the inferred-pattern
-   quantifiers.
+3. `m_eliminate_bounds` (cheap Fourier-Motzkin over quantifier bounds).
 4. The remaining half of `flatten_clauses`.
 5. `m_refine_inj_axiom`, `m_pi_use_database`.
 6. Find out why `set_eliminate_and` loses, since it should not.
+
+These were checked against Z3 4.16.0 (`z3-4.16.0` tag in `~/z3`).
 
 Then the bridge, which is the largest remaining item and the only one that is
 a design question rather than a transcription.

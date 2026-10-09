@@ -50,6 +50,7 @@ are the values in `smt_params.h`.
 | `quick_checker.{h,cpp}` | `smt/smt_quick_checker.*` |
 | `theory_datatype.{h,cpp}` | `smt/theory_datatype.*` |
 | `pattern_inference.{h,cpp}` | `ast/pattern/pattern_inference.*` |
+| `push_app_ite.{h,cpp}` | `ast/rewriter/push_app_ite.*` |
 | `setup.{h,cpp}`, `params.{h,cpp}` | `smt/smt_setup.cpp`, `params/smt_params.*`, `params/qi_params.*`, `params/pattern_inference_params.*` |
 | `util/*` | the corresponding files in Z3's `src/util` |
 
@@ -251,6 +252,11 @@ three solvers answering only `unsat` or `unknown`:
 | z3 | 289 | 0 | 11 | 168s |
 | cvc5 | 274 | 0 | 26 | 434s |
 | cvc5 `--z3` | 276 | 14 | 10 | 232s |
+
+**The cvc5 baseline is `cvc5 --user-pat=strict --no-cbqi`.** The cvc5 row
+above did not record its options, so it should not be read as the baseline;
+it is to be re-measured. Every comparison from now
+on includes cvc5 with exactly those two options.
 
 Of the 289 the two solvers between them close, `--z3` closes 276 and cvc5
 itself 274, in a little over half cvc5's time. No answer of any of the three

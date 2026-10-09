@@ -93,12 +93,26 @@ void Z3SmtSolver::assertToInternal(preprocessing::AssertionPipeline& ap)
   // produces as well. Both are here, around the rest of the pipeline.
   z3::AssertionRewriter& rw = d_ctx->getAssertionRewriter();
   const bool doRewrite = options().z3.z3RewriteAssertions;
+  // Z3's ng_lift_ite, which reduce() runs after the rewrite that follows NNF
+  // and follows with another rewrite (reduce_and_solve); see
+  // z3/push_app_ite.h.
+  const bool doLiftIte =
+      options().z3.z3NgLiftIte != options::Z3LiftIteMode::NONE;
+  z3::NgPushAppIte& lift = d_ctx->getNgPushAppIte();
   for (const Node& a : ap.ref())
   {
     Node res = nnf.convert(a);
     if (doRewrite)
     {
       res = rw.rewrite(res);
+    }
+    if (doLiftIte)
+    {
+      Node lifted = lift.apply(res);
+      if (lifted != res)
+      {
+        res = doRewrite ? rw.rewrite(lifted) : lifted;
+      }
     }
     res = pi.apply(norm.normalize(cn.normalize(res)));
     d_ctx->assertFormula(doRewrite ? rw.rewrite(res) : res);

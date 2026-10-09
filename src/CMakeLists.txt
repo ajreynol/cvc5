@@ -1367,6 +1367,8 @@ libcvc5_add_sources(
   z3/params.cpp
   z3/pattern_inference.cpp
   z3/pattern_inference.h
+  z3/push_app_ite.cpp
+  z3/push_app_ite.h
   z3/params.h
   z3/qi_queue.cpp
   z3/qi_queue.h

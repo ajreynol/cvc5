@@ -254,6 +254,24 @@ name   = "Z3 Core"
   help       = "run cvc5's rewriter over each assertion after NNF and after pattern inference, as Z3's reduce_asserted_formulas does"
 
 [[option]]
+  name       = "z3NgLiftIte"
+  category   = "expert"
+  long       = "z3-ng-lift-ite=MODE"
+  type       = "Z3LiftIteMode"
+  default    = "CONSERVATIVE"
+  help       = "lift if-then-else out of non-ground applications, as Z3's ng_lift_ite does (setup_AUFLIA sets it to conservative)"
+  help_mode  = "If-then-else lifting modes of the ported Z3 preprocessing."
+[[option.mode.NONE]]
+  name = "none"
+  help = "Do not lift."
+[[option.mode.CONSERVATIVE]]
+  name = "conservative"
+  help = "Lift only out of an application with exactly one non-Boolean if-then-else argument."
+[[option.mode.FULL]]
+  name = "full"
+  help = "Lift out of every application with a non-Boolean if-then-else argument."
+
+[[option]]
   name       = "z3EliminateAnd"
   category   = "expert"
   long       = "z3-eliminate-and"

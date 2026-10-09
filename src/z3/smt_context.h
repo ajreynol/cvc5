@@ -41,6 +41,7 @@
 #include "z3/ast.h"
 #include "z3/nnf.h"
 #include "z3/pattern_inference.h"
+#include "z3/push_app_ite.h"
 #include "z3/b_justification.h"
 #include "z3/bool_var_data.h"
 #include "z3/case_split_queue.h"
@@ -507,6 +508,9 @@ class SmtContext : protected EnvObj
   AssertionRewriter& getAssertionRewriter() { return d_assertionRewriter; }
 
   Nnf& getNnf() { return d_nnf; }
+
+  /** Z3's ng_lift_ite step; see z3/push_app_ite.h. */
+  NgPushAppIte& getNgPushAppIte() { return d_ngPushAppIte; }
 
   /** The environment of the enclosing cvc5 solver. */
   const Env& getEnv() const { return d_env; }
@@ -1169,6 +1173,7 @@ class SmtContext : protected EnvObj
   ConnectiveNormalizer d_connNormalizer;
   AssertionRewriter d_assertionRewriter;
   Nnf d_nnf;
+  NgPushAppIte d_ngPushAppIte;
   std::unique_ptr<Cvc5Bridge> d_cvc5Bridge;
   PatternInference d_patternInference;
   /** true if the input uses a construct that is not supported */
