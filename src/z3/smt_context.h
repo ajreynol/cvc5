@@ -30,6 +30,7 @@
 
 #include <deque>
 #include <memory>
+#include <set>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -144,6 +145,15 @@ class SmtContext : protected EnvObj
   /** Add e to the asserted formulas, splitting a top-level conjunction. */
   void pushAssertion(TNode e);
 
+  /** A development hook: dump the assigned relevant literals to a file. */
+  void dumpCandidateModel(const char* path);
+
+  /** Write what the core was given, as a parsable benchmark. */
+  void dumpAssertions(const char* path);
+
+  /** A development hook: check the candidate model with a cvc5 subsolver. */
+  void checkCandidateModel();
+
   /** Internalize the assertions that have not been internalized yet. */
   void internalizeAssertions();
 
@@ -166,9 +176,9 @@ class SmtContext : protected EnvObj
 
   Failure getLastSearchFailure() const { return d_lastSearchFailure; }
 
-  void setReasonUnknown(const char* msg) { d_unknown = msg; }
+  void setReasonUnknown(const std::string& msg) { d_unknown = msg; }
 
-  const char* getReasonUnknown() const { return d_unknown; }
+  const std::string& getReasonUnknown() const { return d_unknown; }
 
   std::ostream& printLastFailure(std::ostream& out) const;
 
@@ -509,6 +519,9 @@ class SmtContext : protected EnvObj
   void markUnsupported() { d_unsupported = true; }
 
   bool isUnsupported() const { return d_unsupported; }
+
+  /** A diagnostic flag: set while the forced rematch runs. */
+  bool d_inForcedRematch = false;
 
   /**
    * Internalize the body of a quantifier instance. Unlike a plain assertion,
@@ -1260,7 +1273,7 @@ class SmtContext : protected EnvObj
 
   // --------------------------------------------------------- model generation
   Node d_model;
-  const char* d_unknown;
+  std::string d_unknown;
 
   // ------------------------------------------------------ unsat core support
   LiteralVector d_assumptions;
@@ -1307,8 +1320,8 @@ class SmtContext : protected EnvObj
   double d_agility;
   uint64_t d_lemmaGcThreshold;
   bool d_hasCaseSplit;
-  /** The theories that were internalized without a plugin. */
-  std::unordered_set<int32_t> d_modelUnsoundTheories;
+  /** The theories that could not confirm the assignment extends to a model. */
+  std::set<int32_t> d_modelUnsoundTheories;
   std::vector<bool> d_relevantConflictLiterals;
 
   /** Scratch space for the topological sort used by internalizeDeep. */

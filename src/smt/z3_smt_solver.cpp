@@ -107,6 +107,8 @@ Result Z3SmtSolver::checkSatInternal()
     case z3::L_FALSE: return Result(Result::UNSAT);
     default: break;
   }
+  verbose(1) << "z3: unknown: " << d_ctx->getLastSearchFailure() << ": "
+             << d_ctx->getReasonUnknown() << std::endl;
   UnknownExplanation why = UnknownExplanation::UNKNOWN_REASON;
   switch (d_ctx->getLastSearchFailure())
   {

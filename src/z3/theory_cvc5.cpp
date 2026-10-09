@@ -101,6 +101,7 @@ void Cvc5Bridge::reset()
   d_antecedents.clear();
   d_asserted.clear();
   d_abs.clear();
+  d_haveModel = false;
   d_satSets.clear();
   d_satSetsTermsLim = 0;
   d_unsatCores.clear();
@@ -133,6 +134,21 @@ bool Cvc5Bridge::initSubsolver()
     subOptions.write_smt().simplificationMode =
         options::SimplificationMode::NONE;
     subOptions.write_smt().staticLearning = false;
+    // Z3's arithmetic solver only ever makes a bounded effort: the nonlinear
+    // rounds of theory_arith are capped and it answers FC_GIVEUP rather than
+    // searching on, which is why its 85 final checks on an NIA query each
+    // cost almost nothing. The subsolver has to behave the same way, because
+    // the ported core only makes progress *between* the calls -- one
+    // unbounded nonlinear search starves the instantiation loop that actually
+    // closes these queries, and model-based refinement on a satisfiable
+    // nonlinear subproblem does not terminate. Giving up is safe: it taints
+    // the model, so a final "sat" becomes "unknown", but the core may still
+    // derive unsat from the instances it goes on to produce.
+    if (env.getOptions().z3.z3BridgeRlimitPer != 0)
+    {
+      subOptions.write_base().perCallResourceLimit =
+          env.getOptions().z3.z3BridgeRlimitPer;
+    }
     smt::SetDefaults::disableChecking(subOptions);
     theory::SubsolverSetupInfo ssi(env, subOptions);
     theory::initializeSubsolver(env.getNodeManager(), d_sub, ssi);
@@ -357,16 +373,49 @@ FinalCheckStatus Cvc5Bridge::check(bool finalCheck)
   {
     Trace("z3") << "cvc5 bridge: the subsolver failed: " << e.what()
                 << std::endl;
+    d_haveModel = false;
     d_ctx.markModelUnsound(theory::THEORY_ARITH);
     return FC_DONE;
   }
   d_ctx.getStats().d_numBridgeChecks++;
+  d_haveModel = r.getStatus() == Result::SAT;
   if (r.getStatus() == Result::SAT)
   {
     // The two solvers agree on the literals. Their models still have to agree
     // on the terms they share, which is what the interface equalities below
     // establish.
-    FinalCheckStatus st = checkInterface(assumps, finalCheck);
+    FinalCheckStatus st = FC_DONE;
+    if (finalCheck)
+    {
+      // The order is Z3's. First the model is asked to keep the shared terms
+      // apart wherever it can, which is what random_update does there. Then
+      // the equalities that survive that are *entailed*, so they are
+      // propagated rather than split on -- Z3's arithmetic solver propagates
+      // thousands of these (arith-fixed-eqs) and splits on a few dozen
+      // (arith-assume-eqs). Splitting first instead hands the core tens of
+      // thousands of equalities that were entailed all along, and never
+      // creates the numeral enodes the propagation does.
+      //
+      // The propagation half is off by default. Z3 gets it for free -- its
+      // simplex notices that a variable's bounds have met -- while here every
+      // one of those equalities costs a subsolver query to establish, and on
+      // the benchmark this was measured on that bought nineteen merges for
+      // five seconds. What it would buy is real (the merge creates the
+      // numeral's enode, and patterns like (Add 8 0) only match once it
+      // exists), so the code stays, behind --z3-bridge-fixed-eqs, until the
+      // bridge can answer the question without a query per group.
+      separateSharedValues(assumps);
+      if (d_ctx.getEnv().getOptions().z3.z3BridgeFixedEqs
+          && propagateFixedEqs(assumps))
+      {
+        st = FC_CONTINUE;
+      }
+      else
+      {
+        restoreModel(assumps);
+        st = assumeInterfaceEqs();
+      }
+    }
     if (st == FC_DONE)
     {
       if (d_satSets.size() < s_maxCachedSatSets)
@@ -494,145 +543,304 @@ bool Cvc5Bridge::isBridged(TheoryId tid)
   return tid == theory::THEORY_ARITH || tid == theory::THEORY_BV;
 }
 
-bool Cvc5Bridge::isSharedClass(ENode* r)
-{
-  // The class is shared if any member, or any parent of a member, belongs to
-  // a theory the subsolver does not own: then both solvers constrain the
-  // value of the class and their models have to agree on it.
-  ENode* n = r;
-  do
-  {
-    if (!isBridged(familyIdOf(n->getExpr())))
-    {
-      return true;
-    }
-    for (ENode* p : n->getConstParents())
-    {
-      if (!isBridged(familyIdOf(p->getExpr())))
-      {
-        return true;
-      }
-    }
-    n = n->getNext();
-  } while (n != r);
-  return false;
-}
-
 bool Cvc5Bridge::shouldCheckEagerly() const
 {
   return d_ctx.getStats().d_numAssignments >= d_lastCheckAssignments + d_eagerGap;
 }
 
-FinalCheckStatus Cvc5Bridge::checkInterface(std::vector<Node>& assumps,
-                                            bool finalCheck)
+Node Cvc5Bridge::getModelValue(TNode t)
 {
-  // Two shared classes the subsolver gives the same value but that the core
-  // keeps apart are the one case where the two models may be incompatible.
-  // For each such pair, ask the subsolver whether the two have to be equal:
-  // if they do, the equality is propagated to the core -- which is what Z3's
-  // own arithmetic solver does, and what lets E-matching see the terms the
-  // bridged theory identified. If they do not, the disequality is assumed and
-  // the next model is examined.
-  size_t numExtra = 0;
-  size_t extraBase = assumps.size();
-  size_t budget =
-      finalCheck ? s_maxInterfaceChecks : s_maxEagerInterfaceChecks;
-  for (;;)
+  if (!d_haveModel)
   {
-    std::vector<std::pair<ENode*, ENode*>> candidates;
-    collectCandidates(candidates);
-    Trace("z3-bridge") << "cvc5 bridge: " << candidates.size()
-                       << " interface candidates" << std::endl;
-    if (candidates.empty())
-    {
-      // The last model of the subsolver agrees with the core on every shared
-      // class, so the two models can be combined.
-      assumps.resize(extraBase);
-      return FC_DONE;
-    }
-    if (numExtra >= budget)
-    {
-      assumps.resize(extraBase);
-      if (!finalCheck)
-      {
-        // Outside a final check there is nothing that has to be reconciled.
-        return FC_DONE;
-      }
-      // Too many rounds: fall back to splitting on the first candidate and
-      // let the search decide it.
-      ENode* n1 = candidates.front().first;
-      ENode* n2 = candidates.front().second;
-      return mkInterfaceSplit(n1, n2);
-    }
-    ENode* n1 = candidates.front().first;
-    ENode* n2 = candidates.front().second;
-    Node diseq = abstract(n1->getExpr())
-                     .eqNode(abstract(n2->getExpr()))
-                     .notNode();
-    Trace("z3-bridge-if") << "  try " << n1->getExpr() << " = "
-                          << n2->getExpr() << std::endl;
-    assumps.push_back(diseq);
-    numExtra++;
-    Result r;
+    return Node::null();
+  }
+  Node at = abstract(t);
+  if (d_known.count(at) == 0)
+  {
+    // The subsolver has never seen this term, so it does not constrain its
+    // value and the core is free to choose one.
+    return Node::null();
+  }
+  Node val;
+  try
+  {
+    // getValue warns when the model cannot evaluate the term, which here is
+    // an expected outcome rather than a problem worth reporting. Note the
+    // previous stream has to be read before the swap: setStream returns the
+    // stream it was *given*, not the one it replaced, so taking its address
+    // would leave the channel pointing at this local buffer afterwards.
+    std::stringstream dropped;
+    std::ostream* prev = WarningChannel.getStreamPointer();
+    WarningChannel.setStream(&dropped);
     try
     {
-      r = d_sub->checkSat(assumps);
+      val = d_sub->getValue(at);
     }
-    catch (const std::exception&)
+    catch (...)
     {
-      assumps.resize(extraBase);
-      d_ctx.markModelUnsound(theory::THEORY_ARITH);
-      return FC_DONE;
+      WarningChannel.setStream(prev);
+      throw;
     }
-    d_ctx.getStats().d_numBridgeChecks++;
-    if (r.getStatus() == Result::SAT)
+    WarningChannel.setStream(prev);
+  }
+  catch (const std::exception&)
+  {
+    return Node::null();
+  }
+  return val;
+}
+
+void Cvc5Bridge::collectSharedRoots(std::vector<std::pair<ENode*, Node>>& out)
+{
+  std::unordered_set<ENode*> seen;
+  for (TheoryCvc5* th : d_theories)
+  {
+    size_t num = th->getNumVars();
+    for (size_t v = 0; v < num; ++v)
     {
-      // The two can be kept apart; keep the disequality and look at the new
-      // model.
-      Trace("z3-bridge-if") << "    not entailed" << std::endl;
-      continue;
-    }
-    if (r.getStatus() != Result::UNSAT)
-    {
-      assumps.resize(extraBase);
-      d_ctx.markModelUnsound(theory::THEORY_ARITH);
-      return FC_DONE;
-    }
-    // The equality is entailed, so propagate it to the core.
-    LiteralVector lits;
-    ENodePairVector eqs;
-    bool ok = true;
-    for (const Node& a : d_sub->getUnsatAssumptions())
-    {
-      if (a == diseq)
+      ENode* n = th->getENode(static_cast<TheoryVar>(v));
+      if (n == nullptr || !d_ctx.isRelevant(n) || !d_ctx.isShared(n))
       {
         continue;
       }
-      auto it = d_antecedents.find(a);
-      if (it == d_antecedents.end())
+      if (!seen.insert(n->getRoot()).second)
       {
-        ok = false;
+        continue;
+      }
+      Node val = getModelValue(n->getExpr());
+      if (!val.isNull())
+      {
+        out.push_back(std::pair<ENode*, Node>(n, val));
+      }
+    }
+  }
+}
+
+bool Cvc5Bridge::trySeparate(std::vector<Node>& assumps,
+                             size_t base,
+                             const std::vector<Node>& wanted)
+{
+  NodeManager* nm = d_ctx.getEnv().getNodeManager();
+  assumps.resize(base);
+  assumps.push_back(wanted.size() == 1 ? wanted[0]
+                                       : nm->mkNode(Kind::AND, wanted));
+  Result r;
+  try
+  {
+    r = d_sub->checkSat(assumps);
+  }
+  catch (const std::exception&)
+  {
+    r = Result();
+  }
+  d_ctx.getStats().d_numBridgeChecks++;
+  assumps.resize(base);
+  d_haveModel = r.getStatus() == Result::SAT;
+  return d_haveModel;
+}
+
+bool Cvc5Bridge::separateSharedValues(std::vector<Node>& assumps)
+{
+  if (!d_haveModel)
+  {
+    return false;
+  }
+  std::vector<std::pair<ENode*, Node>> shared;
+  collectSharedRoots(shared);
+  // Group the shared terms whose values coincide. Only those groups matter:
+  // terms the model already keeps apart need nothing.
+  std::map<Node, std::vector<Node>> byValue;
+  for (const std::pair<ENode*, Node>& p : shared)
+  {
+    // Two congruence roots can abstract to the same term, in which case
+    // asking for them to differ is unsatisfiable for a reason that has
+    // nothing to do with arithmetic. The abstraction is what the subsolver
+    // reasons about, so it is what has to be distinct.
+    std::vector<Node>& g = byValue[p.second];
+    Node a = abstract(p.first->getExpr());
+    if (std::find(g.begin(), g.end(), a) == g.end())
+    {
+      g.push_back(a);
+    }
+  }
+  NodeManager* nm = d_ctx.getEnv().getNodeManager();
+  std::vector<Node> wanted;
+  size_t numCoinciding = 0;
+  for (const std::pair<const Node, std::vector<Node>>& g : byValue)
+  {
+    if (g.second.size() < 2)
+    {
+      continue;
+    }
+    numCoinciding += g.second.size();
+    wanted.push_back(nm->mkNode(Kind::DISTINCT, g.second));
+  }
+  if (wanted.empty())
+  {
+    return true;
+  }
+  d_ctx.getStats().d_numSharedGroups += wanted.size();
+  d_ctx.getStats().d_numCoincidingShared += numCoinciding;
+  // All the groups at once first, which is one query and the common case. If
+  // that is unsatisfiable then some group really is pinned together, and the
+  // groups are taken one at a time, biggest first, each tried alongside the
+  // ones already accepted. The budget keeps a query with very many groups
+  // from turning into very many calls.
+  size_t base = assumps.size();
+  std::vector<Node> accepted;
+  if (trySeparate(assumps, base, wanted))
+  {
+    accepted = wanted;
+  }
+  else
+  {
+    std::stable_sort(wanted.begin(), wanted.end(), [](TNode a, TNode b) {
+      return a.getNumChildren() > b.getNumChildren();
+    });
+    size_t budget = s_maxSeparateCalls;
+    for (const Node& w : wanted)
+    {
+      if (budget == 0)
+      {
         break;
       }
-      if (it->second.d_eq.first != nullptr)
+      --budget;
+      std::vector<Node> trial = accepted;
+      trial.push_back(w);
+      if (trySeparate(assumps, base, trial))
       {
-        eqs.push_back(it->second.d_eq);
-      }
-      else
-      {
-        lits.push_back(it->second.d_lit);
+        accepted = trial;
       }
     }
-    assumps.resize(extraBase);
-    if (!ok)
+  }
+  bool separatedAll = accepted.size() == wanted.size();
+  // The last query may have been one that failed, so the separating model has
+  // to be asked for again before the caller reads values from it.
+  if (!accepted.empty() && trySeparate(assumps, base, accepted))
+  {
+    for (const Node& w : accepted)
     {
-      // One of the assumed disequalities was used, so the equality only holds
-      // relative to them: split instead of propagating.
-      return mkInterfaceSplit(n1, n2);
+      d_ctx.getStats().d_numSeparatedEqs += w.getNumChildren();
     }
-    Trace("z3-bridge") << "cvc5 bridge: propagate " << n1->getExpr() << " = "
-                       << n2->getExpr() << std::endl;
-    d_ctx.getStats().d_numInterfaceEqs++;
+    return separatedAll;
+  }
+  // Nothing could be separated, or the separating model was lost. The caller
+  // restores a model of the assumptions alone before reading values from it;
+  // the equalities that remain are then genuinely worth deciding.
+  d_haveModel = false;
+  return false;
+}
+
+void Cvc5Bridge::restoreModel(std::vector<Node>& assumps)
+{
+  if (d_haveModel)
+  {
+    return;
+  }
+  // The queries the separation and propagation steps make can leave the
+  // subsolver in an unsatisfiable state, and the caller needs a model of the
+  // assumptions alone to read values from.
+  Result r;
+  try
+  {
+    r = d_sub->checkSat(assumps);
+  }
+  catch (const std::exception&)
+  {
+    r = Result();
+  }
+  d_ctx.getStats().d_numBridgeChecks++;
+  d_haveModel = r.getStatus() == Result::SAT;
+}
+
+bool Cvc5Bridge::propagateFixedGroup(std::vector<Node>& assumps,
+                                     const std::vector<ENode*>& members,
+                                     TNode val)
+{
+  // One query decides the whole group: the disjunction of the disequalities
+  // is unsatisfiable exactly when every member is pinned to val, and then the
+  // unsat assumptions justify each of the equalities in the conjunction.
+  NodeManager* nm = d_ctx.getEnv().getNodeManager();
+  std::vector<Node> diseqs;
+  for (ENode* e : members)
+  {
+    diseqs.push_back(abstract(e->getExpr()).eqNode(val).notNode());
+  }
+  Node query =
+      diseqs.size() == 1 ? diseqs[0] : nm->mkNode(Kind::OR, diseqs);
+  size_t base = assumps.size();
+  assumps.push_back(query);
+  Result r;
+  try
+  {
+    r = d_sub->checkSat(assumps);
+  }
+  catch (const std::exception&)
+  {
+    assumps.resize(base);
+    return false;
+  }
+  d_ctx.getStats().d_numBridgeChecks++;
+  d_haveModel = r.getStatus() == Result::SAT;
+  if (r.getStatus() != Result::UNSAT)
+  {
+    assumps.resize(base);
+    return false;
+  }
+  LiteralVector lits;
+  ENodePairVector eqs;
+  bool ok = true;
+  for (const Node& a : d_sub->getUnsatAssumptions())
+  {
+    if (a == query)
+    {
+      continue;
+    }
+    auto it = d_antecedents.find(a);
+    if (it == d_antecedents.end())
+    {
+      ok = false;
+      break;
+    }
+    if (it->second.d_eq.first != nullptr)
+    {
+      eqs.push_back(it->second.d_eq);
+    }
+    else
+    {
+      lits.push_back(it->second.d_lit);
+    }
+  }
+  assumps.resize(base);
+  if (!ok)
+  {
+    return false;
+  }
+  // Merging the term with the numeral is the point: it is what puts the
+  // numeral's enode in the congruence closure and makes a pattern like
+  // (uInv 32 0) or (Add 8 0) match, which is how Z3 reaches the instances
+  // that close these queries. Z3 gets the same merges for free, from its
+  // simplex noticing that a variable's bounds have met.
+  bool propagated = false;
+  for (ENode* e : members)
+  {
+    if (d_ctx.inconsistent())
+    {
+      break;
+    }
+    d_ctx.internalize(val, false);
+    if (!d_ctx.eInternalized(val))
+    {
+      continue;
+    }
+    ENode* ec = d_ctx.getENode(val);
+    if (ec->getRoot() == e->getRoot())
+    {
+      continue;
+    }
+    Trace("z3-bridge") << "cvc5 bridge: fixed " << e->getExpr() << " = " << val
+                       << std::endl;
+    d_ctx.getStats().d_numPropagatedEqs++;
     Justification* js =
         d_ctx.mkJustification(ExtTheoryEqPropagationJustification(
             theory::THEORY_ARITH,
@@ -641,103 +849,75 @@ FinalCheckStatus Cvc5Bridge::checkInterface(std::vector<Node>& assumps,
             lits.data(),
             eqs.size(),
             eqs.data(),
-            n1,
-            n2));
-    d_ctx.assignEq(n1, n2, EqJustification(js));
-    return FC_CONTINUE;
+            e,
+            ec));
+    d_ctx.assignEq(e, ec, EqJustification(js));
+    propagated = true;
   }
+  return propagated;
 }
 
-void Cvc5Bridge::collectCandidates(
-    std::vector<std::pair<ENode*, ENode*>>& candidates)
+bool Cvc5Bridge::propagateFixedEqs(std::vector<Node>& assumps)
 {
-  // Every class takes part in the grouping by value, but a pair is only
-  // proposed when at least one of the two is shared: the common case is a
-  // term the subsolver fixed to a numeral, where the numeral's own class is
-  // of no interest to the other solvers.
-  std::unordered_map<Node, std::pair<ENode*, bool>> valueToRep;
-  std::unordered_set<ENode*> seen;
-  for (const Node& t : d_terms)
+  if (!d_haveModel)
   {
-    if (!d_ctx.eInternalized(t))
-    {
-      continue;
-    }
-    ENode* e = d_ctx.getENode(t);
-    ENode* r = e->getRoot();
-    if (!seen.insert(r).second)
-    {
-      continue;
-    }
-    Node at = abstract(t);
-    if (d_known.count(at) == 0)
-    {
-      // The subsolver has never seen this term, so it does not constrain its
-      // value and the core is free to choose one.
-      continue;
-    }
-    Node val;
-    try
-    {
-      // getValue warns when the model cannot evaluate the term, which here is
-      // an expected outcome rather than a problem worth reporting.
-      std::stringstream dropped;
-      std::ostream* old = &WarningChannel.setStream(&dropped);
-      try
-      {
-        val = d_sub->getValue(at);
-      }
-      catch (...)
-      {
-        WarningChannel.setStream(old);
-        throw;
-      }
-      WarningChannel.setStream(old);
-    }
-    catch (const std::exception&)
-    {
-      // The subsolver does not constrain this term, so the core is free to
-      // give it any value.
-      continue;
-    }
-    if (val.isNull())
-    {
-      continue;
-    }
-    bool shared = isSharedClass(r);
-    auto it = valueToRep.find(val);
-    if (it == valueToRep.end())
-    {
-      valueToRep[val] = std::pair<ENode*, bool>(e, shared);
-      continue;
-    }
-    if (it->second.first->getRoot() == r)
-    {
-      continue;
-    }
-    if (!shared && !it->second.second)
-    {
-      continue;
-    }
-    candidates.push_back(std::pair<ENode*, ENode*>(it->second.first, e));
+    return false;
   }
+  // Group the relevant bridged terms by the constant the model gives them.
+  // Only a value two different congruence classes share is worth a query: an
+  // equality is only worth anything if it merges two classes, or merges one
+  // with the numeral itself.
+  std::vector<std::pair<ENode*, Node>> shared;
+  collectSharedRoots(shared);
+  std::map<Node, std::vector<ENode*>> byValue;
+  for (const std::pair<ENode*, Node>& p : shared)
+  {
+    if (p.second.isConst())
+    {
+      byValue[p.second].push_back(p.first);
+    }
+  }
+  bool propagated = false;
+  size_t budget = s_maxFixedCalls;
+  for (const std::pair<const Node, std::vector<ENode*>>& g : byValue)
+  {
+    if (budget == 0 || d_ctx.inconsistent())
+    {
+      break;
+    }
+    // A single member still matters when the numeral's own enode is not in
+    // the group: merging it with the numeral is what creates that enode.
+    if (g.second.empty())
+    {
+      continue;
+    }
+    --budget;
+    if (propagateFixedGroup(assumps, g.second, g.first))
+    {
+      propagated = true;
+    }
+  }
+  return propagated;
 }
 
-FinalCheckStatus Cvc5Bridge::mkInterfaceSplit(ENode* n1, ENode* n2)
+FinalCheckStatus Cvc5Bridge::assumeInterfaceEqs()
 {
-  Node eq = d_ctx.mkEqAtom(n1->getExpr(), n2->getExpr());
-  if (d_ctx.bInternalized(eq) && d_ctx.getAssignment(eq) != L_UNDEF)
+  if (!d_haveModel)
   {
-    // The search already decided this equality, so splitting on it again
-    // would not make progress.
+    // Without a model there is no way to tell whether the two solvers agree
+    // on the shared terms, so no claim is made.
     d_ctx.markModelUnsound(theory::THEORY_ARITH);
     return FC_DONE;
   }
-  Trace("z3-bridge") << "cvc5 bridge: interface split " << eq << std::endl;
-  d_ctx.getStats().d_numInterfaceEqs++;
-  d_ctx.internalize(eq, true);
-  d_ctx.markAsRelevant(d_ctx.getBoolVar(eq));
-  return FC_CONTINUE;
+  bool result = false;
+  for (TheoryCvc5* th : d_theories)
+  {
+    if (th->assumeInterfaceEqs())
+    {
+      result = true;
+    }
+  }
+  return result ? FC_CONTINUE : FC_DONE;
 }
 
 // ------------------------------------------------------- per-theory facade
@@ -753,6 +933,77 @@ ENode* TheoryCvc5::getRepENode(TheoryVar v)
   ENode* r = getENode(v)->getRoot();
   TheoryVar rv = r->getThVar(getId());
   return rv == s_nullTheoryVar ? nullptr : getENode(rv);
+}
+
+namespace {
+
+/**
+ * The table Theory::assumeEqs needs: it groups the theory variables by the
+ * value the subsolver's model gives them, which is how Z3's arithmetic solver
+ * decides which interface equalities to assume (theory_arith's
+ * m_var_value_table).
+ */
+class ModelValueTable
+{
+ public:
+  ModelValueTable(Cvc5Bridge& bridge, TheoryCvc5& th)
+      : d_bridge(bridge), d_th(th)
+  {
+  }
+
+  void reset() { d_map.clear(); }
+
+  TheoryVar insertIfNotThere(TheoryVar v)
+  {
+    Node val = d_bridge.getModelValue(d_th.getENode(v)->getExpr());
+    if (val.isNull())
+    {
+      return v;
+    }
+    auto it = d_map.find(val);
+    if (it != d_map.end())
+    {
+      return it->second;
+    }
+    d_map[val] = v;
+    return v;
+  }
+
+ private:
+  Cvc5Bridge& d_bridge;
+  TheoryCvc5& d_th;
+  std::unordered_map<Node, TheoryVar> d_map;
+};
+
+}  // namespace
+
+bool TheoryCvc5::assumeInterfaceEqs()
+{
+  if (TraceIsOn("z3-bridge-share"))
+  {
+    size_t numShared = 0;
+    size_t numValued = 0;
+    size_t num = getNumVars();
+    for (size_t v = 0; v < num; ++v)
+    {
+      ENode* n = getENode(static_cast<TheoryVar>(v));
+      if (n == nullptr || !getContext().isRelevant(n)
+          || !getContext().isShared(n))
+      {
+        continue;
+      }
+      numShared++;
+      if (!d_bridge.getModelValue(n->getExpr()).isNull())
+      {
+        numValued++;
+      }
+    }
+    Trace("z3-bridge-share") << "assume_eqs: " << num << " vars, "
+                             << numShared << " relevant+shared, " << numValued
+                             << " with a value" << std::endl;
+  }
+  ModelValueTable table(d_bridge, *this);
+  return assumeEqs(table);
 }
 
 bool TheoryCvc5::internalizeAtom(TNode atom, bool /*gateCtx*/)

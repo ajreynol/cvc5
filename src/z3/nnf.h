@@ -52,15 +52,13 @@ class Nnf
    */
   Node convertRec(TNode n, bool pol, const std::vector<Node>& scope);
 
+  /** convertRec for a subformula that holds a quantifier. */
+  Node convertCore(TNode n, bool pol, const std::vector<Node>& scope);
+
   /** A fresh skolem of the type of v, applied to the variables in scope. */
   Node mkSkolem(TNode v, const std::vector<Node>& scope);
 
   NodeManager* d_nm;
-  /**
-   * The cache of the ground (quantifier-free) results, which do not depend
-   * on the scope.
-   */
-  std::unordered_map<Node, Node> d_cache[2];
 };
 
 }  // namespace z3

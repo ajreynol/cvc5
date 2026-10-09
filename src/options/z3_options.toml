@@ -214,12 +214,92 @@ name   = "Z3 Core"
   help       = "how many enumerative instances one final check may add"
 
 [[option]]
+  name       = "z3DumpInstances"
+  category   = "expert"
+  long       = "z3-dump-instances=FILE"
+  type       = "std::string"
+  default    = '""'
+  help       = "write every quantifier instance the core creates to FILE, one per line, for comparison with Z3's -tr:qi_queue"
+
+[[option]]
+  name       = "z3DumpAssertions"
+  category   = "expert"
+  long       = "z3-dump-assertions=FILE"
+  type       = "std::string"
+  default    = '""'
+  help       = "write what the core is given, after this port's own preprocessing, to FILE as a benchmark"
+
+[[option]]
+  name       = "z3DumpSaturated"
+  category   = "expert"
+  long       = "z3-dump-saturated=FILE"
+  type       = "std::string"
+  default    = '""'
+  help       = "write the state E-matching saturated in to FILE, as a benchmark"
+
+[[option]]
+  name       = "z3CheckSaturated"
+  category   = "expert"
+  long       = "z3-check-saturated"
+  type       = "bool"
+  default    = "false"
+  help       = "hand the saturated state's ground literals to a full cvc5 subsolver and report what it says"
+
+[[option]]
+  name       = "z3EliminateAnd"
+  category   = "expert"
+  long       = "z3-eliminate-and"
+  type       = "bool"
+  default    = "false"
+  help       = "rewrite a conjunction as a negated disjunction before the core sees it, as Z3's set_eliminate_and does"
+
+[[option]]
+  name       = "z3QiProfile"
+  category   = "expert"
+  long       = "z3-qi-profile"
+  type       = "bool"
+  default    = "false"
+  help       = "print per-quantifier instantiation counts, as Z3's smt.qi.profile does"
+
+[[option]]
+  name       = "z3QiChecker"
+  category   = "expert"
+  long       = "z3-qi-checker"
+  type       = "bool"
+  default    = "true"
+  help       = "skip an instance whose body the current assignment already satisfies"
+
+[[option]]
+  name       = "z3BridgeFixedEqs"
+  category   = "expert"
+  long       = "z3-bridge-fixed-eqs"
+  type       = "bool"
+  default    = "false"
+  help       = "ask the theory bridge's subsolver which shared terms are pinned to their value and propagate those equalities"
+
+[[option]]
+  name       = "z3BridgeRlimitPer"
+  category   = "expert"
+  long       = "z3-bridge-rlimit-per=N"
+  type       = "uint64_t"
+  default    = "200000"
+  help       = "resource limit of one call to the cvc5 theory bridge subsolver, 0 for none"
+
+[[option]]
   name       = "z3BridgeEager"
   category   = "expert"
   long       = "z3-bridge-eager"
   type       = "bool"
   default    = "false"
   help       = "run the cvc5 theory bridge during propagation, not only at final check"
+
+[[option]]
+  name       = "z3ForceRematch"
+  category   = "expert"
+  long       = "z3-force-rematch"
+  type       = "bool"
+  default    = "false"
+  help       = "diagnostic: rematch every code tree over every enode at final check"
 
 [[option]]
   name       = "z3Mbqi"

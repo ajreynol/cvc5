@@ -44,7 +44,18 @@ struct Statistics
   uint64_t d_numMkLits;
   uint64_t d_numDynAck;
   uint64_t d_numDelDynAck;
+  /** interface equalities the core was asked to split on, as Z3's
+   * arith-assume-eqs, and the entailed ones a bridge propagated, as its
+   * arith-fixed-eqs. The two are worth keeping apart: a propagation is one
+   * congruence merge, a split is a Boolean variable the search has to decide.
+   */
   uint64_t d_numInterfaceEqs;
+  uint64_t d_numPropagatedEqs;
+  /** shared terms a separating model kept apart, so needing no split */
+  uint64_t d_numSeparatedEqs;
+  /** groups of shared terms the model gave the same value, and their size */
+  uint64_t d_numSharedGroups;
+  uint64_t d_numCoincidingShared;
   uint64_t d_maxGeneration;
   uint64_t d_numMinimizedLits;
   /** literals in the learned clauses, summed, for the average clause size */
@@ -53,6 +64,9 @@ struct Statistics
   uint64_t d_numSimplifications;
   uint64_t d_numDelClauses;
   uint64_t d_numAssignments;
+  /** assertions handed to the core, and the DAG size of them together */
+  uint64_t d_numAssertedFormulas;
+  uint64_t d_numAssertedExprs;
   /** quantifier instantiations produced by E-matching */
   uint64_t d_numInstances;
   /** instantiations dropped because their cost exceeded the lazy threshold */
@@ -71,6 +85,10 @@ struct Statistics
   uint64_t d_numMamTrees;
   /** expressions marked relevant */
   uint64_t d_numSetRelevant;
+  /** candidates found by the inverted path index when classes merge */
+  uint64_t d_numMamEqCandidates;
+  /** calls to the inverted path index */
+  uint64_t d_numMamAddEq;
   /** enodes offered to a code tree as E-matching candidates */
   uint64_t d_numMamCandidates;
   /** code trees executed */

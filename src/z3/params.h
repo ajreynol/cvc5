@@ -237,6 +237,8 @@ struct Params
    * more than it returns.
    */
   bool d_bridgeEager = false;
+  /** A diagnostic: re-match every code tree over every enode at final check */
+  bool d_forceRematch = false;
   bool d_qiPromoteUnsat = true;
   uint32_t d_qiMaxInstances = UINT_MAX;
   bool d_qiLazyInstantiation = false;

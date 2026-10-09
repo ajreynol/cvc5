@@ -109,6 +109,9 @@ class QuantifierManager
 
   void print(std::ostream& out) const;
 
+  /** Print the per-quantifier instantiation counts, as Z3's profile does. */
+  void printStats(std::ostream& out) const;
+
   const std::vector<Node>& quantifiers() const;
   size_t numQuantifiers() const;
 

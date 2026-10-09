@@ -15,17 +15,26 @@
 
 #include "z3/smt_context.h"
 
+#include <fstream>
+
 #include <algorithm>
 #include <cmath>
 
 #include "base/output.h"
 #include "expr/node_algorithm.h"
 #include "expr/node_manager.h"
+#include "printer/printer.h"
 #include "smt/env.h"
+#include "smt/print_benchmark.h"
 #include "theory/theory.h"
 #include "util/resource_manager.h"
 #include "util/statistics_registry.h"
 #include "z3/quantifier_manager.h"
+#include "options/smt_options.h"
+#include "options/z3_options.h"
+#include "smt/set_defaults.h"
+#include "smt/solver_engine.h"
+#include "theory/smt_engine_subsolver.h"
 #include "z3/theory_cvc5.h"
 #include "z3/util/luby.h"
 #include "z3/util/util.h"
@@ -61,6 +70,13 @@ bool isFalseNode(TNode n)
   return n.getKind() == Kind::CONST_BOOLEAN && !n.getConst<bool>();
 }
 
+/** True if n is an atom or the negation of one, as Z3's is_literal is. */
+bool isLiteralNode(TNode n)
+{
+  TNode a = n.getKind() == Kind::NOT ? n[0] : n;
+  return !isApp(a) || a.getNumChildren() == 0;
+}
+
 }  // namespace
 
 SmtContext::SmtContext(Env& env, Params& p)
@@ -68,7 +84,8 @@ SmtContext::SmtContext(Env& env, Params& p)
       d_params(p),
       d_relevancyLvl(p.d_relevancyLvl),
       d_normalizer(env.getNodeManager()),
-      d_connNormalizer(env.getNodeManager()),
+      d_connNormalizer(env.getNodeManager(),
+                       env.getOptions().z3.z3EliminateAnd),
       d_nnf(env.getNodeManager()),
       d_patternInference(env.getNodeManager(), d_params),
       d_qmanager(nullptr),
@@ -2950,10 +2967,44 @@ void SmtContext::pushAssertion(TNode e)
     }
     return;
   }
+  // What Z3 does next is asserted_formulas::flatten_clauses, whose point is
+  // that its core gets flat clauses rather than a tree of gates: every nested
+  // gate costs a Boolean variable, two clauses and a link in the chain
+  // relevancy has to walk before it reaches the atoms. A top-level
+  // if-then-else is two clauses, and a top-level disjunction over a
+  // conjunction distributes.
+  if (e.getKind() == Kind::ITE)
+  {
+    pushAssertion(d_env.getNodeManager()->mkNode(Kind::OR, e[0].negate(), e[1]));
+    pushAssertion(d_env.getNodeManager()->mkNode(Kind::OR, Node(e[0]), e[2]));
+    return;
+  }
+  if (e.getKind() == Kind::OR && e.getNumChildren() == 2)
+  {
+    for (size_t i = 0; i < 2; ++i)
+    {
+      TNode conj = e[i];
+      TNode rest = e[1 - i];
+      // Z3 also distributes over a shared conjunction when the other side is
+      // not a literal, using a reference count to tell that the conjunction
+      // occurs nowhere else. There is no equally cheap test here, so only the
+      // case that cannot grow the formula is taken: duplicating a literal
+      // across the conjuncts costs one literal per conjunct.
+      if (conj.getKind() == Kind::AND && isLiteralNode(rest))
+      {
+        for (const Node& arg : conj)
+        {
+          pushAssertion(d_env.getNodeManager()->mkNode(Kind::OR, Node(rest), arg));
+        }
+        return;
+      }
+    }
+  }
   if (!d_hasQuantifiers && expr::hasClosure(Node(e)))
   {
     d_hasQuantifiers = true;
   }
+  Trace("z3-assert") << "ASSERT " << e << std::endl;
   d_assertedFormulas.push_back(e);
 }
 
@@ -3136,13 +3187,24 @@ void SmtContext::internalizeInstance(TNode body, uint32_t generation)
   {
     return;
   }
-  internalizeAssertion(body, generation);
+  // The quantified variables are numbered by de Bruijn *level* (see
+  // z3/ast.h), which Z3's relative de Bruijn indices make unnecessary there:
+  // when Z3 instantiates a quantifier whose body holds another one, the inner
+  // variables shift down on their own. Here they do not, so a nested
+  // quantifier would arrive at the core with its variables still numbered
+  // from the enclosing scope, while being a top-level quantifier with fewer
+  // declarations -- and everything that indexes per-quantifier state by
+  // variable level (the pattern compiler, the inverted path index, the
+  // checker) would read the wrong slot. Renormalizing the instance restores
+  // the invariant, and is idempotent on the parts that are already canonical.
+  Node norm = d_normalizer.normalize(body);
+  internalizeAssertion(norm, generation);
   if (relevancy())
   {
     // If the instantiation creates a conflict we backtrack immediately, so
     // the conflict clause is marked relevant here; otherwise the default
     // relevancy propagation applies.
-    d_caseSplitQueue->internalizeInstanceEh(body, generation);
+    d_caseSplitQueue->internalizeInstanceEh(norm, generation);
   }
 }
 
@@ -3246,14 +3308,146 @@ bool SmtContext::checkPreamble()
 {
   d_unsatCore.clear();
   d_stats.d_numChecks++;
+  // The size of what the core is given, to be compared with the num-exprs
+  // Z3 reports for the same query at verbosity 10.
+  d_stats.d_numAssertedFormulas = d_assertedFormulas.size();
+  std::unordered_set<TNode> seen;
+  std::vector<TNode> todo(d_assertedFormulas.begin(), d_assertedFormulas.end());
+  while (!todo.empty())
+  {
+    TNode n = todo.back();
+    todo.pop_back();
+    if (!seen.insert(n).second)
+    {
+      continue;
+    }
+    todo.insert(todo.end(), n.begin(), n.end());
+  }
+  d_stats.d_numAssertedExprs = seen.size();
+  if (!d_env.getOptions().z3.z3DumpAssertions.empty())
+  {
+    dumpAssertions(d_env.getOptions().z3.z3DumpAssertions.c_str());
+  }
   popToBaseLvl();
   d_conflictResolution->reset();
   return true;
 }
 
+void SmtContext::checkCandidateModel()
+{
+  // A development hook: hand the assigned relevant literals to a full cvc5
+  // subsolver. If it reports unsat, the ported core accepted a state it
+  // should have refuted, which means a theory of this port is too weak
+  // rather than a quantifier instance being missing.
+  std::vector<Node> lits;
+  for (size_t i = 0; i < d_assignedLiterals.size(); ++i)
+  {
+    Literal l = d_assignedLiterals[i];
+    Node a = d_boolVar2Expr[l.var()];
+    if (a.isNull() || getBdata(l.var()).isQuantifier())
+    {
+      continue;
+    }
+    if (relevancy() && !isRelevantCore(l))
+    {
+      continue;
+    }
+    if (expr::hasClosure(a))
+    {
+      // A literal that still contains a quantifier would let the subsolver
+      // instantiate it, which is exactly what this check has to exclude.
+      continue;
+    }
+    lits.push_back(l.sign() ? a.notNode() : a);
+  }
+  std::unique_ptr<SolverEngine> sub;
+  Options subOptions;
+  subOptions.copyValues(d_env.getOptions());
+  subOptions.write_z3().z3 = false;
+  subOptions.write_smt().unsatAssumptions = true;
+  smt::SetDefaults::disableChecking(subOptions);
+  theory::SubsolverSetupInfo ssi(d_env, subOptions);
+  theory::initializeSubsolver(d_env.getNodeManager(), sub, ssi);
+  Result r = sub->checkSat(lits);
+  std::stringstream ss;
+  ss << "z3: candidate model over " << lits.size()
+     << " relevant literals: cvc5 says " << r << "\n";
+  if (r.getStatus() == Result::UNSAT)
+  {
+    for (const Node& c : sub->getUnsatAssumptions())
+    {
+      ss << "z3:   core: " << c << "\n";
+    }
+  }
+  Warning() << ss.str();
+}
+
+void SmtContext::dumpCandidateModel(const char* path)
+{
+  // A development hook: write the state E-matching saturated in as a
+  // self-contained benchmark -- the assigned relevant ground literals
+  // together with every quantified assertion of the query. Running cvc5 on
+  // it with --dump-instantiations answers the question this port keeps
+  // asking: if the file is unsat, saturation was premature, and the
+  // instantiations cvc5 prints are the ones E-matching failed to find.
+  std::vector<Node> asserts;
+  for (size_t i = 0; i < d_assignedLiterals.size(); ++i)
+  {
+    Literal l = d_assignedLiterals[i];
+    Node a = d_boolVar2Expr[l.var()];
+    if (a.isNull() || getBdata(l.var()).isQuantifier())
+    {
+      continue;
+    }
+    if (relevancy() && !isRelevantCore(l))
+    {
+      continue;
+    }
+    if (expr::hasClosure(a))
+    {
+      continue;
+    }
+    asserts.push_back(l.sign() ? a.notNode() : a);
+  }
+  for (const Node& a : d_assertedFormulas)
+  {
+    if (expr::hasClosure(a))
+    {
+      asserts.push_back(a);
+    }
+  }
+  std::ofstream out(path);
+  smt::PrintBenchmark pb(d_env.getNodeManager(), Printer::getPrinter(out));
+  pb.printBenchmark(out, d_env.getLogicInfo().getLogicString(), {}, asserts);
+}
+
+void SmtContext::dumpAssertions(const char* path)
+{
+  // The formula this port's pipeline produces, so that Z3 can be run on the
+  // identical input: comparing instantiation counts against Z3 on the
+  // original file otherwise confuses a difference in search with a difference
+  // in preprocessing.
+  std::vector<Node> asserts(d_assertedFormulas.begin(),
+                            d_assertedFormulas.end());
+  std::ofstream out(path);
+  smt::PrintBenchmark pb(d_env.getNodeManager(), Printer::getPrinter(out));
+  pb.printBenchmark(out, d_env.getLogicInfo().getLogicString(), {}, asserts);
+}
+
 LBool SmtContext::checkFinalize(LBool r)
 {
   d_searchFinalized = true;
+
+  if (d_params.d_qiProfile && d_qmanager != nullptr)
+  {
+    // Z3 prints these as each quantifier is deleted, so the only way to see
+    // the whole table there is to let it finish; printing it once here is the
+    // same information, in the same format, without that dependence.
+    std::stringstream ss;
+    d_qmanager->printStats(ss);
+    Warning() << ss.str();
+  }
+
   if (r == L_TRUE && getCancelFlag())
   {
     r = L_UNDEF;
@@ -3266,10 +3460,19 @@ LBool SmtContext::checkFinalize(LBool r)
   }
   if (r == L_TRUE && isModelUnsound())
   {
-    // Some theory was internalized without a plugin, so the satisfying
-    // assignment is only an assignment of the abstraction.
+    // The assignment satisfies the Boolean abstraction, but some theory could
+    // not confirm that it extends to a model of its own fragment. Naming the
+    // theories is worth the few lines: it is the difference between "no model
+    // builder for quantifiers", which is the known cost of leaving MBQI out,
+    // and a theory that gave up for a reason worth looking at.
     d_lastSearchFailure = THEORY;
-    d_unknown = "a theory of this problem has no plugin in the ported core";
+    std::stringstream ss;
+    ss << "no model could be built for";
+    for (int32_t tid : d_modelUnsoundTheories)
+    {
+      ss << " " << static_cast<TheoryId>(tid);
+    }
+    d_unknown = ss.str();
     r = L_UNDEF;
   }
   return r;
@@ -3468,6 +3671,15 @@ bool SmtContext::restart(LBool& status, uint32_t currLvl)
   }
   if (status == L_TRUE && d_qmanager->hasQuantifiers())
   {
+    const options::HolderZ3& z3opts = d_env.getOptions().z3;
+    if (!z3opts.z3DumpSaturated.empty())
+    {
+      dumpCandidateModel(z3opts.z3DumpSaturated.c_str());
+    }
+    if (z3opts.z3CheckSaturated)
+    {
+      checkCandidateModel();
+    }
     // The possible outcomes are: done sat, done unknown, or continue.
     QuantifierManager::CheckModelResult cmr = d_qmanager->checkModel();
     switch (cmr)
@@ -4143,6 +4355,8 @@ void SmtContext::registerStatistics()
   add("z3::addEq", d_stats.d_numAddEq);
   add("z3::restarts", d_stats.d_numRestarts);
   add("z3::finalChecks", d_stats.d_numFinalChecks);
+  add("z3::assertedFormulas", d_stats.d_numAssertedFormulas);
+  add("z3::assertedExprs", d_stats.d_numAssertedExprs);
   add("z3::mkBoolVar", d_stats.d_numMkBoolVar);
   add("z3::delBoolVar", d_stats.d_numDelBoolVar);
   add("z3::mkENode", d_stats.d_numMkENode);
@@ -4153,6 +4367,10 @@ void SmtContext::registerStatistics()
   add("z3::mkLits", d_stats.d_numMkLits);
   add("z3::dynAck", d_stats.d_numDynAck);
   add("z3::interfaceEqs", d_stats.d_numInterfaceEqs);
+  add("z3::propagatedEqs", d_stats.d_numPropagatedEqs);
+  add("z3::separatedEqs", d_stats.d_numSeparatedEqs);
+  add("z3::sharedGroups", d_stats.d_numSharedGroups);
+  add("z3::coincidingShared", d_stats.d_numCoincidingShared);
   add("z3::maxGeneration", d_stats.d_maxGeneration);
   add("z3::minimizedLits", d_stats.d_numMinimizedLits);
   add("z3::learnedLits", d_stats.d_numLearnedLits);
@@ -4168,6 +4386,8 @@ void SmtContext::registerStatistics()
   add("z3::mamRelevantApp", d_stats.d_numMamRelevantApp);
   add("z3::mamTrees", d_stats.d_numMamTrees);
   add("z3::setRelevant", d_stats.d_numSetRelevant);
+  add("z3::mamEqCandidates", d_stats.d_numMamEqCandidates);
+  add("z3::mamAddEq", d_stats.d_numMamAddEq);
   add("z3::mamCandidates", d_stats.d_numMamCandidates);
   add("z3::mamExecs", d_stats.d_numMamExecs);
   add("z3::mamMatches", d_stats.d_numMamMatches);

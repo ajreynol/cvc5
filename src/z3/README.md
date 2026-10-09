@@ -71,6 +71,21 @@ cvc5's `Node` is the AST; none of Z3's `ast.h` or `ast_manager` is ported.
    the bound variable list, matching Z3's `bindings[k]` being the binding of
    the `k`-th declared variable.
 
+   **Levels are not stable under instantiation, and the core depends on them
+   being normalized.** Z3 gets this for free: its de Bruijn indices are
+   relative, so when it instantiates a quantifier whose body holds another
+   one, the inner variables shift down by themselves. Levels are absolute, so
+   a nested quantifier arrives at the core still numbered from the enclosing
+   scope -- variable level 1 in a quantifier that has one declaration -- and
+   everything that indexes per-quantifier state by variable level reads the
+   wrong slot: the pattern compiler's `d_vars`, the inverted path index's
+   `d_varPaths`, the checker's bindings. The invariant is restored by
+   renormalizing every instance in `SmtContext::internalizeInstance`, which is
+   idempotent on the parts that are already canonical. Nested quantifiers are
+   not a corner case in the benchmark set -- the requires/ensures axiom of
+   every Verus function is one -- and before this was fixed the port solved
+   210 of the 300-benchmark sample rather than the figure below.
+
 ## The preprocessing Z3 does and cvc5 does not
 
 The core inherits two invariants from Z3's own preprocessing pipeline
@@ -85,6 +100,17 @@ Both are restored before anything reaches the core, in
    formula that contain a quantifier and skolemizing the existentials. Without
    it the negated goal of a verification query carries no information at all
    and the core answers "unknown" on nearly everything.
+
+   **Only those parts.** Z3's default mode is `NNF_SKOLEM`, whose `visit()`
+   leaves a quantifier-free subformula exactly as it found it; the comment
+   there, "this mode is sufficient when using E-matching", is the reason. A
+   port that converts the whole formula is not just doing extra work: pushing
+   negations through ground structure duplicates every subformula needed in
+   both polarities, which gave the core 2.3 times the Boolean variables and 7
+   times the binary clauses Z3 builds, and a correspondingly worse search.
+   Restricting the conversion to subformulas with a closure, and matching
+   Z3's `process_ite` shape rather than pushing the negation outwards, took
+   the 300-benchmark sample from 262 solved to 275.
 2. **Top-level conjunctions are split into separate assertions.**
    `asserted_formulas::push_assertion` splits them; `SmtContext::pushAssertion`
    does the same. This is not an optimization: an assertion is marked relevant
@@ -92,7 +118,11 @@ Both are restored before anything reaches the core, in
    are, because the and-gate only propagates relevancy once the conjunction
    itself is assigned, which never happens for a root. Leaving them unsplit
    starves E-matching of candidates -- on one UFDT benchmark it was the
-   difference between 142 and 7186 candidate enodes.
+   difference between 142 and 7186 candidate enodes. `pushAssertion` also
+   does the job of Z3's `flatten_clauses`, turning a top-level if-then-else
+   into its two clauses and distributing a disjunction over a conjunction
+   when the other side is a literal, so that the core gets flat clauses
+   rather than a tree of gates.
 
 `pattern_inference.{h,cpp}` is the third piece of Z3's pipeline that had to
 come along: cvc5 selects triggers inside its quantifiers module rather than
@@ -172,12 +202,35 @@ Following the instruction to reuse cvc5's own solvers where they exist:
   verdicts are memoized, since the satisfiability of a set of literals does
   not depend on the scope it was judged in.
 
+  A third thing is needed to keep the interface equalities under control.
+  Z3's arithmetic solver calls `random_update` before it assumes any equality,
+  which perturbs the shared variables that have slack so that only the ones
+  genuinely pinned together keep equal values. Reading a subsolver's model
+  instead gives whatever value it happened to pick -- typically zero for
+  everything unconstrained -- so every coincidence looks like an equality
+  worth deciding: on one benchmark the core was handed 39034 of them where Z3
+  assumes 30. `separateSharedValues` asks the subsolver for a model that keeps
+  the coinciding groups apart, one query for all the groups and then one per
+  group if that fails, which brought the same benchmark to 32 and its runtime
+  from 24s to 9s. (The abstractions have to be deduplicated first: two
+  congruence roots can abstract to the same term, and asking *those* to differ
+  is unsatisfiable for a reason that has nothing to do with arithmetic.)
+
   What this does *not* reproduce is the eager equality propagation of Z3's
   simplex, which merges congruence classes in the middle of the search and so
-  feeds E-matching. Running the bridge during propagation as well is
-  implemented (`--z3-bridge-eager`) but defaults to off: one subsolver call
-  costs far more than one simplex step, and measured over the benchmark set it
-  loses more than it gains.
+  feeds E-matching. Two attempts at it are implemented and both default to
+  off. Running the bridge during propagation as well (`--z3-bridge-eager`)
+  loses more than it gains, because one subsolver call costs far more than one
+  simplex step. Asking the subsolver which shared terms are *pinned* to their
+  value and propagating those equalities (`--z3-bridge-fixed-eqs`) is the
+  closer analogue -- Z3 propagates thousands of them, and the merge is what
+  creates the numeral's enode, without which a pattern like `(Add 8 0)` can
+  never match -- but each group costs a query, and measured on one benchmark
+  it bought nineteen merges for five seconds. This is the clearest remaining
+  structural gap in the bridge: the information is cheap inside a simplex and
+  expensive through an assumption interface. Making the bridge mirror the
+  core's scopes with push/pop, asserting literals as they are assigned instead
+  of resending them, is the change that would make these queries affordable.
 
 **This is arranged to be sound, not silently wrong.** When a term of a theory
 with no plugin is internalized, or a pattern is registered that will never
@@ -195,24 +248,94 @@ three solvers answering only `unsat` or `unknown`:
 
 | | solved | unknown | timeout | total time |
 |---|---|---|---|---|
-| z3 | 289 | 0 | 11 | 170s |
-| cvc5 | 273 | 0 | 27 | 449s |
-| cvc5 `--z3` | 209-210 | 63-65 | 25-28 | 374-397s |
+| z3 | 289 | 0 | 11 | 168s |
+| cvc5 | 274 | 0 | 26 | 434s |
+| cvc5 `--z3` | 276 | 14 | 10 | 232s |
 
-(two runs, the spread is run-to-run noise.) No answer of any of the three
-contradicts another on this sample. The same 300 files run through an
-assertions build with a 20 second limit produce no assertion failure and no
-crash; the only non-answers are the 29 timeouts that limit implies for a build
-roughly five times slower.
+Of the 289 the two solvers between them close, `--z3` closes 276 and cvc5
+itself 274, in a little over half cvc5's time. No answer of any of the three
+contradicts another on this sample, and `ctest -R regress0` is clean.
 
-The port began this round of work at 106 solved; the datatypes plugin, the two
-preprocessing invariants above, the default quantifier weight and the
-Nelson-Oppen abstraction in the theory bridge are what moved it to 210. The
-remaining shortfall is dominated by the 65 "unknown" answers rather than by
-speed: raising the limit from 10s to 60s converts almost none of them, while
-the absence of model based instantiation explains them directly -- the search
-reaches a state where E-matching has no match left, and has nothing with
-which to pick the next binding.
+The port started this work at 106 solved and reached 210 with the datatypes
+plugin, the two preprocessing invariants above, the default quantifier weight
+and the Nelson-Oppen abstraction in the theory bridge. Four findings took it
+from there to 276, and all four were the same kind of mistake -- a mechanism
+of Z3 that looked optional and was not:
+
+1. **Levels are not stable under instantiation** (the de Bruijn note above).
+   210 -> 262. Nested quantifiers are not a corner case here; the
+   requires/ensures axiom of every Verus function is one.
+2. **NNF applies only to subformulas that hold a quantifier**, which is Z3's
+   `NNF_SKOLEM` mode, and a negated if-then-else keeps its shape. 262 -> 275.
+3. **`random_update` before assuming interface equalities.** 39034 case splits
+   became 32 on the benchmark it was measured on, and one benchmark went from
+   24s to 9s. 275 -> 276, and several of the remaining timeouts moved from
+   "does not finish" to "finishes just over the limit".
+4. **`setup_unknown` picks `setup_AUFLIA(false)`, not its static-feature
+   overload**, so the eager instantiation threshold for these logics is Z3's
+   default 10 rather than 7. This turned out to make no difference at all, and
+   the reason is worth recording: `qi_queue::setup` copies the threshold into
+   `m_eager_cost_threshold` from the `quantifier_manager`'s constructor, which
+   runs before `setup_context` has adjusted any parameter, so in Z3 every
+   logic's override of `m_qi_eager_threshold` is dead. The port creates its
+   `QuantifierManager` in `SmtContext`'s constructor for the same reason and
+   inherits the same behaviour.
+
+One faithful reproduction of Z3 is deliberately *not* the default.
+`asserted_formulas::reduce()` calls `set_eliminate_and(true)` once NNF is
+done, so Z3's core never sees a conjunction -- every `(and a b)` is
+`(not (or (not a) (not b)))`. Doing the same (`--z3-eliminate-and`) behaves
+exactly as it should on the formula examined most closely: decisions fall from
+3469 to 2856 against Z3's 2590, Boolean variables from 7406 to 7076, instances
+from 2171 to 2049. Over the whole sample it costs nine solved benchmarks.
+Something downstream is tuned to the conjunctions being there; until that is
+found the measurement wins, and the option records where to look.
+
+The 14 remaining `unknown` answers are all the same thing: E-matching
+saturates, and with no model based instantiation there is nothing to pick the
+next binding with. They are not a speed problem -- raising the limit converts
+none of them. Dumping the saturated state and asking cvc5 shows it is
+genuinely refutable, and giving Z3 the port's own formula shows Z3 closing it
+with a quarter of the instantiations the port makes, so what is missing is not
+coverage of the matching but the search reaching the state where the matching
+pays off. The instances Z3 has and the port never produces are, on the
+benchmark examined most closely, arithmetic ones -- `(Add 8 0)`, `(uInv 32 0)`
+-- whose triggers only exist once a term has been merged with a numeral, which
+brings it back to the equality propagation the bridge cannot afford.
+
+The 10 remaining timeouts are a different matter: every one of them is solved,
+just not inside 10 seconds. They run 4x to 30x slower than Z3 does, and where
+the time goes is measurable -- on the arithmetic-heavy ones 60% to 90% of it
+is inside the theory bridge's subsolver.
+
+## Comparing a run against Z3's
+
+The differential method that found most of the bugs above needs the two
+solvers to be looking at the *same* formula, which they are not by default:
+this port runs cvc5's preprocessor and then its own. These expert options
+exist for that:
+
+- `--z3-dump-assertions=FILE` writes what the core is given, after the whole
+  pipeline, as a parsable benchmark. Running Z3 on that file removes
+  preprocessing from the comparison entirely -- on one UFDTLIA query Z3 closed
+  the port's own formula with 576 instantiations where the port made 2171 and
+  still saturated, which is a statement about the search and nothing else.
+- `--z3-dump-instances=FILE` writes every instance the core creates, one per
+  line, in the form Z3's `-tr:qi_queue` prints as "new instance". Z3 needs
+  `pp.min_alias_size=1000000 pp.max_width=100000000` to stop abbreviating with
+  `let`, and the bound variable names agree because both read them from the
+  same file, so the two sets can be diffed directly.
+- `--z3-qi-profile` prints the per-quantifier counts Z3's `smt.qi.profile=true`
+  prints, with each quantifier's patterns appended -- Z3 identifies them by
+  `qid`, which these benchmarks do not set, and the patterns line up across
+  solvers where a generated name does not.
+- `--z3-dump-saturated=FILE` writes the state E-matching saturated in: the
+  assigned relevant ground literals together with every quantified assertion.
+  If cvc5 reports that file unsat, saturation was premature, and
+  `--dump-instantiations` names instances that would have closed it.
+- `--z3-check-saturated` hands just the ground literals to a full cvc5
+  subsolver. "sat" means the ground reasoning is consistent and a quantifier
+  instance is missing; "unsat" means a theory of the port is too weak.
 
 ## Known performance differences
 
@@ -237,7 +360,7 @@ cvc5's preprocessor so that both solvers get the identical formula:
    backed by `std::unordered_set`, which chains and allocates a node per
    element, where Z3 uses its own open-addressing `chashtable`.
 
-Neither is what limits `--z3` on the benchmark set above -- the 65 unknown
+Neither is what limits `--z3` on the benchmark set above -- the 14 unknown
 answers are -- but both would have to go to claim parity.
 
 Run with `--stats-all` to get the core's own counters (`z3::conflicts`,

@@ -239,6 +239,26 @@ Node ConnectiveNormalizer::normalize(TNode n)
     Assert(children.size() == 2);
     ret = d_nm->mkNode(Kind::EQUAL, children[0], children[1]).notNode();
   }
+  else if (k == Kind::AND && d_eliminateAnd)
+  {
+    // Z3's core never sees a conjunction: asserted_formulas::reduce() calls
+    // set_eliminate_and(true) once NNF is done, and the rewrite pass that
+    // follows turns every (and a b) into (not (or (not a) (not b))).
+    //
+    // This is off by default even so, which is the one place in this port
+    // where a faithful reproduction of Z3 measured worse. On the formula
+    // examined most closely it does what it should -- decisions went from
+    // 3469 to 2856 against Z3's 2590, Boolean variables from 7406 to 7076 --
+    // but over the 300-benchmark sample it cost nine solved benchmarks.
+    // Something downstream is tuned, deliberately or not, to the conjunctions
+    // being there; until that is found, the measurement wins.
+    std::vector<Node> negated;
+    for (const Node& c : children)
+    {
+      negated.push_back(c.notNode());
+    }
+    ret = d_nm->mkNode(Kind::OR, negated).notNode();
+  }
   else
   {
     ret = changed ? d_nm->mkNode(k, children) : Node(n);

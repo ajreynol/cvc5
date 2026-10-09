@@ -16,10 +16,12 @@
 #include "z3/qi_queue.h"
 
 #include <algorithm>
+#include <fstream>
 #include <unordered_map>
 
 #include "base/output.h"
 #include "expr/node_manager.h"
+#include "options/z3_options.h"
 #include "smt/env.h"
 #include "z3/ast.h"
 #include "z3/enode.h"
@@ -192,7 +194,8 @@ void QiQueue::instantiate(Entry& ent)
 
   QuantifierStat* stat = d_qm.getStat(q);
 
-  if (d_checker.isSat(getQuantBody(q), numBindings, bindings))
+  if (d_context.getEnv().getOptions().z3.z3QiChecker
+      && d_checker.isSat(getQuantBody(q), numBindings, bindings))
   {
     // The instance is already satisfied, so creating it would be wasted
     // work. It still counts as an instantiation, as it does in Z3.
@@ -216,6 +219,21 @@ void QiQueue::instantiate(Entry& ent)
   Node instance = getQuantBody(q).substitute(
       vars.begin(), vars.end(), subs.begin(), subs.end());
 
+  Trace("z3-qi-raw") << "RAWINST " << instance << std::endl;
+  const std::string& dumpTo =
+      d_context.getEnv().getOptions().z3.z3DumpInstances;
+  if (!dumpTo.empty())
+  {
+    // One line per instance, before the rewriter runs, which is the point at
+    // which Z3's qi_queue trace prints its "new instance".
+    std::ofstream out(dumpTo, std::ios::app);
+    out << instance << "\n";
+  }
+  if (d_context.d_inForcedRematch)
+  {
+    Trace("z3-qi-missed") << "MISSED q" << q.getId() << " " << instance
+                          << std::endl;
+  }
   Node sInstance = d_context.rewriteInstance(instance);
 
   if (sInstance.getKind() == Kind::CONST_BOOLEAN && sInstance.getConst<bool>())
@@ -250,8 +268,9 @@ void QiQueue::instantiate(Entry& ent)
   d_stats.d_numInstances++;
   d_context.getStats().d_numInstances++;
   uint32_t gen = getNewGen(q, generation, ent.d_cost);
-  Trace("z3-qi") << "[instance] q" << q.getId() << " gen " << generation
-                 << " cost " << ent.d_cost << " newgen " << gen << std::endl;
+  Trace("z3-qi") << "[instance] q" << q.getId() << " nargs " << numBindings
+                 << " gen " << generation << " cost " << ent.d_cost
+                 << " newgen " << gen << std::endl;
   Trace("z3-qi-lemma") << "  lemma: " << lemma << std::endl;
   d_context.internalizeInstance(lemma, gen);
 }

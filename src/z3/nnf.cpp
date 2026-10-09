@@ -22,10 +22,6 @@ namespace z3 {
 
 Node Nnf::convert(TNode n)
 {
-  if (!expr::hasClosure(Node(n)))
-  {
-    return n;
-  }
   std::vector<Node> scope;
   return convertRec(n, true, scope);
 }
@@ -54,18 +50,27 @@ Node Nnf::convertRec(TNode n, bool pol, const std::vector<Node>& scope)
   Assert(n.getType().isBoolean());
   if (!expr::hasClosure(Node(n)))
   {
-    // No quantifier below this point, so there is nothing to normalize; the
-    // shape cvc5's preprocessor produced is kept as it is.
-    std::unordered_map<Node, Node>& cache = d_cache[pol ? 1 : 0];
-    auto it = cache.find(n);
-    if (it != cache.end())
-    {
-      return it->second;
-    }
-    Node ret = pol ? Node(n) : n.negate();
-    cache[n] = ret;
-    return ret;
+    // Z3's default NNF mode is NNF_SKOLEM, which converts a subformula only
+    // if it contains a quantifier (or a label, which this port has no
+    // equivalent of) and otherwise leaves it exactly as it is -- see the
+    // skip() call in nnf.cpp's visit(). The comment there, "this mode is
+    // sufficient when using E-matching", is the whole point: what the core
+    // needs is that every quantifier reaches it in positive polarity, and a
+    // quantifier-free subformula cannot carry one. Converting those as well
+    // is not merely wasted work. Pushing negations through them duplicates
+    // every subformula that is needed in both polarities, which on these
+    // benchmarks gave the core 2.3 times the Boolean variables and 7 times
+    // the binary clauses Z3 builds, and a correspondingly different search.
+    return pol ? Node(n) : n.negate();
   }
+  // The result of converting a subformula that holds a quantifier depends on
+  // the enclosing universals, through the skolem functions, so it is not
+  // cached. Z3 keys its cache on the scope depth for the same reason.
+  return convertCore(n, pol, scope);
+}
+
+Node Nnf::convertCore(TNode n, bool pol, const std::vector<Node>& scope)
+{
   Kind k = n.getKind();
   switch (k)
   {
@@ -126,9 +131,13 @@ Node Nnf::convertRec(TNode n, bool pol, const std::vector<Node>& scope)
       Node cn = convertRec(n[0], false, scope);
       Node t = convertRec(n[1], pol, scope);
       Node e = convertRec(n[2], pol, scope);
-      return d_nm->mkNode(pol ? Kind::AND : Kind::OR,
-                          d_nm->mkNode(pol ? Kind::OR : Kind::AND, cn, t),
-                          d_nm->mkNode(pol ? Kind::OR : Kind::AND, cp, e));
+      // The shape is the same for both polarities, since negating an
+      // if-then-else negates its branches: this is Z3's process_ite. Pushing
+      // the negation out instead, as a disjunction of conjunctions, is just
+      // as correct but is the wrong normal form to hand a CNF converter.
+      return d_nm->mkNode(Kind::AND,
+                          d_nm->mkNode(Kind::OR, cn, t),
+                          d_nm->mkNode(Kind::OR, cp, e));
     }
     case Kind::FORALL:
     case Kind::EXISTS:

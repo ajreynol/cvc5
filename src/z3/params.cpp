@@ -106,8 +106,10 @@ void Params::initialize(const Options& opts)
   d_enumInstMaxPerRound =
       static_cast<uint32_t>(opts.z3.z3EnumInstMaxPerRound);
   d_bridgeEager = opts.z3.z3BridgeEager;
+  d_forceRematch = opts.z3.z3ForceRematch;
   d_mbqi = opts.z3.z3Mbqi;
   d_qiCost = opts.z3.z3QiCost;
+  d_qiProfile = opts.z3.z3QiProfile;
   d_qiNewGen = opts.z3.z3QiNewGen;
   d_qiEagerThreshold = opts.z3.z3QiEagerThreshold;
   d_qiLazyThreshold = opts.z3.z3QiLazyThreshold;

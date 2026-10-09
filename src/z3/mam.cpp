@@ -2861,6 +2861,8 @@ class CodeTreeMap
     {
       d_trees[lblId] = d_compiler.mkTree(q, mp, firstIdx, false);
       d_context.getStats().d_numMamTrees++;
+      Trace("z3-mam-order") << "mkTree for " << getDecl(p) << " lvl="
+                            << d_context.getScopeLevel() << std::endl;
       Trace("z3-mam-tree") << "tree for " << getDecl(p) << std::endl;
       Assert(d_trees[lblId]->expectedNumArgs() == p.getNumChildren());
       d_trailStack.push(MkTreeTrail(d_trees, lblId));
@@ -2875,7 +2877,16 @@ class CodeTreeMap
       // crash.
       if (tree->expectedNumArgs() == p.getNumChildren())
       {
+        Trace("z3-mam-newpat") << "  insert into existing tree for "
+                               << getDecl(p) << std::endl;
         d_compiler.insert(tree, q, mp, firstIdx, false);
+      }
+      else
+      {
+        Trace("z3-mam-newpat") << "  ARITY MISMATCH for " << getDecl(p)
+                               << ": tree expects " << tree->expectedNumArgs()
+                               << " but pattern has " << p.getNumChildren()
+                               << std::endl;
       }
     }
   }
@@ -3127,6 +3138,8 @@ class MamImpl : public Mam
   {
     if (!d_toMatch.empty())
     {
+      Trace("z3-mam-order") << "popScope discards candidates of "
+                            << d_toMatch.size() << " trees" << std::endl;
       for (CodeTree* t : d_toMatch)
       {
         t->resetCandidates();
@@ -3166,6 +3179,9 @@ class MamImpl : public Mam
   {
     for (CodeTree* t : d_toMatch)
     {
+      Trace("z3-mam-order") << "match tree " << t->getRootLbl() << " with "
+                            << t->getCandidates().size() << " candidates"
+                            << std::endl;
       Assert(t->hasCandidates());
       if (!d_interpreter.execute(t))
       {
@@ -3271,6 +3287,7 @@ class MamImpl : public Mam
 
   void addEqEh(ENode* r1, ENode* r2) override
   {
+    d_context.getStats().d_numMamAddEq++;
     ENode* oldR1 = d_r1;
     ENode* oldR2 = d_r2;
     d_r1 = r1;
@@ -3327,6 +3344,10 @@ class MamImpl : public Mam
       }
       t->addCandidate(app);
       d_context.getStats().d_numMamCandidates++;
+      if (d_inCollectParents)
+      {
+        d_context.getStats().d_numMamEqCandidates++;
+      }
       t->compressCandidates();
     }
   }
@@ -3334,6 +3355,12 @@ class MamImpl : public Mam
   void addCandidate(ENode* app)
   {
     CodeTree* t = d_trees.getCodeTreeFor(app->getDecl());
+    if (TraceIsOn("z3-mam-order"))
+    {
+      Trace("z3-mam-order") << "addCandidate " << app->getExpr()
+                            << " tree=" << (t != nullptr) << " lvl="
+                            << d_context.getScopeLevel() << std::endl;
+    }
     if (t == nullptr)
     {
       Trace("z3-mam-nocand") << "no tree for " << app->getDecl() << std::endl;
@@ -3341,6 +3368,7 @@ class MamImpl : public Mam
     else
     {
       Trace("z3-mam-cand") << "cand " << app->getDecl() << std::endl;
+      Trace("z3-mam-cand-full") << "cand " << app->getExpr() << std::endl;
     }
     addCandidate(t, app);
   }
@@ -3712,6 +3740,7 @@ class MamImpl : public Mam
       return;
     }
     d_todo.clear();
+    d_inCollectParents = true;
     ENodeVector* toUnmark = mkTmpVector();
     ENodeVector* toUnmark2 = mkTmpVector();
     t->d_todo = mkTmpVector();
@@ -3826,6 +3855,7 @@ class MamImpl : public Mam
     }
     recycle(toUnmark);
     recycle(toUnmark2);
+    d_inCollectParents = false;
   }
 
   void processPp(ENode* r1, ENode* r2)
@@ -3904,6 +3934,8 @@ class MamImpl : public Mam
 
   void matchNewPatterns()
   {
+    Trace("z3-mam-newpat") << "matchNewPatterns: " << d_newPatterns.size()
+                           << " new patterns" << std::endl;
     d_tmpTreesToDelete.clear();
     for (const std::pair<Node, Node>& kv : d_newPatterns)
     {
@@ -3936,6 +3968,9 @@ class MamImpl : public Mam
       uint32_t lblId = d_context.getDeclId(lbl);
       CodeTree* tmpTree = d_tmpTrees[lblId];
       Assert(tmpTree != nullptr);
+      Trace("z3-mam-newpat") << "  running tree for " << lbl << " over "
+                             << d_context.enodesOf(lbl).size() << " enodes"
+                             << std::endl;
       d_interpreter.init(tmpTree);
       for (size_t i = 0; i < d_context.enodesOf(lbl).size(); ++i)
       {
@@ -4033,6 +4068,8 @@ class MamImpl : public Mam
 
   ENode* d_r1;
   ENode* d_r2;
+  /** true while collectParents is running, for the statistics */
+  bool d_inCollectParents = false;
 };
 
 }  // namespace

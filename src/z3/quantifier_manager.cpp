@@ -92,7 +92,15 @@ struct QuantifierManager::Imp
 
   bool hasQuantifiers() const { return !d_quantifiers.empty(); }
 
-  void printStats(std::ostream& out, TNode q)
+  void printStats(std::ostream& out) const
+  {
+    for (TNode q : d_quantifiers)
+    {
+      printStats(out, q);
+    }
+  }
+
+  void printStats(std::ostream& out, TNode q) const
   {
     QuantifierStat* s = getStat(q);
     uint32_t numInstances = s->getNumInstances();
@@ -104,7 +112,22 @@ struct QuantifierManager::Imp
       out << "[quantifier_instances] " << getQid(q) << " : " << numInstances
           << " : " << numInstancesSimplifyTrue << " : "
           << numInstancesCheckerSat << " : " << s->getMaxGeneration() << " : "
-          << s->getMaxCost() << "\n";
+          << s->getMaxCost();
+      // Z3 identifies the quantifier by its qid, which these benchmarks do
+      // not set. The patterns identify it just as well and, unlike a
+      // generated name, they can be lined up against another solver's run.
+      std::vector<std::vector<Node>> patterns;
+      getPatterns(q, patterns);
+      for (const std::vector<Node>& mp : patterns)
+      {
+        out << " :pattern (";
+        for (const Node& p : mp)
+        {
+          out << " " << p;
+        }
+        out << " )";
+      }
+      out << "\n";
     }
   }
 
@@ -432,6 +455,11 @@ void QuantifierManager::reset() {}
 
 void QuantifierManager::print(std::ostream& /*out*/) const {}
 
+void QuantifierManager::printStats(std::ostream& out) const
+{
+  d_imp->printStats(out);
+}
+
 const std::vector<Node>& QuantifierManager::quantifiers() const
 {
   return d_imp->d_quantifiers;
@@ -517,8 +545,20 @@ class DefaultQmPlugin : public QuantifierManagerPlugin
           }
         }
       }
-      Trace("z3-qpat") << "[assign-quant] pats=" << numPats << " " << q
-                       << std::endl;
+      std::stringstream arities;
+      if (q.getNumChildren() == 3)
+      {
+        for (const Node& a : q[2])
+        {
+          if (a.getKind() == Kind::INST_PATTERN)
+          {
+            arities << " " << a.getNumChildren();
+          }
+        }
+      }
+      Trace("z3-qpat") << "[assign-quant] q" << q.getId()
+                       << " pats=" << numPats << " arity" << arities.str()
+                       << " " << q << std::endl;
     }
     // A multi-pattern is only matched eagerly up to a bound, since matching
     // one is much more expensive than matching a unary pattern. The bound is
@@ -652,6 +692,25 @@ class DefaultQmPlugin : public QuantifierManagerPlugin
         d_lazyMam->rematch();
         d_context->pushTrail(ValueTrail<size_t>(d_lazyMatchingIdx));
         d_lazyMatchingIdx++;
+      }
+    }
+    if (d_params->d_forceRematch && useEmatching() && !d_mam->hasWork()
+        && !d_lazyMam->hasWork())
+    {
+      // A diagnostic: re-run every code tree over every enode, ignoring
+      // relevancy. If this finds anything, incremental matching lost it.
+      size_t before = d_context->getStats().d_numInstances;
+      d_context->d_inForcedRematch = true;
+      d_mam->rematch(false);
+      d_qm->propagate();
+      d_context->d_inForcedRematch = false;
+      if (d_context->getStats().d_numInstances != before)
+      {
+        Trace("z3-rematch")
+            << "force rematch found "
+            << (d_context->getStats().d_numInstances - before)
+            << " new instances" << std::endl;
+        return FC_CONTINUE;
       }
     }
     if (d_params->d_enumInst && !d_qm->empty() && !d_mam->hasWork()

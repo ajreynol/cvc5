@@ -179,8 +179,12 @@ void Setup::setupUnknown(const StaticFeatures& st)
     }
     else
     {
+      // Only the parameter half of AUFLIA, as Z3's setup_unknown does: the
+      // static-feature overload, which lowers the eager instantiation
+      // threshold from 10 to 7, is reached only for a benchmark that declares
+      // the AUFLIA logic itself. The logics these quantified benchmarks do
+      // declare -- UFDTLIA, UFDTNIA, ALL -- all land here instead.
       setupAuflia(false);
-      setupAuflia(st);
     }
     setupDatatypes();
     setupBv();

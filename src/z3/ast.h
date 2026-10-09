@@ -181,12 +181,17 @@ uint32_t getDepth(TNode n);
 class ConnectiveNormalizer
 {
  public:
-  ConnectiveNormalizer(NodeManager* nm) : d_nm(nm) {}
+  ConnectiveNormalizer(NodeManager* nm, bool eliminateAnd)
+      : d_nm(nm), d_eliminateAnd(eliminateAnd)
+  {
+  }
 
   Node normalize(TNode n);
 
  private:
   NodeManager* d_nm;
+  /** Whether a conjunction is rewritten as a negated disjunction. */
+  bool d_eliminateAnd;
   std::unordered_map<Node, Node> d_cache;
 };
 

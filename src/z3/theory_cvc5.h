@@ -82,8 +82,68 @@ class Cvc5Bridge
    */
   FinalCheckStatus check(bool finalCheck);
 
+  /** Run assume_eqs for every bridged theory. */
+  FinalCheckStatus assumeInterfaceEqs();
+
+  /**
+   * Propagate the equalities between the bridged terms the subsolver pins to
+   * the same value, which is what Z3's arithmetic solver does for free every
+   * time a variable becomes fixed (its arith-fixed-eqs statistic). Unlike
+   * assume_eqs these are entailed, so they are propagated rather than split
+   * on, and unlike assume_eqs they do not require the term to be shared --
+   * the point is the congruence merge, which E-matching then sees.
+   *
+   * Returns true if an equality was propagated.
+   */
+  bool propagateFixedEqs(std::vector<Node>& assumps);
+
+  /** Put the subsolver back on a model of assumps, if it has lost one. */
+  void restoreModel(std::vector<Node>& assumps);
+
+  /**
+   * Propagate val for every member of one group of bridged terms the model
+   * gives that value, if the assumptions entail it. True if a merge happened.
+   */
+  bool propagateFixedGroup(std::vector<Node>& assumps,
+                           const std::vector<ENode*>& members,
+                           TNode val);
+
   /** True if enough has been assigned to be worth running the subsolver. */
   bool shouldCheckEagerly() const;
+
+  /**
+   * Ask the subsolver for a model that keeps the shared terms apart wherever
+   * the constraints allow it, which is what Z3's arithmetic solver does with
+   * random_update before it assumes a single interface equality: two shared
+   * terms whose values merely happen to coincide, while nothing forces them
+   * to, need no case split at all -- the arithmetic model can simply be
+   * adjusted to the arrangement the congruence closure already has. Without
+   * this step every coincidence becomes an equality for the core to decide,
+   * which on these benchmarks meant tens of thousands of them where Z3
+   * assumes thirty.
+   *
+   * Whether or not the separation succeeds, the subsolver is left with a
+   * model of assumps if it had one on entry. True if it succeeded.
+   */
+  bool separateSharedValues(std::vector<Node>& assumps);
+
+  /**
+   * Ask the subsolver whether the assumptions, cut back to base, together
+   * with every constraint in wanted, are satisfiable. The assumptions are
+   * restored to base either way; d_haveModel says whether a model is left.
+   */
+  bool trySeparate(std::vector<Node>& assumps,
+                   size_t base,
+                   const std::vector<Node>& wanted);
+
+  /** The relevant shared bridged enode roots that have a model value. */
+  void collectSharedRoots(std::vector<std::pair<ENode*, Node>>& out);
+
+  /**
+   * The value the subsolver's last model gives t, or null if the subsolver
+   * does not constrain it.
+   */
+  Node getModelValue(TNode t);
 
   void reset();
 
@@ -102,34 +162,18 @@ class Cvc5Bridge
   /** True if the subsolver owns the theory tid. */
   static bool isBridged(TheoryId tid);
 
-  /** True if the class of the root r is shared with a non-bridged theory. */
-  static bool isSharedClass(ENode* r);
-
-  /**
-   * Reconcile the subsolver's model with the core's classes on the shared
-   * terms, propagating or splitting on an interface equality as needed.
-   */
-  FinalCheckStatus checkInterface(std::vector<Node>& assumps,
-                                  bool finalCheck);
-
-  /** The shared class pairs the subsolver's model gives the same value. */
-  void collectCandidates(std::vector<std::pair<ENode*, ENode*>>& candidates);
-
-  /** Ask the search to decide the equality of n1 and n2. */
-  FinalCheckStatus mkInterfaceSplit(ENode* n1, ENode* n2);
-
   /** Signal the conflict the given assumptions stand for. */
   void mkConflict(const std::vector<Node>& core);
 
+  /** How many queries one separation step may make. */
+  static constexpr size_t s_maxSeparateCalls = 8;
+  /** How many queries one round of fixed-value propagation may make. */
+  static constexpr size_t s_maxFixedCalls = 8;
   /** How many unsat cores are remembered. */
   static constexpr size_t s_maxCachedCores = 1024;
   /** How many satisfiable literal sets are remembered. */
   static constexpr size_t s_maxCachedSatSets = 4096;
 
-  /** How many entailment checks one final check may make. */
-  static constexpr size_t s_maxInterfaceChecks = 16;
-  /** How many a check during propagation may make. */
-  static constexpr size_t s_maxEagerInterfaceChecks = 4;
   /** The smallest and largest number of assignments between eager checks. */
   static constexpr uint64_t s_minEagerGap = 200;
   static constexpr uint64_t s_maxEagerGap = 100000;
@@ -175,6 +219,8 @@ class Cvc5Bridge
   std::unordered_set<Node> d_known;
   /** the abstraction of each term, which is stable across the search */
   std::unordered_map<Node, Node> d_abs;
+  /** whether the subsolver's last check left a model to read values from */
+  bool d_haveModel = false;
   /**
    * The literals already asserted to the subsolver permanently, which are
    * the ones the core assigned at or below its base level.
@@ -228,6 +274,14 @@ class TheoryCvc5 : public Theory
 
   /** The representative enode of v's class; null if there is none. */
   ENode* getRepENode(TheoryVar v);
+
+  /**
+   * Assume the equality of every pair of relevant shared terms the
+   * subsolver's model gives the same value, which is the half of a
+   * Nelson-Oppen combination this side is responsible for. True if anything
+   * changed, in which case the search is not done.
+   */
+  bool assumeInterfaceEqs();
 
  protected:
   TheoryVar mkVar(ENode* n) override;
