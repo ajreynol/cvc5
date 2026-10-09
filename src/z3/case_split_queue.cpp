@@ -488,6 +488,7 @@ class RelCaseSplitQueue : public CaseSplitQueue
   void pushScope() override
   {
     d_scopes.push_back(Scope{d_queue.size(), d_head, d_queue2.size(), d_head2});
+    Trace("z3-csq-head") << "PUSH head " << d_head << std::endl;
   }
 
   void popScope(size_t numScopes) override
@@ -505,6 +506,21 @@ class RelCaseSplitQueue : public CaseSplitQueue
 
   void nextCaseSplit(BoolVar& next, LBool& phase) override
   {
+    if (TraceIsOn("z3-csq-queue"))
+    {
+      Trace("z3-csq-queue") << "QUEUE1 head " << d_head << " size "
+                            << d_queue.size() << std::endl;
+      for (size_t i = d_head; i < d_queue.size(); ++i)
+      {
+        Trace("z3-csq-queue") << "  Q1 " << d_queue[i] << std::endl;
+      }
+      Trace("z3-csq-queue") << "QUEUE2 head " << d_head2 << " size "
+                            << d_queue2.size() << std::endl;
+      for (size_t i = d_head2; i < d_queue2.size(); ++i)
+      {
+        Trace("z3-csq-queue") << "  Q2 " << d_queue2[i] << std::endl;
+      }
+    }
     nextCaseSplitCore(d_queue, d_head, next, phase);
     if (next == s_nullBoolVar)
     {
@@ -572,6 +588,7 @@ class RelCaseSplitQueue : public CaseSplitQueue
                 d_context, curr, val, undefChild, d_params.d_relCaseSplitOrder))
         {
           Trace("z3-events") << "CSQ andor" << std::endl;
+          Trace("z3-csq-parent") << "ANDOR " << curr << std::endl;
           if (TraceIsOn("z3-csq-detail"))
           {
             Trace("z3-csq-detail") << "PARENT " << curr << std::endl;
@@ -592,6 +609,7 @@ class RelCaseSplitQueue : public CaseSplitQueue
       {
         Assert(intern && d_context.getBoolVar(curr) == next);
         Trace("z3-events") << "CSQ cand" << std::endl;
+        Trace("z3-csq-parent") << "CAND " << curr << std::endl;
         phase = L_UNDEF;
         return;
       }
@@ -833,6 +851,7 @@ class RelActCaseSplitQueue : public CaseSplitQueue
                 d_context, curr, val, undefChild, d_params.d_relCaseSplitOrder))
         {
           Trace("z3-events") << "CSQ andor" << std::endl;
+          Trace("z3-csq-parent") << "ANDOR " << curr << std::endl;
           if (TraceIsOn("z3-csq-detail"))
           {
             Trace("z3-csq-detail") << "PARENT " << curr << std::endl;
@@ -853,6 +872,7 @@ class RelActCaseSplitQueue : public CaseSplitQueue
       {
         Assert(intern && d_context.getBoolVar(curr) == next);
         Trace("z3-events") << "CSQ cand" << std::endl;
+        Trace("z3-csq-parent") << "CAND " << curr << std::endl;
         phase = L_UNDEF;
         return;
       }

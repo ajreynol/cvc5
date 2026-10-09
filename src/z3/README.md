@@ -145,13 +145,6 @@ Two more things the port's input has to look like for Z3's search to apply:
   benchmarks the Verus preset answered "unknown" on stayed unknown: Z3
   closed every one of them, and the instances it made that the port could
   not were exactly those of the definitions.
-- **Unit assertions are propagated first** (`propagate_values.{h,cpp}`,
-  `--z3-propagate-values`). `reduce()` starts with `propagate_values`: one
-  forward and one backward pass, each rewriting every assertion under the
-  substitution the others induce. It is a small change to the formula --
-  three fuel guards on the first benchmark it was measured on -- but it is
-  what made the port's first 437 instances on that benchmark come out in
-  exactly Z3's order, where before even the first three differed.
 - **Boolean arguments and term if-then-else are left alone.** cvc5's theory
   preprocessing purifies every Boolean term in a term position, so
   `(ext_eq false T a b)` reaches the core as `(ext_eq k T a b)` with
@@ -330,18 +323,14 @@ files; logics UFDTLIA 171, UFDTNIA 53, ALL 49, UFBVDTNIA 25, UFBVDTLIA 2),
 | z3, Verus options | 278 | 18 | 4 |
 | cvc5 `--user-pat=strict --no-cbqi` (baseline) | 272 | 0 | 28 |
 | cvc5 `--z3` | 274 | 0 | 26 |
-| cvc5 `--z3 --z3-preset=verus` | 263 | 17 | 20 |
+| cvc5 `--z3 --z3-preset=verus` | 262 | 17 | 21 |
 
-No answer contradicts another. With the preset the port misses 16 of the
+No answer contradicts another. With the preset the port misses 17 of the
 benchmarks Verus's Z3 solves, and every one of them is a timeout: there is no
-longer a benchmark where the port saturates and Z3 does not. (The default
-configuration's row is from the run before `propagate_values`; with it, 272
-and one "unknown", on a benchmark Z3 solves from the port's own formula, so
-the search is merely sensitive to the change there.) The sequence that got it there, each step measured on the same
+longer a benchmark where the port saturates and Z3 does not. The sequence that got it there, each step measured on the same
 sample: the preset as first defined, 264; `--no-z3-arith-nl`, 251, with no
 benchmark solved that Z3 does not; naming quantifiers below atoms and leaving
-Boolean arguments unpurified, 257; the monomial treatment above, 262;
-`propagate_values`, 263. The same two changes took the default
+Boolean arguments unpurified, 257; the monomial treatment above, 262. The same two changes took the default
 configuration from 271 (12 unknown) to 274 (none).
 
 The earlier measurements below were taken on a different 300-benchmark sample

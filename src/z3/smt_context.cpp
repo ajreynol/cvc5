@@ -3702,6 +3702,8 @@ bool SmtContext::restart(LBool& status, uint32_t currLvl)
       default: break;
     }
   }
+  Trace("z3-events") << "RESTART decisions " << d_stats.d_numDecisions
+                     << " conflicts " << d_stats.d_numConflicts << std::endl;
   incLimits();
   if (status == L_TRUE || !d_params.d_restartAdaptive
       || d_agility < d_params.d_restartAgilityThreshold)
@@ -4070,6 +4072,7 @@ bool SmtContext::resolveConflict()
   }
 
   d_conflictResolution->releaseLemmaAtoms();
+  Trace("z3-events") << "CONFLICT " << numLits << std::endl;
   decayBvarActivity();
   updatePhaseCacheCounter();
   return true;
