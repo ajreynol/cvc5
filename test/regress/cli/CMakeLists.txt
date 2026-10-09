@@ -1100,6 +1100,10 @@ set(regress_0_tests
   regress0/ho/fta0144-alpha-eq.smt2
   regress0/ho/fta0210.smt2
   regress0/ho/fun-subtyping.smt2
+  regress0/ho/ho-em-f-eq-ite.smt2
+  regress0/ho/ho-em-f-eq-nonbool.smt2
+  regress0/ho/ho-em-f-eq-twostep.smt2
+  regress0/ho/ho-em-f-eq.smt2
   regress0/ho/ho-exponential-model.smt2
   regress0/ho/ho-leibniz-rewrite.smt2
   regress0/ho/ho-match-fun-suffix.smt2
@@ -1315,6 +1319,7 @@ set(regress_0_tests
   regress0/nl/nta/issue8294-2-double-solve.smt2
   regress0/nl/nta/issue8415-embed-arg.smt2
   regress0/nl/nta/issue8773-phase-shift.smt2
+  regress0/nl/nta/issue13029-even-power-zero.smt2
   regress0/nl/nta/nta-dsl-rew.smt2
   regress0/nl/nta/pi-simplest.smt2
   regress0/nl/nta/proj-issue376.smt2
@@ -1465,6 +1470,7 @@ set(regress_0_tests
   regress0/parser/issue12356.smt2
   regress0/parser/legacy-datatype-tester.smt2
   regress0/parser/legacy-datatype-tester-lenient.smt2
+  regress0/parser/legacy-datatype-tester-strict.smt2
   regress0/parser/linear_arithmetic_err1.smt2
   regress0/parser/linear_arithmetic_err2.smt2
   regress0/parser/linear_arithmetic_err3.smt2
@@ -2154,6 +2160,10 @@ set(regress_0_tests
   regress0/sets/card-3sets.cvc.smt2
   regress0/sets/card.smt2
   regress0/sets/card3-ground.smt2
+  regress0/sets/choose-cong-sat.smt2
+  regress0/sets/choose-cong.smt2
+  regress0/sets/choose-reduction-pf.smt2
+  regress0/sets/choose-set-of-sets.smt2
   regress0/sets/comp-qf-error.smt2
   regress0/sets/complement.cvc.smt2
   regress0/sets/complement2.cvc.smt2
@@ -4063,7 +4073,6 @@ set(regress_1_tests
   regress1/strings/update-ex2.smt2
   regress1/strings/username_checker_min.smt2
   regress1/strings/witness-model.smt2
-  regress1/sygus/proj-issue221-perf.sy
   regress1/sygus/proj-issue556-srr-fp-div.smt2
   regress1/sygus/issue12424-fp-add-order.sy
   regress1/sygus/issue12425-fp-const-grammar.sy
@@ -4643,6 +4652,8 @@ set(regression_disabled_tests
   regress0/sygus/c100.sy
   # timeout after ignoring sygus eval terms in model
   regress1/sygus/proj-issue264.smt2
+  # times out in nightly builds
+  regress1/sygus/proj-issue221-perf.sy
   # For the six regressions below, solution terms require rewrites not in
   # database and are too big to enumerate
   regress0/sygus/aig-si.sy

@@ -1,21 +1,29 @@
 This file contains a summary of important user-visible changes.
 
-cvc5 1.4.2 prerelease
-=====================
+cvc5 1.4.2
+==========
 
 - Adds techniques for returning "sat" when the returned candidate model
   happens to satisfy the set of input assertions (`--model-verify`).
-
-- The SMT-LIB parser no longer defines the legacy tester symbols `is-C` for
-  datatype constructors `C` by default. Testers should be written using the
-  standard indexed syntax `((_ is C) t)`. The legacy tester symbols are still
-  available when parsing with `--parsing-mode=lenient`.
 
 - `set.insert` is now a binary operator, where applications with more than two
   arguments are constructed as nested binary applications, e.g.
   `(set.insert a b S)` is constructed as `(set.insert a (set.insert b S))`.
   This impacts the children of such terms when inspected via the API, as well
   as how they are printed.
+
+- The **bit-vector abstraction refinement strategy** (`--bv-abstraction`) now
+  also abstracts n-ary multiplications, i.e., `bvmul` with more than two
+  arguments, which were previously not abstracted. They are left-associated
+  into a chain of binary multiplications, each abstracted separately. (#12935)
+
+- Fixes a **refutation soundness** issue in the bit-vector rewrite rule for
+  signed comparisons of multiplications, which was incorrectly applied when
+  one operand was zero-extended and the other was sign-extended. (#13039)
+
+- Fixes a **model soundness** issue for arrays indexed by reals, where the
+  candidate model values of `to_real` terms had type Int, leading to missed
+  care pairs during theory combination. (#13040)
 
 cvc5 1.4.1
 ==========
