@@ -56,6 +56,8 @@ EagerInstEngine::EagerInstEngine(Env& env,
                    == options::EagerInstOutputMode::INST),
       d_matchOnNotify(options().quantifiers.eagerInstMatchMode
                       == options::EagerInstMatchMode::NOTIFY),
+      d_relevantOnly(options().quantifiers.eagerInstRelevant),
+      d_factCursor(context()),
       d_maxContributions(options().quantifiers.eagerInstMaxContributions),
       d_numContributed(0)
 {
@@ -65,6 +67,10 @@ EagerInstEngine::EagerInstEngine(Env& env,
   d_egraph.addListener(&d_mam);
   d_mam.setListener(&d_queue);
   d_lazyMam.setListener(&d_queue);
+  if (d_relevantOnly)
+  {
+    d_egraph.setCandidateGating(true);
+  }
   d_useInner = options().quantifiers.eagerInstOutput
                == options::EagerInstOutputMode::INNER;
   if (d_useInner)
@@ -239,11 +245,43 @@ void EagerInstEngine::assertNode(Node q)
   }
 }
 
+void EagerInstEngine::sweepFacts()
+{
+  const LogicInfo& logicInfo = d_qstate.getLogicInfo();
+  for (TheoryId tid = THEORY_FIRST; tid < THEORY_LAST; ++tid)
+  {
+    if (!logicInfo.isTheoryEnabled(tid))
+    {
+      continue;
+    }
+    context::CDList<Assertion>::const_iterator begin = d_qstate.factsBegin(tid);
+    size_t n = static_cast<size_t>(d_qstate.factsEnd(tid) - begin);
+    uint32_t key = static_cast<uint32_t>(tid);
+    context::CDHashMap<uint32_t, size_t>::const_iterator itc =
+        d_factCursor.find(key);
+    size_t i = itc == d_factCursor.end() ? 0 : (*itc).second;
+    if (i >= n)
+    {
+      // the list shrank with a pop, or there is nothing new
+      continue;
+    }
+    for (; i < n; i++)
+    {
+      d_egraph.markRelevant((*(begin + i)).d_assertion);
+    }
+    d_factCursor[key] = n;
+  }
+}
+
 void EagerInstEngine::propagate(CVC5_UNUSED Theory::Effort e)
 {
   // z3: quantifier_manager::imp::propagate, which runs the matcher and then
   // turns the matches it reported into instances
   syncScopes();
+  if (d_relevantOnly)
+  {
+    sweepFacts();
+  }
   if (d_mam.hasWork())
   {
     d_mam.match();
@@ -449,7 +487,8 @@ void EagerInstEngine::traceStats() const
   const Mam::Stats& ms = d_mam.getStats();
   const InstQueue::Stats& qs = d_queue.getStats();
   Trace("eager-inst-stats")
-      << "EagerInst: " << d_egraph.getNumENodes() << " enodes, "
+      << "EagerInst: " << d_egraph.getNumENodes() << " enodes ("
+      << d_egraph.getNumCandidateENodes() << " matchable), "
       << ms.d_numMerges << " merges, " << ms.d_numCandidates << " candidates, "
       << ms.d_numMatchCalls << " match calls, " << ms.d_numMatches
       << " matches; queue: " << qs.d_numMatches << " in, " << qs.d_numDuplicates

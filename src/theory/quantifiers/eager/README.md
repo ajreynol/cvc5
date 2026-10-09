@@ -674,18 +674,26 @@ build, baseline `--no-cbqi --user-pat=strict`:
 
 | test configuration | solved vs baseline | commonly solved | time |
 | --- | --- | --- | --- |
-| `--eager-inst` | **-20** | 243 | -22% (see the caveat below) |
-| `--eager-inst --eager-inst-max-contributions=1000` | **-2** | 257 | **+1%** |
+| no relevancy, no cap | **-20** | 243 | -22% (see the caveat below) |
+| no relevancy, `--eager-inst-max-contributions=1000` | **-2** | 257 | +1% |
+| `--eager-inst` (relevancy, the default) | **-2** | 261 | **+3%** |
+| relevancy and a cap of 1000 | **-3** | 262 | +10% |
 
 No answer disagreements and no contradiction of `:status` in any configuration.
 z3 on the same 300 solves 286.
 
-So with a cap on the number of instantiations — z3's `qi.max_instances` — eager
-E-matching through cvc5's own instantiation path is **cost-neutral**: two
-benchmarks lost, three gained, and the same time on what both solve. That is a
-long way from the `+160%` the inner-solver path cost, and it is the first
-configuration on this branch that is not a clear loss. It is also, as far as the
-matcher is concerned, the architecture z3 has.
+So eager E-matching through cvc5's own instantiation path is **cost-neutral**:
+two benchmarks lost, three gained, and essentially the same time on what both
+solve. That is a long way from the `+160%` the inner-solver path cost, and it is
+the first configuration on this branch that is not a clear loss.
+
+Two different things get it there, and only one of them is principled. A cap on
+the number of instantiations (z3's `qi.max_instances`) and relevancy-gated
+matching (9.0.4) each recover the 20 benchmarks that unbounded matching loses,
+and they are *not* complementary: with relevancy in place the cap costs 1 solved
+benchmark and 7% time, because it starts cutting off instantiations that were
+being used. Relevancy also measures better on the larger common set, so it is
+the default and the cap is left at 0 (no limit).
 
 Uncapped it loses 20 benchmarks to instantiation volume. The matcher produces
 instances at a rate cvc5's ground solver cannot absorb: on
@@ -707,25 +715,89 @@ than read out of a multi-configuration table.
 
 ### 9.0.3 What is left
 
-The remaining gap to z3 (286 vs 262 of 300) is not in the matcher. Two things
-would narrow it:
+The remaining gap to z3 (286 vs 264 of 300) is not in the matcher:
 
-* **Relevancy.** z3's `relevant_eh` registers only terms its relevancy
-  propagation has marked relevant; our index takes every term the master
-  equality engine sees. We therefore match against a larger e-graph than z3 does
-  and generate instances z3 never considers, which is the most likely cause of
-  the volume that the cap is currently papering over. cvc5 has the machinery
-  (`RelevanceManager`, and `TermDbMode::RELEVANT_ALL_DELAY` is the default for
-  the lazy path for exactly this reason).
 * **Per-instantiation cost.** With z3-like volume, the time lands in cvc5's
   ground theories (UF, datatypes, arithmetic, CNF conversion), not in the
   matcher — `time_ematching` falls from 467ms to 71ms when eager matching takes
   over. cvc5 and z3 differ by 30-100x in instantiations per second end-to-end,
   and that is a cvc5-wide property rather than a quantifiers one.
 
-The cap (`--eager-inst-max-contributions`) is a crude stand-in for the first of
-these, and `1000` is tuned on this set; it should not be read as a principled
-default.
+### 9.0.4 Relevancy
+
+z3 separates two events that our index originally conflated. A term enters z3's
+e-graph when it is **internalized**, and becomes a candidate for matching when
+z3's relevancy propagation marks it **relevant** — `mam::relevant_eh` is called
+from `context::relevant_eh`, not from internalization. Matching against every
+internalized term means matching against the terms of literals that nothing has
+asserted, which z3 never does.
+
+cvc5 has two notions of relevance and only one of them is usable here:
+
+* `RelevanceManager::isRelevant` is the closer analogue of z3's — a
+  justification-based selection over the input assertions — but it is defined on
+  *literals*, it is computed at most once per FULL effort check, and it is only
+  valid during a full effort check. The matcher runs from `Theory::propagate`,
+  so it cannot ask.
+* `TermDb` keeps the set the lazy path uses (`d_has_map`, behind
+  `hasTermCurrent`, under `--term-db-mode=relevant-all-delay`, the default):
+  the subterms of the **asserted facts** of every enabled theory, plus the terms
+  that have taken part in a merge, recomputed in `TermDb::reset`.
+
+So the available notion is "occurs in an asserted fact", and
+`--eager-inst-relevant` (on by default) applies it with z3's split:
+`EGraph::addTerm` still records every term, since the parent lists, label sets
+and congruence table have to be complete for matching to be correct, but
+candidate registration waits for `EGraph::markRelevant`.
+`EagerInstEngine::sweepFacts` drives it from the theory fact lists with a
+context-dependent cursor per theory, so each newly asserted fact marks its
+subterms once — the incremental equivalent of the sweep `TermDb::reset` does per
+round, and the direct analogue of z3's `relevant_eh` calls.
+
+The effect is larger than the instance count alone suggests, because the terms
+an instance introduces are themselves terms to match against, so cutting the
+irrelevant ones compounds. On `betree__LinkedBranch_v__Refinement_v.22`:
+
+| | enodes | matches | instantiations | time |
+| --- | --- | --- | --- | --- |
+| without relevancy | 41041 | 464083 | 21949 | 7.80s |
+| with relevancy | 4491 (3594 matchable) | 100597 | 1832 | **1.08s** |
+| baseline, no eager matching | — | — | 1082 | 1.60s |
+
+That is the first benchmark where eager E-matching is faster than the baseline
+rather than merely cheaper than its own earlier self, and the instantiation
+count is now within a factor of two of what cvc5's lazy E-matching needs.
+
+### 9.0.5 Where eager E-matching diverges, and whether z3 does too
+
+Forcing `--eager-inst` on cvc5's 406 quantifier regressions leaves 19 problems
+that the baseline does not have: 18 timeouts and `qid.smt2`, which asserts
+instantiation counts that eager matching changes. None is a wrong answer. Of the
+timeouts:
+
+* **7 are the unsat-core checker, not the solve.** The solve takes 0.1-3.7s and
+  `--check-unsat-cores` then diverges. The core is not wrong — cvc5 reports no
+  error, it simply does not finish re-solving it. Eager matching diverges on the
+  core subset, where the cheap refutation of the full problem is no longer
+  available.
+* **9 are genuine divergences of the solve, and z3 times out on 5 of them**
+  (`bug822`, `infer-arith-trigger-eq`, `qcft-smtlib3dbc51`, `smtlibe99bbe`,
+  `var-eq-trigger`). Two are ours alone with z3 finishing in 0.1s
+  (`cdt-0208-to`, `dd_full_xor-rcons-open`, both datatype benchmarks).
+
+Generation tracking does engage on these — the histogram of added terms on
+`var-eq-trigger` is 2952 at generation 0, 1119 at 1, 10378 at 2, 3222 at 3,
+40530 at 4 — the explosion simply happens well below z3's eager threshold of 10,
+which is why z3 diverges on the same benchmarks. So most of what looks like a
+regression is eager E-matching being the wrong strategy for a problem family,
+which is the reason `--eager-inst` is opt-in and the lazy modules keep running
+alongside it.
+
+The outstanding fidelity gap in the cost function is the weight:
+`InstQueue::getWeight` returns 0, where z3 reads the `:weight` annotation. None
+of the 60 target benchmarks uses `:weight`, so it does not affect the numbers
+above, but it is the knob z3 offers for exactly the divergences in this
+section.
 
 ## 9.1 Comparing against z3
 

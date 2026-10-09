@@ -28,6 +28,7 @@
 #include <set>
 #include <unordered_set>
 
+#include "context/cdhashmap.h"
 #include "context/cdo.h"
 #include "theory/quantifiers/eager/egraph.h"
 #include "theory/quantifiers/eager/inner_smt_solver.h"
@@ -157,6 +158,16 @@ class EagerInstEngine : public QuantifiersModule, public InstanceSink
   }
   /** Print the statistics under -t eager-inst */
   void traceStats() const;
+  /**
+   * Register the terms of the facts that have been asserted since the last
+   * call as candidates for matching. This is our stand-in for the calls z3
+   * makes to mam::relevant_eh: cvc5 has no term-level relevancy propagation,
+   * and RelevanceManager::isRelevant is defined on literals and only during a
+   * full effort check, so the available notion is the one cvc5's own term
+   * database uses (TermDb::reset), namely the terms that occur in an asserted
+   * fact of some theory.
+   */
+  void sweepFacts();
   /** Turn the pending instances into instantiations */
   void flushInstances();
   /** Report what the inner SMT solver derived */
@@ -189,6 +200,14 @@ class EagerInstEngine : public QuantifiersModule, public InstanceSink
   std::unique_ptr<InnerSmtSolver> d_inner;
   /** The quantified formulas whose patterns have been compiled */
   std::unordered_set<Node> d_asserted;
+  /** Whether matching is restricted to the terms of the asserted facts */
+  bool d_relevantOnly;
+  /**
+   * How many facts of each theory sweepFacts has seen, keyed on the theory id.
+   * Context dependent, as the fact lists themselves are, so that a pop takes
+   * the cursor back to where it was at that level.
+   */
+  context::CDHashMap<uint32_t, size_t> d_factCursor;
   /** The scope level our trail is at */
   size_t d_trailLevel;
   /**

@@ -122,6 +122,12 @@ class ENode
   uint32_t getGeneration() const { return d_cgr->d_generation; }
   /** Is this node the same as or equal to e? */
   bool isEqualTo(const ENode* e) const { return d_root == e->d_root; }
+  /**
+   * Whether this node has been registered as a candidate for matching. With
+   * candidate gating this happens when the term becomes relevant rather than
+   * when it is created. z3: whether relevant_eh has been called for it.
+   */
+  bool isCandidate() const { return d_isCandidate; }
 
   /**
    * Temporary marks, used by the matcher while walking parents. They are
@@ -158,6 +164,8 @@ class ENode
   CgKey d_cgKey;
   /** The label hash of this node if it is a pattern ground term, else -1 */
   int32_t d_lblHash;
+  /** Whether this node has been registered as a candidate for matching */
+  bool d_isCandidate;
   /** The generation */
   uint32_t d_generation;
   /** Temporary marks */
@@ -300,6 +308,25 @@ class EGraph : protected EnvObj
   void registerGeneration(TNode t, uint32_t g);
   /** Whether disequalities are recorded; only the inner SMT solver wants them */
   void setTrackDisequalities(bool b) { d_trackDiseqs = b; }
+  /**
+   * Register terms as candidates for matching only when markRelevant says so,
+   * rather than when they are created.
+   *
+   * z3 splits these two events: a term enters the e-graph when it is
+   * internalized, and becomes a candidate for matching when its relevancy
+   * propagation marks it relevant (mam::relevant_eh, called from
+   * context::relevant_eh). Without the split we match against every term the
+   * master equality engine has ever seen, including the terms of literals that
+   * nothing has asserted, which z3 never considers.
+   */
+  void setCandidateGating(bool b) { d_gateCandidates = b; }
+  /**
+   * Register n and its subterms as candidates for matching, if they are not
+   * already. z3: the calls of mam::relevant_eh.
+   */
+  void markRelevant(TNode n);
+  /** The number of nodes that are candidates for matching */
+  size_t getNumCandidateENodes() const { return d_numCandidates; }
 
   /** Print the e-graph, for debugging */
   void debugPrint(std::ostream& out) const;
@@ -309,6 +336,8 @@ class EGraph : protected EnvObj
   static Node getLabelFor(TNode n);
   /** Should n be tracked at all? */
   static bool isTracked(TNode n);
+  /** Register e as a candidate for matching, if it is not already */
+  void makeCandidate(ENode* e);
   /** Add the label of e to the label set of e's own class */
   void updateLbls(ENode* e, size_t h);
   /** Add h to the parent label sets of the classes of e's arguments */
@@ -389,6 +418,10 @@ class EGraph : protected EnvObj
   std::vector<std::pair<Node, Node>> d_diseqs;
   /** Whether to record disequalities at all */
   bool d_trackDiseqs;
+  /** Whether candidate registration waits for markRelevant */
+  bool d_gateCandidates;
+  /** How many nodes have been registered as candidates */
+  size_t d_numCandidates;
   /** The generation registered for a term that is not here yet */
   std::unordered_map<Node, uint32_t> d_pendingGen;
   /** The congruence table. z3: smt::cg_table */

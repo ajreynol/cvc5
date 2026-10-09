@@ -34,6 +34,7 @@ ENode::ENode(Node n,
       d_classSize(1),
       d_cgr(this),
       d_lblHash(-1),
+      d_isCandidate(false),
       d_generation(generation),
       d_mark(false),
       d_mark2(false)
@@ -51,6 +52,8 @@ EGraph::EGraph(Env& env, Trail& trail)
       d_termStack(*this),
       d_mergeStack(*this),
       d_trackDiseqs(false),
+      d_gateCandidates(false),
+      d_numCandidates(0),
       d_generation(0)
 {
 }
@@ -231,10 +234,11 @@ ENode* EGraph::addTerm(TNode n)
       updateChildrenPlbls(e, h);
     }
   }
-  // the candidate collection half of z3's mam::relevant_eh
-  for (EGraphListener* l : d_listeners)
+  // the candidate collection half of z3's mam::relevant_eh. With gating this
+  // waits until the term becomes relevant; see setCandidateGating.
+  if (!d_gateCandidates)
   {
-    l->notifyNewENode(e);
+    makeCandidate(e);
   }
   return e;
 }
@@ -412,6 +416,48 @@ void EGraph::assertDiseq(TNode t1, TNode t2, CVC5_UNUSED TNode reason)
   {
     l->notifyDiseq(e1, e2);
   }
+}
+
+void EGraph::makeCandidate(ENode* e)
+{
+  if (e->d_isCandidate)
+  {
+    return;
+  }
+  e->d_isCandidate = true;
+  d_numCandidates++;
+  ENode* en = e;
+  d_trail.onPop([this, en]() {
+    en->d_isCandidate = false;
+    d_numCandidates--;
+  });
+  for (EGraphListener* l : d_listeners)
+  {
+    l->notifyNewENode(e);
+  }
+}
+
+void EGraph::markRelevant(TNode n)
+{
+  std::vector<TNode> visit{n};
+  do
+  {
+    TNode cur = visit.back();
+    visit.pop_back();
+    ENode* e = getENode(cur);
+    if (e != nullptr)
+    {
+      if (e->isCandidate())
+      {
+        // it was marked before, and so were its subterms
+        continue;
+      }
+      makeCandidate(e);
+    }
+    // a term we do not track can still have subterms we do, a quantified
+    // formula under a disequality for example, so the walk continues
+    visit.insert(visit.end(), cur.begin(), cur.end());
+  } while (!visit.empty());
 }
 
 void EGraph::registerGeneration(TNode t, uint32_t g)

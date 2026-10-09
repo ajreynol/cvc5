@@ -324,6 +324,14 @@ name   = "Quantifiers"
   help = "Discard the instances, so that only the cost of matching is incurred. For measuring how much of the cost of eager E-matching is the matcher and how much is the inner SMT solver."
 
 [[option]]
+  name       = "eagerInstRelevant"
+  category   = "expert"
+  long       = "eager-inst-relevant"
+  type       = "bool"
+  default    = "true"
+  help       = "match only against the terms that occur in an asserted fact, which is the closest cvc5 has to z3's relevancy: z3 adds a term to its e-graph when it is internalized but only matches it once its relevancy propagation marks it relevant, while the master equality engine of cvc5 reports every term of the problem"
+
+[[option]]
   name       = "eagerInstMatchMode"
   category   = "expert"
   long       = "eager-inst-match-mode=MODE"
