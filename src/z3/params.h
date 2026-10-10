@@ -312,6 +312,15 @@ struct Params
   /** smt.arith.nl: nonlinear reasoning in the arithmetic solver. */
   bool d_arithNl = true;
   /**
+   * Whether a nonlinear subproblem the ported theory_arith gives up on is
+   * handed to the cvc5 subsolver of the theory bridge. Not a Z3 parameter:
+   * Z3 has process_non_linear, which this port does not, and which this
+   * stands in for. Only the unsat direction is used, so it can only turn an
+   * "unknown" into an "unsat"; a satisfiable answer leaves the model tainted
+   * exactly as giving up does.
+   */
+  bool d_arithNlFallback = false;
+  /**
    * Whether arithmetic is the native port of Z3's theory_arith (smt.arith.
    * solver=2) rather than the bridge to cvc5's solver.
    */

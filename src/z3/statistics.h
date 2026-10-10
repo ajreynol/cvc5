@@ -44,6 +44,9 @@ struct Statistics
   uint64_t d_numMkLits;
   uint64_t d_numDynAck;
   uint64_t d_numDelDynAck;
+  /** nonlinear subproblems handed to the bridge, and the conflicts found */
+  uint64_t d_numArithNlFallbacks;
+  uint64_t d_numArithNlFallbackConflicts;
   /** interface equalities the core was asked to split on, as Z3's
    * arith-assume-eqs, and the entailed ones a bridge propagated, as its
    * arith-fixed-eqs. The two are worth keeping apart: a propagation is one

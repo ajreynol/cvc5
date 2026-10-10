@@ -4380,6 +4380,9 @@ void SmtContext::registerStatistics()
   add("z3::mkBinClause", d_stats.d_numMkBinClause);
   add("z3::mkLits", d_stats.d_numMkLits);
   add("z3::dynAck", d_stats.d_numDynAck);
+  add("z3::arithNlFallbacks", d_stats.d_numArithNlFallbacks);
+  add("z3::arithNlFallbackConflicts",
+      d_stats.d_numArithNlFallbackConflicts);
   add("z3::interfaceEqs", d_stats.d_numInterfaceEqs);
   add("z3::propagatedEqs", d_stats.d_numPropagatedEqs);
   add("z3::separatedEqs", d_stats.d_numSeparatedEqs);

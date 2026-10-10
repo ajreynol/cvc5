@@ -6,11 +6,49 @@ where that holds and where it does not, checked against the two source trees
 (`~/z3/src` and `src/z3`) rather than from memory. It is the companion to
 `README.md`, which explains the port; this one only records divergences.
 
-Measured state at the time of writing, on a 300-benchmark sample of
-`~/benchmarks/quant-07-25` with a 10s limit: z3 289 solved, cvc5 274,
-`cvc5 --z3` 276. The cvc5 figure did not record its options; the baseline is
-`cvc5 --user-pat=strict --no-cbqi`, which is still to be measured on this
-sample.
+Measured state, on a 300-benchmark sample of `~/benchmarks/quant-07-25` with a
+10s limit, every arm interleaved per file so that machine load affects them
+equally:
+
+| arm | solved | unknown | timeout | time |
+|---|---|---|---|---|
+| **`--z3-preset=verus-best`** | **296** | **1** | 3 | 123s |
+| z3, `smt.mbqi=false` only | 289 | 0 | 11 | 171s |
+| z3, Verus options | 283 | 16 | 1 | 68s |
+| `--z3 --z3-preset=verus` | 282 | 16 | 2 | 118s |
+| `cvc5 --user-pat=strict --no-cbqi` | 275 | 0 | 25 | 348s |
+| `cvc5` | 272 | 0 | 28 | 459s |
+
+Two readings of this, and both matter.
+
+**As a fidelity check**, compare `--z3-preset=verus` against Z3 given the same
+options: the two agree on **297 of the 300 files** -- 281 both `unsat`, the
+*same* 16 both `unknown`, and three on the timeout boundary (two where Z3
+finishes and the port does not, one the other way). The 16 `unknown` results
+are Z3's behaviour in that configuration, not a shortfall of the port:
+`smt.mbqi=false` with `pi.enabled=false` is simply incomplete there. What
+separates the two is a constant factor of about 1.8x (118s vs 68s, and 306s vs
+171s under defaults), and that factor is what the lost boundary files cost.
+
+**As a solver**, three options turn those 16 unknowns into one. They are not
+deviations from Z3's behaviour -- Z3 does the same thing when given the same
+options -- they are a better configuration than the one Verus happens to pass:
+
+- `--z3-pattern-inference` (`pi.enabled=true`) recovers 3 of the 16 at no cost
+  at all (285 solved, 115s against 282, 115s). Z3 recovers the same 3.
+- `--z3-arith-nl --z3-arith-nl-fallback` recovers 12 more. Z3's
+  `smt.arith.nl=true` recovers only 10 of them, so the port is ahead here.
+- Together: 296 solved, 1 unknown, for 5% more time than the baseline.
+
+`--z3-preset=verus-best` is exactly that combination: Verus's options with
+those two turned back on and the nonlinear fallback enabled. Like every
+preset it only sets what was not given explicitly, so
+`--z3-preset=verus-best --no-z3-pattern-inference` does what it says. Use
+`--z3-preset=verus` to compare against Z3 and `verus-best` to solve
+benchmarks.
+
+No answer of any arm contradicts another anywhere on this sample.
+`ctest -R regress0` is clean (2774).
 
 ## Verified faithful
 
@@ -48,7 +86,26 @@ sample.
 ### Arithmetic — ported (`--z3-arith=native`, the Verus preset)
 
 Z3's `theory_mi_arith` is ported; see README, "The theories", for what is
-and is not. Known differences: cvc5's normal form for atoms (`>=`, and `<=`
+and is not. The one piece with real consequences is **`process_non_linear`,
+which is not ported**: `theory_arith_nl.cpp` runs Z3's monomial assignment
+check and linear-monomial propagation and then gives up, where Z3 would go on
+to its nl rounds, interval propagation, cross-nested consistency, Groebner
+basis and nonlinear branching. That is worth 10 of Z3's answers on this
+sample.
+
+`--z3-arith-nl-fallback` stands in for it: at the point where the port would
+give up, the subproblem goes to the theory bridge's cvc5 subsolver instead.
+Only the unsat direction is used -- the bridge reasons about an abstraction in
+which every non-arithmetic subterm is opaque, so a satisfiable answer says
+nothing about the whole problem and leaves the model tainted exactly as giving
+up does, while an unsatisfiable one is a real conflict over literals the core
+already has. It recovers 12 of the 16 where Z3's own strategies recover 10,
+and because it only engages where `processNonLinear` is actually reached it
+costs 5% rather than the 2.2x that routing *all* arithmetic through the bridge
+costs (`--z3-arith=bridge`, which also turned 11 linear benchmarks into
+timeouts for a net gain of one). Porting `process_non_linear` properly is
+therefore both more work and worse on these benchmarks; it stays on the list
+for fidelity's sake, not for the answers. Known differences: cvc5's normal form for atoms (`>=`, and `<=`
 only from the theory itself) rather than Z3's; cvc5's total division
 operators, which get an extra axiom for a zero divisor; `ABS`, transcendentals
 and `iand` are unsupported (they taint the model rather than being

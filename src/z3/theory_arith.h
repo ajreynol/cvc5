@@ -857,6 +857,16 @@ class TheoryArith : public Theory
   };
   bool defaultInternalizer() const override { return false; }
   bool internalizeAtom(TNode n, bool gateCtx) override;
+
+  /** Register an atom with the theory bridge, for the nonlinear fallback. */
+  void registerNlFallbackAtom(TNode atom, BoolVar v);
+
+  /**
+   * Stand in for Z3's process_non_linear by handing the subproblem to the
+   * theory bridge's subsolver. FC_CONTINUE if that produced a conflict,
+   * FC_GIVEUP otherwise, which is what this returns when the fallback is off.
+   */
+  FinalCheckStatus nlFallback();
   bool internalizeTerm(TNode term) override;
   void internalizeEqEh(TNode atom, BoolVar v) override;
   void applySortCnstr(ENode* n, const TypeNode& s) override;

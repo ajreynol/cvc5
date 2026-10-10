@@ -118,8 +118,11 @@ void Params::initialize(const Options& opts)
       maxInst > UINT32_MAX ? UINT32_MAX : static_cast<uint32_t>(maxInst);
   d_piEnabled = opts.z3.z3PatternInference;
   d_arithNl = opts.z3.z3ArithNl;
+  d_arithNlFallback = opts.z3.z3ArithNlFallback;
   d_arithNative = opts.z3.z3Arith == options::Z3ArithMode::NATIVE;
-  if (opts.z3.z3Preset == options::Z3PresetMode::VERUS)
+  const bool verus = opts.z3.z3Preset == options::Z3PresetMode::VERUS
+                     || opts.z3.z3Preset == options::Z3PresetMode::VERUS_BEST;
+  if (verus)
   {
     // The options Verus passes to Z3 (auto_config=false smt.mbqi=false
     // smt.case_split=3 smt.qi.eager_threshold=100 smt.delay_units=true
@@ -132,10 +135,19 @@ void Params::initialize(const Options& opts)
     if (!z.z3CaseSplitWasSetByUser) d_caseSplitStrategy = CS_RELEVANCY;
     if (!z.z3QiEagerThresholdWasSetByUser) d_qiEagerThreshold = 100.0;
     if (!z.z3DelayUnitsWasSetByUser) d_delayUnits = true;
-    if (!z.z3PatternInferenceWasSetByUser) d_piEnabled = false;
-    if (!z.z3ArithNlWasSetByUser) d_arithNl = false;
     // smt.arith.solver=2
     if (!z.z3ArithWasSetByUser) d_arithNative = true;
+    // pi.enabled and smt.arith.nl are the two Verus turns off that cost
+    // answers on these benchmarks: pattern inference is worth three of the
+    // sixteen the plain Verus configuration leaves unknown, and nonlinear
+    // arithmetic -- with the fallback that stands in for the unported
+    // process_non_linear -- is worth twelve more. Z3 behaves the same way
+    // when given the same options, so verus-best is a better configuration
+    // rather than a departure from Z3; see FIDELITY.md.
+    const bool best = opts.z3.z3Preset == options::Z3PresetMode::VERUS_BEST;
+    if (!z.z3PatternInferenceWasSetByUser) d_piEnabled = best;
+    if (!z.z3ArithNlWasSetByUser) d_arithNl = best;
+    if (best && !z.z3ArithNlFallbackWasSetByUser) d_arithNlFallback = true;
   }
   switch (opts.z3.z3NgLiftIte)
   {

@@ -315,14 +315,24 @@ answers in 0.08s with these. With `auto_config=false`, `setup` takes
 `CFG_BASIC`, so none of `setup_AUFLIA`'s settings apply either -- no "always
 false" phase, no geometric restarts, no `ng_lift_ite`, no pattern database.
 
-`--z3-preset=verus` selects that configuration; it sets each corresponding
+There are two presets. `--z3-preset=verus` selects that configuration; it
+sets each corresponding
 `--z3-*` option that was not given explicitly (`--z3-auto-config`,
 `--z3-mbqi`, `--z3-case-split=relevancy`, `--z3-qi-eager-threshold=100`,
 `--z3-delay-units`, `--z3-pattern-inference`, `--z3-arith-nl`), so any one of
-them can still be overridden. `--z3-ng-lift-ite` defaults to `auto`, which follows
+them can still be overridden. `--z3-preset=verus-best` is the same except
+for the two of Verus's settings that cost answers here: pattern inference and
+nonlinear arithmetic are left on, and `--z3-arith-nl-fallback` is enabled.
+That is worth 15 of the 16 benchmarks the plain Verus configuration leaves
+unknown, for about 5% more time, and Z3 behaves the same way when given the
+same options -- so `verus` is the preset to compare against Z3 with, and
+`verus-best` the one to solve benchmarks with. See `FIDELITY.md`.
+
+`--z3-ng-lift-ite` defaults to `auto`, which follows
 `--z3-auto-config` the way Z3's own parameter follows `setup_AUFLIA`.
-`smt.arith.solver` and `rewriter.sort_disjunctions` have no counterpart,
-because arithmetic goes through the cvc5 bridge and the rewriter is cvc5's.
+`rewriter.sort_disjunctions` has no counterpart, since the rewriter is
+cvc5's; `smt.arith.solver=2` is `--z3-arith=native`, which both presets
+select.
 `smt.arith.nl=false` is `--no-z3-arith-nl`. It reproduces what
 `theory_arith` does with `m_nl_arith` off, which is more than giving up:
 

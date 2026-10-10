@@ -27,6 +27,7 @@
 #include "z3/ast.h"
 #include "z3/justification.h"
 #include "z3/smt_context.h"
+#include "z3/theory_cvc5.h"
 #include "z3/theory_arith.h"
 #include "z3/util/trail.h"
 
@@ -1374,6 +1375,21 @@ TheoryArith::Atoms::iterator TheoryArith::nextSup(Atom* a1,
   return end;
 }
 
+void TheoryArith::registerNlFallbackAtom(TNode atom, BoolVar v)
+{
+  if (!d_params.d_arithNlFallback)
+  {
+    return;
+  }
+  // The fallback decides a nonlinear subproblem with the theory bridge's
+  // subsolver, which builds its query from the atoms registered with it. The
+  // bridge is not a registered theory here -- native arithmetic is -- so it
+  // has no internalization hook of its own and would otherwise see nothing.
+  // It costs a vector entry per atom and is never consulted unless
+  // processNonLinear actually gives up.
+  d_ctx.getCvc5Bridge().registerAtom(atom, v);
+}
+
 bool TheoryArith::internalizeAtom(TNode n, bool /*gateCtx*/)
 {
   Assert(!d_ctx.bInternalized(n));
@@ -1388,6 +1404,7 @@ bool TheoryArith::internalizeAtom(TNode n, bool /*gateCtx*/)
     }
     BoolVar bv = d_ctx.mkBoolVar(n);
     d_ctx.setVarTheory(bv, getId());
+    registerNlFallbackAtom(n, bv);
     return true;
   }
   if (!arith::isLe(n) && !arith::isGe(n))
@@ -1430,6 +1447,7 @@ bool TheoryArith::internalizeAtom(TNode n, bool /*gateCtx*/)
   }
   BoolVar bv = d_ctx.mkBoolVar(n);
   d_ctx.setVarTheory(bv, getId());
+  registerNlFallbackAtom(n, bv);
   Rational k0;
   bool isNum = arith::isNumeral(rhs, k0);
   AlwaysAssert(isNum);
@@ -1472,8 +1490,9 @@ bool TheoryArith::internalizeTerm(TNode term)
   return v != s_nullTheoryVar;
 }
 
-void TheoryArith::internalizeEqEh(TNode atom, BoolVar /*v*/)
+void TheoryArith::internalizeEqEh(TNode atom, BoolVar v)
 {
+  registerNlFallbackAtom(atom, v);
   if (d_params.d_arithEagerEqAxioms && atom.getKind() == Kind::EQUAL
       && isApp(atom[0]) && isApp(atom[1]))
   {

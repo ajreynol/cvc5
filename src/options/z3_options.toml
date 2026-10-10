@@ -266,7 +266,10 @@ name   = "Z3 Core"
   help = "Z3's own defaults, with auto configuration."
 [[option.mode.VERUS]]
   name = "verus"
-  help = "The options Verus runs Z3 with: auto_config=false smt.mbqi=false smt.case_split=3 smt.qi.eager_threshold=100 smt.delay_units=true pi.enabled=false."
+  help = "The options Verus runs Z3 with: auto_config=false smt.mbqi=false smt.case_split=3 smt.qi.eager_threshold=100 smt.delay_units=true smt.arith.solver=2 smt.arith.nl=false pi.enabled=false."
+[[option.mode.VERUS_BEST]]
+  name = "verus-best"
+  help = "Verus's options except the two that cost answers here, plus the nonlinear fallback: pattern inference and nonlinear arithmetic are on and --z3-arith-nl-fallback is enabled."
 
 [[option]]
   name       = "z3PatternInference"
@@ -290,6 +293,14 @@ name   = "Z3 Core"
 [[option.mode.NATIVE]]
   name = "native"
   help = "The port of Z3's simplex-based theory_arith (smt.arith.solver=2)."
+
+[[option]]
+  name       = "z3ArithNlFallback"
+  category   = "expert"
+  long       = "z3-arith-nl-fallback"
+  type       = "bool"
+  default    = "false"
+  help       = "when the ported theory_arith gives up on a nonlinear subproblem, decide it with the cvc5 subsolver of the theory bridge instead"
 
 [[option]]
   name       = "z3ArithNl"

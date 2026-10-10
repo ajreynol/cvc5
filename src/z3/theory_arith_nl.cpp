@@ -20,6 +20,7 @@
 #include "smt/env.h"
 #include "z3/arith_util.h"
 #include "z3/smt_context.h"
+#include "z3/theory_cvc5.h"
 #include "z3/theory_arith.h"
 
 namespace cvc5::internal {
@@ -316,14 +317,41 @@ FinalCheckStatus TheoryArith::processNonLinear()
   if (!d_params.d_arithNl)
   {
     Trace("z3-arith") << "Non-linear is not enabled" << std::endl;
-    return FC_GIVEUP;
+    return nlFallback();
   }
 
   // Not ported: the rest of Z3's process_non_linear (the d_nlRounds limit
   // d_params.d_nlArithRounds, elim_quasi_base_rows,
   // move_non_base_vars_to_bounds, max_min_nl_vars, and the interval
   // propagation, cross nested consistency, Groebner basis and nonlinear
-  // branching strategies) only runs with smt.arith.nl=true. Give up instead.
+  // branching strategies) only runs with smt.arith.nl=true.
+  return nlFallback();
+}
+
+FinalCheckStatus TheoryArith::nlFallback()
+{
+  if (!d_params.d_arithNlFallback)
+  {
+    return FC_GIVEUP;
+  }
+  // Z3 would run process_non_linear here. This port does not have it, so the
+  // subproblem goes to the theory bridge's cvc5 subsolver instead, which on
+  // the Verus benchmarks decides more of these than Z3's own nonlinear
+  // strategies do.
+  //
+  // Only a conflict is taken from it. The bridge reasons about an abstraction
+  // in which every non-arithmetic subterm is an opaque constant, so a
+  // satisfiable answer says nothing about the whole problem and leaves the
+  // model tainted, exactly as giving up does; an unsatisfiable one is a real
+  // conflict over literals the core already has.
+  Cvc5Bridge& bridge = d_ctx.getCvc5Bridge();
+  FinalCheckStatus st = bridge.check(true);
+  d_ctx.getStats().d_numArithNlFallbacks++;
+  if (st == FC_CONTINUE || d_ctx.inconsistent())
+  {
+    d_ctx.getStats().d_numArithNlFallbackConflicts++;
+    return FC_CONTINUE;
+  }
   return FC_GIVEUP;
 }
 
