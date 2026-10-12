@@ -82,6 +82,7 @@ SmtContext::SmtContext(Env& env, Params& p)
     : EnvObj(env),
       d_params(p),
       d_relevancyLvl(p.d_relevancyLvl),
+      d_prop(env, *this, p, d_stats),
       d_normalizer(env.getNodeManager()),
       d_connNormalizer(env.getNodeManager(),
                        env.getOptions().z3.z3EliminateAnd),
@@ -93,10 +94,8 @@ SmtContext::SmtContext(Env& env, Params& p)
       d_qmanager(nullptr),
       d_relevancyPropagator(new RelevancyPropagator(*this)),
       d_random(p.d_randomSeed),
-      d_flushing(false),
       d_fingerprints(d_region),
       d_assertedFormulasQhead(0),
-      d_assertedInconsistent(false),
       d_hasQuantifiers(false),
       d_internalizingAssertions(false),
       d_interrupted(false),
@@ -105,23 +104,10 @@ SmtContext::SmtContext(Env& env, Params& p)
       d_falseENode(nullptr),
       d_theories(s_numTheories, nullptr),
       d_isDiseqTmp(nullptr),
-      d_qhead(0),
-      d_simpQhead(0),
-      d_simpCounter(0),
-      d_caseSplitQueue(nullptr),
-      d_bvarInc(1.0),
-      d_phaseCacheOn(true),
-      d_phaseCounter(0),
-      d_phaseDefault(false),
-      d_conflict(s_nullBJustification),
-      d_notL(s_nullLiteral),
       d_conflictResolution(nullptr),
       d_dynAckManager(*this, p),
       d_explainer(*this, d_dynAckManager),
       d_unknown("unknown"),
-      d_scopeLvl(0),
-      d_baseLvl(0),
-      d_searchLvl(0),
       d_generation(0),
       d_lastSearchResult(L_UNDEF),
       d_lastSearchFailure(OK),
@@ -136,15 +122,13 @@ SmtContext::SmtContext(Env& env, Params& p)
       d_restartThreshold(p.d_restartInitial),
       d_restartOuterThreshold(p.d_restartInitial),
       d_lubyIdx(1),
-      d_agility(0.0),
       d_lemmaGcThreshold(p.d_lemmaGcInitial),
-      d_mkBoolVarTrail(*this),
       d_mkENodeTrail(*this)
 {
   d_qmanager.reset(new QuantifierManager(*this, p));
   d_conflictResolution.reset(
-      mkConflictResolution(*this, d_explainer, p, d_assignedLiterals));
-  d_caseSplitQueue.reset(mkCaseSplitQueue(*this, p));
+      mkConflictResolution(*this, d_explainer, p, d_prop.assignedLiterals()));
+  d_prop.finishInit();
 
   registerStatistics();
 
@@ -161,12 +145,7 @@ SmtContext::~SmtContext() { flush(); }
 void SmtContext::init()
 {
   Node t = nodeManager()->mkConst(true);
-  mkBoolVar(t);
-  Assert(getBoolVar(t) == s_trueBoolVar);
-  Assert(s_trueLiteral.var() == s_trueBoolVar);
-  d_assignment[s_trueLiteral.index()] = L_TRUE;
-  d_assignment[s_falseLiteral.index()] = L_FALSE;
-  d_bdata[s_trueBoolVar].setAxiom();
+  d_prop.initTrue(t);
   d_trueENode = mkENode(t, true, true, false);
   Node f = nodeManager()->mkConst(false);
   d_falseENode = mkENode(f, true, true, false);
@@ -174,14 +153,12 @@ void SmtContext::init()
 
 void SmtContext::flush()
 {
-  d_flushing = true;
   d_relevancyPropagator.reset(nullptr);
   for (Theory* th : d_theorySet)
   {
     th->flushEh();
   }
-  delClauses(d_auxClauses, 0);
-  delClauses(d_lemmas, 0);
+  d_prop.flushClauses();
   delJustifications(d_justifications, 0);
   d_trailStack.reset();
   d_qmanager.reset(nullptr);
@@ -197,7 +174,6 @@ void SmtContext::flush()
   }
   d_theorySet.clear();
   std::fill(d_theories.begin(), d_theories.end(), nullptr);
-  d_flushing = false;
 }
 
 bool SmtContext::getCancelFlag()
@@ -256,169 +232,6 @@ Node SmtContext::mkEqAtom(TNode lhs, TNode rhs)
     std::swap(lhs, rhs);
   }
   return nodeManager()->mkNode(Kind::EQUAL, lhs, rhs);
-}
-
-void SmtContext::setJustification(BoolVar /*v*/,
-                                  BoolVarData& d,
-                                  const BJustification& j)
-{
-  d.setJustification(j);
-}
-
-void SmtContext::assignCore(Literal l, BJustification j, bool decision)
-{
-  d_assignedLiterals.push_back(l);
-  d_assignment[l.index()] = L_TRUE;
-  d_assignment[(~l).index()] = L_FALSE;
-  BoolVarData& d = getBdata(l.var());
-  setJustification(l.var(), d, j);
-  d.d_scopeLvl = d_scopeLvl;
-  if (d_params.d_restartAdaptive && d.d_phaseAvailable)
-  {
-    d_agility *= d_params.d_agilityFactor;
-    if (!decision && d.d_phase == l.sign())
-    {
-      d_agility += (1.0 - d_params.d_agilityFactor);
-    }
-  }
-  bool newPhase = !l.sign();
-  d_stats.d_numAssignments++;
-  if (d.d_phaseAvailable && d.d_phase != newPhase)
-  {
-    // reset the birthdate when the phase changes
-    d_birthdate[l.var()] = d_stats.d_numAssignments;
-  }
-  d.d_phaseAvailable = true;
-  d.d_phase = newPhase;
-
-  if (d.isAtom()
-      && (relevancyLvl() == 0 || (relevancyLvl() == 1 && !d.isQuantifier())
-          || isRelevantCore(l)))
-  {
-    d_atomPropagationQueue.push_back(l);
-  }
-
-  d_caseSplitQueue->assignLitEh(l);
-}
-
-bool SmtContext::bcp()
-{
-  Assert(!inconsistent());
-  while (d_qhead < d_assignedLiterals.size())
-  {
-    if (getCancelFlag())
-    {
-      return true;
-    }
-    Literal l = d_assignedLiterals[d_qhead];
-    Assert(getAssignment(l) == L_TRUE);
-    d_qhead++;
-    d_simpCounter--;
-    Literal notL = ~l;
-    Assert(getAssignment(notL) == L_FALSE);
-    WatchList& w = d_watches[l.index()];
-    if (binaryClauseOptEnabled())
-    {
-      // binary clause propagation
-      BJustification js(l);
-      Literal* it = w.beginLiterals();
-      Literal* end = w.endLiterals();
-      for (; it != end; ++it)
-      {
-        Literal l2 = *it;
-        switch (getAssignment(l2))
-        {
-          case L_FALSE:
-            d_stats.d_numBinPropagations++;
-            setConflict(js, ~l2);
-            return false;
-          case L_UNDEF:
-            d_stats.d_numBinPropagations++;
-            assignCore(l2, js);
-            break;
-          case L_TRUE: break;
-        }
-      }
-    }
-
-    // non-binary clause propagation
-    WatchList::ClauseIterator it = w.beginClause();
-    WatchList::ClauseIterator it2 = it;
-    WatchList::ClauseIterator end = w.endClause();
-    for (; it != end; ++it)
-    {
-      Clause* cls = *it;
-      Assert(cls->getLiteral(0) == notL || cls->getLiteral(1) == notL);
-      if (cls->getLiteral(0) == notL)
-      {
-        cls->setLiteral(0, cls->getLiteral(1));
-        cls->setLiteral(1, notL);
-      }
-      Assert(cls->getLiteral(1) == notL);
-
-      Literal firstLit = cls->getLiteral(0);
-      LBool firstLitVal = getAssignment(firstLit);
-
-      if (firstLitVal == L_TRUE)
-      {
-        *it2 = *it;  // the clause is already satisfied, keep it
-        it2++;
-        continue;
-      }
-      Literal* it3 = cls->begin() + 2;
-      Literal* end3 = cls->end();
-      bool foundWatch = false;
-      for (; it3 != end3; ++it3)
-      {
-        if (getAssignment(*it3) != L_FALSE)
-        {
-          // Swap *it3 with the literal at position 1; the negation of *it3
-          // will watch cls from now on.
-          d_watches[(~(*it3)).index()].insertClause(cls);
-          cls->setLiteral(1, *it3);
-          *it3 = notL;
-          foundWatch = true;
-          break;
-        }
-      }
-      if (foundWatch)
-      {
-        continue;
-      }
-      // did not find a watch
-      if (firstLitVal == L_FALSE)
-      {
-        // CONFLICT: copy the remaining watches
-        while (it < end)
-        {
-          *it2 = *it;
-          it2++;
-          it++;
-        }
-        Assert(it2 <= end);
-        w.setEndClause(it2);
-        Assert(isEmptyClause(cls));
-        setConflict(BJustification(cls));
-        return false;
-      }
-      // PROPAGATION
-      Assert(firstLitVal == L_UNDEF);
-      Assert(isUnitClause(cls));
-      *it2 = *it;
-      it2++;  // keep the clause
-      d_stats.d_numPropagations++;
-      // It is safe to call assignCore instead of assign, since firstLit is
-      // unassigned.
-      assignCore(firstLit, BJustification(cls));
-      if (d_params.d_relevancyLemma && cls->isLemma())
-      {
-        markAsRelevant(boolVar2Expr(firstLit.var()));
-      }
-    }
-    Assert(it2 <= end);
-    w.setEndClause(it2);
-  }
-  return true;
 }
 
 void SmtContext::pushNewThEq(TheoryId th, TheoryVar lhs, TheoryVar rhs)
@@ -1385,7 +1198,7 @@ bool SmtContext::propagateAtoms()
     BoolVarData& d = getBdata(v);
     if (d.isEq())
     {
-      TNode n = d_boolVar2Expr[v];
+      TNode n = boolVar2Expr(v);
       Assert(n.getKind() == Kind::EQUAL);
       TNode lhs = n[0];
       TNode rhs = n[1];
@@ -1419,12 +1232,12 @@ bool SmtContext::propagateAtoms()
       // Note that with relevancy lemmas a quantifier may be asserted to
       // false and marked relevant, which happens when a quantifier is part
       // of a conflict clause that becomes unit.
-      Assert(isQuantifier(d_boolVar2Expr[v]));
+      Assert(isQuantifier(boolVar2Expr(v)));
       if (getAssignment(v) == L_TRUE)
       {
         // All universal quantifiers occur positively in the input, so
         // quantifiers assigned to false can be ignored.
-        assignQuantifier(d_boolVar2Expr[v]);
+        assignQuantifier(boolVar2Expr(v));
       }
     }
     if (inconsistent())
@@ -1455,12 +1268,12 @@ class SetVarTheoryTrail : public Trail
 void SmtContext::setVarTheory(BoolVar v, TheoryId tid)
 {
   Assert(getVarTheory(v) == s_nullTheoryId);
-  Assert(getInternLevel(v) <= d_scopeLvl);
-  if (d_scopeLvl > getInternLevel(v))
+  Assert(getInternLevel(v) <= getScopeLevel());
+  if (getScopeLevel() > getInternLevel(v))
   {
     pushTrail(SetVarTheoryTrail(*this, v));
   }
-  d_bdata[v].setNotifyTheory(tid);
+  getBdata(v).setNotifyTheory(tid);
 }
 
 void SmtContext::propagateBoolVarENode(BoolVar v)
@@ -1470,7 +1283,7 @@ void SmtContext::propagateBoolVarENode(BoolVar v)
   Assert(getAssignment(v) != L_UNDEF);
   Assert(getBdata(v).isENode());
   LBool val = getAssignment(v);
-  Assert(v < d_bInternalizedStack.size());
+  Assert(v < getNumBoolVars());
   ENode* n = boolVar2ENode(v);
 
   bool sign = val == L_FALSE;
@@ -1550,57 +1363,6 @@ void SmtContext::pushNewThDiseqs(ENode* r, TheoryVar v, Theory* th)
   }
 }
 
-LBool SmtContext::getAssignment(TNode n) const
-{
-  if (isFalseNode(n))
-  {
-    return L_FALSE;
-  }
-  if (n.getKind() == Kind::NOT)
-  {
-    Assert(bInternalized(n[0]));
-    return ~getAssignment(getBoolVarOfId(n[0].getId()));
-  }
-  Assert(bInternalized(n));
-  BoolVar var = getBoolVarOfId(n.getId());
-  Assert(var != s_nullBoolVar);
-  return getAssignment(var);
-}
-
-LBool SmtContext::findAssignment(TNode n) const
-{
-  if (n.getKind() == Kind::NOT)
-  {
-    TNode arg = n[0];
-    if (bInternalized(arg))
-    {
-      return ~getAssignment(getBoolVarOfId(arg.getId()));
-    }
-    if (isFalseNode(arg))
-    {
-      return L_TRUE;
-    }
-    if (isTrueNode(arg))
-    {
-      return L_FALSE;
-    }
-    return L_UNDEF;
-  }
-  if (bInternalized(n))
-  {
-    return getAssignment(n);
-  }
-  if (isFalseNode(n))
-  {
-    return L_FALSE;
-  }
-  if (isTrueNode(n))
-  {
-    return L_TRUE;
-  }
-  return L_UNDEF;
-}
-
 LBool SmtContext::getAssignment(ENode* n) const
 {
   TNode owner = n->getExpr();
@@ -1614,41 +1376,6 @@ LBool SmtContext::getAssignment(ENode* n) const
   }
   BoolVar v = getBoolVarOfId(owner.getId());
   return getAssignment(v);
-}
-
-Node SmtContext::literal2Expr(Literal l) const
-{
-  if (l == s_trueLiteral)
-  {
-    return nodeManager()->mkConst(true);
-  }
-  if (l == s_falseLiteral)
-  {
-    return nodeManager()->mkConst(false);
-  }
-  if (l.sign())
-  {
-    return nodeManager()->mkNode(Kind::NOT, boolVar2Expr(l.var()));
-  }
-  return boolVar2Expr(l.var());
-}
-
-Literal SmtContext::getLiteral(TNode n) const
-{
-  if (n.getKind() == Kind::NOT)
-  {
-    return ~getLiteral(n[0]);
-  }
-  if (isTrueNode(n))
-  {
-    return s_trueLiteral;
-  }
-  if (isFalseNode(n))
-  {
-    return s_falseLiteral;
-  }
-  Assert(bInternalized(n));
-  return Literal(getBoolVar(n), false);
 }
 
 void SmtContext::relevantEh(TNode n)
@@ -1669,7 +1396,7 @@ void SmtContext::relevantEh(TNode n)
       }
     }
   }
-  d_caseSplitQueue->relevantEh(n);
+  d_prop.getCaseSplitQueue().relevantEh(n);
 
   if (!isApp(n))
   {
@@ -1718,14 +1445,14 @@ void SmtContext::propagateRelevancy(size_t qhead)
   {
     return;
   }
-  size_t sz = d_assignedLiterals.size();
+  size_t sz = assignedLiterals().size();
   while (qhead < sz)
   {
-    Literal l = d_assignedLiterals[qhead];
+    Literal l = assignedLiterals()[qhead];
     Assert(getAssignment(l) == L_TRUE);
     qhead++;
     BoolVar var = l.var();
-    TNode n = d_boolVar2Expr[var];
+    TNode n = boolVar2Expr(var);
     d_relevancyPropagator->assignEh(n, !l.sign());
   }
   d_relevancyPropagator->propagate();
@@ -1783,7 +1510,7 @@ bool SmtContext::canTheoriesPropagate() const
 
 bool SmtContext::canPropagate() const
 {
-  return d_qhead != d_assignedLiterals.size()
+  return d_prop.getQhead() != d_prop.assignedLiterals().size()
          || d_relevancyPropagator->canPropagate()
          || !d_atomPropagationQueue.empty() || d_qmanager->canPropagate()
          || canTheoriesPropagate() || !d_eqPropagationQueue.empty()
@@ -1799,8 +1526,8 @@ bool SmtContext::propagate()
     {
       return false;
     }
-    size_t qhead = d_qhead;
-    if (!bcp())
+    size_t qhead = d_prop.getQhead();
+    if (!d_prop.bcp())
     {
       return false;
     }
@@ -1838,7 +1565,7 @@ bool SmtContext::propagate()
     }
     if (resourceLimitsExceeded())
     {
-      d_qhead = qhead;
+      d_prop.setQhead(qhead);
       return true;
     }
     if (!canPropagate())
@@ -1848,16 +1575,15 @@ bool SmtContext::propagate()
   }
 }
 
-void SmtContext::setConflict(const BJustification& js, Literal notL)
+void SmtContext::assignQuantifier(TNode q) { d_qmanager->assignEh(q); }
+
+void SmtContext::notifyBoolVarDeleted(TNode n)
 {
-  if (d_conflict == s_nullBJustification)
+  if (isQuantifier(n))
   {
-    d_conflict = js;
-    d_notL = notL;
+    d_qmanager->del(n);
   }
 }
-
-void SmtContext::assignQuantifier(TNode q) { d_qmanager->assignEh(q); }
 
 bool SmtContext::containsInstance(TNode q,
                                   size_t numBindings,
@@ -1896,96 +1622,18 @@ bool SmtContext::internalizedQuantifiers() const
   return !d_qmanager->empty();
 }
 
-void SmtContext::rescaleBoolVarActivity()
-{
-  for (double& a : d_activity)
-  {
-    a *= s_invActivityLimit;
-  }
-  d_bvarInc *= s_invActivityLimit;
-}
-
-bool SmtContext::guess(BoolVar var, LBool phase)
-{
-  if (isQuantifier(d_boolVar2Expr[var]))
-  {
-    // Override any decision about how to assign the quantifier: assigning a
-    // quantifier to false is the same as making it irrelevant.
-    phase = L_FALSE;
-  }
-  Literal l(var, false);
-
-  if (phase != L_UNDEF)
-  {
-    return phase == L_TRUE;
-  }
-
-  BoolVarData& d = d_bdata[var];
-  if (d.tryTrueFirst())
-  {
-    return true;
-  }
-  switch (d_params.d_phaseSelection)
-  {
-    case PS_THEORY:
-      if (d_phaseCacheOn && d.d_phaseAvailable)
-      {
-        return d_bdata[var].d_phase;
-      }
-      if (!d_phaseCacheOn && d.isTheoryAtom())
-      {
-        Theory* th = getTheory(d.getTheory());
-        LBool thPhase = th->getPhase(var);
-        if (thPhase != L_UNDEF)
-        {
-          return thPhase == L_TRUE;
-        }
-      }
-      if (trackOccs())
-      {
-        if (d_litOccs[l.index()] == 0)
-        {
-          return false;
-        }
-        if (d_litOccs[(~l).index()] == 0)
-        {
-          return true;
-        }
-      }
-      return d_phaseDefault;
-    case PS_CACHING:
-    case PS_CACHING_CONSERVATIVE:
-    case PS_CACHING_CONSERVATIVE2:
-      if (d_phaseCacheOn && d.d_phaseAvailable)
-      {
-        Trace("z3-events") << "PHASESEL cached " << d_bdata[var].d_phase
-                           << std::endl;
-        return d_bdata[var].d_phase;
-      }
-      Trace("z3-events") << "PHASESEL default cacheOn " << d_phaseCacheOn
-                         << " available " << d.d_phaseAvailable << std::endl;
-      return d_phaseDefault;
-    case PS_ALWAYS_FALSE: return false;
-    case PS_ALWAYS_TRUE: return true;
-    case PS_RANDOM: return d_random() % 2 == 0;
-    case PS_OCCURRENCE: return d_litOccs[l.index()] > d_litOccs[(~l).index()];
-  }
-  Unreachable();
-  return false;
-}
-
 bool SmtContext::decide()
 {
   BoolVar var;
   bool isPos;
   LBool phase = L_UNDEF;
-  d_caseSplitQueue->nextCaseSplit(var, phase);
+  d_prop.getCaseSplitQueue().nextCaseSplit(var, phase);
   if (var == s_nullBoolVar)
   {
     return false;
   }
 
-  isPos = guess(var, phase);
+  isPos = d_prop.guess(var, phase);
 
   d_stats.d_numDecisions++;
 
@@ -2002,198 +1650,22 @@ bool SmtContext::decide()
   return true;
 }
 
-void SmtContext::updatePhaseCacheCounter()
-{
-  d_phaseCounter++;
-  if (d_phaseCacheOn)
-  {
-    if (d_phaseCounter >= d_params.d_phaseCachingOn)
-    {
-      d_phaseCounter = 0;
-      d_phaseCacheOn = false;
-      if (d_params.d_phaseSelection == PS_CACHING_CONSERVATIVE2)
-      {
-        d_phaseDefault = !d_phaseDefault;
-      }
-    }
-  }
-  else
-  {
-    if (d_phaseCounter >= d_params.d_phaseCachingOff)
-    {
-      d_phaseCounter = 0;
-      d_phaseCacheOn = true;
-      if (d_params.d_phaseSelection == PS_CACHING_CONSERVATIVE2)
-      {
-        d_phaseDefault = !d_phaseDefault;
-      }
-    }
-  }
-}
-
 void SmtContext::pushScope()
 {
-  d_scopeLvl++;
+  d_prop.pushScope();
   d_region.pushScope();
   getTrailStack().pushScope();
-  d_scopes.push_back(Scope{d_assignedLiterals.size(),
-                           d_auxClauses.size(),
-                           d_justifications.size(),
-                           d_unitsToReassert.size()});
+  d_justificationsLims.push_back(d_justifications.size());
 
   d_relevancyPropagator->push();
   d_qmanager->push();
   d_fingerprints.pushScope();
-  d_caseSplitQueue->pushScope();
+  d_prop.getCaseSplitQueue().pushScope();
 
   for (Theory* t : d_theorySet)
   {
     t->pushScopeEh();
   }
-}
-
-void SmtContext::removeWatchLiteral(Clause* cls, size_t idx)
-{
-  d_watches[(~cls->getLiteral(idx)).index()].removeClause(cls);
-}
-
-void SmtContext::removeWatch(BoolVar v)
-{
-  Literal lit(v);
-  d_watches[lit.index()].reset();
-  d_watches[(~lit).index()].reset();
-}
-
-void SmtContext::removeClsOccs(Clause* cls)
-{
-  removeWatchLiteral(cls, 0);
-  removeWatchLiteral(cls, 1);
-  removeLitOccs(*cls, getNumBoolVars());
-}
-
-void SmtContext::addLitOccs(const Clause& cls)
-{
-  if (!trackOccs())
-  {
-    return;
-  }
-  for (Literal l : cls)
-  {
-    incRef(l);
-  }
-}
-
-void SmtContext::removeLitOccs(const Clause& cls, size_t nbv)
-{
-  if (!trackOccs())
-  {
-    return;
-  }
-  for (Literal l : cls)
-  {
-    if (l.var() < nbv)
-    {
-      decRef(l);
-    }
-  }
-}
-
-void SmtContext::decRef(Literal l)
-{
-  if (trackOccs() && d_litOccs[l.index()] > 0)
-  {
-    d_litOccs[l.index()]--;
-  }
-}
-
-void SmtContext::incRef(Literal l)
-{
-  if (trackOccs())
-  {
-    d_litOccs[l.index()]++;
-  }
-}
-
-void SmtContext::delClause(Clause* cls)
-{
-  Assert(d_flushing || !cls->inReinitStack());
-  if (!cls->deleted())
-  {
-    removeClsOccs(cls);
-  }
-  cls->deallocate();
-  d_stats.d_numDelClause++;
-}
-
-void SmtContext::delClauses(ClauseVector& v, size_t oldSize)
-{
-  size_t numCollect = v.size() - oldSize;
-  if (numCollect == 0)
-  {
-    return;
-  }
-
-  if (numCollect > 1000)
-  {
-    // For a large batch it is cheaper to mark everything deleted first and
-    // then sweep the affected watch lists once.
-    UIntSet watches;
-    for (size_t i = v.size(); i != oldSize;)
-    {
-      --i;
-      Clause* c = v[i];
-      removeLitOccs(*c, getNumBoolVars());
-      if (!c->deleted())
-      {
-        c->markAsDeleted();
-      }
-      watches.insert((~c->getLiteral(0)).index());
-      watches.insert((~c->getLiteral(1)).index());
-    }
-    for (size_t w = 0, sz = d_watches.size(); w < sz; ++w)
-    {
-      if (watches.contains(w))
-      {
-        d_watches[w].removeDeleted();
-      }
-    }
-    for (size_t i = v.size(); i != oldSize;)
-    {
-      --i;
-      v[i]->deallocate();
-    }
-    d_stats.d_numDelClause += (v.size() - oldSize);
-  }
-  else
-  {
-    for (size_t i = v.size(); i != oldSize;)
-    {
-      --i;
-      delClause(v[i]);
-    }
-  }
-  v.resize(oldSize);
-}
-
-void SmtContext::unassignVars(size_t oldLim)
-{
-  Assert(oldLim <= d_assignedLiterals.size());
-
-  size_t i = d_assignedLiterals.size();
-  while (i != oldLim)
-  {
-    --i;
-    Literal l = d_assignedLiterals[i];
-    d_assignment[l.index()] = L_UNDEF;
-    d_assignment[(~l).index()] = L_UNDEF;
-    BoolVar v = l.var();
-    BoolVarData& d = getBdata(v);
-    d.setNullJustification();
-    d_caseSplitQueue->unassignVarEh(v);
-  }
-
-  d_assignedLiterals.resize(oldLim);
-  d_qhead = oldLim;
 }
 
 void SmtContext::delJustifications(JustificationVector& justifications,
@@ -2218,95 +1690,6 @@ void SmtContext::delJustifications(JustificationVector& justifications,
     }
   }
   justifications.resize(oldLim);
-}
-
-bool SmtContext::isEmptyClause(const Clause* c) const
-{
-  size_t numLits = c->getNumLiterals();
-  for (size_t i = 0; i < numLits; ++i)
-  {
-    if (getAssignment(c->getLiteral(i)) != L_FALSE)
-    {
-      return false;
-    }
-  }
-  return true;
-}
-
-bool SmtContext::isUnitClause(const Clause* c) const
-{
-  bool found = false;
-  size_t numLits = c->getNumLiterals();
-  for (size_t i = 0; i < numLits; ++i)
-  {
-    switch (getAssignment(c->getLiteral(i)))
-    {
-      case L_FALSE: break;  // skip
-      case L_UNDEF:
-        if (found)
-        {
-          return false;
-        }
-        found = true;
-        break;
-      case L_TRUE: return false;  // the clause is already satisfied
-    }
-  }
-  return found;
-}
-
-void SmtContext::cacheGeneration(uint32_t newScopeLvl)
-{
-  // When a clause is reinitialized its enodes and literals may have to be
-  // recreated. The generation number of a recreated enode must be the one it
-  // had before, otherwise it would reset to 0 and defeat the matching-loop
-  // heuristics that control quantifier instantiation.
-  if (!d_clausesToReinit.empty())
-  {
-    size_t lim = d_scopeLvl;
-    if (d_clausesToReinit.size() <= lim)
-    {
-      Assert(!d_clausesToReinit.empty());
-      lim = d_clausesToReinit.size() - 1;
-    }
-    for (size_t i = newScopeLvl; i <= lim; ++i)
-    {
-      for (Clause* cls : d_clausesToReinit[i])
-      {
-        cacheGeneration(cls, newScopeLvl);
-      }
-    }
-  }
-  if (!d_unitsToReassert.empty())
-  {
-    Scope& s = d_scopes[newScopeLvl];
-    for (size_t i = s.d_unitsToReassertLim, sz = d_unitsToReassert.size();
-         i < sz;
-         ++i)
-    {
-      cacheGeneration(d_unitsToReassert[i].d_unit, newScopeLvl);
-    }
-  }
-}
-
-void SmtContext::cacheGeneration(const Clause* cls, uint32_t newScopeLvl)
-{
-  cacheGeneration(cls->getNumLiterals(), cls->begin(), newScopeLvl);
-}
-
-void SmtContext::cacheGeneration(size_t numLits,
-                                 const Literal* lits,
-                                 uint32_t newScopeLvl)
-{
-  for (size_t i = 0; i < numLits; ++i)
-  {
-    BoolVar v = lits[i].var();
-    uint32_t ilvl = getInternLevel(v);
-    if (ilvl > newScopeLvl)
-    {
-      cacheGeneration(boolVar2Expr(v), newScopeLvl);
-    }
-  }
 }
 
 void SmtContext::cacheGeneration(TNode n, uint32_t newScopeLvl)
@@ -2357,227 +1740,52 @@ void SmtContext::resetCacheGeneration()
   d_cachedGeneration.clear();
 }
 
-void SmtContext::reinitClauses(size_t numScopes, size_t numBoolVars)
-{
-  // Reinitialize the lemmas that contain Boolean variables deleted during
-  // backtracking. A clause has a dead variable if it contains a literal l
-  // with l.var() >= numBoolVars.
-  if (d_clausesToReinit.empty())
-  {
-    return;
-  }
-  size_t lim = d_scopeLvl + numScopes;
-  if (d_clausesToReinit.size() <= lim)
-  {
-    Assert(!d_clausesToReinit.empty());
-    lim = d_clausesToReinit.size() - 1;
-  }
-  for (size_t i = d_scopeLvl + 1; i <= lim; ++i)
-  {
-    ClauseVector& v = d_clausesToReinit[i];
-    for (Clause* cls : v)
-    {
-      if (cls->deleted())
-      {
-        cls->releaseAtoms();
-        cls->d_reinit = false;
-        cls->d_reinternalizeAtoms = false;
-        continue;
-      }
-      Assert(cls->inReinitStack());
-      bool keep = false;
-      if (cls->reinternalizeAtoms())
-      {
-        Assert(cls->getNumAtoms() == cls->getNumLiterals());
-        for (size_t j = 0; j < 2; ++j)
-        {
-          Literal l = cls->getLiteral(j);
-          if (l.var() < numBoolVars)
-          {
-            // This variable survived backtracking, so it still watches the
-            // clause. Remove the watch, since the clause may end up with
-            // different watch literals after reinitialization.
-            removeWatchLiteral(cls, j);
-          }
-        }
-
-        size_t num = cls->getNumLiterals();
-
-        removeLitOccs(*cls, numBoolVars);
-
-        for (size_t j = 0; j < num; ++j)
-        {
-          TNode atom = cls->getAtom(j);
-          bool sign = cls->getAtomSign(j);
-          // The atom can be a negation, which happens when the NOT occurs
-          // under an uninterpreted function. Reinternalizing a NOT atom
-          // requires gateCtx to be false, so that it really is
-          // reinternalized.
-          bool gateCtx = atom.getKind() != Kind::NOT;
-          internalize(atom, gateCtx);
-          Assert(bInternalized(atom));
-          Literal l(getBoolVar(atom), sign);
-          cls->setLiteral(j, l);
-          if (cls->getKind() == CLS_TH_LEMMA)
-          {
-            markAsRelevant(l);
-          }
-        }
-        int w1Idx = selectWatchLit(cls, 0);
-        cls->swapLits(0, w1Idx);
-        int w2Idx = selectWatchLit(cls, 1);
-        cls->swapLits(1, w2Idx);
-        addWatchLiteral(cls, 0);
-        addWatchLiteral(cls, 1);
-
-        addLitOccs(*cls);
-
-        Literal l1 = cls->getLiteral(0);
-        Literal l2 = cls->getLiteral(1);
-
-        if (getAssignment(l1) == L_FALSE)
-        {
-          setConflict(BJustification(cls));
-        }
-        else if (getAssignment(l2) == L_FALSE)
-        {
-          assign(l1, BJustification(cls));
-        }
-        keep = true;
-      }
-      else
-      {
-        Literal l1 = cls->getLiteral(0);
-        Literal l2 = cls->getLiteral(1);
-        if (cls->getKind() == CLS_TH_LEMMA)
-        {
-          markAsRelevant(l1);
-          markAsRelevant(l2);
-        }
-        if (getAssignment(l1) == L_FALSE && isEmptyClause(cls))
-        {
-          setConflict(BJustification(cls));
-          keep = true;
-        }
-        else if (getAssignment(l2) == L_FALSE && getAssignment(l1) == L_UNDEF
-                 && isUnitClause(cls))
-        {
-          assign(l1, BJustification(cls));
-          keep = true;
-        }
-      }
-
-      if (keep && d_scopeLvl > d_baseLvl)
-      {
-        d_clausesToReinit[d_scopeLvl].push_back(cls);
-      }
-      else
-      {
-        // The clause no longer needs to be in the reinit stack, because it
-        // will be deleted when the base level is backtracked.
-        cls->releaseAtoms();
-        cls->d_reinit = false;
-        cls->d_reinternalizeAtoms = false;
-      }
-    }
-    v.clear();
-  }
-}
-
-void SmtContext::reassertUnits(size_t unitsToReassertLim)
-{
-  for (size_t i = unitsToReassertLim, sz = d_unitsToReassert.size(); i < sz;
-       ++i)
-  {
-    ReplayUnit& ru = d_unitsToReassert[i];
-    internalize(ru.d_unit, true);
-    BoolVar v = getBoolVar(ru.d_unit);
-    Literal l(v, ru.d_sign);
-    assign(l, BJustification::mkAxiom());
-    if (ru.d_relevant)
-    {
-      markAsRelevant(l);
-    }
-  }
-  if (atBaseLevel())
-  {
-    d_unitsToReassert.clear();
-  }
-}
-
 size_t SmtContext::popScopeCore(size_t numScopes)
 {
   // Backtrack numScopes levels and return the number of Boolean variables
   // before the clauses are reinitialized, which is what tells reinitClauses
   // which variables were deleted.
-  size_t unitsToReassertLim = 0;
-
   Assert(numScopes > 0);
-  Assert(numScopes <= d_scopeLvl);
-  Assert(d_scopes.size() == d_scopeLvl);
+  Assert(numScopes <= getScopeLevel());
+  Assert(d_justificationsLims.size() == getScopeLevel());
 
-  uint32_t newLvl = d_scopeLvl - static_cast<uint32_t>(numScopes);
+  uint32_t newLvl = getScopeLevel() - static_cast<uint32_t>(numScopes);
 
-  cacheGeneration(newLvl);
+  // The order of these steps is that of Z3's pop_scope_core; the steps of the
+  // propositional side are delegated to d_prop where they occur.
+  d_prop.cacheGeneration(newLvl);
   d_qmanager->pop(numScopes);
-  d_caseSplitQueue->popScope(numScopes);
+  d_prop.getCaseSplitQueue().popScope(numScopes);
 
-  Scope& s = d_scopes[newLvl];
-
-  unitsToReassertLim = s.d_unitsToReassertLim;
-
-  if (newLvl < d_baseLvl)
-  {
-    BaseScope& bs = d_baseScopes[newLvl];
-    delClauses(d_lemmas, bs.d_lemmasLim);
-    d_simpQhead = bs.d_simpQheadLim;
-    if (!bs.d_inconsistent)
-    {
-      d_conflict = s_nullBJustification;
-      d_notL = s_nullLiteral;
-    }
-    d_baseScopes.resize(newLvl);
-  }
-  else
-  {
-    d_conflict = s_nullBJustification;
-    d_notL = s_nullLiteral;
-  }
-  delClauses(d_auxClauses, s.d_auxClausesLim);
+  size_t unitsToReassertLim = d_prop.popClauses(newLvl);
 
   d_relevancyPropagator->pop(numScopes);
 
   d_fingerprints.popScope(numScopes);
 
-  unassignVars(s.d_assignedLiteralsLim);
+  d_prop.unassignToScope(newLvl);
   d_trailStack.popScope(numScopes);
 
   for (Theory* th : d_theorySet)
   {
     th->popScopeEh(numScopes);
   }
-  delJustifications(d_justifications, s.d_justificationsLim);
+  delJustifications(d_justifications, d_justificationsLims[newLvl]);
 
   d_eqPropagationQueue.clear();
   d_thEqPropagationQueue.clear();
   d_region.popScope(numScopes);
   d_thDiseqPropagationQueue.clear();
   d_atomPropagationQueue.clear();
-  d_scopes.resize(newLvl);
+  d_justificationsLims.resize(newLvl);
   d_conflictResolution->reset();
 
-  d_scopeLvl = newLvl;
-  if (newLvl < d_baseLvl)
-  {
-    d_baseLvl = newLvl;
-    // not strictly necessary
-    d_searchLvl = newLvl;
-  }
+  d_prop.popScopeLevels(newLvl);
 
   size_t numBoolVars = getNumBoolVars();
   // Any variable at or above numBoolVars was deleted during backtracking.
-  reinitClauses(numScopes, numBoolVars);
-  reassertUnits(unitsToReassertLim);
+  d_prop.reinitClauses(numScopes, numBoolVars);
+  d_prop.reassertUnits(unitsToReassertLim);
   return numBoolVars;
 }
 
@@ -2589,166 +1797,20 @@ void SmtContext::popScope(size_t numScopes)
 
 void SmtContext::popToBaseLvl()
 {
-  Assert(d_scopeLvl >= d_baseLvl);
+  Assert(getScopeLevel() >= getBaseLevel());
   if (!atBaseLevel())
   {
-    popScope(d_scopeLvl - d_baseLvl);
+    popScope(getScopeLevel() - getBaseLevel());
   }
 }
 
 void SmtContext::popToSearchLvl()
 {
-  if (d_scopeLvl > getSearchLevel())
+  if (getScopeLevel() > getSearchLevel())
   {
-    popScope(d_scopeLvl - getSearchLevel());
+    popScope(getScopeLevel() - getSearchLevel());
   }
 }
-
-bool SmtContext::simplifyClause(Clause& cls)
-{
-  // Simplify the clause using the current assignment, returning true if it is
-  // already satisfied. Only safe at the base level, which is also why it is
-  // safe for auxiliary clauses: they are deleted on backtracking.
-  Assert(d_scopeLvl == d_baseLvl);
-  size_t s = cls.getNumLiterals();
-  if (getAssignment(cls[0]) == L_TRUE || getAssignment(cls[1]) == L_TRUE)
-  {
-    return true;
-  }
-
-  size_t i = 2;
-  size_t j = i;
-  bool isTaut = false;
-  for (; i < s; ++i)
-  {
-    Literal l = cls[i];
-    switch (getAssignment(l))
-    {
-      case L_FALSE: decRef(l); break;
-      case L_TRUE: isTaut = true; CVC5_FALLTHROUGH;
-      case L_UNDEF:
-        if (i != j)
-        {
-          cls.swapLits(i, j);
-        }
-        j++;
-        break;
-    }
-  }
-
-  if (j < s)
-  {
-    cls.setNumLiterals(j);
-    Assert(j >= 2);
-  }
-
-  return isTaut;
-}
-
-size_t SmtContext::simplifyClauses(ClauseVector& clauses, size_t startingAt)
-{
-  size_t numDelClauses = 0;
-  size_t j = startingAt;
-  for (size_t i = startingAt, sz = clauses.size(); i < sz; ++i)
-  {
-    Clause* cls = clauses[i];
-    Assert(!cls->inReinitStack());
-
-    if (cls->deleted())
-    {
-      delClause(cls);
-      numDelClauses++;
-    }
-    else if (simplifyClause(*cls))
-    {
-      for (size_t idx = 0; idx < 2; ++idx)
-      {
-        Literal l0 = (*cls)[idx];
-        BJustification l0Js = getJustification(l0.var());
-        if (l0Js != s_nullBJustification
-            && l0Js.getKind() == BJustification::CLAUSE
-            && l0Js.getClause() == cls)
-        {
-          // cls is the explanation of l0; since we are at the base level it
-          // is safe to replace it with an axiom.
-          Assert(d_scopeLvl == d_baseLvl);
-          d_bdata[l0.var()].setAxiom();
-        }
-      }
-      delClause(cls);
-      numDelClauses++;
-    }
-    else
-    {
-      clauses[j] = cls;
-      ++j;
-      d_simpCounter += static_cast<int64_t>(cls->getNumLiterals());
-    }
-  }
-  clauses.resize(j);
-  return numDelClauses;
-}
-
-void SmtContext::simplifyClauses()
-{
-  // Note that when assumptions are used, d_scopeLvl >= d_searchLvl >
-  // d_baseLvl, so no simplification is performed.
-  if (d_scopeLvl > d_baseLvl)
-  {
-    return;
-  }
-
-  size_t sz = d_assignedLiterals.size();
-  Assert(d_simpQhead <= sz);
-
-  if (d_simpQhead == sz || d_simpCounter > 0)
-  {
-    return;
-  }
-
-  if (d_auxClauses.empty() && d_lemmas.empty())
-  {
-    return;
-  }
-
-  // d_simpCounter balances the cost of simplifyClause: after this runs it
-  // approximates the number of literals the next run would have to visit, and
-  // it is decremented once per variable visited during propagation.
-  d_simpCounter = 0;
-  // d_simpQhead detects whether there are new literals assigned at the base
-  // level.
-  d_simpQhead = d_assignedLiterals.size();
-
-  size_t numDelClauses = 0;
-
-  Assert(d_scopeLvl == d_baseLvl);
-  if (d_baseLvl == 0)
-  {
-    numDelClauses += simplifyClauses(d_auxClauses, 0);
-    numDelClauses += simplifyClauses(d_lemmas, 0);
-  }
-  else
-  {
-    Scope& s = d_scopes[d_baseLvl - 1];
-    BaseScope& bs = d_baseScopes[d_baseLvl - 1];
-    numDelClauses += simplifyClauses(d_auxClauses, s.d_auxClausesLim);
-    numDelClauses += simplifyClauses(d_lemmas, bs.d_lemmasLim);
-  }
-  d_stats.d_numDelClauses += numDelClauses;
-  d_stats.d_numSimplifications++;
-}
-
-namespace {
-
-struct ClauseLt
-{
-  bool operator()(Clause* cls1, Clause* cls2) const
-  {
-    return cls1->getActivity() > cls2->getActivity();
-  }
-};
-
-}  // namespace
 
 void SmtContext::delInactiveLemmas()
 {
@@ -2756,14 +1818,7 @@ void SmtContext::delInactiveLemmas()
   {
     return;
   }
-  if (d_params.d_lemmaGcHalf)
-  {
-    delInactiveLemmas1();
-  }
-  else
-  {
-    delInactiveLemmas2();
-  }
+  d_prop.delInactiveLemmas();
 
   d_numConflictsSinceLemmaGc = 0;
   if (d_params.d_lemmaGcStrategy == LGC_GEOMETRIC)
@@ -2771,135 +1826,6 @@ void SmtContext::delInactiveLemmas()
     d_lemmaGcThreshold = static_cast<uint64_t>(
         static_cast<double>(d_lemmaGcThreshold) * d_params.d_lemmaGcFactor);
   }
-}
-
-void SmtContext::delInactiveLemmas1()
-{
-  // Delete (approximately) half of the low activity lemmas.
-  size_t sz = d_lemmas.size();
-  size_t startAt = d_baseLvl == 0 ? 0 : d_baseScopes[d_baseLvl - 1].d_lemmasLim;
-  Assert(startAt <= sz);
-  if (startAt + d_params.d_recentLemmasSize >= sz)
-  {
-    return;
-  }
-  size_t endAt = sz - d_params.d_recentLemmasSize;
-  Assert(startAt < endAt);
-  std::stable_sort(
-      d_lemmas.begin() + startAt, d_lemmas.begin() + endAt, ClauseLt());
-  size_t startDelAt = (startAt + endAt) / 2;
-  size_t i = startDelAt;
-  size_t j = i;
-  for (; i < endAt; ++i)
-  {
-    Clause* cls = d_lemmas[i];
-    if (canDelete(cls))
-    {
-      delClause(cls);
-    }
-    else
-    {
-      d_lemmas[j] = cls;
-      j++;
-    }
-  }
-  // keep the recent clauses
-  for (; i < sz; ++i)
-  {
-    Clause* cls = d_lemmas[i];
-    if (cls->deleted() && canDelete(cls))
-    {
-      delClause(cls);
-    }
-    else
-    {
-      d_lemmas[j++] = cls;
-    }
-  }
-  d_lemmas.resize(j);
-  if (d_params.d_clauseDecay > 1)
-  {
-    // rescale the activity
-    for (i = startAt; i < j; ++i)
-    {
-      Clause* cls = d_lemmas[i];
-      cls->setActivity(cls->getActivity() / d_params.d_clauseDecay);
-    }
-  }
-}
-
-void SmtContext::delInactiveLemmas2()
-{
-  // A more selective version of delInactiveLemmas1: the lemmas are split into
-  // an old and a new group by d_newOldRatio, and a clause is kept based on
-  // its activity and its relevancy, with the thresholds depending on which
-  // group it is in. A clause with many unassigned literals counts as less
-  // relevant.
-  size_t sz = d_lemmas.size();
-  size_t startAt = d_baseLvl == 0 ? 0 : d_baseScopes[d_baseLvl - 1].d_lemmasLim;
-  Assert(startAt <= sz);
-  size_t realSz = sz - startAt;
-  if (realSz == 0)
-  {
-    return;
-  }
-  // the index of the first lemma considered "new"
-  size_t newFirstIdx =
-      startAt
-      + (realSz / d_params.d_newOldRatio) * (d_params.d_newOldRatio - 1);
-  Assert(newFirstIdx <= sz);
-  size_t i = startAt;
-  size_t j = i;
-  for (; i < sz; ++i)
-  {
-    Clause* cls = d_lemmas[i];
-    if (canDelete(cls))
-    {
-      if (cls->deleted())
-      {
-        delClause(cls);
-        continue;
-      }
-      uint32_t actThreshold =
-          d_params.d_oldClauseActivity
-          - (d_params.d_oldClauseActivity - d_params.d_newClauseActivity)
-                * static_cast<uint32_t>((i - startAt) / realSz);
-      if (cls->getActivity() < actThreshold)
-      {
-        uint32_t relThreshold = (i >= newFirstIdx)
-                                    ? d_params.d_newClauseRelevancy
-                                    : d_params.d_oldClauseRelevancy;
-        if (moreThanKUnassignedLiterals(cls, relThreshold))
-        {
-          delClause(cls);
-          continue;
-        }
-      }
-    }
-    d_lemmas[j] = cls;
-    j++;
-    cls->setActivity(
-        static_cast<uint32_t>(cls->getActivity() / d_params.d_invClauseDecay));
-  }
-  Assert(j <= sz);
-  d_lemmas.resize(j);
-}
-
-bool SmtContext::moreThanKUnassignedLiterals(Clause* cls, size_t k)
-{
-  Assert(k > 0);
-  for (Literal l : *cls)
-  {
-    if (getAssignment(l) == L_UNDEF)
-    {
-      k--;
-      if (k == 0)
-      {
-        return true;
-      }
-    }
-  }
-  return false;
 }
 
 void SmtContext::registerPlugin(Theory* th)
@@ -2915,7 +1841,7 @@ void SmtContext::registerPlugin(Theory* th)
   d_theories[th->getFamilyId()] = th;
   th->init();
   d_theorySet.push_back(th);
-  for (uint32_t i = 0; i < d_scopeLvl; ++i)
+  for (uint32_t i = 0; i < getScopeLevel(); ++i)
   {
     th->pushScopeEh();
   }
@@ -2950,7 +1876,7 @@ void SmtContext::pushAssertion(TNode e)
   }
   if (isFalseNode(e))
   {
-    d_assertedInconsistent = true;
+    d_prop.setAssertedInconsistent();
     d_assertedFormulas.push_back(e);
     return;
   }
@@ -3020,7 +1946,7 @@ void SmtContext::push()
   bool wasConsistent = !inconsistent();
   internalizeAssertions();
   propagate();
-  if (wasConsistent && inconsistent() && !d_assertedInconsistent)
+  if (wasConsistent && inconsistent() && !d_prop.isAssertedInconsistent())
   {
     // the logical context became inconsistent during the user push
     bool resolved = resolveConflict();
@@ -3028,18 +1954,13 @@ void SmtContext::push()
     (void)resolved;
   }
   pushScope();
-  d_baseScopes.push_back(
-      BaseScope{d_lemmas.size(), d_simpQhead, inconsistent()});
-  d_baseLvl++;
-  // Not really necessary, but it keeps the invariant d_searchLvl >= d_baseLvl.
-  d_searchLvl++;
-  Assert(d_baseLvl <= d_scopeLvl);
+  d_prop.pushBaseScope();
 }
 
 void SmtContext::pop(size_t numScopes)
 {
   Assert(numScopes > 0);
-  if (numScopes > d_scopeLvl)
+  if (numScopes > getScopeLevel())
   {
     return;
   }
@@ -3054,9 +1975,9 @@ void SmtContext::internalizeAssertions()
     return;
   }
   d_internalizingAssertions = true;
-  if (d_assertedInconsistent)
+  if (d_prop.isAssertedInconsistent())
   {
-    if (d_conflict == s_nullBJustification)
+    if (d_prop.getConflict() == s_nullBJustification)
     {
       assertedInconsistent();
     }
@@ -3137,10 +2058,10 @@ void SmtContext::checkCandidateModel()
   // should have refuted, which means a theory of this port is too weak
   // rather than a quantifier instance being missing.
   std::vector<Node> lits;
-  for (size_t i = 0; i < d_assignedLiterals.size(); ++i)
+  for (size_t i = 0; i < assignedLiterals().size(); ++i)
   {
-    Literal l = d_assignedLiterals[i];
-    Node a = d_boolVar2Expr[l.var()];
+    Literal l = assignedLiterals()[i];
+    Node a = boolVar2Expr(l.var());
     if (a.isNull() || getBdata(l.var()).isQuantifier())
     {
       continue;
@@ -3188,10 +2109,10 @@ void SmtContext::dumpCandidateModel(const char* path)
   // asking: if the file is unsat, saturation was premature, and the
   // instantiations cvc5 prints are the ones E-matching failed to find.
   std::vector<Node> asserts;
-  for (size_t i = 0; i < d_assignedLiterals.size(); ++i)
+  for (size_t i = 0; i < assignedLiterals().size(); ++i)
   {
-    Literal l = d_assignedLiterals[i];
-    Node a = d_boolVar2Expr[l.var()];
+    Literal l = assignedLiterals()[i];
+    Node a = boolVar2Expr(l.var());
     if (a.isNull() || getBdata(l.var()).isQuantifier())
     {
       continue;
@@ -3317,8 +2238,8 @@ LBool SmtContext::check()
   // Z3 sets the search level in init_assumptions, which also creates the
   // scope the assumptions live in. This port does not support assumptions
   // (see the README), so the search level is simply the current scope.
-  d_searchLvl = d_scopeLvl;
-  Assert(d_searchLvl == d_baseLvl);
+  d_prop.setSearchLevel(getScopeLevel());
+  Assert(getSearchLevel() == getBaseLevel());
   LBool r = search();
   return checkFinalize(r);
 }
@@ -3336,17 +2257,15 @@ void SmtContext::initSearch()
   d_numRestarts = 0;
   d_restartThreshold = d_params.d_restartInitial;
   d_restartOuterThreshold = d_params.d_restartInitial;
-  d_agility = 0.0;
   d_lubyIdx = 1;
   d_lemmaGcThreshold = d_params.d_lemmaGcInitial;
   d_lastSearchFailure = OK;
   d_dynAckManager.initSearchEh();
   d_finalCheckIdx = 0;
-  d_phaseDefault = false;
-  d_caseSplitQueue->initSearchEh();
+  d_prop.initSearch();
 }
 
-void SmtContext::endSearch() { d_caseSplitQueue->endSearchEh(); }
+void SmtContext::endSearch() { d_prop.endSearch(); }
 
 void SmtContext::incLimits()
 {
@@ -3386,7 +2305,7 @@ void SmtContext::incLimits()
 
 LBool SmtContext::search()
 {
-  if (d_assertedInconsistent)
+  if (d_prop.isAssertedInconsistent())
   {
     assertedInconsistent();
     return L_FALSE;
@@ -3409,7 +2328,7 @@ LBool SmtContext::search()
   d_searching = true;
   d_searchFinalized = false;
   LBool status = L_UNDEF;
-  uint32_t currLvl = d_scopeLvl;
+  uint32_t currLvl = getScopeLevel();
 
   while (true)
   {
@@ -3470,15 +2389,15 @@ bool SmtContext::restart(LBool& status, uint32_t currLvl)
                      << " conflicts " << d_stats.d_numConflicts << std::endl;
   incLimits();
   if (status == L_TRUE || !d_params.d_restartAdaptive
-      || d_agility < d_params.d_restartAgilityThreshold)
+      || d_prop.getAgility() < d_params.d_restartAgilityThreshold)
   {
     Assert(!inconsistent());
     // execute the restart
     d_stats.d_numRestarts++;
     d_numRestarts++;
-    if (d_scopeLvl > currLvl)
+    if (getScopeLevel() > currLvl)
     {
-      popScope(d_scopeLvl - currLvl);
+      popScope(getScopeLevel() - currLvl);
       Assert(atSearchLevel());
     }
     for (Theory* th : d_theorySet)
@@ -3510,7 +2429,7 @@ bool SmtContext::restart(LBool& status, uint32_t currLvl)
   }
   if (d_params.d_simplifyClauses)
   {
-    simplifyClauses();
+    d_prop.simplifyClauses();
   }
   if (d_params.d_lemmaGcStrategy == LGC_AT_RESTART)
   {
@@ -3545,7 +2464,7 @@ LBool SmtContext::boundedSearch()
         return L_FALSE;
       }
 
-      Assert(d_scopeLvl >= d_baseLvl);
+      Assert(getScopeLevel() >= getBaseLevel());
 
       if (!inconsistent())
       {
@@ -3558,7 +2477,7 @@ LBool SmtContext::boundedSearch()
           return L_UNDEF;
         }
         if (d_numConflictsSinceRestart > d_restartThreshold
-            && d_scopeLvl - d_baseLvl > 2)
+            && getScopeLevel() - getBaseLevel() > 2)
         {
           return L_UNDEF;  // restart
         }
@@ -3589,9 +2508,9 @@ LBool SmtContext::boundedSearch()
       return L_UNDEF;
     }
 
-    if (d_baseLvl == d_scopeLvl && d_params.d_simplifyClauses)
+    if (atBaseLevel() && d_params.d_simplifyClauses)
     {
-      simplifyClauses();
+      d_prop.simplifyClauses();
     }
 
     if (!decide())
@@ -3703,24 +2622,13 @@ FinalCheckStatus SmtContext::finalCheck()
   return result;
 }
 
-void SmtContext::forgetPhaseOfVarsInCurrentLevel()
-{
-  size_t head =
-      d_scopeLvl == 0 ? 0 : d_scopes[d_scopeLvl - 1].d_assignedLiteralsLim;
-  size_t sz = d_assignedLiterals.size();
-  for (size_t i = head; i < sz; ++i)
-  {
-    d_bdata[d_assignedLiterals[i].var()].d_phaseAvailable = false;
-  }
-}
-
 bool SmtContext::resolveConflict()
 {
   d_stats.d_numConflicts++;
   d_numConflicts++;
   d_numConflictsSinceRestart++;
   d_numConflictsSinceLemmaGc++;
-  switch (d_conflict.getKind())
+  switch (d_prop.getConflict().getKind())
   {
     case BJustification::CLAUSE:
     case BJustification::BIN_CLAUSE: d_stats.d_numSatConflicts++; break;
@@ -3730,13 +2638,13 @@ bool SmtContext::resolveConflict()
       || d_params.d_phaseSelection == PS_CACHING_CONSERVATIVE
       || d_params.d_phaseSelection == PS_CACHING_CONSERVATIVE2)
   {
-    forgetPhaseOfVarsInCurrentLevel();
+    d_prop.forgetPhaseOfVarsInCurrentLevel();
   }
   d_atomPropagationQueue.clear();
   d_eqPropagationQueue.clear();
   d_thEqPropagationQueue.clear();
   d_thDiseqPropagationQueue.clear();
-  if (!d_conflictResolution->resolve(d_conflict, d_notL))
+  if (!d_conflictResolution->resolve(d_prop.getConflict(), d_prop.getNotL()))
   {
     return false;
   }
@@ -3747,15 +2655,16 @@ bool SmtContext::resolveConflict()
 
   Assert(numLits > 0);
   uint32_t conflictLvl = getAssignLevel(lits[0]);
-  Assert(conflictLvl <= d_scopeLvl);
+  Assert(conflictLvl <= getScopeLevel());
 
   // When numLits == 1 the default behavior is to go back to the base level.
   // With quantifiers that can be too expensive, since every instance would
   // have to be recreated, so instead the unit is remembered and reasserted
   // after every backtrack, and only one level is popped.
   bool delayForcedRestart =
-      d_params.d_delayUnits && numLits == 1 && conflictLvl > d_searchLvl + 1
-      && d_unitsToReassert.size() < d_params.d_delayUnitsThreshold;
+      d_params.d_delayUnits && numLits == 1
+      && conflictLvl > getSearchLevel() + 1
+      && d_prop.getNumUnitsToReassert() < d_params.d_delayUnitsThreshold;
 
   if (delayForcedRestart)
   {
@@ -3766,10 +2675,10 @@ bool SmtContext::resolveConflict()
   // backtracking and have to be recreated; cache their generations first.
   if (d_conflictResolution->getLemmaInternLvl() > newLvl)
   {
-    cacheGeneration(numLits, lits, newLvl);
+    d_prop.cacheGeneration(numLits, lits, newLvl);
   }
 
-  Assert(newLvl < d_scopeLvl);
+  Assert(newLvl < getScopeLevel());
 
   // popScopeCore rather than popScope, because the cached generations are
   // still needed to rebuild the literals of the new conflict clause.
@@ -3777,10 +2686,10 @@ bool SmtContext::resolveConflict()
   {
     recordRelevancy(numLits, lits);
   }
-  size_t numBoolVars = popScopeCore(d_scopeLvl - newLvl);
-  Assert(d_scopeLvl == newLvl);
+  size_t numBoolVars = popScopeCore(getScopeLevel() - newLvl);
+  Assert(getScopeLevel() == newLvl);
   // The context may still be in conflict after the clauses are reinitialized.
-  if (d_conflictResolution->getLemmaInternLvl() > d_scopeLvl)
+  if (d_conflictResolution->getLemmaInternLvl() > getScopeLevel())
   {
     std::vector<Node>& atoms = d_conflictResolution->getLemmaAtoms();
     for (size_t i = 0; i < numLits; ++i)
@@ -3823,13 +2732,13 @@ bool SmtContext::resolveConflict()
       unit = unit[0];
       unitSign = !unitSign;
     }
-    d_unitsToReassert.push_back(ReplayUnit{unit, unitSign, isRelevant(unit)});
+    d_prop.addUnitToReassert(unit, unitSign, isRelevant(unit));
   }
 
   d_conflictResolution->releaseLemmaAtoms();
   Trace("z3-events") << "CONFLICT " << numLits << std::endl;
-  decayBvarActivity();
-  updatePhaseCacheCounter();
+  d_prop.decayBvarActivity();
+  d_prop.updatePhaseCacheCounter();
   return true;
 }
 
@@ -3855,28 +2764,6 @@ void SmtContext::restoreRelevancy(size_t n, const Literal* lits)
       markAsRelevant(lits[i]);
     }
   }
-}
-
-namespace {
-
-/** Undoes setTrueFirstFlag. */
-class SetTrueFirstTrail : public Trail
-{
- public:
-  SetTrueFirstTrail(SmtContext& ctx, BoolVar v) : d_ctx(ctx), d_var(v) {}
-  void undo() override { d_ctx.getBdata(d_var).resetTrueFirstFlag(); }
-
- private:
-  SmtContext& d_ctx;
-  BoolVar d_var;
-};
-
-}  // namespace
-
-void SmtContext::setTrueFirstFlag(BoolVar v)
-{
-  pushTrail(SetTrueFirstTrail(*this, v));
-  d_bdata[v].setTrueFirstFlag();
 }
 
 bool SmtContext::assumeEq(ENode* lhs, ENode* rhs)
@@ -3918,7 +2805,7 @@ bool SmtContext::assumeEq(ENode* lhs, ENode* rhs)
     d_stats.d_numInterfaceEqs++;
   }
   BoolVar v = getBoolVar(eq);
-  BoolVarData& d = d_bdata[v];
+  BoolVarData& d = getBdata(v);
   if (!d.tryTrueFirst())
   {
     setTrueFirstFlag(v);
@@ -4058,7 +2945,7 @@ std::ostream& SmtContext::print(std::ostream& out, BJustification j) const
     case BJustification::CLAUSE:
       if (j.getClause() != nullptr)
       {
-        j.getClause()->print(out << " ", d_boolVar2Expr);
+        j.getClause()->print(out << " ", d_prop.getBoolVar2ExprMap());
       }
       break;
     case BJustification::BIN_CLAUSE:
@@ -4075,12 +2962,13 @@ std::ostream& SmtContext::print(std::ostream& out, BJustification j) const
 void SmtContext::print(std::ostream& out) const
 {
   out << "z3::context\n";
-  out << "scope level: " << d_scopeLvl << ", base level: " << d_baseLvl
-      << ", search level: " << d_searchLvl << "\n";
+  out << "scope level: " << getScopeLevel()
+      << ", base level: " << getBaseLevel()
+      << ", search level: " << getSearchLevel() << "\n";
   out << "num bool vars: " << getNumBoolVars()
       << ", num enodes: " << d_enodes.size()
-      << ", num aux clauses: " << d_auxClauses.size()
-      << ", num lemmas: " << d_lemmas.size() << "\n";
+      << ", num aux clauses: " << d_prop.getNumAuxClauses()
+      << ", num lemmas: " << getLemmas().size() << "\n";
 }
 
 void SmtContext::printStatistics(std::ostream& out) const

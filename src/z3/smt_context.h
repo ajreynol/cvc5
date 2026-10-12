@@ -54,6 +54,7 @@
 #include "z3/nnf.h"
 #include "z3/params.h"
 #include "z3/pattern_inference.h"
+#include "z3/prop_core.h"
 #include "z3/push_app_ite.h"
 #include "z3/relevancy.h"
 #include "z3/statistics.h"
@@ -210,34 +211,40 @@ class SmtContext : protected EnvObj
     return getx(d_app2ENode, n.getId(), static_cast<ENode*>(nullptr));
   }
 
-  void resetBoolVars() { d_expr2BoolVar.clear(); }
+  // ------------------------------------- the Boolean search, see PropCore
+  //
+  // The methods below forward to the propositional side, d_prop. They are
+  // the Boolean API that the theory side, the theory plugins and the
+  // quantifier engine use.
 
-  BoolVar getBoolVar(TNode n) const { return d_expr2BoolVar[n.getId()]; }
+  /** The propositional side. */
+  PropCore& getPropCore() { return d_prop; }
+
+  void resetBoolVars() { d_prop.resetBoolVars(); }
+
+  BoolVar getBoolVar(TNode n) const { return d_prop.getBoolVar(n); }
 
   BoolVar getBoolVar(const ENode* n) const { return getBoolVar(n->getExpr()); }
 
-  BoolVar getBoolVarOfId(size_t id) const { return d_expr2BoolVar[id]; }
+  BoolVar getBoolVarOfId(size_t id) const { return d_prop.getBoolVarOfId(id); }
 
   BoolVar getBoolVarOfIdOption(size_t id) const
   {
-    return getx(d_expr2BoolVar, id, s_nullBoolVar);
+    return d_prop.getBoolVarOfIdOption(id);
   }
 
-  void setBoolVar(size_t id, BoolVar v)
-  {
-    setx(d_expr2BoolVar, id, v, s_nullBoolVar);
-  }
+  void setBoolVar(size_t id, BoolVar v) { d_prop.setBoolVar(id, v); }
 
-  const ClauseVector& getLemmas() const { return d_lemmas; }
+  const ClauseVector& getLemmas() const { return d_prop.getLemmas(); }
 
-  Literal getLiteral(TNode n) const;
+  Literal getLiteral(TNode n) const { return d_prop.getLiteral(n); }
 
-  bool hasENode(BoolVar v) const { return d_bdata[v].isENode(); }
+  bool hasENode(BoolVar v) const { return getBdata(v).isENode(); }
 
   ENode* boolVar2ENode(BoolVar v) const
   {
-    Assert(d_bdata[v].isENode());
-    return d_app2ENode[d_boolVar2Expr[v].getId()];
+    Assert(getBdata(v).isENode());
+    return d_app2ENode[boolVar2Expr(v).getId()];
   }
 
   BoolVar enode2BoolVar(const ENode* n) const
@@ -253,38 +260,39 @@ class SmtContext : protected EnvObj
     return n == d_falseENode ? s_falseLiteral : Literal(enode2BoolVar(n));
   }
 
-  size_t getNumBoolVars() const { return d_bInternalizedStack.size(); }
+  size_t getNumBoolVars() const { return d_prop.getNumBoolVars(); }
 
-  BoolVarData& getBdata(BoolVar v) { return d_bdata[v]; }
+  BoolVarData& getBdata(BoolVar v) { return d_prop.getBdata(v); }
 
-  const BoolVarData& getBdata(BoolVar v) const { return d_bdata[v]; }
+  const BoolVarData& getBdata(BoolVar v) const { return d_prop.getBdata(v); }
 
   LBool getLitAssignment(size_t litIdx) const
   {
-    return static_cast<LBool>(d_assignment[litIdx]);
+    return d_prop.getLitAssignment(litIdx);
   }
 
-  LBool getAssignment(Literal l) const { return getLitAssignment(l.index()); }
+  LBool getAssignment(Literal l) const { return d_prop.getAssignment(l); }
 
-  LBool getAssignment(BoolVar v) const { return getAssignment(Literal(v)); }
+  LBool getAssignment(BoolVar v) const { return d_prop.getAssignment(v); }
 
-  const LiteralVector& assignedLiterals() const { return d_assignedLiterals; }
+  const LiteralVector& assignedLiterals() const
+  {
+    return d_prop.assignedLiterals();
+  }
 
-  const WatchList& getWatch(Literal l) const { return d_watches[l.index()]; }
+  const WatchList& getWatch(Literal l) const { return d_prop.getWatch(l); }
 
-  LBool getAssignment(TNode n) const;
+  LBool getAssignment(TNode n) const { return d_prop.getAssignment(n); }
 
   /** Like getAssignment, but returns L_UNDEF if n is not internalized. */
-  LBool findAssignment(TNode n) const;
+  LBool findAssignment(TNode n) const { return d_prop.findAssignment(n); }
 
   LBool getAssignment(ENode* n) const;
 
   BJustification getJustification(BoolVar v) const
   {
-    return getBdata(v).justification();
+    return d_prop.getJustification(v);
   }
-
-  void setJustification(BoolVar v, BoolVarData& d, const BJustification& j);
 
   void setRandomSeed(uint32_t s) { d_random.setSeed(s); }
 
@@ -292,52 +300,37 @@ class SmtContext : protected EnvObj
 
   bool isSearching() const { return d_searching; }
 
-  const std::vector<double>& getActivityVector() const { return d_activity; }
+  const std::vector<double>& getActivityVector() const
+  {
+    return d_prop.getActivityVector();
+  }
 
-  double getActivity(BoolVar v) const { return d_activity[v]; }
+  double getActivity(BoolVar v) const { return d_prop.getActivity(v); }
 
   uint64_t getNumAssignments() const { return d_stats.d_numAssignments; }
 
-  uint64_t getBirthdate(BoolVar v) const { return d_birthdate[v]; }
+  uint64_t getBirthdate(BoolVar v) const { return d_prop.getBirthdate(v); }
 
-  void setActivity(BoolVar v, double act) { d_activity[v] = act; }
+  void setActivity(BoolVar v, double act) { d_prop.setActivity(v, act); }
 
   void activityChanged(BoolVar v, bool increased)
   {
-    if (increased)
-    {
-      d_caseSplitQueue->activityIncreasedEh(v);
-    }
-    else
-    {
-      d_caseSplitQueue->activityDecreasedEh(v);
-    }
+    d_prop.activityChanged(v, increased);
   }
 
-  bool isMarked(BoolVar v) const { return getBdata(v).d_mark; }
+  bool isMarked(BoolVar v) const { return d_prop.isMarked(v); }
 
-  void setMark(BoolVar v)
-  {
-    Assert(!isMarked(v));
-    getBdata(v).d_mark = true;
-  }
+  void setMark(BoolVar v) { d_prop.setMark(v); }
 
-  void unsetMark(BoolVar v)
-  {
-    Assert(isMarked(v));
-    getBdata(v).d_mark = false;
-  }
+  void unsetMark(BoolVar v) { d_prop.unsetMark(v); }
 
   /** The scope level at which v was assigned. */
-  uint32_t getAssignLevel(BoolVar v) const { return getBdata(v).d_scopeLvl; }
+  uint32_t getAssignLevel(BoolVar v) const { return d_prop.getAssignLevel(v); }
 
-  uint32_t getAssignLevel(Literal l) const { return getAssignLevel(l.var()); }
+  uint32_t getAssignLevel(Literal l) const { return d_prop.getAssignLevel(l); }
 
   /** The scope level at which v was internalized. */
-  uint32_t getInternLevel(BoolVar v) const
-  {
-    return getBdata(v).getInternLevel();
-  }
+  uint32_t getInternLevel(BoolVar v) const { return d_prop.getInternLevel(v); }
 
   Theory* getTheory(TheoryId thId) const
   {
@@ -346,21 +339,21 @@ class SmtContext : protected EnvObj
 
   const std::vector<Theory*>& theories() const { return d_theorySet; }
 
-  uint32_t getScopeLevel() const { return d_scopeLvl; }
+  uint32_t getScopeLevel() const { return d_prop.getScopeLevel(); }
 
-  uint32_t getBaseLevel() const { return d_baseLvl; }
+  uint32_t getBaseLevel() const { return d_prop.getBaseLevel(); }
 
-  bool atBaseLevel() const { return d_scopeLvl == d_baseLvl; }
+  bool atBaseLevel() const { return d_prop.atBaseLevel(); }
 
-  uint32_t getSearchLevel() const { return d_searchLvl; }
+  uint32_t getSearchLevel() const { return d_prop.getSearchLevel(); }
 
-  bool atSearchLevel() const { return d_scopeLvl == d_searchLvl; }
+  bool atSearchLevel() const { return d_prop.atSearchLevel(); }
 
   void popToSearchLevel() { popToSearchLvl(); }
 
-  TNode boolVar2Expr(BoolVar v) const { return d_boolVar2Expr[v]; }
+  TNode boolVar2Expr(BoolVar v) const { return d_prop.boolVar2Expr(v); }
 
-  Node literal2Expr(Literal l) const;
+  Node literal2Expr(Literal l) const { return d_prop.literal2Expr(l); }
 
   bool isTrue(const ENode* n) const { return n == d_trueENode; }
 
@@ -441,19 +434,9 @@ class SmtContext : protected EnvObj
   TrailStack& getTrailStack() { return d_trailStack; }
 
   // ------------------------------------------------------ internalization
-  bool bInternalized(TNode n) const
-  {
-    return getBoolVarOfIdOption(n.getId()) != s_nullBoolVar;
-  }
+  bool bInternalized(TNode n) const { return d_prop.bInternalized(n); }
 
-  bool litInternalized(TNode n) const
-  {
-    if (n.isConst() && !n.getConst<bool>())
-    {
-      return true;
-    }
-    return n.getKind() == Kind::NOT ? bInternalized(n[0]) : bInternalized(n);
-  }
+  bool litInternalized(TNode n) const { return d_prop.litInternalized(n); }
 
   bool eInternalized(TNode n) const
   {
@@ -461,9 +444,12 @@ class SmtContext : protected EnvObj
            != nullptr;
   }
 
-  size_t getNumBInternalized() const { return d_bInternalizedStack.size(); }
+  size_t getNumBInternalized() const { return d_prop.getNumBInternalized(); }
 
-  TNode getBInternalized(size_t idx) const { return d_bInternalizedStack[idx]; }
+  TNode getBInternalized(size_t idx) const
+  {
+    return d_prop.getBInternalized(idx);
+  }
 
   size_t getNumEInternalized() const { return d_eInternalizedStack.size(); }
 
@@ -472,11 +458,13 @@ class SmtContext : protected EnvObj
   /** The position in the assignment stack of the decision at scopeLvl. */
   size_t getDecisionLiteralPos(uint32_t scopeLvl) const
   {
-    Assert(scopeLvl > d_baseLvl);
-    return d_scopes[scopeLvl - 1].d_assignedLiteralsLim;
+    return d_prop.getDecisionLiteralPos(scopeLvl);
   }
 
-  bool binaryClauseOptEnabled() const { return d_params.d_binaryClauseOpt; }
+  bool binaryClauseOptEnabled() const
+  {
+    return d_prop.binaryClauseOptEnabled();
+  }
 
   /** The canonicalizer for quantifiers; see z3/ast.h. */
   QuantifierNormalizer& getNormalizer() { return d_normalizer; }
@@ -528,11 +516,20 @@ class SmtContext : protected EnvObj
                    Literal* lits,
                    Justification* j,
                    ClauseKind k = CLS_AUX,
-                   ClauseDelEh* delEh = nullptr);
+                   ClauseDelEh* delEh = nullptr)
+  {
+    return d_prop.mkClause(numLits, lits, j, k, delEh);
+  }
 
-  void mkClause(Literal l1, Literal l2, Justification* j);
+  void mkClause(Literal l1, Literal l2, Justification* j)
+  {
+    d_prop.mkClause(l1, l2, j);
+  }
 
-  void mkClause(Literal l1, Literal l2, Literal l3, Justification* j);
+  void mkClause(Literal l1, Literal l2, Literal l3, Justification* j)
+  {
+    d_prop.mkClause(l1, l2, l3, j);
+  }
 
   void mkThClause(TheoryId tid, size_t numLits, Literal* lits, ClauseKind k);
 
@@ -560,7 +557,7 @@ class SmtContext : protected EnvObj
                                ENode* e2,
                                uint32_t e2Generation);
 
-  BoolVar mkBoolVar(TNode n);
+  BoolVar mkBoolVar(TNode n) { return d_prop.mkBoolVar(n); }
 
   ENode* mkENode(TNode n, bool suppressArgs, bool mergeTf, bool cgcEnabled);
 
@@ -578,6 +575,21 @@ class SmtContext : protected EnvObj
     return js;
   }
 
+  /** Keep j, which is not in the region, until its scope is popped. */
+  void addJustification(Justification* j) { d_justifications.push_back(j); }
+
+  /** Hand an assigned atom to the theory side; see propagateAtoms. */
+  void enqueueAtom(Literal l) { d_atomPropagationQueue.push_back(l); }
+
+  /** Called when the Boolean variable of n is deleted on backtracking. */
+  void notifyBoolVarDeleted(TNode n);
+
+  /**
+   * Cache the generation of the enodes and quantifiers in n that backtracking
+   * to newScopeLvl deletes, so that they are recreated with it.
+   */
+  void cacheGeneration(TNode n, uint32_t newScopeLvl);
+
   void mkGateClause(size_t numLits, Literal* lits);
   void mkGateClause(Literal l1, Literal l2);
   void mkGateClause(Literal l1, Literal l2, Literal l3);
@@ -588,26 +600,17 @@ class SmtContext : protected EnvObj
   // ------------------------------------------------------------- engine
   void assign(Literal l, const BJustification& j, bool decision = false)
   {
-    Assert(l != s_falseLiteral);
-    Assert(l != s_nullLiteral);
-    switch (getAssignment(l))
-    {
-      case L_FALSE: setConflict(j, ~l); break;
-      case L_UNDEF: assignCore(l, j, decision); break;
-      case L_TRUE: return;
-    }
+    d_prop.assign(l, j, decision);
   }
 
   void assign(Literal l, Justification* j, bool decision = false)
   {
-    assign(l,
-           j != nullptr ? BJustification(j) : BJustification::mkAxiom(),
-           decision);
+    d_prop.assign(l, j, decision);
   }
 
-  void setTrueFirstFlag(BoolVar v);
+  void setTrueFirstFlag(BoolVar v) { d_prop.setTrueFirstFlag(v); }
 
-  bool tryTrueFirst(BoolVar v) const { return getBdata(v).tryTrueFirst(); }
+  bool tryTrueFirst(BoolVar v) const { return d_prop.tryTrueFirst(v); }
 
   bool assumeEq(ENode* lhs, ENode* rhs);
 
@@ -624,14 +627,9 @@ class SmtContext : protected EnvObj
    * Force the given phase the next time v is case split. Has no effect if
    * phase caching is disabled.
    */
-  void forcePhase(BoolVar v, bool phase)
-  {
-    BoolVarData& d = getBdata(v);
-    d.d_phaseAvailable = true;
-    d.d_phase = phase;
-  }
+  void forcePhase(BoolVar v, bool phase) { d_prop.forcePhase(v, phase); }
 
-  void forcePhase(Literal l) { forcePhase(l.var(), !l.sign()); }
+  void forcePhase(Literal l) { d_prop.forcePhase(l); }
 
   bool containsInstance(TNode q, size_t numBindings, ENode* const* bindings);
 
@@ -648,16 +646,9 @@ class SmtContext : protected EnvObj
 
   void addEq(ENode* n1, ENode* n2, EqJustification js);
 
-  void setConflict(Justification* js)
-  {
-    Assert(js != nullptr);
-    setConflict(BJustification(js));
-  }
+  void setConflict(Justification* js) { d_prop.setConflict(js); }
 
-  bool inconsistent() const
-  {
-    return d_conflict != s_nullBJustification || d_assertedInconsistent;
-  }
+  bool inconsistent() const { return d_prop.inconsistent(); }
 
   uint64_t getNumConflicts() const { return d_numConflicts; }
 
@@ -710,17 +701,9 @@ class SmtContext : protected EnvObj
                       size_t numArgs,
                       ENode* const* args);
 
-  bool guess(BoolVar var, LBool phase);
-
   void incBvarActivity(BoolVar v, double inc = 1.0)
   {
-    double& act = d_activity[v];
-    act += d_bvarInc * inc;
-    if (act > s_activityLimit)
-    {
-      rescaleBoolVarActivity();
-    }
-    d_caseSplitQueue->activityIncreasedEh(v);
+    d_prop.incBvarActivity(v, inc);
   }
 
   bool canPropagate() const;
@@ -866,33 +849,7 @@ class SmtContext : protected EnvObj
     }
   };
 
-  struct Scope
-  {
-    size_t d_assignedLiteralsLim;
-    size_t d_auxClausesLim;
-    size_t d_justificationsLim;
-    size_t d_unitsToReassertLim;
-  };
-
-  struct BaseScope
-  {
-    size_t d_lemmasLim;
-    size_t d_simpQheadLim;
-    bool d_inconsistent;
-  };
-
-  /** A unit literal that is reasserted after every backtrack. */
-  struct ReplayUnit
-  {
-    Node d_unit;
-    bool d_sign;
-    bool d_relevant;
-  };
-
   using ExprBoolPair = std::pair<Node, bool>;
-
-  static constexpr double s_activityLimit = 1e100;
-  static constexpr double s_invActivityLimit = 1e-100;
 
   // ----------------------------------------------------------- the E-graph
   void pushNewThEq(TheoryId th, TheoryVar lhs, TheoryVar rhs);
@@ -932,13 +889,14 @@ class SmtContext : protected EnvObj
 
   void assignQuantifier(TNode q);
 
-  void setConflict(const BJustification& js, Literal notL);
+  void setConflict(const BJustification& js, Literal notL)
+  {
+    d_prop.setConflict(js, notL);
+  }
 
-  void setConflict(const BJustification& js) { setConflict(js, s_nullLiteral); }
+  void setConflict(const BJustification& js) { d_prop.setConflict(js); }
 
   // ----------------------------------------------------------- the search
-  void assignCore(Literal l, BJustification j, bool decision = false);
-  bool bcp();
   bool propagateEqs();
   bool propagateAtoms();
   void pushNewThDiseqs(ENode* r, TheoryVar v, Theory* th);
@@ -951,9 +909,6 @@ class SmtContext : protected EnvObj
   bool propagate();
 
   bool decide();
-  void updatePhaseCacheCounter();
-  void rescaleBoolVarActivity();
-  void decayBvarActivity() { d_bvarInc *= d_params.d_invDecay; }
 
   void initSearch();
   void endSearch();
@@ -963,7 +918,6 @@ class SmtContext : protected EnvObj
   void tick(uint32_t& counter) const;
   LBool boundedSearch();
   FinalCheckStatus finalCheck();
-  void forgetPhaseOfVarsInCurrentLevel();
   virtual bool resolveConflict();
   void recordRelevancy(size_t n, const Literal* lits);
   void restoreRelevancy(size_t n, const Literal* lits);
@@ -978,53 +932,11 @@ class SmtContext : protected EnvObj
   size_t popScopeCore(size_t numScopes);
   void popScope(size_t numScopes);
   void popToSearchLvl();
-  void unassignVars(size_t oldLim);
-  void removeWatchLiteral(Clause* cls, size_t idx);
-  void removeClsOccs(Clause* cls);
-  void delClause(Clause* cls);
-  void delClauses(ClauseVector& v, size_t oldSize);
   void delJustifications(JustificationVector& justifications, size_t oldLim);
-  bool isUnitClause(const Clause* c) const;
-  bool isEmptyClause(const Clause* c) const;
-  void cacheGeneration(uint32_t newScopeLvl);
-  void cacheGeneration(const Clause* cls, uint32_t newScopeLvl);
-  void cacheGeneration(size_t numLits,
-                       const Literal* lits,
-                       uint32_t newScopeLvl);
-  void cacheGeneration(TNode n, uint32_t newScopeLvl);
   void resetCacheGeneration();
-  void reinitClauses(size_t numScopes, size_t numBoolVars);
-  void reassertUnits(size_t unitsToReassertLim);
-  void removeWatch(BoolVar v);
 
   // ------------------------------------------------- clause simplification
-  bool simplifyClause(Clause& cls);
-  size_t simplifyClauses(ClauseVector& clauses, size_t startingAt);
-  void simplifyClauses();
-  bool isJustifying(Clause* cls) const
-  {
-    for (size_t i = 0; i < 2; ++i)
-    {
-      BJustification js = getJustification((*cls)[i].var());
-      if (js.getKind() == BJustification::CLAUSE && js.getClause() == cls)
-      {
-        return true;
-      }
-    }
-    return false;
-  }
-  bool canDelete(Clause* cls) const
-  {
-    if (cls->inReinitStack())
-    {
-      return false;
-    }
-    return !isJustifying(cls);
-  }
   void delInactiveLemmas();
-  void delInactiveLemmas1();
-  void delInactiveLemmas2();
-  bool moreThanKUnassignedLiterals(Clause* cls, size_t k);
 
   // -------------------------------------------------------- internalization
   void updateGeneration(ENode* n);
@@ -1063,19 +975,8 @@ class SmtContext : protected EnvObj
   void internalizeUninterpreted(TNode n);
   /** Check that some plugin can reason about n's theory. */
   void checkTheorySupported(TNode n);
-  void undoMkBoolVar();
   void undoMkENode();
   void applySortCnstr(TNode term, ENode* e);
-  bool simplifyAuxClauseLiterals(size_t& numLits,
-                                 Literal* lits,
-                                 LiteralVector& simpLits);
-  bool simplifyAuxLemmaLiterals(size_t& numLits, Literal* lits);
-  void markForReinit(Clause* cls, uint32_t scopeLvl, bool reinternalizeAtoms);
-  uint32_t getMaxIscopeLvl(size_t numLits, const Literal* lits) const;
-  bool useBinaryClauseOpt(Literal l1, Literal l2, bool lemma) const;
-  int selectLearnedWatchLit(const Clause* cls) const;
-  int selectWatchLit(const Clause* cls, int startingAt) const;
-  void addWatchLiteral(Clause* cls, size_t idx);
   void mkRootClause(size_t numLits, Literal* lits);
   void mkRootClause(Literal l1, Literal l2);
   void mkRootClause(Literal l1, Literal l2, Literal l3);
@@ -1089,12 +990,6 @@ class SmtContext : protected EnvObj
   void mkImpliesCnstr(TNode n);
   void mkIffCnstr(TNode n, bool sign);
   void mkIteCnstr(TNode n);
-  bool trackOccs() const { return d_params.d_phaseSelection == PS_OCCURRENCE; }
-  void decRef(Literal l);
-  void incRef(Literal l);
-  void removeLitOccs(const Clause& cls, size_t numBoolVars);
-  void addLitOccs(const Clause& cls);
-  void addScores(size_t n, const Literal* lits);
 
   void init();
   void flush();
@@ -1102,6 +997,11 @@ class SmtContext : protected EnvObj
   // ------------------------------------------------------------- the fields
   Params& d_params;
   uint32_t d_relevancyLvl;
+  /**
+   * The propositional side: the Boolean search state. It refers to d_params
+   * and d_stats, so it is declared after them.
+   */
+  PropCore d_prop;
   Region d_region;
   QuantifierNormalizer d_normalizer;
   ConnectiveNormalizer d_connNormalizer;
@@ -1118,29 +1018,24 @@ class SmtContext : protected EnvObj
   std::unique_ptr<QuantifierManager> d_qmanager;
   std::unique_ptr<RelevancyPropagator> d_relevancyPropagator;
   RandomGen d_random;
-  bool d_flushing;
   FingerprintSet d_fingerprints;
 
   /** The formulas asserted into this context, and how far we internalized. */
   std::vector<Node> d_assertedFormulas;
   size_t d_assertedFormulasQhead;
-  bool d_assertedInconsistent;
   bool d_hasQuantifiers;
   bool d_internalizingAssertions;
   bool d_interrupted;
 
-  /** The Boolean expressions already internalized. */
-  std::vector<Node> d_bInternalizedStack;
   /** The expressions already internalized as enodes. */
   std::vector<Node> d_eInternalizedStack;
 
   JustificationVector d_justifications;
+  /** The size of d_justifications when each open scope was pushed. */
+  std::vector<size_t> d_justificationsLims;
 
   /** A circular counter used to give the theories a fair final check. */
   size_t d_finalCheckIdx;
-
-  std::vector<double> d_litScores[2];
-  std::vector<uint64_t> d_birthdate;
 
   // ------------------------------------- equality and uninterpreted functions
   ENode* d_trueENode;
@@ -1171,43 +1066,7 @@ class SmtContext : protected EnvObj
   Node d_isDiseqTmpExpr;
   TmpENode d_tmpENode;
 
-  // ------------------------------------------------------- the Boolean engine
-  /** Maps the id of an expression to its Boolean variable. */
-  std::vector<BoolVar> d_expr2BoolVar;
-  /** Maps a Boolean variable to its expression. */
-  std::vector<Node> d_boolVar2Expr;
-  /** Maps a literal index to its assignment. */
-  std::vector<int8_t> d_assignment;
-  /** The watch list of each literal. */
-  std::vector<WatchList> d_watches;
-  /** The occurrence count of each literal. */
-  std::vector<uint32_t> d_litOccs;
-  std::vector<BoolVarData> d_bdata;
-  std::vector<double> d_activity;
-  ClauseVector d_auxClauses;
-  ClauseVector d_lemmas;
-  std::vector<ClauseVector> d_clausesToReinit;
-  std::vector<ReplayUnit> d_unitsToReassert;
-  LiteralVector d_assignedLiterals;
-  size_t d_qhead;
-  size_t d_simpQhead;
-  /** The budget for clause simplification; it may become negative. */
-  int64_t d_simpCounter;
-  std::unique_ptr<CaseSplitQueue> d_caseSplitQueue;
-  double d_bvarInc;
-  bool d_phaseCacheOn;
-  /** Used to decide when to turn phase caching on and off. */
-  uint32_t d_phaseCounter;
-  /** The default phase when phase caching is in use. */
-  bool d_phaseDefault;
-
-  /*
-    A conflict is usually a single justification, i.e. a justification for
-    false. If d_notL is not the null literal then d_conflict justifies l, and
-    the conflict is the union of d_notL and d_conflict.
-  */
-  BJustification d_conflict;
-  Literal d_notL;
+  // ------------------------------------------------------- the search driver
   std::unique_ptr<ConflictResolution> d_conflictResolution;
 
   LiteralVector d_atomPropagationQueue;
@@ -1227,15 +1086,6 @@ class SmtContext : protected EnvObj
 
   // ------------------------------------------------------------ backtracking
   TrailStack d_trailStack;
-  uint32_t d_scopeLvl;
-  uint32_t d_baseLvl;
-  /**
-   * Greater than d_baseLvl when assumptions are used, and equal to it
-   * otherwise.
-   */
-  uint32_t d_searchLvl;
-  std::vector<Scope> d_scopes;
-  std::vector<BaseScope> d_baseScopes;
 
   /** A temporary variable used during internalization. */
   uint32_t d_generation;
@@ -1254,7 +1104,6 @@ class SmtContext : protected EnvObj
   uint64_t d_restartThreshold;
   uint64_t d_restartOuterThreshold;
   uint32_t d_lubyIdx;
-  double d_agility;
   uint64_t d_lemmaGcThreshold;
   std::vector<bool> d_relevantConflictLiterals;
 
@@ -1262,18 +1111,6 @@ class SmtContext : protected EnvObj
   std::vector<ExprBoolPair> d_tsTodo;
   std::vector<char> d_tcolors;
   std::vector<char> d_fcolors;
-
-  /** The trail object that undoes mkBoolVar. */
-  class MkBoolVarTrail : public Trail
-  {
-   public:
-    MkBoolVarTrail(SmtContext& ctx) : d_ctx(ctx) {}
-    void undo() override { d_ctx.undoMkBoolVar(); }
-
-   private:
-    SmtContext& d_ctx;
-  };
-  MkBoolVarTrail d_mkBoolVarTrail;
 
   /** The trail object that undoes mkENode. */
   class MkENodeTrail : public Trail

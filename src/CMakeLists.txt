@@ -1377,6 +1377,8 @@ libcvc5_add_sources(
   z3/push_app_ite.cpp
   z3/push_app_ite.h
   z3/params.h
+  z3/prop_core.cpp
+  z3/prop_core.h
   z3/qi_queue.cpp
   z3/qi_queue.h
   z3/quantifier_manager.cpp

@@ -57,6 +57,7 @@ are the values in `smt_params.h`.
 | cvc5 file | ported from |
 |---|---|
 | `smt_context.{h,cpp}` | `smt/smt_context.{h,cpp}` |
+| `prop_core.{h,cpp}` | the Boolean search of `smt/smt_context.*` and `smt/smt_internalizer.cpp`: variables, assignment, watches, clauses, propagation and clause GC |
 | `internalizer.cpp` | `smt/smt_internalizer.cpp` |
 | `enode.{h,cpp}`, `cg_table.{h,cpp}` | `smt/smt_enode.*`, `smt/smt_cg_table.*` |
 | `relevancy.{h,cpp}` | `smt/smt_relevancy.*` |

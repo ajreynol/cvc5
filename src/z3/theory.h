@@ -294,6 +294,7 @@ class Theory
   bool d_lazy;
 
   friend class SmtContext;
+  friend class PropCore;
 };
 
 }  // namespace z3

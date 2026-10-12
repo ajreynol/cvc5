@@ -4,8 +4,8 @@ Date: 2026-10-10
 
 Source snapshot: `da001fa639` (`Preset`)
 
-Status: Stage 1A implemented; Stage 1B in progress (steps 1–3 of 7). See
-the progress record in section 14.
+Status: Stage 1A implemented; Stage 1B in progress (steps 1–3 and 4(a) of
+7). See the progress record in section 14.
 
 ## 1. Objective and migration principle
 
@@ -620,3 +620,9 @@ runs that time out compared under `--rlimit`):
    resolution no longer reads the E-graph.
 3. `z3::TheoryStatus` extracted. It holds the unsupported and model-unsound
    records that decide whether "sat" can be confirmed.
+4. (a) `z3::PropCore` extracted: the Boolean search state and the methods on
+   it, about 1,500 lines moved unchanged out of `smt_context.cpp` and
+   `internalizer.cpp`. The search driver, conflict resolution and the
+   sequencing of scopes remain in `SmtContext` until step 4(b). On a small
+   timing sample with identical work, the run time was unchanged (ratio
+   0.996).

@@ -5,8 +5,8 @@ Date: 2026-10-12
 Source snapshot: `8a1ca4ad2c` (Stage 1A), plus the capability changes that
 follow it.
 
-Status: steps 1–3 of the sequence in section 8 are done. The rest of this
-document describes the state before them, except where marked.
+Status: steps 1–3 and 4(a) of the sequence in section 8 are done. The rest
+of this document describes the state before them, except where marked.
 
 This is the dependency audit that section 7 of
 [ARCHITECTURE_PLAN.md](ARCHITECTURE_PLAN.md) asks for before `SmtContext` is
@@ -489,6 +489,20 @@ both presets; runs that time out excepted), identical results under
 
    `SmtContext` is then the theory side. It can be renamed, which is
    cosmetic.
+
+   *4(a) done: `z3::PropCore` in `prop_core.{h,cpp}` owns the Boolean
+   variables and their data, the assignment, the watches, the clause store
+   with its reinitialization and delayed units, the conflict, the activity
+   and phase heuristics, the case split queue and the scope levels, together
+   with the methods on them: `mkBoolVar`, `assign`, `bcp`, `mkClause`,
+   `simplifyClauses`, the lemma GC and `guess`. The method bodies moved
+   unchanged. `SmtContext` holds it as the member `d_prop` and keeps
+   forwarders under the same names, so neither the plugins nor the theory
+   side's own code changed. `PropCore` calls the theory side only for the
+   services listed in its class comment. `pushScope` and `popScopeCore`
+   still sequence both sides, calling `PropCore` for its part at the same
+   point as before. The justification limit of a scope is now kept by
+   `SmtContext`.*
 5. **Give relevancy an owner.** `RelevancyPropagator` becomes a component of
    `PropCore`, with an explicit interface to T: the members of a class and
    the `relevantEh` sink. The order of the fan-out is preserved.

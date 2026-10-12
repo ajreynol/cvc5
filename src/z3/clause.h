@@ -315,7 +315,7 @@ class Clause
     return reinterpret_cast<AtomEntry*>(const_cast<Justification**>(addr));
   }
 
-  friend class SmtContext;
+  friend class PropCore;
 
   void swapLits(size_t idx1, size_t idx2)
   {
