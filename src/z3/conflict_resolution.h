@@ -168,7 +168,6 @@ class ConflictResolution
   bool impliedByMarked(Literal lit);
   void minimizeLemma();
 
-
   bool initializeResolve(BJustification conflict,
                          Literal notL,
                          BJustification& js,
@@ -202,7 +201,6 @@ class ConflictResolution
   BoolVarVector d_unmark;
   BoolVarVector d_lemmaMinStack;
   LevelApproxSet d_lvlSet;
-
 };
 
 inline void markLiterals(ConflictResolution& cr, size_t sz, const Literal* ls)

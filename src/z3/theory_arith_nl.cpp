@@ -20,8 +20,8 @@
 #include "smt/env.h"
 #include "z3/arith_util.h"
 #include "z3/smt_context.h"
-#include "z3/theory_cvc5.h"
 #include "z3/theory_arith.h"
+#include "z3/theory_cvc5.h"
 
 namespace cvc5::internal {
 namespace z3 {

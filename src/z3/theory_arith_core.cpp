@@ -27,8 +27,8 @@
 #include "z3/ast.h"
 #include "z3/justification.h"
 #include "z3/smt_context.h"
-#include "z3/theory_cvc5.h"
 #include "z3/theory_arith.h"
+#include "z3/theory_cvc5.h"
 #include "z3/util/trail.h"
 
 namespace cvc5::internal {

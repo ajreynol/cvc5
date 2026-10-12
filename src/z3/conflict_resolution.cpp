@@ -685,7 +685,6 @@ void ConflictResolution::reset()
   // rebuilding the literals and atoms of the lemma it just derived.
 }
 
-
 ConflictResolution* mkConflictResolution(SmtContext& ctx,
                                          DynAckManager& dackManager,
                                          const Params& params,
