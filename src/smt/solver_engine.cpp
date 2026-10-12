@@ -37,7 +37,6 @@
 #include "options/quantifiers_options.h"
 #include "options/smt_options.h"
 #include "options/theory_options.h"
-#include "options/z3_options.h"
 #include "preprocessing/passes/synth_rew_rules.h"
 #include "printer/printer.h"
 #include "proof/unsat_core.h"
@@ -783,6 +782,7 @@ std::shared_ptr<ProofNode> SolverEngine::getAvailableSatProof()
 QuantifiersEngine* SolverEngine::getAvailableQuantifiersEngine(
     const char* c) const
 {
+  checkEngineSupports(prop::SearchFeature::QUANTIFIERS_ENGINE, c);
   QuantifiersEngine* qe = d_smtSolver->getQuantifiersEngine();
   if (qe == nullptr)
   {
@@ -816,11 +816,11 @@ Result SolverEngine::checkSat(const Node& assumption)
 
 Result SolverEngine::checkSat(const std::vector<Node>& assumptions)
 {
+  beginCall(true);
   if (!assumptions.empty())
   {
-    checkZ3Supports("check-sat-assuming");
+    checkEngineSupports(prop::SearchFeature::ASSUMPTIONS, "check-sat-assuming");
   }
-  beginCall(true);
   Result res = checkSatInternal(assumptions);
   endCall();
   return res;
@@ -2181,9 +2181,9 @@ bool SolverEngine::getSubsolverSynthSolutions(std::map<Node, Node>& solMap)
 
 Node SolverEngine::getQuantifierElimination(Node q, bool doFull)
 {
-  checkZ3Supports("get-qe");
   Assert(d_state->getStatusSolver() == nullptr);
   beginCall(true);
+  checkEngineSupports(prop::SearchFeature::QUANTIFIERS_ENGINE, "get-qe");
   Node result = d_quantElimSolver->getQuantifierElimination(
       q, doFull, d_isInternalSubsolver);
   endCall();
@@ -2309,26 +2309,26 @@ void SolverEngine::getDifficultyMap(std::map<Node, Node>& dmap)
   d_pfManager->translateDifficultyMap(dmap, d_smtSolver->getAssertions());
 }
 
-void SolverEngine::checkZ3Supports(const char* feature) const
+void SolverEngine::checkEngineSupports(prop::SearchFeature f,
+                                       const char* cmd) const
 {
-  if (!d_env->getOptions().z3.z3)
+  // Options a search engine does not support are refused when the defaults
+  // are set, but these are commands, which can only be refused here. The
+  // alternative to refusing is a wrong answer, read from state that the
+  // engine does not use for its search.
+  if (d_smtSolver->getPropEngine()->supports(f))
   {
     return;
   }
-  // The ported Z3 core supports one or more check-sat calls with assertions
-  // between them, and reset-assertions. These are commands rather than
-  // options, so they cannot be refused when the defaults are set; the
-  // alternative to refusing here is a wrong answer, since the port keeps its
-  // own assertion and search state and cvc5's engines are inactive.
   std::stringstream ss;
-  ss << feature << " is not supported with --z3";
+  ss << cmd << " is not supported by the selected search engine";
   throw ModalException(ss.str());
 }
 
 void SolverEngine::push()
 {
-  checkZ3Supports("push");
   beginCall();
+  checkEngineSupports(prop::SearchFeature::USER_SCOPES, "push");
   Trace("smt") << "SMT push()" << endl;
   d_smtDriver->refreshAssertions();
   d_ctxManager->userPush();
@@ -2336,8 +2336,8 @@ void SolverEngine::push()
 
 void SolverEngine::pop()
 {
-  checkZ3Supports("pop");
   beginCall();
+  checkEngineSupports(prop::SearchFeature::USER_SCOPES, "pop");
   Trace("smt") << "SMT pop()" << endl;
   d_ctxManager->userPop();
 

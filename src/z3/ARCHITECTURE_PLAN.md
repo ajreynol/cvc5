@@ -4,7 +4,8 @@ Date: 2026-10-10
 
 Source snapshot: `da001fa639` (`Preset`)
 
-Status: proposed migration plan; no implementation or new benchmark results.
+Status: Stage 1A implemented; Stage 1B audited, not yet started. See the
+progress record in section 14.
 
 ## 1. Objective and migration principle
 
@@ -513,3 +514,100 @@ contracts, with a reproducible behavior and performance comparison. The
 shared `SmtContext` at that stage should be visible in the design and progress
 record. Stage 1B then turns that integration boundary into an internal
 architectural separation suitable for the next recursive replacements.
+
+## 14. Progress record
+
+### Stage 1A: done
+
+Implemented in `8a1ca4ad2c`, followed by the capability changes described
+below.
+
+| Branch | Highest Z3-specific layer remaining | Notes |
+|---|---|---|
+| SMT orchestration | none | `Z3SmtSolver` is deleted; native `SmtSolver` drives both configurations. |
+| Propositional | `z3::Z3PropEngine`, a whole engine | Implements `PropEngine`'s search contract over the shared `SmtContext`. |
+| Theory | `z3::Z3TheoryEngine`, a whole engine | Owns the shared backend. Its inherited `TheoryEngine` serves preprocessing only. |
+
+Native layers restored:
+
+- `SmtSolver` performs assertion bookkeeping, forwards preprocessing
+  soundness flags, constructs the engines and dispatches the lifecycle for
+  both configurations. `smt_solver.h` is identical to master.
+- `SolverEngine` contains no reference to `--z3`. Commands that need an
+  optional feature ask the engine through `PropEngine::supports`.
+- Backend selection happens only in construction (`smt::EngineFactory`) and
+  configuration (`SetDefaults::checkZ3Capabilities`).
+
+Contracts introduced:
+
+- The search contract of `PropEngine`, whose methods are now virtual:
+  `finishInit`, `assertInputFormulas`, `checkSat`, `push`, `pop`,
+  `resetTrail`, `getAssertionLevel`, `interrupt` and `supports`. None of
+  these is called on the hot path of the search.
+- `prop::SearchFeature`, the capability query for user scopes, assumptions,
+  and participation of cvc5's quantifiers engine.
+- A virtual destructor on `TheoryEngine`.
+
+Dependencies that still cross the intended boundaries:
+
+- `Z3PropEngine` and `Z3TheoryEngine` share one `SmtContext` through
+  `z3::SharedBackend`, which `Z3TheoryEngine` owns. `EngineFactory` pairs the
+  two engines with a cast that is checked only in debug builds.
+- `Z3PropEngine` reads the preprocessing soundness flags from its paired
+  theory engine.
+- Both Z3 engines inherit the native engines. The inherited SAT solver, CNF
+  stream and theories are constructed but inactive. Their non-contract
+  queries can only be reached through refused features: options are refused
+  in `checkZ3Capabilities`, and commands through `supports`.
+- Assertion preparation (`z3::AssertionPreparation`) runs inside
+  `Z3PropEngine::assertInputFormulas`. It uses utilities owned by the
+  `SmtContext`, because instance internalization uses the same utilities.
+- The translation of unknown reasons is preserved from the old driver, so a
+  time limit is reported as `INTERRUPTED` rather than `TIMEOUT`.
+
+Behavior changes, all intended:
+
+- The preprocessing soundness flags now take effect. Only `int-to-bv` and
+  `solve-real-as-int` set them.
+- The exception paths in `SmtDriver` now reset the trail of the active
+  search. Previously they reset the trail of the inactive native engine.
+- The following are now refused, because each one read inactive native
+  state: `--deep-restart`, `--dump-instantiations`, which previously printed
+  "none" after the port had instantiated, `--oracles`, `declare-pool`, and
+  the API's instantiation queries.
+- The messages for refused commands changed from "not supported with --z3"
+  to "not supported by the selected search engine".
+
+Source accounting, in physical lines of C++ files under `src/z3`:
+
+- At `da001fa639`: 96 files, 42,417 lines. Immediately before Stage 1A
+  (`75c37b9f3b`): 96 files, 42,144 lines.
+- After Stage 1A: 104 files, 42,732 lines. The imported implementation is
+  unchanged; the difference is 588 lines of new integration code in
+  `z3_prop_engine`, `z3_theory_engine`, `shared_backend` and
+  `assertion_preparation`.
+- Removed: `src/smt/z3_smt_solver.{h,cpp}`, 236 lines. Its assertion
+  preparation and result translation, about 85 lines, moved into the new
+  files.
+- Added outside `src/z3`: `src/smt/engine_factory.{h,cpp}`, 105 lines.
+- Native code modified: `prop_engine.{h,cpp}`, `theory_engine.h`,
+  `smt_solver.{h,cpp}` (restored to master apart from engine construction),
+  `solver_engine.{h,cpp}` and `set_defaults.cpp`, roughly 110 lines added and
+  60 removed.
+
+Performance and behavior:
+
+- Local comparison against the build from before the change: 444 quantified
+  regressions, each run under the default and `verus-best` presets with a
+  10 s limit. In 873 of the 888 runs the answers and every `z3::` search
+  counter were identical; the other 15 timed out in both builds. Runs
+  limited by `--rlimit` stopped at the same point with identical counters.
+- The benchmark comparison on the reference set showed no regression.
+
+### Stage 1B: in progress
+
+The audit of `SmtContext` that section 7 calls for is recorded in
+[PROP_THEORY_SPLIT.md](PROP_THEORY_SPLIT.md). It allocates relevancy to the
+propositional side, splits internalization as cvc5 splits CNF conversion from
+pre-registration, and proposes seven extraction steps that preserve
+behavior. No code has changed for Stage 1B yet.

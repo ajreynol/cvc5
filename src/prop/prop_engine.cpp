@@ -714,6 +714,8 @@ void PropEngine::interrupt()
   Trace("prop") << "interrupt()" << std::endl;
 }
 
+bool PropEngine::supports(SearchFeature /* f */) const { return true; }
+
 void PropEngine::spendResource(Resource r)
 {
   d_env.getResourceManager()->spendResource(r);

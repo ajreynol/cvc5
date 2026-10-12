@@ -38,8 +38,9 @@ namespace z3 {
  * preprocessing reports through setRefutationUnsound and setModelUnsound,
  * which Z3PropEngine applies to the result of the search. The theories never
  * receive an assertion, so anything else asked of them is not about the
- * problem; the features that would ask are refused with --z3, see
- * SetDefaults::checkZ3Capabilities and SolverEngine::checkZ3Supports.
+ * problem. The commands that would ask are refused through
+ * Z3PropEngine::supports, and the options through
+ * SetDefaults::checkZ3Capabilities.
  */
 class Z3TheoryEngine : public TheoryEngine
 {

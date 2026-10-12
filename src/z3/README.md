@@ -208,10 +208,11 @@ answered:
 | `--produce-unsat-cores`, `--check-unsat-cores` | refused |
 | `--produce-proofs`, `--check-proofs`, any `--proof-mode` | refused |
 | `--produce-interpolants`, `--produce-abducts`, `--produce-difficulty`, `--produce-assignments`, `--produce-learned-literals` | refused |
+| `--deep-restart`, `--dump-instantiations`, `--oracles` | refused |
 | sygus | refused |
 | `push`, `pop` | refused |
 | `check-sat-assuming` | refused |
-| `get-qe` | refused |
+| `get-qe`, `get-instantiations`, `declare-pool`, `declare-oracle-fun` | refused |
 
 Refusing is the point. The port keeps its own assertion and search state in
 `z3::SmtContext`. `Z3PropEngine` and `Z3TheoryEngine` answer the search
@@ -231,9 +232,12 @@ removed once these were refused, since it had become unreachable; see
 unsat assumptions are a different thing and remain.
 
 The option-level refusals are in `SetDefaults::checkZ3Capabilities`, which
-also catches an in-file `(set-option ...)`. `push`, `pop`,
-`check-sat-assuming` and `get-qe` are commands rather than options, so they
-are refused at the API in `SolverEngine::checkZ3Supports`.
+also catches an in-file `(set-option ...)`. The commands are refused by
+`SolverEngine::checkEngineSupports`, which asks the propositional engine
+whether it supports the `prop::SearchFeature` the command needs: user
+scopes, assumptions, or cvc5's quantifiers engine taking part in the search.
+`Z3PropEngine::supports` answers no to all three. `SolverEngine` itself no
+longer knows about `--z3`.
 
 `regress0/z3/` pins all of this, together with the core behaviour under both
 presets: `unsupported-*.smt2` for the boundary, `incremental-checks*.smt2`

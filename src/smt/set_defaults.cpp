@@ -1159,6 +1159,25 @@ void SetDefaults::checkZ3Capabilities(Options& opts) const
   {
     unsupported = "--produce-learned-literals";
   }
+  else if (opts.smt.deepRestartMode != options::DeepRestartMode::NONE)
+  {
+    // A deep restart restarts from the literals the SAT solver learned at
+    // level zero, and the native SAT solver learns none.
+    unsupported = "--deep-restart";
+  }
+  else if (opts.driver.dumpInstantiations
+           || opts.driver.dumpInstantiationsDebug)
+  {
+    // The instantiations are read from cvc5's quantifiers engine, which makes
+    // none: this printed "none" after the port had instantiated.
+    unsupported = "--dump-instantiations";
+  }
+  else if (opts.quantifiers.oracles)
+  {
+    // Oracle functions are interpreted by cvc5's quantifiers engine, and the
+    // port would treat them as uninterpreted.
+    unsupported = "--oracles";
+  }
   else if (opts.quantifiers.sygus)
   {
     unsupported = "sygus";

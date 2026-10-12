@@ -51,16 +51,34 @@ class PropPfManager;
 class TheoryProxy;
 
 /**
+ * The optional features of a search implementation that a command may
+ * require. See PropEngine::supports.
+ */
+enum class SearchFeature
+{
+  /** Pushing and popping user scopes. */
+  USER_SCOPES,
+  /** Checking satisfiability under assumptions. */
+  ASSUMPTIONS,
+  /**
+   * cvc5's quantifiers engine taking part in the search, which is what makes
+   * the declarations it consumes (term pools, oracles) and the queries it
+   * answers (instantiations, quantifier elimination) meaningful.
+   */
+  QUANTIFIERS_ENGINE
+};
+
+/**
  * PropEngine is the abstraction of a Sat Solver, providing methods for
  * solving the SAT problem and conversion to CNF (via the CnfStream).
  *
  * The virtual methods below (finishInit, assertInputFormulas, checkSat, push,
- * pop, resetTrail, getAssertionLevel and interrupt) are the search contract
- * through which the SMT layer drives the engine. They are virtual so that the
- * search can be run by an alternative implementation selected when the
- * engines are constructed, see smt/engine_factory.h. They are called about
- * once per command, so the methods that theories call during the search are
- * left non-virtual.
+ * pop, resetTrail, getAssertionLevel, interrupt and supports) are the search
+ * contract through which the SMT layer drives the engine. They are virtual so
+ * that the search can be run by an alternative implementation selected when
+ * the engines are constructed, see smt/engine_factory.h. They are called
+ * about once per command, so the methods that theories call during the search
+ * are left non-virtual.
  */
 class PropEngine : protected EnvObj
 {
@@ -296,6 +314,13 @@ class PropEngine : protected EnvObj
    * Can potentially throw a ModalException.
    */
   virtual void interrupt();
+
+  /**
+   * Whether this engine, together with the theory engine it was made with,
+   * supports the optional feature f. A command that requires f is refused
+   * when it does not. cvc5's own engines support every feature.
+   */
+  virtual bool supports(SearchFeature f) const;
 
   /**
    * Informs the ResourceManager that a resource has been spent.  If out of

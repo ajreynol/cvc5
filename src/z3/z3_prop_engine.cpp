@@ -116,5 +116,23 @@ void Z3PropEngine::interrupt()
   }
 }
 
+bool Z3PropEngine::supports(prop::SearchFeature f) const
+{
+  switch (f)
+  {
+    case prop::SearchFeature::USER_SCOPES:
+    case prop::SearchFeature::ASSUMPTIONS:
+      // The core does not scope its asserted formulas, so an assertion made
+      // inside a user push survives the matching pop; assumptions go through
+      // the same scopes. See FIDELITY.md, "Lifecycle defects".
+      return false;
+    case prop::SearchFeature::QUANTIFIERS_ENGINE:
+      // The core does its own matching and instantiation; the quantifiers
+      // engine of the theory engine never sees an assertion.
+      return false;
+  }
+  return false;
+}
+
 }  // namespace z3
 }  // namespace cvc5::internal

@@ -1,5 +1,5 @@
 ; COMMAND-LINE: --z3 --incremental
-; EXPECT: (error "push is not supported with --z3")
+; EXPECT: (error "push is not supported by the selected search engine")
 ; EXIT: 1
 ; DISABLE-TESTER: model
 ; DISABLE-TESTER: proof

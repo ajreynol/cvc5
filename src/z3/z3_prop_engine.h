@@ -42,9 +42,9 @@ class Z3TheoryEngine;
  * The inherited PropEngine is kept as a service to cvc5's preprocessing,
  * which uses it for theory preprocessing, term formula removal and the
  * notification of top-level substitutions. Its SAT solver never searches, so
- * nothing else asked of it is about the problem; the features that would ask
- * are refused with --z3, see SetDefaults::checkZ3Capabilities and
- * SolverEngine::checkZ3Supports.
+ * nothing else asked of it is about the problem. The commands that would ask
+ * are refused through supports, and the options through
+ * SetDefaults::checkZ3Capabilities.
  */
 class Z3PropEngine : public prop::PropEngine
 {
@@ -71,6 +71,8 @@ class Z3PropEngine : public prop::PropEngine
   /** The number of user scopes of the core. */
   uint32_t getAssertionLevel() const override;
   void interrupt() override;
+  /** None of the optional features are supported; see the implementation. */
+  bool supports(prop::SearchFeature f) const override;
 
  private:
   /** The paired theory engine. */
