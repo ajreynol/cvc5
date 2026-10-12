@@ -93,16 +93,6 @@ class ConflictResolution
 
   void releaseLemmaAtoms() { d_lemmaAtoms.clear(); }
 
-  LiteralVector::const_iterator beginUnsatCore() const
-  {
-    return d_assumptions.begin();
-  }
-
-  LiteralVector::const_iterator endUnsatCore() const
-  {
-    return d_assumptions.end();
-  }
-
   // ------------------------------------- the marking interface used by
   //                                       Justification::getAntecedents
   void markJustification(Justification* js)
@@ -150,9 +140,6 @@ class ConflictResolution
 
   void reset();
 
-  /** Build the unsat core of a conflict at the search level. */
-  void mkUnsatCore(BJustification conflict, Literal notL);
-
  protected:
   /** Mark, or unmark, all enodes on the proof branch starting at n. */
   template <bool Set>
@@ -181,8 +168,6 @@ class ConflictResolution
   bool impliedByMarked(Literal lit);
   void minimizeLemma();
 
-  void processAntecedentForUnsatCore(Literal antecedent);
-  void processJustificationForUnsatCore(Justification* js);
 
   bool initializeResolve(BJustification conflict,
                          Literal notL,
@@ -218,7 +203,6 @@ class ConflictResolution
   BoolVarVector d_lemmaMinStack;
   LevelApproxSet d_lvlSet;
 
-  LiteralVector d_assumptions;
 };
 
 inline void markLiterals(ConflictResolution& cr, size_t sz, const Literal* ls)

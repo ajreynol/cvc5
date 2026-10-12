@@ -207,6 +207,32 @@ reported as `unknown`, and why the 14 remaining `unknown` results on the
 sample stand — E-matching saturates and there is nothing to pick the next
 binding with.
 
+## Imported code retired with the capability boundary
+
+Once `check-sat-assuming` and `get-unsat-core` are refused, the assumption and
+unsat-core machinery the port had taken from Z3 is unreachable, and it is now
+removed: 268 lines, all of it imported.
+
+| removed | from Z3 |
+|---|---|
+| `SmtContext::initAssumptions`, `resetAssumptions`, `mkUnsatCore`, the assumption-taking `check` overload | `context::init_assumptions`, `reset_assumptions`, `mk_unsat_core` |
+| `d_assumptions`, `d_literal2Assumption`, `d_unsatCore`, `trackingAssumptions`, `isAssumption`, `getUnsatCore*` | the same members of `context` |
+| `ConflictResolution::mkUnsatCore`, `processAntecedentForUnsatCore`, `processJustificationForUnsatCore`, `d_assumptions`, `begin/endUnsatCore` | `conflict_resolution::mk_unsat_core` and its helpers |
+| `BoolVarData::d_assumption` | `bool_var_data::m_assumption` |
+
+It was provably dead rather than apparently dead: the only caller passed no
+assumptions, so `trackingAssumptions()` was always false, and both uses in
+`conflict_resolution` were already behind it -- the `mk_unsat_core` call
+directly, and the test in lemma minimization that an assumption must not be
+minimized away. Measured either side on the 300-benchmark sample:
+`verus-best` 297 solved / 1 unknown / 2 timeout both before and after,
+`verus` 282 / 16 / 2 both before and after, and `regress0` clean (2810).
+
+`src/z3` went from 42,417 to 42,149 lines; `SmtContext::d_model`, a write-only
+member, went with it. Re-porting any of this from Z3 is mechanical if
+assumptions are ever wanted, and the three `Cvc5Bridge` methods that read
+*its subsolver's* unsat assumptions are unrelated and untouched.
+
 ## Lifecycle defects found while pinning the capability boundary
 
 `push`/`pop` and `check-sat-assuming` gave wrong answers rather than failing,

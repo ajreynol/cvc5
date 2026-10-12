@@ -164,7 +164,7 @@ class SmtContext : protected EnvObj
 
   // -------------------------------------------------------------- search
   /** Run the search. */
-  LBool check(size_t numAssumptions = 0, const Node* assumptions = nullptr);
+  LBool check();
 
   /** Configure the core and then run the search. */
   LBool setupAndCheck();
@@ -182,12 +182,6 @@ class SmtContext : protected EnvObj
   const std::string& getReasonUnknown() const { return d_unknown; }
 
   std::ostream& printLastFailure(std::ostream& out) const;
-
-  size_t getUnsatCoreSize() const { return d_unsatCore.size(); }
-
-  TNode getUnsatCoreExpr(size_t idx) const { return d_unsatCore[idx]; }
-
-  const std::vector<Node>& unsatCore() const { return d_unsatCore; }
 
   // ----------------------------------------------------------- accessors
   Params& getParams() { return d_params; }
@@ -325,10 +319,6 @@ class SmtContext : protected EnvObj
     }
   }
 
-  bool isAssumption(BoolVar v) const { return getBdata(v).d_assumption; }
-
-  bool isAssumption(Literal l) const { return isAssumption(l.var()); }
-
   bool isMarked(BoolVar v) const { return getBdata(v).d_mark; }
 
   void setMark(BoolVar v)
@@ -372,11 +362,6 @@ class SmtContext : protected EnvObj
   bool atSearchLevel() const { return d_scopeLvl == d_searchLvl; }
 
   void popToSearchLevel() { popToSearchLvl(); }
-
-  bool trackingAssumptions() const
-  {
-    return !d_assumptions.empty() && d_searchLvl > d_baseLvl;
-  }
 
   TNode boolVar2Expr(BoolVar v) const { return d_boolVar2Expr[v]; }
 
@@ -1034,9 +1019,6 @@ class SmtContext : protected EnvObj
   LBool checkFinalize(LBool r);
 
   void assertedInconsistent();
-  void initAssumptions(const std::vector<Node>& asms);
-  void resetAssumptions();
-  LBool mkUnsatCore(LBool result);
 
   // --------------------------------------------------------- backtracking
   void pushScope();
@@ -1278,14 +1260,8 @@ class SmtContext : protected EnvObj
   std::unordered_set<TNode> d_cacheGenerationVisited;
   DynAckManager d_dynAckManager;
 
-  // --------------------------------------------------------- model generation
-  Node d_model;
+  /** Why the last search answered L_UNDEF. */
   std::string d_unknown;
-
-  // ------------------------------------------------------ unsat core support
-  LiteralVector d_assumptions;
-  std::unordered_map<size_t, Node> d_literal2Assumption;
-  std::vector<Node> d_unsatCore;
 
   // -------------------------------------------------------- theory case split
   UIntSet d_allThCaseSplitLiterals;

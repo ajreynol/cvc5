@@ -357,10 +357,6 @@ bool ConflictResolution::initializeResolve(BJustification conflict,
   if (d_conflictLvl <= d_ctx.getSearchLevel())
   {
     Trace("z3-conflict") << "problem is unsat" << std::endl;
-    if (d_ctx.trackingAssumptions())
-    {
-      mkUnsatCore(conflict, notL);
-    }
     return false;
   }
 
@@ -635,8 +631,7 @@ bool ConflictResolution::impliedByMarked(Literal lit)
         }
         break;
       case BJustification::JUSTIFICATION:
-        if (d_ctx.isAssumption(var)
-            || !processJustificationForMinimization(js.getJustification()))
+        if (!processJustificationForMinimization(js.getJustification()))
         {
           resetUnmarkAndJustifications(oldSize, oldJsQhead);
           return false;
@@ -690,134 +685,6 @@ void ConflictResolution::reset()
   // rebuilding the literals and atoms of the lemma it just derived.
 }
 
-void ConflictResolution::processAntecedentForUnsatCore(Literal antecedent)
-{
-  BoolVar var = antecedent.var();
-  if (!d_ctx.isMarked(var))
-  {
-    d_ctx.setMark(var);
-    d_unmark.push_back(var);
-  }
-  if (d_ctx.isAssumption(var))
-  {
-    d_assumptions.push_back(antecedent);
-  }
-}
-
-void ConflictResolution::processJustificationForUnsatCore(Justification* js)
-{
-  LiteralVector& antecedents = d_tmpLiteralVector;
-  antecedents.clear();
-  justification2LiteralsCore(js, antecedents);
-  for (Literal lit : antecedents)
-  {
-    processAntecedentForUnsatCore(lit);
-  }
-}
-
-void ConflictResolution::mkUnsatCore(BJustification conflict, Literal notL)
-{
-  Assert(d_ctx.trackingAssumptions());
-  d_assumptions.clear();
-  d_unmark.clear();
-
-  Assert(d_conflictLvl <= d_ctx.getSearchLevel());
-  uint32_t searchLvl = d_ctx.getSearchLevel();
-
-  BJustification js = conflict;
-  Literal consequent = s_falseLiteral;
-  if (notL != s_nullLiteral)
-  {
-    consequent = ~notL;
-  }
-
-  int64_t idx = static_cast<int64_t>(skipLiteralsAboveConflictLevel());
-
-  if (notL != s_nullLiteral)
-  {
-    processAntecedentForUnsatCore(consequent);
-  }
-
-  if (!d_assignedLiterals.empty())
-  {
-    bool done = false;
-    while (!done)
-    {
-      switch (js.getKind())
-      {
-        case BJustification::CLAUSE:
-        {
-          Clause* cls = js.getClause();
-          size_t numLits = cls->getNumLiterals();
-          size_t i = 0;
-          if (consequent != s_falseLiteral)
-          {
-            Assert(cls->getLiteral(0) == consequent
-                   || cls->getLiteral(1) == consequent);
-            if (cls->getLiteral(0) == consequent)
-            {
-              i = 1;
-            }
-            else
-            {
-              processAntecedentForUnsatCore(~cls->getLiteral(0));
-              i = 2;
-            }
-          }
-          for (; i < numLits; ++i)
-          {
-            processAntecedentForUnsatCore(~cls->getLiteral(i));
-          }
-          Justification* cjs = cls->getJustification();
-          if (cjs != nullptr)
-          {
-            processJustificationForUnsatCore(cjs);
-          }
-          break;
-        }
-        case BJustification::BIN_CLAUSE:
-          Assert(consequent.var() != js.getLiteral().var());
-          processAntecedentForUnsatCore(js.getLiteral());
-          break;
-        case BJustification::AXIOM: break;
-        case BJustification::JUSTIFICATION:
-          processJustificationForUnsatCore(js.getJustification());
-          break;
-      }
-
-      if (d_ctx.isAssumption(consequent.var()))
-      {
-        d_assumptions.push_back(consequent);
-      }
-      while (idx >= 0)
-      {
-        Literal l = d_assignedLiterals[idx];
-        if (d_ctx.getAssignLevel(l) < searchLvl)
-        {
-          done = true;
-          break;
-        }
-        if (d_ctx.isMarked(l.var()))
-        {
-          break;
-        }
-        idx--;
-      }
-      if (done || idx < 0)
-      {
-        break;
-      }
-
-      consequent = d_assignedLiterals[idx];
-      BoolVar cVar = consequent.var();
-      Assert(d_ctx.getAssignLevel(cVar) == searchLvl);
-      js = d_ctx.getJustification(cVar);
-      idx--;
-    }
-  }
-
-  resetUnmarkAndJustifications(0, 0);
-}
 
 ConflictResolution* mkConflictResolution(SmtContext& ctx,
                                          DynAckManager& dackManager,

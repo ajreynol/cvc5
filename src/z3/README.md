@@ -197,6 +197,11 @@ of size one with all three constants equal; `(get-unsat-core)` returned the
 empty set, which asserts that nothing is unsatisfiable; and `--produce-proofs`
 aborted inside `unordered_map::at`.
 
+The assumption and unsat-core machinery the port had taken from Z3 was
+removed once these were refused, since it had become unreachable; see
+`FIDELITY.md`. The three `Cvc5Bridge` methods that read *its subsolver's*
+unsat assumptions are a different thing and remain.
+
 The option-level refusals are in `SetDefaults::checkZ3Capabilities`, which
 also catches an in-file `(set-option ...)`. `push`, `pop`,
 `check-sat-assuming` and `get-qe` are commands rather than options, so they

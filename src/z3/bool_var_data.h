@@ -33,7 +33,6 @@ struct BoolVarData
   /** the scope level at which the variable was assigned */
   uint32_t d_scopeLvl : 24;
   uint32_t d_mark : 1;
-  uint32_t d_assumption : 1;
   uint32_t d_phaseAvailable : 1;
   uint32_t d_phase : 1;
 
@@ -148,7 +147,6 @@ struct BoolVarData
     d_justification = s_nullBJustification;
     d_scopeLvl = 0;
     d_mark = false;
-    d_assumption = false;
     d_phaseAvailable = false;
     d_phase = false;
     d_iscopeLvl = iscopeLvl;

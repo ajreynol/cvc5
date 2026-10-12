@@ -3223,100 +3223,8 @@ void SmtContext::assertedInconsistent()
   setConflict(BJustification::mkAxiom());
 }
 
-void SmtContext::initAssumptions(const std::vector<Node>& asms)
-{
-  resetAssumptions();
-  d_literal2Assumption.clear();
-  d_unsatCore.clear();
-
-  if (!asms.empty())
-  {
-    // Give the theories a chance to propagate before creating a new scope:
-    // internal backtracking scopes may only be created in a consistent
-    // context.
-    propagate();
-    if (inconsistent() || getCancelFlag())
-    {
-      return;
-    }
-    delInactiveLemmas();
-    pushScope();
-    for (const Node& a : asms)
-    {
-      if (inconsistent())
-      {
-        break;
-      }
-      if (isTrueNode(a))
-      {
-        continue;
-      }
-      internalizeAssertion(a, 0);
-      Literal l = getLiteral(a);
-      if (l == s_trueLiteral || l == s_falseLiteral)
-      {
-        continue;
-      }
-      d_literal2Assumption[l.index()] = a;
-      d_assumptions.push_back(l);
-      getBdata(l.var()).d_assumption = true;
-    }
-  }
-  d_searchLvl = d_scopeLvl;
-  Assert(asms.empty() || d_searchLvl > d_baseLvl);
-  Assert(!asms.empty() || d_searchLvl == d_baseLvl);
-}
-
-void SmtContext::resetAssumptions()
-{
-  for (Literal lit : d_assumptions)
-  {
-    getBdata(lit.var()).d_assumption = false;
-  }
-  d_assumptions.clear();
-}
-
-LBool SmtContext::mkUnsatCore(LBool r)
-{
-  if (r != L_FALSE)
-  {
-    return r;
-  }
-  Assert(inconsistent());
-  if (!trackingAssumptions())
-  {
-    Assert(d_assumptions.empty());
-    return L_FALSE;
-  }
-  UIntSet alreadyFound;
-  for (auto it = d_conflictResolution->beginUnsatCore(),
-            end = d_conflictResolution->endUnsatCore();
-       it != end;
-       ++it)
-  {
-    Literal l = *it;
-    Assert(getBdata(l.var()).d_assumption);
-    if (d_literal2Assumption.count(l.index()) == 0)
-    {
-      l.neg();
-    }
-    Assert(d_literal2Assumption.count(l.index()) != 0);
-    if (!alreadyFound.contains(l.index()))
-    {
-      alreadyFound.insert(l.index());
-      d_unsatCore.push_back(d_literal2Assumption[l.index()]);
-    }
-  }
-  resetAssumptions();
-  // undo the pushScope performed by initAssumptions
-  popToBaseLvl();
-  d_searchLvl = d_baseLvl;
-  return L_FALSE;
-}
-
 bool SmtContext::checkPreamble()
 {
-  d_unsatCore.clear();
   d_stats.d_numChecks++;
   // The size of what the core is given, to be compared with the num-exprs
   // Z3 reports for the same query at verbosity 10.
@@ -3534,7 +3442,7 @@ void SmtContext::setupComponents()
 
 LBool SmtContext::setupAndCheck() { return check(); }
 
-LBool SmtContext::check(size_t numAssumptions, const Node* assumptions)
+LBool SmtContext::check()
 {
   if (!checkPreamble())
   {
@@ -3547,11 +3455,13 @@ LBool SmtContext::check(size_t numAssumptions, const Node* assumptions)
   // incrementally.
   setupContext(d_params.d_autoConfig);
   popToBaseLvl();
-  std::vector<Node> asms(assumptions, assumptions + numAssumptions);
   internalizeAssertions();
-  initAssumptions(asms);
+  // Z3 sets the search level in init_assumptions, which also creates the
+  // scope the assumptions live in. This port does not support assumptions
+  // (see the README), so the search level is simply the current scope.
+  d_searchLvl = d_scopeLvl;
+  Assert(d_searchLvl == d_baseLvl);
   LBool r = search();
-  r = mkUnsatCore(r);
   return checkFinalize(r);
 }
 
@@ -3573,7 +3483,6 @@ void SmtContext::initSearch()
   d_lubyIdx = 1;
   d_lemmaGcThreshold = d_params.d_lemmaGcInitial;
   d_lastSearchFailure = OK;
-  d_unsatCore.clear();
   d_dynAckManager.initSearchEh();
   d_finalCheckIdx = 0;
   d_phaseDefault = false;
@@ -3637,7 +3546,6 @@ LBool SmtContext::search()
     return L_UNDEF;
   }
 
-  d_model = Node::null();
   Assert(atSearchLevel());
   initSearch();
 
@@ -3665,7 +3573,6 @@ bool SmtContext::restart(LBool& status, uint32_t currLvl)
 {
   Assert(status != L_TRUE || !inconsistent());
 
-  d_model = Node::null();
 
   if (d_lastSearchFailure != OK)
   {
