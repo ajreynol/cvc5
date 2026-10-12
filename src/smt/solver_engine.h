@@ -1009,6 +1009,14 @@ class CVC5_EXPORT SolverEngine
   Result checkSatInternal(const std::vector<Node>& assumptions);
 
   /**
+   * Throw a ModalException if the ported Z3 core (--z3) is active and does
+   * not support feature. Its supported surface is deliberately minimal; see
+   * src/z3/README.md. Options are refused in SetDefaults, but push, pop,
+   * check-sat-assuming and get-qe are commands and have to be refused here.
+   */
+  void checkZ3Supports(const char* feature) const;
+
+  /**
    * Check that all Expr in formals are of BOUND_VARIABLE kind, where func is
    * the function that the formal argument list is for. This method is used
    * as a helper function when defining (recursive) functions.

@@ -168,6 +168,48 @@ depends on them numerically:
 - `:qid` and `:pattern` annotations survive cvc5's parser and are read
   directly off the `INST_PATTERN_LIST`.
 
+## What `--z3` supports
+
+The supported surface is deliberately minimal. `--z3` answers `check-sat`:
+one call, or several with assertions in between, and `reset-assertions`
+between rounds. That is all, and everything else is refused rather than
+answered:
+
+| | |
+|---|---|
+| `--produce-models`, `--check-models`, `--debug-check-models` | refused |
+| `--produce-unsat-cores`, `--check-unsat-cores` | refused |
+| `--produce-proofs`, `--check-proofs`, any `--proof-mode` | refused |
+| `--produce-interpolants`, `--produce-abducts`, `--produce-difficulty`, `--produce-assignments`, `--produce-learned-literals` | refused |
+| sygus | refused |
+| `push`, `pop` | refused |
+| `check-sat-assuming` | refused |
+| `get-qe` | refused |
+
+Refusing is the point. The port keeps its own assertion and search state in
+`z3::SmtContext`, while `Z3SmtSolver::finishInit` still calls the native
+`SmtSolver::finishInit` and so leaves cvc5's own propositional and theory
+engines constructed but *inactive* -- they have seen none of the assertions.
+Anything answered out of them is therefore not an answer about the problem.
+Before these were refused, each of the first three produced a wrong result
+rather than an error: `(get-model)` on `(distinct a b c)` reported a universe
+of size one with all three constants equal; `(get-unsat-core)` returned the
+empty set, which asserts that nothing is unsatisfiable; and `--produce-proofs`
+aborted inside `unordered_map::at`.
+
+The option-level refusals are in `SetDefaults::checkZ3Capabilities`, which
+also catches an in-file `(set-option ...)`. `push`, `pop`,
+`check-sat-assuming` and `get-qe` are commands rather than options, so they
+are refused at the API in `SolverEngine::checkZ3Supports`.
+
+`regress0/z3/` pins all of this, together with the core behaviour under both
+presets: `unsupported-*.smt2` for the boundary, `incremental-checks*.smt2`
+and `reset-assertions.smt2` for what is supported, and
+`quant-incomplete-unknown.smt2` for the obligation that a query the port
+cannot decide stays `unknown` and never becomes `sat`. Every test there
+disables the model, proof and unsat-core testers, since those add the very
+options the boundary rejects.
+
 ## What is not ported
 
 Deliberately out of scope, because cvc5 already provides it or it is

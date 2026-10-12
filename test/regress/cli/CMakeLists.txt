@@ -2786,6 +2786,42 @@ set(regress_0_tests
   regress0/wiki.19.cvc.smt2
   regress0/wiki.20.cvc.smt2
   regress0/wiki.21.cvc.smt2
+  regress0/z3/arith-01.smt2
+  regress0/z3/arith-02.smt2
+  regress0/z3/arith-03.smt2
+  regress0/z3/arith-04.smt2
+  regress0/z3/bv-01.smt2
+  regress0/z3/datatypes-01.smt2
+  regress0/z3/datatypes-02.smt2
+  regress0/z3/datatypes-03.smt2
+  regress0/z3/datatypes-04.smt2
+  regress0/z3/ematch-04.smt2
+  regress0/z3/ematch-05.smt2
+  regress0/z3/ematch-06.smt2
+  regress0/z3/ematch-07.smt2
+  regress0/z3/ematch-08.smt2
+  regress0/z3/ematch-09.smt2
+  regress0/z3/ematch-10.smt2
+  regress0/z3/ematch-11.smt2
+  regress0/z3/ematch-12.smt2
+  regress0/z3/ematch-ground-arg-after-merge.smt2
+  regress0/z3/ematch-guarded-by-instance.smt2
+  regress0/z3/ematch-multi-pattern.smt2
+  regress0/z3/ematch-nested-pattern.smt2
+  regress0/z3/ematch-nested-quantifier-levels.smt2
+  regress0/z3/ematch-repeated-var.smt2
+  regress0/z3/incremental-checks-quant.smt2
+  regress0/z3/incremental-checks.smt2
+  regress0/z3/quant-generation.smt2
+  regress0/z3/quant-incomplete-unknown.smt2
+  regress0/z3/quant-infer-pattern.smt2
+  regress0/z3/reset-assertions.smt2
+  regress0/z3/unsupported-assumptions.smt2
+  regress0/z3/unsupported-models.smt2
+  regress0/z3/unsupported-proofs.smt2
+  regress0/z3/unsupported-push.smt2
+  regress0/z3/unsupported-qe.smt2
+  regress0/z3/unsupported-unsat-cores.smt2
 )
 
 #-----------------------------------------------------------------------------#

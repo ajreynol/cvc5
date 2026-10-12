@@ -830,6 +830,10 @@ Result SolverEngine::checkSat(const Node& assumption)
 
 Result SolverEngine::checkSat(const std::vector<Node>& assumptions)
 {
+  if (!assumptions.empty())
+  {
+    checkZ3Supports("check-sat-assuming");
+  }
   beginCall(true);
   Result res = checkSatInternal(assumptions);
   endCall();
@@ -2191,6 +2195,7 @@ bool SolverEngine::getSubsolverSynthSolutions(std::map<Node, Node>& solMap)
 
 Node SolverEngine::getQuantifierElimination(Node q, bool doFull)
 {
+  checkZ3Supports("get-qe");
   Assert(d_state->getStatusSolver() == nullptr);
   beginCall(true);
   Node result = d_quantElimSolver->getQuantifierElimination(
@@ -2318,8 +2323,25 @@ void SolverEngine::getDifficultyMap(std::map<Node, Node>& dmap)
   d_pfManager->translateDifficultyMap(dmap, d_smtSolver->getAssertions());
 }
 
+void SolverEngine::checkZ3Supports(const char* feature) const
+{
+  if (!d_env->getOptions().z3.z3)
+  {
+    return;
+  }
+  // The ported Z3 core supports one or more check-sat calls with assertions
+  // between them, and reset-assertions. These are commands rather than
+  // options, so they cannot be refused when the defaults are set; the
+  // alternative to refusing here is a wrong answer, since the port keeps its
+  // own assertion and search state and cvc5's engines are inactive.
+  std::stringstream ss;
+  ss << feature << " is not supported with --z3";
+  throw ModalException(ss.str());
+}
+
 void SolverEngine::push()
 {
+  checkZ3Supports("push");
   beginCall();
   Trace("smt") << "SMT push()" << endl;
   d_smtDriver->refreshAssertions();
@@ -2328,6 +2350,7 @@ void SolverEngine::push()
 
 void SolverEngine::pop()
 {
+  checkZ3Supports("pop");
   beginCall();
   Trace("smt") << "SMT pop()" << endl;
   d_ctxManager->userPop();

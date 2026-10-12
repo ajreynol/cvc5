@@ -39,6 +39,7 @@
 #include "options/smt_options.h"
 #include "options/strings_options.h"
 #include "options/theory_options.h"
+#include "options/z3_options.h"
 #include "options/uf_options.h"
 #include "smt/logic_exception.h"
 #include "theory/theory.h"
@@ -131,6 +132,14 @@ void SetDefaults::setDefaults(LogicInfo& logic, Options& opts)
 
 void SetDefaults::setDefaultsPre(Options& opts)
 {
+  // The ported Z3 core has a deliberately minimal supported surface; see
+  // src/z3/README.md. Reject what it cannot do rather than answering from
+  // cvc5's own engines, which it leaves constructed but inactive and which
+  // have therefore seen none of the assertions.
+  if (opts.z3.z3)
+  {
+    checkZ3Capabilities(opts);
+  }
   // safe options
   if (options().base.safeMode != options::SafeMode::UNRESTRICTED)
   {
@@ -1100,6 +1109,66 @@ bool SetDefaults::usesInputConversion(const Options& opts,
     return true;
   }
   return false;
+}
+
+void SetDefaults::checkZ3Capabilities(Options& opts) const
+{
+  // What the ported core does support is one or more check-sat calls with
+  // assertions between them, and reset-assertions. Everything below either
+  // has no implementation in the port or would be answered out of cvc5's
+  // inactive engines; each of these was observed returning a wrong answer
+  // rather than failing, which is worse than refusing.
+  const char* unsupported = nullptr;
+  if (opts.smt.produceModels || opts.smt.checkModels
+      || opts.smt.debugCheckModels)
+  {
+    // The model would be built from the inactive native TheoryEngine: asking
+    // for one over (distinct a b c) reported a universe of size one.
+    // debugCheckModels is listed because it turns on checkModels further
+    // down in this same method, after this check has run.
+    unsupported = "--produce-models";
+  }
+  else if (opts.smt.produceProofs || opts.smt.checkProofs
+           || opts.smt.proofMode != options::ProofMode::OFF)
+  {
+    unsupported = "--produce-proofs";
+  }
+  else if (opts.smt.produceUnsatCores || opts.smt.checkUnsatCores)
+  {
+    // The core comes back empty, which asserts that the empty set is
+    // unsatisfiable.
+    unsupported = "--produce-unsat-cores";
+  }
+  else if (opts.smt.produceInterpolants)
+  {
+    unsupported = "--produce-interpolants";
+  }
+  else if (opts.smt.produceAbducts)
+  {
+    unsupported = "--produce-abducts";
+  }
+  else if (opts.smt.produceDifficulty)
+  {
+    unsupported = "--produce-difficulty";
+  }
+  else if (opts.smt.produceAssignments)
+  {
+    unsupported = "--produce-assignments";
+  }
+  else if (opts.smt.produceLearnedLiterals)
+  {
+    unsupported = "--produce-learned-literals";
+  }
+  else if (opts.quantifiers.sygus)
+  {
+    unsupported = "sygus";
+  }
+  if (unsupported != nullptr)
+  {
+    std::stringstream ss;
+    ss << unsupported << " is not supported with --z3";
+    throw OptionException(ss.str());
+  }
 }
 
 bool SetDefaults::incompatibleWithProofs(Options& opts,

@@ -207,6 +207,26 @@ reported as `unknown`, and why the 14 remaining `unknown` results on the
 sample stand — E-matching saturates and there is nothing to pick the next
 binding with.
 
+## Lifecycle defects found while pinning the capability boundary
+
+`push`/`pop` and `check-sat-assuming` gave wrong answers rather than failing,
+and are now refused (see README, "What `--z3` supports"). Both have the same
+cause and both are small fixes, kept separate from the boundary change:
+
+- **`d_assertedFormulas` has no scope bookkeeping at all.** There is no
+  corresponding `*Lim` in `SmtContext::BaseScope` and no truncation in
+  `popScope`, so an assertion made inside a user `push` survives the matching
+  `pop`. Z3's `asserted_formulas` has `push_scope`/`pop_scope` for exactly
+  this.
+- **`d_assertedInconsistent` is set but never restored.** `pushAssertion` sets
+  it when it sees a `false` assertion, `inconsistent()` reads it, and nothing
+  puts it back. `BaseScope` already carries `d_inconsistent` for `d_conflict`;
+  this flag needs the same treatment.
+
+Observed: `assert p; push; assert (not p); check-sat; pop; check-sat` answers
+`unsat unsat` where Z3 and cvc5 both answer `unsat sat`. Fixing these two
+should also fix assumptions, which go through the same scope machinery.
+
 ## Order of remaining mechanical work
 
 1. ~~`m_ng_lift_ite = LI_CONSERVATIVE`~~ — done.
