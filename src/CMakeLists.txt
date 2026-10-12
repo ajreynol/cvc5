@@ -311,6 +311,8 @@ libcvc5_add_sources(
   smt/context_manager.h
   smt/difficulty_post_processor.cpp
   smt/difficulty_post_processor.h
+  smt/engine_factory.cpp
+  smt/engine_factory.h
   smt/env.cpp
   smt/env.h
   smt/env_obj.cpp
@@ -370,8 +372,6 @@ libcvc5_add_sources(
   smt/smt_mode.h
   smt/smt_solver.cpp
   smt/smt_solver.h
-  smt/z3_smt_solver.cpp
-  smt/z3_smt_solver.h
   smt/sygus_solver.cpp
   smt/sygus_solver.h
   smt/term_formula_removal.cpp
@@ -1335,6 +1335,8 @@ libcvc5_add_sources(
   z3/arith_eq_adapter.cpp
   z3/arith_eq_adapter.h
   z3/arith_util.h
+  z3/assertion_preparation.cpp
+  z3/assertion_preparation.h
   z3/ast.cpp
   z3/ast.h
   z3/b_justification.h
@@ -1385,6 +1387,8 @@ libcvc5_add_sources(
   z3/relevancy.h
   z3/setup.cpp
   z3/setup.h
+  z3/shared_backend.cpp
+  z3/shared_backend.h
   z3/smt_context.cpp
   z3/smt_context.h
   z3/statistics.cpp
@@ -1424,6 +1428,10 @@ libcvc5_add_sources(
   z3/util/util.h
   z3/watch_list.cpp
   z3/watch_list.h
+  z3/z3_prop_engine.cpp
+  z3/z3_prop_engine.h
+  z3/z3_theory_engine.cpp
+  z3/z3_theory_engine.h
 )
 
 # suppress deprecated warnings to not error in CI

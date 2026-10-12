@@ -118,8 +118,11 @@ class TheoryEngine : protected EnvObj
   /** Constructs a theory engine */
   TheoryEngine(Env& env);
 
-  /** Destroys a theory engine */
-  ~TheoryEngine();
+  /**
+   * Destroys a theory engine. Virtual since an alternative search
+   * implementation may extend this class, see smt/engine_factory.h.
+   */
+  virtual ~TheoryEngine();
 
   void interrupt();
 

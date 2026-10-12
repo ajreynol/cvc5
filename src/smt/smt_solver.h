@@ -66,19 +66,19 @@ class SmtSolver : protected EnvObj
 
  public:
   SmtSolver(Env& env, SolverEngineStatistics& stats);
-  virtual ~SmtSolver();
+  ~SmtSolver();
   /**
    * Create theory engine, prop engine based on the environment.
    */
-  virtual void finishInit();
+  void finishInit();
   /** Reset all assertions, global declarations, etc.  */
-  virtual void resetAssertions();
+  void resetAssertions();
   /**
    * Interrupt a running query.  This can be called from another thread
    * or from a signal handler.  Throws a ModalException if the SmtSolver
    * isn't currently in a query.
    */
-  virtual void interrupt();
+  void interrupt();
   /**
    * Get the list of preprocessed assertions. Only valid if
    * trackPreprocessedAssertions is true.
@@ -90,14 +90,14 @@ class SmtSolver : protected EnvObj
    */
   const context::CDHashMap<size_t, Node>& getPreprocessedSkolemMap() const;
   /** Performs a push on the underlying prop engine. */
-  virtual void pushPropContext();
+  void pushPropContext();
   /** Performs a pop on the underlying prop engine. */
-  virtual void popPropContext();
+  void popPropContext();
   /**
    * Reset the prop engine trail and call the postsolve method of the
    * underlying TheoryEngine.
    */
-  virtual void resetTrail();
+  void resetTrail();
   //------------------------------------------ access methods
   /** Get a pointer to the TheoryEngine owned by this solver. */
   TheoryEngine* getTheoryEngine();
@@ -120,15 +120,15 @@ class SmtSolver : protected EnvObj
    * (d_asserts) have been preprocessed. This pushes the assertions
    * into the prop engine of this solver and subsequently clears d_asserts.
    */
-  virtual void assertToInternal(preprocessing::AssertionPipeline& ap);
+  void assertToInternal(preprocessing::AssertionPipeline& ap);
   /**
    * Check satisfiability based on the current state of the prop engine.
    * This assumes we have pushed the necessary assertions to it. It post
    * processes the results based on the options.
    */
-  virtual Result checkSatInternal();
+  Result checkSatInternal();
 
- protected:
+ private:
   /** Whether we track information necessary for deep restarts */
   bool trackPreprocessedAssertions() const;
   /** Finish initialization of preprocessor */

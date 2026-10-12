@@ -6,10 +6,36 @@ how much of Z3's quantifier performance is reproducible inside cvc5, by
 replicating the algorithms that produce it rather than approximating them.
 
 Enabling `--z3` replaces cvc5's CDCL(T) engine. Everything else stays cvc5's:
-the parser, the term representation (`Node`), the rewriter, and the
-preprocessor. `smt::Z3SmtSolver` takes the output of cvc5's `Preprocessor`
-and, instead of handing it to the `PropEngine`, internalizes it into a
-`z3::SmtContext`, which then owns the search.
+the parser, the term representation (`Node`), the rewriter, the
+preprocessor, and the SMT-level orchestration in `smt::SmtSolver`, which is
+the same for both configurations. What `--z3` changes is the pair of engines
+`smt::EngineFactory` constructs for it: `z3::Z3PropEngine` and
+`z3::Z3TheoryEngine` in place of cvc5's `PropEngine` and `TheoryEngine`.
+`SmtSolver` drives them through the same search contract as it does cvc5's
+engines, and they run the search in a `z3::SmtContext`.
+
+## Integration with cvc5's engines
+
+These files are cvc5 code, not ported from Z3:
+
+| file | role |
+|---|---|
+| `z3_prop_engine.{h,cpp}` | `PropEngine`'s search contract (`assertInputFormulas`, `checkSat`, `push`, `pop`, `resetTrail`, `getAssertionLevel`, `interrupt`) over the core; translates the outcome of the search into a `Result` |
+| `z3_theory_engine.{h,cpp}` | owns the shared backend; its inherited `TheoryEngine` stays a service to preprocessing and records what preprocessing reports about soundness |
+| `shared_backend.{h,cpp}` | the one owner of `Params` and the `SmtContext` both engines use |
+| `assertion_preparation.{h,cpp}` | the preparation each preprocessed assertion goes through before it reaches the core; see below |
+
+The `SmtContext` still does both the Boolean search and the theory
+reasoning, so the two engines share it rather than each owning a part
+(Stage 1A of `ARCHITECTURE_PLAN.md`). The `Params` live as long as the
+`SmtSolver`, as in the theory engine, and auto configuration writes to them
+on the first check; `reset-assertions` makes a new propositional engine,
+which makes a new `SmtContext` over the same `Params`. The `PropEngine` and
+`TheoryEngine` that the two engines inherit are cvc5's own and are kept for
+preprocessing, which uses them for theory preprocessing, term formula
+removal, static learning, solving and sort inference. Their SAT solver and
+theories never see an assertion; see "What `--z3` supports" for the
+features that would read them, all of which are refused.
 
 ## Provenance and licensing
 
@@ -95,7 +121,8 @@ cvc5's `Node` is the AST; none of Z3's `ast.h` or `ast_manager` is ported.
 The core inherits two invariants from Z3's own preprocessing pipeline
 (`asserted_formulas::reduce()`), which cvc5's preprocessor does not establish.
 Both are restored before anything reaches the core, in
-`smt::Z3SmtSolver::assertToInternal`:
+`z3::AssertionPreparation`, which `Z3PropEngine::assertInputFormulas` runs in
+place of cvc5's CNF conversion:
 
 1. **Universal quantifiers occur only positively.** A Boolean variable of a
    quantifier assigned false is simply ignored, in Z3 and here alike -- see
@@ -187,10 +214,11 @@ answered:
 | `get-qe` | refused |
 
 Refusing is the point. The port keeps its own assertion and search state in
-`z3::SmtContext`, while `Z3SmtSolver::finishInit` still calls the native
-`SmtSolver::finishInit` and so leaves cvc5's own propositional and theory
-engines constructed but *inactive* -- they have seen none of the assertions.
-Anything answered out of them is therefore not an answer about the problem.
+`z3::SmtContext`. `Z3PropEngine` and `Z3TheoryEngine` answer the search
+contract from it, but they inherit the rest of cvc5's `PropEngine` and
+`TheoryEngine` interfaces, whose SAT solver and theories are constructed but
+*inactive* -- they have seen none of the assertions. Anything answered out of
+them is therefore not an answer about the problem.
 Before these were refused, each of the first three produced a wrong result
 rather than an error: `(get-model)` on `(distinct a b c)` reported a universe
 of size one with all three constants equal; `(get-unsat-core)` returned the

@@ -25,6 +25,7 @@
 #include "preprocessing/assertion_pipeline.h"
 #include "prop/prop_engine.h"
 #include "smt/assertions.h"
+#include "smt/engine_factory.h"
 #include "smt/env.h"
 #include "smt/logic_exception.h"
 #include "smt/preprocessor.h"
@@ -57,7 +58,7 @@ void SmtSolver::finishInit()
 {
   // We have mutual dependency here, so we add the prop engine to the theory
   // engine later (it is non-essential there)
-  d_theoryEngine.reset(new TheoryEngine(d_env));
+  d_theoryEngine = EngineFactory::mkTheoryEngine(d_env);
 
   // Add the theories
   for (theory::TheoryId id = theory::THEORY_FIRST; id < theory::THEORY_LAST;
@@ -79,7 +80,7 @@ void SmtSolver::finishInit()
    * are unregistered by the obsolete PropEngine object before registered
    * again by the new PropEngine object */
   d_propEngine.reset(nullptr);
-  d_propEngine.reset(new prop::PropEngine(d_env, d_theoryEngine.get()));
+  d_propEngine = EngineFactory::mkPropEngine(d_env, d_theoryEngine.get());
 
   Trace("smt-debug") << "Setting up theory engine..." << std::endl;
   d_theoryEngine->setPropEngine(getPropEngine());
@@ -106,7 +107,7 @@ void SmtSolver::resetAssertions()
    * statistics are unregistered by the obsolete PropEngine object before
    * registered again by the new PropEngine object */
   d_propEngine.reset(nullptr);
-  d_propEngine.reset(new prop::PropEngine(d_env, d_theoryEngine.get()));
+  d_propEngine = EngineFactory::mkPropEngine(d_env, d_theoryEngine.get());
   d_theoryEngine->setPropEngine(getPropEngine());
   // Notice that we do not reset TheoryEngine, nor does it require calling
   // finishInit again. In particular, TheoryEngine::finishInit does not

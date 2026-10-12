@@ -53,6 +53,14 @@ class TheoryProxy;
 /**
  * PropEngine is the abstraction of a Sat Solver, providing methods for
  * solving the SAT problem and conversion to CNF (via the CnfStream).
+ *
+ * The virtual methods below (finishInit, assertInputFormulas, checkSat, push,
+ * pop, resetTrail, getAssertionLevel and interrupt) are the search contract
+ * through which the SMT layer drives the engine. They are virtual so that the
+ * search can be run by an alternative implementation selected when the
+ * engines are constructed, see smt/engine_factory.h. They are called about
+ * once per command, so the methods that theories call during the search are
+ * left non-virtual.
  */
 class PropEngine : protected EnvObj
 {
@@ -65,14 +73,14 @@ class PropEngine : protected EnvObj
   /**
    * Destructor.
    */
-  ~PropEngine();
+  virtual ~PropEngine();
 
   /**
    * Finish initialize. Call this after construction just before we are
    * ready to use this class. Should be called after TheoryEngine::finishInit.
    * This method converts and asserts true and false into the CNF stream.
    */
-  void finishInit();
+  virtual void finishInit();
 
   /**
    * Preprocess the given node. Return the REWRITE trust node corresponding to
@@ -119,8 +127,8 @@ class PropEngine : protected EnvObj
    * corresponds to. For example, if (ite C (= k a) (= k b)) is the i^th
    * assertion, then skolemMap may contain the entry { i -> k }.
    */
-  void assertInputFormulas(const std::vector<Node>& assertions,
-                           std::unordered_map<size_t, Node>& skolemMap);
+  virtual void assertInputFormulas(const std::vector<Node>& assertions,
+                                   std::unordered_map<size_t, Node>& skolemMap);
 
   /**
    * Converts the given formula to CNF and assert the CNF to the SAT solver.
@@ -198,7 +206,7 @@ class PropEngine : protected EnvObj
    * Checks the current context for satisfiability.
    *
    */
-  Result checkSat();
+  virtual Result checkSat();
 
   /**
    * Get the value of a boolean variable.
@@ -258,23 +266,23 @@ class PropEngine : protected EnvObj
   /**
    * Push the context level.
    */
-  void push();
+  virtual void push();
 
   /**
    * Pop the context level.
    */
-  void pop();
+  virtual void pop();
 
   /*
    * Reset the decisions in the DPLL(T) SAT solver at the current assertion
    * level.
    */
-  void resetTrail();
+  virtual void resetTrail();
 
   /**
    * Get the assertion level of the SAT solver.
    */
-  uint32_t getAssertionLevel() const;
+  virtual uint32_t getAssertionLevel() const;
 
   /**
    * Return true if we are currently searching (either in this or
@@ -287,7 +295,7 @@ class PropEngine : protected EnvObj
    *
    * Can potentially throw a ModalException.
    */
-  void interrupt();
+  virtual void interrupt();
 
   /**
    * Informs the ResourceManager that a resource has been spent.  If out of

@@ -67,7 +67,6 @@
 #include "smt/sygus_solver.h"
 #include "smt/timeout_core_manager.h"
 #include "smt/unsat_core_manager.h"
-#include "smt/z3_smt_solver.h"
 #include "theory/datatypes/sygus_datatype_utils.h"
 #include "theory/quantifiers/candidate_rewrite_database.h"
 #include "theory/quantifiers/instantiation_list.h"
@@ -126,8 +125,7 @@ SolverEngine::SolverEngine(NodeManager* nm, const Options* optr)
   getResourceManager()->registerListener(d_routListener.get());
   // make statistics
   d_stats.reset(new SolverEngineStatistics(d_env->getStatisticsRegistry()));
-  // make the SMT solver. Note this may be replaced by the ported Z3 core in
-  // finishInit, which is where the options are final.
+  // make the SMT solver
   d_smtSolver.reset(new SmtSolver(*d_env, *d_stats));
   // make the expand definitions utility, used for getting model values
   d_expDef.reset(new ExpandDefs(*d_env.get()));
@@ -183,18 +181,6 @@ void SolverEngine::finishInit()
   // and the best default options based on our heuristics.
   SetDefaults sdefaults(*d_env, d_isInternalSubsolver);
   sdefaults.setDefaults(d_env->d_logic, getOptions());
-
-  // The options are final at this point, so this is where we can tell whether
-  // to swap in the ported Z3 core. Nothing has been asserted to the SMT solver
-  // built by the constructor yet, since every path that touches it calls
-  // finishInit first.
-  if (d_env->getOptions().z3.z3)
-  {
-    d_smtSolver.reset(new Z3SmtSolver(*d_env, *d_stats));
-    d_sygusSolver.reset(new SygusSolver(*d_env.get(), *d_smtSolver));
-    d_quantElimSolver.reset(
-        new QuantElimSolver(*d_env.get(), *d_smtSolver, d_ctxManager.get()));
-  }
 
   if (d_env->getOptions().smt.produceProofs)
   {
