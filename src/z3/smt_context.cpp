@@ -117,6 +117,7 @@ SmtContext::SmtContext(Env& env, Params& p)
       d_notL(s_nullLiteral),
       d_conflictResolution(nullptr),
       d_dynAckManager(*this, p),
+      d_explainer(*this, d_dynAckManager),
       d_unknown("unknown"),
       d_scopeLvl(0),
       d_baseLvl(0),
@@ -137,13 +138,12 @@ SmtContext::SmtContext(Env& env, Params& p)
       d_lubyIdx(1),
       d_agility(0.0),
       d_lemmaGcThreshold(p.d_lemmaGcInitial),
-      d_hasCaseSplit(true),
       d_mkBoolVarTrail(*this),
       d_mkENodeTrail(*this)
 {
   d_qmanager.reset(new QuantifierManager(*this, p));
-  d_conflictResolution.reset(mkConflictResolution(
-      *this, d_dynAckManager, p, d_assignedLiterals, d_watches));
+  d_conflictResolution.reset(
+      mkConflictResolution(*this, d_explainer, p, d_assignedLiterals));
   d_caseSplitQueue.reset(mkCaseSplitQueue(*this, p));
 
   registerStatistics();
@@ -1804,10 +1804,6 @@ bool SmtContext::propagate()
     {
       return false;
     }
-    if (!propagateThCaseSplit(qhead))
-    {
-      return false;
-    }
     Assert(!inconsistent());
     propagateRelevancy(qhead);
     if (inconsistent())
@@ -1986,7 +1982,6 @@ bool SmtContext::decide()
   d_caseSplitQueue->nextCaseSplit(var, phase);
   if (var == s_nullBoolVar)
   {
-    pushTrail(ValueTrail<bool>(d_hasCaseSplit, false));
     return false;
   }
 
@@ -3052,115 +3047,6 @@ void SmtContext::pop(size_t numScopes)
   popScope(numScopes);
 }
 
-namespace {
-
-/** Undoes the registration of a theory case split literal. */
-class CaseSplitInsertTrail : public Trail
-{
- public:
-  CaseSplitInsertTrail(SmtContext& ctx, Literal l) : d_ctx(ctx), d_l(l) {}
-  void undo() override { d_ctx.undoThCaseSplit(d_l); }
-
- private:
-  SmtContext& d_ctx;
-  Literal d_l;
-};
-
-}  // namespace
-
-void SmtContext::mkThCaseSplit(size_t numLits, Literal* lits)
-{
-  // Without the theory case split heuristic, the "at most one true" condition
-  // is enforced by adding the pairwise clauses (~l1 or ~l2).
-  if (!d_params.d_theoryCaseSplit)
-  {
-    for (size_t i = 0; i < numLits; ++i)
-    {
-      for (size_t j = i + 1; j < numLits; ++j)
-      {
-        mkClause(~lits[i], ~lits[j], static_cast<Justification*>(nullptr));
-      }
-    }
-    return;
-  }
-  LiteralVector newCaseSplit;
-  for (size_t i = 0; i < numLits; ++i)
-  {
-    Literal l = lits[i];
-    Assert(!d_allThCaseSplitLiterals.contains(l.index()));
-    d_allThCaseSplitLiterals.insert(l.index());
-    pushTrail(CaseSplitInsertTrail(*this, l));
-    newCaseSplit.push_back(l);
-  }
-  d_thCaseSplitSets.push_back(newCaseSplit);
-  pushTrail(PushBackVector<std::vector<LiteralVector>>(d_thCaseSplitSets));
-  for (size_t i = 0; i < numLits; ++i)
-  {
-    d_literal2CaseSplitSets[lits[i].index()].push_back(newCaseSplit);
-  }
-}
-
-void SmtContext::addTheoryAwareBranchingInfo(BoolVar v,
-                                             double priority,
-                                             LBool phase)
-{
-  d_caseSplitQueue->addTheoryAwareBranchingInfo(v, priority, phase);
-}
-
-void SmtContext::undoThCaseSplit(Literal l)
-{
-  d_allThCaseSplitLiterals.remove(l.index());
-  auto it = d_literal2CaseSplitSets.find(l.index());
-  if (it != d_literal2CaseSplitSets.end() && !it->second.empty())
-  {
-    it->second.pop_back();
-  }
-}
-
-bool SmtContext::propagateThCaseSplit(size_t qhead)
-{
-  if (d_allThCaseSplitLiterals.empty())
-  {
-    return true;
-  }
-
-  // Iterate over the literals assigned since the last call, not counting the
-  // ones this method assigns. This relies on bcp() handing us its old qhead,
-  // so bcp() must always run first.
-  size_t assignedLiteralEnd = d_assignedLiterals.size();
-  for (; qhead < assignedLiteralEnd; ++qhead)
-  {
-    Literal l = d_assignedLiterals[qhead];
-    if (!d_allThCaseSplitLiterals.contains(l.index()))
-    {
-      continue;
-    }
-    auto it = d_literal2CaseSplitSets.find(l.index());
-    if (it == d_literal2CaseSplitSets.end())
-    {
-      continue;
-    }
-    for (const LiteralVector& caseSplitSet : it->second)
-    {
-      for (Literal l2 : caseSplitSet)
-      {
-        if (l2 == l || l2 == s_trueLiteral || l2 == s_falseLiteral
-            || l2 == s_nullLiteral)
-        {
-          continue;
-        }
-        BJustification js(l);
-        assign(~l2, js);
-        if (inconsistent())
-        {
-          return false;
-        }
-      }
-    }
-  }
-  return true;
-}
-
 void SmtContext::internalizeAssertions()
 {
   if (getCancelFlag() || d_internalizingAssertions)
@@ -3209,13 +3095,6 @@ void SmtContext::internalizeInstance(TNode body, uint32_t generation)
   // the invariant, and is idempotent on the parts that are already canonical.
   Node norm = d_normalizer.normalize(body);
   internalizeAssertion(norm, generation);
-  if (relevancy())
-  {
-    // If the instantiation creates a conflict we backtrack immediately, so
-    // the conflict clause is marked relevant here; otherwise the default
-    // relevancy propagation applies.
-    d_caseSplitQueue->internalizeInstanceEh(norm, generation);
-  }
 }
 
 void SmtContext::assertedInconsistent()
@@ -3370,35 +3249,14 @@ LBool SmtContext::checkFinalize(LBool r)
   {
     r = L_UNDEF;
   }
-  if (r == L_TRUE && d_unsupported)
+  std::string reason;
+  if (r == L_TRUE && !d_theoryStatus.canConfirmModel(reason))
   {
     d_lastSearchFailure = THEORY;
-    d_unknown = "the input uses a construct the ported core does not support";
-    r = L_UNDEF;
-  }
-  if (r == L_TRUE && isModelUnsound())
-  {
-    // The assignment satisfies the Boolean abstraction, but some theory could
-    // not confirm that it extends to a model of its own fragment. Naming the
-    // theories is worth the few lines: it is the difference between "no model
-    // builder for quantifiers", which is the known cost of leaving MBQI out,
-    // and a theory that gave up for a reason worth looking at.
-    d_lastSearchFailure = THEORY;
-    std::stringstream ss;
-    ss << "no model could be built for";
-    for (int32_t tid : d_modelUnsoundTheories)
-    {
-      ss << " " << static_cast<TheoryId>(tid);
-    }
-    d_unknown = ss.str();
+    d_unknown = reason;
     r = L_UNDEF;
   }
   return r;
-}
-
-void SmtContext::markModelUnsound(TheoryId tid)
-{
-  d_modelUnsoundTheories.insert(static_cast<int32_t>(tid));
 }
 
 Cvc5Bridge& SmtContext::getCvc5Bridge()
@@ -3472,7 +3330,6 @@ void SmtContext::initSearch()
     th->initSearchEh();
   }
   d_qmanager->initSearchEh();
-  d_incompleteTheories.clear();
   d_numConflicts = 0;
   d_numConflictsSinceRestart = 0;
   d_numConflictsSinceLemmaGc = 0;
@@ -3779,8 +3636,6 @@ FinalCheckStatus SmtContext::finalCheck()
     return ok;
   }
 
-  d_incompleteTheories.clear();
-
   size_t oldIdx = d_finalCheckIdx;
   size_t numTh = d_theorySet.size();
   size_t range = numTh + 1;
@@ -3805,12 +3660,6 @@ FinalCheckStatus SmtContext::finalCheck()
       else if (st == FC_GIVEUP)
       {
         f = THEORY;
-        if (std::find(
-                d_incompleteTheories.begin(), d_incompleteTheories.end(), th)
-            == d_incompleteTheories.end())
-        {
-          d_incompleteTheories.push_back(th);
-        }
       }
     }
     else
@@ -3839,7 +3688,6 @@ FinalCheckStatus SmtContext::finalCheck()
       // previous FC_GIVEUP.
       result = FC_DONE;
       f = OK;
-      d_incompleteTheories.clear();
     }
   }
 
@@ -4158,23 +4006,6 @@ bool SmtContext::getValue(ENode* n, Node& value)
     return false;
   }
   return th->getValue(n, value);
-}
-
-bool SmtContext::hasCaseSplits()
-{
-  if (!d_hasCaseSplit)
-  {
-    return false;
-  }
-  for (size_t i = getNumBInternalized(); i-- > 0;)
-  {
-    BoolVar v = static_cast<BoolVar>(i);
-    if (isRelevant(v) && getAssignment(v) == L_UNDEF)
-    {
-      return true;
-    }
-  }
-  return false;
 }
 
 std::ostream& SmtContext::printLiteral(std::ostream& out, Literal l) const

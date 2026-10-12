@@ -4,8 +4,8 @@ Date: 2026-10-10
 
 Source snapshot: `da001fa639` (`Preset`)
 
-Status: Stage 1A implemented; Stage 1B audited, not yet started. See the
-progress record in section 14.
+Status: Stage 1A implemented; Stage 1B in progress (steps 1–3 of 7). See
+the progress record in section 14.
 
 ## 1. Objective and migration principle
 
@@ -610,4 +610,13 @@ The audit of `SmtContext` that section 7 calls for is recorded in
 [PROP_THEORY_SPLIT.md](PROP_THEORY_SPLIT.md). It allocates relevancy to the
 propositional side, splits internalization as cvc5 splits CNF conversion from
 pre-registration, and proposes seven extraction steps that preserve
-behavior. No code has changed for Stage 1B yet.
+behavior. Steps 1–3 of that sequence are done, each checked as in Stage 1A
+(identical answers and `z3::` counters on the local comparison set, with
+runs that time out compared under `--rlimit`):
+
+1. Dead paths removed: 239 lines of imported code that nothing reached,
+   listed in FIDELITY.md.
+2. `z3::Explainer` extracted from `ConflictResolution`. The first-UIP
+   resolution no longer reads the E-graph.
+3. `z3::TheoryStatus` extracted. It holds the unsupported and model-unsound
+   records that decide whether "sat" can be confirmed.

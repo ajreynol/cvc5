@@ -1360,6 +1360,8 @@ libcvc5_add_sources(
   z3/enum_inst.cpp
   z3/enum_inst.h
   z3/eq_justification.h
+  z3/explainer.cpp
+  z3/explainer.h
   z3/fingerprints.cpp
   z3/fingerprints.h
   z3/internalizer.cpp
@@ -1406,6 +1408,8 @@ libcvc5_add_sources(
   z3/theory_cvc5.h
   z3/theory_datatype.cpp
   z3/theory_datatype.h
+  z3/theory_status.cpp
+  z3/theory_status.h
   z3/types.cpp
   z3/types.h
   z3/util/approx_set.cpp

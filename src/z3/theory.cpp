@@ -70,15 +70,6 @@ void Theory::forcePush()
   d_lazy = saved;
 }
 
-void Theory::printVar2ENode(std::ostream& out) const
-{
-  size_t sz = d_var2ENode.size();
-  for (size_t v = 0; v < sz; ++v)
-  {
-    out << "v" << v << " -> #" << d_var2ENode[v]->getOwnerId() << "\n";
-  }
-}
-
 bool Theory::isRelevantAndShared(ENode* n) const
 {
   return d_ctx.isRelevant(n) && d_ctx.isShared(n);

@@ -68,8 +68,6 @@ class Theory
 
   const Params& getParams() const;
 
-  virtual void updtParams() {}
-
   /**
    * True if the given enode is attached to a variable of this theory.
    *
@@ -112,8 +110,6 @@ class Theory
 
   virtual void print(std::ostream& out) const = 0;
 
-  virtual void printVar2ENode(std::ostream& out) const;
-
   virtual const char* getName() const { return "unknown"; }
 
   // ----------------------------------------------- conflict resolution
@@ -124,9 +120,6 @@ class Theory
   virtual void conflictResolutionEh(TNode /*atom*/, BoolVar /*v*/) {}
 
   // ----------------------------------------------- model generation
-  /** True if the theory supports model construction. */
-  virtual bool buildModels() const { return true; }
-
   /** The value of n in the current model, if the theory can produce one. */
   virtual bool getValue(ENode* /*n*/, Node& /*r*/) { return false; }
 
@@ -234,12 +227,6 @@ class Theory
 
   /** Give the theory a chance to perform theory propagation. */
   virtual void propagate() {}
-
-  /** Let a theory contribute to disequality propagation. */
-  virtual Justification* whyIsDiseq(TheoryVar /*v1*/, TheoryVar /*v2*/)
-  {
-    return nullptr;
-  }
 
   /** Release memory. */
   virtual void flushEh() {}

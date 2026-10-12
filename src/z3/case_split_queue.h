@@ -45,7 +45,6 @@ class CaseSplitQueue
   virtual void relevantEh(TNode n) = 0;
   virtual void initSearchEh() = 0;
   virtual void endSearchEh() = 0;
-  virtual void internalizeInstanceEh(TNode /*e*/, uint32_t /*gen*/) {}
   virtual void reset() = 0;
   virtual void pushScope() = 0;
   virtual void popScope(size_t numScopes) = 0;

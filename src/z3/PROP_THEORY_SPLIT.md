@@ -5,7 +5,8 @@ Date: 2026-10-12
 Source snapshot: `8a1ca4ad2c` (Stage 1A), plus the capability changes that
 follow it.
 
-Status: audit only. No code has changed for Stage 1B.
+Status: steps 1–3 of the sequence in section 8 are done. The rest of this
+document describes the state before them, except where marked.
 
 This is the dependency audit that section 7 of
 [ARCHITECTURE_PLAN.md](ARCHITECTURE_PLAN.md) asks for before `SmtContext` is
@@ -73,11 +74,11 @@ and **S** shared infrastructure.
 | `d_bdata` atom-kind flags (`d_enode`, `d_eq`, `d_quantifier`, `d_notifyTheory`) | T | P reads only their union, `isAtom`, to decide what to enqueue (section 4.2) |
 | `d_activity`, `d_bvarInc`, `d_birthdate`, phase cache fields, `d_random` | P | |
 | `d_auxClauses`, `d_lemmas`, `d_clausesToReinit`, `d_unitsToReassert`, `d_simpQhead`, `d_simpCounter` | P | |
-| `d_conflict`, `d_notL`, `d_conflictResolution` | P | The proof-forest walk moves to T (section 4.5) |
+| `d_conflict`, `d_notL`, `d_conflictResolution` | P | The proof-forest walk is now `d_explainer` (T, step 2) |
 | `d_caseSplitQueue` | P | Consumes `relevantEh` and, optionally, `isExtDiseq` |
 | restart, lemma-GC and search counters (`d_numConflicts`…`d_lemmaGcThreshold`, `d_agility`, `d_lubyIdx`) | P | |
 | `d_expr2BoolVar`, `d_boolVar2Expr` | P | The Node↔BoolVar map |
-| `d_thCaseSplitSets`, `d_literal2CaseSplitSets`, `d_allThCaseSplitLiterals` | none | Dead (section 9) |
+| `d_thCaseSplitSets`, `d_literal2CaseSplitSets`, `d_allThCaseSplitLiterals` | none | Dead; removed in step 1 |
 | `d_app2ENode`, `d_enodes`, `d_decl2ENodes`, `d_declIds`, `d_cgTable`, `d_trueENode`, `d_falseENode`, `d_isDiseqTmp`, `d_tmpENode` | T | The E-graph |
 | `d_eqPropagationQueue`, `d_thEqPropagationQueue`, `d_thDiseqPropagationQueue` | T | |
 | `d_atomPropagationQueue` | T | P feeds it, T drains it |
@@ -85,7 +86,7 @@ and **S** shared infrastructure.
 | `d_qmanager`, `d_fingerprints` | T | The fingerprints should move into the quantifier manager |
 | `d_dynAckManager` | T | Needs P's lemma clauses with a deletion hook |
 | `d_generation`, `d_stickyGenerationUpdates`, `d_cachedGeneration`, `d_cacheGenerationVisited` | T | `cacheGeneration` runs during P's backjump (section 4.8) |
-| `d_unsupported`, `d_modelUnsoundTheories`, `d_incompleteTheories` | T | Theory status (section 4.9) |
+| `d_unsupported`, `d_modelUnsoundTheories`, `d_incompleteTheories` | T | Theory status (section 4.9). The first two are now `d_theoryStatus` (step 3); the third was dead and is removed (step 1) |
 | `d_relevancyPropagator`, `d_relevancyLvl` | R | Owned by P (section 6) |
 | `d_trailStack`, `d_region`, `d_scopeLvl`, `d_baseLvl`, `d_searchLvl`, `d_scopes`, `d_baseScopes` | S | P sets the levels and T reads them |
 | `d_params`, `d_stats`, `d_regStats` | S | |
@@ -449,7 +450,8 @@ each step is the one used in Stage 1A: identical answers and identical
 both presets; runs that time out excepted), identical results under
 `--rlimit`, the `regress0/z3` tests, and the benchmark comparison.
 
-1. **Remove dead paths.**
+1. **Remove dead paths.** *Done; see FIDELITY.md, "Imported code retired
+   before the propositional/theory split".*
    - Theory case splits (`mkThCaseSplit`, `propagateThCaseSplit` and their
      three fields).
    - `mkThLemma`, `addTheoryAwareBranchingInfo`, `hasCaseSplits`,
@@ -461,10 +463,19 @@ both presets; runs that time out excepted), identical results under
    This makes the boundary smaller before anything moves.
 2. **Extract the explainer.** Move `justification2Literals` and `eq2Literals`
    out of `ConflictResolution` into a T-side class. Conflict analysis then
-   reaches the E-graph through a single call.
+   reaches the E-graph through a single call. *Done: `z3::Explainer` in
+   `explainer.{h,cpp}` owns the marking interface, the caches of explained
+   justifications and equalities, and the proof-forest walk. Conflict
+   resolution calls `explain`, `getCheckpoint` and `rollback`, and no longer
+   reads an enode. `Justification::getAntecedents` takes the explainer.*
 3. **Extract the theory status.** `d_unsupported`, `d_modelUnsoundTheories`
    and the reasons for a theory giving up become one T-side object that
-   `checkFinalize` consults.
+   `checkFinalize` consults. *Done for the first two:
+   `z3::TheoryStatus` in `theory_status.{h,cpp}` holds them and decides,
+   through `canConfirmModel`, whether an assignment may be reported as a
+   model. The reasons a theory gives up are still set in `finalCheck` and
+   `restart`, which mix the two sides; they move with the driver in step
+   4(b).*
 4. **Extract the Boolean engine into `z3::PropCore`.** This is the largest
    step, so it should be done in two commits:
    - (a) Move P's state and its leaf methods: assignment, watches, clause
@@ -512,7 +523,7 @@ own, so that its effect on the comparison can be seen.
    reached is unclear.
 2. **`d_unknown` is never reset.** A later check can report a stale reason.
    It is printed only at verbosity 1.
-3. **`d_unsupported` and `d_modelUnsoundTheories` are sticky.** They are
+3. **The theory status is sticky.** The records in `TheoryStatus` are
    never cleared within a context, so a mark that a theory makes on one
    branch persists through later branches and checks. This only weakens a
    result to unknown, but it is not scoped.

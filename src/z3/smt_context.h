@@ -48,6 +48,7 @@
 #include "z3/dyn_ack.h"
 #include "z3/enode.h"
 #include "z3/eq_justification.h"
+#include "z3/explainer.h"
 #include "z3/fingerprints.h"
 #include "z3/justification.h"
 #include "z3/nnf.h"
@@ -57,6 +58,7 @@
 #include "z3/relevancy.h"
 #include "z3/statistics.h"
 #include "z3/theory.h"
+#include "z3/theory_status.h"
 #include "z3/types.h"
 #include "z3/util/literal.h"
 #include "z3/util/random_gen.h"
@@ -284,13 +286,6 @@ class SmtContext : protected EnvObj
 
   void setJustification(BoolVar v, BoolVarData& d, const BJustification& j);
 
-  bool hasThJustification(BoolVar v, TheoryId thId) const
-  {
-    BJustification js = getJustification(v);
-    return js.getKind() == BJustification::JUSTIFICATION
-           && js.getJustification()->getFromTheory() == thId;
-  }
-
   void setRandomSeed(uint32_t s) { d_random.setSeed(s); }
 
   int getRandomValue() { return d_random(); }
@@ -507,9 +502,9 @@ class SmtContext : protected EnvObj
    * Record that the input uses a construct this port does not support, so
    * that the search answers "unknown" instead of guessing.
    */
-  void markUnsupported() { d_unsupported = true; }
+  void markUnsupported() { d_theoryStatus.markUnsupported(); }
 
-  bool isUnsupported() const { return d_unsupported; }
+  bool isUnsupported() const { return d_theoryStatus.isUnsupported(); }
 
   /** A diagnostic flag: set while the forced rematch runs. */
   bool d_inForcedRematch = false;
@@ -555,42 +550,6 @@ class SmtContext : protected EnvObj
     mkThAxiom(tid, ls.size(), const_cast<Literal*>(ls.data()));
   }
 
-  void mkThLemma(TheoryId tid, size_t numLits, Literal* lits)
-  {
-    mkThClause(tid, numLits, lits, CLS_TH_LEMMA);
-  }
-
-  void mkThLemma(TheoryId tid, Literal l1, Literal l2)
-  {
-    Literal ls[2] = {l1, l2};
-    mkThLemma(tid, 2, ls);
-  }
-
-  void mkThLemma(TheoryId tid, Literal l1, Literal l2, Literal l3)
-  {
-    Literal ls[3] = {l1, l2, l3};
-    mkThLemma(tid, 3, ls);
-  }
-
-  void mkThLemma(TheoryId tid, const LiteralVector& ls)
-  {
-    mkThLemma(tid, ls.size(), const_cast<Literal*>(ls.data()));
-  }
-
-  /**
-   * Tell the core that the given literals form a "theory case split": at most
-   * one of them may be assigned true. The theory is assumed to have already
-   * asserted that at least one of them holds.
-   */
-  void mkThCaseSplit(size_t numLits, Literal* lits);
-
-  /**
-   * Give the branching heuristic a priority hint for a theory-aware literal.
-   * Such literals are always branched on before unmarked ones, highest
-   * priority first.
-   */
-  void addTheoryAwareBranchingInfo(BoolVar v, double priority, LBool phase);
-
   // ---------------------------------------------------- trail callbacks
   /** Undo an addEq; invoked from the trail. */
   void undoAddEq(ENode* r1, ENode* n1, size_t r2NumParents);
@@ -600,10 +559,6 @@ class SmtContext : protected EnvObj
                                uint32_t e1Generation,
                                ENode* e2,
                                uint32_t e2Generation);
-
-  void undoThCaseSplit(Literal l);
-
-  bool propagateThCaseSplit(size_t qhead);
 
   BoolVar mkBoolVar(TNode n);
 
@@ -703,8 +658,6 @@ class SmtContext : protected EnvObj
   {
     return d_conflict != s_nullBJustification || d_assertedInconsistent;
   }
-
-  bool hasCaseSplits();
 
   uint64_t getNumConflicts() const { return d_numConflicts; }
 
@@ -878,10 +831,10 @@ class SmtContext : protected EnvObj
    * only drops constraints: "unsat" stays sound, but "sat" does not, so the
    * result is weakened to "unknown".
    */
-  void markModelUnsound(TheoryId tid);
+  void markModelUnsound(TheoryId tid) { d_theoryStatus.markModelUnsound(tid); }
 
   /** True if any theory was internalized without a plugin. */
-  bool isModelUnsound() const { return !d_modelUnsoundTheories.empty(); }
+  bool isModelUnsound() const { return d_theoryStatus.isModelUnsound(); }
 
   bool resourceLimitsExceeded();
 
@@ -1157,8 +1110,11 @@ class SmtContext : protected EnvObj
   NgPushAppIte d_ngPushAppIte;
   std::unique_ptr<Cvc5Bridge> d_cvc5Bridge;
   PatternInference d_patternInference;
-  /** true if the input uses a construct that is not supported */
-  bool d_unsupported = false;
+  /**
+   * What the theory side knows about whether a satisfying assignment is a
+   * model, which checkFinalize consults.
+   */
+  TheoryStatus d_theoryStatus;
   std::unique_ptr<QuantifierManager> d_qmanager;
   std::unique_ptr<RelevancyPropagator> d_relevancyPropagator;
   RandomGen d_random;
@@ -1259,15 +1215,15 @@ class SmtContext : protected EnvObj
   std::unordered_map<TNode, uint32_t> d_cachedGeneration;
   std::unordered_set<TNode> d_cacheGenerationVisited;
   DynAckManager d_dynAckManager;
+  /**
+   * The explanation of justifications and equalities for conflict
+   * resolution. It reports the congruences and equalities it uses to
+   * d_dynAckManager, so it is declared after it.
+   */
+  Explainer d_explainer;
 
   /** Why the last search answered L_UNDEF. */
   std::string d_unknown;
-
-  // -------------------------------------------------------- theory case split
-  UIntSet d_allThCaseSplitLiterals;
-  std::vector<LiteralVector> d_thCaseSplitSets;
-  std::unordered_map<size_t, std::vector<LiteralVector>>
-      d_literal2CaseSplitSets;
 
   // ------------------------------------------------------------ backtracking
   TrailStack d_trailStack;
@@ -1287,8 +1243,6 @@ class SmtContext : protected EnvObj
   // ------------------------------------------------------------------ engine
   LBool d_lastSearchResult;
   Failure d_lastSearchFailure;
-  /** The theories that failed to produce a model. */
-  std::vector<Theory*> d_incompleteTheories;
   bool d_searching;
   bool d_searchFinalized;
   bool d_setupDone;
@@ -1302,9 +1256,6 @@ class SmtContext : protected EnvObj
   uint32_t d_lubyIdx;
   double d_agility;
   uint64_t d_lemmaGcThreshold;
-  bool d_hasCaseSplit;
-  /** The theories that could not confirm the assignment extends to a model. */
-  std::set<int32_t> d_modelUnsoundTheories;
   std::vector<bool> d_relevantConflictLiterals;
 
   /** Scratch space for the topological sort used by internalizeDeep. */

@@ -31,7 +31,7 @@
 namespace cvc5::internal {
 namespace z3 {
 
-class ConflictResolution;
+class Explainer;
 class SmtContext;
 
 using JustificationVector = std::vector<Justification*>;
@@ -59,9 +59,9 @@ class Justification
 
   /**
    * Mark the antecedents of this justification, using the mark methods of the
-   * conflict resolution object.
+   * explainer.
    */
-  virtual void getAntecedents(ConflictResolution& /*cr*/) {}
+  virtual void getAntecedents(Explainer& /*e*/) {}
 
   /** The theory that produced this object. */
   virtual TheoryId getFromTheory() const { return s_nullTheoryId; }
@@ -122,7 +122,7 @@ class UnitResolutionJustification : public Justification
     }
   }
 
-  void getAntecedents(ConflictResolution& cr) override;
+  void getAntecedents(Explainer& e) override;
 
   const char* getName() const override { return "unit-resolution"; }
 
@@ -141,7 +141,7 @@ class EqConflictJustification : public Justification
   {
   }
 
-  void getAntecedents(ConflictResolution& cr) override;
+  void getAntecedents(Explainer& e) override;
 
   const char* getName() const override { return "eq-conflict"; }
 
@@ -157,7 +157,7 @@ class EqRootPropagationJustification : public Justification
  public:
   EqRootPropagationJustification(ENode* n) : d_node(n) {}
 
-  void getAntecedents(ConflictResolution& cr) override;
+  void getAntecedents(Explainer& e) override;
 
   const char* getName() const override { return "eq-root"; }
 
@@ -171,7 +171,7 @@ class EqPropagationJustification : public Justification
  public:
   EqPropagationJustification(ENode* n1, ENode* n2) : d_node1(n1), d_node2(n2) {}
 
-  void getAntecedents(ConflictResolution& cr) override;
+  void getAntecedents(Explainer& e) override;
 
   const char* getName() const override { return "eq-propagation"; }
 
@@ -186,7 +186,7 @@ class MpIffJustification : public Justification
  public:
   MpIffJustification(ENode* n1, ENode* n2) : d_node1(n1), d_node2(n2) {}
 
-  void getAntecedents(ConflictResolution& cr) override;
+  void getAntecedents(Explainer& e) override;
 
   const char* getName() const override { return "mp-iff"; }
 
@@ -203,7 +203,7 @@ class SimpleJustification : public Justification
  public:
   SimpleJustification(SmtContext& ctx, size_t numLits, const Literal* lits);
 
-  void getAntecedents(ConflictResolution& cr) override;
+  void getAntecedents(Explainer& e) override;
 
   const char* getName() const override { return "simple"; }
 
@@ -240,7 +240,7 @@ class TheoryAxiomJustification : public SimpleTheoryJustification
   {
   }
 
-  void getAntecedents(ConflictResolution& /*cr*/) override {}
+  void getAntecedents(Explainer& /*e*/) override {}
 
   const char* getName() const override { return "theory-axiom"; }
 };
@@ -288,7 +288,7 @@ class ExtSimpleJustification : public SimpleJustification
                          size_t numEqs,
                          const ENodePair* eqs);
 
-  void getAntecedents(ConflictResolution& cr) override;
+  void getAntecedents(Explainer& e) override;
 
   const char* getName() const override { return "ext-simple"; }
 
@@ -398,7 +398,7 @@ class TheoryLemmaJustification : public Justification
  public:
   TheoryLemmaJustification(TheoryId fid) : Justification(false), d_thId(fid) {}
 
-  void getAntecedents(ConflictResolution& /*cr*/) override {}
+  void getAntecedents(Explainer& /*e*/) override {}
 
   TheoryId getFromTheory() const override { return d_thId; }
 

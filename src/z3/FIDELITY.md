@@ -233,6 +233,32 @@ member, went with it. Re-porting any of this from Z3 is mechanical if
 assumptions are ever wanted, and the three `Cvc5Bridge` methods that read
 *its subsolver's* unsat assumptions are unrelated and untouched.
 
+## Imported code retired before the propositional/theory split
+
+Step 1 of the Stage 1B sequence in `PROP_THEORY_SPLIT.md` removed imported
+code that nothing in the port reaches: 239 lines net. Most of it was entry
+points that Z3's other theories (strings, sequences, user propagators) use,
+and that none of the ported plugins calls.
+
+| removed | from Z3 | why it was dead |
+|---|---|---|
+| `SmtContext::mkThCaseSplit`, `propagateThCaseSplit`, `undoThCaseSplit`, `CaseSplitInsertTrail`, `d_allThCaseSplitLiterals`, `d_thCaseSplitSets`, `d_literal2CaseSplitSets` | `context::mk_th_case_split`, `propagate_th_case_split`, `undo_th_case_split`, and their members | No plugin registers a theory case split, so the sets were always empty and the propagation step returned at once. |
+| `SmtContext::mkThLemma` | `context::mk_th_lemma` | No callers. Plugins use `mkThAxiom` and `mkClause`. |
+| `SmtContext::addTheoryAwareBranchingInfo` | `context::add_theory_aware_branching_info` | No callers. The case split queue keeps its own entry point, so the theory-aware queue is unchanged and still receives no hints. |
+| `SmtContext::hasCaseSplits`, `d_hasCaseSplit` | `context::has_case_splits`, `m_has_case_split` | No callers, so the flag was write-only. |
+| `SmtContext::hasThJustification` | `context::has_th_justification` | No callers. |
+| `SmtContext::d_incompleteTheories` | `context::m_incomplete_theories` | Written in `finalCheck` and never read. |
+| `CaseSplitQueue::internalizeInstanceEh` | `case_split_queue::internalize_instance_eh` | A no-op in every queue. |
+| `Theory::updtParams`, `buildModels`, `whyIsDiseq`, `printVar2ENode` | `theory::updt_params`, `build_models`, `why_is_diseq`, `display_var2enode` | Never called and never overridden. |
+| `ConflictResolution::d_watches` | `conflict_resolution::m_watches` | Stored by the constructor and never used: the subsumption resolution it serves in Z3 is not ported. |
+
+Compared with the build from before Stage 1A, on 444 quantified
+regressions under both presets with a 10 s limit, every answer and every
+`z3::` counter is identical, with two kinds of exception: runs that time out
+in both builds, and the intended effects of the capability boundary (the
+reworded refusal messages and the newly refused `declare-pool`).
+`regress0/z3` passes.
+
 ## Lifecycle defects found while pinning the capability boundary
 
 `push`/`pop` and `check-sat-assuming` gave wrong answers rather than failing,

@@ -18,8 +18,8 @@
 #include <cstring>
 #include <memory>
 
-#include "z3/conflict_resolution.h"
 #include "z3/enode.h"
+#include "z3/explainer.h"
 #include "z3/smt_context.h"
 
 namespace cvc5::internal {
@@ -60,52 +60,52 @@ UnitResolutionJustification::~UnitResolutionJustification()
   }
 }
 
-void UnitResolutionJustification::getAntecedents(ConflictResolution& cr)
+void UnitResolutionJustification::getAntecedents(Explainer& e)
 {
   if (d_antecedent != nullptr)
   {
-    cr.markJustification(d_antecedent);
+    e.markJustification(d_antecedent);
   }
   for (size_t i = 0; i < d_numLiterals; ++i)
   {
-    cr.markLiteral(d_literals[i]);
+    e.markLiteral(d_literals[i]);
   }
 }
 
-void EqConflictJustification::getAntecedents(ConflictResolution& cr)
+void EqConflictJustification::getAntecedents(Explainer& e)
 {
   Assert(d_node1->getRoot()->isInterpreted());
   Assert(d_node2->getRoot()->isInterpreted());
-  cr.markEq(d_node1, d_node1->getRoot());
-  cr.markEq(d_node2, d_node2->getRoot());
-  cr.markJustifiedEq(d_node1, d_node2, d_js);
+  e.markEq(d_node1, d_node1->getRoot());
+  e.markEq(d_node2, d_node2->getRoot());
+  e.markJustifiedEq(d_node1, d_node2, d_js);
 }
 
-void EqRootPropagationJustification::getAntecedents(ConflictResolution& cr)
+void EqRootPropagationJustification::getAntecedents(Explainer& e)
 {
-  cr.markEq(d_node, d_node->getRoot());
+  e.markEq(d_node, d_node->getRoot());
 }
 
-void EqPropagationJustification::getAntecedents(ConflictResolution& cr)
+void EqPropagationJustification::getAntecedents(Explainer& e)
 {
   if (d_node1 != d_node2)
   {
-    cr.markEq(d_node1, d_node2);
+    e.markEq(d_node1, d_node2);
   }
 }
 
-void MpIffJustification::getAntecedents(ConflictResolution& cr)
+void MpIffJustification::getAntecedents(Explainer& e)
 {
   if (d_node1 == d_node2)
   {
     return;
   }
-  cr.markEq(d_node1, d_node2);
-  SmtContext& ctx = cr.getContext();
+  e.markEq(d_node1, d_node2);
+  SmtContext& ctx = e.getContext();
   BoolVar v = ctx.enode2BoolVar(d_node1);
   LBool val = ctx.getAssignment(v);
   Literal l(v, val == L_FALSE);
-  cr.markLiteral(l);
+  e.markLiteral(l);
 }
 
 SimpleJustification::SimpleJustification(SmtContext& ctx,
@@ -127,11 +127,11 @@ SimpleJustification::SimpleJustification(SmtContext& ctx,
   }
 }
 
-void SimpleJustification::getAntecedents(ConflictResolution& cr)
+void SimpleJustification::getAntecedents(Explainer& e)
 {
   for (size_t i = 0; i < d_numLiterals; ++i)
   {
-    cr.markLiteral(d_literals[i]);
+    e.markLiteral(d_literals[i]);
   }
 }
 
@@ -156,12 +156,12 @@ ExtSimpleJustification::ExtSimpleJustification(SmtContext& ctx,
   }
 }
 
-void ExtSimpleJustification::getAntecedents(ConflictResolution& cr)
+void ExtSimpleJustification::getAntecedents(Explainer& e)
 {
-  SimpleJustification::getAntecedents(cr);
+  SimpleJustification::getAntecedents(e);
   for (size_t i = 0; i < d_numEqs; ++i)
   {
-    cr.markEq(d_eqs[i].first, d_eqs[i].second);
+    e.markEq(d_eqs[i].first, d_eqs[i].second);
   }
 }
 

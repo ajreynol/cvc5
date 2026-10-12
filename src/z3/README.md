@@ -24,6 +24,7 @@ These files are cvc5 code, not ported from Z3:
 | `z3_theory_engine.{h,cpp}` | owns the shared backend; its inherited `TheoryEngine` stays a service to preprocessing and records what preprocessing reports about soundness |
 | `shared_backend.{h,cpp}` | the one owner of `Params` and the `SmtContext` both engines use |
 | `assertion_preparation.{h,cpp}` | the preparation each preprocessed assertion goes through before it reaches the core; see below |
+| `theory_status.{h,cpp}` | what the theory side records about unsupported input and theories that cannot confirm a model, which `SmtContext::checkFinalize` consults before answering "sat" |
 
 The `SmtContext` still does both the Boolean search and the theory
 reasoning, so the two engines share it rather than each owning a part
@@ -60,7 +61,7 @@ are the values in `smt_params.h`.
 | `enode.{h,cpp}`, `cg_table.{h,cpp}` | `smt/smt_enode.*`, `smt/smt_cg_table.*` |
 | `relevancy.{h,cpp}` | `smt/smt_relevancy.*` |
 | `case_split_queue.{h,cpp}` | `smt/smt_case_split_queue.*` |
-| `conflict_resolution.{h,cpp}` | `smt/smt_conflict_resolution.*` |
+| `conflict_resolution.{h,cpp}`, `explainer.{h,cpp}` | `smt/smt_conflict_resolution.*`: the first-UIP resolution, and the explanation of justifications and equalities |
 | `clause.{h,cpp}`, `watch_list.{h,cpp}` | `smt/smt_clause.*`, `smt/watch_list.*` |
 | `justification.{h,cpp}`, `b_justification.h`, `eq_justification.h` | `smt/smt_justification.*`, `smt/smt_b_justification.h`, `smt/smt_eq_justification.h` |
 | `bool_var_data.h`, `statistics.{h,cpp}` | `smt/smt_bool_var_data.h`, `smt/smt_statistics.h` |

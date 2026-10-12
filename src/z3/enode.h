@@ -140,7 +140,7 @@ class ENode
   ApproxSet d_plbls;
 
   friend class SmtContext;
-  friend class ConflictResolution;
+  friend class Explainer;
   friend class QuantifierManager;
   friend class Mam;
   friend class TmpENode;
