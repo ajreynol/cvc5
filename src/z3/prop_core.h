@@ -89,8 +89,10 @@ std::ostream& operator<<(std::ostream& out, Failure f);
  *  - notifying it that a term became relevant (relevantEh), after this side
  *    has handled the notification; and the members of an equivalence class,
  *    which share their relevancy, for the relevancy propagator (findENode);
- *  - recreating the atoms of clauses that survive backtracking (internalize,
- *    getLiteral) and caching the generations they had (cacheGeneration);
+ *  - internalizing the arguments of a root assertion and recreating the
+ *    atoms of clauses that survive backtracking (internalize,
+ *    internalizeRec), and caching the generations the latter had
+ *    (cacheGeneration);
  *  - removing a deleted quantifier variable (notifyBoolVarDeleted);
  *  - the phase hint of a theory (getTheory);
  *  - the infrastructure the two sides share: the trail, the region-allocated
@@ -425,6 +427,32 @@ class PropCore : protected EnvObj
 
   CaseSplitQueue& getCaseSplitQueue() { return *d_caseSplitQueue; }
 
+  // -------------------------------------------------- the Boolean structure
+  //
+  // The clauses that encode the Boolean structure of the input, as cvc5's
+  // CnfStream does. The theory side's internalizer walks the input and calls
+  // these where a gate or a root assertion occurs.
+
+  /**
+   * Assert the root formula n, after the theory side has internalized its
+   * subterms (SmtContext::internalizeAssertion): the clauses of a root gate
+   * over the literals of its arguments, which the theory side internalizes
+   * here in turn, or the unit literal of anything else.
+   */
+  void assertRoot(TNode n);
+
+  /**
+   * Add the clauses that define the Boolean variable of the gate n in terms
+   * of its arguments, and the relevancy watches of n. Called once, when the
+   * variable of n is made.
+   */
+  void mkGateConstraints(TNode n);
+
+  void mkGateClause(size_t numLits, Literal* lits);
+  void mkGateClause(Literal l1, Literal l2);
+  void mkGateClause(Literal l1, Literal l2, Literal l3);
+  void mkGateClause(Literal l1, Literal l2, Literal l3, Literal l4);
+
   // ---------------------------------------------------------------- clauses
   Clause* mkClause(size_t numLits,
                    Literal* lits,
@@ -578,6 +606,23 @@ class PropCore : protected EnvObj
   void rescaleBoolVarActivity();
   void addScores(size_t n, const Literal* lits);
   void unassignVars(size_t oldLim);
+
+  // the Boolean structure
+  void assertDefault(TNode n);
+  void assertDistinct(TNode n);
+  void mkRootClause(size_t numLits, Literal* lits);
+  void mkRootClause(Literal l1, Literal l2);
+  void mkRootClause(Literal l1, Literal l2, Literal l3);
+  void addAndRelWatches(TNode n);
+  void addOrRelWatches(TNode n);
+  void addImpliesRelWatches(TNode n);
+  void addIteRelWatches(TNode n);
+  void mkNotCnstr(TNode n);
+  void mkAndCnstr(TNode n);
+  void mkOrCnstr(TNode n);
+  void mkImpliesCnstr(TNode n);
+  void mkIffCnstr(TNode n, bool sign);
+  void mkIteCnstr(TNode n);
 
   void propagateRelevancy(size_t qhead);
   void recordRelevancy(size_t n, const Literal* lits);

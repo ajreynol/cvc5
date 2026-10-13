@@ -598,6 +598,14 @@ class SmtContext : protected EnvObj
 
   BoolVar mkBoolVar(TNode n) { return d_prop.mkBoolVar(n); }
 
+  /**
+   * Make the Boolean variable of atom, an atom of the theory tid, which is
+   * notified of its assignments. If hasENode, the enode of atom has already
+   * been made, and is merged with true or false when the variable is
+   * assigned. This is how a theory plugin registers an atom.
+   */
+  BoolVar mkTheoryAtomVar(TNode atom, TheoryId tid, bool hasENode = false);
+
   ENode* mkENode(TNode n, bool suppressArgs, bool mergeTf, bool cgcEnabled);
 
   void attachThVar(ENode* n, Theory* th, TheoryVar v);
@@ -629,10 +637,25 @@ class SmtContext : protected EnvObj
    */
   void cacheGeneration(TNode n, uint32_t newScopeLvl);
 
-  void mkGateClause(size_t numLits, Literal* lits);
-  void mkGateClause(Literal l1, Literal l2);
-  void mkGateClause(Literal l1, Literal l2, Literal l3);
-  void mkGateClause(Literal l1, Literal l2, Literal l3, Literal l4);
+  void mkGateClause(size_t numLits, Literal* lits)
+  {
+    d_prop.mkGateClause(numLits, lits);
+  }
+  void mkGateClause(Literal l1, Literal l2) { d_prop.mkGateClause(l1, l2); }
+  void mkGateClause(Literal l1, Literal l2, Literal l3)
+  {
+    d_prop.mkGateClause(l1, l2, l3);
+  }
+  void mkGateClause(Literal l1, Literal l2, Literal l3, Literal l4)
+  {
+    d_prop.mkGateClause(l1, l2, l3, l4);
+  }
+
+  /**
+   * Internalize n, a subterm of an assertion, in the given context; see
+   * PropCore::assertRoot.
+   */
+  void internalizeRec(TNode n, bool gateCtx);
 
   void setEnodeFlag(BoolVar v, bool isNewVar);
 
@@ -958,12 +981,9 @@ class SmtContext : protected EnvObj
   void topSortExpr(const Node* exprs,
                    size_t numExprs,
                    std::vector<ExprBoolPair>& sortedExprs);
-  void internalizeRec(TNode n, bool gateCtx);
   void internalizeDeep(TNode n);
   void internalizeDeep(const Node* exprs, size_t numExprs);
   void internalizeAssertion(TNode n, uint32_t generation);
-  void assertDefault(TNode n);
-  void assertDistinct(TNode n);
   void internalizeFormula(TNode n, bool gateCtx);
   void internalizeEq(TNode n, bool gateCtx);
   void internalizeDistinct(TNode n, bool gateCtx);
@@ -979,19 +999,6 @@ class SmtContext : protected EnvObj
   void checkTheorySupported(TNode n);
   void undoMkENode();
   void applySortCnstr(TNode term, ENode* e);
-  void mkRootClause(size_t numLits, Literal* lits);
-  void mkRootClause(Literal l1, Literal l2);
-  void mkRootClause(Literal l1, Literal l2, Literal l3);
-  void addAndRelWatches(TNode n);
-  void addOrRelWatches(TNode n);
-  void addImpliesRelWatches(TNode n);
-  void addIteRelWatches(TNode n);
-  void mkNotCnstr(TNode n);
-  void mkAndCnstr(TNode n);
-  void mkOrCnstr(TNode n);
-  void mkImpliesCnstr(TNode n);
-  void mkIffCnstr(TNode n, bool sign);
-  void mkIteCnstr(TNode n);
 
   void init();
   void flush();

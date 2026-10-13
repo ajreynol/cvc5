@@ -68,6 +68,19 @@ inline uint32_t varIndex(TNode n)
   return static_cast<uint32_t>(n.getAttribute(QuantVarLevelAttr()) - 1);
 }
 
+/** True if the expression is viewed as a logical gate. */
+inline bool isGate(TNode n)
+{
+  switch (n.getKind())
+  {
+    case Kind::AND:
+    case Kind::OR:
+    case Kind::ITE: return true;
+    case Kind::EQUAL: return n[0].getType().isBoolean();
+    default: return false;
+  }
+}
+
 /** True if n is a quantifier. This is Z3's is_quantifier. */
 inline bool isQuantifier(TNode n)
 {

@@ -446,9 +446,7 @@ bool TheoryDatatype::internalizeTerm(TNode term)
   ENode* e = ctx.mkENode(term, false, isBool, true);
   if (isBool)
   {
-    BoolVar bv = ctx.mkBoolVar(term);
-    ctx.setVarTheory(bv, getId());
-    ctx.setEnodeFlag(bv, true);
+    ctx.mkTheoryAtomVar(term, getId(), true);
   }
   if (isConstructor(term) || isUpdateField(term))
   {

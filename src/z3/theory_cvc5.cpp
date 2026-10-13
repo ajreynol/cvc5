@@ -1241,8 +1241,7 @@ bool TheoryCvc5::internalizeAtom(TNode atom, bool /*gateCtx*/)
   {
     return true;
   }
-  BoolVar v = ctx.mkBoolVar(atom);
-  ctx.setVarTheory(v, getId());
+  BoolVar v = ctx.mkTheoryAtomVar(atom, getId());
   d_bridge.registerAtom(atom, v);
   return true;
 }

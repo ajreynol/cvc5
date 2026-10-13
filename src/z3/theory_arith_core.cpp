@@ -1402,8 +1402,7 @@ bool TheoryArith::internalizeAtom(TNode n, bool /*gateCtx*/)
     {
       return true;
     }
-    BoolVar bv = d_ctx.mkBoolVar(n);
-    d_ctx.setVarTheory(bv, getId());
+    BoolVar bv = d_ctx.mkTheoryAtomVar(n, getId());
     registerNlFallbackAtom(n, bv);
     return true;
   }
@@ -1445,8 +1444,7 @@ bool TheoryArith::internalizeAtom(TNode n, bool /*gateCtx*/)
   {
     return true;
   }
-  BoolVar bv = d_ctx.mkBoolVar(n);
-  d_ctx.setVarTheory(bv, getId());
+  BoolVar bv = d_ctx.mkTheoryAtomVar(n, getId());
   registerNlFallbackAtom(n, bv);
   Rational k0;
   bool isNum = arith::isNumeral(rhs, k0);

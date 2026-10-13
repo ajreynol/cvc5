@@ -1209,6 +1209,17 @@ class SetVarTheoryTrail : public Trail
 
 }  // namespace
 
+BoolVar SmtContext::mkTheoryAtomVar(TNode atom, TheoryId tid, bool hasENode)
+{
+  BoolVar v = mkBoolVar(atom);
+  setVarTheory(v, tid);
+  if (hasENode)
+  {
+    setEnodeFlag(v, true);
+  }
+  return v;
+}
+
 void SmtContext::setVarTheory(BoolVar v, TheoryId tid)
 {
   Assert(getVarTheory(v) == s_nullTheoryId);

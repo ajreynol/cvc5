@@ -4,7 +4,7 @@ Date: 2026-10-10
 
 Source snapshot: `da001fa639` (`Preset`)
 
-Status: Stage 1A implemented; Stage 1B in progress (steps 1–5 of 7). See
+Status: Stage 1A implemented; Stage 1B in progress (steps 1–6 of 7). See
 the progress record in section 14.
 
 ## 1. Objective and migration principle
@@ -639,3 +639,8 @@ runs that time out compared under `--rlimit`):
 5. Relevancy is owned by `PropCore`. The theory side keeps only the part of
    the relevancy notification that reaches the quantifier manager and the
    theories, and gives the propagator the members of an equivalence class.
+6. Internalization is split as cvc5 splits CNF conversion from
+   pre-registration. `PropCore` encodes gates and root assertions. The
+   theory side walks the input, makes enodes and theory atoms, and calls it
+   at the same points as before. Theory plugins register an atom with one
+   call.

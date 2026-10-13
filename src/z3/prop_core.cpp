@@ -631,6 +631,313 @@ void PropCore::delInactiveLemmas()
   }
 }
 
+// ------------------------------------------------- the Boolean structure
+
+void PropCore::assertRoot(TNode n)
+{
+  if (isGate(n))
+  {
+    switch (n.getKind())
+    {
+      case Kind::AND:
+      {
+        for (const Node& arg : n)
+        {
+          d_ctx.internalizeRec(arg, true);
+          Literal lit = getLiteral(arg);
+          mkRootClause(1, &lit);
+        }
+        break;
+      }
+      case Kind::OR:
+      {
+        LiteralVector lits;
+        for (const Node& arg : n)
+        {
+          d_ctx.internalizeRec(arg, true);
+          lits.push_back(getLiteral(arg));
+        }
+        mkRootClause(lits.size(), lits.data());
+        addOrRelWatches(n);
+        break;
+      }
+      case Kind::EQUAL:
+      {
+        TNode lhs = n[0];
+        TNode rhs = n[1];
+        d_ctx.internalizeRec(lhs, true);
+        d_ctx.internalizeRec(rhs, true);
+        Literal l1 = getLiteral(lhs);
+        Literal l2 = getLiteral(rhs);
+        mkRootClause(l1, ~l2);
+        mkRootClause(~l1, l2);
+        break;
+      }
+      case Kind::ITE:
+      {
+        TNode c = n[0];
+        TNode t = n[1];
+        TNode e = n[2];
+        d_ctx.internalizeRec(c, true);
+        d_ctx.internalizeRec(t, true);
+        d_ctx.internalizeRec(e, true);
+        Literal cl = getLiteral(c);
+        Literal tl = getLiteral(t);
+        Literal el = getLiteral(e);
+        mkRootClause(~cl, tl);
+        mkRootClause(cl, el);
+        addIteRelWatches(n);
+        break;
+      }
+      default: Unreachable();
+    }
+    markAsRelevant(n);
+  }
+  else if (n.getKind() == Kind::DISTINCT)
+  {
+    assertDistinct(n);
+    markAsRelevant(n);
+  }
+  else
+  {
+    assertDefault(n);
+  }
+}
+
+void PropCore::mkGateConstraints(TNode n)
+{
+  switch (n.getKind())
+  {
+    case Kind::NOT: mkNotCnstr(n); break;
+    case Kind::AND:
+      mkAndCnstr(n);
+      addAndRelWatches(n);
+      break;
+    case Kind::OR:
+      mkOrCnstr(n);
+      addOrRelWatches(n);
+      break;
+    case Kind::IMPLIES:
+      mkImpliesCnstr(n);
+      addImpliesRelWatches(n);
+      break;
+    case Kind::EQUAL:
+      if (n[0].getType().isBoolean())
+      {
+        mkIffCnstr(n, false);
+      }
+      break;
+    case Kind::ITE:
+      mkIteCnstr(n);
+      addIteRelWatches(n);
+      break;
+    case Kind::XOR: mkIffCnstr(n, true); break;
+    case Kind::CONST_BOOLEAN: break;
+    case Kind::DISTINCT:
+      Unreachable() << "z3: formula has not been simplified: " << n;
+    default: break;
+  }
+}
+
+void PropCore::assertDefault(TNode n)
+{
+  d_ctx.internalize(n, true);
+  Literal l = getLiteral(n);
+  if (l == s_falseLiteral)
+  {
+    setConflict(BJustification::mkAxiom());
+  }
+  else if (l == s_trueLiteral)
+  {
+    return;
+  }
+  else
+  {
+    assign(l, BJustification::mkAxiom());
+    markAsRelevant(l);
+  }
+}
+
+void PropCore::assertDistinct(TNode n)
+{
+  // Z3 encodes a very large distinct with auxiliary values over a fresh sort.
+  // cvc5's rewriter expands distinct during preprocessing, so the core is not
+  // expected to meet one at all, let alone a large one; the plain encoding is
+  // used in either case.
+  assertDefault(n);
+}
+
+void PropCore::mkGateClause(size_t numLits, Literal* lits)
+{
+  mkClause(numLits, lits, nullptr);
+}
+
+void PropCore::mkGateClause(Literal l1, Literal l2)
+{
+  Literal ls[2] = {l1, l2};
+  mkGateClause(2, ls);
+}
+
+void PropCore::mkGateClause(Literal l1, Literal l2, Literal l3)
+{
+  Literal ls[3] = {l1, l2, l3};
+  mkGateClause(3, ls);
+}
+
+void PropCore::mkGateClause(Literal l1, Literal l2, Literal l3, Literal l4)
+{
+  Literal ls[4] = {l1, l2, l3, l4};
+  mkGateClause(4, ls);
+}
+
+void PropCore::mkRootClause(size_t numLits, Literal* lits)
+{
+  mkClause(numLits, lits, nullptr);
+}
+
+void PropCore::mkRootClause(Literal l1, Literal l2)
+{
+  Literal ls[2] = {l1, l2};
+  mkRootClause(2, ls);
+}
+
+void PropCore::mkRootClause(Literal l1, Literal l2, Literal l3)
+{
+  Literal ls[3] = {l1, l2, l3};
+  mkRootClause(3, ls);
+}
+
+void PropCore::addAndRelWatches(TNode n)
+{
+  if (relevancy())
+  {
+    RelevancyEh* eh = d_relevancyPropagator->mkAndRelevancyEh(n);
+    for (const Node& arg : n)
+    {
+      // if one child is assigned false, the and-parent must be notified
+      addRelWatch(~getLiteral(arg), eh);
+    }
+  }
+}
+
+void PropCore::addOrRelWatches(TNode n)
+{
+  if (relevancy())
+  {
+    RelevancyEh* eh = d_relevancyPropagator->mkOrRelevancyEh(n);
+    for (const Node& arg : n)
+    {
+      // if one child is assigned true, the or-parent must be notified
+      addRelWatch(getLiteral(arg), eh);
+    }
+  }
+}
+
+void PropCore::addImpliesRelWatches(TNode n)
+{
+  if (relevancy())
+  {
+    RelevancyEh* eh = d_relevancyPropagator->mkImpliesRelevancyEh(n);
+    addRelWatch(~getLiteral(n[0]), eh);
+    addRelWatch(getLiteral(n[1]), eh);
+  }
+}
+
+void PropCore::addIteRelWatches(TNode n)
+{
+  if (relevancy())
+  {
+    RelevancyEh* eh = d_relevancyPropagator->mkIteRelevancyEh(n);
+    Literal l = getLiteral(n[0]);
+    // when the condition of an ite is assigned, the ite-parent is notified
+    addRelWatch(l, eh);
+    addRelWatch(~l, eh);
+  }
+}
+
+void PropCore::mkNotCnstr(TNode n)
+{
+  Assert(bInternalized(n));
+  BoolVar v = getBoolVar(n);
+  Literal l(v, false);
+  Literal c = getLiteral(n[0]);
+  mkGateClause(~l, ~c);
+  mkGateClause(l, c);
+}
+
+void PropCore::mkAndCnstr(TNode n)
+{
+  Literal l = getLiteral(n);
+  LiteralVector buffer;
+  buffer.push_back(l);
+  for (const Node& arg : n)
+  {
+    Literal lArg = getLiteral(arg);
+    mkGateClause(~l, lArg);
+    buffer.push_back(~lArg);
+  }
+  mkGateClause(buffer.size(), buffer.data());
+}
+
+void PropCore::mkOrCnstr(TNode n)
+{
+  Literal l = getLiteral(n);
+  LiteralVector buffer;
+  buffer.push_back(~l);
+  for (const Node& arg : n)
+  {
+    Literal lArg = getLiteral(arg);
+    mkGateClause(l, ~lArg);
+    buffer.push_back(lArg);
+  }
+  mkGateClause(buffer.size(), buffer.data());
+}
+
+void PropCore::mkImpliesCnstr(TNode n)
+{
+  Literal l = getLiteral(n);
+  LiteralVector buffer;
+  buffer.push_back(~l);
+  Literal lArg1 = getLiteral(n[0]);
+  mkGateClause(l, lArg1);
+  buffer.push_back(~lArg1);
+  Literal lArg2 = getLiteral(n[1]);
+  mkGateClause(l, ~lArg2);
+  buffer.push_back(lArg2);
+  mkGateClause(buffer.size(), buffer.data());
+}
+
+void PropCore::mkIffCnstr(TNode n, bool sign)
+{
+  if (n.getNumChildren() != 2)
+  {
+    Unreachable() << "z3: formula has not been simplified: " << n;
+  }
+  Literal l = getLiteral(n);
+  Literal l1 = getLiteral(n[0]);
+  Literal l2 = getLiteral(n[1]);
+  if (sign)
+  {
+    l.neg();
+  }
+  mkGateClause(~l, l1, ~l2);
+  mkGateClause(~l, ~l1, l2);
+  mkGateClause(l, l1, l2);
+  mkGateClause(l, ~l1, ~l2);
+}
+
+void PropCore::mkIteCnstr(TNode n)
+{
+  Literal l = getLiteral(n);
+  Literal l1 = getLiteral(n[0]);
+  Literal l2 = getLiteral(n[1]);
+  Literal l3 = getLiteral(n[2]);
+  mkGateClause(~l, ~l1, l2);
+  mkGateClause(~l, l1, l3);
+  mkGateClause(l, ~l1, ~l2);
+  mkGateClause(l, l1, ~l3);
+}
+
 // ----------------------------------------------------------------- relevancy
 
 void PropCore::relevantEh(TNode n)

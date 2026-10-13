@@ -5,7 +5,7 @@ Date: 2026-10-12
 Source snapshot: `8a1ca4ad2c` (Stage 1A), plus the capability changes that
 follow it.
 
-Status: steps 1–5 of the sequence in section 8 are done. The rest of this
+Status: steps 1–6 of the sequence in section 8 are done. The rest of this
 document describes the state before them, except where marked.
 
 This is the dependency audit that section 7 of
@@ -559,6 +559,28 @@ both presets; runs that time out excepted), identical results under
      own state.*
 6. **Split internalization** along section 6. Theories register atoms
    through one call instead of five low-level ones.
+
+   *Done. `PropCore` now encodes the Boolean structure, as cvc5's
+   `CnfStream` does:*
+   - *`mkGateConstraints` adds the clauses that define a gate's variable,
+     with the gate's relevancy watches.*
+   - *`assertRoot` adds the clauses of a root assertion, or its unit
+     literal.*
+   - *`mkGateClause` is used by the theory side for the definitions of
+     distinct and term ITEs.*
+
+   *The traversal of the input stays on the theory side. It decides what is
+   a gate and what is an atom, makes the enodes and calls these at the same
+   points as before. `assertRoot` has the theory side internalize each
+   argument of a root gate (`internalizeRec`) right before taking its
+   literal, so the interleaving is unchanged.*
+
+   *Theory plugins register an atom through `SmtContext::mkTheoryAtomVar`,
+   replacing their `mkBoolVar`/`setVarTheory`/`setEnodeFlag` sequences. They
+   still make enodes and theory variables (`mkENode`, `attachThVar`), which
+   belong to the theory side.*
+
+   *`isGate` moved to `ast.h`, so both sides share one definition.*
 7. **Wire the ownership.**
    - `Z3PropEngine` owns `PropCore`.
    - `Z3TheoryEngine` owns the theory side.
