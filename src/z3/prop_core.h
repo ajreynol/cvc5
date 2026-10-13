@@ -401,6 +401,16 @@ class PropCore : protected EnvObj
 
   void setConfiguredRelevancyLvl(uint32_t lvl) { d_relevancyLvl = lvl; }
 
+  /**
+   * Whether an assigned atom other than a quantifier reaches the theories
+   * only once it is relevant: at relevancy level 2, unless
+   * --no-z3-relevancy-deliver.
+   */
+  bool relevancyGatesAtoms() const
+  {
+    return relevancyLvl() >= 2 && d_params.d_relevancyDeliver;
+  }
+
   RelevancyPropagator& getRelevancyPropagator()
   {
     return *d_relevancyPropagator;
@@ -490,6 +500,16 @@ class PropCore : protected EnvObj
    * here in turn, or the unit literal of anything else.
    */
   void assertRoot(TNode n);
+
+  /**
+   * Assert the root formula n, after the theory side has internalized its
+   * subterms, as a theory lemma whose literals are the disjuncts of n, which
+   * survives backtracking and garbage collection (--z3-qi-permanent). As Z3
+   * does for the theory lemmas it reinitializes, every literal is marked
+   * relevant. Returns false if the lemma is a single literal, which is
+   * asserted at the current scope only.
+   */
+  bool assertPermanentLemma(TNode n);
 
   /**
    * Add the clauses that define the Boolean variable of the gate n in terms
@@ -743,7 +763,7 @@ class PropCore : protected EnvObj
   }
   bool canDelete(Clause* cls) const
   {
-    if (cls->inReinitStack())
+    if (cls->inReinitStack() || cls->isPermanent())
     {
       return false;
     }

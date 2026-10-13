@@ -244,8 +244,6 @@ void QiQueue::instantiate(Entry& ent)
     return;
   }
 
-  stat->incNumInstances();
-
   NodeManager* nm = q.getNodeManager();
   Node notQ = nm->mkNode(Kind::NOT, q);
   Node lemma;
@@ -265,6 +263,14 @@ void QiQueue::instantiate(Entry& ent)
   {
     lemma = nm->mkNode(Kind::OR, notQ, sInstance);
   }
+  if (d_params.d_qiPermanent
+      && d_permanentInstances.find(lemma) != d_permanentInstances.end())
+  {
+    // the instance is still asserted
+    d_context.getStats().d_numInstancesRediscovered++;
+    return;
+  }
+  stat->incNumInstances();
   d_instances.push_back(lemma);
   d_stats.d_numInstances++;
   d_context.getStats().d_numInstances++;
@@ -273,7 +279,10 @@ void QiQueue::instantiate(Entry& ent)
                  << " gen " << generation << " cost " << ent.d_cost
                  << " newgen " << gen << std::endl;
   Trace("z3-qi-lemma") << "  lemma: " << lemma << std::endl;
-  d_context.internalizeInstance(lemma, gen);
+  if (d_context.internalizeInstance(lemma, gen))
+  {
+    d_permanentInstances.insert(lemma);
+  }
 }
 
 void QiQueue::pushScope()

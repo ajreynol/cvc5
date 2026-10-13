@@ -40,6 +40,32 @@ inline uint32_t getLuby(uint32_t i)
   return getLuby(i - static_cast<uint32_t>(std::pow(2, k)) + 1);
 }
 
+/**
+ * The element x, counting from 0, of the Luby sequence with base y. With
+ * y = 2 this is getLuby(x + 1).
+ *
+ * Not ported from Z3: this is luby(y, x) of MiniSat (MIT License), as in
+ * src/prop/minisat/core/Solver.cc.
+ */
+inline double getLuby(double y, uint32_t x)
+{
+  // find the finite subsequence that contains index x, and its size
+  uint32_t size = 1;
+  uint32_t seq = 0;
+  while (size < x + 1)
+  {
+    seq++;
+    size = 2 * size + 1;
+  }
+  while (size - 1 != x)
+  {
+    size = (size - 1) >> 1;
+    seq--;
+    x = x % size;
+  }
+  return std::pow(y, seq);
+}
+
 }  // namespace z3
 }  // namespace cvc5::internal
 

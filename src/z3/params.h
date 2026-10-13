@@ -50,7 +50,9 @@ enum CaseSplitStrategy
   /** based on relevancy and the current goal */
   CS_RELEVANCY_GOAL,
   /** activity based, but theory solvers may manipulate the activity */
-  CS_ACTIVITY_THEORY_AWARE_BRANCHING
+  CS_ACTIVITY_THEORY_AWARE_BRANCHING,
+  /** as cvc5's justification heuristic, then activity; not in Z3 */
+  CS_JUSTIFICATION
 };
 
 /** How the phase of a case split is chosen. Z3's phase_selection. */
@@ -147,6 +149,24 @@ struct Params
   bool d_binaryClauseOpt = true;
   uint32_t d_relevancyLvl = 2;
   bool d_relevancyLemma = false;
+  /**
+   * At relevancy level 2, whether only relevant atoms are delivered to the
+   * theories; when false, every assigned atom other than a quantifier is, as
+   * at level 1. Not in Z3.
+   */
+  bool d_relevancyDeliver = true;
+  /**
+   * Whether E-matching and the instance checkers consider only relevant
+   * terms; when false, they consider every term, as without relevancy. Not in
+   * Z3.
+   */
+  bool d_relevancyMatch = true;
+  /**
+   * Whether quantifier instances are lemmas that survive backtracking and
+   * garbage collection, as in cvc5, rather than clauses of the scope they are
+   * made in. Not in Z3.
+   */
+  bool d_qiPermanent = false;
   uint32_t d_randomSeed = 0;
   double d_randomVarFreq = 0.01;
   double d_invDecay = 1.052;
@@ -181,6 +201,8 @@ struct Params
   RestartStrategy d_restartStrategy = RS_IN_OUT_GEOMETRIC;
   uint32_t d_restartInitial = 100;
   double d_restartFactor = 1.1;
+  /** The base of the Luby sequence, as MiniSat's restart_inc. Not in Z3. */
+  double d_restartLubyFactor = 2.0;
   bool d_restartAdaptive = true;
   double d_agilityFactor = 0.9999;
   double d_restartAgilityThreshold = 0.18;

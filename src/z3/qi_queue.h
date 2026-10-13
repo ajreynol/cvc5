@@ -27,6 +27,7 @@
 
 #include <cstring>
 #include <ostream>
+#include <unordered_set>
 #include <vector>
 
 #include "expr/node.h"
@@ -139,6 +140,12 @@ class QiQueue
   std::vector<Entry> d_newEntries;
   std::vector<Entry> d_delayedEntries;
   std::vector<Node> d_instances;
+  /**
+   * With --z3-qi-permanent, the instances asserted as lemmas that survive
+   * backtracking, which are not asserted again when matching finds them
+   * again.
+   */
+  std::unordered_set<Node> d_permanentInstances;
   std::vector<size_t> d_instantiatedTrail;
   std::vector<Scope> d_scopes;
 };

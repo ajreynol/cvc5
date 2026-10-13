@@ -78,6 +78,8 @@ struct Statistics
   uint64_t d_numInstancesCheckerSat;
   /** instances whose body simplified to true */
   uint64_t d_numInstancesSimplifyTrue;
+  /** instances not asserted again, being permanent (--z3-qi-permanent) */
+  uint64_t d_numInstancesRediscovered;
   /** matches that were already instantiated (Z3's missed instantiations) */
   uint64_t d_numMissedInstances;
   /** relevantEh calls the matcher received */

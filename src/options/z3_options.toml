@@ -57,6 +57,9 @@ name   = "Z3 Core"
 [[option.mode.ACTIVITY_THEORY_AWARE_BRANCHING]]
   name = "activity-theory-aware-branching"
   help = "Split on activity, letting theory solvers manipulate the activity."
+[[option.mode.JUSTIFICATION]]
+  name = "justification"
+  help = "Split on the first atom that the asserted formulas and instances need justified, with the polarity that justifies it, as cvc5's justification heuristic does; then on activity. Not in Z3."
 
 [[option]]
   name       = "z3PhaseSelection"
@@ -154,6 +157,88 @@ name   = "Z3 Core"
   type       = "bool"
   default    = "false"
   help       = "delay the propagation of unit clauses in the ported Z3 core"
+
+# Switches for the experiments of src/z3/PROPOSITIONAL_BRANCH.md, phase B.
+# Each defaults to the behavior of Z3.
+
+[[option]]
+  name       = "z3RelevancyDeliver"
+  category   = "expert"
+  long       = "z3-relevancy-deliver"
+  type       = "bool"
+  default    = "true"
+  help       = "at relevancy level 2, deliver only relevant atoms to the theories of the ported Z3 core; when false, every assigned atom other than a quantifier is delivered, as at level 1"
+
+[[option]]
+  name       = "z3RelevancyMatch"
+  category   = "expert"
+  long       = "z3-relevancy-match"
+  type       = "bool"
+  default    = "true"
+  help       = "restrict E-matching and the instance checkers of the ported Z3 core to relevant terms; when false, they consider every term, as without relevancy"
+
+[[option]]
+  name       = "z3RestartAdaptive"
+  category   = "expert"
+  long       = "z3-restart-adaptive"
+  type       = "bool"
+  default    = "true"
+  help       = "skip a restart of the ported Z3 core while the agility of the search is high"
+
+[[option]]
+  name       = "z3RestartLubyFactor"
+  category   = "expert"
+  long       = "z3-restart-luby-factor=F"
+  type       = "double"
+  default    = "2.0"
+  minimum    = "2.0"
+  help       = "base of the Luby sequence of --z3-restart-strategy=luby, as MiniSat's restart-inc (cvc5 uses 3 with a restart base of 25)"
+
+[[option]]
+  name       = "z3LemmaGc"
+  category   = "expert"
+  long       = "z3-lemma-gc=MODE"
+  type       = "Z3LemmaGcMode"
+  default    = "FIXED"
+  help       = "when the ported Z3 core deletes inactive lemmas"
+  help_mode  = "Lemma garbage collection strategies of the ported Z3 core."
+[[option.mode.FIXED]]
+  name = "fixed"
+  help = "Every --z3-lemma-gc-initial conflicts."
+[[option.mode.GEOMETRIC]]
+  name = "geometric"
+  help = "After --z3-lemma-gc-initial conflicts, growing by --z3-lemma-gc-factor."
+[[option.mode.AT_RESTART]]
+  name = "at-restart"
+  help = "At every restart."
+[[option.mode.NONE]]
+  name = "none"
+  help = "Never."
+
+[[option]]
+  name       = "z3LemmaGcHalf"
+  category   = "expert"
+  long       = "z3-lemma-gc-half"
+  type       = "bool"
+  default    = "false"
+  help       = "delete the less active half of the lemmas at each lemma garbage collection of the ported Z3 core, as MiniSat does, rather than splitting them into old and new lemmas"
+
+[[option]]
+  name       = "z3LemmaGcInitial"
+  category   = "expert"
+  long       = "z3-lemma-gc-initial=N"
+  type       = "uint64_t"
+  default    = "5000"
+  help       = "the number of conflicts between lemma garbage collections of the ported Z3 core, initially"
+
+[[option]]
+  name       = "z3LemmaGcFactor"
+  category   = "expert"
+  long       = "z3-lemma-gc-factor=F"
+  type       = "double"
+  default    = "1.1"
+  minimum    = "1.0"
+  help       = "growth factor of the interval between lemma garbage collections under --z3-lemma-gc=geometric"
 
 [[option]]
   name       = "z3RandomSeed"
@@ -402,6 +487,14 @@ name   = "Z3 Core"
   type       = "bool"
   default    = "false"
   help       = "diagnostic: rematch every code tree over every enode at final check"
+
+[[option]]
+  name       = "z3QiPermanent"
+  category   = "expert"
+  long       = "z3-qi-permanent"
+  type       = "bool"
+  default    = "false"
+  help       = "add the quantifier instances of the ported Z3 core as lemmas that survive backtracking and garbage collection, as cvc5 does, rather than as clauses of the scope they are made in"
 
 [[option]]
   name       = "z3Mbqi"

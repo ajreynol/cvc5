@@ -4,7 +4,10 @@ Date: 2026-10-13
 
 Source snapshot: `40697de526` (end of Stage 1B)
 
-Status: audit only. No code changed.
+Status: audit, with the switches of phase B implemented (section 3). Each
+is off by default, and with all of them off, answers and `z3::` counters
+are identical to `ceeea8c15e` on the 444 quantified regressions under the
+default and `verus-best` presets.
 
 After Stage 1B, Z3's Boolean search is `z3::PropCore`. It sits behind
 `Z3PropEngine`, and drives the theory side, `z3::SmtContext`, through an
@@ -133,31 +136,133 @@ counts, per-benchmark times and the `z3::` counters that explain the change
 | A2 | `--z3-relevancy=0 --z3-case-split=activity`, compared with A1 | relevancy's delivery and E-matching roles (I3, roles 1 and 2) | A1 is the control, since relevancy below 2 forces the activity queue. |
 | A3 | `--z3-phase-selection=always-false`, and `caching` | the phase | |
 | A4 | `--z3-restart-strategy=luby` (try `--z3-restart-initial=25`) | the restart policy | Closest to MiniSat's; the port has no counterpart of `--restart-int-inc`. |
-| A5 | `--z3-delay-units=false` | delayed units | |
+| A5 | `--no-z3-delay-units` | delayed units | |
 | A6 | `--z3-qi-eager-threshold=0 --z3-qi-lazy-threshold=100` | when instances are made (I4) | Close to cvc5's final-check-only instantiation, without its alternation of rounds. The lazy threshold must be raised with it: a delayed instance whose cost is above the lazy threshold (20 by default) is never made. An instance the checker finds in conflict is still made eagerly (`d_qiPromoteUnsat`). |
 
 These take an afternoon of benchmark time and split the Boolean side's
 contribution into its parts before anything is written.
 
+A user setting overrides a preset's, in any order on the command line
+(`Params::initialize`), and auto configuration is off under the Verus
+presets, so `Setup` does not override them either.
+
+Relevancy level 1 is a further point that needs no code: at level 1 an
+assigned atom other than a quantifier reaches the theories whether or not it
+is relevant, while E-matching is still restricted to relevant terms
+(`PropCore::assignCore`). It is close to B1d below.
+
 ### Phase B: small changes inside `PropCore`, each behind an option that is off by default
 
-When an option is off, answers and counters must stay identical, as in
+When an option is off, answers and counters stay identical, as in
 Stage 1B.
 
-- **B1. Separate the roles of relevancy (I3).**
-  - An option for the quantifier manager and the checkers to ignore
-    relevancy, matching all enodes.
-  - An option for `assignCore` to deliver every assigned atom.
-  - With A2, this tells whether relevancy matters through decisions,
-    delivery or matching.
-- **B2. Make instances permanent (I1).** Add instances as lemmas that
-  survive backtracking (as cvc5 does), and keep their fingerprints across
-  pops. This tests the lifetime trade-off directly.
-- **B3. A justification-style case split queue (I5).** Walk the asserted
-  formulas and branch on the first unjustified atom, with the satisfying
-  polarity. This is cvc5's decision behavior inside the port's search.
-- **B4. A MiniSat-style policy for restarts and GC.** Luby 25·3^k, and
-  removal by activity triggered by the size of the clause database.
+**B1. Separate the roles of relevancy (I3).** Two switches, which with the
+choice of case split queue give every combination of the three roles:
+
+- `--no-z3-relevancy-deliver`: at level 2, every assigned atom other than a
+  quantifier is delivered to the theories when it is assigned, as at level
+  1 (`PropCore::relevancyGatesAtoms`). Quantifiers are still delivered when
+  they become relevant.
+- `--no-z3-relevancy-match`: the code trees are fed every enode, as without
+  relevancy, and the relevancy tests of the matching engine and the two
+  checkers pass for every term (`SmtContext::isRelevantForMatching`). The
+  relevancy tests of the theories are unchanged; they belong to delivery.
+- Decisions by relevancy are the relevancy queue (`--z3-case-split=relevancy`,
+  the Verus default); `--z3-case-split=activity` turns them off.
+
+| Run | Switches (on top of the preset) | Delivery | Matching | Decisions |
+|---|---|---|---|---|
+| baseline | | yes | yes | yes |
+| B1a | `--no-z3-relevancy-deliver` | | yes | yes |
+| B1b | `--no-z3-relevancy-match` | yes | | yes |
+| B1c | `--no-z3-relevancy-deliver --no-z3-relevancy-match` | | | yes |
+| A1a | `--z3-case-split=activity` | yes | yes | |
+| B1d | `--z3-case-split=activity --no-z3-relevancy-deliver` | | yes | |
+| B1e | `--z3-case-split=activity --no-z3-relevancy-match` | yes | | |
+| A2 | `--z3-relevancy=0 --z3-case-split=activity` | | | |
+
+B1c and A2 differ in one more thing: under B1c relevancy is still
+propagated, so the theories are still told which terms are relevant
+(`Theory::relevantEh`).
+
+**B2. Make instances permanent (I1).** `--z3-qi-permanent` asserts an
+instance as a theory lemma that survives backtracking, whose atoms are
+re-internalized after a pop as for any lemma (`reinitClauses`), and which
+garbage collection never deletes (`Clause::isPermanent`), as in cvc5. An
+instance found again while its lemma is in place is not asserted again;
+`z3::instancesRediscovered` counts these. The fingerprints themselves stay
+scoped, since they refer to enodes, which are.
+
+Under relevancy, the literals of such a lemma are all marked relevant, as Z3
+does for the theory lemmas it reinitializes. An instance asserted at a scope
+is instead marked relevant at its root, and only its true disjunct follows.
+So at level 2 this switch also changes how relevancy treats instances; the
+run without relevancy isolates the lifetime alone:
+
+| Run | Switches | Compare with |
+|---|---|---|
+| B2a | `--z3-qi-permanent` | baseline |
+| B2b | `--z3-relevancy=0 --z3-case-split=activity --z3-qi-permanent` | A2 |
+
+**B3. A justification-style case split queue (I5).**
+`--z3-case-split=justification` walks the asserted formulas and instances in
+order, and splits on the first unassigned atom the first unjustified one
+needs, with the polarity that justifies it
+(`JustificationCaseSplitQueue`). It does not need relevancy. Unlike cvc5, it
+does not stop on a partial assignment once everything is justified: the
+remaining variables are split on by activity. The core has clauses that are
+not asserted formulas, such as those defining term ITEs, which only a
+complete assignment or relevancy satisfies.
+
+The relevancy queue already decides a child of a true disjunction with the
+polarity that satisfies it, which is the core step of justification. What
+differs is the order (the order in which formulas became relevant, against
+the order of assertion) and the dependence on relevancy.
+
+| Run | Switches | Compare with |
+|---|---|---|
+| B3a | `--z3-case-split=justification` | baseline, A1a |
+| B3b | `--z3-relevancy=0 --z3-case-split=justification` | A2 |
+
+**B4. A MiniSat-style policy for restarts and GC.** Restarts follow cvc5's
+MiniSat: a Luby sequence with base `--z3-restart-luby-factor` (cvc5's
+`--restart-int-inc`, 3) times `--z3-restart-initial` (cvc5's
+`--restart-int-base`, 25), and `--no-z3-restart-adaptive` turns off the
+port's agility test, which skips restarts while the search is agile and has
+no counterpart in MiniSat. For GC, `--z3-lemma-gc-half` deletes the less
+active half of the lemmas, as MiniSat's `reduceDB` does, rather than
+splitting them into old and new ones. `--z3-lemma-gc=geometric` spaces
+collections by a growing number of conflicts (`--z3-lemma-gc-initial`,
+`--z3-lemma-gc-factor`); MiniSat triggers on the number of learned clauses
+instead, which grows with the conflicts.
+
+| Run | Switches |
+|---|---|
+| B4a | `--z3-restart-strategy=luby --z3-restart-initial=25 --z3-restart-luby-factor=3 --no-z3-restart-adaptive` |
+| B4b | `--z3-lemma-gc=geometric --z3-lemma-gc-half` |
+| B4c | B4a and B4b together |
+
+### Running them
+
+Every run adds its switches to `--z3 --z3-preset=verus-best` or
+`--z3 --z3-preset=verus`.
+
+- **First**, on both presets, the runs that say which component matters:
+  the baseline, A1a, A2, A6, B1a–B1e, B2a, B2b, B3a and B3b.
+- **Then**, on `verus-best`, the tuning runs: A1b, A3, A4, A5 and B4a–B4c.
+- With `--stats`, the `z3::` counters that explain a change are
+  `instances`, `conflicts`, `decisions`, `mamMatches`, `lazyInstances` and,
+  under B2, `instancesRediscovered`.
+
+With assertions on, each switch was run over the quantified regressions
+under `verus-best`. No run gave a wrong answer, and none failed that does
+not also fail with no switch, with one exception. On
+`regress1/quantifiers/nra-interleave-inst.smt2`, some search paths reach a
+defect in the theory bridge's cvc5 subsolver: a proof that is not closed by
+its scope (`ProofNodeManager::mkScope`). That check is on in production
+builds too. A2 reaches it with existing options only, so it predates these
+switches; `--no-z3-arith-nl-fallback` avoids it. A crash on a nonlinear
+benchmark in these runs may be this defect.
 
 ### Phase C: native propositional orchestration over the port's theory side
 

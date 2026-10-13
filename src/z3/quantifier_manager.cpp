@@ -616,9 +616,19 @@ class DefaultQmPlugin : public QuantifierManagerPlugin
     }
   }
 
+  /**
+   * Whether the code trees are fed from the enode list rather than as enodes
+   * become relevant: without relevancy, or when relevancy does not restrict
+   * matching.
+   */
+  bool matchAllENodes() const
+  {
+    return !d_context->relevancy() || !d_params->d_relevancyMatch;
+  }
+
   void relevantEh(ENode* e) override
   {
-    if (useEmatching())
+    if (useEmatching() && !matchAllENodes())
     {
       d_mam->relevantEh(e, false);
       d_lazyMam->relevantEh(e, true);
@@ -641,10 +651,10 @@ class DefaultQmPlugin : public QuantifierManagerPlugin
       return;
     }
     d_mam->match();
-    if (!d_context->relevancy() && useEmatching())
+    if (matchAllENodes() && useEmatching())
     {
-      // Without relevancy every new enode is a matching candidate, so the
-      // code trees are fed directly from the enode list.
+      // Every new enode is a matching candidate, so the code trees are fed
+      // directly from the enode list.
       const ENodeVector& enodes = d_context->enodes();
       size_t sz = enodes.size();
       if (sz > d_newENodeQhead)

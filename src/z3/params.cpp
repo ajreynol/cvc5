@@ -35,6 +35,7 @@ CaseSplitStrategy toCaseSplitStrategy(options::Z3CaseSplitMode m)
     case options::Z3CaseSplitMode::RELEVANCY_GOAL: return CS_RELEVANCY_GOAL;
     case options::Z3CaseSplitMode::ACTIVITY_THEORY_AWARE_BRANCHING:
       return CS_ACTIVITY_THEORY_AWARE_BRANCHING;
+    case options::Z3CaseSplitMode::JUSTIFICATION: return CS_JUSTIFICATION;
     default: return CS_ACTIVITY_DELAY_NEW;
   }
 }
@@ -71,6 +72,18 @@ RestartStrategy toRestartStrategy(options::Z3RestartStrategyMode m)
   }
 }
 
+LemmaGcStrategy toLemmaGcStrategy(options::Z3LemmaGcMode m)
+{
+  switch (m)
+  {
+    case options::Z3LemmaGcMode::FIXED: return LGC_FIXED;
+    case options::Z3LemmaGcMode::GEOMETRIC: return LGC_GEOMETRIC;
+    case options::Z3LemmaGcMode::AT_RESTART: return LGC_AT_RESTART;
+    case options::Z3LemmaGcMode::NONE: return LGC_NONE;
+    default: return LGC_FIXED;
+  }
+}
+
 InitialActivity toInitialActivity(options::Z3InitialActivityMode m)
 {
   switch (m)
@@ -96,6 +109,17 @@ void Params::initialize(const Options& opts)
   d_restartInitial = static_cast<uint32_t>(opts.z3.z3RestartInitial);
   d_restartFactor = opts.z3.z3RestartFactor;
   d_delayUnits = opts.z3.z3DelayUnits;
+  d_relevancyDeliver = opts.z3.z3RelevancyDeliver;
+  d_relevancyMatch = opts.z3.z3RelevancyMatch;
+  d_qiPermanent = opts.z3.z3QiPermanent;
+  d_restartAdaptive = opts.z3.z3RestartAdaptive;
+  d_restartLubyFactor = opts.z3.z3RestartLubyFactor;
+  d_lemmaGcStrategy = toLemmaGcStrategy(opts.z3.z3LemmaGc);
+  d_lemmaGcHalf = opts.z3.z3LemmaGcHalf;
+  uint64_t gcInitial = opts.z3.z3LemmaGcInitial;
+  d_lemmaGcInitial =
+      gcInitial > UINT32_MAX ? UINT32_MAX : static_cast<uint32_t>(gcInitial);
+  d_lemmaGcFactor = opts.z3.z3LemmaGcFactor;
   d_randomSeed = static_cast<uint32_t>(opts.z3.z3RandomSeed);
   d_ematching = opts.z3.z3Ematching;
   d_qiLazyQuickChecker = opts.z3.z3QiLazyQuickChecker;

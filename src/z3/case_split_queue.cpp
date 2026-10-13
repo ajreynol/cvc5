@@ -1028,6 +1028,332 @@ class TheoryAwareBranchingQueue : public CaseSplitQueue
   std::unordered_map<BoolVar, LBool> d_theoryVarPhase;
 };
 
+/**
+ * A case split queue after cvc5's justification heuristic
+ * (decision/justification_strategy.h), for comparing the decision heuristics
+ * of the two systems (src/z3/PROPOSITIONAL_BRANCH.md, B3). Not in Z3.
+ *
+ * The asserted formulas, input formulas and quantifier instances alike, are
+ * walked in the order they were asserted. The first that is not yet
+ * justified by the current assignment is walked from the root, and the
+ * first unassigned atom it needs is split on, with the polarity that
+ * justifies it. An atom is a formula that is not a gate (see isGate).
+ *
+ * Unlike cvc5, the search does not stop on a partial assignment once
+ * everything is justified: the remaining variables are split on by
+ * activity, as ActCaseSplitQueue does. The core has clauses that are not
+ * asserted formulas, such as those defining term ITEs, which are only
+ * satisfied by a complete assignment, or by relevancy.
+ */
+class JustificationCaseSplitQueue : public ActCaseSplitQueue
+{
+  /** The outcome of justifying a formula with a value. */
+  enum Status
+  {
+    /** the formula has the value, as its children justify */
+    JUSTIFIED,
+    /** the formula has the opposite value */
+    FALSIFIED,
+    /** an atom it needs is unassigned, and is the next split */
+    SPLIT,
+    /** it is undetermined, but nothing to split on was found */
+    PENDING
+  };
+
+  /** The roots of one kind, and which of them are justified. */
+  struct Roots
+  {
+    std::vector<Node> d_roots;
+    std::vector<bool> d_justified;
+    /** The roots before this one are justified. */
+    size_t d_head = 0;
+  };
+
+  struct Scope
+  {
+    size_t d_rootsLim;
+    size_t d_head;
+    size_t d_permanentHead;
+    size_t d_justifiedTrailLim;
+  };
+
+ public:
+  JustificationCaseSplitQueue(SmtContext& ctx, Params& p)
+      : ActCaseSplitQueue(ctx, p)
+  {
+  }
+
+  void rootEh(TNode n, bool permanent) override
+  {
+    Roots& r = permanent ? d_permanent : d_scoped;
+    r.d_roots.push_back(n);
+    r.d_justified.push_back(false);
+  }
+
+  void reset() override
+  {
+    ActCaseSplitQueue::reset();
+    d_scoped = Roots();
+    d_permanent = Roots();
+    d_justifiedTrail.clear();
+    d_scopes.clear();
+  }
+
+  void pushScope() override
+  {
+    d_scopes.push_back(Scope{d_scoped.d_roots.size(),
+                             d_scoped.d_head,
+                             d_permanent.d_head,
+                             d_justifiedTrail.size()});
+  }
+
+  void popScope(size_t numScopes) override
+  {
+    Assert(numScopes <= d_scopes.size());
+    size_t newLvl = d_scopes.size() - numScopes;
+    Scope& s = d_scopes[newLvl];
+    d_scoped.d_roots.resize(s.d_rootsLim);
+    d_scoped.d_justified.resize(s.d_rootsLim);
+    for (size_t i = s.d_justifiedTrailLim, sz = d_justifiedTrail.size(); i < sz;
+         ++i)
+    {
+      std::pair<bool, size_t>& t = d_justifiedTrail[i];
+      Roots& r = t.first ? d_permanent : d_scoped;
+      if (t.second < r.d_justified.size())
+      {
+        r.d_justified[t.second] = false;
+      }
+    }
+    d_justifiedTrail.resize(s.d_justifiedTrailLim);
+    d_scoped.d_head = s.d_head;
+    d_permanent.d_head = s.d_permanentHead;
+    d_scopes.resize(newLvl);
+  }
+
+  void nextCaseSplit(BoolVar& next, LBool& phase) override
+  {
+    phase = L_UNDEF;
+    if (nextCaseSplitCore(d_scoped, false, next, phase)
+        || nextCaseSplitCore(d_permanent, true, next, phase))
+    {
+      return;
+    }
+    ActCaseSplitQueue::nextCaseSplit(next, phase);
+  }
+
+ private:
+  /**
+   * Walk the roots that are not justified yet, splitting on the first atom
+   * one of them needs. Returns true if there is a split. A root found
+   * justified is marked until the search backtracks past the current scope,
+   * and the head moves past the justified roots that come first.
+   */
+  bool nextCaseSplitCore(Roots& r, bool permanent, BoolVar& next, LBool& phase)
+  {
+    d_visited[0].clear();
+    d_visited[1].clear();
+    bool prefix = true;
+    for (size_t i = r.d_head, sz = r.d_roots.size(); i < sz; ++i)
+    {
+      if (!r.d_justified[i])
+      {
+        Status s = justify(r.d_roots[i], true, next, phase);
+        if (s == SPLIT)
+        {
+          return true;
+        }
+        if (s == JUSTIFIED)
+        {
+          r.d_justified[i] = true;
+          d_justifiedTrail.emplace_back(permanent, i);
+        }
+      }
+      if (prefix && r.d_justified[i])
+      {
+        r.d_head = i + 1;
+      }
+      else
+      {
+        prefix = false;
+      }
+    }
+    return false;
+  }
+
+  /** The value of n, which may be a negation, if it has a variable. */
+  LBool valueOf(TNode n) const
+  {
+    bool neg = false;
+    while (n.getKind() == Kind::NOT)
+    {
+      n = n[0];
+      neg = !neg;
+    }
+    LBool val = L_UNDEF;
+    if (n.isConst())
+    {
+      val = n.getConst<bool>() ? L_TRUE : L_FALSE;
+    }
+    else if (d_context.bInternalized(n))
+    {
+      val = d_context.getAssignment(d_context.getBoolVar(n));
+    }
+    return neg ? ~val : val;
+  }
+
+  /** Justify that n has the value desired. */
+  Status justify(TNode n, bool desired, BoolVar& next, LBool& phase)
+  {
+    while (n.getKind() == Kind::NOT)
+    {
+      n = n[0];
+      desired = !desired;
+    }
+    std::unordered_map<Node, Status>& visited = d_visited[desired ? 1 : 0];
+    auto it = visited.find(n);
+    if (it != visited.end())
+    {
+      // a split would have been taken already
+      Assert(it->second != SPLIT);
+      return it->second;
+    }
+    Status s = justifyCore(n, desired, next, phase);
+    visited[n] = s;
+    return s;
+  }
+
+  Status justifyCore(TNode n, bool desired, BoolVar& next, LBool& phase)
+  {
+    LBool want = desired ? L_TRUE : L_FALSE;
+    LBool val = valueOf(n);
+    if (val != L_UNDEF && val != want)
+    {
+      return FALSIFIED;
+    }
+    if (!isGate(n))
+    {
+      if (val != L_UNDEF)
+      {
+        return JUSTIFIED;
+      }
+      if (!d_context.bInternalized(n))
+      {
+        return PENDING;
+      }
+      next = d_context.getBoolVar(n);
+      phase = want;
+      return SPLIT;
+    }
+    switch (n.getKind())
+    {
+      case Kind::OR:
+      case Kind::AND:
+      {
+        bool one = (n.getKind() == Kind::OR) == desired;
+        if (!one)
+        {
+          // every child must have the value
+          bool pending = false;
+          for (const Node& c : n)
+          {
+            Status s = justify(c, desired, next, phase);
+            if (s == SPLIT || s == FALSIFIED)
+            {
+              return s;
+            }
+            pending = pending || s == PENDING;
+          }
+          return pending ? PENDING : JUSTIFIED;
+        }
+        // one child with the value suffices: prefer one that has it already
+        for (const Node& c : n)
+        {
+          if (valueOf(c) == want)
+          {
+            Status s = justify(c, desired, next, phase);
+            if (s == JUSTIFIED || s == SPLIT)
+            {
+              return s;
+            }
+          }
+        }
+        bool pending = false;
+        for (const Node& c : n)
+        {
+          if (valueOf(c) == L_UNDEF)
+          {
+            Status s = justify(c, desired, next, phase);
+            if (s == JUSTIFIED || s == SPLIT)
+            {
+              return s;
+            }
+            pending = pending || s == PENDING;
+          }
+        }
+        return pending ? PENDING : FALSIFIED;
+      }
+      case Kind::ITE:
+      {
+        LBool cv = valueOf(n[0]);
+        if (cv == L_UNDEF)
+        {
+          // split on the condition, towards a branch that has the value
+          bool c = !(valueOf(n[2]) == want || valueOf(n[1]) == ~want);
+          Status s = justify(n[0], c, next, phase);
+          return s == SPLIT ? SPLIT : PENDING;
+        }
+        Status sc = justify(n[0], cv == L_TRUE, next, phase);
+        if (sc == SPLIT)
+        {
+          return SPLIT;
+        }
+        Status sb = justify(n[cv == L_TRUE ? 1 : 2], desired, next, phase);
+        if (sb == JUSTIFIED && sc == PENDING)
+        {
+          return PENDING;
+        }
+        return sb;
+      }
+      case Kind::EQUAL:
+      {
+        // both sides need a value
+        size_t first = valueOf(n[0]) == L_UNDEF && valueOf(n[1]) != L_UNDEF;
+        TNode a = n[first];
+        TNode b = n[1 - first];
+        LBool av = valueOf(a);
+        if (av == L_UNDEF)
+        {
+          Status s = justify(a, true, next, phase);
+          return s == SPLIT ? SPLIT : PENDING;
+        }
+        Status sa = justify(a, av == L_TRUE, next, phase);
+        if (sa == SPLIT)
+        {
+          return SPLIT;
+        }
+        Status sb = justify(b, (av == L_TRUE) == desired, next, phase);
+        if (sb == JUSTIFIED && sa == PENDING)
+        {
+          return PENDING;
+        }
+        return sb;
+      }
+      default: Unreachable();
+    }
+    return PENDING;
+  }
+
+  /** The formulas asserted at the scopes of the search. */
+  Roots d_scoped;
+  /** The formulas that survive backtracking. */
+  Roots d_permanent;
+  /** The roots marked justified, in order, as (permanent, index). */
+  std::vector<std::pair<bool, size_t>> d_justifiedTrail;
+  std::vector<Scope> d_scopes;
+  /** The formulas walked by the current split, for each desired value. */
+  std::unordered_map<Node, Status> d_visited[2];
+};
+
 }  // namespace
 
 CaseSplitQueue* mkCaseSplitQueue(SmtContext& ctx, Params& p)
@@ -1063,6 +1389,7 @@ CaseSplitQueue* mkCaseSplitQueue(SmtContext& ctx, Params& p)
       return new RelCaseSplitQueue(ctx, p);
     case CS_ACTIVITY_THEORY_AWARE_BRANCHING:
       return new TheoryAwareBranchingQueue(ctx, p);
+    case CS_JUSTIFICATION: return new JustificationCaseSplitQueue(ctx, p);
     default: return new ActCaseSplitQueue(ctx, p);
   }
 }

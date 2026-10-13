@@ -195,6 +195,11 @@ class Clause
 
   bool deleted() const { return d_deleted; }
 
+  /** Whether the clause is never garbage collected. */
+  bool isPermanent() const { return d_permanent; }
+
+  void setPermanent() { d_permanent = true; }
+
   std::ostream& print(std::ostream& out,
                       const std::vector<Node>& boolVar2Expr) const;
 
@@ -205,8 +210,10 @@ class Clause
    * original number of literals, which is what the allocation size is based
    * on.
    */
-  uint32_t d_capacity : 24;
+  uint32_t d_capacity : 23;
   uint32_t d_kind : 2;
+  /** true if the clause is never garbage collected */
+  uint32_t d_permanent : 1;
   /** true if the clause is in the reinit stack */
   uint32_t d_reinit : 1;
   /** true if the atoms must be re-internalized during reinitialization */

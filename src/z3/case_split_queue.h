@@ -43,6 +43,12 @@ class CaseSplitQueue
   virtual void assignLitEh(Literal /*l*/) {}
   virtual void unassignVarEh(BoolVar v) = 0;
   virtual void relevantEh(TNode n) = 0;
+  /**
+   * Notify that the formula n was asserted, as an input formula or an
+   * instance. If permanent is true, n survives backtracking; otherwise it is
+   * asserted at the current scope.
+   */
+  virtual void rootEh(TNode /*n*/, bool /*permanent*/) {}
   virtual void initSearchEh() = 0;
   virtual void endSearchEh() = 0;
   virtual void reset() = 0;

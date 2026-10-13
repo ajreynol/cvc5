@@ -1627,11 +1627,11 @@ void SmtContext::registerPlugin(Theory* th)
   }
 }
 
-void SmtContext::internalizeInstance(TNode body, uint32_t generation)
+bool SmtContext::internalizeInstance(TNode body, uint32_t generation)
 {
   if (inconsistent())
   {
-    return;
+    return false;
   }
   // The quantified variables are numbered by de Bruijn *level* (see
   // z3/ast.h), which Z3's relative de Bruijn indices make unnecessary there:
@@ -1644,7 +1644,12 @@ void SmtContext::internalizeInstance(TNode body, uint32_t generation)
   // checker) would read the wrong slot. Renormalizing the instance restores
   // the invariant, and is idempotent on the parts that are already canonical.
   Node norm = d_normalizer.normalize(body);
+  if (d_params.d_qiPermanent)
+  {
+    return internalizePermanentLemma(norm, generation);
+  }
   internalizeAssertion(norm, generation);
+  return false;
 }
 
 void SmtContext::checkCandidateModel()
@@ -2194,6 +2199,7 @@ void SmtContext::registerStatistics()
   add("z3::lazyInstances", d_stats.d_numLazyInstances);
   add("z3::instancesCheckerSat", d_stats.d_numInstancesCheckerSat);
   add("z3::instancesSimplifyTrue", d_stats.d_numInstancesSimplifyTrue);
+  add("z3::instancesRediscovered", d_stats.d_numInstancesRediscovered);
   add("z3::missedInstances", d_stats.d_numMissedInstances);
   add("z3::mamRelevantEh", d_stats.d_numMamRelevantEh);
   add("z3::mamRelevantApp", d_stats.d_numMamRelevantApp);

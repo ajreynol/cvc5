@@ -742,7 +742,9 @@ The next steps it proposes, in order:
    delayed units and the timing of instantiation.
 2. Add switches that are off by default to separate the three roles of
    relevancy, to make instances permanent, and to try a justification-style
-   decision queue and a MiniSat-style restart and GC policy.
+   decision queue and a MiniSat-style restart and GC policy. These are
+   implemented; the runs to make with them are listed in
+   PROPOSITIONAL_BRANCH.md, section 3.
 3. Run cvc5's `PropEngine` over the port's theory side through a
    `TheoryProxy` adapter. This is the next architectural level on this
    branch. It requires resolving atom lifetime, implementing lazy

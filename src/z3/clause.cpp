@@ -37,8 +37,10 @@ Clause* Clause::mk(size_t numLits,
   void* mem = ::operator new(sz);
   Clause* cls = new (mem) Clause();
   cls->d_numLiterals = static_cast<uint32_t>(numLits);
+  Assert(numLits < (1u << 23));
   cls->d_capacity = static_cast<uint32_t>(numLits);
   cls->d_kind = k;
+  cls->d_permanent = false;
   cls->d_reinit = saveAtoms;
   cls->d_reinternalizeAtoms = saveAtoms;
   cls->d_hasAtoms = saveAtoms;

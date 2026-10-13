@@ -161,6 +161,12 @@ class SmtContext : protected EnvObj
    */
   void internalizeAssertion(TNode n, uint32_t generation);
 
+  /**
+   * As internalizeAssertion, but through PropCore::assertPermanentLemma, whose
+   * result is returned.
+   */
+  bool internalizePermanentLemma(TNode n, uint32_t generation);
+
   // -------------------------------------------------------------- search
   /** Backtrack to the base (user) level. */
   void popToBaseLvl() { d_prop.popToBaseLvl(); }
@@ -559,11 +565,12 @@ class SmtContext : protected EnvObj
   bool d_inForcedRematch = false;
 
   /**
-   * Internalize the body of a quantifier instance. Unlike a plain assertion,
-   * the case split queue is told about it, so that a relevancy-based queue can
-   * place the new literals.
+   * Internalize the body of a quantifier instance, after renormalizing its
+   * variables. The instance is asserted at the current scope, or with
+   * --z3-qi-permanent as a lemma that survives backtracking. Returns true in
+   * the latter case.
    */
-  void internalizeInstance(TNode body, uint32_t generation);
+  bool internalizeInstance(TNode body, uint32_t generation);
 
   void ensureInternalized(TNode e);
 
@@ -814,6 +821,20 @@ class SmtContext : protected EnvObj
   bool isRelevant(Literal l) const { return d_prop.isRelevant(l); }
 
   bool isRelevantCore(Literal l) const { return d_prop.isRelevantCore(l); }
+
+  /**
+   * Whether E-matching and the instance checkers consider n: n is relevant,
+   * or relevancy does not restrict matching (--no-z3-relevancy-match).
+   */
+  bool isRelevantForMatching(TNode n) const
+  {
+    return !d_params.d_relevancyMatch || isRelevant(n);
+  }
+
+  bool isRelevantForMatching(ENode* n) const
+  {
+    return !d_params.d_relevancyMatch || isRelevant(n);
+  }
 
   void markAsRelevant(TNode n) { d_prop.markAsRelevant(n); }
 

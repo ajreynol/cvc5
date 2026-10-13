@@ -368,6 +368,19 @@ void SmtContext::internalizeAssertion(TNode n, uint32_t generation)
   d_generation = oldGeneration;
 }
 
+bool SmtContext::internalizePermanentLemma(TNode n, uint32_t generation)
+{
+  uint32_t oldGeneration = d_generation;
+  d_generation = generation;
+  d_stats.d_maxGeneration =
+      std::max<uint64_t>(generation, d_stats.d_maxGeneration);
+  internalizeDeep(n);
+  Assert(n.getType().isBoolean());
+  bool permanent = d_prop.assertPermanentLemma(n);
+  d_generation = oldGeneration;
+  return permanent;
+}
+
 void SmtContext::internalize(TNode n, bool gateCtx, uint32_t generation)
 {
   uint32_t oldGeneration = d_generation;

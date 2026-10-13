@@ -2235,8 +2235,9 @@ class Interpreter
     n = n->getRoot();
     for (ENode* p : n->getConstParents())
     {
-      if (p->getDecl() == f && i < p->getNumArgs() && d_context.isRelevant(p)
-          && p->isCgr() && p->getArg(i)->getRoot() == n)
+      if (p->getDecl() == f && i < p->getNumArgs()
+          && d_context.isRelevantForMatching(p) && p->isCgr()
+          && p->getArg(i)->getRoot() == n)
       {
         v->push_back(p);
       }
@@ -2259,7 +2260,7 @@ class Interpreter
     ENodeVector* v = mkENodeVector();
     for (ENode* p : n->getConstParents())
     {
-      if (p->getDecl() == j2->d_decl && d_context.isRelevant(p)
+      if (p->getDecl() == j2->d_decl && d_context.isRelevantForMatching(p)
           && p->getNumArgs() > j2->d_argPos && p->isCgr()
           && p->getArg(j2->d_argPos)->getRoot() == n)
       {
@@ -2267,8 +2268,9 @@ class Interpreter
         ENode* pr = p->getRoot();
         for (ENode* p2 : pr->getConstParents())
         {
-          if (p2->getDecl() == f && d_context.isRelevant(p2) && p2->isCgr()
-              && i < p2->getNumArgs() && p2->getArg(i)->getRoot() == pr)
+          if (p2->getDecl() == f && d_context.isRelevantForMatching(p2)
+              && p2->isCgr() && i < p2->getNumArgs()
+              && p2->getArg(i)->getRoot() == pr)
           {
             v->push_back(p2);
           }
@@ -2410,7 +2412,8 @@ ENode* Interpreter::initContinue(const Cont* c, uint16_t expectedNumArgs)
   for (; bpRest.d_it != bpRest.d_end; ++bpRest.d_it)
   {
     ENode* curr = *bpRest.d_it;
-    if (curr->getNumArgs() == expectedNumArgs && d_context.isRelevant(curr))
+    if (curr->getNumArgs() == expectedNumArgs
+        && d_context.isRelevantForMatching(curr))
     {
       break;
     }
@@ -2434,7 +2437,7 @@ bool Interpreter::executeCore(CodeTree* t, ENode* n)
   size_t sinceLastCheck = 0;
 
   // It makes no sense to process an irrelevant enode.
-  Assert(d_context.isRelevant(n));
+  Assert(d_context.isRelevantForMatching(n));
   d_patternInstances.clear();
   d_minTopGeneration.clear();
   d_maxTopGeneration.clear();
@@ -2652,7 +2655,7 @@ main_loop:
       }
       d_n1 = d_context.getENodeEqTo(
           c->d_label, c->d_commutative, d_numArgs, d_args.data());
-      if (d_n1 == nullptr || !d_context.isRelevant(d_n1))
+      if (d_n1 == nullptr || !d_context.isRelevantForMatching(d_n1))
       {
         goto backtrack;
       }
@@ -2764,7 +2767,7 @@ backtrack:
           // The iterator may walk the whole enode list of the label, which
           // is not necessarily relevant, so relevance has to be checked.
           if (d_app->getNumArgs() == c->d_numArgs
-              && d_context.isRelevant(d_app))
+              && d_context.isRelevantForMatching(d_app))
           {
             // update the pattern instance
             Assert(!d_patternInstances.empty());
@@ -3192,7 +3195,7 @@ class MamImpl : public Mam
       for (size_t i = 0; i < d_context.enodesOf(lbl).size(); ++i)
       {
         ENode* curr = d_context.enodesOf(lbl)[i];
-        if (useIrrelevant || d_context.isRelevant(curr))
+        if (useIrrelevant || d_context.isRelevantForMatching(curr))
         {
           d_interpreter.executeCore(t, curr);
         }
@@ -3392,7 +3395,7 @@ class MamImpl : public Mam
     uint8_t h = d_lblHasher(lbl);
     for (ENode* app : d_context.enodesOf(lbl))
     {
-      if (d_context.isRelevant(app))
+      if (d_context.isRelevantForMatching(app))
       {
         updateLbls(app, h);
       }
@@ -3427,7 +3430,7 @@ class MamImpl : public Mam
     uint8_t h = d_lblHasher(lbl);
     for (ENode* app : d_context.enodesOf(lbl))
     {
-      if (d_context.isRelevant(app))
+      if (d_context.isRelevantForMatching(app))
       {
         updateChildrenPlbls(app, h);
       }
@@ -3765,7 +3768,7 @@ class MamImpl : public Mam
           if (filter.mayContain(d_lblHasher(lbl)) && !currParent->isMarked()
               && (currParentCg == currParent
                   || !isEq(currParentCg, currParentRoot))
-              && d_context.isRelevant(currParent))
+              && d_context.isRelevantForMatching(currParent))
           {
             PathTree* currTree = currT;
             while (currTree != nullptr)
@@ -3955,7 +3958,7 @@ class MamImpl : public Mam
       for (size_t i = 0; i < d_context.enodesOf(lbl).size(); ++i)
       {
         ENode* app = d_context.enodesOf(lbl)[i];
-        if (d_context.isRelevant(app))
+        if (d_context.isRelevantForMatching(app))
         {
           d_interpreter.executeCore(tmpTree, app);
         }

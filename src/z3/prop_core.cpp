@@ -435,8 +435,18 @@ void PropCore::incLimits()
         break;
       case RS_LUBY:
         d_lubyIdx++;
-        d_restartThreshold = static_cast<uint64_t>(getLuby(d_lubyIdx))
-                             * d_params.d_restartInitial;
+        if (d_params.d_restartLubyFactor == 2.0)
+        {
+          d_restartThreshold = static_cast<uint64_t>(getLuby(d_lubyIdx))
+                               * d_params.d_restartInitial;
+        }
+        else
+        {
+          // as MiniSat, whose sequence starts at index 0
+          d_restartThreshold = static_cast<uint64_t>(
+              getLuby(d_params.d_restartLubyFactor, d_lubyIdx - 1)
+              * d_params.d_restartInitial);
+        }
         break;
       case RS_FIXED: break;
       case RS_ARITHMETIC:
@@ -872,6 +882,7 @@ void PropCore::delInactiveLemmas()
 
 void PropCore::assertRoot(TNode n)
 {
+  d_caseSplitQueue->rootEh(n, false);
   if (isGate(n))
   {
     switch (n.getKind())
@@ -939,6 +950,39 @@ void PropCore::assertRoot(TNode n)
   {
     assertDefault(n);
   }
+}
+
+bool PropCore::assertPermanentLemma(TNode n)
+{
+  d_caseSplitQueue->rootEh(n, true);
+  LiteralVector lits;
+  if (n.getKind() == Kind::OR)
+  {
+    for (const Node& arg : n)
+    {
+      d_ctx.internalizeRec(arg, true);
+      lits.push_back(getLiteral(arg));
+    }
+  }
+  else
+  {
+    d_ctx.internalizeRec(n, true);
+    lits.push_back(getLiteral(n));
+  }
+  for (Literal l : lits)
+  {
+    if (l != s_trueLiteral && l != s_falseLiteral)
+    {
+      markAsRelevant(l);
+    }
+  }
+  bool permanent = lits.size() >= 2;
+  Clause* cls = mkClause(lits.size(), lits.data(), nullptr, CLS_TH_LEMMA);
+  if (cls != nullptr)
+  {
+    cls->setPermanent();
+  }
+  return permanent;
 }
 
 void PropCore::mkGateConstraints(TNode n)
@@ -1185,8 +1229,8 @@ void PropCore::relevantEh(TNode n)
     BoolVarData& d = getBdata(v);
     Assert(relevancy());
     // Quantifiers are only asserted when marked relevant; other atoms only
-    // when the relevancy level is at least 2.
-    if (d.isAtom() && (d.isQuantifier() || relevancyLvl() >= 2))
+    // when relevancy gates them, and otherwise when they are assigned.
+    if (d.isAtom() && (d.isQuantifier() || relevancyGatesAtoms()))
     {
       LBool val = getAssignment(v);
       if (val != L_UNDEF)
@@ -1395,7 +1439,7 @@ void PropCore::assignCore(Literal l, BJustification j, bool decision)
   d.d_phase = newPhase;
 
   if (d.isAtom()
-      && (relevancyLvl() == 0 || (relevancyLvl() == 1 && !d.isQuantifier())
+      && (relevancyLvl() == 0 || (!relevancyGatesAtoms() && !d.isQuantifier())
           || isRelevantCore(l)))
   {
     d_ctx.enqueueAtom(l);
