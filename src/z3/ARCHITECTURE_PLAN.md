@@ -712,3 +712,42 @@ The next level is the recursion of section 12, on the two branches:
 
 With the boundary in place, a component on either side can be replaced on
 its own, and the effect on performance attributed to it.
+
+### Next: the propositional branch
+
+[PROPOSITIONAL_BRANCH.md](PROPOSITIONAL_BRANCH.md) maps `PropCore` onto
+cvc5's propositional engine: `PropEngine`, `TheoryProxy`, `CnfStream`, the
+CDCL(T) solvers and the decision engine.
+
+The architectural issues it identifies:
+
+- **Instance lifetime.** Quantifier instances, and theory axioms, are
+  scope-local in Z3 and permanent lemmas in cvc5.
+- **Atom lifetime.** Atoms are scope-local in Z3, and need the
+  re-internalization machinery; they persist in cvc5.
+- **Relevancy.** Z3's relevancy decides what reaches the theories, what
+  E-matching considers, and, under the Verus presets, what is decided. cvc5
+  has no counterpart at the SAT level.
+- **Instantiation timing.** Instances are made during propagation in Z3,
+  and only at full or last-call effort in cvc5.
+- **Decisions.** The relevancy case split queue against cvc5's
+  justification heuristic.
+- **Explanations.** Eager in Z3 and lazy in cvc5. This one is mechanical,
+  but needed for hosting.
+
+The next steps it proposes, in order:
+
+1. Measure the switches the port already has, one at a time against the
+   Verus presets. No code is needed: decisions, relevancy, phase, restarts,
+   delayed units and the timing of instantiation.
+2. Add switches that are off by default to separate the three roles of
+   relevancy, to make instances permanent, and to try a justification-style
+   decision queue and a MiniSat-style restart and GC policy.
+3. Run cvc5's `PropEngine` over the port's theory side through a
+   `TheoryProxy` adapter. This is the next architectural level on this
+   branch. It requires resolving atom lifetime, implementing lazy
+   explanations, and removing Stage 1B dependencies 1–5.
+
+The measurements come first. If none of the propositional components
+accounts for much of the difference, the theory branch is the one to audit
+next.
