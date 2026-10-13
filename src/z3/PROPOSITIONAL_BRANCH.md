@@ -138,6 +138,7 @@ counts, per-benchmark times and the `z3::` counters that explain the change
 | A4 | `--z3-restart-strategy=luby` (try `--z3-restart-initial=25`) | the restart policy | Closest to MiniSat's; the port has no counterpart of `--restart-int-inc`. |
 | A5 | `--no-z3-delay-units` | delayed units | |
 | A6 | `--z3-qi-eager-threshold=0 --z3-qi-lazy-threshold=100` | when instances are made (I4) | Close to cvc5's final-check-only instantiation, without its alternation of rounds. The lazy threshold must be raised with it: a delayed instance whose cost is above the lazy threshold (20 by default) is never made. An instance the checker finds in conflict is still made eagerly (`d_qiPromoteUnsat`). |
+| A6b | `--z3-qi-eager-threshold=10` | how much eagerness matters (I4) | Z3's own default, which Verus raises to 100. Between the baseline and A6. |
 
 These take an afternoon of benchmark time and split the Boolean side's
 contribution into its parts before anything is written.
@@ -208,11 +209,14 @@ run without relevancy isolates the lifetime alone:
 `--z3-case-split=justification` walks the asserted formulas and instances in
 order, and splits on the first unassigned atom the first unjustified one
 needs, with the polarity that justifies it
-(`JustificationCaseSplitQueue`). It does not need relevancy. Unlike cvc5, it
-does not stop on a partial assignment once everything is justified: the
-remaining variables are split on by activity. The core has clauses that are
-not asserted formulas, such as those defining term ITEs, which only a
-complete assignment or relevancy satisfies.
+(`JustificationCaseSplitQueue`). It does not need relevancy. Once
+everything is justified, the remaining splits come from the relevancy queue
+at level 2, so the search stops on a partial assignment, as it does with
+that queue and as cvc5's does. B3a then differs from the baseline only in
+the order of the splits. Without relevancy they come from activity and the
+assignment is completed, since the core has clauses that are not asserted
+formulas, such as those defining term ITEs, which only a complete assignment
+or relevancy satisfies.
 
 The relevancy queue already decides a child of a true disjunction with the
 polarity that satisfies it, which is the core step of justification. What
@@ -247,9 +251,22 @@ instead, which grows with the conflicts.
 Every run adds its switches to `--z3 --z3-preset=verus-best` or
 `--z3 --z3-preset=verus`.
 
-- **First**, on both presets, the runs that say which component matters:
-  the baseline, A1a, A2, A6, B1a–B1e, B2a, B2b, B3a and B3b.
-- **Then**, on `verus-best`, the tuning runs: A1b, A3, A4, A5 and B4a–B4c.
+First results, on `verus-best`:
+
+- **A2 is far worse than the baseline, and A1a is moderately worse.** Most
+  of A2's loss therefore comes from the two roles of relevancy that A1a
+  keeps, delivery and matching, which have no counterpart in cvc5's SAT
+  level. B1 separates them.
+- **A1a being worse** agrees with cvc5's use of the justification heuristic
+  for quantified logics (`SetDefaults`). Whether justification is as good as
+  the relevancy queue is what B3a measures.
+- **A6 is much worse:** instantiating during propagation matters, and none
+  of cvc5's `--inst-when` modes instantiates before full effort. A6b tells
+  whether the effect grows gradually with the eager threshold.
+- **A3 and A4 make no difference,** so B4 is unlikely to.
+
+The runs, in order: B1a–B1e, B3a, B2a, A6b. Deferred: B4a–B4c, A5 and A1b,
+which tune what made no difference; B2b and B3b, whose control is A2.
 - With `--stats`, the `z3::` counters that explain a change are
   `instances`, `conflicts`, `decisions`, `mamMatches`, `lazyInstances` and,
   under B2, `instancesRediscovered`.

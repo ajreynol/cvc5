@@ -1039,13 +1039,15 @@ class TheoryAwareBranchingQueue : public CaseSplitQueue
  * first unassigned atom it needs is split on, with the polarity that
  * justifies it. An atom is a formula that is not a gate (see isGate).
  *
- * Unlike cvc5, the search does not stop on a partial assignment once
- * everything is justified: the remaining variables are split on by
- * activity, as ActCaseSplitQueue does. The core has clauses that are not
- * asserted formulas, such as those defining term ITEs, which are only
- * satisfied by a complete assignment, or by relevancy.
+ * Once everything is justified, the remaining splits come from the
+ * relevancy queue (RelCaseSplitQueue) at relevancy level 2, so that the
+ * search stops on a partial assignment as it does with that queue, and as
+ * cvc5's does once everything is justified. Without relevancy they come
+ * from activity (ActCaseSplitQueue), and the assignment is completed: the
+ * core has clauses that are not asserted formulas, such as those defining
+ * term ITEs, which only a complete assignment or relevancy satisfies.
  */
-class JustificationCaseSplitQueue : public ActCaseSplitQueue
+class JustificationCaseSplitQueue : public CaseSplitQueue
 {
   /** The outcome of justifying a formula with a value. */
   enum Status
@@ -1079,8 +1081,60 @@ class JustificationCaseSplitQueue : public ActCaseSplitQueue
 
  public:
   JustificationCaseSplitQueue(SmtContext& ctx, Params& p)
-      : ActCaseSplitQueue(ctx, p)
+      : d_context(ctx), d_act(ctx, p), d_rel(ctx, p)
   {
+  }
+
+  void activityIncreasedEh(BoolVar v) override { d_act.activityIncreasedEh(v); }
+
+  void activityDecreasedEh(BoolVar v) override { d_act.activityDecreasedEh(v); }
+
+  void mkVarEh(BoolVar v) override
+  {
+    d_act.mkVarEh(v);
+    d_rel.mkVarEh(v);
+  }
+
+  void delVarEh(BoolVar v) override
+  {
+    d_act.delVarEh(v);
+    d_rel.delVarEh(v);
+  }
+
+  void assignLitEh(Literal l) override
+  {
+    d_act.assignLitEh(l);
+    d_rel.assignLitEh(l);
+  }
+
+  void unassignVarEh(BoolVar v) override
+  {
+    d_act.unassignVarEh(v);
+    d_rel.unassignVarEh(v);
+  }
+
+  void relevantEh(TNode n) override
+  {
+    d_act.relevantEh(n);
+    d_rel.relevantEh(n);
+  }
+
+  void initSearchEh() override
+  {
+    d_act.initSearchEh();
+    d_rel.initSearchEh();
+  }
+
+  void endSearchEh() override
+  {
+    d_act.endSearchEh();
+    d_rel.endSearchEh();
+  }
+
+  void print(std::ostream& out) override
+  {
+    d_act.print(out);
+    d_rel.print(out);
   }
 
   void rootEh(TNode n, bool permanent) override
@@ -1092,7 +1146,8 @@ class JustificationCaseSplitQueue : public ActCaseSplitQueue
 
   void reset() override
   {
-    ActCaseSplitQueue::reset();
+    d_act.reset();
+    d_rel.reset();
     d_scoped = Roots();
     d_permanent = Roots();
     d_justifiedTrail.clear();
@@ -1101,6 +1156,8 @@ class JustificationCaseSplitQueue : public ActCaseSplitQueue
 
   void pushScope() override
   {
+    d_act.pushScope();
+    d_rel.pushScope();
     d_scopes.push_back(Scope{d_scoped.d_roots.size(),
                              d_scoped.d_head,
                              d_permanent.d_head,
@@ -1109,6 +1166,8 @@ class JustificationCaseSplitQueue : public ActCaseSplitQueue
 
   void popScope(size_t numScopes) override
   {
+    d_act.popScope(numScopes);
+    d_rel.popScope(numScopes);
     Assert(numScopes <= d_scopes.size());
     size_t newLvl = d_scopes.size() - numScopes;
     Scope& s = d_scopes[newLvl];
@@ -1138,7 +1197,14 @@ class JustificationCaseSplitQueue : public ActCaseSplitQueue
     {
       return;
     }
-    ActCaseSplitQueue::nextCaseSplit(next, phase);
+    if (d_context.relevancyLvl() >= 2)
+    {
+      d_rel.nextCaseSplit(next, phase);
+    }
+    else
+    {
+      d_act.nextCaseSplit(next, phase);
+    }
   }
 
  private:
@@ -1343,6 +1409,11 @@ class JustificationCaseSplitQueue : public ActCaseSplitQueue
     return PENDING;
   }
 
+  SmtContext& d_context;
+  /** The splits once everything is justified, without relevancy. */
+  ActCaseSplitQueue d_act;
+  /** The splits once everything is justified, at relevancy level 2. */
+  RelCaseSplitQueue d_rel;
   /** The formulas asserted at the scopes of the search. */
   Roots d_scoped;
   /** The formulas that survive backtracking. */
