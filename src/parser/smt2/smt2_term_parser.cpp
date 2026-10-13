@@ -1138,14 +1138,20 @@ std::vector<DatatypeDecl> Smt2TermParser::parseDatatypesDef(
     {
       pushedScope = true;
       d_state.pushScope();
-      std::vector<std::string> symList =
-          parseSymbolList(CHECK_UNDECLARED, SYM_SORT);
+      std::vector<std::string> symList = parseSymbolList(CHECK_NONE, SYM_SORT);
       if (symList.empty())
       {
         d_lex.parseError("Expected non-empty parameter list");
       }
       for (const std::string& sym : symList)
       {
+        // These are local parameters, even if a global parameter has the
+        // same name.
+        if (!d_state.isDeclared(sym, SYM_SORT)
+            || d_state.getSort(sym).getKind() != SortKind::SORT_PARAMETER_SORT)
+        {
+          d_state.checkDeclaration(sym, CHECK_UNDECLARED, SYM_SORT);
+        }
         d_state.checkReservedSymbol(sym);
         params.push_back(d_state.mkSort(sym));
       }

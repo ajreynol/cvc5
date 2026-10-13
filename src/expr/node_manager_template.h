@@ -768,6 +768,12 @@ class NodeManager
   /** Make a new sort with the given name of arity 0. */
   TypeNode mkSort(const std::string& name, bool fresh = true);
 
+  /** Make a global SMT-LIB sort parameter. */
+  TypeNode mkSortParameter(const std::string& name, bool fresh = true);
+
+  /** Whether any global sort parameters have been created. */
+  bool hasSortParameters() const { return d_hasSortParameters; }
+
   /** Make a type that prints as the given raw symbol. */
   TypeNode mkRawSymbolType(const std::string& symbol);
 
@@ -1100,6 +1106,10 @@ class NodeManager
 
   /** A mapping for sorts allocated by mkSortConstructor where fresh is false */
   std::map<std::pair<std::string, size_t>, TypeNode> d_nfreshSorts;
+  /** Global sort parameters allocated with fresh = false. */
+  std::map<std::string, TypeNode> d_nfreshSortParameters;
+  /** Avoid scanning ordinary terms for global sort parameters. */
+  bool d_hasSortParameters = false;
 
   /** A mapping for variables constructed when fresh is false */
   std::map<std::pair<std::string, TypeNode>, Node> d_nfreshVars;

@@ -3,6 +3,12 @@ This file contains a summary of important user-visible changes.
 cvc5 1.4.3 prerelease
 =====================
 
+- Adds the SMT-LIB 2.7 `declare-sort-parameter` command and the corresponding
+  `declareSortParameter` API (`cvc5_declare_sort_parameter` in C). Global sort
+  parameters have kind `SORT_PARAMETER_SORT`, distinct from uninterpreted sorts
+  and local datatype parameters. Polymorphic reasoning is not yet supported;
+  assertions and assumptions containing global sort parameters are rejected.
+
 - **Java API**
   * Plugin and oracle callbacks may now be invoked from a thread other than
     the one that registered them, and an exception thrown by a callback is

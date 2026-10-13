@@ -279,6 +279,24 @@ Java_io_github_cvc5_Solver_declareSort__JLjava_lang_String_2IZ(JNIEnv* env,
 
 /*
  * Class:     io_github_cvc5_Solver
+ * Method:    declareSortParameter
+ * Signature: (JLjava/lang/String;Z)J
+ */
+JNIEXPORT jlong JNICALL Java_io_github_cvc5_Solver_declareSortParameter(
+    JNIEnv* env, jobject, jlong pointer, jstring jSymbol, jboolean fresh)
+{
+  CVC5_JAVA_API_TRY_CATCH_BEGIN;
+  Solver* solver = reinterpret_cast<Solver*>(pointer);
+  const char* s = env->GetStringUTFChars(jSymbol, nullptr);
+  std::string symbol(s);
+  env->ReleaseStringUTFChars(jSymbol, s);
+  Sort* result = new Sort(solver->declareSortParameter(symbol, fresh));
+  return reinterpret_cast<jlong>(result);
+  CVC5_JAVA_API_TRY_CATCH_END_RETURN(env, 0);
+}
+
+/*
+ * Class:     io_github_cvc5_Solver
  * Method:    defineFun
  * Signature: (JLjava/lang/String;[JJJZ)J
  */

@@ -4705,6 +4705,18 @@ Cvc5Sort cvc5_declare_sort(Cvc5* cvc5,
 /* Formula Handling                                                     */
 /* .................................................................... */
 
+Cvc5Sort cvc5_declare_sort_parameter(Cvc5* cvc5, const char* symbol, bool fresh)
+{
+  Cvc5Sort res = nullptr;
+  CVC5_CAPI_TRY_CATCH_BEGIN;
+  CVC5_CAPI_CHECK_NOT_NULL(cvc5);
+  CVC5_CAPI_CHECK_NOT_NULL(symbol);
+  res = cvc5->d_tm->export_sort(
+      cvc5->d_solver.declareSortParameter(symbol, fresh));
+  CVC5_CAPI_TRY_CATCH_END;
+  return res;
+}
+
 Cvc5Term cvc5_define_fun(Cvc5* cvc5,
                          const char* symbol,
                          size_t size,

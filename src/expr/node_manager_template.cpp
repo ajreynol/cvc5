@@ -251,6 +251,7 @@ NodeManager::~NodeManager()
   d_dtypes.clear();
   d_oracles.clear();
   d_nfreshSorts.clear();
+  d_nfreshSortParameters.clear();
   d_nfreshVars.clear();
 
   Assert(!d_attrManager->inGarbageCollection());
@@ -1038,6 +1039,27 @@ TypeNode NodeManager::mkRawSymbolType(const std::string& symbol)
   NodeBuilder nb(this, Kind::RAW_SYMBOL_TYPE);
   TypeNode type = nb.constructTypeNode();
   setAttribute(type, expr::VarNameAttr(), symbol);
+  return type;
+}
+
+TypeNode NodeManager::mkSortParameter(const std::string& name, bool fresh)
+{
+  d_hasSortParameters = true;
+  if (!fresh)
+  {
+    auto it = d_nfreshSortParameters.find(name);
+    if (it != d_nfreshSortParameters.end())
+    {
+      return it->second;
+    }
+  }
+  NodeBuilder nb(this, Kind::SORT_PARAMETER_TYPE);
+  TypeNode type = nb.constructTypeNode();
+  setAttribute(type, expr::VarNameAttr(), name);
+  if (!fresh)
+  {
+    d_nfreshSortParameters[name] = type;
+  }
   return type;
 }
 

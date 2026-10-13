@@ -6387,6 +6387,11 @@ enum ENUM(SortKind)
    *   - TermManager::mkUninterpretedSort(const std::optional<std::string>&)
    */
   EVALUE(UNINTERPRETED_SORT),
+  /**
+   * A global SMT-LIB sort parameter, created by Solver::declareSortParameter().
+   * Sort parameters range over monomorphic sorts in each assertion.
+   */
+  EVALUE(SORT_PARAMETER_SORT),
   /* ----------------------------------------------------------------------- */
   /** Marks the upper-bound of this enumeration. */
   EVALUE(LAST_SORT_KIND)

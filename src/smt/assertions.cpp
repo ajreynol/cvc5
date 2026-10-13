@@ -100,6 +100,11 @@ std::unordered_set<Node> Assertions::getCurrentAssertionListDefitions() const
 
 void Assertions::addFormula(TNode n, bool isFunDef, bool maybeHasFv)
 {
+  if (expr::hasSortParameter(n))
+  {
+    throw ModalException(
+        "Reasoning with global sort parameters is not supported");
+  }
   // add to assertion list
   d_assertionList.push_back(n);
   if (n.isConst() && n.getConst<bool>())
@@ -220,6 +225,11 @@ void Assertions::addFormula(TNode n, bool isFunDef, bool maybeHasFv)
 
 void Assertions::addDefineFunDefinition(Node n, bool global)
 {
+  if (expr::hasSortParameter(n))
+  {
+    throw ModalException(
+        "Reasoning with global sort parameters is not supported");
+  }
   if (global)
   {
     // Global definitions are asserted at check-sat-time because we have to

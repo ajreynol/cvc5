@@ -570,6 +570,23 @@ TEST_F(TestCApiBlackSolver, declare_sort_fresh)
   ASSERT_FALSE(cvc5_sort_is_equal(s2, s5));
 }
 
+TEST_F(TestCApiBlackSolver, declare_sort_parameter)
+{
+  ASSERT_CVC5_ERROR(cvc5_declare_sort_parameter(nullptr, "A", true),
+                    "unexpected NULL argument");
+  ASSERT_CVC5_ERROR(cvc5_declare_sort_parameter(d_solver, nullptr, true),
+                    "unexpected NULL argument");
+  Cvc5Sort a = cvc5_declare_sort_parameter(d_solver, "A", false);
+  ASSERT_EQ(cvc5_sort_get_kind(a), CVC5_SORT_KIND_SORT_PARAMETER_SORT);
+  ASSERT_FALSE(cvc5_sort_is_uninterpreted_sort(a));
+  ASSERT_TRUE(
+      cvc5_sort_is_equal(a, cvc5_declare_sort_parameter(d_solver, "A", false)));
+  ASSERT_FALSE(
+      cvc5_sort_is_equal(a, cvc5_declare_sort_parameter(d_solver, "A", true)));
+  ASSERT_FALSE(
+      cvc5_sort_is_equal(a, cvc5_declare_sort(d_solver, "A", 0, false)));
+}
+
 TEST_F(TestCApiBlackSolver, define_fun)
 {
   Cvc5Sort bv_sort = cvc5_mk_bv_sort(d_tm, 32);

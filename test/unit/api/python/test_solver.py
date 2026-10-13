@@ -127,6 +127,20 @@ def test_declare_sort_fresh(solver):
     assert t2!=t5
 
 
+def test_declare_sort_parameter(tm, solver):
+    a = solver.declareSortParameter("A", False)
+    assert a.getKind() == SortKind.SORT_PARAMETER_SORT
+    assert not a.isUninterpretedSort()
+    assert a.getSymbol() == "A"
+    assert a == solver.declareSortParameter("A", False)
+    assert a != solver.declareSortParameter("A")
+    assert a != solver.declareSort("A", 0, False)
+    assert a != tm.mkParamSort("A")
+    x = tm.mkConst(a, "x")
+    with pytest.raises(RuntimeError, match="global sort parameters"):
+        solver.assertFormula(x.eqTerm(x))
+
+
 def test_define_fun(tm, solver):
     bvSort = tm.mkBitVectorSort(32)
     funSort = tm.mkFunctionSort(tm.mkUninterpretedSort("u"),

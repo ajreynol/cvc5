@@ -334,6 +334,17 @@ class CVC5_EXPORT DeclareSortCommand : public DeclarationDefinitionCommand
   void toStream(std::ostream& out) const override;
 }; /* class DeclareSortCommand */
 
+/** Declares a global SMT-LIB sort parameter. */
+class CVC5_EXPORT DeclareSortParameterCommand
+    : public DeclarationDefinitionCommand
+{
+ public:
+  DeclareSortParameterCommand(const std::string& id);
+  void invoke(cvc5::Solver* solver, parser::SymManager* sm) override;
+  std::string getCommandName() const override;
+  void toStream(std::ostream& out) const override;
+};
+
 class CVC5_EXPORT DefineSortCommand : public DeclarationDefinitionCommand
 {
  protected:

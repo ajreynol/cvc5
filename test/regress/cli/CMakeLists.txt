@@ -1424,6 +1424,19 @@ set(regress_0_tests
   regress0/parser/define_sort.smt2
   regress0/parser/define-fun-shadow-dec.smt2
   regress0/parser/double-bind.smt2
+  regress0/parser/sort-parameter-assuming.smt2
+  regress0/parser/sort-parameter-compound.smt2
+  regress0/parser/sort-parameter-datatype.smt2
+  regress0/parser/sort-parameter-declare.smt2
+  regress0/parser/sort-parameter-define-sort.smt2
+  regress0/parser/sort-parameter-duplicate.smt2
+  regress0/parser/sort-parameter-global.smt2
+  regress0/parser/sort-parameter-local-datatype.smt2
+  regress0/parser/sort-parameter-parse-only.smt2
+  regress0/parser/sort-parameter-scopes.smt2
+  regress0/parser/sort-parameter-singleton.smt2
+  regress0/parser/sort-parameter-sort-collision.smt2
+  regress0/parser/sort-parameter-theory-collision.smt2
   regress0/parser/empty-pat.smt2
   regress0/parser/fp_value.smt2
   regress0/parser/force_logic_set_logic.smt2

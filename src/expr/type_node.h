@@ -745,6 +745,9 @@ class CVC5_EXPORT TypeNode
 
   /** Is this an unresolved datatype? */
   bool isUnresolvedDatatype() const;
+
+  /** Does this type contain a global SMT-LIB sort parameter? */
+  bool hasSortParameter() const;
   /**
    * Has name? Return true if this node has an associated variable
    * name (via the attribute expr::VarNameAttr). This is true for

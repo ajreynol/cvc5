@@ -294,6 +294,12 @@ void Printer::toStreamCmdDefineType(
   printUnknownCommand(out, "define-sort");
 }
 
+void Printer::toStreamCmdDeclareSortParameter(
+    std::ostream& out, CVC5_UNUSED const std::string& id) const
+{
+  printUnknownCommand(out, "declare-sort-parameter");
+}
+
 void Printer::toStreamCmdDefineFunction(
     std::ostream& out,
     CVC5_UNUSED const std::string& id,

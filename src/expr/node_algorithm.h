@@ -339,6 +339,9 @@ bool isTheoryAtom(TNode cur);
  */
 bool hasAbstractSubterm(TNode n);
 
+/** Does any subterm (including operators) have a global sort parameter? */
+bool hasSortParameter(TNode n);
+
 }  // namespace expr
 }  // namespace cvc5::internal
 

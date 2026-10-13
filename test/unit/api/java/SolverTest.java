@@ -150,6 +150,21 @@ class SolverTest
   }
 
   @Test
+  void declareSortParameter()
+  {
+    Sort a = d_solver.declareSortParameter("A", false);
+    assertEquals(a.getKind(), SortKind.SORT_PARAMETER_SORT);
+    assertFalse(a.isUninterpretedSort());
+    assertEquals(a.getSymbol(), "A");
+    assertEquals(a, d_solver.declareSortParameter("A", false));
+    assertNotEquals(a, d_solver.declareSortParameter("A"));
+    assertNotEquals(a, d_solver.declareSort("A", 0, false));
+    assertNotEquals(a, d_solver.mkParamSort("A"));
+    Term x = d_solver.mkConst(a, "x");
+    assertThrows(CVC5ApiException.class, () -> d_solver.assertFormula(x.eqTerm(x)));
+  }
+
+  @Test
   void defineFun() throws CVC5ApiException
   {
     Sort bvSort = d_solver.mkBitVectorSort(32);

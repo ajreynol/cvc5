@@ -1017,5 +1017,36 @@ bool hasAbstractSubterm(TNode n)
   return n.getAttribute(AbstractSubtermVarAttr());
 }
 
+bool hasSortParameter(TNode n)
+{
+  if (!n.getNodeManager()->hasSortParameters())
+  {
+    return false;
+  }
+  std::unordered_set<TNode> visited;
+  std::unordered_set<TypeNode> types;
+  std::vector<TNode> pending{n};
+  while (!pending.empty())
+  {
+    TNode cur = pending.back();
+    pending.pop_back();
+    if (!visited.insert(cur).second)
+    {
+      continue;
+    }
+    TypeNode tn = cur.getType();
+    if (types.insert(tn).second && tn.hasSortParameter())
+    {
+      return true;
+    }
+    pending.insert(pending.end(), cur.begin(), cur.end());
+    if (cur.hasOperator())
+    {
+      pending.push_back(cur.getOperator());
+    }
+  }
+  return false;
+}
+
 }  // namespace expr
 }  // namespace cvc5::internal

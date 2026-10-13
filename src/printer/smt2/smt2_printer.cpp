@@ -1911,6 +1911,12 @@ void Smt2Printer::toStreamSortedVarList(std::ostream& out,
   out << ")";
 }
 
+void Smt2Printer::toStreamCmdDeclareSortParameter(std::ostream& out,
+                                                  const std::string& id) const
+{
+  out << "(declare-sort-parameter " << cvc5::internal::quoteSymbol(id) << ")";
+}
+
 void Smt2Printer::toStreamCmdDeclareType(std::ostream& out,
                                          const std::string& id,
                                          size_t arity) const

@@ -3731,6 +3731,30 @@ cdef class Solver:
             self.tm,
             self.csolver.declareSort(symbol.encode(), arity, <bint> fresh))
 
+    def declareSortParameter(self, str symbol, fresh=True):
+        """
+            Declare a global SMT-LIB sort parameter.
+
+            SMT-LIB: ``(declare-sort-parameter <symbol>)``.
+
+            Sort parameters are implicitly universally quantified in each
+            assertion. They are distinct from uninterpreted sorts and local
+            datatype parameters created by :py:meth:`TermManager.mkParamSort`.
+
+            .. warning::
+
+                Solving formulas containing global sort parameters is not yet
+                supported. Such formulas are rejected when asserted or assumed.
+
+            :param symbol: The name of the sort parameter.
+            :param fresh: Whether to create a fresh parameter. If false, calls
+                          with the same term manager and symbol return the
+                          same parameter.
+            :return: The sort parameter.
+        """
+        return _sort(self.tm,
+                     self.csolver.declareSortParameter(symbol.encode(), <bint> fresh))
+
     def defineFun(self, str symbol, list bound_vars, Sort sort not None, Term term not None, glbl=False):
         """
             Define n-ary function.

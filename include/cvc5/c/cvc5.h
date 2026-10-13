@@ -4266,6 +4266,22 @@ CVC5_EXPORT Cvc5Sort cvc5_declare_sort(Cvc5* cvc5,
                                        bool fresh);
 
 /**
+ * Declare a global SMT-LIB sort parameter: `(declare-sort-parameter <symbol>)`.
+ * Sort parameters are implicitly universally quantified in each assertion.
+ * They are distinct from uninterpreted sorts and local datatype parameters.
+ * @warning Solving formulas containing global sort parameters is not yet
+ *          supported. Such formulas are rejected when asserted or assumed.
+ * @param cvc5 The solver instance.
+ * @param symbol The name of the sort parameter.
+ * @param fresh Whether to create a fresh parameter. If false, calls with the
+ *              same term manager and symbol return the same parameter.
+ * @return The sort parameter.
+ */
+CVC5_EXPORT Cvc5Sort cvc5_declare_sort_parameter(Cvc5* cvc5,
+                                                 const char* symbol,
+                                                 bool fresh);
+
+/**
  * Define n-ary function.
  *
  * SMT-LIB:

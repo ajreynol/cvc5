@@ -101,6 +101,8 @@ class Smt2Printer : public cvc5::internal::Printer
       const std::vector<Node>& initValue) const override;
 
   /** Print declare-sort command */
+  void toStreamCmdDeclareSortParameter(std::ostream& out,
+                                       const std::string& id) const override;
   void toStreamCmdDeclareType(std::ostream& out,
                               const std::string& id,
                               size_t arity) const override;

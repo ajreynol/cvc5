@@ -1125,6 +1125,39 @@ void DeclareSortCommand::toStream(std::ostream& out) const
 }
 
 /* -------------------------------------------------------------------------- */
+/* class DeclareSortParameterCommand                                          */
+/* -------------------------------------------------------------------------- */
+
+DeclareSortParameterCommand::DeclareSortParameterCommand(const std::string& id)
+    : DeclarationDefinitionCommand(id)
+{
+}
+
+void DeclareSortParameterCommand::invoke(cvc5::Solver* solver, SymManager* sm)
+{
+  Sort sort =
+      solver->declareSortParameter(d_symbol, sm->getFreshDeclarations());
+  if (!sm->bindType(d_symbol, sort, true))
+  {
+    d_commandStatus =
+        new CommandFailure("Cannot bind " + d_symbol + " to sort parameter");
+    return;
+  }
+  d_commandStatus = CommandSuccess::instance();
+}
+
+std::string DeclareSortParameterCommand::getCommandName() const
+{
+  return "declare-sort-parameter";
+}
+
+void DeclareSortParameterCommand::toStream(std::ostream& out) const
+{
+  internal::Printer::getPrinter(out)->toStreamCmdDeclareSortParameter(out,
+                                                                      d_symbol);
+}
+
+/* -------------------------------------------------------------------------- */
 /* class DefineSortCommand                                                    */
 /* -------------------------------------------------------------------------- */
 
@@ -1148,6 +1181,12 @@ const std::vector<cvc5::Sort>& DefineSortCommand::getParameters() const
 cvc5::Sort DefineSortCommand::getSort() const { return d_sort; }
 void DefineSortCommand::invoke(CVC5_UNUSED cvc5::Solver* solver, SymManager* sm)
 {
+  if (sortToTypeNode(d_sort).hasSortParameter())
+  {
+    d_commandStatus = new CommandFailure(
+        "Global sort parameters are not permitted in define-sort");
+    return;
+  }
   // This name is not its own distinct sort, it's an alias.
   if (!sm->bindType(d_symbol, d_params, d_sort, true))
   {

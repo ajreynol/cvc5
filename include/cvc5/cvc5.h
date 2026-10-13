@@ -5782,6 +5782,31 @@ class CVC5_EXPORT Solver
                    bool fresh = true) const;
 
   /**
+   * Declare a global SMT-LIB sort parameter.
+   *
+   * SMT-LIB:
+   *
+   * \verbatim embed:rst:leading-asterisk
+   * .. code:: smtlib
+   *
+   *     (declare-sort-parameter <symbol>)
+   * \endverbatim
+   *
+   * Sort parameters are implicitly universally quantified in each assertion.
+   * They are distinct from uninterpreted sorts and from the local datatype
+   * parameters created by TermManager::mkParamSort().
+   *
+   * @warning Solving formulas containing global sort parameters is not yet
+   *          supported. Such formulas are rejected when asserted or assumed.
+   * @param symbol The name of the sort parameter.
+   * @param fresh Whether to create a fresh sort parameter. If false, repeated
+   *              calls with the same term manager and symbol return the same
+   *              sort parameter.
+   * @return The sort parameter.
+   */
+  Sort declareSortParameter(const std::string& symbol, bool fresh = true) const;
+
+  /**
    * Define n-ary function.
    *
    * SMT-LIB:

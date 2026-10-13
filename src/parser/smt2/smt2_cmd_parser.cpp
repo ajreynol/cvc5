@@ -351,11 +351,15 @@ std::unique_ptr<Cmd> Smt2CmdParser::parseNextCommand()
     case Token::DECLARE_SORT_PARAMETER_TOK:
     {
       d_state.checkThatLogicIsSet();
-      std::string name = d_tparser.parseSymbol(CHECK_NONE, SYM_VARIABLE);
+      std::string name = d_tparser.parseSymbol(CHECK_UNDECLARED, SYM_SORT);
       d_state.checkUserSymbol(name);
-      // not supported
-      d_state.warning("Sort parameters not supported in this version");
-      cmd.reset(new EmptyCommand());
+      // Array is handled directly by the sort parser, not the symbol table.
+      if (name == "Array"
+          && d_state.isTheoryEnabled(internal::theory::THEORY_ARRAYS))
+      {
+        d_state.parseError("Cannot shadow theory sort constructor Array");
+      }
+      cmd.reset(new DeclareSortParameterCommand(name));
     }
     break;
     // (declare-var <symbol> <sort>)
@@ -519,11 +523,18 @@ std::unique_ptr<Cmd> Smt2CmdParser::parseNextCommand()
       std::string name = d_tparser.parseSymbol(CHECK_UNDECLARED, SYM_SORT);
       d_state.checkUserSymbol(name);
       std::vector<std::string> snames =
-          d_tparser.parseSymbolList(CHECK_UNDECLARED, SYM_SORT);
+          d_tparser.parseSymbolList(CHECK_NONE, SYM_SORT);
       d_state.pushScope();
       std::vector<Sort> sorts;
       for (const std::string& sname : snames)
       {
+        // A local parameter may shadow a global sort parameter.
+        if (!d_state.isDeclared(sname, SYM_SORT)
+            || d_state.getSort(sname).getKind()
+                   != SortKind::SORT_PARAMETER_SORT)
+        {
+          d_state.checkDeclaration(sname, CHECK_UNDECLARED, SYM_SORT);
+        }
         sorts.push_back(d_state.mkSort(sname));
       }
       Sort t = d_tparser.parseSort();

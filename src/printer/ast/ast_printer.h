@@ -66,6 +66,8 @@ class AstPrinter : public cvc5::internal::Printer
                                   TypeNode type) const override;
 
   /** Print declare-sort command */
+  void toStreamCmdDeclareSortParameter(std::ostream& out,
+                                       const std::string& id) const override;
   void toStreamCmdDeclareType(std::ostream& out,
                               const std::string& id,
                               size_t arity) const override;

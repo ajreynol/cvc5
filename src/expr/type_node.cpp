@@ -12,6 +12,7 @@
 #include "expr/type_node.h"
 
 #include <cmath>
+#include <unordered_set>
 #include <vector>
 
 #include "expr/dtype_cons.h"
@@ -100,7 +101,11 @@ CardinalityClass TypeNode::getCardinalityClass()
         getAttribute(TypeCardinalityClassAttr()));
   }
   CardinalityClass ret = CardinalityClass::INFINITE;
-  if (isUninterpretedSort())
+  if (getKind() == Kind::SORT_PARAMETER_TYPE)
+  {
+    ret = CardinalityClass::UNKNOWN;
+  }
+  else if (isUninterpretedSort())
   {
     ret = CardinalityClass::INTERPRETED_ONE;
   }
@@ -272,7 +277,7 @@ bool TypeNode::isClosedEnumerable()
   {
     bool ret = true;
     if (isArray() || isUninterpretedSort() || isCodatatype() || isFunction()
-        || isRegExp())
+        || isRegExp() || getKind() == Kind::SORT_PARAMETER_TYPE)
     {
       ret = false;
     }
@@ -597,6 +602,44 @@ uint64_t TypeNode::getUninterpretedSortConstructorArity() const
 bool TypeNode::isUnresolvedDatatype() const
 {
   return getAttribute(expr::UnresolvedDatatypeAttr());
+}
+
+bool TypeNode::hasSortParameter() const
+{
+  if (!getNodeManager()->hasSortParameters())
+  {
+    return false;
+  }
+  std::unordered_set<TypeNode> visited;
+  std::vector<TypeNode> pending{*this};
+  while (!pending.empty())
+  {
+    TypeNode cur = pending.back();
+    pending.pop_back();
+    if (!visited.insert(cur).second)
+    {
+      continue;
+    }
+    if (cur.getKind() == Kind::SORT_PARAMETER_TYPE)
+    {
+      return true;
+    }
+    pending.insert(pending.end(), cur.begin(), cur.end());
+    // Datatype fields are not children of their type node.
+    if (cur.isDatatype())
+    {
+      const DType& dt = cur.getDType();
+      for (size_t c = 0, nc = dt.getNumConstructors(); c < nc; ++c)
+      {
+        const DTypeConstructor& ctor = dt[c];
+        for (size_t i = 0, n = ctor.getNumArgs(); i < n; ++i)
+        {
+          pending.push_back(ctor.getArgType(i));
+        }
+      }
+    }
+  }
+  return false;
 }
 
 bool TypeNode::hasName() const { return hasAttribute(expr::VarNameAttr()); }

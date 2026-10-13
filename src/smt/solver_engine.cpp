@@ -1220,6 +1220,11 @@ void SolverEngine::addPlugin(Plugin* p)
 
 Node SolverEngine::simplify(const Node& t, bool applySubs)
 {
+  if (expr::hasSortParameter(t))
+  {
+    throw ModalException(
+        "Reasoning with global sort parameters is not supported");
+  }
   beginCall(true);
   Node tt = t;
   // if we are applying substitutions
@@ -1452,6 +1457,7 @@ bool SolverEngine::isModelCoreSymbol(Node n)
 std::string SolverEngine::getModel(const std::vector<TypeNode>& declaredSorts,
                                    const std::vector<Node>& declaredFuns)
 {
+  ensureWellFormedTerms(declaredFuns, "get model");
   // see if another solver engine was responsible for the last status
   SolverEngine* ssolver = d_state->getStatusSolver();
   if (ssolver != nullptr)
@@ -1583,6 +1589,11 @@ bool SolverEngine::isWellFormedTerm(const Node& n) const
 void SolverEngine::ensureWellFormedTerm(const Node& n,
                                         const std::string& src) const
 {
+  if (expr::hasSortParameter(n))
+  {
+    throw ModalException(
+        "Reasoning with global sort parameters is not supported");
+  }
   if (Configuration::isAssertionBuild())
   {
     // Don't check for shadowing here, since shadowing may occur from API
@@ -1604,12 +1615,9 @@ void SolverEngine::ensureWellFormedTerm(const Node& n,
 void SolverEngine::ensureWellFormedTerms(const std::vector<Node>& ns,
                                          const std::string& src) const
 {
-  if (Configuration::isAssertionBuild())
+  for (const Node& n : ns)
   {
-    for (const Node& n : ns)
-    {
-      ensureWellFormedTerm(n, src);
-    }
+    ensureWellFormedTerm(n, src);
   }
 }
 

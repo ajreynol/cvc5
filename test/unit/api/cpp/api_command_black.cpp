@@ -84,5 +84,28 @@ TEST_F(TestApiBlackCommand, getCommandName)
   ASSERT_EQ(cmd.getCommandName(), "get-model");
 }
 
+TEST_F(TestApiBlackCommand, declareSortParameter)
+{
+  std::stringstream out;
+  Command logic = parseCommand("(set-logic ALL)");
+  logic.invoke(d_solver.get(), d_symman.get(), out);
+  Command cmd = parseCommand("(declare-sort-parameter |A B|)");
+  ASSERT_EQ(cmd.getCommandName(), "declare-sort-parameter");
+  ASSERT_EQ(cmd.toString(), "(declare-sort-parameter |A B|)");
+  cmd.invoke(d_solver.get(), d_symman.get(), out);
+  ASSERT_TRUE(out.str().empty());
+  // Parameters must not be listed as uninterpreted model sorts.
+  ASSERT_TRUE(d_symman->getDeclaredSorts().empty());
+  ASSERT_THROW(parseCommand("(declare-sort-parameter |A B|)"), ParserException);
+  ASSERT_THROW(parseCommand("(declare-sort |A B| 0)"), ParserException);
+  ASSERT_THROW(parseCommand("(declare-sort-parameter Array)"), ParserException);
+  ASSERT_THROW(parseCommand("(declare-sort-parameter Bool)"), ParserException);
+  cmd = parseCommand("(declare-const a |A B|)");
+  cmd.invoke(d_solver.get(), d_symman.get(), out);
+  ASSERT_TRUE(out.str().empty());
+  ASSERT_EQ(d_symman->getDeclaredTerms().back().getSort().getKind(),
+            SortKind::SORT_PARAMETER_SORT);
+}
+
 }  // namespace test
 }  // namespace cvc5::internal

@@ -355,6 +355,59 @@ TEST_F(TestApiBlackSolver, declareSortFresh)
   ASSERT_FALSE(t2 == t5);
 }
 
+TEST_F(TestApiBlackSolver, declareSortParameter)
+{
+  Sort a = d_solver->declareSortParameter("A", false);
+  ASSERT_EQ(a.getKind(), SortKind::SORT_PARAMETER_SORT);
+  ASSERT_FALSE(a.isUninterpretedSort());
+  ASSERT_EQ(a.getSymbol(), "A");
+  ASSERT_EQ(a.toString(), "A");
+  ASSERT_EQ(a, d_solver->declareSortParameter("A", false));
+  ASSERT_NE(a, d_solver->declareSortParameter("A"));
+  ASSERT_NE(a, d_solver->declareSortParameter("B", false));
+  ASSERT_NE(a, d_solver->declareSort("A", 0, false));
+  ASSERT_NE(a, d_tm.mkParamSort("A"));
+  Solver other(d_tm);
+  ASSERT_EQ(a, other.declareSortParameter("A", false));
+  ASSERT_NO_THROW(d_solver->declareSortParameter(""));
+  ASSERT_TRUE(d_solver->checkSat().isSat());
+}
+
+TEST_F(TestApiBlackSolver, sortParameterReasoning)
+{
+  d_solver->setOption("produce-models", "true");
+  Sort a = d_solver->declareSortParameter("A");
+  Term x = d_tm.mkVar(a, "x");
+  Term y = d_tm.mkVar(a, "y");
+  Term singleton = d_tm.mkTerm(
+      Kind::FORALL, {d_tm.mkTerm(Kind::VARIABLE_LIST, {x, y}), x.eqTerm(y)});
+  // This is unsatisfiable under SMT-LIB 2.7 semantics (instantiate A with
+  // Bool), but satisfiable if A is mistakenly treated as uninterpreted.
+  ASSERT_THROW(d_solver->assertFormula(singleton), CVC5ApiException);
+  ASSERT_THROW(d_solver->checkSatAssuming(singleton), CVC5ApiException);
+  ASSERT_THROW(d_solver->simplify(singleton), CVC5ApiException);
+  ASSERT_THROW(d_solver->defineFun("id", {x}, a, x), CVC5ApiException);
+  ASSERT_THROW(d_solver->defineFun("id", {x}, a, x, true), CVC5ApiException);
+  ASSERT_THROW(d_tm.mkDatatypeDecl("D", {a}), CVC5ApiException);
+  DatatypeConstructorDecl ctor = d_tm.mkDatatypeConstructorDecl("box");
+  ASSERT_THROW(ctor.addSelector("value", a), CVC5ApiException);
+
+  // The parameter must also be detected inside compound sorts and operators.
+  Sort array = d_tm.mkArraySort(d_int, a);
+  Term c = d_tm.mkConst(array, "c");
+  Term f = d_solver->declareFun("f", {array}, d_bool);
+  Term p = d_tm.mkTerm(Kind::APPLY_UF, {f, c});
+  Solver other(d_tm);
+  ASSERT_THROW(other.assertFormula(p), CVC5ApiException);
+
+  // Rejected assertions and definitions must not affect subsequent solving.
+  ASSERT_TRUE(d_solver->getAssertions().empty());
+  ASSERT_TRUE(d_solver->checkSat().isSat());
+  Term value = d_tm.mkConst(a, "value");
+  ASSERT_THROW(d_solver->getValue(value), CVC5ApiException);
+  ASSERT_THROW(d_solver->getModel({}, {value}), CVC5ApiException);
+}
+
 TEST_F(TestApiBlackSolver, defineFun)
 {
   Sort bvSort = d_tm.mkBitVectorSort(32);

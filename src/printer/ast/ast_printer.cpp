@@ -278,6 +278,12 @@ void AstPrinter::toStreamCmdDefineFunction(std::ostream& out,
   out << "], << " << formula << " >> )" << std::endl;
 }
 
+void AstPrinter::toStreamCmdDeclareSortParameter(std::ostream& out,
+                                                 const std::string& id) const
+{
+  out << "DeclareSortParameter(" << id << ')' << std::endl;
+}
+
 void AstPrinter::toStreamCmdDeclareType(std::ostream& out,
                                         const std::string& id,
                                         size_t arity) const

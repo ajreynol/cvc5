@@ -504,6 +504,8 @@ const static std::unordered_map<SortKind,
         SORT_KIND_ENUM(SortKind::TUPLE_SORT, internal::Kind::TUPLE_TYPE),
         SORT_KIND_ENUM(SortKind::NULLABLE_SORT, internal::Kind::NULLABLE_TYPE),
         SORT_KIND_ENUM(SortKind::UNINTERPRETED_SORT, internal::Kind::SORT_TYPE),
+        SORT_KIND_ENUM(SortKind::SORT_PARAMETER_SORT,
+                       internal::Kind::SORT_PARAMETER_TYPE),
         SORT_KIND_ENUM(SortKind::LAST_SORT_KIND, internal::Kind::LAST_KIND),
     };
 
@@ -864,25 +866,27 @@ const static std::unordered_map<internal::Kind,
     };
 
 /* Mapping from internal kind to external (API) sort kind. */
-const static std::
-    unordered_map<internal::Kind, SortKind, internal::kind::KindHashFunction>
-        s_sort_kinds_internal{
-            {internal::Kind::UNDEFINED_KIND, SortKind::UNDEFINED_SORT_KIND},
-            {internal::Kind::NULL_EXPR, SortKind::NULL_SORT},
-            {internal::Kind::ABSTRACT_TYPE, SortKind::ABSTRACT_SORT},
-            {internal::Kind::ARRAY_TYPE, SortKind::ARRAY_SORT},
-            {internal::Kind::BAG_TYPE, SortKind::BAG_SORT},
-            {internal::Kind::BITVECTOR_TYPE, SortKind::BITVECTOR_SORT},
-            {internal::Kind::DATATYPE_TYPE, SortKind::DATATYPE_SORT},
-            {internal::Kind::FINITE_FIELD_TYPE, SortKind::FINITE_FIELD_SORT},
-            {internal::Kind::FLOATINGPOINT_TYPE, SortKind::FLOATINGPOINT_SORT},
-            {internal::Kind::FUNCTION_TYPE, SortKind::FUNCTION_SORT},
-            {internal::Kind::SEQUENCE_TYPE, SortKind::SEQUENCE_SORT},
-            {internal::Kind::SET_TYPE, SortKind::SET_SORT},
-            {internal::Kind::SORT_TYPE, SortKind::UNINTERPRETED_SORT},
-            {internal::Kind::TUPLE_TYPE, SortKind::TUPLE_SORT},
-            {internal::Kind::NULLABLE_TYPE, SortKind::NULLABLE_SORT},
-        };
+const static std::unordered_map<internal::Kind,
+                                SortKind,
+                                internal::kind::KindHashFunction>
+    s_sort_kinds_internal{
+        {internal::Kind::UNDEFINED_KIND, SortKind::UNDEFINED_SORT_KIND},
+        {internal::Kind::NULL_EXPR, SortKind::NULL_SORT},
+        {internal::Kind::ABSTRACT_TYPE, SortKind::ABSTRACT_SORT},
+        {internal::Kind::ARRAY_TYPE, SortKind::ARRAY_SORT},
+        {internal::Kind::BAG_TYPE, SortKind::BAG_SORT},
+        {internal::Kind::BITVECTOR_TYPE, SortKind::BITVECTOR_SORT},
+        {internal::Kind::DATATYPE_TYPE, SortKind::DATATYPE_SORT},
+        {internal::Kind::FINITE_FIELD_TYPE, SortKind::FINITE_FIELD_SORT},
+        {internal::Kind::FLOATINGPOINT_TYPE, SortKind::FLOATINGPOINT_SORT},
+        {internal::Kind::FUNCTION_TYPE, SortKind::FUNCTION_SORT},
+        {internal::Kind::SEQUENCE_TYPE, SortKind::SEQUENCE_SORT},
+        {internal::Kind::SET_TYPE, SortKind::SET_SORT},
+        {internal::Kind::SORT_TYPE, SortKind::UNINTERPRETED_SORT},
+        {internal::Kind::SORT_PARAMETER_TYPE, SortKind::SORT_PARAMETER_SORT},
+        {internal::Kind::TUPLE_TYPE, SortKind::TUPLE_SORT},
+        {internal::Kind::NULLABLE_TYPE, SortKind::NULLABLE_SORT},
+    };
 
 /* Set of kinds for indexed operators */
 const static std::unordered_set<Kind> s_indexed_kinds(
@@ -3883,6 +3887,8 @@ void DatatypeConstructorDecl::addSelector(const std::string& name,
   CVC5_API_CHECK_SORT(sort);
   CVC5_API_ARG_CHECK_EXPECTED(!sort.isNull(), sort)
       << "non-null codomain sort for selector";
+  CVC5_API_CHECK(!sort.d_type->hasSortParameter())
+      << "Global sort parameters are not permitted in datatype declarations";
   //////// all checks before this line
   d_ctor->addArg(name, *sort.d_type);
   ////////
@@ -6807,6 +6813,11 @@ DatatypeDecl TermManager::mkDatatypeDecl(const std::string& name,
 {
   CVC5_API_TRY_CATCH_BEGIN;
   CVC5_API_TM_CHECK_SORTS(params);
+  for (const Sort& p : params)
+  {
+    CVC5_API_CHECK(!p.d_type->hasSortParameter())
+        << "Global sort parameters cannot bind local datatype parameters";
+  }
   //////// all checks before this line
   return DatatypeDecl(d_nm, name, params, isCoDatatype);
   ////////
@@ -7403,6 +7414,17 @@ Sort Solver::declareSort(const std::string& symbol,
   //////// all checks before this line
   internal::TypeNode type = d_tm.d_nm->mkSortConstructor(symbol, arity, fresh);
   // notify the solver engine of the declaration
+  d_slv->declareSort(type);
+  return Sort(d_tm.d_nm, type);
+  ////////
+  CVC5_API_TRY_CATCH_END;
+}
+
+Sort Solver::declareSortParameter(const std::string& symbol, bool fresh) const
+{
+  CVC5_API_TRY_CATCH_BEGIN;
+  //////// all checks before this line
+  internal::TypeNode type = d_tm.d_nm->mkSortParameter(symbol, fresh);
   d_slv->declareSort(type);
   return Sort(d_tm.d_nm, type);
   ////////

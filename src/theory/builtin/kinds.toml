@@ -313,6 +313,17 @@ header                   = "theory/builtin/theory_builtin_type_rules.h"
 class  = "::cvc5::internal::theory::builtin::UninterpretedSortEnumerator"
 header = "theory/builtin/type_enumerator.h"
 
+[[kinds]]
+type    = "variable"
+name    = "SORT_PARAMETER_TYPE"
+comment = "a global SMT-LIB sort parameter"
+[kinds.cardinality]
+computer = "Cardinality::UNKNOWN_CARD"
+[kinds.well-founded]
+wellfoundedness-computer = "true"
+ground-term-computer = "::cvc5::internal::theory::builtin::SortProperties::mkGroundTerm(%TYPE%)"
+header = "theory/builtin/theory_builtin_type_rules.h"
+
 # an instantiated sort has the same properties as an ordinary uninterpreted sort
 [[kinds]]
 type     = "operator"

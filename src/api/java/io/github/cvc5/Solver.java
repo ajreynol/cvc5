@@ -2216,6 +2216,37 @@ public class Solver extends AbstractPointer
   private native long declareSort(long pointer, String symbol, int arity, boolean fresh);
 
   /**
+   * Declare a fresh global SMT-LIB sort parameter.
+   * @param symbol The name of the sort parameter.
+   * @return The sort parameter.
+   * @see #declareSortParameter(String, boolean)
+   */
+  public Sort declareSortParameter(String symbol)
+  {
+    return declareSortParameter(symbol, true);
+  }
+
+  /**
+   * Declare a global SMT-LIB sort parameter: {@code (declare-sort-parameter <symbol>)}.
+   * Sort parameters are implicitly universally quantified in each assertion.
+   * They are distinct from uninterpreted sorts and local datatype parameters.
+   *
+   * Solving formulas containing global sort parameters is not yet supported.
+   * Such formulas are rejected when asserted or assumed.
+   *
+   * @param symbol The name of the sort parameter.
+   * @param fresh Whether to create a fresh parameter. If false, calls with the
+   *              same term manager and symbol return the same parameter.
+   * @return The sort parameter.
+   */
+  public Sort declareSortParameter(String symbol, boolean fresh)
+  {
+    return new Sort(declareSortParameter(pointer, symbol, fresh));
+  }
+
+  private native long declareSortParameter(long pointer, String symbol, boolean fresh);
+
+  /**
    * Define n-ary function in the current context.
    *
    * SMT-LIB:
