@@ -823,8 +823,8 @@ class SmtContext : protected EnvObj
   bool isRelevantCore(Literal l) const { return d_prop.isRelevantCore(l); }
 
   /**
-   * Whether E-matching and the instance checkers consider n: n is relevant,
-   * or relevancy does not restrict matching (--no-z3-relevancy-match).
+   * Whether E-matching considers n: n is relevant, or relevancy does not
+   * restrict matching (--no-z3-relevancy-match).
    */
   bool isRelevantForMatching(TNode n) const
   {
@@ -834,6 +834,20 @@ class SmtContext : protected EnvObj
   bool isRelevantForMatching(ENode* n) const
   {
     return !d_params.d_relevancyMatch || isRelevant(n);
+  }
+
+  /**
+   * Whether the instance checkers consider n: n is relevant, or relevancy
+   * does not restrict them (--no-z3-relevancy-check).
+   */
+  bool isRelevantForChecking(TNode n) const
+  {
+    return !d_params.d_relevancyCheck || isRelevant(n);
+  }
+
+  bool isRelevantForChecking(ENode* n) const
+  {
+    return !d_params.d_relevancyCheck || isRelevant(n);
   }
 
   void markAsRelevant(TNode n) { d_prop.markAsRelevant(n); }

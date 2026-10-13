@@ -156,11 +156,16 @@ struct Params
    */
   bool d_relevancyDeliver = true;
   /**
-   * Whether E-matching and the instance checkers consider only relevant
-   * terms; when false, they consider every term, as without relevancy. Not in
-   * Z3.
+   * Whether E-matching considers only relevant terms; when false, it
+   * considers every term, as without relevancy. Not in Z3.
    */
   bool d_relevancyMatch = true;
+  /**
+   * Whether the instance checkers (Checker, QuickChecker) consider only
+   * relevant terms and atoms; when false, they consider every term and
+   * assigned atom, as without relevancy. Not in Z3.
+   */
+  bool d_relevancyCheck = true;
   /**
    * Whether quantifier instances are lemmas that survive backtracking and
    * garbage collection, as in cvc5, rather than clauses of the scope they are

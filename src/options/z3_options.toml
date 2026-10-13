@@ -175,7 +175,15 @@ name   = "Z3 Core"
   long       = "z3-relevancy-match"
   type       = "bool"
   default    = "true"
-  help       = "restrict E-matching and the instance checkers of the ported Z3 core to relevant terms; when false, they consider every term, as without relevancy"
+  help       = "restrict E-matching in the ported Z3 core to relevant terms; when false, it considers every term, as without relevancy"
+
+[[option]]
+  name       = "z3RelevancyCheck"
+  category   = "expert"
+  long       = "z3-relevancy-check"
+  type       = "bool"
+  default    = "true"
+  help       = "restrict the instance checkers of the ported Z3 core to relevant terms and atoms; when false, they consider every term and assigned atom, as without relevancy"
 
 [[option]]
   name       = "z3RestartAdaptive"

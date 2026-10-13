@@ -79,7 +79,7 @@ bool QuickChecker::Collector::checkArg(ENode* n, TNode f, size_t i)
   }
   for (ENode* curr : d_context.enodesOf(f))
   {
-    if (d_context.isRelevantForMatching(curr) && curr->isCgr()
+    if (d_context.isRelevantForChecking(curr) && curr->isCgr()
         && i < curr->getNumArgs() && curr->getArg(i)->getRoot() == n->getRoot())
     {
       return true;
@@ -124,7 +124,7 @@ void QuickChecker::Collector::collectCore(TNode n, TNode p, size_t i)
       ns.clear();
       for (ENode* curr : d_context.enodesOf(f))
       {
-        if (d_context.isRelevantForMatching(curr) && curr->isCgr()
+        if (d_context.isRelevantForChecking(curr) && curr->isCgr()
             && checkArg(curr, p, i) && j < curr->getNumArgs())
         {
           ENode* carg = curr->getArg(j)->getRoot();
@@ -143,7 +143,7 @@ void QuickChecker::Collector::collectCore(TNode n, TNode p, size_t i)
       ENodeSet& s = d_candidates[idx];
       for (ENode* curr : d_context.enodesOf(f))
       {
-        if (d_context.isRelevantForMatching(curr) && curr->isCgr()
+        if (d_context.isRelevantForChecking(curr) && curr->isCgr()
             && checkArg(curr, p, i) && j < curr->getNumArgs())
         {
           s.insert(curr->getArg(j)->getRoot());
@@ -242,7 +242,7 @@ void QuickChecker::fillBySort(TNode q)
       {
         break;
       }
-      if (!d_context.isRelevantForMatching(e) || e->getExpr().getType() != tn)
+      if (!d_context.isRelevantForChecking(e) || e->getExpr().getType() != tn)
       {
         continue;
       }
@@ -415,7 +415,7 @@ bool QuickChecker::anyArg(TNode a, bool isTrue)
 bool QuickChecker::checkCore(TNode n, bool isTrue)
 {
   Assert(n.getType().isBoolean());
-  if (d_context.bInternalized(n) && d_context.isRelevantForMatching(n))
+  if (d_context.bInternalized(n) && d_context.isRelevantForChecking(n))
   {
     LBool val = d_context.getAssignment(n);
     return val != L_UNDEF && isTrue == (val == L_TRUE);
@@ -458,9 +458,9 @@ bool QuickChecker::checkCore(TNode n, bool isTrue)
       {
         return lhs == rhs;
       }
-      if (d_context.eInternalized(lhs) && d_context.isRelevantForMatching(lhs)
+      if (d_context.eInternalized(lhs) && d_context.isRelevantForChecking(lhs)
           && d_context.eInternalized(rhs)
-          && d_context.isRelevantForMatching(rhs)
+          && d_context.isRelevantForChecking(rhs)
           && d_context.getENode(lhs)->getRoot()
                  != d_context.getENode(rhs)->getRoot())
       {
@@ -476,7 +476,7 @@ bool QuickChecker::checkCore(TNode n, bool isTrue)
     default: break;
   }
   Node newN = canonize(n);
-  if (d_context.litInternalized(newN) && d_context.isRelevantForMatching(newN))
+  if (d_context.litInternalized(newN) && d_context.isRelevantForChecking(newN))
   {
     LBool val = d_context.getAssignment(newN);
     if (val != L_UNDEF)

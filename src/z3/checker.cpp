@@ -72,7 +72,7 @@ bool Checker::checkCore(TNode n, size_t depth, bool isTrue)
     return false;
   }
   Assert(n.getType().isBoolean());
-  if (d_context.bInternalized(n) && d_context.isRelevantForMatching(n))
+  if (d_context.bInternalized(n) && d_context.isRelevantForChecking(n))
   {
     LBool val = d_context.getAssignment(n);
     return val != L_UNDEF && isTrue == (val == L_TRUE);
@@ -101,8 +101,8 @@ bool Checker::checkCore(TNode n, size_t depth, bool isTrue)
         ENode* lhs = getENodeEqTo(n[0]);
         ENode* rhs = getENodeEqTo(n[1]);
         if (lhs != nullptr && rhs != nullptr
-            && d_context.isRelevantForMatching(lhs)
-            && d_context.isRelevantForMatching(rhs))
+            && d_context.isRelevantForChecking(lhs)
+            && d_context.isRelevantForChecking(rhs))
         {
           if (isTrue && lhs->getRoot() == rhs->getRoot())
           {
@@ -136,7 +136,7 @@ bool Checker::checkCore(TNode n, size_t depth, bool isTrue)
     case Kind::ITE:
     {
       if (d_context.litInternalized(n[0])
-          && d_context.isRelevantForMatching(n[0]))
+          && d_context.isRelevantForChecking(n[0]))
       {
         switch (d_context.getAssignment(n[0]))
         {
@@ -150,7 +150,7 @@ bool Checker::checkCore(TNode n, size_t depth, bool isTrue)
     default: break;
   }
   ENode* e = getENodeEqTo(n);
-  if (e != nullptr && e->isBool() && d_context.isRelevantForMatching(e))
+  if (e != nullptr && e->isBool() && d_context.isRelevantForChecking(e))
   {
     LBool val = d_context.getAssignment(e->getExpr());
     return val != L_UNDEF && isTrue == (val == L_TRUE);
@@ -190,7 +190,7 @@ ENode* Checker::getENodeEqToCore(TNode n)
   {
     return nullptr;
   }
-  return d_context.isRelevantForMatching(e) ? e : nullptr;
+  return d_context.isRelevantForChecking(e) ? e : nullptr;
 }
 
 ENode* Checker::getENodeEqTo(TNode n)
@@ -204,7 +204,7 @@ ENode* Checker::getENodeEqTo(TNode n)
     }
     return d_bindings[idx];
   }
-  if (d_context.eInternalized(n) && d_context.isRelevantForMatching(n))
+  if (d_context.eInternalized(n) && d_context.isRelevantForChecking(n))
   {
     return d_context.getENode(n);
   }

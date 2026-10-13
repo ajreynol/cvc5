@@ -165,9 +165,17 @@ choice of case split queue give every combination of the three roles:
   1 (`PropCore::relevancyGatesAtoms`). Quantifiers are still delivered when
   they become relevant.
 - `--no-z3-relevancy-match`: the code trees are fed every enode, as without
-  relevancy, and the relevancy tests of the matching engine and the two
-  checkers pass for every term (`SmtContext::isRelevantForMatching`). The
-  relevancy tests of the theories are unchanged; they belong to delivery.
+  relevancy, and the relevancy tests of the matching engine pass for every
+  term (`SmtContext::isRelevantForMatching`). The relevancy tests of the
+  theories are unchanged; they belong to delivery.
+- `--no-z3-relevancy-check`: the relevancy tests of the two instance
+  checkers pass for every term and assigned atom
+  (`SmtContext::isRelevantForChecking`). Under the Verus presets this
+  concerns `Checker`, with which the instantiation queue skips an instance
+  that is already satisfied (`z3::instancesCheckerSat`) and makes a delayed
+  instance at once when it is in conflict; `QuickChecker` is off there.
+  This was part of `--no-z3-relevancy-match` until the first B1b results,
+  so B1b, B1c and B1e as first run turned both off.
 - Decisions by relevancy are the relevancy queue (`--z3-case-split=relevancy`,
   the Verus default); `--z3-case-split=activity` turns them off.
 
@@ -185,6 +193,9 @@ choice of case split queue give every combination of the three roles:
 B1c and A2 differ in one more thing: under B1c relevancy is still
 propagated, so the theories are still told which terms are relevant
 (`Theory::relevantEh`).
+
+B1f (`--no-z3-relevancy-match`) and B1g (`--no-z3-relevancy-check`) split
+B1b's matching role into E-matching and the instance checkers.
 
 **B2. Make instances permanent (I1).** `--z3-qi-permanent` asserts an
 instance as a theory lemma that survives backtracking, whose atoms are
@@ -263,10 +274,26 @@ First results, on `verus-best`:
 - **A6 is much worse:** instantiating during propagation matters, and none
   of cvc5's `--inst-when` modes instantiates before full effort. A6b tells
   whether the effect grows gradually with the eager threshold.
-- **A3 and A4 make no difference,** so B4 is unlikely to.
+- **A3, A4 and A5 make no difference,** so B4 is unlikely to.
+- **B1a is good; B1b and B1c are as bad as A2; B1d is about as bad as
+  A1a.** Relevancy matters through matching, which accounts for most of
+  A2's loss, and to a lesser degree through decisions. It does not matter
+  through what reaches the theories, which is the role cvc5 can do without.
+  B1b and B1c turned off both E-matching's and the instance checkers' use of
+  relevancy, so B1f and B1g separate them.
+- **cvc5's counterpart is weaker.** cvc5's term database
+  (`--term-db-mode=relevant`, and the default `relevant-all-delay` before
+  its fallback) admits the terms of every asserted literal and every merged
+  term (`TermDb::setHasTerm`). Relevancy admits only the terms the current
+  assignment needs to satisfy the input and the instances. cvc5 runs with
+  `--term-db-mode=all` and `relevant` show how much cvc5 relies on its own
+  filter.
 
-The runs, in order: B1a–B1e, B3a, B2a, A6b. Deferred: B4a–B4c, A5 and A1b,
-which tune what made no difference; B2b and B3b, whose control is A2.
+The runs, in order: B1f, B1g, B3a, B2a, A6b, and B3c
+(`--z3-case-split=justification --no-z3-relevancy-deliver`), the closest to
+cvc5 that keeps relevancy for matching. Deferred: B1c–B1e, whose answer
+B1a and B1b mostly give; B4a–B4c and A1b, which tune what made no
+difference; B2b and B3b, whose control is A2.
 - With `--stats`, the `z3::` counters that explain a change are
   `instances`, `conflicts`, `decisions`, `mamMatches`, `lazyInstances` and,
   under B2, `instancesRediscovered`.
