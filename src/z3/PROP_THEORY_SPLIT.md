@@ -5,7 +5,7 @@ Date: 2026-10-12
 Source snapshot: `8a1ca4ad2c` (Stage 1A), plus the capability changes that
 follow it.
 
-Status: steps 1–4 of the sequence in section 8 are done. The rest of this
+Status: steps 1–5 of the sequence in section 8 are done. The rest of this
 document describes the state before them, except where marked.
 
 This is the dependency audit that section 7 of
@@ -539,6 +539,24 @@ both presets; runs that time out excepted), identical results under
 5. **Give relevancy an owner.** `RelevancyPropagator` becomes a component of
    `PropCore`, with an explicit interface to T: the members of a class and
    the `relevantEh` sink. The order of the fan-out is preserved.
+
+   *Done:*
+   - *`PropCore` owns the propagator, the relevancy level that Setup chooses,
+     the relevancy step of the propagation fixpoint, and the record and
+     restore of the relevancy of the literals of a conflict clause.*
+   - *The propagator reads the assignment from `PropCore`. It asks the
+     theory side only for the members of an equivalence class
+     (`findENode`), the region and the statistics.*
+   - *`relevantEh` is split at the boundary. `PropCore::relevantEh` requeues
+     an assigned atom that now reaches the theory side and notifies the case
+     split queue. Then `SmtContext::relevantEh` notifies the quantifier
+     manager and the theories, in the order these happened before.*
+   - *`SmtContext` forwards the relevancy API that the theories, the
+     quantifier manager and the internalizer use.*
+   - *`PropCore` no longer calls the theory side for relevancy at all.*
+   - *One reordering relative to Z3: relevancy is pushed before the theory
+     side, and popped before the quantifier manager. Each touches only its
+     own state.*
 6. **Split internalization** along section 6. Theories register atoms
    through one call instead of five low-level ones.
 7. **Wire the ownership.**

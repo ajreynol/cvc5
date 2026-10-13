@@ -4,7 +4,7 @@ Date: 2026-10-10
 
 Source snapshot: `da001fa639` (`Preset`)
 
-Status: Stage 1A implemented; Stage 1B in progress (steps 1–4 of 7). See
+Status: Stage 1A implemented; Stage 1B in progress (steps 1–5 of 7). See
 the progress record in section 14.
 
 ## 1. Objective and migration principle
@@ -636,3 +636,6 @@ runs that time out compared under `--rlimit`):
    `z3::` counters are unchanged, and runs that time out match under
    `--rlimit`. On the same small timing sample the ratio was 0.951, which is
    within the noise.
+5. Relevancy is owned by `PropCore`. The theory side keeps only the part of
+   the relevancy notification that reaches the quantifier manager and the
+   theories, and gives the propagator the members of an equivalence class.

@@ -38,6 +38,7 @@
 namespace cvc5::internal {
 namespace z3 {
 
+class PropCore;
 class RelevancyPropagator;
 
 /** An event handler invoked when an expression becomes relevant. */
@@ -106,10 +107,10 @@ class PairRelevancyEh : public RelevancyEh
 class RelevancyPropagator
 {
  public:
-  RelevancyPropagator(SmtContext& ctx);
+  RelevancyPropagator(PropCore& core, SmtContext& theory);
   ~RelevancyPropagator();
 
-  SmtContext& getContext() { return d_context; }
+  SmtContext& getContext() { return d_theory; }
 
   /** Install a handler invoked whenever n is marked as relevant. */
   void addHandler(TNode source, RelevancyEh* eh);
@@ -235,7 +236,10 @@ class RelevancyPropagator
   void unmarkRelevantExprs(size_t oldLim);
   void undoTrail(size_t oldLim);
 
-  SmtContext& d_context;
+  /** The propositional side, which owns this object. */
+  PropCore& d_core;
+  /** The theory side, for equivalence classes, the region and statistics. */
+  SmtContext& d_theory;
   size_t d_qhead;
   std::vector<Node> d_relevantExprs;
   UIntSet d_isRelevant;

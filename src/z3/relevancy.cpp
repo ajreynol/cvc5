@@ -17,6 +17,7 @@
 
 #include "z3/ast.h"
 #include "z3/enode.h"
+#include "z3/prop_core.h"
 #include "z3/smt_context.h"
 
 namespace cvc5::internal {
@@ -151,16 +152,16 @@ class IteTermRelevancyEh : public RelevancyEh
 
 }  // namespace
 
-RelevancyPropagator::RelevancyPropagator(SmtContext& ctx)
-    : d_context(ctx), d_qhead(0), d_propagating(false)
+RelevancyPropagator::RelevancyPropagator(PropCore& core, SmtContext& theory)
+    : d_core(core), d_theory(theory), d_qhead(0), d_propagating(false)
 {
 }
 
 RelevancyPropagator::~RelevancyPropagator() {}
 
-bool RelevancyPropagator::enabled() const { return d_context.relevancy(); }
+bool RelevancyPropagator::enabled() const { return d_core.relevancy(); }
 
-Region& RelevancyPropagator::getRegion() const { return d_context.getRegion(); }
+Region& RelevancyPropagator::getRegion() const { return d_theory.getRegion(); }
 
 void RelevancyPropagator::addDependency(TNode src, TNode target)
 {
@@ -279,7 +280,7 @@ void RelevancyPropagator::addWatch(TNode n, bool val, RelevancyEh* eh)
   {
     return;
   }
-  LBool lval = d_context.findAssignment(n);
+  LBool lval = d_core.findAssignment(n);
   if (!val)
   {
     lval = ~lval;
@@ -303,7 +304,7 @@ void RelevancyPropagator::addWatch(TNode n, bool val, TNode target)
   {
     return;
   }
-  LBool lval = d_context.findAssignment(n);
+  LBool lval = d_core.findAssignment(n);
   if (!val)
   {
     lval = ~lval;
@@ -384,10 +385,10 @@ void RelevancyPropagator::undoTrail(size_t oldLim)
 
 void RelevancyPropagator::setRelevant(TNode n)
 {
-  d_context.getStats().d_numSetRelevant++;
+  d_theory.getStats().d_numSetRelevant++;
   d_isRelevant.insert(n.getId());
   d_relevantExprs.push_back(n);
-  d_context.relevantEh(n);
+  d_core.relevantEh(n);
 }
 
 void RelevancyPropagator::markAndPropagate(TNode n)
@@ -411,7 +412,7 @@ void RelevancyPropagator::markAsRelevant(TNode n)
   }
   if (!isRelevantCore(n))
   {
-    ENode* e = d_context.findENode(n);
+    ENode* e = d_theory.findENode(n);
     if (e != nullptr)
     {
       // relevancy is shared by an entire equivalence class
@@ -446,7 +447,7 @@ void RelevancyPropagator::propagateRelevantApp(TNode n)
 void RelevancyPropagator::propagateRelevantImplies(TNode n)
 {
   Assert(n.getKind() == Kind::IMPLIES);
-  LBool val = d_context.findAssignment(n);
+  LBool val = d_core.findAssignment(n);
   // If val is L_UNDEF then the expression is a root and no Boolean variable
   // was created for it.
   if (val == L_UNDEF)
@@ -461,7 +462,7 @@ void RelevancyPropagator::propagateRelevantImplies(TNode n)
     {
       TNode arg0 = n[0];
       TNode arg1 = n[1];
-      if (d_context.findAssignment(arg0) == L_FALSE)
+      if (d_core.findAssignment(arg0) == L_FALSE)
       {
         if (!isRelevantCore(arg0))
         {
@@ -469,7 +470,7 @@ void RelevancyPropagator::propagateRelevantImplies(TNode n)
         }
         return;
       }
-      if (d_context.findAssignment(arg1) == L_TRUE)
+      if (d_core.findAssignment(arg1) == L_TRUE)
       {
         if (!isRelevantCore(arg1))
         {
@@ -485,7 +486,7 @@ void RelevancyPropagator::propagateRelevantImplies(TNode n)
 void RelevancyPropagator::propagateRelevantOr(TNode n)
 {
   Assert(n.getKind() == Kind::OR);
-  LBool val = d_context.findAssignment(n);
+  LBool val = d_core.findAssignment(n);
   // If val is L_UNDEF then the expression is a root and no Boolean variable
   // was created for it.
   if (val == L_UNDEF)
@@ -502,7 +503,7 @@ void RelevancyPropagator::propagateRelevantOr(TNode n)
       TNode trueArg;
       for (const Node& arg : n)
       {
-        if (d_context.findAssignment(arg) == L_TRUE)
+        if (d_core.findAssignment(arg) == L_TRUE)
         {
           if (isRelevantCore(arg))
           {
@@ -525,7 +526,7 @@ void RelevancyPropagator::propagateRelevantOr(TNode n)
 
 void RelevancyPropagator::propagateRelevantAnd(TNode n)
 {
-  LBool val = d_context.findAssignment(n);
+  LBool val = d_core.findAssignment(n);
   switch (val)
   {
     case L_FALSE:
@@ -534,7 +535,7 @@ void RelevancyPropagator::propagateRelevantAnd(TNode n)
       TNode falseArg;
       for (const Node& arg : n)
       {
-        if (d_context.findAssignment(arg) == L_FALSE)
+        if (d_core.findAssignment(arg) == L_FALSE)
         {
           if (isRelevantCore(arg))
           {
@@ -560,7 +561,7 @@ void RelevancyPropagator::propagateRelevantAnd(TNode n)
 void RelevancyPropagator::propagateRelevantIte(TNode n)
 {
   markAsRelevant(n[0]);
-  switch (d_context.findAssignment(n[0]))
+  switch (d_core.findAssignment(n[0]))
   {
     case L_FALSE: markAsRelevant(n[2]); break;
     case L_UNDEF: break;

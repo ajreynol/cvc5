@@ -301,13 +301,14 @@ void SmtContext::setupContext(bool useStaticFeatures)
 {
   if (d_setupDone || inconsistent())
   {
-    d_relevancyLvl = std::min(d_params.d_relevancyLvl, d_relevancyLvl);
+    d_prop.setConfiguredRelevancyLvl(
+        std::min(d_params.d_relevancyLvl, d_prop.getConfiguredRelevancyLvl()));
     return;
   }
   d_setupDone = true;
   Setup setup(*this, d_params);
   setup(getConfigMode(useStaticFeatures));
-  d_relevancyLvl = d_params.d_relevancyLvl;
+  d_prop.setConfiguredRelevancyLvl(d_params.d_relevancyLvl);
   setupComponents();
 }
 

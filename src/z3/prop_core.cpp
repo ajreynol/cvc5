@@ -66,6 +66,8 @@ PropCore::PropCore(Env& env, SmtContext& ctx, Params& params, Statistics& stats)
       d_ctx(ctx),
       d_params(params),
       d_stats(stats),
+      d_relevancyLvl(params.d_relevancyLvl),
+      d_relevancyPropagator(new RelevancyPropagator(*this, ctx)),
       d_qhead(0),
       d_simpQhead(0),
       d_simpCounter(0),
@@ -422,7 +424,9 @@ LBool PropCore::boundedSearch()
 
 bool PropCore::canPropagate() const
 {
-  return d_qhead != d_assignedLiterals.size() || d_ctx.hasPendingTheoryWork();
+  return d_qhead != d_assignedLiterals.size()
+         || d_relevancyPropagator->canPropagate()
+         || d_ctx.hasPendingTheoryWork();
 }
 
 bool PropCore::propagate()
@@ -439,7 +443,12 @@ bool PropCore::propagate()
       return false;
     }
     Assert(!inconsistent());
-    if (!d_ctx.theoryPropagate(qhead))
+    propagateRelevancy(qhead);
+    if (inconsistent())
+    {
+      return false;
+    }
+    if (!d_ctx.theoryPropagate())
     {
       return false;
     }
@@ -539,9 +548,9 @@ bool PropCore::resolveConflict()
 
   // popScopeCore rather than popScope, because the cached generations are
   // still needed to rebuild the literals of the new conflict clause.
-  if (d_ctx.relevancy())
+  if (relevancy())
   {
-    d_ctx.recordRelevancy(numLits, lits);
+    recordRelevancy(numLits, lits);
   }
   size_t numBoolVars = popScopeCore(d_scopeLvl - newLvl);
   Assert(d_scopeLvl == newLvl);
@@ -570,9 +579,9 @@ bool PropCore::resolveConflict()
       }
     }
   }
-  if (d_ctx.relevancy())
+  if (relevancy())
   {
-    d_ctx.restoreRelevancy(numLits, lits);
+    restoreRelevancy(numLits, lits);
   }
   // The cache is reset manually, since popScopeCore does not do it.
   d_ctx.resetCacheGeneration();
@@ -589,7 +598,7 @@ bool PropCore::resolveConflict()
       unit = unit[0];
       unitSign = !unitSign;
     }
-    addUnitToReassert(unit, unitSign, d_ctx.isRelevant(unit));
+    addUnitToReassert(unit, unitSign, isRelevant(unit));
   }
 
   d_conflictResolution->releaseLemmaAtoms();
@@ -622,6 +631,73 @@ void PropCore::delInactiveLemmas()
   }
 }
 
+// ----------------------------------------------------------------- relevancy
+
+void PropCore::relevantEh(TNode n)
+{
+  if (bInternalized(n))
+  {
+    BoolVar v = getBoolVar(n);
+    BoolVarData& d = getBdata(v);
+    Assert(relevancy());
+    // Quantifiers are only asserted when marked relevant; other atoms only
+    // when the relevancy level is at least 2.
+    if (d.isAtom() && (d.isQuantifier() || relevancyLvl() >= 2))
+    {
+      LBool val = getAssignment(v);
+      if (val != L_UNDEF)
+      {
+        d_ctx.enqueueAtom(Literal(v, val == L_FALSE));
+      }
+    }
+  }
+  d_caseSplitQueue->relevantEh(n);
+  d_ctx.relevantEh(n);
+}
+
+void PropCore::propagateRelevancy(size_t qhead)
+{
+  if (!relevancy())
+  {
+    return;
+  }
+  size_t sz = d_assignedLiterals.size();
+  while (qhead < sz)
+  {
+    Literal l = d_assignedLiterals[qhead];
+    Assert(getAssignment(l) == L_TRUE);
+    qhead++;
+    BoolVar var = l.var();
+    TNode n = boolVar2Expr(var);
+    d_relevancyPropagator->assignEh(n, !l.sign());
+  }
+  d_relevancyPropagator->propagate();
+}
+
+void PropCore::recordRelevancy(size_t n, const Literal* lits)
+{
+  // A literal may have been marked relevant inside the scope that conflict
+  // resolution pops, in which case it is no longer relevant afterwards. That
+  // would make E-matching miss relevant triggers and lose completeness, so
+  // the relevancy is recorded here and restored after the pop.
+  d_relevantConflictLiterals.clear();
+  for (size_t i = 0; i < n; ++i)
+  {
+    d_relevantConflictLiterals.push_back(isRelevant(lits[i]));
+  }
+}
+
+void PropCore::restoreRelevancy(size_t n, const Literal* lits)
+{
+  for (size_t i = 0; i < n; ++i)
+  {
+    if (d_relevantConflictLiterals[i] && !isRelevant(lits[i]))
+    {
+      markAsRelevant(lits[i]);
+    }
+  }
+}
+
 // -------------------------------------------------------------------- scopes
 
 void PropCore::pushScope()
@@ -631,6 +707,7 @@ void PropCore::pushScope()
                            d_auxClauses.size(),
                            d_unitsToReassert.size()});
   d_caseSplitQueue->pushScope();
+  d_relevancyPropagator->push();
   d_ctx.pushTheoryScope();
 }
 
@@ -654,11 +731,13 @@ size_t PropCore::popScopeCore(size_t numScopes)
 
   // The order is that of Z3's pop_scope_core, except that the theory side's
   // state other than the trail is popped in one step, after this side's
-  // clauses: the case split queue, the clauses and the quantifier, relevancy
-  // and fingerprint state that it pops are independent of one another.
+  // clauses and relevancy: the case split queue, the clauses, relevancy and
+  // the quantifier and fingerprint state that the theory side pops are
+  // independent of one another.
   cacheGeneration(newLvl);
   d_caseSplitQueue->popScope(numScopes);
   size_t unitsToReassertLim = popClauses(newLvl);
+  d_relevancyPropagator->pop(numScopes);
   d_ctx.popTheoryScopeBegin(numScopes);
   unassignToScope(newLvl);
   d_ctx.popTheoryScopeEnd(numScopes, newLvl);
@@ -772,9 +851,8 @@ void PropCore::assignCore(Literal l, BJustification j, bool decision)
   d.d_phase = newPhase;
 
   if (d.isAtom()
-      && (d_ctx.relevancyLvl() == 0
-          || (d_ctx.relevancyLvl() == 1 && !d.isQuantifier())
-          || d_ctx.isRelevantCore(l)))
+      && (relevancyLvl() == 0 || (relevancyLvl() == 1 && !d.isQuantifier())
+          || isRelevantCore(l)))
   {
     d_ctx.enqueueAtom(l);
   }
@@ -893,7 +971,7 @@ bool PropCore::bcp()
       assignCore(firstLit, BJustification(cls));
       if (d_params.d_relevancyLemma && cls->isLemma())
       {
-        d_ctx.markAsRelevant(boolVar2Expr(firstLit.var()));
+        markAsRelevant(boolVar2Expr(firstLit.var()));
       }
     }
     Assert(it2 <= end);
@@ -1400,7 +1478,7 @@ void PropCore::reinitClauses(size_t numScopes, size_t numBoolVars)
           cls->setLiteral(j, l);
           if (cls->getKind() == CLS_TH_LEMMA)
           {
-            d_ctx.markAsRelevant(l);
+            markAsRelevant(l);
           }
         }
         int w1Idx = selectWatchLit(cls, 0);
@@ -1431,8 +1509,8 @@ void PropCore::reinitClauses(size_t numScopes, size_t numBoolVars)
         Literal l2 = cls->getLiteral(1);
         if (cls->getKind() == CLS_TH_LEMMA)
         {
-          d_ctx.markAsRelevant(l1);
-          d_ctx.markAsRelevant(l2);
+          markAsRelevant(l1);
+          markAsRelevant(l2);
         }
         if (getAssignment(l1) == L_FALSE && isEmptyClause(cls))
         {
@@ -1476,7 +1554,7 @@ void PropCore::reassertUnits(size_t unitsToReassertLim)
     assign(l, BJustification::mkAxiom());
     if (ru.d_relevant)
     {
-      d_ctx.markAsRelevant(l);
+      markAsRelevant(l);
     }
   }
   if (atBaseLevel())
@@ -2000,7 +2078,7 @@ bool PropCore::useBinaryClauseOpt(Literal l1, Literal l2, bool lemma) const
   // clause becomes unit it has to mark the unit literal relevant, and the
   // binary clause encoding cannot distinguish learned from non-learned
   // clauses.
-  if (lemma && d_ctx.relevancyLvl() >= 2)
+  if (lemma && relevancyLvl() >= 2)
   {
     return false;
   }

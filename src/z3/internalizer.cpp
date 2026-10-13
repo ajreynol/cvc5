@@ -1006,7 +1006,8 @@ void SmtContext::internalizeIteTerm(TNode n)
   mkGateClause(cLit, eq2Lit);
   if (relevancy())
   {
-    RelevancyEh* eh = d_relevancyPropagator->mkTermIteRelevancyEh(n, eq1, eq2);
+    RelevancyEh* eh =
+        d_prop.getRelevancyPropagator().mkTermIteRelevancyEh(n, eq1, eq2);
     addRelWatch(cLit, eh);
     addRelWatch(~cLit, eh);
     addRelevancyEh(n, eh);
@@ -1241,7 +1242,7 @@ void SmtContext::addAndRelWatches(TNode n)
 {
   if (relevancy())
   {
-    RelevancyEh* eh = d_relevancyPropagator->mkAndRelevancyEh(n);
+    RelevancyEh* eh = d_prop.getRelevancyPropagator().mkAndRelevancyEh(n);
     for (const Node& arg : n)
     {
       // if one child is assigned false, the and-parent must be notified
@@ -1254,7 +1255,7 @@ void SmtContext::addOrRelWatches(TNode n)
 {
   if (relevancy())
   {
-    RelevancyEh* eh = d_relevancyPropagator->mkOrRelevancyEh(n);
+    RelevancyEh* eh = d_prop.getRelevancyPropagator().mkOrRelevancyEh(n);
     for (const Node& arg : n)
     {
       // if one child is assigned true, the or-parent must be notified
@@ -1267,7 +1268,7 @@ void SmtContext::addImpliesRelWatches(TNode n)
 {
   if (relevancy())
   {
-    RelevancyEh* eh = d_relevancyPropagator->mkImpliesRelevancyEh(n);
+    RelevancyEh* eh = d_prop.getRelevancyPropagator().mkImpliesRelevancyEh(n);
     addRelWatch(~getLiteral(n[0]), eh);
     addRelWatch(getLiteral(n[1]), eh);
   }
@@ -1277,7 +1278,7 @@ void SmtContext::addIteRelWatches(TNode n)
 {
   if (relevancy())
   {
-    RelevancyEh* eh = d_relevancyPropagator->mkIteRelevancyEh(n);
+    RelevancyEh* eh = d_prop.getRelevancyPropagator().mkIteRelevancyEh(n);
     Literal l = getLiteral(n[0]);
     // when the condition of an ite is assigned, the ite-parent is notified
     addRelWatch(l, eh);

@@ -21,6 +21,7 @@
 #ifndef CVC5__Z3__PROP_CORE_H
 #define CVC5__Z3__PROP_CORE_H
 
+#include <algorithm>
 #include <memory>
 #include <vector>
 
@@ -33,6 +34,7 @@
 #include "z3/clause.h"
 #include "z3/justification.h"
 #include "z3/params.h"
+#include "z3/relevancy.h"
 #include "z3/statistics.h"
 #include "z3/types.h"
 #include "z3/util/literal.h"
@@ -69,8 +71,9 @@ std::ostream& operator<<(std::ostream& out, Failure f);
  * The Boolean search of the core: the Boolean variables and their
  * assignment, the watch lists and the clauses, Boolean constraint
  * propagation, the variable activity and phase heuristics, the case split
- * queue, the scope levels, conflict resolution, and the search driver
- * (search, restarts, decisions, the propagation fixpoint and backtracking).
+ * queue, the scope levels, conflict resolution, relevancy, and the search
+ * driver (search, restarts, decisions, the propagation fixpoint and
+ * backtracking).
  *
  * This is the propositional side of the boundary described in
  * PROP_THEORY_SPLIT.md. The theory side, SmtContext, owns this object. The
@@ -82,16 +85,14 @@ std::ostream& operator<<(std::ostream& out, Failure f);
  * pushTheoryScope, popTheoryScopeBegin and popTheoryScopeEnd when scopes are
  * pushed and popped. Besides that, what this side asks of the theory side
  * goes through the SmtContext reference d_ctx and is limited to:
- *  - relevancy, which decides which assigned atoms are passed to the theory
- *    side and which lemma literals are marked relevant (relevancyLvl,
- *    isRelevantCore, markAsRelevant);
  *  - handing assigned atoms to the theory side (enqueueAtom);
+ *  - notifying it that a term became relevant (relevantEh), after this side
+ *    has handled the notification; and the members of an equivalence class,
+ *    which share their relevancy, for the relevancy propagator (findENode);
  *  - recreating the atoms of clauses that survive backtracking (internalize,
  *    getLiteral) and caching the generations they had (cacheGeneration);
  *  - removing a deleted quantifier variable (notifyBoolVarDeleted);
  *  - the phase hint of a theory (getTheory);
- *  - recording and restoring the relevancy of the literals of a conflict
- *    clause across the backjump (recordRelevancy, restoreRelevancy);
  *  - the infrastructure the two sides share: the trail, the region-allocated
  *    justifications and the random number generator.
  */
@@ -335,6 +336,91 @@ class PropCore : protected EnvObj
 
   void forgetPhaseOfVarsInCurrentLevel();
 
+  // -------------------------------------------------------------- relevancy
+  uint32_t relevancyLvl() const
+  {
+    return std::min(d_relevancyLvl, d_params.d_relevancyLvl);
+  }
+
+  bool relevancy() const { return relevancyLvl() > 0; }
+
+  /** The relevancy level chosen when the context was configured. */
+  uint32_t getConfiguredRelevancyLvl() const { return d_relevancyLvl; }
+
+  void setConfiguredRelevancyLvl(uint32_t lvl) { d_relevancyLvl = lvl; }
+
+  RelevancyPropagator& getRelevancyPropagator()
+  {
+    return *d_relevancyPropagator;
+  }
+
+  bool isRelevantCore(TNode n) const
+  {
+    return d_relevancyPropagator->isRelevant(n);
+  }
+
+  bool isRelevantCore(Literal l) const
+  {
+    return isRelevantCore(boolVar2Expr(l.var()));
+  }
+
+  bool isRelevant(TNode n) const { return !relevancy() || isRelevantCore(n); }
+
+  bool isRelevant(BoolVar v) const { return isRelevant(boolVar2Expr(v)); }
+
+  bool isRelevant(Literal l) const
+  {
+    Assert(l != s_trueLiteral && l != s_falseLiteral);
+    return isRelevant(l.var());
+  }
+
+  void markAsRelevant(TNode n)
+  {
+    d_relevancyPropagator->markAsRelevant(n);
+    d_relevancyPropagator->propagate();
+  }
+
+  void markAsRelevant(BoolVar v) { markAsRelevant(boolVar2Expr(v)); }
+
+  void markAsRelevant(Literal l) { markAsRelevant(l.var()); }
+
+  template <typename Eh>
+  RelevancyEh* mkRelevancyEh(const Eh& eh)
+  {
+    return d_relevancyPropagator->mkRelevancyEh(eh);
+  }
+
+  void addRelevancyEh(TNode source, RelevancyEh* eh)
+  {
+    d_relevancyPropagator->addHandler(source, eh);
+  }
+
+  void addRelevancyDependency(TNode source, TNode target)
+  {
+    d_relevancyPropagator->addDependency(source, target);
+  }
+
+  void addRelWatch(Literal l, RelevancyEh* eh)
+  {
+    d_relevancyPropagator->addWatch(boolVar2Expr(l.var()), !l.sign(), eh);
+  }
+
+  void addRelWatch(Literal l, TNode n)
+  {
+    d_relevancyPropagator->addWatch(boolVar2Expr(l.var()), !l.sign(), n);
+  }
+
+  /**
+   * The event handler invoked by the relevancy propagator when n becomes
+   * relevant. This side requeues an assigned atom that now reaches the theory
+   * side, and notifies the case split queue; then the theory side is
+   * notified.
+   */
+  void relevantEh(TNode n);
+
+  /** Destroy the relevancy propagator, when the context is flushed. */
+  void flushRelevancy() { d_relevancyPropagator.reset(nullptr); }
+
   double getAgility() const { return d_agility; }
 
   CaseSplitQueue& getCaseSplitQueue() { return *d_caseSplitQueue; }
@@ -493,6 +579,10 @@ class PropCore : protected EnvObj
   void addScores(size_t n, const Literal* lits);
   void unassignVars(size_t oldLim);
 
+  void propagateRelevancy(size_t qhead);
+  void recordRelevancy(size_t n, const Literal* lits);
+  void restoreRelevancy(size_t n, const Literal* lits);
+
   // search driver
   /** Reset the search state and the heuristics at the start of a search. */
   void initSearch();
@@ -569,6 +659,12 @@ class PropCore : protected EnvObj
   SmtContext& d_ctx;
   Params& d_params;
   Statistics& d_stats;
+
+  /** The relevancy level chosen when the context was configured. */
+  uint32_t d_relevancyLvl;
+  std::unique_ptr<RelevancyPropagator> d_relevancyPropagator;
+  /** Scratch space for recordRelevancy and restoreRelevancy. */
+  std::vector<bool> d_relevantConflictLiterals;
 
   /** Maps the id of an expression to its Boolean variable. */
   std::vector<BoolVar> d_expr2BoolVar;

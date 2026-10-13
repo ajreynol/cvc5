@@ -65,7 +65,6 @@ bool isLiteralNode(TNode n)
 SmtContext::SmtContext(Env& env, Params& p)
     : EnvObj(env),
       d_params(p),
-      d_relevancyLvl(p.d_relevancyLvl),
       d_prop(env, *this, p, d_stats),
       d_normalizer(env.getNodeManager()),
       d_connNormalizer(env.getNodeManager(),
@@ -76,7 +75,6 @@ SmtContext::SmtContext(Env& env, Params& p)
                      p.d_ngLiftIte == Params::LI_CONSERVATIVE),
       d_patternInference(env.getNodeManager(), d_params),
       d_qmanager(nullptr),
-      d_relevancyPropagator(new RelevancyPropagator(*this)),
       d_random(p.d_randomSeed),
       d_fingerprints(d_region),
       d_assertedFormulasQhead(0),
@@ -120,7 +118,7 @@ void SmtContext::init()
 
 void SmtContext::flush()
 {
-  d_relevancyPropagator.reset(nullptr);
+  d_prop.flushRelevancy();
   for (Theory* th : d_theorySet)
   {
     th->flushEh();
@@ -141,11 +139,6 @@ void SmtContext::flush()
   }
   d_theorySet.clear();
   std::fill(d_theories.begin(), d_theories.end(), nullptr);
-}
-
-uint32_t SmtContext::relevancyLvl() const
-{
-  return std::min(d_relevancyLvl, d_params.d_relevancyLvl);
 }
 
 uint32_t SmtContext::getDeclId(TNode decl)
@@ -1331,24 +1324,6 @@ LBool SmtContext::getAssignment(ENode* n) const
 
 void SmtContext::relevantEh(TNode n)
 {
-  if (bInternalized(n))
-  {
-    BoolVar v = getBoolVar(n);
-    BoolVarData& d = getBdata(v);
-    Assert(relevancy());
-    // Quantifiers are only asserted when marked relevant; other atoms only
-    // when the relevancy level is at least 2.
-    if (d.isAtom() && (d.isQuantifier() || relevancyLvl() >= 2))
-    {
-      LBool val = getAssignment(v);
-      if (val != L_UNDEF)
-      {
-        d_atomPropagationQueue.push_back(Literal(v, val == L_FALSE));
-      }
-    }
-  }
-  d_prop.getCaseSplitQueue().relevantEh(n);
-
   if (!isApp(n))
   {
     return;
@@ -1388,25 +1363,6 @@ void SmtContext::relevantEh(TNode n)
       l = l->getNext();
     }
   }
-}
-
-void SmtContext::propagateRelevancy(size_t qhead)
-{
-  if (!relevancy())
-  {
-    return;
-  }
-  size_t sz = assignedLiterals().size();
-  while (qhead < sz)
-  {
-    Literal l = assignedLiterals()[qhead];
-    Assert(getAssignment(l) == L_TRUE);
-    qhead++;
-    BoolVar var = l.var();
-    TNode n = boolVar2Expr(var);
-    d_relevancyPropagator->assignEh(n, !l.sign());
-  }
-  d_relevancyPropagator->propagate();
 }
 
 bool SmtContext::propagateTheories()
@@ -1449,20 +1405,14 @@ void SmtContext::propagateThDiseqs()
 
 bool SmtContext::hasPendingTheoryWork() const
 {
-  return d_relevancyPropagator->canPropagate()
-         || !d_atomPropagationQueue.empty() || d_qmanager->canPropagate()
+  return !d_atomPropagationQueue.empty() || d_qmanager->canPropagate()
          || canTheoriesPropagate() || !d_eqPropagationQueue.empty()
          || !d_thEqPropagationQueue.empty()
          || !d_thDiseqPropagationQueue.empty();
 }
 
-bool SmtContext::theoryPropagate(size_t qhead)
+bool SmtContext::theoryPropagate()
 {
-  propagateRelevancy(qhead);
-  if (inconsistent())
-  {
-    return false;
-  }
   if (!propagateAtoms())
   {
     return false;
@@ -1557,7 +1507,6 @@ void SmtContext::pushTheoryScope()
   getTrailStack().pushScope();
   d_justificationsLims.push_back(d_justifications.size());
 
-  d_relevancyPropagator->push();
   d_qmanager->push();
   d_fingerprints.pushScope();
 
@@ -1570,7 +1519,6 @@ void SmtContext::pushTheoryScope()
 void SmtContext::popTheoryScopeBegin(size_t numScopes)
 {
   d_qmanager->pop(numScopes);
-  d_relevancyPropagator->pop(numScopes);
   d_fingerprints.popScope(numScopes);
 }
 
@@ -2210,30 +2158,6 @@ FinalCheckStatus SmtContext::finalCheck(Failure& failure)
     failure = f;
   }
   return result;
-}
-
-void SmtContext::recordRelevancy(size_t n, const Literal* lits)
-{
-  // A literal may have been marked relevant inside the scope that conflict
-  // resolution pops, in which case it is no longer relevant afterwards. That
-  // would make E-matching miss relevant triggers and lose completeness, so
-  // the relevancy is recorded here and restored after the pop.
-  d_relevantConflictLiterals.clear();
-  for (size_t i = 0; i < n; ++i)
-  {
-    d_relevantConflictLiterals.push_back(isRelevant(lits[i]));
-  }
-}
-
-void SmtContext::restoreRelevancy(size_t n, const Literal* lits)
-{
-  for (size_t i = 0; i < n; ++i)
-  {
-    if (d_relevantConflictLiterals[i] && !isRelevant(lits[i]))
-    {
-      markAsRelevant(lits[i]);
-    }
-  }
 }
 
 bool SmtContext::assumeEq(ENode* lhs, ENode* rhs)

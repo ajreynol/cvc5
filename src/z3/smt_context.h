@@ -165,12 +165,11 @@ class SmtContext : protected EnvObj
   // ------------------------------------- the scheduling and backtracking
   //                                       contract, called by PropCore
   /**
-   * Propagate on the theory side, after Boolean propagation has saturated:
-   * relevancy over the literals assigned since qhead, the assigned atoms,
-   * the equalities, the theories and the quantifiers, in that order. Returns
-   * false on a conflict.
+   * Propagate on the theory side, after Boolean propagation and relevancy
+   * have saturated: the assigned atoms, the equalities, the theories and the
+   * quantifiers, in that order. Returns false on a conflict.
    */
-  bool theoryPropagate(size_t qhead);
+  bool theoryPropagate();
 
   /** Whether the theory side has propagation work pending. */
   bool hasPendingTheoryWork() const;
@@ -204,8 +203,8 @@ class SmtContext : protected EnvObj
   void pushTheoryScope();
 
   /**
-   * Pop numScopes scopes of the quantifier manager, relevancy and the
-   * fingerprints, before the Boolean variables are unassigned.
+   * Pop numScopes scopes of the quantifier manager and the fingerprints,
+   * before the Boolean variables are unassigned.
    */
   void popTheoryScopeBegin(size_t numScopes);
 
@@ -215,12 +214,6 @@ class SmtContext : protected EnvObj
    * justifications, the propagation queues and the region.
    */
   void popTheoryScopeEnd(size_t numScopes, uint32_t newLvl);
-
-  /** Record the relevancy of the literals of a conflict clause. */
-  void recordRelevancy(size_t n, const Literal* lits);
-
-  /** Restore it after the backjump; see recordRelevancy. */
-  void restoreRelevancy(size_t n, const Literal* lits);
 
   void resetCacheGeneration();
 
@@ -241,9 +234,9 @@ class SmtContext : protected EnvObj
 
   Region& getRegion() { return d_region; }
 
-  bool relevancy() const { return relevancyLvl() > 0; }
+  bool relevancy() const { return d_prop.relevancy(); }
 
-  uint32_t relevancyLvl() const;
+  uint32_t relevancyLvl() const { return d_prop.relevancyLvl(); }
 
   ENode* getENode(TNode n) const
   {
@@ -755,68 +748,55 @@ class SmtContext : protected EnvObj
   bool canPropagate() const { return d_prop.canPropagate(); }
 
   // ------------------------------------------------------------ relevancy
-  /** The event handler invoked by the relevancy propagator. */
+  //
+  // Relevancy belongs to the propositional side; see PropCore. The methods
+  // below forward to it.
+
+  /**
+   * Notify the quantifier manager and the theories that n became relevant;
+   * called by PropCore::relevantEh.
+   */
   void relevantEh(TNode n);
 
-  bool isRelevantCore(TNode n) const
-  {
-    return d_relevancyPropagator->isRelevant(n);
-  }
+  bool isRelevantCore(TNode n) const { return d_prop.isRelevantCore(n); }
 
-  bool isRelevant(TNode n) const { return !relevancy() || isRelevantCore(n); }
+  bool isRelevant(TNode n) const { return d_prop.isRelevant(n); }
 
   bool isRelevant(ENode* n) const { return isRelevant(n->getExpr()); }
 
-  bool isRelevant(BoolVar v) const { return isRelevant(boolVar2Expr(v)); }
+  bool isRelevant(BoolVar v) const { return d_prop.isRelevant(v); }
 
-  bool isRelevant(Literal l) const
-  {
-    Assert(l != s_trueLiteral && l != s_falseLiteral);
-    return isRelevant(l.var());
-  }
+  bool isRelevant(Literal l) const { return d_prop.isRelevant(l); }
 
-  bool isRelevantCore(Literal l) const
-  {
-    return isRelevantCore(boolVar2Expr(l.var()));
-  }
+  bool isRelevantCore(Literal l) const { return d_prop.isRelevantCore(l); }
 
-  void markAsRelevant(TNode n)
-  {
-    d_relevancyPropagator->markAsRelevant(n);
-    d_relevancyPropagator->propagate();
-  }
+  void markAsRelevant(TNode n) { d_prop.markAsRelevant(n); }
 
   void markAsRelevant(ENode* n) { markAsRelevant(n->getExpr()); }
 
-  void markAsRelevant(BoolVar v) { markAsRelevant(boolVar2Expr(v)); }
+  void markAsRelevant(BoolVar v) { d_prop.markAsRelevant(v); }
 
-  void markAsRelevant(Literal l) { markAsRelevant(l.var()); }
+  void markAsRelevant(Literal l) { d_prop.markAsRelevant(l); }
 
   template <typename Eh>
   RelevancyEh* mkRelevancyEh(const Eh& eh)
   {
-    return d_relevancyPropagator->mkRelevancyEh(eh);
+    return d_prop.mkRelevancyEh(eh);
   }
 
   void addRelevancyEh(TNode source, RelevancyEh* eh)
   {
-    d_relevancyPropagator->addHandler(source, eh);
+    d_prop.addRelevancyEh(source, eh);
   }
 
   void addRelevancyDependency(TNode source, TNode target)
   {
-    d_relevancyPropagator->addDependency(source, target);
+    d_prop.addRelevancyDependency(source, target);
   }
 
-  void addRelWatch(Literal l, RelevancyEh* eh)
-  {
-    d_relevancyPropagator->addWatch(boolVar2Expr(l.var()), !l.sign(), eh);
-  }
+  void addRelWatch(Literal l, RelevancyEh* eh) { d_prop.addRelWatch(l, eh); }
 
-  void addRelWatch(Literal l, TNode n)
-  {
-    d_relevancyPropagator->addWatch(boolVar2Expr(l.var()), !l.sign(), n);
-  }
+  void addRelWatch(Literal l, TNode n) { d_prop.addRelWatch(l, n); }
 
   // -------------------------------------------------- value extraction
   bool getValue(ENode* n, Node& value);
@@ -947,7 +927,6 @@ class SmtContext : protected EnvObj
   bool propagateAtoms();
   void pushNewThDiseqs(ENode* r, TheoryVar v, Theory* th);
   void propagateBoolVarENode(BoolVar v);
-  void propagateRelevancy(size_t qhead);
   bool propagateTheories();
   void propagateThEqs();
   void propagateThDiseqs();
@@ -1019,7 +998,6 @@ class SmtContext : protected EnvObj
 
   // ------------------------------------------------------------- the fields
   Params& d_params;
-  uint32_t d_relevancyLvl;
   /**
    * The propositional side: the Boolean search state. It refers to d_params
    * and d_stats, so it is declared after them.
@@ -1039,7 +1017,6 @@ class SmtContext : protected EnvObj
    */
   TheoryStatus d_theoryStatus;
   std::unique_ptr<QuantifierManager> d_qmanager;
-  std::unique_ptr<RelevancyPropagator> d_relevancyPropagator;
   RandomGen d_random;
   FingerprintSet d_fingerprints;
 
@@ -1111,7 +1088,6 @@ class SmtContext : protected EnvObj
 
   // ------------------------------------------------------------------ engine
   bool d_setupDone;
-  std::vector<bool> d_relevantConflictLiterals;
 
   /** Scratch space for the topological sort used by internalizeDeep. */
   std::vector<ExprBoolPair> d_tsTodo;
