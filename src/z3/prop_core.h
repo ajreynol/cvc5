@@ -43,18 +43,45 @@
 namespace cvc5::internal {
 namespace z3 {
 
+class ConflictResolution;
 class SmtContext;
 
+/** The reason for an "unknown" result from check(). */
+enum Failure
+{
+  OK,
+  UNKNOWN,
+  MEMOUT,
+  /** the external cancel flag was set */
+  CANCELED,
+  /** the maximum number of conflicts was reached */
+  NUM_CONFLICTS,
+  /** a theory is incomplete */
+  THEORY,
+  RESOURCE_LIMIT,
+  /** the logical context contains universal quantifiers */
+  QUANTIFIERS
+};
+
+std::ostream& operator<<(std::ostream& out, Failure f);
+
 /**
- * The Boolean search state of the core: the Boolean variables and their
+ * The Boolean search of the core: the Boolean variables and their
  * assignment, the watch lists and the clauses, Boolean constraint
  * propagation, the variable activity and phase heuristics, the case split
- * queue, and the scope levels.
+ * queue, the scope levels, conflict resolution, and the search driver
+ * (search, restarts, decisions, the propagation fixpoint and backtracking).
  *
  * This is the propositional side of the boundary described in
- * PROP_THEORY_SPLIT.md. The theory side, SmtContext, owns this object. What
- * this side asks of the theory side goes through the SmtContext reference
- * d_ctx and is limited to:
+ * PROP_THEORY_SPLIT.md. The theory side, SmtContext, owns this object. The
+ * driver calls the theory side through its scheduling and backtracking
+ * contract: theoryPropagate and hasPendingTheoryWork for the propagation
+ * fixpoint, finalCheck when every variable is assigned, initSearchEh,
+ * restartEh and checkModel around the search, notifyConflictResolved after
+ * each conflict, clearPropagationQueues when a conflict is found, and
+ * pushTheoryScope, popTheoryScopeBegin and popTheoryScopeEnd when scopes are
+ * pushed and popped. Besides that, what this side asks of the theory side
+ * goes through the SmtContext reference d_ctx and is limited to:
  *  - relevancy, which decides which assigned atoms are passed to the theory
  *    side and which lemma literals are marked relevant (relevancyLvl,
  *    isRelevantCore, markAsRelevant);
@@ -63,11 +90,10 @@ class SmtContext;
  *    getLiteral) and caching the generations they had (cacheGeneration);
  *  - removing a deleted quantifier variable (notifyBoolVarDeleted);
  *  - the phase hint of a theory (getTheory);
+ *  - recording and restoring the relevancy of the literals of a conflict
+ *    clause across the backjump (recordRelevancy, restoreRelevancy);
  *  - the infrastructure the two sides share: the trail, the region-allocated
- *    justifications, the random number generator and the cancel flag.
- *
- * The search driver, the conflict resolution and the orchestration of scopes
- * are still in SmtContext; see PROP_THEORY_SPLIT.md, section 8, step 4(b).
+ *    justifications and the random number generator.
  */
 class PropCore : protected EnvObj
 {
@@ -86,7 +112,10 @@ class PropCore : protected EnvObj
   PropCore(const PropCore&) = delete;
   PropCore& operator=(const PropCore&) = delete;
 
-  /** Make the case split queue, which the theory side's constructor calls. */
+  /**
+   * Make the conflict resolution and the case split queue, which the theory
+   * side's constructor calls.
+   */
   void finishInit();
   /** Make the variable of t, the constant true, assigned by an axiom. */
   void initTrue(TNode t);
@@ -310,11 +339,6 @@ class PropCore : protected EnvObj
 
   CaseSplitQueue& getCaseSplitQueue() { return *d_caseSplitQueue; }
 
-  /** Reset the heuristics at the start of a search. */
-  void initSearch();
-
-  void endSearch();
-
   // ---------------------------------------------------------------- clauses
   Clause* mkClause(size_t numLits,
                    Literal* lits,
@@ -339,9 +363,6 @@ class PropCore : protected EnvObj
 
   /** Simplify the clauses at the base level, when there is new work. */
   void simplifyClauses();
-
-  /** Delete inactive lemmas, by the configured strategy. */
-  void delInactiveLemmas();
 
   size_t getNumUnitsToReassert() const { return d_unitsToReassert.size(); }
 
@@ -390,24 +411,54 @@ class PropCore : protected EnvObj
     return d_scopes[scopeLvl - 1].d_assignedLiteralsLim;
   }
 
-  /** Open a new search scope. */
+  /** Open a new search scope, on both sides. */
   void pushScope();
 
   /** Open a new user scope, after pushScope. */
   void pushBaseScope();
 
+  /** Backtrack numScopes scopes, on both sides. */
+  void popScope(size_t numScopes);
+
+  /** Backtrack to the base (user) level. */
+  void popToBaseLvl();
+
+  /** Backtrack to the search level. */
+  void popToSearchLvl();
+
+  // ---------------------------------------------------------- search driver
+  /** Run the search, from the search level. */
+  LBool search();
+
+  /** Propagate to a fixpoint; returns false on a conflict. */
+  bool propagate();
+
+  /** Whether either side has propagation work pending. */
+  bool canPropagate() const;
+
   /**
-   * The first part of backtracking to newLvl: delete the clauses that do not
-   * survive it and reset the conflict. Returns the number of delayed units to
-   * keep, to be passed to reassertUnits.
+   * Resolve the current conflict, learning a clause and backjumping. Returns
+   * false if the conflict is at the search level, i.e. unsatisfiable.
    */
-  size_t popClauses(uint32_t newLvl);
+  bool resolveConflict();
 
-  /** Unassign the literals assigned at a scope above newLvl. */
-  void unassignToScope(uint32_t newLvl);
+  /** True if the search was interrupted or ran out of resources. */
+  bool getCancelFlag();
 
-  /** Close the scopes above newLvl. */
-  void popScopeLevels(uint32_t newLvl);
+  void interrupt() { d_interrupted = true; }
+
+  bool resourceLimitsExceeded();
+
+  Failure getLastSearchFailure() const { return d_lastSearchFailure; }
+
+  void setLastSearchFailure(Failure f) { d_lastSearchFailure = f; }
+
+  bool isSearching() const { return d_searching; }
+
+  uint64_t getNumConflicts() const { return d_numConflicts; }
+
+  /** Reset the state of conflict resolution before a check. */
+  void resetConflictResolution();
 
  private:
   struct Scope
@@ -441,6 +492,28 @@ class PropCore : protected EnvObj
   void rescaleBoolVarActivity();
   void addScores(size_t n, const Literal* lits);
   void unassignVars(size_t oldLim);
+
+  // search driver
+  /** Reset the search state and the heuristics at the start of a search. */
+  void initSearch();
+  void endSearch();
+  void incLimits();
+  bool restart(LBool& status, uint32_t currLvl);
+  void tick(uint32_t& counter) const;
+  LBool boundedSearch();
+  bool decide();
+  /** Delete inactive lemmas, by the configured strategy. */
+  void delInactiveLemmas();
+  /**
+   * Backtrack numScopes scopes, without resetting the cached generations, and
+   * return the number of Boolean variables before the clauses are
+   * reinitialized, which is what tells reinitClauses which variables were
+   * deleted.
+   */
+  size_t popScopeCore(size_t numScopes);
+  size_t popClauses(uint32_t newLvl);
+  void unassignToScope(uint32_t newLvl);
+  void popScopeLevels(uint32_t newLvl);
 
   // clause management
   bool trackOccs() const { return d_params.d_phaseSelection == PS_OCCURRENCE; }
@@ -543,6 +616,21 @@ class PropCore : protected EnvObj
   bool d_assertedInconsistent;
   /** Set while the clauses are deleted on flushing. */
   bool d_flushing;
+
+  std::unique_ptr<ConflictResolution> d_conflictResolution;
+
+  // search driver
+  Failure d_lastSearchFailure;
+  bool d_searching;
+  bool d_interrupted;
+  uint64_t d_numConflicts;
+  uint64_t d_numConflictsSinceRestart;
+  uint64_t d_numConflictsSinceLemmaGc;
+  uint64_t d_numRestarts;
+  uint64_t d_restartThreshold;
+  uint64_t d_restartOuterThreshold;
+  uint32_t d_lubyIdx;
+  uint64_t d_lemmaGcThreshold;
 
   uint32_t d_scopeLvl;
   uint32_t d_baseLvl;

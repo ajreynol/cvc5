@@ -41,22 +41,6 @@
 namespace cvc5::internal {
 namespace z3 {
 
-std::ostream& operator<<(std::ostream& out, Failure f)
-{
-  switch (f)
-  {
-    case OK: out << "ok"; break;
-    case UNKNOWN: out << "unknown"; break;
-    case MEMOUT: out << "memout"; break;
-    case CANCELED: out << "canceled"; break;
-    case NUM_CONFLICTS: out << "num-conflicts"; break;
-    case THEORY: out << "theory"; break;
-    case RESOURCE_LIMIT: out << "resource-limit"; break;
-    case QUANTIFIERS: out << "quantifiers"; break;
-  }
-  return out;
-}
-
 namespace {
 
 bool isTrueNode(TNode n)
@@ -98,36 +82,19 @@ SmtContext::SmtContext(Env& env, Params& p)
       d_assertedFormulasQhead(0),
       d_hasQuantifiers(false),
       d_internalizingAssertions(false),
-      d_interrupted(false),
       d_finalCheckIdx(0),
       d_trueENode(nullptr),
       d_falseENode(nullptr),
       d_theories(s_numTheories, nullptr),
       d_isDiseqTmp(nullptr),
-      d_conflictResolution(nullptr),
       d_dynAckManager(*this, p),
       d_explainer(*this, d_dynAckManager),
       d_unknown("unknown"),
       d_generation(0),
-      d_lastSearchResult(L_UNDEF),
-      d_lastSearchFailure(OK),
-      d_searching(false),
-      d_searchFinalized(true),
       d_setupDone(false),
-      d_numConflicts(0),
-      d_numConflictsSinceRestart(0),
-      d_numConflictsSinceLemmaGc(0),
-      d_numRestarts(0),
-      d_numSimplifications(0),
-      d_restartThreshold(p.d_restartInitial),
-      d_restartOuterThreshold(p.d_restartInitial),
-      d_lubyIdx(1),
-      d_lemmaGcThreshold(p.d_lemmaGcInitial),
       d_mkENodeTrail(*this)
 {
   d_qmanager.reset(new QuantifierManager(*this, p));
-  d_conflictResolution.reset(
-      mkConflictResolution(*this, d_explainer, p, d_prop.assignedLiterals()));
   d_prop.finishInit();
 
   registerStatistics();
@@ -174,22 +141,6 @@ void SmtContext::flush()
   }
   d_theorySet.clear();
   std::fill(d_theories.begin(), d_theories.end(), nullptr);
-}
-
-bool SmtContext::getCancelFlag()
-{
-  if (d_interrupted)
-  {
-    d_lastSearchFailure = CANCELED;
-    return true;
-  }
-  if (!resourceManager()->out())
-  {
-    return false;
-  }
-  d_lastSearchFailure =
-      resourceManager()->outOfResources() ? RESOURCE_LIMIT : CANCELED;
-  return true;
 }
 
 uint32_t SmtContext::relevancyLvl() const
@@ -1496,6 +1447,51 @@ void SmtContext::propagateThDiseqs()
   d_thDiseqPropagationQueue.clear();
 }
 
+bool SmtContext::hasPendingTheoryWork() const
+{
+  return d_relevancyPropagator->canPropagate()
+         || !d_atomPropagationQueue.empty() || d_qmanager->canPropagate()
+         || canTheoriesPropagate() || !d_eqPropagationQueue.empty()
+         || !d_thEqPropagationQueue.empty()
+         || !d_thDiseqPropagationQueue.empty();
+}
+
+bool SmtContext::theoryPropagate(size_t qhead)
+{
+  propagateRelevancy(qhead);
+  if (inconsistent())
+  {
+    return false;
+  }
+  if (!propagateAtoms())
+  {
+    return false;
+  }
+  if (!propagateEqs())
+  {
+    return false;
+  }
+  propagateThEqs();
+  propagateThDiseqs();
+  if (inconsistent())
+  {
+    return false;
+  }
+  if (!propagateTheories())
+  {
+    return false;
+  }
+  if (!getCancelFlag())
+  {
+    d_qmanager->propagate();
+  }
+  if (inconsistent())
+  {
+    return false;
+  }
+  return true;
+}
+
 bool SmtContext::canTheoriesPropagate() const
 {
   for (Theory* t : d_theorySet)
@@ -1506,73 +1502,6 @@ bool SmtContext::canTheoriesPropagate() const
     }
   }
   return false;
-}
-
-bool SmtContext::canPropagate() const
-{
-  return d_prop.getQhead() != d_prop.assignedLiterals().size()
-         || d_relevancyPropagator->canPropagate()
-         || !d_atomPropagationQueue.empty() || d_qmanager->canPropagate()
-         || canTheoriesPropagate() || !d_eqPropagationQueue.empty()
-         || !d_thEqPropagationQueue.empty()
-         || !d_thDiseqPropagationQueue.empty();
-}
-
-bool SmtContext::propagate()
-{
-  while (true)
-  {
-    if (inconsistent())
-    {
-      return false;
-    }
-    size_t qhead = d_prop.getQhead();
-    if (!d_prop.bcp())
-    {
-      return false;
-    }
-    Assert(!inconsistent());
-    propagateRelevancy(qhead);
-    if (inconsistent())
-    {
-      return false;
-    }
-    if (!propagateAtoms())
-    {
-      return false;
-    }
-    if (!propagateEqs())
-    {
-      return false;
-    }
-    propagateThEqs();
-    propagateThDiseqs();
-    if (inconsistent())
-    {
-      return false;
-    }
-    if (!propagateTheories())
-    {
-      return false;
-    }
-    if (!getCancelFlag())
-    {
-      d_qmanager->propagate();
-    }
-    if (inconsistent())
-    {
-      return false;
-    }
-    if (resourceLimitsExceeded())
-    {
-      d_prop.setQhead(qhead);
-      return true;
-    }
-    if (!canPropagate())
-    {
-      return true;
-    }
-  }
 }
 
 void SmtContext::assignQuantifier(TNode q) { d_qmanager->assignEh(q); }
@@ -1622,37 +1551,8 @@ bool SmtContext::internalizedQuantifiers() const
   return !d_qmanager->empty();
 }
 
-bool SmtContext::decide()
+void SmtContext::pushTheoryScope()
 {
-  BoolVar var;
-  bool isPos;
-  LBool phase = L_UNDEF;
-  d_prop.getCaseSplitQueue().nextCaseSplit(var, phase);
-  if (var == s_nullBoolVar)
-  {
-    return false;
-  }
-
-  isPos = d_prop.guess(var, phase);
-
-  d_stats.d_numDecisions++;
-
-  pushScope();
-  Trace("z3-events") << "DECIDE " << boolVar2Expr(var) << std::endl;
-  Trace("z3-events") << "PHASE " << (isPos ? "pos" : "neg") << std::endl;
-
-  Literal l(var, false);
-  if (!isPos)
-  {
-    l.neg();
-  }
-  assign(l, BJustification::mkAxiom(), true);
-  return true;
-}
-
-void SmtContext::pushScope()
-{
-  d_prop.pushScope();
   d_region.pushScope();
   getTrailStack().pushScope();
   d_justificationsLims.push_back(d_justifications.size());
@@ -1660,12 +1560,37 @@ void SmtContext::pushScope()
   d_relevancyPropagator->push();
   d_qmanager->push();
   d_fingerprints.pushScope();
-  d_prop.getCaseSplitQueue().pushScope();
 
   for (Theory* t : d_theorySet)
   {
     t->pushScopeEh();
   }
+}
+
+void SmtContext::popTheoryScopeBegin(size_t numScopes)
+{
+  d_qmanager->pop(numScopes);
+  d_relevancyPropagator->pop(numScopes);
+  d_fingerprints.popScope(numScopes);
+}
+
+void SmtContext::popTheoryScopeEnd(size_t numScopes, uint32_t newLvl)
+{
+  Assert(d_justificationsLims.size() > newLvl);
+  d_trailStack.popScope(numScopes);
+
+  for (Theory* th : d_theorySet)
+  {
+    th->popScopeEh(numScopes);
+  }
+  delJustifications(d_justifications, d_justificationsLims[newLvl]);
+
+  d_eqPropagationQueue.clear();
+  d_thEqPropagationQueue.clear();
+  d_region.popScope(numScopes);
+  d_thDiseqPropagationQueue.clear();
+  d_atomPropagationQueue.clear();
+  d_justificationsLims.resize(newLvl);
 }
 
 void SmtContext::delJustifications(JustificationVector& justifications,
@@ -1740,94 +1665,6 @@ void SmtContext::resetCacheGeneration()
   d_cachedGeneration.clear();
 }
 
-size_t SmtContext::popScopeCore(size_t numScopes)
-{
-  // Backtrack numScopes levels and return the number of Boolean variables
-  // before the clauses are reinitialized, which is what tells reinitClauses
-  // which variables were deleted.
-  Assert(numScopes > 0);
-  Assert(numScopes <= getScopeLevel());
-  Assert(d_justificationsLims.size() == getScopeLevel());
-
-  uint32_t newLvl = getScopeLevel() - static_cast<uint32_t>(numScopes);
-
-  // The order of these steps is that of Z3's pop_scope_core; the steps of the
-  // propositional side are delegated to d_prop where they occur.
-  d_prop.cacheGeneration(newLvl);
-  d_qmanager->pop(numScopes);
-  d_prop.getCaseSplitQueue().popScope(numScopes);
-
-  size_t unitsToReassertLim = d_prop.popClauses(newLvl);
-
-  d_relevancyPropagator->pop(numScopes);
-
-  d_fingerprints.popScope(numScopes);
-
-  d_prop.unassignToScope(newLvl);
-  d_trailStack.popScope(numScopes);
-
-  for (Theory* th : d_theorySet)
-  {
-    th->popScopeEh(numScopes);
-  }
-  delJustifications(d_justifications, d_justificationsLims[newLvl]);
-
-  d_eqPropagationQueue.clear();
-  d_thEqPropagationQueue.clear();
-  d_region.popScope(numScopes);
-  d_thDiseqPropagationQueue.clear();
-  d_atomPropagationQueue.clear();
-  d_justificationsLims.resize(newLvl);
-  d_conflictResolution->reset();
-
-  d_prop.popScopeLevels(newLvl);
-
-  size_t numBoolVars = getNumBoolVars();
-  // Any variable at or above numBoolVars was deleted during backtracking.
-  d_prop.reinitClauses(numScopes, numBoolVars);
-  d_prop.reassertUnits(unitsToReassertLim);
-  return numBoolVars;
-}
-
-void SmtContext::popScope(size_t numScopes)
-{
-  popScopeCore(numScopes);
-  resetCacheGeneration();
-}
-
-void SmtContext::popToBaseLvl()
-{
-  Assert(getScopeLevel() >= getBaseLevel());
-  if (!atBaseLevel())
-  {
-    popScope(getScopeLevel() - getBaseLevel());
-  }
-}
-
-void SmtContext::popToSearchLvl()
-{
-  if (getScopeLevel() > getSearchLevel())
-  {
-    popScope(getScopeLevel() - getSearchLevel());
-  }
-}
-
-void SmtContext::delInactiveLemmas()
-{
-  if (d_params.d_lemmaGcStrategy == LGC_NONE)
-  {
-    return;
-  }
-  d_prop.delInactiveLemmas();
-
-  d_numConflictsSinceLemmaGc = 0;
-  if (d_params.d_lemmaGcStrategy == LGC_GEOMETRIC)
-  {
-    d_lemmaGcThreshold = static_cast<uint64_t>(
-        static_cast<double>(d_lemmaGcThreshold) * d_params.d_lemmaGcFactor);
-  }
-}
-
 void SmtContext::registerPlugin(Theory* th)
 {
   if (getTheory(th->getFamilyId()) != nullptr)
@@ -1853,7 +1690,7 @@ void SmtContext::assertFormula(TNode e)
   {
     return;
   }
-  if (!d_searching)
+  if (!isSearching())
   {
     popToBaseLvl();
   }
@@ -1945,15 +1782,15 @@ void SmtContext::push()
   setupContext(false);
   bool wasConsistent = !inconsistent();
   internalizeAssertions();
-  propagate();
+  d_prop.propagate();
   if (wasConsistent && inconsistent() && !d_prop.isAssertedInconsistent())
   {
     // the logical context became inconsistent during the user push
-    bool resolved = resolveConflict();
+    bool resolved = d_prop.resolveConflict();
     Assert(!resolved);
     (void)resolved;
   }
-  pushScope();
+  d_prop.pushScope();
   d_prop.pushBaseScope();
 }
 
@@ -1965,7 +1802,7 @@ void SmtContext::pop(size_t numScopes)
     return;
   }
   popToBaseLvl();
-  popScope(numScopes);
+  d_prop.popScope(numScopes);
 }
 
 void SmtContext::internalizeAssertions()
@@ -2047,7 +1884,7 @@ bool SmtContext::checkPreamble()
     dumpAssertions(d_env.getOptions().z3.z3DumpAssertions.c_str());
   }
   popToBaseLvl();
-  d_conflictResolution->reset();
+  d_prop.resetConflictResolution();
   return true;
 }
 
@@ -2154,8 +1991,6 @@ void SmtContext::dumpAssertions(const char* path)
 
 LBool SmtContext::checkFinalize(LBool r)
 {
-  d_searchFinalized = true;
-
   if (d_params.d_qiProfile && d_qmanager != nullptr)
   {
     // Z3 prints these as each quantifier is deleted, so the only way to see
@@ -2173,7 +2008,7 @@ LBool SmtContext::checkFinalize(LBool r)
   std::string reason;
   if (r == L_TRUE && !d_theoryStatus.canConfirmModel(reason))
   {
-    d_lastSearchFailure = THEORY;
+    d_prop.setLastSearchFailure(THEORY);
     d_unknown = reason;
     r = L_UNDEF;
   }
@@ -2206,7 +2041,6 @@ void SmtContext::setupComponents()
 {
   d_random.setSeed(d_params.d_randomSeed);
   d_dynAckManager.setup();
-  d_conflictResolution->setup();
 
   if (!relevancy())
   {
@@ -2240,312 +2074,68 @@ LBool SmtContext::check()
   // (see the README), so the search level is simply the current scope.
   d_prop.setSearchLevel(getScopeLevel());
   Assert(getSearchLevel() == getBaseLevel());
-  LBool r = search();
+  LBool r = d_prop.search();
   return checkFinalize(r);
 }
 
-void SmtContext::initSearch()
+void SmtContext::initSearchEh()
 {
   for (Theory* th : d_theorySet)
   {
     th->initSearchEh();
   }
   d_qmanager->initSearchEh();
-  d_numConflicts = 0;
-  d_numConflictsSinceRestart = 0;
-  d_numConflictsSinceLemmaGc = 0;
-  d_numRestarts = 0;
-  d_restartThreshold = d_params.d_restartInitial;
-  d_restartOuterThreshold = d_params.d_restartInitial;
-  d_lubyIdx = 1;
-  d_lemmaGcThreshold = d_params.d_lemmaGcInitial;
-  d_lastSearchFailure = OK;
   d_dynAckManager.initSearchEh();
   d_finalCheckIdx = 0;
-  d_prop.initSearch();
 }
 
-void SmtContext::endSearch() { d_prop.endSearch(); }
+void SmtContext::notifyConflictResolved() { d_dynAckManager.propagateEh(); }
 
-void SmtContext::incLimits()
+void SmtContext::clearPropagationQueues()
 {
-  if (d_numConflictsSinceRestart >= d_restartThreshold)
-  {
-    switch (d_params.d_restartStrategy)
-    {
-      case RS_GEOMETRIC:
-        d_restartThreshold = static_cast<uint64_t>(
-            static_cast<double>(d_restartThreshold) * d_params.d_restartFactor);
-        break;
-      case RS_IN_OUT_GEOMETRIC:
-        d_restartThreshold = static_cast<uint64_t>(
-            static_cast<double>(d_restartThreshold) * d_params.d_restartFactor);
-        if (d_restartThreshold > d_restartOuterThreshold)
-        {
-          d_restartThreshold = d_params.d_restartInitial;
-          d_restartOuterThreshold =
-              static_cast<uint64_t>(static_cast<double>(d_restartOuterThreshold)
-                                    * d_params.d_restartFactor);
-        }
-        break;
-      case RS_LUBY:
-        d_lubyIdx++;
-        d_restartThreshold = static_cast<uint64_t>(getLuby(d_lubyIdx))
-                             * d_params.d_restartInitial;
-        break;
-      case RS_FIXED: break;
-      case RS_ARITHMETIC:
-        d_restartThreshold = static_cast<uint64_t>(
-            static_cast<double>(d_restartThreshold) + d_params.d_restartFactor);
-        break;
-    }
-  }
-  d_numConflictsSinceRestart = 0;
+  d_atomPropagationQueue.clear();
+  d_eqPropagationQueue.clear();
+  d_thEqPropagationQueue.clear();
+  d_thDiseqPropagationQueue.clear();
 }
 
-LBool SmtContext::search()
+void SmtContext::restartEh()
 {
-  if (d_prop.isAssertedInconsistent())
+  for (Theory* th : d_theorySet)
   {
-    assertedInconsistent();
-    return L_FALSE;
-  }
-  if (inconsistent())
-  {
-    bool resolved = resolveConflict();
-    Assert(!resolved);
-    (void)resolved;
-    return L_FALSE;
-  }
-  if (getCancelFlag())
-  {
-    return L_UNDEF;
-  }
-
-  Assert(atSearchLevel());
-  initSearch();
-
-  d_searching = true;
-  d_searchFinalized = false;
-  LBool status = L_UNDEF;
-  uint32_t currLvl = getScopeLevel();
-
-  while (true)
-  {
-    Assert(!inconsistent());
-    status = boundedSearch();
-    if (!restart(status, currLvl))
-    {
-      break;
-    }
-  }
-
-  endSearch();
-  d_searching = false;
-  return status;
-}
-
-bool SmtContext::restart(LBool& status, uint32_t currLvl)
-{
-  Assert(status != L_TRUE || !inconsistent());
-
-  if (d_lastSearchFailure != OK)
-  {
-    return false;
-  }
-  if (status == L_FALSE)
-  {
-    return false;
-  }
-  if (status == L_TRUE && !d_qmanager->hasQuantifiers())
-  {
-    return false;
-  }
-  if (status == L_TRUE && d_qmanager->hasQuantifiers())
-  {
-    const options::HolderZ3& z3opts = d_env.getOptions().z3;
-    if (!z3opts.z3DumpSaturated.empty())
-    {
-      dumpCandidateModel(z3opts.z3DumpSaturated.c_str());
-    }
-    if (z3opts.z3CheckSaturated)
-    {
-      checkCandidateModel();
-    }
-    // The possible outcomes are: done sat, done unknown, or continue.
-    QuantifierManager::CheckModelResult cmr = d_qmanager->checkModel();
-    switch (cmr)
-    {
-      case QuantifierManager::SAT: return false;
-      case QuantifierManager::UNKNOWN:
-        // giving up
-        d_lastSearchFailure = QUANTIFIERS;
-        status = L_UNDEF;
-        return false;
-      default: break;
-    }
-  }
-  Trace("z3-events") << "RESTART decisions " << d_stats.d_numDecisions
-                     << " conflicts " << d_stats.d_numConflicts << std::endl;
-  incLimits();
-  if (status == L_TRUE || !d_params.d_restartAdaptive
-      || d_prop.getAgility() < d_params.d_restartAgilityThreshold)
-  {
-    Assert(!inconsistent());
-    // execute the restart
-    d_stats.d_numRestarts++;
-    d_numRestarts++;
-    if (getScopeLevel() > currLvl)
-    {
-      popScope(getScopeLevel() - currLvl);
-      Assert(atSearchLevel());
-    }
-    for (Theory* th : d_theorySet)
-    {
-      if (!inconsistent())
-      {
-        th->restartEh();
-      }
-    }
-
     if (!inconsistent())
     {
-      d_qmanager->restartEh();
+      th->restartEh();
     }
-    if (inconsistent())
-    {
-      bool resolved = resolveConflict();
-      Assert(!resolved);
-      (void)resolved;
-      status = L_FALSE;
-      return false;
-    }
-    if (d_numRestarts >= d_params.d_restartMax)
-    {
-      status = L_UNDEF;
-      d_lastSearchFailure = NUM_CONFLICTS;
-      return false;
-    }
-  }
-  if (d_params.d_simplifyClauses)
-  {
-    d_prop.simplifyClauses();
-  }
-  if (d_params.d_lemmaGcStrategy == LGC_AT_RESTART)
-  {
-    delInactiveLemmas();
   }
 
-  status = L_UNDEF;
-  return true;
-}
-
-void SmtContext::tick(uint32_t& counter) const
-{
-  counter++;
-  if (counter > d_params.d_tick)
+  if (!inconsistent())
   {
-    counter = 0;
+    d_qmanager->restartEh();
   }
 }
 
-LBool SmtContext::boundedSearch()
+QuantifierManager::CheckModelResult SmtContext::checkModel()
 {
-  uint32_t counter = 0;
-
-  while (true)
+  if (!d_qmanager->hasQuantifiers())
   {
-    while (!propagate())
-    {
-      tick(counter);
-
-      if (!resolveConflict())
-      {
-        return L_FALSE;
-      }
-
-      Assert(getScopeLevel() >= getBaseLevel());
-
-      if (!inconsistent())
-      {
-        if (resourceLimitsExceeded())
-        {
-          return L_UNDEF;
-        }
-        if (getCancelFlag())
-        {
-          return L_UNDEF;
-        }
-        if (d_numConflictsSinceRestart > d_restartThreshold
-            && getScopeLevel() - getBaseLevel() > 2)
-        {
-          return L_UNDEF;  // restart
-        }
-        if (d_numConflicts > d_params.d_maxConflicts)
-        {
-          d_lastSearchFailure = NUM_CONFLICTS;
-          return L_UNDEF;
-        }
-      }
-
-      if (d_numConflictsSinceLemmaGc > d_lemmaGcThreshold
-          && (d_params.d_lemmaGcStrategy == LGC_FIXED
-              || d_params.d_lemmaGcStrategy == LGC_GEOMETRIC))
-      {
-        delInactiveLemmas();
-      }
-
-      d_dynAckManager.propagateEh();
-    }
-
-    if (resourceLimitsExceeded() && !inconsistent())
-    {
-      return L_UNDEF;
-    }
-
-    if (getCancelFlag())
-    {
-      return L_UNDEF;
-    }
-
-    if (atBaseLevel() && d_params.d_simplifyClauses)
-    {
-      d_prop.simplifyClauses();
-    }
-
-    if (!decide())
-    {
-      if (inconsistent())
-      {
-        return L_FALSE;
-      }
-      FinalCheckStatus fcs = finalCheck();
-      switch (fcs)
-      {
-        case FC_DONE: return L_TRUE;
-        case FC_CONTINUE: break;
-        case FC_GIVEUP: return L_UNDEF;
-      }
-    }
-
-    if (resourceLimitsExceeded() && !inconsistent())
-    {
-      return L_UNDEF;
-    }
+    return QuantifierManager::SAT;
   }
+  const options::HolderZ3& z3opts = d_env.getOptions().z3;
+  if (!z3opts.z3DumpSaturated.empty())
+  {
+    dumpCandidateModel(z3opts.z3DumpSaturated.c_str());
+  }
+  if (z3opts.z3CheckSaturated)
+  {
+    checkCandidateModel();
+  }
+  return d_qmanager->checkModel();
 }
 
-bool SmtContext::resourceLimitsExceeded()
+FinalCheckStatus SmtContext::finalCheck(Failure& failure)
 {
-  if (d_searching && d_lastSearchFailure != OK)
-  {
-    return true;
-  }
-  return getCancelFlag();
-}
-
-FinalCheckStatus SmtContext::finalCheck()
-{
+  failure = OK;
   d_stats.d_numFinalChecks++;
   Trace("z3-events") << "FINALCHECK " << d_stats.d_numFinalChecks << std::endl;
 
@@ -2617,129 +2207,9 @@ FinalCheckStatus SmtContext::finalCheck()
 
   if (result == FC_GIVEUP && f != OK)
   {
-    d_lastSearchFailure = f;
+    failure = f;
   }
   return result;
-}
-
-bool SmtContext::resolveConflict()
-{
-  d_stats.d_numConflicts++;
-  d_numConflicts++;
-  d_numConflictsSinceRestart++;
-  d_numConflictsSinceLemmaGc++;
-  switch (d_prop.getConflict().getKind())
-  {
-    case BJustification::CLAUSE:
-    case BJustification::BIN_CLAUSE: d_stats.d_numSatConflicts++; break;
-    default: break;
-  }
-  if (d_params.d_phaseSelection == PS_THEORY
-      || d_params.d_phaseSelection == PS_CACHING_CONSERVATIVE
-      || d_params.d_phaseSelection == PS_CACHING_CONSERVATIVE2)
-  {
-    d_prop.forgetPhaseOfVarsInCurrentLevel();
-  }
-  d_atomPropagationQueue.clear();
-  d_eqPropagationQueue.clear();
-  d_thEqPropagationQueue.clear();
-  d_thDiseqPropagationQueue.clear();
-  if (!d_conflictResolution->resolve(d_prop.getConflict(), d_prop.getNotL()))
-  {
-    return false;
-  }
-
-  uint32_t newLvl = d_conflictResolution->getNewScopeLvl();
-  size_t numLits = d_conflictResolution->getLemmaNumLiterals();
-  Literal* lits = d_conflictResolution->getLemmaLiterals();
-
-  Assert(numLits > 0);
-  uint32_t conflictLvl = getAssignLevel(lits[0]);
-  Assert(conflictLvl <= getScopeLevel());
-
-  // When numLits == 1 the default behavior is to go back to the base level.
-  // With quantifiers that can be too expensive, since every instance would
-  // have to be recreated, so instead the unit is remembered and reasserted
-  // after every backtrack, and only one level is popped.
-  bool delayForcedRestart =
-      d_params.d_delayUnits && numLits == 1
-      && conflictLvl > getSearchLevel() + 1
-      && d_prop.getNumUnitsToReassert() < d_params.d_delayUnitsThreshold;
-
-  if (delayForcedRestart)
-  {
-    newLvl = conflictLvl - 1;
-  }
-
-  // Some of the literals and enodes of the conflict clause are destroyed by
-  // backtracking and have to be recreated; cache their generations first.
-  if (d_conflictResolution->getLemmaInternLvl() > newLvl)
-  {
-    d_prop.cacheGeneration(numLits, lits, newLvl);
-  }
-
-  Assert(newLvl < getScopeLevel());
-
-  // popScopeCore rather than popScope, because the cached generations are
-  // still needed to rebuild the literals of the new conflict clause.
-  if (relevancy())
-  {
-    recordRelevancy(numLits, lits);
-  }
-  size_t numBoolVars = popScopeCore(getScopeLevel() - newLvl);
-  Assert(getScopeLevel() == newLvl);
-  // The context may still be in conflict after the clauses are reinitialized.
-  if (d_conflictResolution->getLemmaInternLvl() > getScopeLevel())
-  {
-    std::vector<Node>& atoms = d_conflictResolution->getLemmaAtoms();
-    for (size_t i = 0; i < numLits; ++i)
-    {
-      Literal l = lits[i];
-      if (l.var() >= numBoolVars)
-      {
-        // This variable was deleted during backtracking and must be
-        // recreated. Note the atom may be a negative literal: the core
-        // creates Boolean variables for not-gates nested inside terms.
-        TNode atom = atoms[i];
-        internalize(atom, true);
-        // getBoolVar would return the null variable for a negated atom, so
-        // getLiteral is used instead.
-        Literal newL = getLiteral(atom);
-        if (l.sign())
-        {
-          newL.neg();
-        }
-        lits[i] = newL;
-      }
-    }
-  }
-  if (relevancy())
-  {
-    restoreRelevancy(numLits, lits);
-  }
-  // The cache is reset manually, since popScopeCore does not do it.
-  resetCacheGeneration();
-
-  d_stats.d_numLearnedLits += numLits;
-  mkClause(numLits, lits, nullptr, CLS_LEARNED);
-  if (delayForcedRestart)
-  {
-    Assert(numLits == 1);
-    Node unit = boolVar2Expr(lits[0].var());
-    bool unitSign = lits[0].sign();
-    while (unit.getKind() == Kind::NOT)
-    {
-      unit = unit[0];
-      unitSign = !unitSign;
-    }
-    d_prop.addUnitToReassert(unit, unitSign, isRelevant(unit));
-  }
-
-  d_conflictResolution->releaseLemmaAtoms();
-  Trace("z3-events") << "CONFLICT " << numLits << std::endl;
-  d_prop.decayBvarActivity();
-  d_prop.updatePhaseCacheCounter();
-  return true;
 }
 
 void SmtContext::recordRelevancy(size_t n, const Literal* lits)
@@ -3046,7 +2516,7 @@ void SmtContext::registerStatistics()
 
 std::ostream& SmtContext::printLastFailure(std::ostream& out) const
 {
-  return out << d_lastSearchFailure;
+  return out << getLastSearchFailure();
 }
 }  // namespace z3
 }  // namespace cvc5::internal

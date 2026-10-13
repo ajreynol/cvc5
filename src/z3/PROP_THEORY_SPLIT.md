@@ -5,8 +5,8 @@ Date: 2026-10-12
 Source snapshot: `8a1ca4ad2c` (Stage 1A), plus the capability changes that
 follow it.
 
-Status: steps 1–3 and 4(a) of the sequence in section 8 are done. The rest
-of this document describes the state before them, except where marked.
+Status: steps 1–4 of the sequence in section 8 are done. The rest of this
+document describes the state before them, except where marked.
 
 This is the dependency audit that section 7 of
 [ARCHITECTURE_PLAN.md](ARCHITECTURE_PLAN.md) asks for before `SmtContext` is
@@ -503,6 +503,39 @@ both presets; runs that time out excepted), identical results under
    still sequence both sides, calling `PropCore` for its part at the same
    point as before. The justification limit of a scope is now kept by
    `SmtContext`.*
+
+   *4(b) done: `PropCore` now holds the search driver as well:
+   - `search`, `boundedSearch`, `propagate`, `restart`, `decide` and
+     `resolveConflict`;
+   - the conflict resolution object, and the restart, GC and conflict
+     counters;
+   - the cancel flag and the failure reason;
+   - the push and pop of scopes.*
+
+   *`SmtContext` keeps the entry points (`check`, `push`, `pop` and the input
+   queue). It answers the driver through a scheduling and backtracking
+   contract:*
+   - *`theoryPropagate` and `hasPendingTheoryWork` for the propagation
+     fixpoint;*
+   - *`finalCheck`, which now reports its failure reason to the driver instead
+     of setting it;*
+   - *`initSearchEh`, `restartEh`, `checkModel`, `notifyConflictResolved` and
+     `clearPropagationQueues`;*
+   - *`pushTheoryScope`, `popTheoryScopeBegin` and `popTheoryScopeEnd`.*
+
+   *To group the theory side's steps, three were reordered relative to
+   Z3's:*
+   - *The case split queue is pushed before the theory side, rather than
+     between the fingerprints and the theories.*
+   - *The quantifier manager is popped after the propositional side's
+     clauses, rather than before them.*
+   - *The theory side's `initSearchEh` runs before the propositional side's
+     counters are reset.*
+
+   *Each of these touches only its own state. The comparison confirms it:
+   answers and counters are unchanged. The fields `d_lastSearchResult`,
+   `d_searchFinalized` and `d_numSimplifications` were never read and are
+   removed.*
 5. **Give relevancy an owner.** `RelevancyPropagator` becomes a component of
    `PropCore`, with an explicit interface to T: the members of a class and
    the `relevantEh` sink. The order of the fan-out is preserved.

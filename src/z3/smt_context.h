@@ -56,6 +56,7 @@
 #include "z3/pattern_inference.h"
 #include "z3/prop_core.h"
 #include "z3/push_app_ite.h"
+#include "z3/quantifier_manager.h"
 #include "z3/relevancy.h"
 #include "z3/statistics.h"
 #include "z3/theory.h"
@@ -74,25 +75,6 @@ namespace z3 {
 class ModelGenerator;
 class QuantifierManager;
 class Cvc5Bridge;
-
-/** The reason for an "unknown" result from check(). */
-enum Failure
-{
-  OK,
-  UNKNOWN,
-  MEMOUT,
-  /** the external cancel flag was set */
-  CANCELED,
-  /** the maximum number of conflicts was reached */
-  NUM_CONFLICTS,
-  /** a theory is incomplete */
-  THEORY,
-  RESOURCE_LIMIT,
-  /** the logical context contains universal quantifiers */
-  QUANTIFIERS
-};
-
-std::ostream& operator<<(std::ostream& out, Failure f);
 
 /** How the core is configured. Z3's config_mode. */
 enum ConfigMode
@@ -176,9 +158,73 @@ class SmtContext : protected EnvObj
   void pop(size_t numScopes);
 
   /** Backtrack to the base (user) level. */
-  void popToBaseLvl();
+  void popToBaseLvl() { d_prop.popToBaseLvl(); }
 
-  Failure getLastSearchFailure() const { return d_lastSearchFailure; }
+  Failure getLastSearchFailure() const { return d_prop.getLastSearchFailure(); }
+
+  // ------------------------------------- the scheduling and backtracking
+  //                                       contract, called by PropCore
+  /**
+   * Propagate on the theory side, after Boolean propagation has saturated:
+   * relevancy over the literals assigned since qhead, the assigned atoms,
+   * the equalities, the theories and the quantifiers, in that order. Returns
+   * false on a conflict.
+   */
+  bool theoryPropagate(size_t qhead);
+
+  /** Whether the theory side has propagation work pending. */
+  bool hasPendingTheoryWork() const;
+
+  /** Called at the start of a search. */
+  void initSearchEh();
+
+  /**
+   * The final check, when every Boolean variable is assigned. If the theory
+   * side gives up for a known reason, failure is set to it, and otherwise to
+   * OK.
+   */
+  FinalCheckStatus finalCheck(Failure& failure);
+
+  /** Called on a restart, after backtracking to the search level. */
+  void restartEh();
+
+  /**
+   * Whether a satisfying assignment of the quantifier-free part is a model.
+   * SAT if there are no quantifiers to check.
+   */
+  QuantifierManager::CheckModelResult checkModel();
+
+  /** Called after each conflict is resolved, when the search continues. */
+  void notifyConflictResolved();
+
+  /** Drop the pending propagations, when a conflict is found. */
+  void clearPropagationQueues();
+
+  /** Push a scope of the theory side, after the propositional side's. */
+  void pushTheoryScope();
+
+  /**
+   * Pop numScopes scopes of the quantifier manager, relevancy and the
+   * fingerprints, before the Boolean variables are unassigned.
+   */
+  void popTheoryScopeBegin(size_t numScopes);
+
+  /**
+   * Pop numScopes scopes of the rest of the theory side, down to newLvl,
+   * after the Boolean variables are unassigned: the trail, the theories, the
+   * justifications, the propagation queues and the region.
+   */
+  void popTheoryScopeEnd(size_t numScopes, uint32_t newLvl);
+
+  /** Record the relevancy of the literals of a conflict clause. */
+  void recordRelevancy(size_t n, const Literal* lits);
+
+  /** Restore it after the backjump; see recordRelevancy. */
+  void restoreRelevancy(size_t n, const Literal* lits);
+
+  void resetCacheGeneration();
+
+  Explainer& getExplainer() { return d_explainer; }
 
   void setReasonUnknown(const std::string& msg) { d_unknown = msg; }
 
@@ -298,7 +344,7 @@ class SmtContext : protected EnvObj
 
   int getRandomValue() { return d_random(); }
 
-  bool isSearching() const { return d_searching; }
+  bool isSearching() const { return d_prop.isSearching(); }
 
   const std::vector<double>& getActivityVector() const
   {
@@ -349,7 +395,7 @@ class SmtContext : protected EnvObj
 
   bool atSearchLevel() const { return d_prop.atSearchLevel(); }
 
-  void popToSearchLevel() { popToSearchLvl(); }
+  void popToSearchLevel() { d_prop.popToSearchLvl(); }
 
   TNode boolVar2Expr(BoolVar v) const { return d_prop.boolVar2Expr(v); }
 
@@ -650,7 +696,7 @@ class SmtContext : protected EnvObj
 
   bool inconsistent() const { return d_prop.inconsistent(); }
 
-  uint64_t getNumConflicts() const { return d_numConflicts; }
+  uint64_t getNumConflicts() const { return d_prop.getNumConflicts(); }
 
   static bool isEq(const ENode* n1, const ENode* n2)
   {
@@ -706,7 +752,7 @@ class SmtContext : protected EnvObj
     d_prop.incBvarActivity(v, inc);
   }
 
-  bool canPropagate() const;
+  bool canPropagate() const { return d_prop.canPropagate(); }
 
   // ------------------------------------------------------------ relevancy
   /** The event handler invoked by the relevancy propagator. */
@@ -819,11 +865,11 @@ class SmtContext : protected EnvObj
   /** True if any theory was internalized without a plugin. */
   bool isModelUnsound() const { return d_theoryStatus.isModelUnsound(); }
 
-  bool resourceLimitsExceeded();
+  bool resourceLimitsExceeded() { return d_prop.resourceLimitsExceeded(); }
 
-  bool getCancelFlag();
+  bool getCancelFlag() { return d_prop.getCancelFlag(); }
 
-  void interrupt() { d_interrupted = true; }
+  void interrupt() { d_prop.interrupt(); }
 
  protected:
   // --------------------------------------------- equality and congruence
@@ -906,21 +952,6 @@ class SmtContext : protected EnvObj
   void propagateThEqs();
   void propagateThDiseqs();
   bool canTheoriesPropagate() const;
-  bool propagate();
-
-  bool decide();
-
-  void initSearch();
-  void endSearch();
-  LBool search();
-  void incLimits();
-  bool restart(LBool& status, uint32_t currLvl);
-  void tick(uint32_t& counter) const;
-  LBool boundedSearch();
-  FinalCheckStatus finalCheck();
-  virtual bool resolveConflict();
-  void recordRelevancy(size_t n, const Literal* lits);
-  void restoreRelevancy(size_t n, const Literal* lits);
 
   bool checkPreamble();
   LBool checkFinalize(LBool r);
@@ -928,15 +959,7 @@ class SmtContext : protected EnvObj
   void assertedInconsistent();
 
   // --------------------------------------------------------- backtracking
-  void pushScope();
-  size_t popScopeCore(size_t numScopes);
-  void popScope(size_t numScopes);
-  void popToSearchLvl();
   void delJustifications(JustificationVector& justifications, size_t oldLim);
-  void resetCacheGeneration();
-
-  // ------------------------------------------------- clause simplification
-  void delInactiveLemmas();
 
   // -------------------------------------------------------- internalization
   void updateGeneration(ENode* n);
@@ -1025,7 +1048,6 @@ class SmtContext : protected EnvObj
   size_t d_assertedFormulasQhead;
   bool d_hasQuantifiers;
   bool d_internalizingAssertions;
-  bool d_interrupted;
 
   /** The expressions already internalized as enodes. */
   std::vector<Node> d_eInternalizedStack;
@@ -1066,9 +1088,6 @@ class SmtContext : protected EnvObj
   Node d_isDiseqTmpExpr;
   TmpENode d_tmpENode;
 
-  // ------------------------------------------------------- the search driver
-  std::unique_ptr<ConflictResolution> d_conflictResolution;
-
   LiteralVector d_atomPropagationQueue;
 
   std::unordered_map<TNode, uint32_t> d_cachedGeneration;
@@ -1091,20 +1110,7 @@ class SmtContext : protected EnvObj
   uint32_t d_generation;
 
   // ------------------------------------------------------------------ engine
-  LBool d_lastSearchResult;
-  Failure d_lastSearchFailure;
-  bool d_searching;
-  bool d_searchFinalized;
   bool d_setupDone;
-  uint64_t d_numConflicts;
-  uint64_t d_numConflictsSinceRestart;
-  uint64_t d_numConflictsSinceLemmaGc;
-  uint64_t d_numRestarts;
-  uint64_t d_numSimplifications;
-  uint64_t d_restartThreshold;
-  uint64_t d_restartOuterThreshold;
-  uint32_t d_lubyIdx;
-  uint64_t d_lemmaGcThreshold;
   std::vector<bool> d_relevantConflictLiterals;
 
   /** Scratch space for the topological sort used by internalizeDeep. */

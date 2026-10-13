@@ -4,8 +4,8 @@ Date: 2026-10-10
 
 Source snapshot: `da001fa639` (`Preset`)
 
-Status: Stage 1A implemented; Stage 1B in progress (steps 1–3 and 4(a) of
-7). See the progress record in section 14.
+Status: Stage 1A implemented; Stage 1B in progress (steps 1–4 of 7). See
+the progress record in section 14.
 
 ## 1. Objective and migration principle
 
@@ -626,3 +626,13 @@ runs that time out compared under `--rlimit`):
    sequencing of scopes remain in `SmtContext` until step 4(b). On a small
    timing sample with identical work, the run time was unchanged (ratio
    0.996).
+
+   (b) The search driver moved into `PropCore` as well: search, restarts,
+   decisions, the propagation fixpoint, conflict resolution and the push
+   and pop of scopes. `SmtContext` is now the theory side. Apart from its
+   entry points (`check`, `push`, `pop`, the input queue), the driver
+   reaches it only through the scheduling and backtracking contract listed
+   in `PropCore`'s class comment and in PROP_THEORY_SPLIT.md. Answers and
+   `z3::` counters are unchanged, and runs that time out match under
+   `--rlimit`. On the same small timing sample the ratio was 0.951, which is
+   within the noise.
