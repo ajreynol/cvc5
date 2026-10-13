@@ -20,15 +20,30 @@ These files are cvc5 code, not ported from Z3:
 
 | file | role |
 |---|---|
-| `z3_prop_engine.{h,cpp}` | `PropEngine`'s search contract (`assertInputFormulas`, `checkSat`, `push`, `pop`, `resetTrail`, `getAssertionLevel`, `interrupt`) over the core; translates the outcome of the search into a `Result` |
+| `z3_prop_engine.{h,cpp}` | `PropEngine`'s search contract (`assertInputFormulas`, `checkSat`, `push`, `pop`, `resetTrail`, `getAssertionLevel`, `interrupt`), implemented by driving the core's propositional side, `PropCore`; translates the outcome of the search into a `Result` |
 | `z3_theory_engine.{h,cpp}` | owns the shared backend; its inherited `TheoryEngine` stays a service to preprocessing and records what preprocessing reports about soundness |
-| `shared_backend.{h,cpp}` | the one owner of `Params` and the `SmtContext` both engines use |
+| `shared_backend.{h,cpp}` | the owner of `Params` and of the core's two sides |
 | `assertion_preparation.{h,cpp}` | the preparation each preprocessed assertion goes through before it reaches the core; see below |
 | `theory_status.{h,cpp}` | what the theory side records about unsupported input and theories that cannot confirm a model, which `SmtContext::checkFinalize` consults before answering "sat" |
 
-The `SmtContext` still does both the Boolean search and the theory
-reasoning, so the two engines share it rather than each owning a part
-(Stage 1A of `ARCHITECTURE_PLAN.md`). The `Params` live as long as the
+The core itself is divided into a propositional side and a theory side
+(Stage 1B of `ARCHITECTURE_PLAN.md`; see `PROP_THEORY_SPLIT.md`):
+
+- **`PropCore` (`prop_core.*`) is the propositional side.** It holds the
+  Boolean variables and their assignment, the clauses and propagation,
+  conflict resolution, the decision heuristics, relevancy, the encoding of
+  gates and root assertions, the search driver, the asserted formulas and the
+  user scopes.
+- **`SmtContext` (`smt_context.*`, `internalizer.cpp`) is the theory side.**
+  It holds the E-graph, the theory plugins, the quantifier manager, the
+  walk that internalizes terms and atoms, the explainer and the theory
+  status.
+
+`Z3PropEngine` drives `PropCore`. `PropCore` calls `SmtContext` through the
+scheduling and backtracking contract listed in its class comment. The
+theory side reaches the Boolean search through forwarders on `SmtContext`
+with the old names. `PropCore` is allocated inside `SmtContext`, so those
+forwarders cost nothing. The `Params` live as long as the
 `SmtSolver`, as in the theory engine, and auto configuration writes to them
 on the first check; `reset-assertions` makes a new propositional engine,
 which makes a new `SmtContext` over the same `Params`. The `PropEngine` and

@@ -4,8 +4,8 @@ Date: 2026-10-10
 
 Source snapshot: `da001fa639` (`Preset`)
 
-Status: Stage 1A implemented; Stage 1B in progress (steps 1–6 of 7). See
-the progress record in section 14.
+Status: Stages 1A and 1B implemented. See the progress record in section
+14.
 
 ## 1. Objective and migration principle
 
@@ -604,15 +604,15 @@ Performance and behavior:
   limited by `--rlimit` stopped at the same point with identical counters.
 - The benchmark comparison on the reference set showed no regression.
 
-### Stage 1B: in progress
+### Stage 1B: done
 
 The audit of `SmtContext` that section 7 calls for is recorded in
 [PROP_THEORY_SPLIT.md](PROP_THEORY_SPLIT.md). It allocates relevancy to the
 propositional side, splits internalization as cvc5 splits CNF conversion from
 pre-registration, and proposes seven extraction steps that preserve
-behavior. Steps 1–3 of that sequence are done, each checked as in Stage 1A
-(identical answers and `z3::` counters on the local comparison set, with
-runs that time out compared under `--rlimit`):
+behavior. All seven are done, each checked as in Stage 1A (identical
+answers and `z3::` counters on the local comparison set, with runs that
+time out compared under `--rlimit`):
 
 1. Dead paths removed: 239 lines of imported code that nothing reached,
    listed in FIDELITY.md.
@@ -644,3 +644,71 @@ runs that time out compared under `--rlimit`):
    theory side walks the input, makes enodes and theory atoms, and calls it
    at the same points as before. Theory plugins register an atom with one
    call.
+7. Ownership is wired. `Z3PropEngine` drives `PropCore`, which now also
+   holds the entry points (check, user scopes) and the asserted formulas.
+   `SmtContext` has no entry points and is driven only through its contract
+   with `PropCore`. The two are still allocated together, inside
+   `SharedBackend`.
+
+Every step left answers and `z3::` counters unchanged on the comparison
+set, and runs that time out were compared under `--rlimit`. On the
+benchmark set, performance was unchanged after each step that was
+measured.
+
+| Branch | Highest Z3-specific layer remaining | Notes |
+|---|---|---|
+| SMT orchestration | none | Native `SmtSolver` for both configurations. |
+| Propositional | `z3::Z3PropEngine` over `z3::PropCore` | `PropCore` holds Z3's Boolean search: variables, clauses, BCP, conflict resolution, decisions, restarts, relevancy, the encoding of gates, and the search driver. |
+| Theory | `z3::Z3TheoryEngine` over `z3::SmtContext` | `SmtContext` holds Z3's theory reasoning: the E-graph, the theory plugins, quantifiers and E-matching, the internalizing walk, the explainer and the theory status. |
+
+Dependencies that still cross the boundary, as work for the next level:
+
+1. **Allocation.** `PropCore` lives inside `SmtContext`, so that the
+   theory side's Boolean queries (`getAssignment`, `isRelevant` and others,
+   called on the hot paths of E-matching and the theories) are inline
+   forwarders. Replacing either side independently requires turning that
+   Boolean API into an interface, at the cost of an indirection.
+2. **Propositional components still hold the theory-side handle.**
+   `ConflictResolution` and `CaseSplitQueue` take `SmtContext&` and make
+   their Boolean queries through its forwarders. `ConflictResolution` also
+   calls `Theory::conflictResolutionEh`, and the case split queue can ask
+   `isExtDiseq` (off by default). Both could take `PropCore&` instead.
+3. **Shared infrastructure on the theory side.** The trail stack, the
+   region, the statistics, the random number generator and the store of
+   justifications belong to `SmtContext` and are used by both sides. The
+   trail is one LIFO log for both, as `context::Context` is in cvc5.
+4. **Variable data.** `BoolVarData` holds the Boolean data together with
+   the theory side's atom-kind flags (enode, equality, quantifier,
+   theory-notified). `PropCore` reads them to decide which assignments to
+   hand over and which to requeue when they become relevant.
+5. **The variable map.** The map between Boolean variables and Nodes is
+   `PropCore`'s, but the theory side uses it throughout: the internalizer,
+   the theories and E-matching.
+6. **The internalizing walk.** The walk decides what is a gate and what is
+   an atom, and stays on the theory side. `assertRoot` calls back into it for
+   the arguments of a root gate.
+7. **Clauses from the theory side during the search.** Instances, theory
+   axioms, dynamic Ackermann lemmas and E-graph propagations reach
+   `PropCore`'s clause API with region-allocated justifications.
+   `PropCore` explains these through the theory side's `Explainer`.
+8. **Generations across backjumps.** The generations of enodes and
+   quantifiers are cached by the theory side when `PropCore` backjumps, and
+   restored when it recreates atoms.
+9. **Relevancy and equivalence classes.** The relevancy propagator reads the
+   theory side's equivalence classes, and `relevantEh` is split between the
+   two sides.
+10. **Theory plugins.** Plugins register atoms with `mkTheoryAtomVar`, but
+    still read and assign the Boolean state through the forwarders, as
+    cvc5's theories do through `Valuation` and the output channel.
+11. **Defects.** The defects listed in PROP_THEORY_SPLIT.md, section 9, are
+    not fixed; each is to be fixed in a change of its own.
+
+The next level is the recursion of section 12, on the two branches:
+
+- The propositional branch can now be addressed at `PropCore`, for example
+  behind cvc5's SAT solver interfaces.
+- The theory branch can be addressed at `SmtContext`, toward native
+  `TheoryEngine` with ported theories.
+
+With the boundary in place, a component on either side can be replaced on
+its own, and the effect on performance attributed to it.

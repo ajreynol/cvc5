@@ -42,7 +42,7 @@ void Z3PropEngine::assertInputFormulas(
     const std::vector<Node>& assertions,
     std::unordered_map<size_t, Node>& /* skolemMap */)
 {
-  d_prep.apply(d_backend.getContext(), assertions);
+  d_prep.apply(d_backend.getContext(), d_backend.getPropCore(), assertions);
 }
 
 Result Z3PropEngine::checkSat()
@@ -51,8 +51,8 @@ Result Z3PropEngine::checkSat()
   {
     return Result(Result::UNKNOWN, UnknownExplanation::REQUIRES_FULL_CHECK);
   }
-  SmtContext& ctx = d_backend.getContext();
-  LBool r = ctx.check();
+  PropCore& core = d_backend.getPropCore();
+  LBool r = core.check();
   if (r == L_TRUE)
   {
     // as in PropEngine::checkSat, a model that preprocessing may have made
@@ -75,10 +75,10 @@ Result Z3PropEngine::checkSat()
     }
     return Result(Result::UNSAT);
   }
-  verbose(1) << "z3: unknown: " << ctx.getLastSearchFailure() << ": "
-             << ctx.getReasonUnknown() << std::endl;
+  verbose(1) << "z3: unknown: " << core.getLastSearchFailure() << ": "
+             << core.getReasonUnknown() << std::endl;
   UnknownExplanation why = UnknownExplanation::UNKNOWN_REASON;
-  switch (ctx.getLastSearchFailure())
+  switch (core.getLastSearchFailure())
   {
     case MEMOUT:
     case RESOURCE_LIMIT: why = UnknownExplanation::RESOURCEOUT; break;
@@ -91,28 +91,28 @@ Result Z3PropEngine::checkSat()
   return Result(Result::UNKNOWN, why);
 }
 
-void Z3PropEngine::push() { d_backend.getContext().push(); }
+void Z3PropEngine::push() { d_backend.getPropCore().push(); }
 
-void Z3PropEngine::pop() { d_backend.getContext().pop(1); }
+void Z3PropEngine::pop() { d_backend.getPropCore().pop(1); }
 
 void Z3PropEngine::resetTrail()
 {
   if (d_backend.hasContext())
   {
-    d_backend.getContext().popToBaseLvl();
+    d_backend.getPropCore().popToBaseLvl();
   }
 }
 
 uint32_t Z3PropEngine::getAssertionLevel() const
 {
-  return d_backend.getContext().getBaseLevel();
+  return d_backend.getPropCore().getBaseLevel();
 }
 
 void Z3PropEngine::interrupt()
 {
   if (d_backend.hasContext())
   {
-    d_backend.getContext().interrupt();
+    d_backend.getPropCore().interrupt();
   }
 }
 

@@ -26,6 +26,7 @@
 namespace cvc5::internal {
 namespace z3 {
 
+class PropCore;
 class SmtContext;
 
 /**
@@ -52,8 +53,13 @@ class AssertionPreparation : protected EnvObj
 {
  public:
   AssertionPreparation(Env& env);
-  /** Prepare assertions, in order, and assert the results to ctx. */
-  void apply(SmtContext& ctx, const std::vector<Node>& assertions);
+  /**
+   * Prepare assertions, in order, with the utilities of ctx, and assert the
+   * results to core.
+   */
+  void apply(SmtContext& ctx,
+             PropCore& core,
+             const std::vector<Node>& assertions);
 };
 
 }  // namespace z3

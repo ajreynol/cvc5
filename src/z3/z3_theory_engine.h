@@ -27,9 +27,10 @@ namespace z3 {
  * The theory engine used with --z3, paired with Z3PropEngine by
  * smt::EngineFactory.
  *
- * The theory reasoning of the search happens in the SmtContext of the ported
- * core, which this class owns through its SharedBackend; see that class for
- * why it is shared and for how its lifetime follows this engine's.
+ * The theory reasoning of the search happens in the theory side of the
+ * ported core, SmtContext, which this class owns, with the propositional
+ * side, through its SharedBackend; see that class for how their lifetime
+ * follows this engine's.
  *
  * The inherited TheoryEngine, with cvc5's theories, is kept as a service to
  * cvc5's preprocessing, which uses it for theory rewriting and

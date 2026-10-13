@@ -5,8 +5,10 @@ Date: 2026-10-12
 Source snapshot: `8a1ca4ad2c` (Stage 1A), plus the capability changes that
 follow it.
 
-Status: steps 1–6 of the sequence in section 8 are done. The rest of this
-document describes the state before them, except where marked.
+Status: done. All seven steps of the sequence in section 8 are complete.
+The rest of this document describes the state before them, except where
+marked. The dependencies that remain are listed in ARCHITECTURE_PLAN.md,
+section 14.
 
 This is the dependency audit that section 7 of
 [ARCHITECTURE_PLAN.md](ARCHITECTURE_PLAN.md) asks for before `SmtContext` is
@@ -589,6 +591,23 @@ both presets; runs that time out excepted), identical results under
      progress record.
 
    This completes Stage 1B.
+
+   *Done, in the variant chosen for it (the allocation stays combined and
+   each engine is routed to its own side):*
+   - *`PropCore` now holds the entry points `check`, `push` and `pop`, the
+     queue of asserted formulas, the check's preamble and finalization, and
+     the reason for an unknown result.*
+   - *`Z3PropEngine` drives `PropCore` directly. `AssertionPreparation`
+     asserts to it, using the theory side's normalizers.*
+   - *`SmtContext` no longer has entry points. It is driven by `PropCore`
+     alone, as cvc5's `TheoryEngine` is driven by its `PropEngine`. It
+     answers through the contract in `PropCore`'s class comment, extended
+     with `setupContext`, `internalizeAssertion`, `canConfirmModel` and
+     `reportQuantifierProfile`.*
+   - *`PropCore` is still allocated inside `SmtContext`, and `SharedBackend`
+     owns the two together. That keeps the theory side's Boolean queries as
+     cheap as before; it is the first remaining dependency recorded in
+     ARCHITECTURE_PLAN.md.*
 
 During Stage 1B the calls across the boundary stay non-virtual and inlinable.
 Several of them are on the hottest paths: `assign`, `getAssignment`,

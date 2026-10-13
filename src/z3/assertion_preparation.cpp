@@ -26,6 +26,7 @@ namespace z3 {
 AssertionPreparation::AssertionPreparation(Env& env) : EnvObj(env) {}
 
 void AssertionPreparation::apply(SmtContext& ctx,
+                                 PropCore& core,
                                  const std::vector<Node>& assertions)
 {
   // Rewrite the quantifiers of each assertion over the canonical variables
@@ -65,7 +66,7 @@ void AssertionPreparation::apply(SmtContext& ctx,
       }
     }
     res = pi.apply(norm.normalize(cn.normalize(res)));
-    ctx.assertFormula(doRewrite ? rw.rewrite(res) : res);
+    core.assertFormula(doRewrite ? rw.rewrite(res) : res);
   };
   for (const Node& a : assertions)
   {

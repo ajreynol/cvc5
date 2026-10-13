@@ -43,21 +43,9 @@ namespace z3 {
 
 namespace {
 
-bool isTrueNode(TNode n)
-{
-  return n.getKind() == Kind::CONST_BOOLEAN && n.getConst<bool>();
-}
-
 bool isFalseNode(TNode n)
 {
   return n.getKind() == Kind::CONST_BOOLEAN && !n.getConst<bool>();
-}
-
-/** True if n is an atom or the negation of one, as Z3's is_literal is. */
-bool isLiteralNode(TNode n)
-{
-  TNode a = n.getKind() == Kind::NOT ? n[0] : n;
-  return !isApp(a) || a.getNumChildren() == 0;
 }
 
 }  // namespace
@@ -77,9 +65,6 @@ SmtContext::SmtContext(Env& env, Params& p)
       d_qmanager(nullptr),
       d_random(p.d_randomSeed),
       d_fingerprints(d_region),
-      d_assertedFormulasQhead(0),
-      d_hasQuantifiers(false),
-      d_internalizingAssertions(false),
       d_finalCheckIdx(0),
       d_trueENode(nullptr),
       d_falseENode(nullptr),
@@ -87,7 +72,6 @@ SmtContext::SmtContext(Env& env, Params& p)
       d_isDiseqTmp(nullptr),
       d_dynAckManager(*this, p),
       d_explainer(*this, d_dynAckManager),
-      d_unknown("unknown"),
       d_generation(0),
       d_setupDone(false),
       d_mkENodeTrail(*this)
@@ -1643,157 +1627,6 @@ void SmtContext::registerPlugin(Theory* th)
   }
 }
 
-void SmtContext::assertFormula(TNode e)
-{
-  if (getCancelFlag())
-  {
-    return;
-  }
-  if (!isSearching())
-  {
-    popToBaseLvl();
-  }
-  pushAssertion(e);
-}
-
-void SmtContext::pushAssertion(TNode e)
-{
-  // Z3 splits a conjunction, and a negated disjunction, into separate
-  // assertions while they are being collected (see
-  // asserted_formulas::push_assertion). This matters beyond saving a Boolean
-  // variable: an assertion is marked relevant when it is asserted, while the
-  // conjuncts of a top-level conjunction never are -- the and-gate only
-  // propagates relevancy to its arguments once the conjunction itself is
-  // assigned, which never happens for a root. cvc5's preprocessor leaves
-  // such conjunctions in place, so the split is done here.
-  if (isTrueNode(e))
-  {
-    return;
-  }
-  if (isFalseNode(e))
-  {
-    d_prop.setAssertedInconsistent();
-    d_assertedFormulas.push_back(e);
-    return;
-  }
-  if (e.getKind() == Kind::AND)
-  {
-    for (const Node& arg : e)
-    {
-      pushAssertion(arg);
-    }
-    return;
-  }
-  if (e.getKind() == Kind::NOT && e[0].getKind() == Kind::OR)
-  {
-    for (const Node& arg : e[0])
-    {
-      pushAssertion(arg.negate());
-    }
-    return;
-  }
-  // What Z3 does next is asserted_formulas::flatten_clauses, whose point is
-  // that its core gets flat clauses rather than a tree of gates: every nested
-  // gate costs a Boolean variable, two clauses and a link in the chain
-  // relevancy has to walk before it reaches the atoms. A top-level
-  // if-then-else is two clauses, and a top-level disjunction over a
-  // conjunction distributes.
-  if (e.getKind() == Kind::ITE)
-  {
-    pushAssertion(
-        d_env.getNodeManager()->mkNode(Kind::OR, e[0].negate(), e[1]));
-    pushAssertion(d_env.getNodeManager()->mkNode(Kind::OR, Node(e[0]), e[2]));
-    return;
-  }
-  if (e.getKind() == Kind::OR && e.getNumChildren() == 2)
-  {
-    for (size_t i = 0; i < 2; ++i)
-    {
-      TNode conj = e[i];
-      TNode rest = e[1 - i];
-      // Z3 also distributes over a shared conjunction when the other side is
-      // not a literal, using a reference count to tell that the conjunction
-      // occurs nowhere else. There is no equally cheap test here, so only the
-      // case that cannot grow the formula is taken: duplicating a literal
-      // across the conjuncts costs one literal per conjunct.
-      if (conj.getKind() == Kind::AND && isLiteralNode(rest))
-      {
-        for (const Node& arg : conj)
-        {
-          pushAssertion(
-              d_env.getNodeManager()->mkNode(Kind::OR, Node(rest), arg));
-        }
-        return;
-      }
-    }
-  }
-  if (!d_hasQuantifiers && expr::hasClosure(Node(e)))
-  {
-    d_hasQuantifiers = true;
-  }
-  Trace("z3-assert") << "ASSERT " << e << std::endl;
-  d_assertedFormulas.push_back(e);
-}
-
-void SmtContext::push()
-{
-  popToBaseLvl();
-  setupContext(false);
-  bool wasConsistent = !inconsistent();
-  internalizeAssertions();
-  d_prop.propagate();
-  if (wasConsistent && inconsistent() && !d_prop.isAssertedInconsistent())
-  {
-    // the logical context became inconsistent during the user push
-    bool resolved = d_prop.resolveConflict();
-    Assert(!resolved);
-    (void)resolved;
-  }
-  d_prop.pushScope();
-  d_prop.pushBaseScope();
-}
-
-void SmtContext::pop(size_t numScopes)
-{
-  Assert(numScopes > 0);
-  if (numScopes > getScopeLevel())
-  {
-    return;
-  }
-  popToBaseLvl();
-  d_prop.popScope(numScopes);
-}
-
-void SmtContext::internalizeAssertions()
-{
-  if (getCancelFlag() || d_internalizingAssertions)
-  {
-    return;
-  }
-  d_internalizingAssertions = true;
-  if (d_prop.isAssertedInconsistent())
-  {
-    if (d_prop.getConflict() == s_nullBJustification)
-    {
-      assertedInconsistent();
-    }
-    d_internalizingAssertions = false;
-    return;
-  }
-  while (d_assertedFormulasQhead < d_assertedFormulas.size())
-  {
-    if (getCancelFlag())
-    {
-      d_internalizingAssertions = false;
-      return;
-    }
-    TNode f = d_assertedFormulas[d_assertedFormulasQhead];
-    ++d_assertedFormulasQhead;
-    internalizeAssertion(f, 0);
-  }
-  d_internalizingAssertions = false;
-}
-
 void SmtContext::internalizeInstance(TNode body, uint32_t generation)
 {
   if (inconsistent())
@@ -1812,39 +1645,6 @@ void SmtContext::internalizeInstance(TNode body, uint32_t generation)
   // the invariant, and is idempotent on the parts that are already canonical.
   Node norm = d_normalizer.normalize(body);
   internalizeAssertion(norm, generation);
-}
-
-void SmtContext::assertedInconsistent()
-{
-  setConflict(BJustification::mkAxiom());
-}
-
-bool SmtContext::checkPreamble()
-{
-  d_stats.d_numChecks++;
-  // The size of what the core is given, to be compared with the num-exprs
-  // Z3 reports for the same query at verbosity 10.
-  d_stats.d_numAssertedFormulas = d_assertedFormulas.size();
-  std::unordered_set<TNode> seen;
-  std::vector<TNode> todo(d_assertedFormulas.begin(), d_assertedFormulas.end());
-  while (!todo.empty())
-  {
-    TNode n = todo.back();
-    todo.pop_back();
-    if (!seen.insert(n).second)
-    {
-      continue;
-    }
-    todo.insert(todo.end(), n.begin(), n.end());
-  }
-  d_stats.d_numAssertedExprs = seen.size();
-  if (!d_env.getOptions().z3.z3DumpAssertions.empty())
-  {
-    dumpAssertions(d_env.getOptions().z3.z3DumpAssertions.c_str());
-  }
-  popToBaseLvl();
-  d_prop.resetConflictResolution();
-  return true;
 }
 
 void SmtContext::checkCandidateModel()
@@ -1923,7 +1723,7 @@ void SmtContext::dumpCandidateModel(const char* path)
     }
     asserts.push_back(l.sign() ? a.notNode() : a);
   }
-  for (const Node& a : d_assertedFormulas)
+  for (const Node& a : d_prop.getAssertedFormulas())
   {
     if (expr::hasClosure(a))
     {
@@ -1941,14 +1741,14 @@ void SmtContext::dumpAssertions(const char* path)
   // identical input: comparing instantiation counts against Z3 on the
   // original file otherwise confuses a difference in search with a difference
   // in preprocessing.
-  std::vector<Node> asserts(d_assertedFormulas.begin(),
-                            d_assertedFormulas.end());
+  const std::vector<Node>& fmls = d_prop.getAssertedFormulas();
+  std::vector<Node> asserts(fmls.begin(), fmls.end());
   std::ofstream out(path);
   smt::PrintBenchmark pb(d_env.getNodeManager(), Printer::getPrinter(out));
   pb.printBenchmark(out, d_env.getLogicInfo().getLogicString(), {}, asserts);
 }
 
-LBool SmtContext::checkFinalize(LBool r)
+void SmtContext::reportQuantifierProfile()
 {
   if (d_params.d_qiProfile && d_qmanager != nullptr)
   {
@@ -1959,19 +1759,11 @@ LBool SmtContext::checkFinalize(LBool r)
     d_qmanager->printStats(ss);
     Warning() << ss.str();
   }
+}
 
-  if (r == L_TRUE && getCancelFlag())
-  {
-    r = L_UNDEF;
-  }
-  std::string reason;
-  if (r == L_TRUE && !d_theoryStatus.canConfirmModel(reason))
-  {
-    d_prop.setLastSearchFailure(THEORY);
-    d_unknown = reason;
-    r = L_UNDEF;
-  }
-  return r;
+bool SmtContext::canConfirmModel(std::string& reason) const
+{
+  return d_theoryStatus.canConfirmModel(reason);
 }
 
 Cvc5Bridge& SmtContext::getCvc5Bridge()
@@ -2010,31 +1802,6 @@ void SmtContext::setupComponents()
   {
     th->setup();
   }
-}
-
-LBool SmtContext::setupAndCheck() { return check(); }
-
-LBool SmtContext::check()
-{
-  if (!checkPreamble())
-  {
-    return L_UNDEF;
-  }
-  Assert(atBaseLevel());
-  // The configuration happens on the first check only; passing autoConfig
-  // here is what makes that first call collect the static features of the
-  // input, as Z3 does when it is given a file rather than driven
-  // incrementally.
-  setupContext(d_params.d_autoConfig);
-  popToBaseLvl();
-  internalizeAssertions();
-  // Z3 sets the search level in init_assumptions, which also creates the
-  // scope the assumptions live in. This port does not support assumptions
-  // (see the README), so the search level is simply the current scope.
-  d_prop.setSearchLevel(getScopeLevel());
-  Assert(getSearchLevel() == getBaseLevel());
-  LBool r = d_prop.search();
-  return checkFinalize(r);
 }
 
 void SmtContext::initSearchEh()

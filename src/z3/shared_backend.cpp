@@ -45,5 +45,17 @@ const SmtContext& SharedBackend::getContext() const
   return *d_ctx;
 }
 
+PropCore& SharedBackend::getPropCore()
+{
+  Assert(d_ctx != nullptr);
+  return d_ctx->getPropCore();
+}
+
+const PropCore& SharedBackend::getPropCore() const
+{
+  Assert(d_ctx != nullptr);
+  return d_ctx->getPropCore();
+}
+
 }  // namespace z3
 }  // namespace cvc5::internal

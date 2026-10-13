@@ -125,11 +125,13 @@ class SmtContext : protected EnvObj
   ConfigMode getConfigMode(bool useStaticFeatures) const;
 
   // ---------------------------------------------------------- assertions
-  /** Assert a (preprocessed) formula. */
-  void assertFormula(TNode e);
+  //
+  // The asserted formulas, the checks and user scopes are driven by the
+  // propositional side, PropCore; Z3PropEngine calls it. The methods below
+  // forward to it for the theory side.
 
-  /** Add e to the asserted formulas, splitting a top-level conjunction. */
-  void pushAssertion(TNode e);
+  /** Assert a (prepared) formula. */
+  void assertFormula(TNode e) { d_prop.assertFormula(e); }
 
   /** A development hook: dump the assigned relevant literals to a file. */
   void dumpCandidateModel(const char* path);
@@ -141,22 +143,25 @@ class SmtContext : protected EnvObj
   void checkCandidateModel();
 
   /** Internalize the assertions that have not been internalized yet. */
-  void internalizeAssertions();
+  void internalizeAssertions() { d_prop.internalizeAssertions(); }
 
-  size_t getNumAssertedFormulas() const { return d_assertedFormulas.size(); }
+  size_t getNumAssertedFormulas() const
+  {
+    return d_prop.getNumAssertedFormulas();
+  }
 
-  TNode getAssertedFormula(size_t idx) const { return d_assertedFormulas[idx]; }
+  TNode getAssertedFormula(size_t idx) const
+  {
+    return d_prop.getAssertedFormula(idx);
+  }
+
+  /**
+   * Internalize the asserted formula n, of the given generation: its subterms,
+   * then its Boolean structure through PropCore::assertRoot.
+   */
+  void internalizeAssertion(TNode n, uint32_t generation);
 
   // -------------------------------------------------------------- search
-  /** Run the search. */
-  LBool check();
-
-  /** Configure the core and then run the search. */
-  LBool setupAndCheck();
-
-  void push();
-  void pop(size_t numScopes);
-
   /** Backtrack to the base (user) level. */
   void popToBaseLvl() { d_prop.popToBaseLvl(); }
 
@@ -219,9 +224,24 @@ class SmtContext : protected EnvObj
 
   Explainer& getExplainer() { return d_explainer; }
 
-  void setReasonUnknown(const std::string& msg) { d_unknown = msg; }
+  void setReasonUnknown(const std::string& msg)
+  {
+    d_prop.setReasonUnknown(msg);
+  }
 
-  const std::string& getReasonUnknown() const { return d_unknown; }
+  const std::string& getReasonUnknown() const
+  {
+    return d_prop.getReasonUnknown();
+  }
+
+  /** Print the quantifier profile, if requested, when a check finishes. */
+  void reportQuantifierProfile();
+
+  /**
+   * Whether an assignment that satisfies the Boolean abstraction may be
+   * reported as a model; see TheoryStatus::canConfirmModel.
+   */
+  bool canConfirmModel(std::string& reason) const;
 
   std::ostream& printLastFailure(std::ostream& out) const;
 
@@ -258,6 +278,8 @@ class SmtContext : protected EnvObj
 
   /** The propositional side. */
   PropCore& getPropCore() { return d_prop; }
+
+  const PropCore& getPropCore() const { return d_prop; }
 
   void resetBoolVars() { d_prop.resetBoolVars(); }
 
@@ -445,7 +467,7 @@ class SmtContext : protected EnvObj
   bool internalizedQuantifiers() const;
 
   /** True if the input contains universal quantifiers. */
-  bool hasQuantifiers() const { return d_hasQuantifiers; }
+  bool hasQuantifiers() const { return d_prop.hasQuantifiers(); }
 
   Fingerprint* addFingerprint(uint64_t data,
                               uint32_t dataHash,
@@ -955,11 +977,6 @@ class SmtContext : protected EnvObj
   void propagateThDiseqs();
   bool canTheoriesPropagate() const;
 
-  bool checkPreamble();
-  LBool checkFinalize(LBool r);
-
-  void assertedInconsistent();
-
   // --------------------------------------------------------- backtracking
   void delJustifications(JustificationVector& justifications, size_t oldLim);
 
@@ -983,7 +1000,6 @@ class SmtContext : protected EnvObj
                    std::vector<ExprBoolPair>& sortedExprs);
   void internalizeDeep(TNode n);
   void internalizeDeep(const Node* exprs, size_t numExprs);
-  void internalizeAssertion(TNode n, uint32_t generation);
   void internalizeFormula(TNode n, bool gateCtx);
   void internalizeEq(TNode n, bool gateCtx);
   void internalizeDistinct(TNode n, bool gateCtx);
@@ -1026,12 +1042,6 @@ class SmtContext : protected EnvObj
   std::unique_ptr<QuantifierManager> d_qmanager;
   RandomGen d_random;
   FingerprintSet d_fingerprints;
-
-  /** The formulas asserted into this context, and how far we internalized. */
-  std::vector<Node> d_assertedFormulas;
-  size_t d_assertedFormulasQhead;
-  bool d_hasQuantifiers;
-  bool d_internalizingAssertions;
 
   /** The expressions already internalized as enodes. */
   std::vector<Node> d_eInternalizedStack;
@@ -1083,9 +1093,6 @@ class SmtContext : protected EnvObj
    * d_dynAckManager, so it is declared after it.
    */
   Explainer d_explainer;
-
-  /** Why the last search answered L_UNDEF. */
-  std::string d_unknown;
 
   // ------------------------------------------------------------ backtracking
   TrailStack d_trailStack;

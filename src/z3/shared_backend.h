@@ -26,18 +26,19 @@
 namespace cvc5::internal {
 namespace z3 {
 
+class PropCore;
 class SmtContext;
 
 /**
- * The parameters and the SmtContext of the ported Z3 core.
+ * The parameters and the two sides of the ported Z3 core.
  *
- * The SmtContext still combines the Boolean search with congruence closure,
- * the theory plugins and E-matching, so the --z3 propositional engine
- * (Z3PropEngine) and theory engine (Z3TheoryEngine) cannot yet own separate
- * parts of it. This class is the one owner of that combined state, and
- * Z3TheoryEngine owns this class. It is a temporary stage of the migration
- * described in ARCHITECTURE_PLAN.md (Stage 1A); separating the two sides of
- * the SmtContext is Stage 1B.
+ * The core is divided into a propositional side, PropCore, and a theory side,
+ * SmtContext, with the interface between them described in
+ * PROP_THEORY_SPLIT.md. Z3PropEngine drives the propositional side, which in
+ * turn drives the theory side. The PropCore is allocated inside the
+ * SmtContext, so that the Boolean queries the theory side makes on its hot
+ * paths cost no more than before the division; this class owns the two
+ * together, and Z3TheoryEngine owns this class.
  *
  * The lifetimes follow those of the native engines. SmtSolver keeps its
  * TheoryEngine for as long as it exists, and so the parameters live as long as
@@ -59,10 +60,20 @@ class SharedBackend : protected EnvObj
   void resetContext();
   /** Whether resetContext has been called. */
   bool hasContext() const { return d_ctx != nullptr; }
-  /** Get the SmtContext. Requires hasContext(). */
+  /**
+   * Get the theory side, the SmtContext. Requires hasContext(). Z3PropEngine
+   * uses it only to prepare assertions, whose utilities belong to it.
+   */
   SmtContext& getContext();
   /** Get the SmtContext. Requires hasContext(). */
   const SmtContext& getContext() const;
+  /**
+   * Get the propositional side, which Z3PropEngine drives. Requires
+   * hasContext().
+   */
+  PropCore& getPropCore();
+  /** Get the propositional side. Requires hasContext(). */
+  const PropCore& getPropCore() const;
 
  private:
   /**

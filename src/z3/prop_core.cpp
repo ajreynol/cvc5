@@ -17,9 +17,13 @@
 #include "z3/prop_core.h"
 
 #include <algorithm>
+#include <unordered_set>
 
 #include "base/output.h"
+#include "expr/node_algorithm.h"
 #include "expr/node_manager.h"
+#include "options/z3_options.h"
+#include "smt/env.h"
 #include "util/resource_manager.h"
 #include "z3/conflict_resolution.h"
 #include "z3/quantifier_manager.h"
@@ -59,6 +63,13 @@ bool isFalseNode(TNode n)
   return n.getKind() == Kind::CONST_BOOLEAN && !n.getConst<bool>();
 }
 
+/** True if n is an atom or the negation of one, as Z3's is_literal is. */
+bool isLiteralNode(TNode n)
+{
+  TNode a = n.getKind() == Kind::NOT ? n[0] : n;
+  return !isApp(a) || a.getNumChildren() == 0;
+}
+
 }  // namespace
 
 PropCore::PropCore(Env& env, SmtContext& ctx, Params& params, Statistics& stats)
@@ -81,6 +92,10 @@ PropCore::PropCore(Env& env, SmtContext& ctx, Params& params, Statistics& stats)
       d_notL(s_nullLiteral),
       d_assertedInconsistent(false),
       d_flushing(false),
+      d_assertedFormulasQhead(0),
+      d_hasQuantifiers(false),
+      d_internalizingAssertions(false),
+      d_unknown("unknown"),
       d_conflictResolution(nullptr),
       d_lastSearchFailure(OK),
       d_searching(false),
@@ -125,6 +140,228 @@ void PropCore::flushClauses()
   delClauses(d_auxClauses, 0);
   delClauses(d_lemmas, 0);
   d_flushing = false;
+}
+
+// ---------------------------------------------------- input and entry points
+
+void PropCore::assertFormula(TNode e)
+{
+  if (getCancelFlag())
+  {
+    return;
+  }
+  if (!isSearching())
+  {
+    popToBaseLvl();
+  }
+  pushAssertion(e);
+}
+
+void PropCore::pushAssertion(TNode e)
+{
+  // Z3 splits a conjunction, and a negated disjunction, into separate
+  // assertions while they are being collected (see
+  // asserted_formulas::push_assertion). This matters beyond saving a Boolean
+  // variable: an assertion is marked relevant when it is asserted, while the
+  // conjuncts of a top-level conjunction never are -- the and-gate only
+  // propagates relevancy to its arguments once the conjunction itself is
+  // assigned, which never happens for a root. cvc5's preprocessor leaves
+  // such conjunctions in place, so the split is done here.
+  if (isTrueNode(e))
+  {
+    return;
+  }
+  if (isFalseNode(e))
+  {
+    d_assertedInconsistent = true;
+    d_assertedFormulas.push_back(e);
+    return;
+  }
+  if (e.getKind() == Kind::AND)
+  {
+    for (const Node& arg : e)
+    {
+      pushAssertion(arg);
+    }
+    return;
+  }
+  if (e.getKind() == Kind::NOT && e[0].getKind() == Kind::OR)
+  {
+    for (const Node& arg : e[0])
+    {
+      pushAssertion(arg.negate());
+    }
+    return;
+  }
+  // What Z3 does next is asserted_formulas::flatten_clauses, whose point is
+  // that its core gets flat clauses rather than a tree of gates: every nested
+  // gate costs a Boolean variable, two clauses and a link in the chain
+  // relevancy has to walk before it reaches the atoms. A top-level
+  // if-then-else is two clauses, and a top-level disjunction over a
+  // conjunction distributes.
+  if (e.getKind() == Kind::ITE)
+  {
+    pushAssertion(nodeManager()->mkNode(Kind::OR, e[0].negate(), e[1]));
+    pushAssertion(nodeManager()->mkNode(Kind::OR, Node(e[0]), e[2]));
+    return;
+  }
+  if (e.getKind() == Kind::OR && e.getNumChildren() == 2)
+  {
+    for (size_t i = 0; i < 2; ++i)
+    {
+      TNode conj = e[i];
+      TNode rest = e[1 - i];
+      // Z3 also distributes over a shared conjunction when the other side is
+      // not a literal, using a reference count to tell that the conjunction
+      // occurs nowhere else. There is no equally cheap test here, so only the
+      // case that cannot grow the formula is taken: duplicating a literal
+      // across the conjuncts costs one literal per conjunct.
+      if (conj.getKind() == Kind::AND && isLiteralNode(rest))
+      {
+        for (const Node& arg : conj)
+        {
+          pushAssertion(nodeManager()->mkNode(Kind::OR, Node(rest), arg));
+        }
+        return;
+      }
+    }
+  }
+  if (!d_hasQuantifiers && expr::hasClosure(Node(e)))
+  {
+    d_hasQuantifiers = true;
+  }
+  Trace("z3-assert") << "ASSERT " << e << std::endl;
+  d_assertedFormulas.push_back(e);
+}
+
+void PropCore::internalizeAssertions()
+{
+  if (getCancelFlag() || d_internalizingAssertions)
+  {
+    return;
+  }
+  d_internalizingAssertions = true;
+  if (d_assertedInconsistent)
+  {
+    if (d_conflict == s_nullBJustification)
+    {
+      setConflict(BJustification::mkAxiom());
+    }
+    d_internalizingAssertions = false;
+    return;
+  }
+  while (d_assertedFormulasQhead < d_assertedFormulas.size())
+  {
+    if (getCancelFlag())
+    {
+      d_internalizingAssertions = false;
+      return;
+    }
+    TNode f = d_assertedFormulas[d_assertedFormulasQhead];
+    ++d_assertedFormulasQhead;
+    d_ctx.internalizeAssertion(f, 0);
+  }
+  d_internalizingAssertions = false;
+}
+
+bool PropCore::checkPreamble()
+{
+  d_stats.d_numChecks++;
+  // The size of what the core is given, to be compared with the num-exprs
+  // Z3 reports for the same query at verbosity 10.
+  d_stats.d_numAssertedFormulas = d_assertedFormulas.size();
+  std::unordered_set<TNode> seen;
+  std::vector<TNode> todo(d_assertedFormulas.begin(), d_assertedFormulas.end());
+  while (!todo.empty())
+  {
+    TNode n = todo.back();
+    todo.pop_back();
+    if (!seen.insert(n).second)
+    {
+      continue;
+    }
+    todo.insert(todo.end(), n.begin(), n.end());
+  }
+  d_stats.d_numAssertedExprs = seen.size();
+  if (!d_env.getOptions().z3.z3DumpAssertions.empty())
+  {
+    d_ctx.dumpAssertions(d_env.getOptions().z3.z3DumpAssertions.c_str());
+  }
+  popToBaseLvl();
+  resetConflictResolution();
+  return true;
+}
+
+LBool PropCore::checkFinalize(LBool r)
+{
+  d_ctx.reportQuantifierProfile();
+
+  if (r == L_TRUE && getCancelFlag())
+  {
+    r = L_UNDEF;
+  }
+  std::string reason;
+  if (r == L_TRUE && !d_ctx.canConfirmModel(reason))
+  {
+    d_lastSearchFailure = THEORY;
+    d_unknown = reason;
+    r = L_UNDEF;
+  }
+  return r;
+}
+
+LBool PropCore::setupAndCheck() { return check(); }
+
+LBool PropCore::check()
+{
+  if (!checkPreamble())
+  {
+    return L_UNDEF;
+  }
+  Assert(atBaseLevel());
+  // The configuration happens on the first check only; passing autoConfig
+  // here is what makes that first call collect the static features of the
+  // input, as Z3 does when it is given a file rather than driven
+  // incrementally.
+  d_ctx.setupContext(d_params.d_autoConfig);
+  popToBaseLvl();
+  internalizeAssertions();
+  // Z3 sets the search level in init_assumptions, which also creates the
+  // scope the assumptions live in. This port does not support assumptions
+  // (see the README), so the search level is simply the current scope.
+  d_searchLvl = d_scopeLvl;
+  Assert(getSearchLevel() == getBaseLevel());
+  LBool r = search();
+  return checkFinalize(r);
+}
+
+void PropCore::push()
+{
+  popToBaseLvl();
+  d_ctx.setupContext(false);
+  bool wasConsistent = !inconsistent();
+  internalizeAssertions();
+  propagate();
+  if (wasConsistent && inconsistent() && !isAssertedInconsistent())
+  {
+    // the logical context became inconsistent during the user push
+    bool resolved = resolveConflict();
+    Assert(!resolved);
+    (void)resolved;
+  }
+  pushScope();
+  pushBaseScope();
+}
+
+void PropCore::pop(size_t numScopes)
+{
+  Assert(numScopes > 0);
+  if (numScopes > d_scopeLvl)
+  {
+    return;
+  }
+  popToBaseLvl();
+  popScope(numScopes);
 }
 
 // ------------------------------------------------------------- search driver

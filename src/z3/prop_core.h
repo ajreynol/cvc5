@@ -23,6 +23,7 @@
 
 #include <algorithm>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "expr/node.h"
@@ -89,10 +90,13 @@ std::ostream& operator<<(std::ostream& out, Failure f);
  *  - notifying it that a term became relevant (relevantEh), after this side
  *    has handled the notification; and the members of an equivalence class,
  *    which share their relevancy, for the relevancy propagator (findENode);
- *  - internalizing the arguments of a root assertion and recreating the
- *    atoms of clauses that survive backtracking (internalize,
- *    internalizeRec), and caching the generations the latter had
- *    (cacheGeneration);
+ *  - configuring the core and internalizing the asserted formulas
+ *    (setupContext, internalizeAssertion, and internalizeRec for the
+ *    arguments of a root assertion), recreating the atoms of clauses that
+ *    survive backtracking (internalize), and caching the generations the
+ *    latter had (cacheGeneration);
+ *  - at the end of a check, whether a satisfying assignment is a model
+ *    (canConfirmModel) and the quantifier profile (reportQuantifierProfile);
  *  - removing a deleted quantifier variable (notifyBoolVarDeleted);
  *  - the phase hint of a theory (getTheory);
  *  - the infrastructure the two sides share: the trail, the region-allocated
@@ -124,6 +128,52 @@ class PropCore : protected EnvObj
   void initTrue(TNode t);
   /** Delete all clauses, when the context is flushed. */
   void flushClauses();
+
+  // --------------------------------------------- input and the entry points
+  //
+  // These are what Z3PropEngine drives: the formulas asserted to the core,
+  // the checks and the user scopes.
+
+  /** Assert a (prepared) formula. */
+  void assertFormula(TNode e);
+
+  /** Add e to the asserted formulas, splitting a top-level conjunction. */
+  void pushAssertion(TNode e);
+
+  /**
+   * Internalize the asserted formulas that have not been internalized yet,
+   * through the theory side's SmtContext::internalizeAssertion.
+   */
+  void internalizeAssertions();
+
+  size_t getNumAssertedFormulas() const { return d_assertedFormulas.size(); }
+
+  TNode getAssertedFormula(size_t idx) const { return d_assertedFormulas[idx]; }
+
+  const std::vector<Node>& getAssertedFormulas() const
+  {
+    return d_assertedFormulas;
+  }
+
+  /** True if the input contains quantifiers. */
+  bool hasQuantifiers() const { return d_hasQuantifiers; }
+
+  /** Run the search over the asserted formulas. */
+  LBool check();
+
+  /** Configure the core and then run the search. */
+  LBool setupAndCheck();
+
+  /** Push a user scope. */
+  void push();
+
+  /** Pop numScopes user scopes. */
+  void pop(size_t numScopes);
+
+  /** Why the last search answered L_UNDEF. */
+  const std::string& getReasonUnknown() const { return d_unknown; }
+
+  void setReasonUnknown(const std::string& msg) { d_unknown = msg; }
 
   // ------------------------------------------------------ Boolean variables
   BoolVar mkBoolVar(TNode n);
@@ -628,6 +678,9 @@ class PropCore : protected EnvObj
   void recordRelevancy(size_t n, const Literal* lits);
   void restoreRelevancy(size_t n, const Literal* lits);
 
+  bool checkPreamble();
+  LBool checkFinalize(LBool r);
+
   // search driver
   /** Reset the search state and the heuristics at the start of a search. */
   void initSearch();
@@ -757,6 +810,14 @@ class PropCore : protected EnvObj
   bool d_assertedInconsistent;
   /** Set while the clauses are deleted on flushing. */
   bool d_flushing;
+
+  /** The formulas asserted to the core, and how far they are internalized. */
+  std::vector<Node> d_assertedFormulas;
+  size_t d_assertedFormulasQhead;
+  bool d_hasQuantifiers;
+  bool d_internalizingAssertions;
+  /** Why the last search answered L_UNDEF. */
+  std::string d_unknown;
 
   std::unique_ptr<ConflictResolution> d_conflictResolution;
 

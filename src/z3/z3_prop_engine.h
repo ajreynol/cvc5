@@ -30,14 +30,14 @@ class Z3TheoryEngine;
  * The propositional engine used with --z3, paired with Z3TheoryEngine by
  * smt::EngineFactory.
  *
- * This implements the search contract of PropEngine by running the search of
- * the ported core, in the SmtContext shared with the theory engine; see
- * SharedBackend. SmtSolver drives it as it drives cvc5's own engine:
- * preprocessed assertions arrive through assertInputFormulas, where they are
- * prepared for the core (see AssertionPreparation) in place of the CNF
- * conversion, and checkSat translates the outcome of the search into a
- * Result, applying what preprocessing reported to the theory engine about
- * its soundness.
+ * This implements the search contract of PropEngine by driving the
+ * propositional side of the ported core, PropCore, which drives the theory
+ * side in turn; see SharedBackend. SmtSolver drives this class as it drives
+ * cvc5's own engine. Preprocessed assertions arrive through
+ * assertInputFormulas, where they are prepared for the core (see
+ * AssertionPreparation) in place of the CNF conversion. checkSat translates
+ * the outcome of the search into a Result, applying what preprocessing
+ * reported to the theory engine about its soundness.
  *
  * The inherited PropEngine is kept as a service to cvc5's preprocessing,
  * which uses it for theory preprocessing, term formula removal and the
