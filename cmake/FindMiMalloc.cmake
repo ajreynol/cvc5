@@ -19,6 +19,10 @@
 
 include(deps-helper)
 
+# The mimalloc object uses pthreads on the supported platforms.
+set(THREADS_PREFER_PTHREAD_FLAG ON)
+find_package(Threads REQUIRED)
+
 check_ep_downloaded("MiMalloc-EP")
 if(NOT MiMalloc-EP_DOWNLOADED)
   check_auto_download("MiMalloc" "--no-mimalloc")
@@ -35,7 +39,7 @@ set(MiMalloc_CHECKSUM
 # malloc and friends, with the definitions and flags mimalloc's build uses for
 # that object (target mimalloc-obj, with MI_OVERRIDE=ON in a release build).
 set(MiMalloc_CFLAGS
-  -O3 -DNDEBUG=1 ${CMAKE_C_COMPILE_OPTIONS_PIC}
+  -O3 -DNDEBUG=1 -DMI_MALLOC_OVERRIDE=1 ${CMAKE_C_COMPILE_OPTIONS_PIC}
   -ftls-model=initial-exec -fno-builtin-malloc
 )
 if(APPLE)
@@ -65,6 +69,8 @@ ExternalProject_Add(
                   <INSTALL_DIR>/lib/mimalloc${CMAKE_C_OUTPUT_EXTENSION}
   BUILD_BYPRODUCTS <INSTALL_DIR>/lib/mimalloc${CMAKE_C_OUTPUT_EXTENSION}
 )
+# Rebuild the object when its compilation flags change in this module.
+ExternalProject_Add_StepDependencies(MiMalloc-EP build "${CMAKE_CURRENT_LIST_FILE}")
 
 set(MiMalloc_FOUND TRUE)
 set(MiMalloc_OBJECT "${DEPS_BASE}/lib/mimalloc${CMAKE_C_OUTPUT_EXTENSION}")
