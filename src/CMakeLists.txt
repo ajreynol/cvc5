@@ -1434,6 +1434,8 @@ libcvc5_add_sources(
   z3/util/util.h
   z3/watch_list.cpp
   z3/watch_list.h
+  z3/z3_hosted_prop_engine.cpp
+  z3/z3_hosted_prop_engine.h
   z3/z3_prop_engine.cpp
   z3/z3_prop_engine.h
   z3/z3_theory_engine.cpp

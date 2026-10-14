@@ -535,6 +535,57 @@ class PropCore : protected EnvObj
   /** See SmtContext::conflictResolutionEh. */
   void conflictResolutionEh(BoolVar v);
 
+  // ------------------------------------------------------------ host mode
+  // With --z3-prop-engine=cvc5, cvc5's prop engine searches, and this class
+  // mirrors, for the theory side, the assignment of the atoms that cvc5
+  // asserts: it never decides or resolves a conflict itself. Its scopes
+  // follow cvc5's SAT context. See ARCHITECTURE_PLAN.md, section 15.
+
+  /**
+   * Enter host mode and prepare the search as check() does: configure the
+   * theory side, internalize the asserted formulas and start the search.
+   */
+  void hostInit();
+  /** Whether host mode is on. */
+  bool isHosted() const { return d_hosted; }
+  /** Push or pop scopes until the scope level is lvl. */
+  void hostSyncLevel(uint32_t lvl);
+  /**
+   * The literal of n, an atom or a negated atom, internalizing the atom if
+   * it is not internalized, for instance because it was deleted on
+   * backtracking.
+   */
+  Literal hostLiteral(TNode n);
+  /**
+   * Assign l, which the host asserted. If l is false here, return false and
+   * set conflict to host literals that are true in the host and contradict
+   * each other, l among them.
+   */
+  bool hostAssign(Literal l, std::vector<Literal>& conflict);
+  /** Whether the value of v was asserted by the host. */
+  bool isHostAssigned(BoolVar v) const
+  {
+    return v < d_hostAssigned.size() && d_hostAssigned[v];
+  }
+  /**
+   * Set out to the host literals, above the base level, that imply the
+   * assigned literal l through the justifications of this side.
+   */
+  void hostExplain(Literal l, std::vector<Literal>& out);
+  /** As hostExplain, for the current conflict. */
+  void hostExplainConflict(std::vector<Literal>& out);
+  /** Record the formula n, an instance, to be asserted by the host. */
+  void hostRecordLemma(TNode n) { d_hostLemmas.push_back(n); }
+  /**
+   * Move to out the formulas recorded for the host since the last call:
+   * instances, and the clauses of theory axioms and lemmas.
+   */
+  void hostTakeLemmas(std::vector<Node>& out);
+  /** Propagate to a fixpoint; returns false on a conflict. */
+  bool hostPropagate() { return propagate(); }
+  /** Run the theory side's final check. */
+  FinalCheckStatus hostFinalCheck(Failure& f);
+
   /**
    * Add the clauses that define the Boolean variable of the gate n in terms
    * of its arguments, and the relevancy watches of n. Called once, when the
@@ -788,6 +839,17 @@ class PropCore : protected EnvObj
   /** Mark the root n relevant, as assertRoot does. */
   void markRootRelevant(TNode n);
 
+  /** Push to todo the antecedents of consequent under js. */
+  void hostAntecedents(Literal consequent,
+                       const BJustification& js,
+                       std::vector<Literal>& todo);
+  /**
+   * Expand the literals of todo through their justifications down to host
+   * literals, which are appended to out; literals of the base level are
+   * dropped, as they are permanent.
+   */
+  void hostExpand(std::vector<Literal>& todo, std::vector<Literal>& out);
+
   /**
    * Whether cls is a permanent instance whose relevancy is scoped
    * (--z3-qi-permanent-local); reinitializing it does not mark its literals
@@ -809,6 +871,13 @@ class PropCore : protected EnvObj
   void delInactiveLemmas1();
   void delInactiveLemmas2();
   bool moreThanKUnassignedLiterals(Clause* cls, size_t k);
+
+  /** Whether host mode is on; see hostInit. */
+  bool d_hosted = false;
+  /** For each variable, whether its value was asserted by the host. */
+  std::vector<bool> d_hostAssigned;
+  /** The formulas recorded for the host; see hostTakeLemmas. */
+  std::vector<Node> d_hostLemmas;
 
   /** The theory side. */
   SmtContext& d_ctx;

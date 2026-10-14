@@ -55,11 +55,13 @@ class AssertionPreparation : protected EnvObj
   AssertionPreparation(Env& env);
   /**
    * Prepare assertions, in order, with the utilities of ctx, and assert the
-   * results to core.
+   * results to core. If prepared is not null, the results are also appended
+   * to it, in order.
    */
   void apply(SmtContext& ctx,
              PropCore& core,
-             const std::vector<Node>& assertions);
+             const std::vector<Node>& assertions,
+             std::vector<Node>* prepared = nullptr);
 };
 
 }  // namespace z3

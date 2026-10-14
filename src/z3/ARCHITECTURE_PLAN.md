@@ -944,4 +944,81 @@ Steps 1 to 5 are refactorings inside the port, each leaving answers and
     implements, and later the adapter.
   - **Relevancy** keeps its own interface, which step 4 makes into the
     module.
+- **Step 0 result: B2c is slightly worse than the baseline.** Permanent
+  instance clauses cost a little. Removing clauses from cvc5's SAT solver
+  is deferred: it is difficult and not majorly important.
+
+### The shortest path to a baseline: `PropCore` as a mirror
+
+To get a measurable baseline of cvc5's prop engine over the port's theory
+engine quickly, steps 1 (second part) to 5 are deferred, and `PropCore`
+runs as a **mirror** under cvc5's search instead of being replaced:
+
+- **cvc5 searches:** `CnfStream`, the SAT solver, `TheoryProxy` and the
+  justification heuristic decide, propagate, learn and restart.
+- **`PropCore` mirrors** the assignment of the atoms cvc5 asserts, keeps
+  its own encoding of the input's gates and its relevancy (which the
+  measurements say must stay), and runs the theory side's propagation,
+  eager matching included, at each check. It never decides, and never
+  resolves a conflict itself.
+- **Back to cvc5** go theory propagations (explained on demand by
+  expanding justifications down to the literals cvc5 asserted, as conflict
+  resolution does), conflicts (as conflict clauses), and new clauses
+  (instances, theory axioms, dynamic Ackermann lemmas) as lemmas.
+- **Scopes** follow cvc5's SAT context: `PropCore` pushes a scope per level
+  when cvc5 asserts at a deeper level, and pops when the context pops
+  (a post-pop `ContextNotifyObj`). An atom cvc5 asserts that the theory side
+  does not have, for instance after it was deleted on backtracking, is
+  internalized on demand, which stands in for re-registration (step 5).
+
+The pieces:
+
+- `TheoryEngine` makes virtual the dozen methods cvc5's prop layer calls
+  (`preRegister`, `assertFact`, `check`, `getPropagatedLiterals`,
+  `getExplanation`, `needCheck`, `getNextDecisionRequest`, `presolve`,
+  `postsolve`, `notifyRestart`); behavior is unchanged for the native
+  engine.
+- `Z3TheoryEngine` implements them when `--z3-prop-engine=cvc5` (the
+  default, `z3`, keeps `Z3PropEngine` over `PropCore`).
+- `Z3HostedPropEngine`, a thin subclass of cvc5's `PropEngine`, prepares the
+  input with `AssertionPreparation` and hands the prepared formulas both to
+  `PropCore`, for its gates and relevancy, and to cvc5's CNF conversion.
+- `PropCore` gets a host mode: assigning external literals, explaining a
+  literal or a conflict in terms of them, and collecting the clauses the
+  theory side creates.
+
+Known simplifications of this first version: the skolem map of term
+formula removal is not passed on (skolem definitions are ordinary
+assertions for the decision heuristic); explanations omit literals of the
+base level, which are permanent, so they are valid modulo the input; and
+the gate clauses the theory side creates during the search for its own
+formulas (term ITEs, for instance) are not sent to cvc5, which learns them
+through propagations and conflicts instead.
+
+### Progress: the mirror
+
+- **Implemented:** `--z3 --z3-prop-engine=cvc5`, as described above.
+  `TheoryEngine`'s prop-facing methods are virtual; `Z3TheoryEngine`
+  implements them in hosted mode; `Z3HostedPropEngine` prepares the input;
+  `PropCore` has a host mode.
+- **Two adjustments found while testing:**
+  - **Delivery:** in hosted mode every assigned atom other than a quantifier
+    reaches the theories, as with `--no-z3-relevancy-deliver` (B1a, which
+    made no difference). cvc5 asserts atoms that are not in `PropCore`'s
+    encoding, for instance those its rewriter makes of the atoms of
+    lemmas: it turns the datatypes split `((_ is nil) (tl x))` into
+    `(= nil (tl x))`. Relevancy cannot know whether such an atom is
+    relevant.
+  - **Theory case splits:** when the theory side's final check asks to
+    continue, every relevant, unassigned theory atom that cvc5 does not
+    know is sent as a splitting lemma `(or a (not a))`, which the
+    justification heuristic then decides, true first. Theories such as
+    datatypes and model-based combination rely on the search to decide the
+    atoms they create.
+- **Status on the quantified regressions (10 s, `verus-best`):** no wrong
+  answers; 167 solved against 171 for the core's own search. The only
+  abnormal exits are the two that predate it (`parametric-lists`,
+  `stream-x2014-09-18-unsat`).
+- **Default unchanged:** with `--z3-prop-engine=z3`, answers and `z3::`
+  counters are identical to the reference on the comparison set.
 

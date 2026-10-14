@@ -9,6 +9,21 @@ name   = "Z3 Core"
   default    = "false"
   help       = "use the ported Z3 SMT core instead of cvc5's own CDCL(T) engine"
 
+[[option]]
+  name       = "z3PropEngine"
+  category   = "expert"
+  long       = "z3-prop-engine=MODE"
+  type       = "Z3PropEngineMode"
+  default    = "Z3"
+  help       = "the propositional engine over the ported Z3 theory engine"
+  help_mode  = "Propositional engines for --z3."
+[[option.mode.Z3]]
+  name = "z3"
+  help = "The ported Z3 core's own search (PropCore)."
+[[option.mode.CVC5]]
+  name = "cvc5"
+  help = "cvc5's propositional engine (CNF conversion, CDCL(T) solver, decision heuristic), with PropCore mirroring the assignment for the theory side."
+
 # ---------------------------------------------------------------- core search
 
 [[option]]

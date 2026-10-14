@@ -226,7 +226,10 @@ class TheoryEngine : protected EnvObj
    * as it might decide to further instantiate some lemmas, precluding
    * a SAT response.
    */
-  bool needCheck() const { return d_outputChannelUsed || d_lemmasAdded; }
+  virtual bool needCheck() const
+  {
+    return d_outputChannelUsed || d_lemmasAdded;
+  }
   /**
    * Is the literal lit (possibly) critical for satisfying the input formula in
    * the current context? This call is applicable only during collectModelInfo
@@ -279,19 +282,19 @@ class TheoryEngine : protected EnvObj
    * Preregister a Theory atom with the responsible theory (or
    * theories).
    */
-  void preRegister(TNode preprocessed);
+  virtual void preRegister(TNode preprocessed);
 
   /**
    * Assert the formula to the appropriate theory.
    * @param node the assertion
    */
-  void assertFact(TNode node);
+  virtual void assertFact(TNode node);
 
   /**
    * Check all (currently-active) theories for conflicts.
    * @param effort the effort level to use
    */
-  void check(theory::Theory::Effort effort);
+  virtual void check(theory::Theory::Effort effort);
 
   /**
    * Calls ppStaticLearn() on all theories.
@@ -305,19 +308,19 @@ class TheoryEngine : protected EnvObj
    * Calls presolve() on all theories and returns true
    * if one of the theories discovers a conflict.
    */
-  bool presolve();
+  virtual bool presolve();
 
   /**
    * Resets the internal state.
    */
-  void postsolve(prop::SatValue result);
+  virtual void postsolve(prop::SatValue result);
 
   /**
    * Calls notifyRestart() on all active theories.
    */
-  void notifyRestart();
+  virtual void notifyRestart();
 
-  void getPropagatedLiterals(std::vector<TNode>& literals)
+  virtual void getPropagatedLiterals(std::vector<TNode>& literals)
   {
     for (; d_propagatedLiteralsIndex < d_propagatedLiterals.size();
          d_propagatedLiteralsIndex = d_propagatedLiteralsIndex + 1)
@@ -335,14 +338,14 @@ class TheoryEngine : protected EnvObj
    * solver to make as its next decision. Decision requests are managed by
    * the decision manager d_decManager.
    */
-  Node getNextDecisionRequest();
+  virtual Node getNextDecisionRequest();
 
   bool properConflict(TNode conflict) const;
 
   /**
    * Returns an explanation of the node propagated to the SAT solver.
    */
-  TrustNode getExplanation(TNode node);
+  virtual TrustNode getExplanation(TNode node);
 
   /**
    * Get the pointer to the model object used by this theory engine.

@@ -1959,6 +1959,10 @@ void PropCore::unassignVars(size_t oldLim)
     BoolVarData& d = getBdata(v);
     d.setNullJustification();
     d_caseSplitQueue->unassignVarEh(v);
+    if (d_hosted && v < d_hostAssigned.size())
+    {
+      d_hostAssigned[v] = false;
+    }
   }
 
   d_assignedLiterals.resize(oldLim);
@@ -2830,6 +2834,21 @@ Clause* PropCore::mkClause(size_t numLits,
                            ClauseKind k,
                            ClauseDelEh* delEh)
 {
+  if (d_hosted && j == nullptr && (k == CLS_TH_AXIOM || k == CLS_TH_LEMMA))
+  {
+    // A clause of the theory side is a lemma for the host. A clause with a
+    // justification stands for its explanation, which reaches the host
+    // through the conflicts and propagations it causes instead.
+    std::vector<Node> disj;
+    for (size_t i = 0; i < numLits; ++i)
+    {
+      disj.push_back(literal2Expr(lits[i]));
+    }
+    NodeManager* nm = nodeManager();
+    d_hostLemmas.push_back(disj.empty()       ? nm->mkConst(false)
+                           : disj.size() == 1 ? disj[0]
+                                              : nm->mkNode(Kind::OR, disj));
+  }
   LiteralVector simpLits;
   switch (k)
   {
@@ -2997,6 +3016,183 @@ void PropCore::mkClause(Literal l1, Literal l2, Literal l3, Justification* j)
 {
   Literal ls[3] = {l1, l2, l3};
   mkClause(3, ls, j);
+}
+
+// ------------------------------------------------------------------ host mode
+
+void PropCore::hostInit()
+{
+  d_hosted = true;
+  // cvc5 asserts atoms that are not in this side's encoding of the input,
+  // for instance those its rewriter makes of the atoms of lemmas, so their
+  // relevance is unknown here. Every assigned atom other than a quantifier
+  // reaches the theories, as with --no-z3-relevancy-deliver (B1a, which
+  // made no difference); relevancy still restricts matching and the checker.
+  d_params.d_relevancyDeliver = false;
+  checkPreamble();
+  d_ctx.setupContext(d_params.d_autoConfig);
+  popToBaseLvl();
+  internalizeAssertions();
+  d_searchLvl = d_scopeLvl;
+  initSearch();
+  d_searching = true;
+}
+
+void PropCore::hostSyncLevel(uint32_t lvl)
+{
+  while (d_scopeLvl < lvl)
+  {
+    pushScope();
+  }
+  if (d_scopeLvl > lvl)
+  {
+    popScope(d_scopeLvl - lvl);
+  }
+}
+
+Literal PropCore::hostLiteral(TNode n)
+{
+  bool neg = n.getKind() == Kind::NOT;
+  TNode atom = neg ? n[0] : n;
+  if (!bInternalized(atom))
+  {
+    d_ctx.internalize(atom, true);
+  }
+  Literal l = getLiteral(atom);
+  return neg ? ~l : l;
+}
+
+bool PropCore::hostAssign(Literal l, std::vector<Literal>& conflict)
+{
+  BoolVar v = l.var();
+  if (v >= d_hostAssigned.size())
+  {
+    d_hostAssigned.resize(v + 1, false);
+  }
+  switch (getAssignment(l))
+  {
+    case L_TRUE: break;
+    case L_UNDEF: assign(l, BJustification::mkAxiom()); break;
+    case L_FALSE:
+    {
+      // this side derived ~l, which the host contradicts
+      conflict.clear();
+      conflict.push_back(l);
+      std::vector<Literal> todo;
+      todo.push_back(~l);
+      hostExpand(todo, conflict);
+      return false;
+    }
+  }
+  d_hostAssigned[v] = true;
+  return true;
+}
+
+void PropCore::hostAntecedents(Literal consequent,
+                               const BJustification& js,
+                               std::vector<Literal>& todo)
+{
+  switch (js.getKind())
+  {
+    case BJustification::CLAUSE:
+    {
+      Clause* cls = js.getClause();
+      for (size_t i = 0, n = cls->getNumLiterals(); i < n; ++i)
+      {
+        Literal l = (*cls)[i];
+        if (l != consequent)
+        {
+          todo.push_back(~l);
+        }
+      }
+      Justification* cjs = cls->getJustification();
+      if (cjs != nullptr)
+      {
+        LiteralVector lits;
+        d_ctx.getExplainer().explain(cjs, lits);
+        todo.insert(todo.end(), lits.begin(), lits.end());
+      }
+      break;
+    }
+    case BJustification::BIN_CLAUSE: todo.push_back(js.getLiteral()); break;
+    case BJustification::AXIOM: break;
+    case BJustification::JUSTIFICATION:
+    {
+      LiteralVector lits;
+      d_ctx.getExplainer().explain(js.getJustification(), lits);
+      todo.insert(todo.end(), lits.begin(), lits.end());
+      break;
+    }
+  }
+}
+
+void PropCore::hostExpand(std::vector<Literal>& todo, std::vector<Literal>& out)
+{
+  std::vector<BoolVar> marked;
+  while (!todo.empty())
+  {
+    Literal a = todo.back();
+    todo.pop_back();
+    BoolVar v = a.var();
+    if (isMarked(v))
+    {
+      continue;
+    }
+    setMark(v);
+    marked.push_back(v);
+    Assert(getAssignment(a) == L_TRUE);
+    if (getAssignLevel(v) <= d_baseLvl)
+    {
+      continue;
+    }
+    if (isHostAssigned(v))
+    {
+      out.push_back(a);
+      continue;
+    }
+    hostAntecedents(a, getJustification(v), todo);
+  }
+  for (BoolVar v : marked)
+  {
+    unsetMark(v);
+  }
+  d_ctx.getExplainer().rollback(0);
+}
+
+void PropCore::hostExplain(Literal l, std::vector<Literal>& out)
+{
+  out.clear();
+  std::vector<Literal> todo;
+  // l itself is expanded even if the host has asserted it since this side
+  // propagated it: the host asks because it learned l from this side
+  hostAntecedents(l, getJustification(l.var()), todo);
+  hostExpand(todo, out);
+}
+
+void PropCore::hostExplainConflict(std::vector<Literal>& out)
+{
+  out.clear();
+  Assert(inconsistent());
+  std::vector<Literal> todo;
+  Literal consequent = s_falseLiteral;
+  if (d_notL != s_nullLiteral)
+  {
+    todo.push_back(d_notL);
+    consequent = ~d_notL;
+  }
+  hostAntecedents(consequent, d_conflict, todo);
+  hostExpand(todo, out);
+}
+
+void PropCore::hostTakeLemmas(std::vector<Node>& out)
+{
+  out.insert(out.end(), d_hostLemmas.begin(), d_hostLemmas.end());
+  d_hostLemmas.clear();
+}
+
+FinalCheckStatus PropCore::hostFinalCheck(Failure& f)
+{
+  return d_ctx.finalCheck(f);
 }
 
 }  // namespace z3

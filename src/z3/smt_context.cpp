@@ -1651,6 +1651,11 @@ bool SmtContext::internalizeInstance(TNode body,
     root = norm;
     return internalizePermanentLemma(norm, generation);
   }
+  if (d_prop.isHosted())
+  {
+    // under cvc5's prop engine, the instance is also a lemma there
+    d_prop.hostRecordLemma(norm);
+  }
   internalizeAssertion(norm, generation);
   return false;
 }

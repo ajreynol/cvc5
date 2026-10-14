@@ -16,6 +16,7 @@
 #include "prop/prop_engine.h"
 #include "smt/env.h"
 #include "theory/theory_engine.h"
+#include "z3/z3_hosted_prop_engine.h"
 #include "z3/z3_prop_engine.h"
 #include "z3/z3_theory_engine.h"
 
@@ -26,7 +27,11 @@ std::unique_ptr<TheoryEngine> EngineFactory::mkTheoryEngine(Env& env)
 {
   if (env.getOptions().z3.z3)
   {
-    return std::make_unique<z3::Z3TheoryEngine>(env);
+    // With cvc5's prop engine, the theory engine is driven through the
+    // search contract of TheoryEngine itself.
+    bool hosted =
+        env.getOptions().z3.z3PropEngine == options::Z3PropEngineMode::CVC5;
+    return std::make_unique<z3::Z3TheoryEngine>(env, hosted);
   }
   return std::make_unique<TheoryEngine>(env);
 }
@@ -37,8 +42,12 @@ std::unique_ptr<prop::PropEngine> EngineFactory::mkPropEngine(Env& env,
   if (env.getOptions().z3.z3)
   {
     Assert(dynamic_cast<z3::Z3TheoryEngine*>(te) != nullptr);
-    return std::make_unique<z3::Z3PropEngine>(
-        env, static_cast<z3::Z3TheoryEngine*>(te));
+    z3::Z3TheoryEngine* zte = static_cast<z3::Z3TheoryEngine*>(te);
+    if (zte->isHosted())
+    {
+      return std::make_unique<z3::Z3HostedPropEngine>(env, zte);
+    }
+    return std::make_unique<z3::Z3PropEngine>(env, zte);
   }
   return std::make_unique<prop::PropEngine>(env, te);
 }

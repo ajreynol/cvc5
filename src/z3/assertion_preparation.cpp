@@ -27,7 +27,8 @@ AssertionPreparation::AssertionPreparation(Env& env) : EnvObj(env) {}
 
 void AssertionPreparation::apply(SmtContext& ctx,
                                  PropCore& core,
-                                 const std::vector<Node>& assertions)
+                                 const std::vector<Node>& assertions,
+                                 std::vector<Node>* prepared)
 {
   // Rewrite the quantifiers of each assertion over the canonical variables
   // the core and the E-matching engine expect; see z3/ast.h.
@@ -66,7 +67,12 @@ void AssertionPreparation::apply(SmtContext& ctx,
       }
     }
     res = pi.apply(norm.normalize(cn.normalize(res)));
-    core.assertFormula(doRewrite ? rw.rewrite(res) : res);
+    res = doRewrite ? rw.rewrite(res) : res;
+    core.assertFormula(res);
+    if (prepared != nullptr)
+    {
+      prepared->push_back(res);
+    }
   };
   for (const Node& a : assertions)
   {
