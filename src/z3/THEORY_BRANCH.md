@@ -187,6 +187,31 @@ If q2 or q6 lose, the cap matters, and cvc5 has a direct test:
 `--inst-max-level=100` against the baseline, both with `--no-cegqi`, since
 setting a level turns `--cegqi` off.
 
+**Results** (2026-10-14, on `verus-best`, against its baseline):
+
+| Outcome | Runs |
+|---|---|
+| no difference | B3c (justification decisions with every assigned atom delivered), q2 (cap raised to 1000), q4 (eager multi-patterns; perhaps slightly better, +7) |
+| somewhat worse | q3 (no instance checker), q6 (no cost policy) |
+| worse | A6b (eager threshold 10, Z3's default), q5 (no nonlinear fallback) |
+| much worse | q1 (no eager instances and no relevancy for matching) |
+
+What they say:
+
+- **Eagerness is a slope, not a switch.** Lowering the eager threshold from
+  100 to 10 already loses (A6b), and deferring every instance loses much
+  more (A6).
+- **Some bound on instantiation depth matters, but not its value.** Raising
+  the cap from 100 to 1000 changes nothing (q2); removing the cost policy
+  altogether loses somewhat (q6).
+- **The instance checker helps somewhat** (q3), and only when restricted
+  to relevant terms (B1g).
+- **The nonlinear fallback matters** (q5). Whether it is the fallback or the
+  bridge call at every final check (T5) is still open.
+- **Multi-pattern laziness is not worth pursuing** (q4).
+- **B3c confirms** that cvc5-style decisions together with cvc5-style
+  delivery cost nothing, as long as relevancy is kept for matching.
+
 ### Phase B: switches that need a little code (off by default)
 
 - **The bridge at final check** (T5): consult the atoms registered by the
