@@ -753,3 +753,26 @@ The next steps it proposes, in order:
 The measurements come first. If none of the propositional components
 accounts for much of the difference, the theory branch is the one to audit
 next.
+
+### Next: the theory branch
+
+The measurements of the propositional branch point at the theory side:
+relevancy matters only through E-matching and the instance checker, and
+instantiating during propagation matters; a Z3-style relevancy filter for
+cvc5's own E-matching did not help. [THEORY_BRANCH.md](THEORY_BRANCH.md)
+maps the theory side and the quantifier stack onto cvc5. Its main issues
+are:
+
+- **Matching:** eager, incremental matching after every propagation,
+  against cvc5's rounds from scratch at full effort.
+- **The instance queue:** under Verus it caps the depth of instantiation
+  chains at about 100, which breaks matching loops; cvc5 has no cap by
+  default.
+- **Multi-patterns** are matched lazily, at final check only.
+- **The instance checker** looks only at relevant terms.
+- **The cvc5 bridge** runs at every final check under `verus-best`,
+  which nothing so far has measured.
+
+It proposes measurements with existing switches, a few switches that need
+code, and the extraction of the quantifier stack behind an explicit
+contract, as Stage 1B did for `PropCore`.

@@ -331,7 +331,18 @@ root, so its body's terms become relevant, and a selection that ignored
 instances would cut every matching chain that goes through one.
 
 Measured against cvc5's own filter (`--term-db-mode=relevant`, `all`), this
-says whether the port's matching advantage carries over. Eager
+says whether the port's matching advantage carries over.
+
+**Outcome** (branch `z3-relevance-1`, against `--user-pat=strict
+--no-cbqi`): the adapter with instances as roots, with or without the
+fallback to all terms, and cvc5's own `relevant` mode are all slightly worse
+than the default; `all` is moderately worse; the adapter without instances
+as roots is far worse, mostly unknown. The filter alone does not carry the
+port's advantage over. The likely reason is that in the port, matching runs
+eagerly and incrementally during propagation, where an unfiltered term set
+is ruinous, while cvc5 matches in rounds at full effort. Relevancy is
+probably a companion of eager matching rather than an advantage by itself,
+which moves the search to the quantifier stack on the theory branch. Eager
 instantiation (A6) is the next candidate, and a larger change: cvc5 would
 need E-matching at standard effort, with relevance kept up to date during
 propagation rather than computed at full effort.
