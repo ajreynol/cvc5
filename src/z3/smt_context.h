@@ -1058,6 +1058,16 @@ class SmtContext : protected EnvObj
   LiteralVector d_atomPropagationQueue;
 
   std::unordered_map<TNode, uint32_t> d_cachedGeneration;
+  /**
+   * Under cvc5's prop engine, the generation each term and quantifier had
+   * when it was first internalized. cvc5 keeps the clauses whose atoms this
+   * side deletes on backtracking, and asserts those atoms again later; they
+   * are then internalized on demand, outside the reinitialization that
+   * d_cachedGeneration serves, and take their generation from here.
+   */
+  std::unordered_map<Node, uint32_t> d_hostGeneration;
+  /** The generation of n: cached, recorded under cvc5, or the current one. */
+  uint32_t generationOf(TNode n);
   std::unordered_set<TNode> d_cacheGenerationVisited;
   DynAckManager d_dynAckManager;
   /**

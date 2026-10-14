@@ -49,6 +49,7 @@ class CDCLTSatSolver;
 class ProofCnfStream;
 class PropPfManager;
 class TheoryProxy;
+enum class FormulaLitPolicy : uint32_t;
 
 /**
  * The optional features of a search implementation that a command may
@@ -87,6 +88,11 @@ class PropEngine : protected EnvObj
    * Create a PropEngine with a particular decision and theory engine.
    */
   PropEngine(Env& env, TheoryEngine* te);
+  /**
+   * As above, with the policy for the literals of formulas of the CNF
+   * stream (see FormulaLitPolicy); the constructor above uses TRACK.
+   */
+  PropEngine(Env& env, TheoryEngine* te, FormulaLitPolicy flp);
 
   /**
    * Destructor.
@@ -160,6 +166,18 @@ class PropEngine : protected EnvObj
   void assertLemma(theory::InferenceId id,
                    TrustNode tlemma,
                    theory::LemmaProperty p);
+
+  /**
+   * As assertLemma, but without preprocessing the lemma: its atoms are
+   * converted as they are. For a theory engine whose atoms are not in the
+   * form preprocessing produces, and whose lemmas must refer to the same
+   * atoms as the SAT solver's, such as the ported Z3 core
+   * (z3::Z3TheoryEngine): preprocessing would rewrite a lemma made of
+   * assigned literals into one over new atoms.
+   */
+  void assertLemmaUnprocessed(theory::InferenceId id,
+                              TrustNode tlemma,
+                              theory::LemmaProperty p);
 
   /**
    * This is called when a theory propagation was explained with texp.

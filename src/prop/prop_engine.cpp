@@ -57,6 +57,11 @@ class ScopedBool
 };
 
 PropEngine::PropEngine(Env& env, TheoryEngine* te)
+    : PropEngine(env, te, FormulaLitPolicy::TRACK)
+{
+}
+
+PropEngine::PropEngine(Env& env, TheoryEngine* te, FormulaLitPolicy flp)
     : EnvObj(env),
       d_inCheckSat(false),
       d_theoryEngine(te),
@@ -83,12 +88,8 @@ PropEngine::PropEngine(Env& env, TheoryEngine* te)
       env, statisticsRegistry(), env.getResourceManager(), d_theoryProxy, "");
 
   // create CnfStream with new SAT solver
-  d_cnfStream = new CnfStream(env,
-                              d_satSolver,
-                              d_theoryProxy,
-                              userContext,
-                              FormulaLitPolicy::TRACK,
-                              "prop");
+  d_cnfStream =
+      new CnfStream(env, d_satSolver, d_theoryProxy, userContext, flp, "prop");
 
   // connect theory proxy
   d_theoryProxy->finishInit(d_satSolver, d_cnfStream);
@@ -220,6 +221,20 @@ void PropEngine::assertLemma(theory::InferenceId id,
 
   // now, assert the lemmas
   assertLemmasInternal(id, tplemma, ppLemmas, removable, inprocess, local);
+}
+
+void PropEngine::assertLemmaUnprocessed(theory::InferenceId id,
+                                        TrustNode tlemma,
+                                        theory::LemmaProperty p)
+{
+  Trace("te-lemma") << "Unprocessed lemma: " << tlemma.getProven() << std::endl;
+  std::vector<theory::SkolemLemma> ppLemmas;
+  assertLemmasInternal(id,
+                       tlemma,
+                       ppLemmas,
+                       isLemmaPropertyRemovable(p),
+                       isLemmaPropertyInprocess(p),
+                       isLemmaPropertyLocal(p));
 }
 
 void PropEngine::assertTrustedLemmaInternal(theory::InferenceId id,

@@ -3071,7 +3071,12 @@ bool PropCore::hostAssign(Literal l, std::vector<Literal>& conflict)
   }
   switch (getAssignment(l))
   {
-    case L_TRUE: break;
+    case L_TRUE:
+      // This side derived l before the host asserted it, so its own
+      // justification stays: the host may have assigned l after literals
+      // this side derived from it, which an explanation that stopped at l
+      // would then present to the host as reasons for them.
+      return true;
     case L_UNDEF: assign(l, BJustification::mkAxiom()); break;
     case L_FALSE:
     {

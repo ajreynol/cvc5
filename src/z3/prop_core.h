@@ -562,7 +562,10 @@ class PropCore : protected EnvObj
    * each other, l among them.
    */
   bool hostAssign(Literal l, std::vector<Literal>& conflict);
-  /** Whether the value of v was asserted by the host. */
+  /**
+   * Whether the value of v was asserted by the host before this side derived
+   * it; explanations stop at such variables.
+   */
   bool isHostAssigned(BoolVar v) const
   {
     return v < d_hostAssigned.size() && d_hostAssigned[v];

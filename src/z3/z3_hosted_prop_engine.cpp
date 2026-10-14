@@ -14,6 +14,7 @@
 
 #include "z3/z3_hosted_prop_engine.h"
 
+#include "prop/cnf_stream.h"
 #include "z3/shared_backend.h"
 #include "z3/smt_context.h"
 #include "z3/z3_theory_engine.h"
@@ -22,7 +23,13 @@ namespace cvc5::internal {
 namespace z3 {
 
 Z3HostedPropEngine::Z3HostedPropEngine(Env& env, Z3TheoryEngine* te)
-    : PropEngine(env, te), d_te(te), d_backend(te->getBackend()), d_prep(env)
+    // Boolean variables are asserted to the theory engine like atoms: the
+    // core derives the values of its gates from those of their leaves, for
+    // relevancy, and Boolean variables are leaves.
+    : PropEngine(env, te, prop::FormulaLitPolicy::TRACK_AND_NOTIFY_VAR),
+      d_te(te),
+      d_backend(te->getBackend()),
+      d_prep(env)
 {
 }
 

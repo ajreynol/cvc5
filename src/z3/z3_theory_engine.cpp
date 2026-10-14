@@ -113,8 +113,17 @@ void Z3TheoryEngine::check(theory::Theory::Effort effort)
   d_needCheck = false;
   // cvc5 has taken the propagations of the previous check
   d_propagations.clear();
+  Trace("z3-host") << "check " << effort << " at level "
+                   << context()->getLevel() << " conflictSent "
+                   << d_conflictSent << std::endl;
   if (d_conflictSent)
   {
+    // The conflict sent in this context has not made cvc5 backtrack. A
+    // full check must then not let the model through.
+    if (theory::Theory::fullEffort(effort))
+    {
+      setModelUnsound(theory::IncompleteId::UNKNOWN);
+    }
     return;
   }
   PropCore& core = d_backend.getPropCore();
@@ -131,6 +140,8 @@ void Z3TheoryEngine::check(theory::Theory::Effort effort)
   if (!theory::Theory::fullEffort(effort) || d_needCheck
       || !d_propagations.empty())
   {
+    Trace("z3-host") << "check returns: needCheck " << d_needCheck
+                     << " propagations " << d_propagations.size() << std::endl;
     return;
   }
   for (size_t i = 0; i < s_maxSilentFinalChecks; ++i)
@@ -146,9 +157,15 @@ void Z3TheoryEngine::check(theory::Theory::Effort effort)
     }
     if (st == FC_DONE)
     {
-      // There is no model based instantiation, so a model is never
-      // confirmed in the presence of quantifiers, as with the core's own
-      // search (SmtContext::checkModel).
+      // The core's own search reaches a final check only once every relevant
+      // variable is assigned, while cvc5 may stop on a partial assignment.
+      // The relevant variables left are decided first, through splitting
+      // lemmas that cvc5's decision heuristic must justify.
+      splitPendingAtoms();
+      if (d_needCheck)
+      {
+        return;
+      }
       std::string reason;
       if (d_backend.getContext().hasQuantifiers())
       {
@@ -297,9 +314,9 @@ void Z3TheoryEngine::sendConflict(const std::vector<Literal>& lits)
   Node lem = disj.empty()       ? nm->mkConst(false)
              : disj.size() == 1 ? disj[0]
                                 : nm->mkNode(Kind::OR, disj);
-  getPropEngine()->assertLemma(theory::InferenceId::UNKNOWN,
-                               TrustNode::mkTrustLemma(lem),
-                               theory::LemmaProperty::NONE);
+  getPropEngine()->assertLemmaUnprocessed(theory::InferenceId::UNKNOWN,
+                                          TrustNode::mkTrustLemma(lem),
+                                          theory::LemmaProperty::NONE);
   d_conflictSent = true;
   d_needCheck = true;
 }
@@ -316,9 +333,9 @@ void Z3TheoryEngine::sendLemmas()
     {
       continue;
     }
-    getPropEngine()->assertLemma(theory::InferenceId::UNKNOWN,
-                                 TrustNode::mkTrustLemma(lem),
-                                 theory::LemmaProperty::NONE);
+    getPropEngine()->assertLemmaUnprocessed(theory::InferenceId::UNKNOWN,
+                                            TrustNode::mkTrustLemma(lem),
+                                            theory::LemmaProperty::NONE);
     d_needCheck = true;
   }
 }
@@ -360,8 +377,7 @@ void Z3TheoryEngine::splitPendingAtoms()
     BoolVar v = static_cast<BoolVar>(i);
     TNode atom = core.boolVar2Expr(v);
     if (atom.isNull() || atom.isConst() || core.getAssignment(v) != L_UNDEF
-        || !core.isRelevant(v) || expr::isBooleanConnective(atom)
-        || pe->isSatLiteral(atom))
+        || !core.isRelevant(v))
     {
       continue;
     }
@@ -371,9 +387,9 @@ void Z3TheoryEngine::splitPendingAtoms()
     {
       continue;
     }
-    getPropEngine()->assertLemma(theory::InferenceId::UNKNOWN,
-                                 TrustNode::mkTrustLemma(lem),
-                                 theory::LemmaProperty::NONE);
+    getPropEngine()->assertLemmaUnprocessed(theory::InferenceId::UNKNOWN,
+                                            TrustNode::mkTrustLemma(lem),
+                                            theory::LemmaProperty::NONE);
     // cvc5's preprocessing of the lemma may have rewritten the atom
     if (core.tryTrueFirst(v) && pe->isSatLiteral(atom))
     {

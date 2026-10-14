@@ -108,10 +108,13 @@ class Z3TheoryEngine : public TheoryEngine
    */
   void collectPropagations();
   /**
-   * Make the relevant, unassigned theory atoms that cvc5 does not know, which
-   * the theory side expects the search to decide (for instance the case
-   * splits of datatypes, or the equalities of model-based combination), into
-   * decisions for cvc5, with a splitting lemma.
+   * Make the relevant, unassigned variables of the core into decisions for
+   * cvc5, with a splitting lemma (or v (not v)) that cvc5's decision heuristic
+   * must justify, unless one was sent before. These are the atoms the theory
+   * side expects the search to decide (for instance the case splits of
+   * datatypes, or the equalities of model-based combination), and the gates
+   * that relevancy needs assigned, which cvc5 may leave unassigned when it
+   * stops on a partial assignment.
    */
   void splitPendingAtoms();
   /** Propagate, and report what follows; returns false on a conflict. */

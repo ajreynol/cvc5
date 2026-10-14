@@ -676,12 +676,7 @@ void SmtContext::internalizeQuantifier(TNode q, bool gateCtx)
             false /* congruence closure is not enabled */);
     setEnodeFlag(v, false);
   }
-  uint32_t generation = d_generation;
-  auto it = d_cachedGeneration.find(q);
-  if (it != d_cachedGeneration.end())
-  {
-    generation = it->second;
-  }
+  uint32_t generation = generationOf(q);
   BoolVarData& d = getBdata(v);
   d.setQuantifierFlag();
   d_qmanager->add(q, generation);
@@ -933,6 +928,22 @@ void SmtContext::internalizeUninterpreted(TNode n)
   applySortCnstr(n, e);
 }
 
+uint32_t SmtContext::generationOf(TNode n)
+{
+  auto itg = d_cachedGeneration.find(n);
+  if (itg != d_cachedGeneration.end())
+  {
+    return itg->second;
+  }
+  if (d_prop.isHosted())
+  {
+    // the first internalization records the generation for later ones
+    auto ith = d_hostGeneration.emplace(n, d_generation).first;
+    return ith->second;
+  }
+  return d_generation;
+}
+
 ENode* SmtContext::mkENode(TNode n,
                            bool suppressArgs,
                            bool mergeTf,
@@ -940,12 +951,7 @@ ENode* SmtContext::mkENode(TNode n,
 {
   Assert(!eInternalized(n));
   size_t id = n.getId();
-  uint32_t generation = d_generation;
-  auto itg = d_cachedGeneration.find(n);
-  if (itg != d_cachedGeneration.end())
-  {
-    generation = itg->second;
-  }
+  uint32_t generation = generationOf(n);
   ENode* e = ENode::mk(getRegion(),
                        d_app2ENode,
                        n,

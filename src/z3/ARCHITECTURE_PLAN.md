@@ -997,28 +997,71 @@ through propagations and conflicts instead.
 
 ### Progress: the mirror
 
-- **Implemented:** `--z3 --z3-prop-engine=cvc5`, as described above.
-  `TheoryEngine`'s prop-facing methods are virtual; `Z3TheoryEngine`
-  implements them in hosted mode; `Z3HostedPropEngine` prepares the input;
-  `PropCore` has a host mode.
-- **Two adjustments found while testing:**
-  - **Delivery:** in hosted mode every assigned atom other than a quantifier
-    reaches the theories, as with `--no-z3-relevancy-deliver` (B1a, which
-    made no difference). cvc5 asserts atoms that are not in `PropCore`'s
-    encoding, for instance those its rewriter makes of the atoms of
-    lemmas: it turns the datatypes split `((_ is nil) (tl x))` into
-    `(= nil (tl x))`. Relevancy cannot know whether such an atom is
-    relevant.
-  - **Theory case splits:** when the theory side's final check asks to
-    continue, every relevant, unassigned theory atom that cvc5 does not
-    know is sent as a splitting lemma `(or a (not a))`, which the
-    justification heuristic then decides, true first. Theories such as
-    datatypes and model-based combination rely on the search to decide the
-    atoms they create.
-- **Status on the quantified regressions (10 s, `verus-best`):** no wrong
-  answers; 167 solved against 171 for the core's own search. The only
-  abnormal exits are the two that predate it (`parametric-lists`,
-  `stream-x2014-09-18-unsat`).
-- **Default unchanged:** with `--z3-prop-engine=z3`, answers and `z3::`
-  counters are identical to the reference on the comparison set.
+`--z3 --z3-prop-engine=cvc5` is implemented as described above:
+`TheoryEngine`'s prop-facing methods are virtual, `Z3TheoryEngine`
+implements them in hosted mode, `Z3HostedPropEngine` prepares the input,
+and `PropCore` has a host mode.
 
+The first version gave wrong "sat" answers and many unknowns on the Verus
+benchmarks, though not on the regressions. The corrections, each needed:
+
+- **Lemmas are not preprocessed.** cvc5 preprocesses every lemma, which
+  rewrites it. Native theories do not notice, since their atoms are already
+  in rewritten form, but the atoms of the port's prepared input are not:
+  a conflict clause made of assigned literals came back over new,
+  unassigned atoms, and no longer conflicted. `PropEngine` gains
+  `assertLemmaUnprocessed`, which the hosted engine uses for every lemma
+  (conflicts, instances, theory axioms, splits). It also keeps cvc5's atoms
+  identical to the core's, so the datatypes split no longer comes back as
+  an equality.
+- **A full check never lets a model through while a conflict is pending.**
+  If a conflict sent in the current context has not made cvc5 backtrack,
+  the model is marked unsound.
+- **Boolean variables are reported to the theory engine.** cvc5 asserts
+  only theory atoms to the theory engine, but relevancy needs the values of
+  the core's gates, which the core derives from their leaves, and Boolean
+  variables (for instance Verus's `tmp%2` and location labels) are leaves.
+  Without them, relevancy stopped below every gate over a Boolean variable,
+  the terms there were never matched, and the search ended in unknown.
+  `PropEngine` takes the `FormulaLitPolicy` of its CNF stream as a
+  constructor argument; the hosted engine uses `TRACK_AND_NOTIFY_VAR`.
+- **Relevant, unassigned variables are decided before a final check is
+  accepted.** The core's search reaches a final check only once every
+  relevant variable is assigned, but cvc5's justification heuristic can
+  stop on a partial assignment. Before accepting a "done" final check, and
+  when one asks to continue, the hosted engine sends a splitting lemma
+  `(or v (not v))` for each relevant, unassigned variable (gates included),
+  which the justification heuristic must then decide.
+- **Generations survive backtracking.** cvc5 keeps the clauses whose atoms
+  the core deletes on backtracking, and asserts those atoms again; the
+  core then internalizes them on demand, outside the reinitialization its
+  generation cache serves. In hosted mode the core records the generation
+  of each term and quantifier when it is first internalized, and reuses it.
+- **Explanations stop only at literals cvc5 gave the core first.** A
+  literal the core derived before cvc5 asserted it keeps the core's own
+  justification. Stopping at it would have presented cvc5 with a reason
+  assigned after the literal it explains, which made CaDiCaL's conflict
+  analysis crash.
+- **Delivery is unfiltered** (B1a): cvc5 asserts atoms whose relevance the
+  core cannot know.
+
+Two things tried and not kept: caching instances in the core (B2c) makes
+the hosted engine slower and solve fewer, since cvc5 keeps the instance
+clauses anyway and the hosted engine sends each lemma once; a rediscovered
+instance is cheap to make again in the core.
+
+**Status** (10 s, `verus-best`): on every tenth benchmark of
+`quant-07-25` (613), 561 solved against 585 for the core's own search,
+with no "sat" answers, no errors, and 2 unknowns against 4; 27% slower on
+the 557 both solve. On the quantified regressions, no wrong answers with
+or without assertions, and no failures other than those without the
+switch. With `--z3-prop-engine=z3`, answers and `z3::` counters are
+unchanged.
+
+**Where the time goes.** On a benchmark where it is three times slower,
+the hosted engine makes three times as many instances and six times as
+many matches as the core's own search, while the mirror's own work
+(explanations, collecting propagations, splitting) is negligible and
+cvc5's justification heuristic takes about 8% of the time. The search
+itself (cvc5's decisions and backtracking under the theory side's eager
+instantiation) is the place to look next.
