@@ -1,0 +1,272 @@
+# Audit: the theory branch, and the quantifier stack against cvc5's
+
+Date: 2026-10-14
+
+Source snapshot: `d7b68ff497`
+
+Status: audit only. No code changed.
+
+The propositional branch has been measured
+([PROPOSITIONAL_BRANCH.md](PROPOSITIONAL_BRANCH.md), section 3). Of the
+propositional components, only relevancy matters, and only through
+E-matching and the instance checker; decisions must follow the formula, but
+justification order does as well. Instantiating during propagation also
+matters. A Z3-style relevancy filter for cvc5's term database
+(branch `z3-relevance-1`) did not improve cvc5, which suggests that
+relevancy is a companion of the port's eager, incremental matching rather
+than an advantage by itself.
+
+That moves the search to the theory branch, and within it to the
+quantifier stack. This document:
+
+- maps the theory side, `SmtContext` and its plugins, onto cvc5;
+- compares the quantifier stack with cvc5's `QuantifiersEngine` in detail;
+- names the issues and some defects found on the way;
+- proposes measurements that need no code, then the extraction of the
+  quantifier stack behind an explicit contract, as Stage 1B did for
+  `PropCore`.
+
+Throughout, "cvc5" means the native engine with the user's baseline,
+`--user-pat=strict --no-cbqi` (in this cvc5, `--cbqi` is conflict-based
+instantiation), and "Verus" means `--z3 --z3-preset=verus` or `verus-best`.
+
+## 1. The theory side at a glance
+
+| Component | Lines | Under Verus |
+|---|---|---|
+| E-graph core: `smt_context`, `internalizer`, `enode`, `cg_table` | 5,959 | |
+| Justifications and `Explainer` | 1,052 | |
+| Theory interface, `TheoryStatus`, `Setup` | 1,007 | `Setup` registers native arithmetic, the bit-vector bridge, datatypes |
+| Arithmetic (`theory_arith_*`, a port of Z3's `theory_mi_arith`) | 9,370 | native (`--z3-arith=native`) |
+| Datatypes (`theory_datatype`) | 1,327 | native |
+| The cvc5 bridge (`theory_cvc5`) | 1,717 | always for bit-vectors; also the nonlinear fallback under `verus-best` |
+| Dynamic Ackermann (`dyn_ack`) | 550 | on |
+| **Quantifier stack** (`quantifier_manager`, `mam`, `qi_queue`, `checker`, `quick_checker`, `enum_inst`, `cost_function`, `fingerprints`, `pattern_inference`, `quantifier_stat`) | 9,261 | |
+
+Arrays, strings, floating point and sets have no plugin: their atoms mark
+the model unsound, so "sat" becomes "unknown"
+(`SmtContext::checkTheorySupported`).
+
+## 2. The quantifier stack against cvc5
+
+| Aspect | The port (Z3) | cvc5 | Difference that matters |
+|---|---|---|---|
+| Activation | A quantifier reaches the stack when it is assigned true and is relevant (`PropCore::assignCore`, `relevantEh`). Its patterns are compiled each time it is assigned, into trail-scoped code trees (`DefaultQmPlugin::assignEh`). | Every asserted quantified formula is active. Triggers are made at registration and regenerated periodically. | Recompilation after backjumps; relevance gates which quantifiers are matched at all. |
+| Patterns | User patterns; pattern inference under `verus-best` (`PatternInference`). Unary patterns are matched eagerly. **Multi-patterns are matched lazily**: beyond `--z3-qi-max-eager-multipatterns` (default 0, plus one if the quantifier has no unary pattern) they go to a lazy matcher that runs only at final check, at most twice per search (`d_qiMaxLazyMultipatternMatching`). | `--user-pat=strict`: user patterns only, no auto-generated triggers for those formulas. Every multi-trigger is matched every round (`InstMatchGeneratorMultiLinear`). | T3. |
+| Matching engine | The MAM: one code tree per head symbol, interpreted over candidates. **Incremental**: a new relevant enode becomes a candidate (`relevantEh`); a merge adds the parents reachable through an inverted path index (`addEqEh`); 64-bit label sets on enodes filter both. | Generators re-enumerate matches from scratch every round over the term database's tries (`InstMatchGenerator::resetInstantiationRound`). `--ieval=use` (default) prunes a partial match early when the instance would be entailed. | T1. The MAM finds each new match once, when the term or merge appears; cvc5 rediscovers every match every round. |
+| Timing | Matching and eager instantiation run at the end of every theory propagation (`SmtContext::theoryPropagate`, last step), i.e. after every BCP fixpoint. Delayed instances wait for final check. | E-matching runs at FULL effort in two of every three rounds (`--inst-when=full-last-call`, phase 3) and at LAST_CALL. **Never at STANDARD effort.** | T1; measured by A6. |
+| Instance queue | Each match gets a cost, `(+ weight generation)` by default (`--z3-qi-cost`); the terms an instance creates get generation = cost (`--z3-qi-new-gen`). Cost at most the eager threshold (100 under Verus): instantiated now. Above it: delayed, and at final check made only if at most the lazy threshold (20). **So under Verus an instance costing over 100 is never made**, unless the checker finds it in conflict. | No queue. Every match found in a round is sent. Instantiation levels (`--inst-max-level`, unlimited by default) are the nearest counterpart; setting one also turns `--cegqi` off. | T2. The thresholds cap the depth of instantiation chains, which breaks matching loops. |
+| Deduplication | Fingerprints: (quantifier, binding enodes), looked up with the bindings and their roots; **scoped**, popped with the scope (`FingerprintSet`). | An instantiation trie per formula, on exact terms, **permanent** (`Instantiate::recordInstantiationInternal`), plus the lemma cache. | Tied to instance lifetime (T8). |
+| Instance checker | `Checker::isSat` skips an instance that is already satisfied (`--z3-qi-checker`, on); `isUnsat` makes a delayed instance at once when it is in conflict (`d_qiPromoteUnsat`, on, no option). Both look only at relevant terms and atoms. `QuickChecker` is off under Verus. | `--inst-no-entail` rejects an instance whose body the equality engine entails; `--ieval=use` rejects it during matching. Neither restricts itself to relevant terms. | T4; B1g showed the restriction to relevant terms matters. |
+| Instance lifetime | An instance is an auxiliary clause of the scope it is made in, deleted on backtracking. | Permanent lemma (`LemmaProperty::INPROCESS`, never `REMOVABLE`). | T8; B2a was ambiguous. |
+| Generations | Every enode has a generation; a class keeps the minimum; generations of recreated terms are cached across backjumps (`cacheGeneration`). | Instantiation levels, only computed when `--inst-max-level` is set. | Part of T2. |
+| Model checking | No MBQI: `checkModel` returns unknown whenever there are quantifiers. | With strict user patterns and no MBQI, E-matching saturation also ends in unknown. | None for unsat answers. |
+| Conflict-driven instances | Promotion by `Checker::isUnsat` of delayed instances. | Conflict-based instantiation, off in the baseline (`--no-cbqi`). | Small under Verus, where few instances are delayed. |
+
+### Measured so far
+
+- **A6** (`--z3-qi-eager-threshold=0 --z3-qi-lazy-threshold=100`): much
+  worse. Timing matters.
+- **B1f** (E-matching ignores relevancy): much worse. **B1g** (the checker
+  ignores relevancy): worse, with many unknowns.
+- **On `regress1/quantifiers/z3.620661-no-fv-trigger.smt2`** under
+  `verus-best`, the baseline reaches generation 100, the cap. With
+  `--z3-qi-cost=0` or `weight`, which remove the cap, it makes 5,305
+  instances instead of 771 and gives up instead of answering unsat.
+
+## 3. The rest of the theory side against cvc5
+
+| Aspect | The port (Z3) | cvc5 |
+|---|---|---|
+| Equality reasoning | One E-graph for all theories: enodes with congruence roots, parent lists and theory variable lists; a congruence table per symbol; a proof forest for explanations (`Explainer`). | Distributed equality engines with a master engine for quantifiers (`--ee-mode=distributed`). |
+| Equalities to literals | Merges assign equality atoms directly, and true/false classes assign their Boolean members. | Through theory propagation. |
+| Dynamic Ackermann | On: congruences used in conflicts become lemmas after each resolved conflict. | No counterpart (only static `--ackermann`). |
+| Theory combination | Model-based: native arithmetic proposes equalities between shared terms with equal values (`assumeEqs`). | Care graph (`--tc-mode=care-graph`). |
+| Arithmetic | Native port of Z3's simplex-based solver. Z3's nonlinear strategies are not ported; under `verus-best` a nonlinear subproblem goes to the bridge. | cvc5's own linear and nonlinear solvers. |
+| Bit-vectors | Always through the bridge. | Native. |
+| Final check | Round-robin over the theories and the quantifier stack, starting where the last one left off. | Fixed order, quantifiers last, then last call. |
+
+## 4. Issues
+
+**T1. Eager, incremental matching against rounds from scratch.** The MAM
+finds a match when the term or merge that makes it appears, at the end of
+every propagation, and never revisits it. cvc5 rediscovers every match
+every round, at full effort only. A6 shows that the timing matters. The
+open question is whether it is the timing, the incrementality that makes
+the timing affordable, or the queue policy that rides on both (T2).
+
+**T2. The instance queue caps instantiation depth.** Under Verus, cost is
+weight plus generation, new terms take the instance's cost as their
+generation, and anything costing over 100 is never instantiated unless it
+is in conflict. That bounds every chain of instances at about 100 steps,
+which breaks matching loops; the measurement above shows a loop that
+explodes without it. cvc5 has no such bound by default.
+
+**T3. Multi-patterns are matched lazily.** By default only unary patterns
+(and one multi-pattern when there is no unary one) are matched eagerly; the
+rest wait for final check and are rematched at most twice per search. cvc5
+matches every multi-trigger every round.
+
+**T4. The instance checker.** It skips instances that the relevant part of
+the assignment already satisfies. B1g says its restriction to relevant
+terms matters; whether the checker itself matters is not yet measured.
+cvc5's counterparts (`--inst-no-entail`, `--ieval`) are not restricted to
+relevant terms.
+
+**T5. The bridge runs at every final check under `verus-best`.** With the
+nonlinear fallback on, native arithmetic registers every arithmetic atom
+with the cvc5 bridge (`TheoryArith::registerNlFallbackAtom`), whose comment
+says they are consulted only when the nonlinear check gives up. But the
+bit-vector bridge, registered in every configuration, owns the bridge and
+runs one subsolver call over all registered atoms at every final check
+(`TheoryCvc5::finalCheckEh`). On a two-atom linear problem, `verus-best`
+makes one bridge call and `verus` none. Part of what has been credited to
+"nonlinear arithmetic and the fallback" in `verus-best` may therefore be a
+cvc5 check of the arithmetic, with its model-based combination
+(`separateSharedValues`), at every final check.
+
+**T6. Relevancy feeds the matcher.** The MAM's candidates and label sets
+come from relevancy notifications, and its merge events arrive before
+members are re-rooted. A boundary around the quantifier stack has to carry
+these events, in this order.
+
+**T7. The MAM depends on the inside of an enode.** It reads the owner,
+symbol, root, class list, congruence root, generation, arguments, marks,
+label hash, label sets and parent lists, and is a friend of `ENode`. Hosting
+it over cvc5's equality engine would need an adapter for all of these, and
+for the merge event with both roots before re-rooting.
+
+**T8. Instance lifetime and deduplication.** Instances and fingerprints are
+scoped together, so an instance is made again after a backjump. B2a was
+worse, but it also changed how relevancy treats instances; the lifetime on
+its own is unmeasured.
+
+## 5. Defects and inconsistencies found
+
+Each is to be fixed in a change of its own; none affects the Verus runs
+except the first.
+
+1. **The bridge comment** (T5): `registerNlFallbackAtom` says the atoms are
+   consulted only when the nonlinear check gives up; they are consulted at
+   every final check.
+2. **The lazy matcher never clears its new patterns**
+   (`Mam::hasWork`): they are cleared only on pop, and the lazy matcher's
+   `match` is never called. While a lazy multi-pattern exists in the
+   scope, `--z3-force-rematch` and `--z3-enum-inst` never run. Both are off
+   under Verus.
+3. **`--z3-force-rematch`** says it ignores relevancy, but calls
+   `rematch(false)`, which skips irrelevant enodes.
+4. **`--z3-enum-inst-fallback`** is read but never used.
+5. **Statistics:** `z3::instances` counts every instance, not only those
+   from E-matching; `z3::lazyInstances` counts delayed instances that were
+   made, not dropped ones; native arithmetic's statistics are not exported.
+6. **Stale names:** `README.md` and `smt_context.h` refer to
+   `SmtContext::checkFinalize`, and `FIDELITY.md` to
+   `SmtContext::pushAssertion`; both are `PropCore`'s. `ModelGenerator` is
+   declared and befriended but never defined.
+7. **cvc5, for reference:** `--relevant-triggers` has no effect, since
+   `QuantRelevance::d_syms_quants` is read but never written.
+
+## 6. Proposed sequence
+
+### Phase A: measure the switches that exist (no code)
+
+All on top of `--z3 --z3-preset=verus-best`.
+
+| Run | Switches | Isolates | Compare with |
+|---|---|---|---|
+| A6b | `--z3-qi-eager-threshold=10` | how much eagerness (T1) | baseline, A6 |
+| q1 | `--z3-qi-eager-threshold=0 --z3-qi-lazy-threshold=100 --no-z3-relevancy-match` | whether relevancy matters only because matching is eager (T1, T6) | A6 |
+| q2 | `--z3-qi-eager-threshold=1000` | the depth cap (T2) | baseline |
+| q3 | `--no-z3-qi-checker` | the instance checker (T4) | baseline |
+| q4 | `--z3-qi-max-eager-multipatterns=8` | lazy multi-patterns (T3) | baseline |
+| q5 | `--no-z3-arith-nl-fallback` | the fallback together with the bridge at every final check (T5) | baseline, and `verus` |
+| q6 | `--z3-qi-cost=0` | no queue policy at all, as in cvc5 (T2) | baseline, q2 |
+
+If q2 or q6 lose, the cap matters, and cvc5 has a direct test:
+`--inst-max-level=100` against the baseline, both with `--no-cegqi`, since
+setting a level turns `--cegqi` off.
+
+### Phase B: switches that need a little code (off by default)
+
+- **The bridge at final check** (T5): consult the atoms registered by the
+  nonlinear fallback only when the nonlinear check gives up, as the comment
+  intends. With q5, this separates the fallback from the per-final-check
+  bridge call.
+- **Matching in rounds** (T1): no matching during propagation; at final
+  check, rematch every tree over every relevant enode, as cvc5's schedule
+  does, and instantiate what is found. Compared with A6, this tells whether
+  the loss is in when instances are made or in incremental matching.
+- **Instance lifetime without the relevancy confound** (T8): permanent
+  instances whose root is marked relevant as a scoped instance's is.
+
+### Phase C: extract the quantifier stack behind a contract
+
+As Stage 1B did for `PropCore`, in steps that each leave answers and
+`z3::` counters unchanged.
+
+1. **Name the contract.** Inbound, from the theory side: a quantifier is
+   asserted (`assignEh`) or deleted (`del`), an enode becomes relevant, two
+   classes merge (with both roots, before re-rooting), propagation reaches a
+   fixpoint (`propagate`), final check (eager and lazy), scopes, search
+   start and restart, and the queries `isShared` and the generation of a
+   quantifier. Outbound, the services the stack uses, about 35 methods of
+   `SmtContext`:
+   - **term view:** the enodes of a symbol, congruence lookup, roots,
+     classes, parents, disequality, symbol ids, generations, internalizing a
+     ground pattern term;
+   - **Boolean view:** assignments and whether a literal is internalized;
+   - **relevance view:** the matching and checking predicates, marking
+     relevant;
+   - **instance sink:** rewriting an instance and asserting it with its
+     generation;
+   - **infrastructure:** the trail, statistics, cancellation and resource
+     limits.
+2. **Route the stack through it.** `SmtContext` implements the outbound
+   interface; the stack calls nothing else. Measure the cost of the
+   indirection, as Stage 1B did for `PropCore`.
+3. **Give the stack its own state.** The fingerprints move from
+   `SmtContext` into the stack; pattern inference moves to assertion
+   preparation, its only user.
+4. **Separate matching from policy.** The MAM reports matches (quantifier,
+   bindings, generations) to a sink; the queue, with its costs and
+   thresholds, is one policy behind that sink. A cvc5-like policy, which
+   sends every match, becomes a second implementation rather than a
+   parameter setting.
+5. **Separate scheduling.** When to match and when to instantiate is
+   decided in one place, the plugin's `propagate` and final check, so that
+   rounds (Phase B) are a scheduling policy.
+6. **Wrap the enode accesses of the MAM** (T7) behind accessors, which is
+   the precondition for running it over another E-graph.
+
+### Phase D: toward cvc5
+
+What Phase D is depends on Phases A to C:
+
+- **If the depth cap (T2) carries the gain,** it can go to cvc5 directly as
+  instantiation levels, without changing when cvc5 instantiates.
+- **If eager, incremental matching (T1) carries it,** cvc5 needs a
+  quantifiers module that runs at STANDARD effort with an incremental
+  matcher. Its prerequisites are the equality engine's merge and new-class
+  notifications (`MasterNotifyClass` already relays them to quantifiers),
+  incremental relevance (the `RelevanceManager` computes only at full
+  effort), generations, and a queue. Hosting the port's MAM there through an
+  adapter for T7 is one way to get the matcher.
+- **If neither matters,** the rest of the theory side is next: dynamic
+  Ackermann, the model-based combination of native arithmetic, and the
+  bridge.
+
+## 7. Reading the outcomes
+
+- **q1 about as bad as A6:** relevancy for matching only matters because
+  matching is eager. For cvc5 it comes with eager matching, not before it.
+- **q2 or q6 worse:** the depth cap matters; try `--inst-max-level` in cvc5.
+- **q3 worse:** the instance checker matters; compare `--inst-no-entail` and
+  `--ieval` in cvc5.
+- **q4 better:** lazy multi-patterns cost answers; worse: they are part of
+  the gain.
+- **q5 and the Phase B bridge switch:** how much of `verus-best`'s gain over
+  `verus` is the per-final-check bridge rather than the fallback.
+- **Rounds (Phase B) about as bad as A6:** the loss is in when instances
+  are made; much better than A6: incremental matching matters in its own
+  right.
