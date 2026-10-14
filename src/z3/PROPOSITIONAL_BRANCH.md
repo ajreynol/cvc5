@@ -262,41 +262,44 @@ instead, which grows with the conflicts.
 Every run adds its switches to `--z3 --z3-preset=verus-best` or
 `--z3 --z3-preset=verus`.
 
-First results, on `verus-best`:
+With `--stats`, the `z3::` counters that explain a change are `instances`,
+`conflicts`, `decisions`, `mamMatches`, `lazyInstances` and, under B2,
+`instancesRediscovered`.
 
-- **A2 is far worse than the baseline, and A1a is moderately worse.** Most
-  of A2's loss therefore comes from the two roles of relevancy that A1a
-  keeps, delivery and matching, which have no counterpart in cvc5's SAT
-  level. B1 separates them.
-- **A1a being worse** agrees with cvc5's use of the justification heuristic
-  for quantified logics (`SetDefaults`). Whether justification is as good as
-  the relevancy queue is what B3a measures.
-- **A6 is much worse:** instantiating during propagation matters, and none
-  of cvc5's `--inst-when` modes instantiates before full effort. A6b tells
-  whether the effect grows gradually with the eager threshold.
-- **A3, A4 and A5 make no difference,** so B4 is unlikely to.
-- **B1a is good; B1b and B1c are as bad as A2; B1d is about as bad as
-  A1a.** Relevancy matters through matching, which accounts for most of
-  A2's loss, and to a lesser degree through decisions. It does not matter
-  through what reaches the theories, which is the role cvc5 can do without.
-  B1b and B1c turned off both E-matching's and the instance checkers' use of
-  relevancy, so B1f and B1g separate them.
-- **cvc5's counterpart is weaker.** cvc5's term database
-  (`--term-db-mode=relevant`, and the default `relevant-all-delay` before
-  its fallback) admits the terms of every asserted literal and every merged
-  term (`TermDb::setHasTerm`). Relevancy admits only the terms the current
-  assignment needs to satisfy the input and the instances. cvc5 runs with
-  `--term-db-mode=all` and `relevant` show how much cvc5 relies on its own
-  filter.
+### Results
 
-The runs, in order: B1f, B1g, B3a, B2a, A6b, and B3c
-(`--z3-case-split=justification --no-z3-relevancy-deliver`), the closest to
-cvc5 that keeps relevancy for matching. Deferred: B1c–B1e, whose answer
-B1a and B1b mostly give; B4a–B4c and A1b, which tune what made no
-difference; B2b and B3b, whose control is A2.
-- With `--stats`, the `z3::` counters that explain a change are
-  `instances`, `conflicts`, `decisions`, `mamMatches`, `lazyInstances` and,
-  under B2, `instancesRediscovered`.
+On `verus-best`, against its baseline:
+
+| Outcome | Runs |
+|---|---|
+| no difference | A3a, A3b (phase), A4 (Luby restarts), A5 (no delayed units), B1a (every assigned atom delivered), B3a (justification order) |
+| somewhat worse | A1b (activity, delaying new splits), B1d (activity, every assigned atom delivered) |
+| worse | B2a (permanent instances), B1g (checkers ignore relevancy; many unknown) |
+| much worse | A1a (activity), A2 (no relevancy), A6 (no eager instances), B1b, B1c, B1e (matching and checkers ignore relevancy), B1f (E-matching ignores relevancy), B2b, B3b (no relevancy) |
+
+B1b, B1c and B1e were run before `--no-z3-relevancy-check` was split off,
+so they turned off relevancy in both E-matching and the checkers.
+
+What they say, component by component:
+
+- **Relevancy matters through matching.** E-matching restricted to relevant
+  terms is the single most important ingredient (B1f, and A2 against A1a).
+  The instance checker's restriction to relevant terms and atoms matters too
+  (B1g): judged on everything, it skips instances as already satisfied that
+  the search needs later.
+- **Relevancy does not matter through delivery** (B1a, and B1d against
+  A1a). cvc5's lack of it costs nothing.
+- **Decisions must follow the formula, but the order does not matter.**
+  Activity is much worse (A1a, A1b); justification order with a partial
+  assignment is as good as the relevancy queue (B3a). This is cvc5's
+  default for quantified logics.
+- **Instantiating during propagation matters** (A6). None of cvc5's
+  `--inst-when` modes instantiates before full effort.
+- **Instance lifetime is unresolved.** B2a is worse, but at level 2 it also
+  marks every literal of an instance relevant, which by B1f is the costly
+  direction, so its loss may be that rather than the lifetime.
+- **Phase, restarts and delayed units do not matter** (A3–A5), so the
+  MiniSat-style B4 runs are not needed.
 
 With assertions on, each switch was run over the quantified regressions
 under `verus-best`. No run gave a wrong answer, and none failed that does
@@ -307,6 +310,31 @@ its scope (`ProofNodeManager::mkScope`). That check is on in production
 builds too. A2 reaches it with existing options only, so it predates these
 switches; `--no-z3-arith-nl-fallback` avoids it. A crash on a nonlinear
 benchmark in these runs may be this defect.
+
+### Next: relevancy-restricted matching in cvc5
+
+The results point at one component to bring to cvc5 first: restricting
+E-matching to the terms the current assignment needs. cvc5 has most of the
+pieces:
+
+- `RelevanceManager` (`--relevance-filter`) computes a relevant selection of
+  the asserted literals at full and last-call effort, with respect to the
+  input and the lemmas marked `NEEDS_JUSTIFY`, which is close to what
+  relevancy computes. Theories reach it through `Valuation::isRelevant`.
+- `TermDb::reset` builds the terms E-matching may use (`setHasTerm`) from
+  every asserted literal, and `TermDb::eqNotifyMerge` adds every merged term.
+
+The adapter is a term database mode that admits only the terms of the
+literals the relevance manager selects, and not merged terms, with
+quantifier instances sent as `NEEDS_JUSTIFY`: Z3 asserts an instance as a
+root, so its body's terms become relevant, and a selection that ignored
+instances would cut every matching chain that goes through one.
+
+Measured against cvc5's own filter (`--term-db-mode=relevant`, `all`), this
+says whether the port's matching advantage carries over. Eager
+instantiation (A6) is the next candidate, and a larger change: cvc5 would
+need E-matching at standard effort, with relevance kept up to date during
+propagation rather than computed at full effort.
 
 ### Phase C: native propositional orchestration over the port's theory side
 
