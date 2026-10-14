@@ -1627,7 +1627,9 @@ void SmtContext::registerPlugin(Theory* th)
   }
 }
 
-bool SmtContext::internalizeInstance(TNode body, uint32_t generation)
+bool SmtContext::internalizeInstance(TNode body,
+                                     uint32_t generation,
+                                     Node& root)
 {
   if (inconsistent())
   {
@@ -1646,6 +1648,7 @@ bool SmtContext::internalizeInstance(TNode body, uint32_t generation)
   Node norm = d_normalizer.normalize(body);
   if (d_params.d_qiPermanent)
   {
+    root = norm;
     return internalizePermanentLemma(norm, generation);
   }
   internalizeAssertion(norm, generation);
@@ -1998,6 +2001,33 @@ bool SmtContext::assumeEq(ENode* lhs, ENode* rhs)
     r = true;
   }
   return r;
+}
+
+bool SmtContext::isExtDiseqAtom(BoolVar v)
+{
+  if (!hasENode(v))
+  {
+    return false;
+  }
+  ENode* n = boolVar2ENode(v);
+  if (!n->isEq())
+  {
+    return false;
+  }
+  return isExtDiseq(n->getArg(0), n->getArg(1), 2);
+}
+
+void SmtContext::conflictResolutionEh(BoolVar v)
+{
+  TNode n = boolVar2Expr(v);
+  if (!n.isNull() && isApp(n))
+  {
+    Theory* th = getTheory(familyIdOf(n));
+    if (th != nullptr)
+    {
+      th->conflictResolutionEh(n, v);
+    }
+  }
 }
 
 bool SmtContext::isShared(ENode* n) const

@@ -168,9 +168,6 @@ class SmtContext : protected EnvObj
   bool internalizePermanentLemma(TNode n, uint32_t generation);
 
   // -------------------------------------------------------------- search
-  /** Backtrack to the base (user) level. */
-  void popToBaseLvl() { d_prop.popToBaseLvl(); }
-
   Failure getLastSearchFailure() const { return d_prop.getLastSearchFailure(); }
 
   // ------------------------------------- the scheduling and backtracking
@@ -235,11 +232,6 @@ class SmtContext : protected EnvObj
     d_prop.setReasonUnknown(msg);
   }
 
-  const std::string& getReasonUnknown() const
-  {
-    return d_prop.getReasonUnknown();
-  }
-
   /** Print the quantifier profile, if requested, when a check finishes. */
   void reportQuantifierProfile();
 
@@ -287,20 +279,11 @@ class SmtContext : protected EnvObj
 
   const PropCore& getPropCore() const { return d_prop; }
 
-  void resetBoolVars() { d_prop.resetBoolVars(); }
-
   BoolVar getBoolVar(TNode n) const { return d_prop.getBoolVar(n); }
 
   BoolVar getBoolVar(const ENode* n) const { return getBoolVar(n->getExpr()); }
 
   BoolVar getBoolVarOfId(size_t id) const { return d_prop.getBoolVarOfId(id); }
-
-  BoolVar getBoolVarOfIdOption(size_t id) const
-  {
-    return d_prop.getBoolVarOfIdOption(id);
-  }
-
-  void setBoolVar(size_t id, BoolVar v) { d_prop.setBoolVar(id, v); }
 
   const ClauseVector& getLemmas() const { return d_prop.getLemmas(); }
 
@@ -333,11 +316,6 @@ class SmtContext : protected EnvObj
 
   const BoolVarData& getBdata(BoolVar v) const { return d_prop.getBdata(v); }
 
-  LBool getLitAssignment(size_t litIdx) const
-  {
-    return d_prop.getLitAssignment(litIdx);
-  }
-
   LBool getAssignment(Literal l) const { return d_prop.getAssignment(l); }
 
   LBool getAssignment(BoolVar v) const { return d_prop.getAssignment(v); }
@@ -347,19 +325,9 @@ class SmtContext : protected EnvObj
     return d_prop.assignedLiterals();
   }
 
-  const WatchList& getWatch(Literal l) const { return d_prop.getWatch(l); }
-
   LBool getAssignment(TNode n) const { return d_prop.getAssignment(n); }
 
-  /** Like getAssignment, but returns L_UNDEF if n is not internalized. */
-  LBool findAssignment(TNode n) const { return d_prop.findAssignment(n); }
-
   LBool getAssignment(ENode* n) const;
-
-  BJustification getJustification(BoolVar v) const
-  {
-    return d_prop.getJustification(v);
-  }
 
   void setRandomSeed(uint32_t s) { d_random.setSeed(s); }
 
@@ -367,29 +335,9 @@ class SmtContext : protected EnvObj
 
   bool isSearching() const { return d_prop.isSearching(); }
 
-  const std::vector<double>& getActivityVector() const
-  {
-    return d_prop.getActivityVector();
-  }
-
-  double getActivity(BoolVar v) const { return d_prop.getActivity(v); }
-
   uint64_t getNumAssignments() const { return d_stats.d_numAssignments; }
 
   uint64_t getBirthdate(BoolVar v) const { return d_prop.getBirthdate(v); }
-
-  void setActivity(BoolVar v, double act) { d_prop.setActivity(v, act); }
-
-  void activityChanged(BoolVar v, bool increased)
-  {
-    d_prop.activityChanged(v, increased);
-  }
-
-  bool isMarked(BoolVar v) const { return d_prop.isMarked(v); }
-
-  void setMark(BoolVar v) { d_prop.setMark(v); }
-
-  void unsetMark(BoolVar v) { d_prop.unsetMark(v); }
 
   /** The scope level at which v was assigned. */
   uint32_t getAssignLevel(BoolVar v) const { return d_prop.getAssignLevel(v); }
@@ -414,13 +362,7 @@ class SmtContext : protected EnvObj
 
   uint32_t getSearchLevel() const { return d_prop.getSearchLevel(); }
 
-  bool atSearchLevel() const { return d_prop.atSearchLevel(); }
-
-  void popToSearchLevel() { d_prop.popToSearchLvl(); }
-
   TNode boolVar2Expr(BoolVar v) const { return d_prop.boolVar2Expr(v); }
-
-  Node literal2Expr(Literal l) const { return d_prop.literal2Expr(l); }
 
   bool isTrue(const ENode* n) const { return n == d_trueENode; }
 
@@ -511,27 +453,9 @@ class SmtContext : protected EnvObj
            != nullptr;
   }
 
-  size_t getNumBInternalized() const { return d_prop.getNumBInternalized(); }
-
-  TNode getBInternalized(size_t idx) const
-  {
-    return d_prop.getBInternalized(idx);
-  }
-
   size_t getNumEInternalized() const { return d_eInternalizedStack.size(); }
 
   TNode getEInternalized(size_t idx) const { return d_eInternalizedStack[idx]; }
-
-  /** The position in the assignment stack of the decision at scopeLvl. */
-  size_t getDecisionLiteralPos(uint32_t scopeLvl) const
-  {
-    return d_prop.getDecisionLiteralPos(scopeLvl);
-  }
-
-  bool binaryClauseOptEnabled() const
-  {
-    return d_prop.binaryClauseOptEnabled();
-  }
 
   /** The canonicalizer for quantifiers; see z3/ast.h. */
   QuantifierNormalizer& getNormalizer() { return d_normalizer; }
@@ -568,9 +492,16 @@ class SmtContext : protected EnvObj
    * Internalize the body of a quantifier instance, after renormalizing its
    * variables. The instance is asserted at the current scope, or with
    * --z3-qi-permanent as a lemma that survives backtracking. Returns true in
-   * the latter case.
+   * the latter case, and then sets root to the formula asserted, for
+   * reactivateInstance.
    */
-  bool internalizeInstance(TNode body, uint32_t generation);
+  bool internalizeInstance(TNode body, uint32_t generation, Node& root);
+
+  /**
+   * Make the permanent instance root a root again in the current scope, when
+   * matching finds it again (--z3-qi-permanent-local).
+   */
+  void reactivateInstance(TNode root) { d_prop.reactivatePermanentRoot(root); }
 
   void ensureInternalized(TNode e);
 
@@ -786,16 +717,25 @@ class SmtContext : protected EnvObj
    */
   bool isExtDiseq(ENode* n1, ENode* n2, uint32_t depth);
 
+  /**
+   * Whether v is the variable of an equality atom whose sides are known to be
+   * disequal, as isExtDiseq with depth 2 decides. For the lookahead of the
+   * relevancy case split queue (d_lookaheadDiseq), through PropCore.
+   */
+  bool isExtDiseqAtom(BoolVar v);
+
+  /**
+   * Tell the theory of the atom of v that conflict resolution marked v
+   * (Theory::conflictResolutionEh). Called by ConflictResolution through
+   * PropCore.
+   */
+  void conflictResolutionEh(BoolVar v);
+
   /** An enode congruent to decl(args), or null if there is none. */
   ENode* getENodeEqTo(TNode decl,
                       bool commutative,
                       size_t numArgs,
                       ENode* const* args);
-
-  void incBvarActivity(BoolVar v, double inc = 1.0)
-  {
-    d_prop.incBvarActivity(v, inc);
-  }
 
   bool canPropagate() const { return d_prop.canPropagate(); }
 
@@ -928,8 +868,6 @@ class SmtContext : protected EnvObj
   bool resourceLimitsExceeded() { return d_prop.resourceLimitsExceeded(); }
 
   bool getCancelFlag() { return d_prop.getCancelFlag(); }
-
-  void interrupt() { d_prop.interrupt(); }
 
  protected:
   // --------------------------------------------- equality and congruence

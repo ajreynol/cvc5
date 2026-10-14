@@ -24,8 +24,7 @@
 #include <unordered_set>
 
 #include "base/output.h"
-#include "z3/enode.h"
-#include "z3/smt_context.h"
+#include "z3/prop_core.h"
 #include "z3/util/heap.h"
 #include "z3/util/random_gen.h"
 
@@ -86,10 +85,10 @@ using TheoryAwareActQueue = Heap<TheoryAwareActLt>;
 class ActCaseSplitQueue : public CaseSplitQueue
 {
  public:
-  ActCaseSplitQueue(SmtContext& ctx, Params& p)
-      : d_context(ctx),
+  ActCaseSplitQueue(PropCore& core, Params& p)
+      : d_core(core),
         d_params(p),
-        d_queue(1024, BoolVarActLt(ctx.getActivityVector()))
+        d_queue(1024, BoolVarActLt(core.getActivityVector()))
   {
   }
 
@@ -148,11 +147,11 @@ class ActCaseSplitQueue : public CaseSplitQueue
   {
     phase = L_UNDEF;
 
-    if (d_context.getRandomValue()
+    if (d_core.getRandomValue()
         < static_cast<int>(d_params.d_randomVarFreq * RandomGen::maxValue()))
     {
-      next = d_context.getRandomValue() % d_context.getNumBInternalized();
-      if (d_context.getAssignment(next) == L_UNDEF)
+      next = d_core.getRandomValue() % d_core.getNumBInternalized();
+      if (d_core.getAssignment(next) == L_UNDEF)
       {
         return;
       }
@@ -161,7 +160,7 @@ class ActCaseSplitQueue : public CaseSplitQueue
     while (!d_queue.empty())
     {
       next = d_queue.eraseMin();
-      if (d_context.getAssignment(next) == L_UNDEF)
+      if (d_core.getAssignment(next) == L_UNDEF)
       {
         return;
       }
@@ -175,14 +174,14 @@ class ActCaseSplitQueue : public CaseSplitQueue
     bool first = true;
     for (int v : d_queue)
     {
-      if (d_context.getAssignment(static_cast<BoolVar>(v)) == L_UNDEF)
+      if (d_core.getAssignment(static_cast<BoolVar>(v)) == L_UNDEF)
       {
         if (first)
         {
           out << "remaining case-splits:\n";
           first = false;
         }
-        out << "#" << d_context.boolVar2Expr(static_cast<BoolVar>(v)).getId()
+        out << "#" << d_core.boolVar2Expr(static_cast<BoolVar>(v)).getId()
             << " ";
       }
     }
@@ -193,7 +192,7 @@ class ActCaseSplitQueue : public CaseSplitQueue
   }
 
  protected:
-  SmtContext& d_context;
+  PropCore& d_core;
   Params& d_params;
   BoolVarActQueue d_queue;
 };
@@ -205,9 +204,9 @@ class ActCaseSplitQueue : public CaseSplitQueue
 class DactCaseSplitQueue : public ActCaseSplitQueue
 {
  public:
-  DactCaseSplitQueue(SmtContext& ctx, Params& p)
-      : ActCaseSplitQueue(ctx, p),
-        d_delayedQueue(1024, BoolVarActLt(ctx.getActivityVector()))
+  DactCaseSplitQueue(PropCore& core, Params& p)
+      : ActCaseSplitQueue(core, p),
+        d_delayedQueue(1024, BoolVarActLt(core.getActivityVector()))
   {
   }
 
@@ -243,7 +242,7 @@ class DactCaseSplitQueue : public ActCaseSplitQueue
     d_delayedQueue.reserve(v + 1);
     Assert(!d_delayedQueue.contains(v));
     Assert(!d_queue.contains(v));
-    if (d_context.isSearching())
+    if (d_core.isSearching())
     {
       d_delayedQueue.insert(v);
     }
@@ -282,7 +281,7 @@ class DactCaseSplitQueue : public ActCaseSplitQueue
     while (!d_queue.empty())
     {
       next = d_queue.eraseMin();
-      if (d_context.getAssignment(next) == L_UNDEF)
+      if (d_core.getAssignment(next) == L_UNDEF)
       {
         return;
       }
@@ -299,17 +298,17 @@ class DactCaseSplitQueue : public ActCaseSplitQueue
 class CactCaseSplitQueue : public ActCaseSplitQueue
 {
  public:
-  CactCaseSplitQueue(SmtContext& ctx, Params& p) : ActCaseSplitQueue(ctx, p) {}
+  CactCaseSplitQueue(PropCore& core, Params& p) : ActCaseSplitQueue(core, p) {}
 
   void mkVarEh(BoolVar v) override
   {
-    TNode n = d_context.boolVar2Expr(v);
+    TNode n = d_core.boolVar2Expr(v);
     if (!n.isNull())
     {
       auto it = d_cache.find(n);
       if (it != d_cache.end())
       {
-        d_context.setActivity(v, it->second);
+        d_core.setActivity(v, it->second);
       }
     }
     ActCaseSplitQueue::mkVarEh(v);
@@ -317,12 +316,12 @@ class CactCaseSplitQueue : public ActCaseSplitQueue
 
   void delVarEh(BoolVar v) override
   {
-    if (d_context.isSearching())
+    if (d_core.isSearching())
     {
-      double act = d_context.getActivity(v);
+      double act = d_core.getActivity(v);
       if (act > 0.0)
       {
-        TNode n = d_context.boolVar2Expr(v);
+        TNode n = d_core.boolVar2Expr(v);
         if (!n.isNull())
         {
           d_cache[n] = act;
@@ -346,7 +345,7 @@ class CactCaseSplitQueue : public ActCaseSplitQueue
  * d_relCaseSplitOrder: 0 takes the first, 1 picks one at random.
  */
 bool hasChildAssignedTo(
-    SmtContext& ctx, TNode parent, LBool val, TNode& undefChild, uint32_t order)
+    PropCore& core, TNode parent, LBool val, TNode& undefChild, uint32_t order)
 {
   std::vector<Node> undefChildren;
   bool foundUndef = false;
@@ -354,7 +353,7 @@ bool hasChildAssignedTo(
   for (size_t i = 0; i < numArgs; ++i)
   {
     TNode arg = parent[i];
-    LBool argVal = ctx.getAssignment(arg);
+    LBool argVal = core.getAssignment(arg);
     if (argVal == val)
     {
       return true;
@@ -384,7 +383,7 @@ bool hasChildAssignedTo(
     }
     else if (undefChildren.size() > 1)
     {
-      undefChild = undefChildren[ctx.getRandomValue() % undefChildren.size()];
+      undefChild = undefChildren[core.getRandomValue() % undefChildren.size()];
     }
   }
   return false;
@@ -408,8 +407,8 @@ class RelCaseSplitQueue : public CaseSplitQueue
   };
 
  public:
-  RelCaseSplitQueue(SmtContext& ctx, Params& p)
-      : d_context(ctx),
+  RelCaseSplitQueue(PropCore& core, Params& p)
+      : d_core(core),
         d_params(p),
         d_head(0),
         d_bsNumBoolVars(UINT32_MAX),
@@ -434,7 +433,7 @@ class RelCaseSplitQueue : public CaseSplitQueue
       return;
     }
     bool isOr = n.getKind() == Kind::OR;
-    bool intern = d_context.bInternalized(n);
+    bool intern = d_core.bInternalized(n);
     if (!intern && !isOr)
     {
       return;
@@ -442,10 +441,10 @@ class RelCaseSplitQueue : public CaseSplitQueue
     BoolVar var = s_nullBoolVar;
     if (intern)
     {
-      var = d_context.getBoolVar(n);
+      var = d_core.getBoolVar(n);
       Assert(var != s_nullBoolVar);
       bool isAnd = n.getKind() == Kind::AND;
-      LBool val = d_context.getAssignment(var);
+      LBool val = d_core.getAssignment(var);
       if (!(val == L_UNDEF ||            // n was not assigned yet
             (isOr && val == L_TRUE) ||   // need to justify a child
             (isAnd && val == L_FALSE)))  // need to justify a child
@@ -453,7 +452,7 @@ class RelCaseSplitQueue : public CaseSplitQueue
         return;
       }
     }
-    if (!intern && d_context.isSearching())
+    if (!intern && d_core.isSearching())
     {
       Assert(isOr);
       d_queue2.push_back(n);
@@ -471,7 +470,7 @@ class RelCaseSplitQueue : public CaseSplitQueue
 
   void initSearchEh() override
   {
-    d_bsNumBoolVars = static_cast<BoolVar>(d_context.getNumBoolVars());
+    d_bsNumBoolVars = static_cast<BoolVar>(d_core.getNumBoolVars());
   }
 
   void endSearchEh() override { d_bsNumBoolVars = UINT32_MAX; }
@@ -529,18 +528,9 @@ class RelCaseSplitQueue : public CaseSplitQueue
     // Force the negative phase if next is an equality already known to be
     // disequal in the logical context.
     if (d_params.d_lookaheadDiseq && next != s_nullBoolVar && phase != L_FALSE
-        && d_context.hasENode(next))
+        && d_core.isExtDiseqAtom(next))
     {
-      ENode* n = d_context.boolVar2ENode(next);
-      if (n->isEq())
-      {
-        ENode* lhs = n->getArg(0);
-        ENode* rhs = n->getArg(1);
-        if (d_context.isExtDiseq(lhs, rhs, 2))
-        {
-          phase = L_FALSE;
-        }
-      }
+      phase = L_FALSE;
     }
   }
 
@@ -568,13 +558,13 @@ class RelCaseSplitQueue : public CaseSplitQueue
       TNode curr = queue[head];
       bool isOr = curr.getKind() == Kind::OR;
       bool isAnd = curr.getKind() == Kind::AND;
-      bool intern = d_context.bInternalized(curr);
+      bool intern = d_core.bInternalized(curr);
       Assert(intern || isOr);
       LBool val = L_UNDEF;
       if (intern)
       {
-        next = d_context.getBoolVar(curr);
-        val = d_context.getAssignment(next);
+        next = d_core.getBoolVar(curr);
+        val = d_core.getAssignment(next);
       }
       else
       {
@@ -585,7 +575,7 @@ class RelCaseSplitQueue : public CaseSplitQueue
       {
         TNode undefChild;
         if (!hasChildAssignedTo(
-                d_context, curr, val, undefChild, d_params.d_relCaseSplitOrder))
+                d_core, curr, val, undefChild, d_params.d_relCaseSplitOrder))
         {
           Trace("z3-events") << "CSQ andor" << std::endl;
           Trace("z3-csq-parent") << "ANDOR " << curr << std::endl;
@@ -594,11 +584,11 @@ class RelCaseSplitQueue : public CaseSplitQueue
             Trace("z3-csq-detail") << "PARENT " << curr << std::endl;
             for (const Node& c : curr)
             {
-              Trace("z3-csq-detail") << "  CHILD " << d_context.getAssignment(c)
+              Trace("z3-csq-detail") << "  CHILD " << d_core.getAssignment(c)
                                      << " " << c << std::endl;
             }
           }
-          Literal l = d_context.getLiteral(undefChild);
+          Literal l = d_core.getLiteral(undefChild);
           next = l.var();
           phase = l.sign() ? L_FALSE : L_TRUE;
           return;
@@ -606,7 +596,7 @@ class RelCaseSplitQueue : public CaseSplitQueue
       }
       else if (val == L_UNDEF)
       {
-        Assert(intern && d_context.getBoolVar(curr) == next);
+        Assert(intern && d_core.getBoolVar(curr) == next);
         Trace("z3-events") << "CSQ cand" << std::endl;
         Trace("z3-csq-parent") << "CAND " << curr << std::endl;
         phase = L_UNDEF;
@@ -636,7 +626,7 @@ class RelCaseSplitQueue : public CaseSplitQueue
     out << "\n";
   }
 
-  SmtContext& d_context;
+  PropCore& d_core;
   Params& d_params;
   std::vector<Node> d_queue;
   size_t d_head;
@@ -660,12 +650,12 @@ class RelActCaseSplitQueue : public CaseSplitQueue
   };
 
  public:
-  RelActCaseSplitQueue(SmtContext& ctx, Params& p)
-      : d_context(ctx),
+  RelActCaseSplitQueue(PropCore& core, Params& p)
+      : d_core(core),
         d_params(p),
         d_head(0),
         d_bsNumBoolVars(UINT32_MAX),
-        d_delayedQueue(1024, BoolVarActLt(ctx.getActivityVector()))
+        d_delayedQueue(1024, BoolVarActLt(core.getActivityVector()))
   {
   }
 
@@ -675,7 +665,7 @@ class RelActCaseSplitQueue : public CaseSplitQueue
 
   void mkVarEh(BoolVar v) override
   {
-    if (d_context.isSearching())
+    if (d_core.isSearching())
     {
       Assert(v >= d_bsNumBoolVars);
       d_delayedQueue.reserve(v + 1);
@@ -710,7 +700,7 @@ class RelActCaseSplitQueue : public CaseSplitQueue
       return;
     }
     bool isOr = n.getKind() == Kind::OR;
-    bool intern = d_context.bInternalized(n);
+    bool intern = d_core.bInternalized(n);
     if (!intern && !isOr)
     {
       return;
@@ -718,10 +708,10 @@ class RelActCaseSplitQueue : public CaseSplitQueue
     BoolVar var = s_nullBoolVar;
     if (intern)
     {
-      var = d_context.getBoolVar(n);
+      var = d_core.getBoolVar(n);
       Assert(var != s_nullBoolVar);
       bool isAnd = n.getKind() == Kind::AND;
-      LBool val = d_context.getAssignment(var);
+      LBool val = d_core.getAssignment(var);
       if (!(val == L_UNDEF || (isOr && val == L_TRUE)
             || (isAnd && val == L_FALSE)))
       {
@@ -730,7 +720,7 @@ class RelActCaseSplitQueue : public CaseSplitQueue
     }
     if (!intern)
     {
-      if (!d_context.isSearching())
+      if (!d_core.isSearching())
       {
         d_queue.push_back(n);
       }
@@ -744,7 +734,7 @@ class RelActCaseSplitQueue : public CaseSplitQueue
 
   void initSearchEh() override
   {
-    d_bsNumBoolVars = static_cast<BoolVar>(d_context.getNumBoolVars());
+    d_bsNumBoolVars = static_cast<BoolVar>(d_core.getNumBoolVars());
   }
 
   void endSearchEh() override { d_bsNumBoolVars = UINT32_MAX; }
@@ -775,11 +765,11 @@ class RelActCaseSplitQueue : public CaseSplitQueue
 
   void nextCaseSplit(BoolVar& next, LBool& phase) override
   {
-    if (d_context.getRandomValue()
+    if (d_core.getRandomValue()
         < static_cast<int>(0.02 * RandomGen::maxValue()))
     {
-      next = d_context.getRandomValue() % d_context.getNumBInternalized();
-      if (d_context.getAssignment(next) == L_UNDEF)
+      next = d_core.getRandomValue() % d_core.getNumBInternalized();
+      if (d_core.getAssignment(next) == L_UNDEF)
       {
         return;
       }
@@ -794,7 +784,7 @@ class RelActCaseSplitQueue : public CaseSplitQueue
     while (!d_delayedQueue.empty())
     {
       next = d_delayedQueue.eraseMin();
-      if (d_context.getAssignment(next) == L_UNDEF)
+      if (d_core.getAssignment(next) == L_UNDEF)
       {
         return;
       }
@@ -830,13 +820,13 @@ class RelActCaseSplitQueue : public CaseSplitQueue
       TNode curr = d_queue[d_head];
       bool isOr = curr.getKind() == Kind::OR;
       bool isAnd = curr.getKind() == Kind::AND;
-      bool intern = d_context.bInternalized(curr);
+      bool intern = d_core.bInternalized(curr);
       Assert(intern || isOr);
       LBool val = L_UNDEF;
       if (intern)
       {
-        next = d_context.getBoolVar(curr);
-        val = d_context.getAssignment(next);
+        next = d_core.getBoolVar(curr);
+        val = d_core.getAssignment(next);
       }
       else
       {
@@ -847,7 +837,7 @@ class RelActCaseSplitQueue : public CaseSplitQueue
       {
         TNode undefChild;
         if (!hasChildAssignedTo(
-                d_context, curr, val, undefChild, d_params.d_relCaseSplitOrder))
+                d_core, curr, val, undefChild, d_params.d_relCaseSplitOrder))
         {
           Trace("z3-events") << "CSQ andor" << std::endl;
           Trace("z3-csq-parent") << "ANDOR " << curr << std::endl;
@@ -856,11 +846,11 @@ class RelActCaseSplitQueue : public CaseSplitQueue
             Trace("z3-csq-detail") << "PARENT " << curr << std::endl;
             for (const Node& c : curr)
             {
-              Trace("z3-csq-detail") << "  CHILD " << d_context.getAssignment(c)
+              Trace("z3-csq-detail") << "  CHILD " << d_core.getAssignment(c)
                                      << " " << c << std::endl;
             }
           }
-          Literal l = d_context.getLiteral(undefChild);
+          Literal l = d_core.getLiteral(undefChild);
           next = l.var();
           phase = l.sign() ? L_FALSE : L_TRUE;
           return;
@@ -868,7 +858,7 @@ class RelActCaseSplitQueue : public CaseSplitQueue
       }
       else if (val == L_UNDEF)
       {
-        Assert(intern && d_context.getBoolVar(curr) == next);
+        Assert(intern && d_core.getBoolVar(curr) == next);
         Trace("z3-events") << "CSQ cand" << std::endl;
         Trace("z3-csq-parent") << "CAND " << curr << std::endl;
         phase = L_UNDEF;
@@ -878,7 +868,7 @@ class RelActCaseSplitQueue : public CaseSplitQueue
     next = s_nullBoolVar;
   }
 
-  SmtContext& d_context;
+  PropCore& d_core;
   Params& d_params;
   std::vector<Node> d_queue;
   size_t d_head;
@@ -892,11 +882,11 @@ class RelActCaseSplitQueue : public CaseSplitQueue
 class TheoryAwareBranchingQueue : public CaseSplitQueue
 {
  public:
-  TheoryAwareBranchingQueue(SmtContext& ctx, Params& p)
-      : d_context(ctx),
+  TheoryAwareBranchingQueue(PropCore& core, Params& p)
+      : d_core(core),
         d_params(p),
         d_queue(1024,
-                TheoryAwareActLt(ctx.getActivityVector(), d_theoryVarPriority))
+                TheoryAwareActLt(core.getActivityVector(), d_theoryVarPriority))
   {
   }
 
@@ -955,11 +945,11 @@ class TheoryAwareBranchingQueue : public CaseSplitQueue
     int threshold =
         static_cast<int>(d_params.d_randomVarFreq * RandomGen::maxValue());
     Assert(threshold >= 0);
-    if (d_context.getRandomValue() < threshold)
+    if (d_core.getRandomValue() < threshold)
     {
-      Assert(d_context.getNumBInternalized() > 0);
-      next = d_context.getRandomValue() % d_context.getNumBInternalized();
-      if (d_context.getAssignment(next) == L_UNDEF)
+      Assert(d_core.getNumBInternalized() > 0);
+      next = d_core.getRandomValue() % d_core.getNumBInternalized();
+      if (d_core.getAssignment(next) == L_UNDEF)
       {
         return;
       }
@@ -968,7 +958,7 @@ class TheoryAwareBranchingQueue : public CaseSplitQueue
     while (!d_queue.empty())
     {
       next = d_queue.eraseMin();
-      if (d_context.getAssignment(next) == L_UNDEF)
+      if (d_core.getAssignment(next) == L_UNDEF)
       {
         auto it = d_theoryVarPhase.find(next);
         phase = it == d_theoryVarPhase.end() ? L_UNDEF : it->second;
@@ -1003,14 +993,14 @@ class TheoryAwareBranchingQueue : public CaseSplitQueue
     bool first = true;
     for (int v : d_queue)
     {
-      if (d_context.getAssignment(static_cast<BoolVar>(v)) == L_UNDEF)
+      if (d_core.getAssignment(static_cast<BoolVar>(v)) == L_UNDEF)
       {
         if (first)
         {
           out << "remaining case-splits:\n";
           first = false;
         }
-        out << "#" << d_context.boolVar2Expr(static_cast<BoolVar>(v)).getId()
+        out << "#" << d_core.boolVar2Expr(static_cast<BoolVar>(v)).getId()
             << " ";
       }
     }
@@ -1021,7 +1011,7 @@ class TheoryAwareBranchingQueue : public CaseSplitQueue
   }
 
  private:
-  SmtContext& d_context;
+  PropCore& d_core;
   Params& d_params;
   TheoryVarPriorityMap d_theoryVarPriority;
   TheoryAwareActQueue d_queue;
@@ -1080,8 +1070,8 @@ class JustificationCaseSplitQueue : public CaseSplitQueue
   };
 
  public:
-  JustificationCaseSplitQueue(SmtContext& ctx, Params& p)
-      : d_context(ctx), d_act(ctx, p), d_rel(ctx, p)
+  JustificationCaseSplitQueue(PropCore& core, Params& p)
+      : d_core(core), d_act(core, p), d_rel(core, p)
   {
   }
 
@@ -1197,7 +1187,7 @@ class JustificationCaseSplitQueue : public CaseSplitQueue
     {
       return;
     }
-    if (d_context.relevancyLvl() >= 2)
+    if (d_core.relevancyLvl() >= 2)
     {
       d_rel.nextCaseSplit(next, phase);
     }
@@ -1260,9 +1250,9 @@ class JustificationCaseSplitQueue : public CaseSplitQueue
     {
       val = n.getConst<bool>() ? L_TRUE : L_FALSE;
     }
-    else if (d_context.bInternalized(n))
+    else if (d_core.bInternalized(n))
     {
-      val = d_context.getAssignment(d_context.getBoolVar(n));
+      val = d_core.getAssignment(d_core.getBoolVar(n));
     }
     return neg ? ~val : val;
   }
@@ -1302,11 +1292,11 @@ class JustificationCaseSplitQueue : public CaseSplitQueue
       {
         return JUSTIFIED;
       }
-      if (!d_context.bInternalized(n))
+      if (!d_core.bInternalized(n))
       {
         return PENDING;
       }
-      next = d_context.getBoolVar(n);
+      next = d_core.getBoolVar(n);
       phase = want;
       return SPLIT;
     }
@@ -1409,7 +1399,7 @@ class JustificationCaseSplitQueue : public CaseSplitQueue
     return PENDING;
   }
 
-  SmtContext& d_context;
+  PropCore& d_core;
   /** The splits once everything is justified, without relevancy. */
   ActCaseSplitQueue d_act;
   /** The splits once everything is justified, at relevancy level 2. */
@@ -1427,12 +1417,12 @@ class JustificationCaseSplitQueue : public CaseSplitQueue
 
 }  // namespace
 
-CaseSplitQueue* mkCaseSplitQueue(SmtContext& ctx, Params& p)
+CaseSplitQueue* mkCaseSplitQueue(PropCore& core, Params& p)
 {
   bool isRelevancyStrategy = p.d_caseSplitStrategy == CS_RELEVANCY
                              || p.d_caseSplitStrategy == CS_RELEVANCY_ACTIVITY
                              || p.d_caseSplitStrategy == CS_RELEVANCY_GOAL;
-  if (ctx.relevancyLvl() < 2 && isRelevancyStrategy)
+  if (core.relevancyLvl() < 2 && isRelevancyStrategy)
   {
     Warning() << "z3: relevancy must be enabled to use a relevancy-based "
                  "case split strategy; falling back to activity"
@@ -1449,19 +1439,19 @@ CaseSplitQueue* mkCaseSplitQueue(SmtContext& ctx, Params& p)
   }
   switch (p.d_caseSplitStrategy)
   {
-    case CS_ACTIVITY_DELAY_NEW: return new DactCaseSplitQueue(ctx, p);
-    case CS_ACTIVITY_WITH_CACHE: return new CactCaseSplitQueue(ctx, p);
-    case CS_RELEVANCY: return new RelCaseSplitQueue(ctx, p);
-    case CS_RELEVANCY_ACTIVITY: return new RelActCaseSplitQueue(ctx, p);
+    case CS_ACTIVITY_DELAY_NEW: return new DactCaseSplitQueue(core, p);
+    case CS_ACTIVITY_WITH_CACHE: return new CactCaseSplitQueue(core, p);
+    case CS_RELEVANCY: return new RelCaseSplitQueue(core, p);
+    case CS_RELEVANCY_ACTIVITY: return new RelActCaseSplitQueue(core, p);
     case CS_RELEVANCY_GOAL:
       Warning() << "z3: the relevancy-goal case split strategy is not ported "
                    "(it depends on Z3 labels); falling back to relevancy"
                 << std::endl;
-      return new RelCaseSplitQueue(ctx, p);
+      return new RelCaseSplitQueue(core, p);
     case CS_ACTIVITY_THEORY_AWARE_BRANCHING:
-      return new TheoryAwareBranchingQueue(ctx, p);
-    case CS_JUSTIFICATION: return new JustificationCaseSplitQueue(ctx, p);
-    default: return new ActCaseSplitQueue(ctx, p);
+      return new TheoryAwareBranchingQueue(core, p);
+    case CS_JUSTIFICATION: return new JustificationCaseSplitQueue(core, p);
+    default: return new ActCaseSplitQueue(core, p);
   }
 }
 

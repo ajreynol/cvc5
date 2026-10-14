@@ -18,18 +18,17 @@
 #include <algorithm>
 
 #include "z3/explainer.h"
-#include "z3/smt_context.h"
-#include "z3/theory.h"
+#include "z3/prop_core.h"
 
 namespace cvc5::internal {
 namespace z3 {
 
-ConflictResolution::ConflictResolution(SmtContext& ctx,
+ConflictResolution::ConflictResolution(PropCore& core,
                                        Explainer& explainer,
                                        const Params& params,
                                        const LiteralVector& assignedLiterals)
     : d_params(params),
-      d_ctx(ctx),
+      d_core(core),
       d_explainer(explainer),
       d_assignedLiterals(assignedLiterals),
       d_conflictLvl(0),
@@ -46,7 +45,7 @@ uint32_t ConflictResolution::getJustificationMaxLvl(Justification* js)
   d_explainer.justification2Literals(js, antecedents);
   for (Literal lit : antecedents)
   {
-    r = std::max(r, d_ctx.getAssignLevel(lit));
+    r = std::max(r, d_core.getAssignLevel(lit));
   }
   return r;
 }
@@ -56,7 +55,7 @@ uint32_t ConflictResolution::getMaxLvl(Literal consequent, BJustification js)
   uint32_t r = 0;
   if (consequent != s_falseLiteral)
   {
-    r = d_ctx.getAssignLevel(consequent);
+    r = d_core.getAssignLevel(consequent);
   }
 
   switch (js.getKind())
@@ -75,13 +74,13 @@ uint32_t ConflictResolution::getMaxLvl(Literal consequent, BJustification js)
         }
         else
         {
-          r = std::max(r, d_ctx.getAssignLevel((*cls)[0]));
+          r = std::max(r, d_core.getAssignLevel((*cls)[0]));
           i = 2;
         }
       }
       for (; i < numLits; ++i)
       {
-        r = std::max(r, d_ctx.getAssignLevel((*cls)[i]));
+        r = std::max(r, d_core.getAssignLevel((*cls)[i]));
       }
       Justification* cjs = cls->getJustification();
       if (cjs != nullptr)
@@ -91,7 +90,7 @@ uint32_t ConflictResolution::getMaxLvl(Literal consequent, BJustification js)
       break;
     }
     case BJustification::BIN_CLAUSE:
-      r = std::max(r, d_ctx.getAssignLevel(js.getLiteral()));
+      r = std::max(r, d_core.getAssignLevel(js.getLiteral()));
       break;
     case BJustification::AXIOM: break;
     case BJustification::JUSTIFICATION:
@@ -104,22 +103,14 @@ uint32_t ConflictResolution::getMaxLvl(Literal consequent, BJustification js)
 void ConflictResolution::processAntecedent(Literal antecedent, size_t& numMarks)
 {
   BoolVar var = antecedent.var();
-  uint32_t lvl = d_ctx.getAssignLevel(var);
-  Assert(var < d_ctx.getNumBoolVars());
+  uint32_t lvl = d_core.getAssignLevel(var);
+  Assert(var < d_core.getNumBoolVars());
 
-  if (!d_ctx.isMarked(var) && lvl > d_ctx.getBaseLevel())
+  if (!d_core.isMarked(var) && lvl > d_core.getBaseLevel())
   {
-    d_ctx.setMark(var);
-    d_ctx.incBvarActivity(var);
-    TNode n = d_ctx.boolVar2Expr(var);
-    if (!n.isNull() && isApp(n))
-    {
-      Theory* th = d_ctx.getTheory(familyIdOf(n));
-      if (th != nullptr)
-      {
-        th->conflictResolutionEh(n, var);
-      }
-    }
+    d_core.setMark(var);
+    d_core.incBvarActivity(var);
+    d_core.conflictResolutionEh(var);
 
     if (lvl == d_conflictLvl)
     {
@@ -128,7 +119,7 @@ void ConflictResolution::processAntecedent(Literal antecedent, size_t& numMarks)
     else
     {
       d_lemma.push_back(~antecedent);
-      d_lemmaAtoms.push_back(d_ctx.boolVar2Expr(var));
+      d_lemmaAtoms.push_back(d_core.boolVar2Expr(var));
     }
   }
 }
@@ -155,7 +146,7 @@ size_t ConflictResolution::skipLiteralsAboveConflictLevel()
   }
   idx--;
   // skip literals from levels above the conflict level
-  while (d_ctx.getAssignLevel(d_assignedLiterals[idx]) > d_conflictLvl
+  while (d_core.getAssignLevel(d_assignedLiterals[idx]) > d_conflictLvl
          && idx > 0)
   {
     idx--;
@@ -170,7 +161,7 @@ bool ConflictResolution::initializeResolve(BJustification conflict,
 {
   d_lemma.clear();
   d_lemmaAtoms.clear();
-  Assert(d_ctx.getSearchLevel() >= d_ctx.getBaseLevel());
+  Assert(d_core.getSearchLevel() >= d_core.getBaseLevel());
   js = conflict;
   consequent = s_falseLiteral;
   if (notL != s_nullLiteral)
@@ -184,7 +175,7 @@ bool ConflictResolution::initializeResolve(BJustification conflict,
   // user scopes and the previous levels were already inconsistent, or the
   // inconsistency was triggered by an axiom, both of which count as level
   // zero.
-  if (d_conflictLvl <= d_ctx.getSearchLevel())
+  if (d_conflictLvl <= d_core.getSearchLevel())
   {
     Trace("z3-conflict") << "problem is unsat" << std::endl;
     return false;
@@ -205,21 +196,21 @@ void ConflictResolution::finalizeResolve(BJustification /*conflict*/,
     minimizeLemma();
   }
 
-  d_newScopeLvl = d_ctx.getSearchLevel();
-  d_lemmaIscopeLvl = d_ctx.getInternLevel(d_lemma[0].var());
-  Assert(!d_ctx.isMarked(d_lemma[0].var()));
+  d_newScopeLvl = d_core.getSearchLevel();
+  d_lemmaIscopeLvl = d_core.getInternLevel(d_lemma[0].var());
+  Assert(!d_core.isMarked(d_lemma[0].var()));
   for (size_t i = 1, sz = d_lemma.size(); i < sz; ++i)
   {
     BoolVar var = d_lemma[i].var();
     if (var != s_nullBoolVar)
     {
-      d_ctx.unsetMark(var);
-      uint32_t lvl = d_ctx.getAssignLevel(var);
+      d_core.unsetMark(var);
+      uint32_t lvl = d_core.getAssignLevel(var);
       if (lvl > d_newScopeLvl)
       {
         d_newScopeLvl = lvl;
       }
-      lvl = d_ctx.getInternLevel(var);
+      lvl = d_core.getInternLevel(var);
       if (lvl > d_lemmaIscopeLvl)
       {
         d_lemmaIscopeLvl = lvl;
@@ -305,28 +296,28 @@ bool ConflictResolution::resolve(BJustification conflict, Literal notL)
     while (true)
     {
       Literal l = d_assignedLiterals[idx];
-      if (d_ctx.isMarked(l.var()))
+      if (d_core.isMarked(l.var()))
       {
         break;
       }
-      Assert(d_ctx.getAssignLevel(l) == d_conflictLvl
+      Assert(d_core.getAssignLevel(l) == d_conflictLvl
              // it may also be an (out-of-order) asserted literal
-             || d_ctx.getAssignLevel(l) == d_ctx.getBaseLevel());
+             || d_core.getAssignLevel(l) == d_core.getBaseLevel());
       Assert(idx > 0);
       idx--;
     }
 
     consequent = d_assignedLiterals[idx];
     BoolVar cVar = consequent.var();
-    Assert(d_ctx.getAssignLevel(cVar) == d_conflictLvl);
-    js = d_ctx.getJustification(cVar);
+    Assert(d_core.getAssignLevel(cVar) == d_conflictLvl);
+    js = d_core.getJustification(cVar);
     idx--;
     numMarks--;
-    d_ctx.unsetMark(cVar);
+    d_core.unsetMark(cVar);
   } while (numMarks > 0);
 
   d_lemma[0] = ~consequent;
-  d_lemmaAtoms[0] = d_ctx.boolVar2Expr(consequent.var());
+  d_lemmaAtoms[0] = d_core.boolVar2Expr(consequent.var());
 
   finalizeResolve(conflict, notL);
 
@@ -338,7 +329,7 @@ LevelApproxSet ConflictResolution::getLemmaApproxLevelSet()
   LevelApproxSet result;
   for (Literal l : d_lemma)
   {
-    result.insert(d_ctx.getAssignLevel(l));
+    result.insert(d_core.getAssignLevel(l));
   }
   return result;
 }
@@ -348,7 +339,7 @@ void ConflictResolution::resetUnmark(size_t oldSize)
   size_t currSize = d_unmark.size();
   for (size_t i = oldSize; i < currSize; ++i)
   {
-    d_ctx.unsetMark(d_unmark[i]);
+    d_core.unsetMark(d_unmark[i]);
   }
   d_unmark.resize(oldSize);
 }
@@ -363,12 +354,12 @@ void ConflictResolution::resetUnmarkAndJustifications(size_t oldSize,
 bool ConflictResolution::processAntecedentForMinimization(Literal antecedent)
 {
   BoolVar var = antecedent.var();
-  uint32_t lvl = d_ctx.getAssignLevel(var);
-  if (!d_ctx.isMarked(var) && lvl > d_ctx.getBaseLevel())
+  uint32_t lvl = d_core.getAssignLevel(var);
+  if (!d_core.isMarked(var) && lvl > d_core.getBaseLevel())
   {
     if (d_lvlSet.mayContain(lvl))
     {
-      d_ctx.setMark(var);
+      d_core.setMark(var);
       d_unmark.push_back(var);
       d_lemmaMinStack.push_back(var);
     }
@@ -412,7 +403,7 @@ bool ConflictResolution::impliedByMarked(Literal lit)
   {
     BoolVar var = d_lemmaMinStack.back();
     d_lemmaMinStack.pop_back();
-    BJustification js = d_ctx.getJustification(var);
+    BJustification js = d_core.getJustification(var);
     Assert(js != s_nullBJustification);
     switch (js.getKind())
     {
@@ -452,7 +443,7 @@ bool ConflictResolution::impliedByMarked(Literal lit)
       case BJustification::AXIOM:
         // it is a decision variable from a previous scope level, or an
         // assumption
-        if (d_ctx.getAssignLevel(var) > d_ctx.getBaseLevel())
+        if (d_core.getAssignLevel(var) > d_core.getBaseLevel())
         {
           resetUnmarkAndJustifications(oldSize, oldCheckpoint);
           return false;
@@ -502,7 +493,7 @@ void ConflictResolution::minimizeLemma()
   resetUnmarkAndJustifications(0, 0);
   d_lemma.resize(j);
   d_lemmaAtoms.resize(j);
-  d_ctx.getStats().d_numMinimizedLits += sz - j;
+  d_core.getStats().d_numMinimizedLits += sz - j;
 }
 
 void ConflictResolution::reset()
@@ -513,12 +504,12 @@ void ConflictResolution::reset()
   // rebuilding the literals and atoms of the lemma it just derived.
 }
 
-ConflictResolution* mkConflictResolution(SmtContext& ctx,
+ConflictResolution* mkConflictResolution(PropCore& core,
                                          Explainer& explainer,
                                          const Params& params,
                                          const LiteralVector& assignedLiterals)
 {
-  return new ConflictResolution(ctx, explainer, params, assignedLiterals);
+  return new ConflictResolution(core, explainer, params, assignedLiterals);
 }
 
 }  // namespace z3

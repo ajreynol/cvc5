@@ -506,10 +506,34 @@ class PropCore : protected EnvObj
    * subterms, as a theory lemma whose literals are the disjuncts of n, which
    * survives backtracking and garbage collection (--z3-qi-permanent). As Z3
    * does for the theory lemmas it reinitializes, every literal is marked
-   * relevant. Returns false if the lemma is a single literal, which is
-   * asserted at the current scope only.
+   * relevant; with --z3-qi-permanent-local, n is instead a root of the
+   * current scope only, for relevancy and the case split queue, as a scoped
+   * instance is (see reactivatePermanentRoot). Returns false if the lemma is
+   * a single literal, which is asserted at the current scope only.
    */
   bool assertPermanentLemma(TNode n);
+
+  /**
+   * Make the permanent lemma n, asserted by assertPermanentLemma under
+   * --z3-qi-permanent-local, a root again in the current scope, when matching
+   * finds the instance again.
+   */
+  void reactivatePermanentRoot(TNode n);
+
+  /** The statistics, shared with the theory side. */
+  Statistics& getStats() { return d_stats; }
+
+  /**
+   * A value of the theory side's random number generator, which the case
+   * split queue shares with the theories.
+   */
+  int getRandomValue();
+
+  /** See SmtContext::isExtDiseqAtom. */
+  bool isExtDiseqAtom(BoolVar v);
+
+  /** See SmtContext::conflictResolutionEh. */
+  void conflictResolutionEh(BoolVar v);
 
   /**
    * Add the clauses that define the Boolean variable of the gate n in terms
@@ -761,6 +785,19 @@ class PropCore : protected EnvObj
     }
     return false;
   }
+  /** Mark the root n relevant, as assertRoot does. */
+  void markRootRelevant(TNode n);
+
+  /**
+   * Whether cls is a permanent instance whose relevancy is scoped
+   * (--z3-qi-permanent-local); reinitializing it does not mark its literals
+   * relevant.
+   */
+  bool isLocalPermanent(const Clause* cls) const
+  {
+    return cls->isPermanent() && d_params.d_qiPermanentLocal;
+  }
+
   bool canDelete(Clause* cls) const
   {
     if (cls->inReinitStack() || cls->isPermanent())

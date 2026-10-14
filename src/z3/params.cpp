@@ -113,6 +113,7 @@ void Params::initialize(const Options& opts)
   d_relevancyMatch = opts.z3.z3RelevancyMatch;
   d_relevancyCheck = opts.z3.z3RelevancyCheck;
   d_qiPermanent = opts.z3.z3QiPermanent;
+  d_qiPermanentLocal = opts.z3.z3QiPermanentLocal;
   d_restartAdaptive = opts.z3.z3RestartAdaptive;
   d_restartLubyFactor = opts.z3.z3RestartLubyFactor;
   d_lemmaGcStrategy = toLemmaGcStrategy(opts.z3.z3LemmaGc);

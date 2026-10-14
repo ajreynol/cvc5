@@ -505,6 +505,14 @@ name   = "Z3 Core"
   help       = "add the quantifier instances of the ported Z3 core as lemmas that survive backtracking and garbage collection, as cvc5 does, rather than as clauses of the scope they are made in"
 
 [[option]]
+  name       = "z3QiPermanentLocal"
+  category   = "expert"
+  long       = "z3-qi-permanent-local"
+  type       = "bool"
+  default    = "false"
+  help       = "with --z3-qi-permanent, an instance is a root for relevancy and the case split queue only in the scope where it is made, and again whenever matching finds it again, as cvc5's --inst-local does for its decision heuristic; its clause stays"
+
+[[option]]
   name       = "z3Mbqi"
   category   = "expert"
   long       = "z3-mbqi"

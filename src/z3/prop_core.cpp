@@ -120,8 +120,8 @@ PropCore::~PropCore() {}
 void PropCore::finishInit()
 {
   d_conflictResolution.reset(mkConflictResolution(
-      d_ctx, d_ctx.getExplainer(), d_params, d_assignedLiterals));
-  d_caseSplitQueue.reset(mkCaseSplitQueue(d_ctx, d_params));
+      *this, d_ctx.getExplainer(), d_params, d_assignedLiterals));
+  d_caseSplitQueue.reset(mkCaseSplitQueue(*this, d_params));
 }
 
 void PropCore::initTrue(TNode t)
@@ -952,9 +952,19 @@ void PropCore::assertRoot(TNode n)
   }
 }
 
+int PropCore::getRandomValue() { return d_ctx.getRandomValue(); }
+
+bool PropCore::isExtDiseqAtom(BoolVar v) { return d_ctx.isExtDiseqAtom(v); }
+
+void PropCore::conflictResolutionEh(BoolVar v)
+{
+  d_ctx.conflictResolutionEh(v);
+}
+
 bool PropCore::assertPermanentLemma(TNode n)
 {
-  d_caseSplitQueue->rootEh(n, true);
+  bool local = d_params.d_qiPermanentLocal;
+  d_caseSplitQueue->rootEh(n, !local);
   LiteralVector lits;
   if (n.getKind() == Kind::OR)
   {
@@ -969,11 +979,14 @@ bool PropCore::assertPermanentLemma(TNode n)
     d_ctx.internalizeRec(n, true);
     lits.push_back(getLiteral(n));
   }
-  for (Literal l : lits)
+  if (!local)
   {
-    if (l != s_trueLiteral && l != s_falseLiteral)
+    for (Literal l : lits)
     {
-      markAsRelevant(l);
+      if (l != s_trueLiteral && l != s_falseLiteral)
+      {
+        markAsRelevant(l);
+      }
     }
   }
   bool permanent = lits.size() >= 2;
@@ -982,7 +995,45 @@ bool PropCore::assertPermanentLemma(TNode n)
   {
     cls->setPermanent();
   }
+  if (local)
+  {
+    markRootRelevant(n);
+  }
   return permanent;
+}
+
+void PropCore::reactivatePermanentRoot(TNode n)
+{
+  d_caseSplitQueue->rootEh(n, false);
+  // The atoms of the lemma survive backtracking or are re-internalized with
+  // it (reinitClauses); internalizing again only covers the exceptions.
+  if (n.getKind() == Kind::OR)
+  {
+    for (const Node& arg : n)
+    {
+      d_ctx.internalizeRec(arg, true);
+    }
+  }
+  else
+  {
+    d_ctx.internalizeRec(n, true);
+  }
+  markRootRelevant(n);
+}
+
+void PropCore::markRootRelevant(TNode n)
+{
+  if (n.getKind() == Kind::OR)
+  {
+    addOrRelWatches(n);
+    markAsRelevant(n);
+    return;
+  }
+  Literal l = getLiteral(n);
+  if (l != s_trueLiteral && l != s_falseLiteral)
+  {
+    markAsRelevant(l);
+  }
 }
 
 void PropCore::mkGateConstraints(TNode n)
@@ -2064,7 +2115,7 @@ void PropCore::reinitClauses(size_t numScopes, size_t numBoolVars)
           Assert(bInternalized(atom));
           Literal l(getBoolVar(atom), sign);
           cls->setLiteral(j, l);
-          if (cls->getKind() == CLS_TH_LEMMA)
+          if (cls->getKind() == CLS_TH_LEMMA && !isLocalPermanent(cls))
           {
             markAsRelevant(l);
           }
@@ -2095,7 +2146,7 @@ void PropCore::reinitClauses(size_t numScopes, size_t numBoolVars)
       {
         Literal l1 = cls->getLiteral(0);
         Literal l2 = cls->getLiteral(1);
-        if (cls->getKind() == CLS_TH_LEMMA)
+        if (cls->getKind() == CLS_TH_LEMMA && !isLocalPermanent(cls))
         {
           markAsRelevant(l1);
           markAsRelevant(l2);

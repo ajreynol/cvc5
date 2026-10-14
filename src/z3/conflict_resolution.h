@@ -33,7 +33,7 @@ namespace cvc5::internal {
 namespace z3 {
 
 class Explainer;
-class SmtContext;
+class PropCore;
 
 /** An approximation of a set of scope levels. */
 using LevelApproxSet = ApproxSetTpl<uint32_t, UnsignedToUnsigned, uint32_t>;
@@ -51,7 +51,7 @@ using LevelApproxSet = ApproxSetTpl<uint32_t, UnsignedToUnsigned, uint32_t>;
 class ConflictResolution
 {
  public:
-  ConflictResolution(SmtContext& ctx,
+  ConflictResolution(PropCore& core,
                      Explainer& explainer,
                      const Params& params,
                      const LiteralVector& assignedLiterals);
@@ -105,7 +105,8 @@ class ConflictResolution
   void finalizeResolve(BJustification conflict, Literal notL);
 
   const Params& d_params;
-  SmtContext& d_ctx;
+  /** The propositional side, whose conflicts this resolves. */
+  PropCore& d_core;
   Explainer& d_explainer;
   const LiteralVector& d_assignedLiterals;
 
@@ -123,7 +124,7 @@ class ConflictResolution
   LevelApproxSet d_lvlSet;
 };
 
-ConflictResolution* mkConflictResolution(SmtContext& ctx,
+ConflictResolution* mkConflictResolution(PropCore& core,
                                          Explainer& explainer,
                                          const Params& params,
                                          const LiteralVector& assignedLiterals);

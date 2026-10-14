@@ -172,6 +172,12 @@ struct Params
    * made in. Not in Z3.
    */
   bool d_qiPermanent = false;
+  /**
+   * With d_qiPermanent, whether an instance is a root for relevancy and the
+   * case split queue only in the scope where it is made, and again whenever
+   * matching finds it again, rather than for good. Not in Z3.
+   */
+  bool d_qiPermanentLocal = false;
   uint32_t d_randomSeed = 0;
   double d_randomVarFreq = 0.01;
   double d_invDecay = 1.052;

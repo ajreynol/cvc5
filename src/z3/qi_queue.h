@@ -27,7 +27,7 @@
 
 #include <cstring>
 #include <ostream>
-#include <unordered_set>
+#include <unordered_map>
 #include <vector>
 
 #include "expr/node.h"
@@ -143,9 +143,9 @@ class QiQueue
   /**
    * With --z3-qi-permanent, the instances asserted as lemmas that survive
    * backtracking, which are not asserted again when matching finds them
-   * again.
+   * again, each with the formula asserted for it.
    */
-  std::unordered_set<Node> d_permanentInstances;
+  std::unordered_map<Node, Node> d_permanentInstances;
   std::vector<size_t> d_instantiatedTrail;
   std::vector<Scope> d_scopes;
 };

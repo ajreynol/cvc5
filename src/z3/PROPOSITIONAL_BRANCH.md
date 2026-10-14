@@ -215,6 +215,14 @@ run without relevancy isolates the lifetime alone:
 |---|---|---|
 | B2a | `--z3-qi-permanent` | baseline |
 | B2b | `--z3-relevancy=0 --z3-case-split=activity --z3-qi-permanent` | A2 |
+| B2c | `--z3-qi-permanent --z3-qi-permanent-local` | baseline, B2a |
+
+B2c, added for Stage 2 (ARCHITECTURE_PLAN.md, section 15), removes the
+relevancy confound: the clause is permanent, but the instance is a root,
+for relevancy and the case split queue, only in the scope where it is made
+and again whenever matching finds it again. Its reinitialization does not
+mark its literals relevant. This is the port's counterpart of cvc5's
+`--inst-local` together with relevancy.
 
 **B3. A justification-style case split queue (I5).**
 `--z3-case-split=justification` walks the asserted formulas and instances in

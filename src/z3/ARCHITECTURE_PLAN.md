@@ -5,7 +5,7 @@ Date: 2026-10-10
 Source snapshot: `da001fa639` (`Preset`)
 
 Status: Stages 1A and 1B implemented. See the progress record in section
-14.
+14. Stage 2 is planned in section 15.
 
 ## 1. Objective and migration principle
 
@@ -776,3 +776,172 @@ are:
 It proposes measurements with existing switches, a few switches that need
 code, and the extraction of the quantifier stack behind an explicit
 contract, as Stage 1B did for `PropCore`.
+
+## 15. Stage 2: cvc5's propositional engine over the port's theory engine
+
+### Goal
+
+Run the port's theory side, `Z3TheoryEngine` over `SmtContext`, under
+cvc5's own `PropEngine`: `CnfStream`, the CDCL(T) solver (CaDiCaL by
+default), `TheoryProxy` and the decision engine. `PropCore` stays available
+as an alternative propositional side over the same theory side, chosen in
+`EngineFactory`, until measurements show it can go. The switches added for
+the experiments stay too, so that each carried-over component can still be
+turned off and its effect measured.
+
+This is the propositional half of the next level of section 12: native
+propositional orchestration over the port's theory engine.
+
+### Why the evidence supports it
+
+The experiments of PROPOSITIONAL_BRANCH.md and THEORY_BRANCH.md show that
+the components cvc5's prop engine would replace do not carry the port's
+performance:
+
+- **Decisions:** activity loses, but justification order is as good as
+  the relevancy queue, with or without relevancy gating what reaches the
+  theories (B3a, B3c). cvc5 uses the justification heuristic for
+  quantified logics.
+- **Restarts, phase and delayed units** make no difference (A3–A5).
+- **Delivery to the theories** need not be filtered by relevancy (B1a).
+
+What does carry it must be carried across, and cvc5 has a place for most
+of it:
+
+| Component | Evidence | Where it goes under cvc5's prop engine |
+|---|---|---|
+| Eager matching and instantiation after every propagation | A6, A6b | cvc5 checks theories at standard effort after each propagation fixpoint (CaDiCaL's `cb_propagate`). The theory side's `theoryPropagate`, matching included, runs there; instances leave as lemmas. |
+| Relevancy, for matching and the instance checker | B1f, B1g, q1 | A module between the SAT solver and the theory side. It needs the Boolean structure of the roots and the assignments of gate literals, which cvc5 does not report to theories. This is the main design question (below). |
+| Scope-local atoms | (mechanism) | cvc5 re-registers, after a backtrack, the SAT literals registered above the backtrack level (`TheoryPreregistrar::notifyBacktrack`). This plays the role of the port's re-internalization; the generation cache stays with the theory side. |
+| Explanations | (mechanism) | CaDiCaL asks for reasons lazily (`cb_add_reason_clause_lit`). The `Explainer` must answer for a single propagated literal on demand. |
+| Instance lifetime | B2a, confounded | See the next subsection. |
+
+### Instance lifetime and `--inst-local`
+
+In Z3, an instance is a clause of the scope it is made in. Backtracking
+past that scope removes it from three places at once:
+
+1. the clause database;
+2. relevancy: the instance is no longer a root, so the terms of its body
+   stop being matching candidates;
+3. the decision heuristic, which follows relevancy.
+
+cvc5 has no clauses that disappear on backtracking. Its `--inst-local`
+(off by default) simulates the third effect only. E-matching and
+conflict-based instances are sent with `LemmaProperty::LOCAL`.
+`PropEngine` then adds the clause to the SAT solver once per user context,
+and tells the decision engine about it as a *local* assertion, which is
+SAT-context dependent. `Instantiate` records local instances in a
+SAT-context dependent trie, so an instance found again after a backjump is
+sent again, and the justification heuristic sees it again. The clause
+itself stays.
+
+Stage 2 needs the second effect as well, since relevancy for matching is
+what matters. The direction this suggests is to rethink `LOCAL` as a
+general *scoped root* property: a lemma that is permanent in the SAT
+solver, but a root for the decision engine *and the relevancy module* only
+in the SAT context where it was last sent. Whether the clause should also
+leave the SAT solver depends on whether permanent clauses hurt, which is
+what step 0 measures.
+
+### Steps
+
+Steps 1 to 5 are refactorings inside the port, each leaving answers and
+`z3::` counters unchanged as in Stage 1B. Step 6 is the new configuration.
+
+0. **Measure instance lifetime without the relevancy confound.** In the
+   port, make an instance's clause permanent but its relevancy scoped: its
+   root is marked relevant in the scope where it is made, as a scoped
+   instance's is, and again whenever matching finds it again. This is the
+   port's counterpart of cvc5 with `--inst-local` plus relevancy. If it
+   loses against the baseline, permanence itself hurts, and Stage 2 needs
+   removable instances in cvc5's SAT solver.
+1. **Give the theory side a Boolean interface.** Its Boolean queries and
+   updates (assignment, internalized literals, relevancy queries, assigning
+   and propagating literals) go through an interface that `PropCore`
+   implements, instead of inline forwarders. `ConflictResolution` and
+   `CaseSplitQueue` take `PropCore` instead of `SmtContext`. This resolves
+   dependencies 1, 2 and 10 of section 14; measure the cost of the
+   indirection.
+2. **Route the theory side's clauses through an output interface.**
+   Instances, theory axioms, dynamic Ackermann lemmas and E-graph
+   propagations become calls on an interface (dependency 7), so that under
+   cvc5 they can be lemmas and propagations of `TheoryProxy`.
+3. **Explain one literal on demand.** The `Explainer` gives the
+   explanation of a single theory-propagated literal as a clause, which is
+   what `TheoryProxy::explainPropagation` needs.
+4. **Make relevancy a standalone module.** Its inputs are the roots (input
+   formulas and instances, with the scoped-root property of the previous
+   subsection), the gate structure, and literal assignments; its outputs are
+   the relevance events the theory side receives today (dependency 9).
+5. **Let the host drive atom lifetime.** The theory side re-internalizes an
+   atom when the host re-registers it, rather than through `PropCore`'s
+   `reinitClauses`; the generation cache follows (dependency 8).
+6. **The adapter.** A mode of `Z3TheoryEngine` that implements the calls
+   cvc5's prop engine makes: pre-registration, asserted literals, standard
+   and full checks, propagations, explanations and lemmas. `EngineFactory`
+   chooses between `PropCore` and cvc5's prop engine over the same theory
+   side. Measure it against `verus-best`, then retire the switches that made
+   no difference.
+
+### Open design questions
+
+- **Relevancy's view of the Boolean structure.** `CnfStream` gives gates
+  Tseitin variables that are not reported to theories. The relevancy module
+  needs their assignments. Options:
+  - a `TheoryProxy` hook reporting the assignments of the formula literals
+    of registered roots;
+  - observing the gate variables in the SAT solver (CaDiCaL's observed
+    variables);
+  - computing gate values from atom values, as the `RelevanceManager` does,
+    but incrementally.
+- **Formulas in term positions.** The port gives such a formula an enode
+  merged with true or false; cvc5 purifies Boolean terms during
+  preprocessing. The theory side must accept the purified form.
+- **Lemmas during propagation.** Instances are made at standard effort,
+  often many per propagation; the cost of sending them through
+  `TheoryProxy` and `CnfStream` is unmeasured.
+
+### Progress
+
+- **Step 0: implemented, to be measured.** `--z3-qi-permanent-local`, with
+  `--z3-qi-permanent`: the instance's clause is a permanent theory lemma,
+  but the instance is a root, for relevancy and the case split queue, only
+  in the scope where it is made and again whenever matching finds it again
+  (`PropCore::reactivatePermanentRoot`); reinitializing its clause does not
+  mark its literals relevant. On a sample its relevancy work matches the
+  baseline's, where B2a's was inflated. With assertions on, it gives no
+  wrong answers on the quantified regressions.
+- **Step 1, first part: done.** `ConflictResolution` and `CaseSplitQueue`
+  take `PropCore` instead of `SmtContext` (dependency 2 of section 14). The
+  two things they needed from the theory side are now part of its contract:
+  `SmtContext::conflictResolutionEh`, which calls the theory of the atom,
+  and `SmtContext::isExtDiseqAtom`, for the disequality lookahead of the
+  relevancy case split queue. The random number generator stays shared
+  through `PropCore::getRandomValue`, so the sequence of random values is
+  unchanged. Twenty-five forwarders of `SmtContext` that had no other
+  callers are removed. Answers and `z3::` counters are unchanged on the
+  comparison set.
+- **Step 1, second part: proposed design.** What the theory side still
+  needs from the Boolean side falls into four groups (call sites in the
+  theory side, its plugins and the quantifier stack):
+
+  | Group | Methods | Hot? | Under cvc5's prop engine |
+  |---|---|---|---|
+  | Queries | `getAssignment` (46 call sites), `bInternalized`, `getLiteral`, `getBoolVar`, `boolVar2Expr`, the atom flags in `BoolVarData`, `inconsistent`, scope levels | yes: E-matching, the checker, propagation | the SAT values of registered atoms; the conflict flag; the SAT context level |
+  | Updates | `assign` with a justification, `setConflict`, `mkClause`, `mkBoolVar`, `setTrueFirstFlag`, `forcePhase` | less | a theory propagation (explained lazily), a conflict, a lemma, `ensureLiteral`, `preferPhase` |
+  | Relevancy | `relevancy`, `isRelevant`, `markAsRelevant`, relevancy handlers and watches | yes | the relevancy module (step 4) |
+  | Infrastructure | cancellation, resource limits, the region, the trail | mixed | cvc5's resource manager and contexts |
+
+  Turning every forwarder into a virtual call would put an indirect call
+  on the hottest paths of E-matching. The proposed shape avoids that:
+  - **Queries read shared data.** The assignment and the per-variable data
+    are arrays that the Boolean side keeps up to date and the theory side
+    reads inline, as now. `PropCore` owns them today; under cvc5 the
+    adapter would mirror the values of registered atoms into them as
+    literals are asserted and backtracked.
+  - **Updates go through an abstract interface** that `PropCore`
+    implements, and later the adapter.
+  - **Relevancy** keeps its own interface, which step 4 makes into the
+    module.
+

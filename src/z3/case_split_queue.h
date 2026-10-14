@@ -28,7 +28,7 @@
 namespace cvc5::internal {
 namespace z3 {
 
-class SmtContext;
+class PropCore;
 
 /** An abstract case split queue. */
 class CaseSplitQueue
@@ -74,7 +74,7 @@ class CaseSplitQueue
  * relevancy-based strategy is downgraded to plain activity if relevancy is
  * disabled or auto configuration is on.
  */
-CaseSplitQueue* mkCaseSplitQueue(SmtContext& ctx, Params& p);
+CaseSplitQueue* mkCaseSplitQueue(PropCore& core, Params& p);
 
 }  // namespace z3
 }  // namespace cvc5::internal
