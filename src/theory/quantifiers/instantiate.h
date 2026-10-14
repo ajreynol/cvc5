@@ -358,6 +358,12 @@ class Instantiate : public QuantifiersUtil
   std::unique_ptr<CDProof> d_pfInst;
   /** Whether we are using context-dependent trie index */
   bool d_useCdInstTrie;
+  /**
+   * Whether instantiation lemmas are roots for the relevance manager, i.e.
+   * are sent with the property NEEDS_JUSTIFY. This is the case when the term
+   * database uses the relevance manager (see options::TermDbMode::RELEVANCE).
+   */
+  bool d_instRlvRoots;
 };
 
 }  // namespace quantifiers

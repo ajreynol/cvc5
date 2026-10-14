@@ -31,7 +31,12 @@ QuantifiersStatistics::QuantifiersStatistics(StatisticsRegistry& sr)
       d_simple_triggers(sr.registerInt("QuantifiersEngine::Triggers_Simple")),
       d_multi_triggers(sr.registerInt("QuantifiersEngine::Triggers_Multi")),
       d_red_alpha_equiv(
-          sr.registerInt("QuantifiersEngine::Reductions_Alpha_Equivalence"))
+          sr.registerInt("QuantifiersEngine::Reductions_Alpha_Equivalence")),
+      d_tdb_rlv_facts(sr.registerInt("QuantifiersEngine::TermDb_Rlv_Facts")),
+      d_tdb_rlv_facts_admitted(
+          sr.registerInt("QuantifiersEngine::TermDb_Rlv_Facts_Admitted")),
+      d_tdb_all_delay_fallbacks(
+          sr.registerInt("QuantifiersEngine::TermDb_All_Delay_Fallbacks"))
 {
 }
 

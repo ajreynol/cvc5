@@ -119,8 +119,11 @@ TermDb::TermDb(Env& env, QuantifiersState& qs, QuantifiersRegistry& qr)
   d_true = nodeManager()->mkConst(true);
   d_false = nodeManager()->mkConst(false);
   options::TermDbMode tdbmode = options().quantifiers.termDbMode;
+  d_useRlvManager = (tdbmode == options::TermDbMode::RELEVANCE
+                     || tdbmode == options::TermDbMode::RELEVANCE_ALL_DELAY);
   d_trackRlv = (tdbmode == options::TermDbMode::RELEVANT
-                || tdbmode == options::TermDbMode::RELEVANT_ALL_DELAY);
+                || tdbmode == options::TermDbMode::RELEVANT_ALL_DELAY
+                || d_useRlvManager);
 }
 
 TermDb::~TermDb() {}
@@ -284,7 +287,9 @@ bool TermDb::isMatchable(TNode n) { return !getMatchOperator(n).isNull(); }
 
 void TermDb::eqNotifyMerge(TNode t1, TNode t2)
 {
-  if (d_trackRlv)
+  // if using the relevance manager, we only consider the terms of relevant
+  // asserted literals, which are computed in reset.
+  if (d_trackRlv && !d_useRlvManager)
   {
     // Since the equivalence class of t1 and t2 merged, we now consider these
     // two terms to be relevant in the current context. Note technically this
@@ -710,6 +715,15 @@ bool TermDb::reset(Theory::Effort effort)
   if (d_trackRlv)
   {
     d_term_elig_eqc.clear();
+    // If using the relevance manager, we only consider facts that are in the
+    // relevant selection, which is available only at full and last call
+    // effort. At other efforts, we do not add new terms.
+    if (d_useRlvManager && effort < Theory::EFFORT_FULL)
+    {
+      return finishResetInternal(effort);
+    }
+    Valuation& val = d_qstate.getValuation();
+    QuantifiersStatistics& stats = d_qstate.getStats();
     const LogicInfo& logicInfo = d_qstate.getLogicInfo();
     for (TheoryId theoryId = THEORY_FIRST; theoryId < THEORY_LAST; ++theoryId)
     {
@@ -728,7 +742,21 @@ bool TermDb::reset(Theory::Effort effort)
            it != it_end;
            ++it)
       {
-        setHasTerm((*it).d_assertion);
+        TNode lit = (*it).d_assertion;
+        if (d_useRlvManager)
+        {
+          ++stats.d_tdb_rlv_facts;
+          if (!val.isRelevantInCheck(lit))
+          {
+            Trace("term-db-rlv")
+                << "TermDb: skip irrelevant fact " << lit << std::endl;
+            continue;
+          }
+          ++stats.d_tdb_rlv_facts_admitted;
+          Trace("term-db-rlv")
+              << "TermDb: admit relevant fact " << lit << std::endl;
+        }
+        setHasTerm(lit);
       }
     }
   }

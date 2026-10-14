@@ -220,6 +220,13 @@ class Valuation
    * or during LAST_CALL effort.
    */
   bool isRelevant(Node lit) const;
+  /**
+   * Is the literal lit in the relevant selection computed for the current
+   * full effort check? Unlike isRelevant, the relevant selection is computed
+   * at most once per full effort check. This call is applicable during FULL
+   * or LAST_CALL effort; it returns true otherwise.
+   */
+  bool isRelevantInCheck(Node lit) const;
 
   /** is legal elimination
    *

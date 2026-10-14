@@ -233,6 +233,11 @@ bool Valuation::isModelUnsound() const
 
 bool Valuation::isRelevant(Node lit) const { return d_engine->isRelevant(lit); }
 
+bool Valuation::isRelevantInCheck(Node lit) const
+{
+  return d_engine->isRelevantInCheck(lit);
+}
+
 bool Valuation::isLegalElimination(TNode x, TNode val)
 {
   return d_engine->isLegalElimination(x, val);

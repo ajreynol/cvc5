@@ -233,8 +233,9 @@ bool QuantifiersEngine::shouldRecheck(CVC5_UNUSED Theory::Effort e,
   }
   // If the term database mode is relevant, we instead now mark all terms
   // as relevant.
-  if (options().quantifiers.termDbMode
-      == options::TermDbMode::RELEVANT_ALL_DELAY)
+  options::TermDbMode tdbmode = options().quantifiers.termDbMode;
+  if (tdbmode == options::TermDbMode::RELEVANT_ALL_DELAY
+      || tdbmode == options::TermDbMode::RELEVANCE_ALL_DELAY)
   {
     TermDb* tdb = d_treg.getTermDatabase();
     eq::EqualityEngine* ee = d_qstate.getEqualityEngine();
@@ -257,6 +258,10 @@ bool QuantifiersEngine::shouldRecheck(CVC5_UNUSED Theory::Effort e,
         ++eqci;
       }
       ++eqcsi;
+    }
+    if (recheck)
+    {
+      ++d_qstate.getStats().d_tdb_all_delay_fallbacks;
     }
     return recheck;
   }

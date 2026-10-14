@@ -230,6 +230,13 @@ class TheoryEngine : protected EnvObj
    * or during LAST_CALL effort.
    */
   bool isRelevant(Node lit) const;
+  /**
+   * Is the literal lit in the relevant selection computed for the current
+   * full effort check? This computes the relevant selection at most once per
+   * check, see RelevanceManager::isRelevantInCheck. Returns true if the
+   * relevance manager is disabled.
+   */
+  bool isRelevantInCheck(Node lit) const;
   /** is legal elimination
    *
    * Returns true if x -> val is a legal elimination of variable x. This is

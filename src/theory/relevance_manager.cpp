@@ -16,7 +16,9 @@
 
 #include "expr/node_algorithm.h"
 #include "expr/term_context_stack.h"
+#include "options/quantifiers_options.h"
 #include "options/smt_options.h"
+#include "options/theory_options.h"
 #include "smt/env.h"
 #include "theory/relevance_manager.h"
 
@@ -32,13 +34,27 @@ RelevanceManager::RelevanceManager(Env& env, TheoryEngine* engine)
       d_atomMap(userContext()),
       d_rset(context()),
       d_inFullEffortCheck(false),
+      d_computedThisCheck(false),
+      d_deferRootsInCheck(false),
       d_fullEffortCheckFail(false),
       d_success(false),
       d_trackRSetExp(false),
       d_miniscopeTopLevel(true),
       d_rsetExp(context()),
-      d_jcache(context())
+      d_jcache(context()),
+      d_computeTime(statisticsRegistry().registerTimer(
+          "theory::RelevanceManager::computeTimeInCheck")),
+      d_numComputes(statisticsRegistry().registerInt(
+          "theory::RelevanceManager::numComputesInCheck")),
+      d_numComputeFails(statisticsRegistry().registerInt(
+          "theory::RelevanceManager::numComputeFailsInCheck")),
+      d_numDeferredRoots(statisticsRegistry().registerInt(
+          "theory::RelevanceManager::numDeferredRoots"))
 {
+  options::TermDbMode tdbmode = options().quantifiers.termDbMode;
+  d_deferRootsInCheck =
+      (tdbmode == options::TermDbMode::RELEVANCE
+       || tdbmode == options::TermDbMode::RELEVANCE_ALL_DELAY);
   if (options().smt.produceDifficulty)
   {
     d_dman = std::make_unique<DifficultyManager>(env, this, d_val);
@@ -145,12 +161,20 @@ void RelevanceManager::check(Theory::Effort effort)
   {
     d_inFullEffortCheck = true;
     d_fullEffortCheckFail = false;
+    d_computedThisCheck = false;
   }
 }
 
 void RelevanceManager::postCheck(CVC5_UNUSED Theory::Effort effort)
 {
   d_inFullEffortCheck = false;
+  if (!d_pendingRoots.empty())
+  {
+    // the roots notified during the check now take part
+    std::vector<Node> roots;
+    roots.swap(d_pendingRoots);
+    notifyPreprocessedAssertions(roots, false);
+  }
 }
 
 void RelevanceManager::computeRelevance()
@@ -441,6 +465,37 @@ bool RelevanceManager::isRelevant(TNode lit)
   return d_rset.find(lit) != d_rset.end();
 }
 
+bool RelevanceManager::isRelevantInCheck(TNode lit)
+{
+  if (!d_inFullEffortCheck)
+  {
+    // always relevant if not in a full effort check
+    return true;
+  }
+  if (!d_computedThisCheck)
+  {
+    TimerStat::CodeTimer ctimer(d_computeTime);
+    ++d_numComputes;
+    computeRelevance();
+    d_computedThisCheck = true;
+    if (!d_success)
+    {
+      ++d_numComputeFails;
+    }
+  }
+  if (!d_success)
+  {
+    // always relevant if we failed to compute
+    return true;
+  }
+  // agnostic to negation
+  while (lit.getKind() == Kind::NOT)
+  {
+    lit = lit[0];
+  }
+  return d_rset.find(lit) != d_rset.end();
+}
+
 TNode RelevanceManager::getExplanationForRelevant(TNode lit)
 {
   // agnostic to negation
@@ -545,8 +600,22 @@ void RelevanceManager::notifyLemma(TNode n,
   // add to assertions
   if (options().theory.relevanceFilter && isLemmaPropertyNeedsJustify(p))
   {
-    notifyPreprocessedAssertion(n, false);
-    notifyPreprocessedAssertions(skAsserts, false);
+    if (d_deferRootsInCheck && d_inFullEffortCheck)
+    {
+      // The lemma may be false in the current assignment, e.g. if it is a
+      // conflicting quantifier instantiation. We add it as a root at the end
+      // of this check, so that the relevant selection of the current check
+      // remains valid.
+      ++d_numDeferredRoots;
+      d_pendingRoots.push_back(n);
+      d_pendingRoots.insert(
+          d_pendingRoots.end(), skAsserts.begin(), skAsserts.end());
+    }
+    else
+    {
+      notifyPreprocessedAssertion(n, false);
+      notifyPreprocessedAssertions(skAsserts, false);
+    }
   }
   // notice that we may be in FULL or STANDARD effort here.
   if (d_dman != nullptr)

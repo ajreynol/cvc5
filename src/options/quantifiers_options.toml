@@ -309,6 +309,20 @@ name   = "Quantifiers"
 [[option.mode.RELEVANT_ALL_DELAY]]
   name = "relevant-all-delay"
   help = "Quantifiers module considers only ground terms connected to current assertions, then all ground terms as a last resort."
+[[option.mode.RELEVANCE]]
+  name = "relevance"
+  help = "Quantifiers module considers only ground terms in asserted literals that are part of the relevant selection computed by the relevance manager (see --relevance-filter)."
+[[option.mode.RELEVANCE_ALL_DELAY]]
+  name = "relevance-all-delay"
+  help = "Quantifiers module considers only ground terms in asserted literals that are part of the relevant selection computed by the relevance manager, then all ground terms as a last resort."
+
+[[option]]
+  name       = "termDbRlvInstRoots"
+  category   = "expert"
+  long       = "term-db-rlv-inst-roots"
+  type       = "bool"
+  default    = "true"
+  help       = "when using term-db-mode=relevance or relevance-all-delay, treat quantifier instantiation lemmas as roots for the relevance manager"
 
 [[option]]
   name       = "registerQuantBodyTerms"

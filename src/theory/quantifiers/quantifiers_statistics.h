@@ -40,6 +40,12 @@ class QuantifiersStatistics
   IntStat d_simple_triggers;
   IntStat d_multi_triggers;
   IntStat d_red_alpha_equiv;
+  /** Asserted facts considered by the term database (relevance modes) */
+  IntStat d_tdb_rlv_facts;
+  /** Asserted facts admitted by the term database (relevance modes) */
+  IntStat d_tdb_rlv_facts_admitted;
+  /** Number of times we fell back to all terms (all-delay modes) */
+  IntStat d_tdb_all_delay_fallbacks;
 };
 
 }  // namespace quantifiers

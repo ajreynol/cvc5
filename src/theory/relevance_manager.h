@@ -26,6 +26,7 @@
 #include "theory/difficulty_manager.h"
 #include "theory/theory_engine_module.h"
 #include "theory/valuation.h"
+#include "util/statistics_stats.h"
 
 namespace cvc5::internal {
 namespace theory {
@@ -117,6 +118,15 @@ class RelevanceManager : public TheoryEngineModule
    * LAST_CALL efforts, through the Valuation class.
    */
   bool isRelevant(TNode lit);
+  /**
+   * Is lit part of the relevant selection computed for the current full effort
+   * check? Unlike isRelevant, this computes the relevant selection at most
+   * once per full effort check, and subsequent calls only query it. Thus,
+   * roots added after the first call in the current check do not influence
+   * the result. If we are not in a full effort check, or if computing the
+   * relevant selection failed, this method returns true.
+   */
+  bool isRelevantInCheck(TNode lit);
   /**
    * Get the explanation for literal lit is relevant. This returns the
    * preprocessed assertion that was the reason why the literal was relevant
@@ -215,6 +225,20 @@ class RelevanceManager : public TheoryEngineModule
   NodeSet d_rset;
   /** Are we in a full effort check? */
   bool d_inFullEffortCheck;
+  /**
+   * Have we computed the relevant selection for isRelevantInCheck in the
+   * current full effort check?
+   */
+  bool d_computedThisCheck;
+  /**
+   * Whether we defer roots that are notified during a full effort check
+   * (lemmas with property NEEDS_JUSTIFY) until the end of that check. This is
+   * required when lemmas that may be false in the current assignment, such as
+   * quantifier instantiations, are roots.
+   */
+  bool d_deferRootsInCheck;
+  /** The roots notified during the current full effort check */
+  std::vector<Node> d_pendingRoots;
   /** Have we failed to justify a formula in a full effort check? */
   bool d_fullEffortCheckFail;
   /**
@@ -255,6 +279,14 @@ class RelevanceManager : public TheoryEngineModule
   RlvPairIntMap d_jcache;
   /** Difficulty module */
   std::unique_ptr<DifficultyManager> d_dman;
+  /** Time spent computing the relevant selection for isRelevantInCheck */
+  TimerStat d_computeTime;
+  /** Number of times we computed the selection for isRelevantInCheck */
+  IntStat d_numComputes;
+  /** Number of times computing the selection for isRelevantInCheck failed */
+  IntStat d_numComputeFails;
+  /** Number of roots that were deferred to the end of a full effort check */
+  IntStat d_numDeferredRoots;
 };
 
 }  // namespace theory

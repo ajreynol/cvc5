@@ -870,6 +870,16 @@ bool TheoryEngine::isRelevant(Node lit) const
   return true;
 }
 
+bool TheoryEngine::isRelevantInCheck(Node lit) const
+{
+  if (d_relManager != nullptr)
+  {
+    return d_relManager->isRelevantInCheck(lit);
+  }
+  // otherwise must assume its relevant
+  return true;
+}
+
 bool TheoryEngine::isLegalElimination(TNode x, TNode val)
 {
   Assert(x.isVar());

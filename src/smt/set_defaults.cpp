@@ -924,6 +924,13 @@ void SetDefaults::setDefaultsPost(const LogicInfo& logic, Options& opts) const
   {
     SET_AND_NOTIFY(theory, relevanceFilter, true, "nl relevance mode");
   }
+  if (logic.isQuantified()
+      && (opts.quantifiers.termDbMode == options::TermDbMode::RELEVANCE
+          || opts.quantifiers.termDbMode
+                 == options::TermDbMode::RELEVANCE_ALL_DELAY))
+  {
+    SET_AND_NOTIFY(theory, relevanceFilter, true, "term db relevance mode");
+  }
 
   // For now, these array theory optimizations do not support model-building
   if (opts.smt.produceModels || opts.smt.produceAssignments

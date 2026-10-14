@@ -58,6 +58,10 @@ Instantiate::Instantiate(Env& env,
   // We need to use user context-dependent trie for the main instantiation
   // trie if incremental.
   d_useCdInstTrie = options().base.incrementalSolving;
+  options::TermDbMode tdbmode = options().quantifiers.termDbMode;
+  d_instRlvRoots = options().quantifiers.termDbRlvInstRoots
+                   && (tdbmode == options::TermDbMode::RELEVANCE
+                       || tdbmode == options::TermDbMode::RELEVANCE_ALL_DELAY);
 }
 
 Instantiate::~Instantiate() {}
@@ -332,6 +336,11 @@ bool Instantiate::addInstantiationInternal(
   if (isLocal)
   {
     p = LemmaProperty::LOCAL;
+  }
+  if (d_instRlvRoots)
+  {
+    // the instantiation is a root for the relevance manager
+    p = p | LemmaProperty::NEEDS_JUSTIFY;
   }
   if (hasProof)
   {
