@@ -1,7 +1,4 @@
-; SCRUBBER: grep -o "Reasoning with global sort parameters is not supported"
-; EXPECT: Reasoning with global sort parameters is not supported
-; EXIT: 1
-; Detect parameters nested in compound sorts and polymorphic function ranks.
+; EXPECT: unknown
 (set-logic ALL)
 (declare-sort-parameter A)
 (declare-sort-parameter B)

@@ -2215,6 +2215,14 @@ public class Solver extends AbstractPointer
 
   private native long declareSort(long pointer, String symbol, int arity, boolean fresh);
 
+  /** Register an existing sort in the current solver signature. */
+  public void registerSort(Sort sort)
+  {
+    registerSort(pointer, sort.getPointer());
+  }
+
+  private native void registerSort(long pointer, long sortPointer);
+
   /**
    * Declare a fresh global SMT-LIB sort parameter.
    * @param symbol The name of the sort parameter.
@@ -2231,8 +2239,7 @@ public class Solver extends AbstractPointer
    * Sort parameters are implicitly universally quantified in each assertion.
    * They are distinct from uninterpreted sorts and local datatype parameters.
    *
-   * Solving formulas containing global sort parameters is not yet supported.
-   * Such formulas are rejected when asserted or assumed.
+   * Solving may return unknown if sort instantiation is incomplete.
    *
    * @param symbol The name of the sort parameter.
    * @param fresh Whether to create a fresh parameter. If false, calls with the

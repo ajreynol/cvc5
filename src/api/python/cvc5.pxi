@@ -3731,6 +3731,10 @@ cdef class Solver:
             self.tm,
             self.csolver.declareSort(symbol.encode(), arity, <bint> fresh))
 
+    def registerSort(self, Sort sort):
+        """Register an existing sort in the current solver signature."""
+        self.csolver.declareSort(sort.csort)
+
     def declareSortParameter(self, str symbol, fresh=True):
         """
             Declare a global SMT-LIB sort parameter.
@@ -3741,10 +3745,7 @@ cdef class Solver:
             assertion. They are distinct from uninterpreted sorts and local
             datatype parameters created by :py:meth:`TermManager.mkParamSort`.
 
-            .. warning::
-
-                Solving formulas containing global sort parameters is not yet
-                supported. Such formulas are rejected when asserted or assumed.
+            Solving may return unknown if sort instantiation is incomplete.
 
             :param symbol: The name of the sort parameter.
             :param fresh: Whether to create a fresh parameter. If false, calls
@@ -5157,6 +5158,10 @@ cdef class Sort:
             v.push_back((<Sort?> s).csort)
         return _sort(self.tm, self.csort.instantiate(v))
 
+    def getSortParameters(self):
+        """Return the global sort parameters occurring in this sort."""
+        return [_sort(self.tm, s) for s in self.csort.getSortParameters()]
+
     def getInstantiatedParameters(self):
         """
             Get the sorts used to instantiate the sort parameters of a
@@ -5556,6 +5561,20 @@ cdef class Term:
             :return: The :py:class:`Sort` of this term.
         """
         return _sort(self.tm, self.cterm.getSort())
+
+    def instantiate(self, Sort sort):
+        """Instantiate a free symbol at a sort or function codomain."""
+        return _term(self.tm, self.cterm.instantiate(sort.csort))
+
+    def substituteSorts(self, parameters, replacements):
+        """Simultaneously substitute global sort parameters throughout a term."""
+        cdef vector[c_Sort] ps
+        cdef vector[c_Sort] rs
+        for p in parameters:
+            ps.push_back((<Sort?> p).csort)
+        for r in replacements:
+            rs.push_back((<Sort?> r).csort)
+        return _term(self.tm, self.cterm.substituteSorts(ps, rs))
 
     def substitute(self, term_or_list_1, term_or_list_2):
         """

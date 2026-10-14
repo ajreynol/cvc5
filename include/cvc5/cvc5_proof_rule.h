@@ -104,6 +104,13 @@ enum ENUM(ProofRule)
    * \endverbatim
    */
   EVALUE(ASSUME),
+
+  /**
+   * Instantiate the implicit universal sort parameters of an assertion.
+   * The sole premise is the schematic assertion. Arguments are alternating
+   * SORT_TO_TERM nodes for a global sort parameter and its ground replacement.
+   */
+  EVALUE(INSTANTIATE_SORTS),
   /**
    * \verbatim embed:rst:leading-asterisk
    * **Scope (a binder for assumptions)**

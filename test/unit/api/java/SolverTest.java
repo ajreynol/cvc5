@@ -161,7 +161,23 @@ class SolverTest
     assertNotEquals(a, d_solver.declareSort("A", 0, false));
     assertNotEquals(a, d_solver.mkParamSort("A"));
     Term x = d_solver.mkConst(a, "x");
-    assertThrows(CVC5ApiException.class, () -> d_solver.assertFormula(x.eqTerm(x)));
+    assertDoesNotThrow(() -> d_solver.assertFormula(x.eqTerm(x)));
+  }
+
+  @Test
+  void sortParameterInstances()
+  {
+    d_solver.setLogic("QF_UFLIA");
+    Sort a = d_solver.declareSortParameter("A");
+    Sort integer = d_solver.getIntegerSort();
+    Term c = d_solver.declareFun("c", new Sort[] {}, a);
+    Term ci = c.instantiate(integer);
+    assertEquals(ci, c.substituteSorts(new Sort[] {a}, new Sort[] {integer}));
+    assertArrayEquals(new Sort[] {a}, a.getSortParameters());
+    d_solver.assertFormula(ci.eqTerm(d_solver.mkInteger(7)));
+    assertTrue(d_solver.checkSat().isSat());
+    assertThrows(CVC5ApiException.class,
+        () -> c.substituteSorts(new Sort[] {a}, new Sort[] {}));
   }
 
   @Test

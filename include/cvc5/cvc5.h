@@ -735,6 +735,9 @@ class CVC5_EXPORT Sort
    */
   std::vector<Sort> getInstantiatedParameters() const;
 
+  /** Get the global sort parameters occurring in this sort, in id order. */
+  std::vector<Sort> getSortParameters() const;
+
   /**
    * Substitution of Sorts.
    *
@@ -1281,6 +1284,27 @@ class CVC5_EXPORT Term
    * @return The sort of this term.
    */
   Sort getSort() const;
+
+  /**
+   * Instantiate a free polymorphic constant or function at the given sort.
+   * For functions, a non-function sort constrains the codomain only.
+   * Parameters not constrained by the requested sort remain unchanged.
+   * Instances of the same symbol at the same rank are identical.
+   * @param sort The requested sort (or function codomain).
+   * @return The instantiated symbol.
+   */
+  Term instantiate(const Sort& sort) const;
+
+  /**
+   * Simultaneously substitute global sort parameters throughout this term.
+   * Bound variables are renamed consistently. Free symbols are replaced by
+   * their canonical instances. The first entry for a repeated parameter wins.
+   * @param parameters The global sort parameters to replace.
+   * @param replacements Their replacement sorts, possibly polymorphic.
+   * @return The instantiated term.
+   */
+  Term substituteSorts(const std::vector<Sort>& parameters,
+                       const std::vector<Sort>& replacements) const;
 
   /**
    * Replace `term` with `replacement` in this term.
@@ -5782,6 +5806,14 @@ class CVC5_EXPORT Solver
                    bool fresh = true) const;
 
   /**
+   * Register an existing sort in this solver's current signature.
+   * This includes otherwise unused sorts among the instances considered for
+   * global sort parameters. Declarations follow the global-declarations option.
+   * @param sort The sort (or sort constructor) to register.
+   */
+  void declareSort(const Sort& sort) const;
+
+  /**
    * Declare a global SMT-LIB sort parameter.
    *
    * SMT-LIB:
@@ -5796,8 +5828,8 @@ class CVC5_EXPORT Solver
    * They are distinct from uninterpreted sorts and from the local datatype
    * parameters created by TermManager::mkParamSort().
    *
-   * @warning Solving formulas containing global sort parameters is not yet
-   *          supported. Such formulas are rejected when asserted or assumed.
+   * Assertions are instantiated over the sorts in the current signature.
+   * Solving may return unknown if sort instantiation is incomplete.
    * @param symbol The name of the sort parameter.
    * @param fresh Whether to create a fresh sort parameter. If false, repeated
    *              calls with the same term manager and symbol return the same

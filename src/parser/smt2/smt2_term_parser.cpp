@@ -107,6 +107,8 @@ Term Smt2TermParser::parseTerm()
   std::vector<std::pair<ParseOp, std::vector<Term>>> tstack;
   // Let bindings, dynamically allocated for each let in scope.
   std::vector<std::vector<std::pair<std::string, Term>>> letBinders;
+  // Polymorphic free symbols aliased by let become monomorphic local maps.
+  std::vector<std::vector<std::pair<Term, Term>>> letVariables;
   Solver* slv = d_state.getSolver();
   TermManager& tm = slv->getTermManager();
   do
@@ -128,6 +130,10 @@ Term Smt2TermParser::parseTerm()
             // a standalone qualified identifier
             ParseOp op = continueParseQualifiedIdentifier(false);
             ret = op.d_expr;
+            if (!ret.isNull() && !op.d_sort.isNull())
+            {
+              ret = d_state.parseOpToExpr(op);
+            }
             if (ret.isNull() || op.d_kind == Kind::INTERNAL_KIND)
             {
               d_lex.parseError("Unexpected qualified identifier");
@@ -179,6 +185,7 @@ Term Smt2TermParser::parseTerm()
             tstack.emplace_back(ParseOp(), std::vector<Term>());
             needsUpdateCtx = true;
             letBinders.emplace_back();
+            letVariables.emplace_back();
           }
           break;
           case Token::MATCH_TOK:
@@ -271,6 +278,14 @@ Term Smt2TermParser::parseTerm()
       {
         std::string name = tokenStrToSymbol(tok);
         ret = d_state.getVariable(name);
+        if (d_state.strictModeEnabled() && !ret.isNull()
+            && ret.getKind() == Kind::CONSTANT
+            && !ret.getSort().getSortParameters().empty())
+        {
+          d_lex.parseError(
+              "Ambiguous polymorphic symbol requires an (as ... sort) "
+              "qualifier");
+        }
       }
       break;
       case Token::UNTERMINATED_QUOTED_SYMBOL:
@@ -386,13 +401,29 @@ Term Smt2TermParser::parseTerm()
                 letBinders.back();
             for (const std::pair<std::string, Term>& b : bs)
             {
-              d_state.defineVar(b.first, b.second);
+              Term value = b.second;
+              if (value.getKind() == Kind::CONSTANT
+                  && !value.getSort().getSortParameters().empty())
+              {
+                Term variable = tm.mkVar(value.getSort(), b.first);
+                letVariables.back().emplace_back(variable, value);
+                value = variable;
+              }
+              d_state.defineVar(b.first, value);
             }
           }
         }
         break;
         case ParseCtx::LET_BODY:
         {
+          std::vector<Term> variables, values;
+          for (const auto& binding : letVariables.back())
+          {
+            variables.push_back(binding.first);
+            values.push_back(binding.second);
+          }
+          if (!variables.empty()) ret = ret.substitute(variables, values);
+          letVariables.pop_back();
           // the let body is the returned term
           d_lex.eatToken(Token::RPAREN_TOK);
           xstack.pop_back();

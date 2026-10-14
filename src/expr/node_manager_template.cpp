@@ -25,6 +25,7 @@
 #include "expr/node_manager_attributes.h"
 #include "expr/oracle.h"
 #include "expr/skolem_manager.h"
+#include "expr/sort_parameter_converter.h"
 #include "expr/type_checker.h"
 #include "expr/type_properties.h"
 #include "theory/builtin/abstract_type.h"
@@ -252,6 +253,7 @@ NodeManager::~NodeManager()
   d_oracles.clear();
   d_nfreshSorts.clear();
   d_nfreshSortParameters.clear();
+  d_sortParameterInstances.clear();
   d_nfreshVars.clear();
 
   Assert(!d_attrManager->inGarbageCollection());
@@ -1061,6 +1063,42 @@ TypeNode NodeManager::mkSortParameter(const std::string& name, bool fresh)
     d_nfreshSortParameters[name] = type;
   }
   return type;
+}
+
+Node NodeManager::mkSortParameterInstance(Node variable,
+                                          TypeNode type,
+                                          size_t index)
+{
+  Node origin = variable;
+  if (origin.getKind() == Kind::VARIABLE
+      && origin.hasAttribute(SortParameterOriginAttr()))
+  {
+    origin = origin.getAttribute(SortParameterOriginAttr());
+  }
+  if (origin.getType() == type)
+  {
+    return origin;
+  }
+  Assert(origin.getKind() == Kind::VARIABLE
+         || origin.getKind() == Kind::BOUND_VARIABLE);
+  Assert(index == 0 || origin.getKind() == Kind::BOUND_VARIABLE);
+  auto& instances = d_sortParameterInstances[std::make_pair(origin, type)];
+  while (instances.size() <= index)
+  {
+    Node instance = origin.getKind() == Kind::BOUND_VARIABLE ? mkBoundVar(type)
+                                                             : mkVar(type);
+    if (origin.hasAttribute(expr::VarNameAttr()))
+    {
+      instance.setAttribute(expr::VarNameAttr(),
+                            origin.getAttribute(expr::VarNameAttr()));
+    }
+    if (origin.getKind() == Kind::VARIABLE)
+    {
+      instance.setAttribute(SortParameterOriginAttr(), origin);
+    }
+    instances.push_back(instance);
+  }
+  return instances[index];
 }
 
 TypeNode NodeManager::mkSort(TypeNode constructor,

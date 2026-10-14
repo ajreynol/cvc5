@@ -1172,7 +1172,17 @@ void Smt2State::parseOpApplyTypeAscription(ParseOp& p, Sort type)
   Trace("parser-qid") << " " << p.d_expr.getKind() << " " << p.d_expr.getSort();
   Trace("parser-qid") << std::endl;
   // otherwise, we process the type ascription
-  p.d_expr = applyTypeAscription(p.d_expr, type);
+  if (p.d_expr.getKind() == Kind::CONSTANT
+      && !p.d_expr.getSort().getSortParameters().empty())
+  {
+    // Domain and codomain constraints must be solved simultaneously. A sort
+    // parameter occurring in the ascription is rigid at this occurrence.
+    p.d_sort = type;
+  }
+  else
+  {
+    p.d_expr = applyTypeAscription(p.d_expr, type);
+  }
 }
 
 Term Smt2State::parseOpToExpr(ParseOp& p)
@@ -1187,11 +1197,19 @@ Term Smt2State::parseOpToExpr(ParseOp& p)
   else if (!p.d_expr.isNull())
   {
     expr = p.d_expr;
+    if (!p.d_sort.isNull()) expr = expr.instantiate(p.d_sort);
   }
   else
   {
     checkDeclaration(p.d_name, CHECK_DECLARED, SYM_VARIABLE);
     expr = getVariable(p.d_name);
+    if (strictModeEnabled() && !expr.isNull()
+        && expr.getKind() == Kind::CONSTANT
+        && !expr.getSort().getSortParameters().empty())
+    {
+      parseError(
+          "Ambiguous polymorphic symbol requires an (as ... sort) qualifier");
+    }
   }
   Assert(!expr.isNull());
   return expr;
@@ -1346,7 +1364,22 @@ Term Smt2State::applyParseOp(const ParseOp& p, std::vector<Term>& args)
   else if (!p.d_expr.isNull())
   {
     // An explicit operator, e.g. an apply function
-    Kind fkind = getKindForFunction(p.d_expr);
+    Term op = p.d_expr;
+    if (!p.d_sort.isNull())
+    {
+      std::vector<Sort> domains;
+      for (const Term& arg : args) domains.push_back(arg.getSort());
+      Sort codomain = p.d_sort;
+      if (codomain.isFunction())
+      {
+        // Function-valued results use a flattened internal function sort.
+        auto suffix = codomain.getFunctionDomainSorts();
+        domains.insert(domains.end(), suffix.begin(), suffix.end());
+        codomain = codomain.getFunctionCodomainSort();
+      }
+      op = op.instantiate(d_tm.mkFunctionSort(domains, codomain));
+    }
+    Kind fkind = getKindForFunction(op);
     if (fkind != Kind::UNDEFINED_KIND)
     {
       // Some operators may require a specific kind.
@@ -1356,7 +1389,7 @@ Term Smt2State::applyParseOp(const ParseOp& p, std::vector<Term>& args)
       Trace("parser") << "Got function kind " << kind << " for expression "
                       << std::endl;
     }
-    args.insert(args.begin(), p.d_expr);
+    args.insert(args.begin(), op);
   }
   else
   {
@@ -1451,6 +1484,29 @@ Term Smt2State::applyParseOp(const ParseOp& p, std::vector<Term>& args)
       if (!v.isNull())
       {
         checkFunctionLike(v);
+        if (strictModeEnabled() && v.getKind() == Kind::CONSTANT
+            && v.getSort().isFunction())
+        {
+          std::vector<Sort> domainParameters;
+          for (const Sort& domain : v.getSort().getFunctionDomainSorts())
+          {
+            auto parameters = domain.getSortParameters();
+            domainParameters.insert(
+                domainParameters.end(), parameters.begin(), parameters.end());
+          }
+          for (const Sort& parameter :
+               v.getSort().getFunctionCodomainSort().getSortParameters())
+          {
+            if (std::find(
+                    domainParameters.begin(), domainParameters.end(), parameter)
+                == domainParameters.end())
+            {
+              parseError(
+                  "Ambiguous polymorphic symbol requires an (as ... sort) "
+                  "qualifier");
+            }
+          }
+        }
         kind = getKindForFunction(v);
         args.insert(args.begin(), v);
       }

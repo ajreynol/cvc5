@@ -14,6 +14,7 @@
 
 #include <cvc5/cvc5_types.h>
 
+#include "expr/node_algorithm.h"
 #include "options/base_options.h"
 #include "prop/prop_engine.h"
 #include "smt/env.h"
@@ -61,7 +62,7 @@ void SmtDriverDeepRestarts::getNextAssertions(
     const context::CDList<Node>& al = as.getAssertionList();
     for (const Node& a : al)
     {
-      ap.push_back(a, true);
+      if (!expr::hasSortParameter(a)) ap.push_back(a, true);
     }
     d_firstTime = false;
     return;

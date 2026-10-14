@@ -6,8 +6,13 @@ cvc5 1.4.3 prerelease
 - Adds the SMT-LIB 2.7 `declare-sort-parameter` command and the corresponding
   `declareSortParameter` API (`cvc5_declare_sort_parameter` in C). Global sort
   parameters have kind `SORT_PARAMETER_SORT`, distinct from uninterpreted sorts
-  and local datatype parameters. Polymorphic reasoning is not yet supported;
-  assertions and assumptions containing global sort parameters are rejected.
+  and local datatype parameters. Assertions and definitions are instantiated
+  over the current sort signature, including declarations made after an
+  assertion. Function applications infer sort instances; explicit instances
+  and simultaneous sort substitution are available in all four APIs.
+  Sort instantiation preserves scopes, assumptions, proofs, and unsat cores.
+  Infinite signatures and the `--sort-inst-limit` bound may cause `unknown`.
+  Model queries require monomorphic terms; model output lists ground instances.
 
 - **Java API**
   * Plugin and oracle callbacks may now be invoked from a thread other than

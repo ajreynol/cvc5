@@ -21,6 +21,7 @@
 #include "context/cdo.h"
 #include "expr/node.h"
 #include "smt/env_obj.h"
+#include "smt/sort_parameter_manager.h"
 
 namespace cvc5::internal {
 
@@ -101,6 +102,9 @@ class Assertions : protected EnvObj
    */
   std::vector<Node>& getAssumptions();
 
+  /** Manager for the scoped signature and schematic assertion instances. */
+  SortParameterManager& getSortParameterManager() { return d_sortParameters; }
+
  private:
   /**
    * Fully type-check the argument, and also type-check that it's
@@ -142,6 +146,7 @@ class Assertions : protected EnvObj
   std::vector<Node> d_assumptions;
   /** Proof generator storing proofs of rewriting for defined functions */
   std::shared_ptr<LazyCDProof> d_defFunRewPf;
+  SortParameterManager d_sortParameters;
 };
 
 }  // namespace smt

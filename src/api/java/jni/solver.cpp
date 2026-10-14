@@ -1696,3 +1696,13 @@ JNIEXPORT jstring JNICALL Java_io_github_cvc5_Solver_getVersion(JNIEnv* env,
   return env->NewStringUTF(solver->getVersion().c_str());
   CVC5_JAVA_API_TRY_CATCH_END_RETURN(env, 0);
 }
+
+JNIEXPORT void JNICALL Java_io_github_cvc5_Solver_registerSort(
+    JNIEnv* env, jobject, jlong pointer, jlong sortPointer)
+{
+  CVC5_JAVA_API_TRY_CATCH_BEGIN;
+  Solver* solver = reinterpret_cast<Solver*>(pointer);
+  Sort* sort = reinterpret_cast<Sort*>(sortPointer);
+  solver->declareSort(*sort);
+  CVC5_JAVA_API_TRY_CATCH_END(env);
+}

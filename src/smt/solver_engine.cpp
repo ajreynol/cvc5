@@ -23,6 +23,7 @@
 #include "expr/non_closed_node_converter.h"
 #include "expr/plugin.h"
 #include "expr/skolem_manager.h"
+#include "expr/sort_parameter_converter.h"
 #include "expr/subtype_elim_node_converter.h"
 #include "expr/sygus_term_enumerator.h"
 #include "options/base_options.h"
@@ -224,6 +225,7 @@ void SolverEngine::finishInit()
   // global push/pop around everything, to ensure proper destruction
   // of context-dependent data structures
   d_ctxManager->setup(d_smtDriver.get());
+  d_smtSolver->getAssertions().getSortParameterManager().finishInit();
 
   // subsolvers
   if (d_env->getOptions().smt.produceAbducts)
@@ -536,14 +538,19 @@ void SolverEngine::debugCheckFunctionBody(Node formula,
   }
 }
 
-void SolverEngine::declareConst(CVC5_UNUSED const Node& c)
+void SolverEngine::declareConst(const Node& c)
 {
+  if (d_state->isFullyInited()) d_ctxManager->doPendingPops();
   d_state->notifyDeclaration();
+  d_smtSolver->getAssertions().getSortParameterManager().declareSort(
+      c.getType());
 }
 
-void SolverEngine::declareSort(CVC5_UNUSED const TypeNode& tn)
+void SolverEngine::declareSort(const TypeNode& tn)
 {
+  if (d_state->isFullyInited()) d_ctxManager->doPendingPops();
   d_state->notifyDeclaration();
+  d_smtSolver->getAssertions().getSortParameterManager().declareSort(tn);
 }
 
 void SolverEngine::defineFunction(Node func,
@@ -1220,11 +1227,6 @@ void SolverEngine::addPlugin(Plugin* p)
 
 Node SolverEngine::simplify(const Node& t, bool applySubs)
 {
-  if (expr::hasSortParameter(t))
-  {
-    throw ModalException(
-        "Reasoning with global sort parameters is not supported");
-  }
   beginCall(true);
   Node tt = t;
   // if we are applying substitutions
@@ -1246,6 +1248,12 @@ Node SolverEngine::simplify(const Node& t, bool applySubs)
 
 Node SolverEngine::getValue(const Node& t, bool fromUser)
 {
+  if (expr::hasSortParameter(t))
+  {
+    throw ModalException(
+        "get-value requires a monomorphic term; instantiate its sort "
+        "parameters first");
+  }
   // see if another solver engine was responsible for the last status
   SolverEngine* ssolver = d_state->getStatusSolver();
   if (ssolver != nullptr)
@@ -1482,7 +1490,39 @@ std::string SolverEngine::getModel(const std::vector<TypeNode>& declaredSorts,
   }
   bool usingModelCores =
       (opts.smt.modelCoresMode != options::ModelCoresMode::NONE);
-  for (const Node& n : declaredFuns)
+  std::vector<Node> modelFuns;
+  SortParameterManager& spm =
+      d_smtSolver->getAssertions().getSortParameterManager();
+  for (Node n : declaredFuns)
+  {
+    std::vector<TypeNode> parameters =
+        SortParameterConverter::getParameters(n.getType());
+    if (parameters.empty())
+    {
+      modelFuns.push_back(n);
+      continue;
+    }
+    const auto& sorts = spm.getGroundSorts();
+    std::vector<size_t> indices(parameters.size(), 0);
+    if (sorts.empty()) continue;
+    size_t remaining = opts.smt.sortInstantiationLimit;
+    while (remaining-- > 0)
+    {
+      std::vector<TypeNode> replacements;
+      for (size_t i : indices) replacements.push_back(sorts[i]);
+      SortParameterConverter converter(
+          d_env->getNodeManager(), parameters, replacements);
+      modelFuns.push_back(converter.convert(n, false));
+      size_t i = 0;
+      for (; i < indices.size(); ++i)
+      {
+        if (++indices[i] < sorts.size()) break;
+        indices[i] = 0;
+      }
+      if (i == indices.size()) break;
+    }
+  }
+  for (const Node& n : modelFuns)
   {
     if (usingModelCores && !tm->isModelCoreSymbol(n))
     {
@@ -1589,11 +1629,6 @@ bool SolverEngine::isWellFormedTerm(const Node& n) const
 void SolverEngine::ensureWellFormedTerm(const Node& n,
                                         const std::string& src) const
 {
-  if (expr::hasSortParameter(n))
-  {
-    throw ModalException(
-        "Reasoning with global sort parameters is not supported");
-  }
   if (Configuration::isAssertionBuild())
   {
     // Don't check for shadowing here, since shadowing may occur from API
@@ -1818,6 +1853,13 @@ void SolverEngine::checkUnsatCore()
   initializeSubsolver(coreChecker, *d_env.get());
   // disable all proof options
   SetDefaults::disableChecking(coreChecker->getOptions());
+  // A schematic core is interpreted over the original signature, including
+  // unused sort declarations that may have supplied a refuting instance.
+  for (TypeNode type :
+       d_smtSolver->getAssertions().getSortParameterManager().getGroundSorts())
+  {
+    coreChecker->declareSort(type);
+  }
 
   d_env->verbose(1) << "SolverEngine::checkUnsatCore(): pushing core assertions"
                     << std::endl;
@@ -1879,7 +1921,19 @@ void SolverEngine::checkModel(bool hardFailure)
 
   // check the model with the check models utility
   Assert(d_checkModels != nullptr);
-  d_checkModels->checkModel(m, al, hardFailure);
+  context::Context temporaryContext;
+  context::CDList<Node> groundAssertions(&temporaryContext);
+  for (Node assertion : al)
+  {
+    if (!expr::hasSortParameter(assertion))
+      groundAssertions.push_back(assertion);
+  }
+  for (Node instance :
+       d_smtSolver->getAssertions().getSortParameterManager().getInstances())
+  {
+    groundAssertions.push_back(instance);
+  }
+  d_checkModels->checkModel(m, groundAssertions, hardFailure);
 }
 
 UnsatCore SolverEngine::getUnsatCore()

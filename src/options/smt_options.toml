@@ -2,6 +2,14 @@ id     = "SMT"
 name   = "SMT Layer"
 
 [[option]]
+  name       = "sortInstantiationLimit"
+  category   = "expert"
+  long       = "sort-inst-limit=N"
+  type       = "uint64_t"
+  default    = "1000"
+  help       = "maximum sort instances considered per check; incomplete instantiation returns unknown instead of sat"
+
+[[option]]
   name       = "ackermann"
   category   = "expert"
   long       = "ackermann"

@@ -137,8 +137,24 @@ def test_declare_sort_parameter(tm, solver):
     assert a != solver.declareSort("A", 0, False)
     assert a != tm.mkParamSort("A")
     x = tm.mkConst(a, "x")
-    with pytest.raises(RuntimeError, match="global sort parameters"):
-        solver.assertFormula(x.eqTerm(x))
+    solver.assertFormula(x.eqTerm(x))
+    assert solver.checkSat().isSat()
+
+
+def test_sort_parameter_instances(tm, solver):
+    solver.setLogic("QF_UFLIA")
+    solver.setOption("produce-models", "true")
+    a = solver.declareSortParameter("A")
+    b = solver.declareSortParameter("B")
+    c = solver.declareFun("c", [], a)
+    ci = c.instantiate(tm.getIntegerSort())
+    assert ci == c.substituteSorts([a], [b]).substituteSorts([b], [tm.getIntegerSort()])
+    assert a.getSortParameters() == [a]
+    solver.assertFormula(ci.eqTerm(tm.mkInteger(7)))
+    assert solver.checkSat().isSat()
+    assert solver.getValue(ci) == tm.mkInteger(7)
+    with pytest.raises(RuntimeError):
+        c.substituteSorts([a], [])
 
 
 def test_define_fun(tm, solver):

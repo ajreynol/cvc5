@@ -375,37 +375,169 @@ TEST_F(TestApiBlackSolver, declareSortParameter)
 
 TEST_F(TestApiBlackSolver, sortParameterReasoning)
 {
+  d_solver->setLogic("UF");
+  d_solver->setOption("incremental", "true");
   d_solver->setOption("produce-models", "true");
   Sort a = d_solver->declareSortParameter("A");
   Term x = d_tm.mkVar(a, "x");
   Term y = d_tm.mkVar(a, "y");
   Term singleton = d_tm.mkTerm(
       Kind::FORALL, {d_tm.mkTerm(Kind::VARIABLE_LIST, {x, y}), x.eqTerm(y)});
-  // This is unsatisfiable under SMT-LIB 2.7 semantics (instantiate A with
-  // Bool), but satisfiable if A is mistakenly treated as uninterpreted.
-  ASSERT_THROW(d_solver->assertFormula(singleton), CVC5ApiException);
-  ASSERT_THROW(d_solver->checkSatAssuming(singleton), CVC5ApiException);
-  ASSERT_THROW(d_solver->simplify(singleton), CVC5ApiException);
-  ASSERT_THROW(d_solver->defineFun("id", {x}, a, x), CVC5ApiException);
-  ASSERT_THROW(d_solver->defineFun("id", {x}, a, x, true), CVC5ApiException);
+  ASSERT_TRUE(d_solver->checkSatAssuming(singleton).isUnsat());
+  ASSERT_TRUE(d_solver->checkSatAssuming(singleton.notTerm()).isSat());
+  ASSERT_TRUE(d_solver->checkSat().isSat());
+  d_solver->assertFormula(singleton);
+  ASSERT_TRUE(d_solver->checkSat().isUnsat());
+  ASSERT_EQ(d_solver->getAssertions(), std::vector<Term>{singleton});
+  // Datatype declarations still bind local parameters only.
   ASSERT_THROW(d_tm.mkDatatypeDecl("D", {a}), CVC5ApiException);
   DatatypeConstructorDecl ctor = d_tm.mkDatatypeConstructorDecl("box");
   ASSERT_THROW(ctor.addSelector("value", a), CVC5ApiException);
+}
 
-  // The parameter must also be detected inside compound sorts and operators.
-  Sort array = d_tm.mkArraySort(d_int, a);
-  Term c = d_tm.mkConst(array, "c");
-  Term f = d_solver->declareFun("f", {array}, d_bool);
-  Term p = d_tm.mkTerm(Kind::APPLY_UF, {f, c});
-  Solver other(d_tm);
-  ASSERT_THROW(other.assertFormula(p), CVC5ApiException);
-
-  // Rejected assertions and definitions must not affect subsequent solving.
-  ASSERT_TRUE(d_solver->getAssertions().empty());
+TEST_F(TestApiBlackSolver, sortParameterInstances)
+{
+  d_solver->setLogic("QF_UFLIA");
+  d_solver->setOption("produce-models", "true");
+  Sort a = d_solver->declareSortParameter("A");
+  Sort b = d_solver->declareSortParameter("B");
+  Term f = d_solver->declareFun("f", {a}, a);
+  Term fi = f.instantiate(d_tm.mkFunctionSort({d_int}, d_int));
+  Term fb = f.substituteSorts({a}, {b});
+  ASSERT_EQ(fi, fb.substituteSorts({b}, {d_int}));
+  ASSERT_EQ(fi, f.substituteSorts({a}, {d_int}));
+  ASSERT_EQ(f.getSort().getSortParameters(), std::vector<Sort>{a});
+  Term zero = d_tm.mkInteger(0);
+  Term one = d_tm.mkInteger(1);
+  Term ff = d_tm.mkTerm(Kind::APPLY_UF, {f, d_tm.mkFalse()});
+  Term fz = d_tm.mkTerm(Kind::APPLY_UF, {f, zero});
+  ASSERT_EQ(fz, d_tm.mkTerm(Kind::APPLY_UF, {fi, zero}));
+  d_solver->assertFormula(ff);
+  d_solver->assertFormula(fz.eqTerm(one));
   ASSERT_TRUE(d_solver->checkSat().isSat());
-  Term value = d_tm.mkConst(a, "value");
-  ASSERT_THROW(d_solver->getValue(value), CVC5ApiException);
-  ASSERT_THROW(d_solver->getModel({}, {value}), CVC5ApiException);
+  ASSERT_EQ(d_solver->getValue(fz), one);
+  ASSERT_NO_THROW(d_solver->getModel({}, {f}));
+  ASSERT_THROW(d_solver->getValue(f), CVC5ApiException);
+  ASSERT_THROW(f.instantiate(d_tm.mkFunctionSort({d_int}, d_bool)),
+               CVC5ApiException);
+  ASSERT_THROW(f.substituteSorts({a}, {}), CVC5ApiException);
+  ASSERT_THROW(f.substituteSorts({d_int}, {d_bool}), CVC5ApiException);
+  Term local = d_tm.mkVar(f.getSort(), "local");
+  ASSERT_THROW(d_tm.mkTerm(Kind::APPLY_UF, {local, zero}), CVC5ApiException);
+  ASSERT_THROW(local.instantiate(fi.getSort()), CVC5ApiException);
+}
+
+TEST_F(TestApiBlackSolver, sortParameterDefinition)
+{
+  d_solver->setLogic("UFLIA");
+  Sort a = d_solver->declareSortParameter("A");
+  Term x = d_tm.mkVar(a, "x");
+  Term id = d_solver->defineFun("id", {x}, a, x);
+  Term zero = d_tm.mkInteger(0);
+  d_solver->assertFormula(
+      d_tm.mkTerm(Kind::APPLY_UF, {id, zero}).eqTerm(zero).notTerm());
+  ASSERT_TRUE(d_solver->checkSat().isUnsat());
+}
+
+TEST_F(TestApiBlackSolver, sortParameterSharedRank)
+{
+  d_solver->setLogic("UF");
+  Sort a = d_solver->declareSortParameter("A");
+  Sort b = d_solver->declareSortParameter("B");
+  Term c = d_solver->declareFun("c", {}, a);
+  Term p = d_solver->declareFun("p", {a}, d_bool);
+  Term assertion = d_tm.mkTerm(Kind::APPLY_UF, {p, c});
+  d_solver->assertFormula(assertion);
+  d_solver->assertFormula(assertion.substituteSorts({a}, {b}).notTerm());
+  ASSERT_TRUE(d_solver->checkSat().isUnsat());
+}
+
+TEST_F(TestApiBlackSolver, sortParameterLateSort)
+{
+  d_solver->setLogic("UFDT");
+  d_solver->setOption("incremental", "true");
+  Sort a = d_solver->declareSortParameter("A");
+  Term x = d_tm.mkVar(a, "x"), y = d_tm.mkVar(a, "y"), z = d_tm.mkVar(a, "z");
+  Term body = d_tm.mkTerm(Kind::OR, {x.eqTerm(y), x.eqTerm(z), y.eqTerm(z)});
+  d_solver->assertFormula(d_tm.mkTerm(
+      Kind::FORALL, {d_tm.mkTerm(Kind::VARIABLE_LIST, {x, y, z}), body}));
+  ASSERT_TRUE(d_solver->checkSat().isSat());
+  d_solver->push();
+  DatatypeDecl decl = d_tm.mkDatatypeDecl("Three");
+  for (const char* name : {"red", "green", "blue"})
+  {
+    decl.addConstructor(d_tm.mkDatatypeConstructorDecl(name));
+  }
+  d_solver->declareSort(d_tm.mkDatatypeSort(decl));
+  ASSERT_TRUE(d_solver->checkSat().isUnsat());
+  d_solver->pop();
+  ASSERT_TRUE(d_solver->checkSat().isSat());
+}
+
+TEST_F(TestApiBlackSolver, sortParameterIncomplete)
+{
+  d_solver->setLogic("AUF");
+  Sort a = d_solver->declareSortParameter("A");
+  Term c = d_solver->declareFun("c", {}, a);
+  Term p = d_solver->declareFun("p", {a}, d_bool);
+  d_solver->assertFormula(d_tm.mkTerm(Kind::APPLY_UF, {p, c}));
+  ASSERT_TRUE(d_solver->checkSat().isUnknown());
+}
+
+TEST_F(TestApiBlackSolver, sortParameterBoundVariables)
+{
+  d_solver->setLogic("UF");
+  d_solver->setOption("finite-model-find", "true");
+  Sort a = d_solver->declareSortParameter("A");
+  Sort b = d_solver->declareSortParameter("B");
+  Term x = d_tm.mkVar(a, "x");
+  Term y = x.substituteSorts({a}, {b});
+  Term p = d_solver->declareFun("p", {a}, d_bool);
+  Term px = d_tm.mkTerm(Kind::APPLY_UF, {p, x});
+  Term py = d_tm.mkTerm(Kind::APPLY_UF, {p, y});
+  Term exists = d_tm.mkTerm(
+      Kind::EXISTS,
+      {d_tm.mkTerm(Kind::VARIABLE_LIST, {y}), px.eqTerm(py).notTerm()});
+  Term formula = d_tm.mkTerm(Kind::FORALL,
+                             {d_tm.mkTerm(Kind::VARIABLE_LIST, {x}), exists});
+  // Merging sorts must not merge the two binders or capture occurrences.
+  Term merged = formula.substituteSorts({a}, {b});
+  ASSERT_NE(merged[0][0], merged[1][0][0]);
+  ASSERT_EQ(merged, formula.substituteSorts({a}, {b}));
+  d_solver->assertFormula(merged.substituteSorts({b}, {d_bool}));
+  ASSERT_TRUE(d_solver->checkSat().isSat());
+}
+
+TEST_F(TestApiBlackSolver, sortParameterTypedConstants)
+{
+  Sort a = d_solver->declareSortParameter("A");
+  Sort setA = d_tm.mkSetSort(a), setB = d_tm.mkSetSort(d_bool);
+  ASSERT_EQ(d_tm.mkEmptySet(setA).substituteSorts({a}, {d_bool}),
+            d_tm.mkEmptySet(setB));
+  ASSERT_EQ(d_tm.mkUniverseSet(setA).substituteSorts({a}, {d_bool}),
+            d_tm.mkUniverseSet(setB));
+  ASSERT_EQ(d_tm.mkEmptyBag(d_tm.mkBagSort(a)).substituteSorts({a}, {d_bool}),
+            d_tm.mkEmptyBag(d_tm.mkBagSort(d_bool)));
+  ASSERT_EQ(d_tm.mkEmptySequence(a).substituteSorts({a}, {d_bool}),
+            d_tm.mkEmptySequence(d_bool));
+  Term zero = d_tm.mkInteger(0);
+  ASSERT_EQ(d_tm.mkConstArray(d_tm.mkArraySort(a, d_int), zero)
+                .substituteSorts({a}, {d_bool}),
+            d_tm.mkConstArray(d_tm.mkArraySort(d_bool, d_int), zero));
+}
+
+TEST_F(TestApiBlackSolver, sortParameterFunctionSort)
+{
+  d_solver->setLogic("HO_UF");
+  Sort a = d_solver->declareSortParameter("A");
+  Term x = d_tm.mkVar(a, "x");
+  Term id = d_solver->defineFun("id", {x}, a, x);
+  Sort fn = d_tm.mkFunctionSort({d_bool}, d_bool);
+  Term g = d_tm.mkConst(fn, "g");
+  Term app = d_tm.mkTerm(Kind::APPLY_UF, {id, g});
+  ASSERT_EQ(app.getSort(), fn);
+  d_solver->assertFormula(app.eqTerm(g).notTerm());
+  ASSERT_TRUE(d_solver->checkSat().isUnsat());
 }
 
 TEST_F(TestApiBlackSolver, defineFun)

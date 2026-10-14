@@ -491,6 +491,14 @@ public class Sort extends AbstractPointer implements Comparable<Sort>
 
   private native long instantiate(long pointer, long[] paramsPointers);
 
+  /** Get the global sort parameters occurring in this sort. */
+  public Sort[] getSortParameters()
+  {
+    return Utils.getSorts(getSortParameters(pointer));
+  }
+
+  private native long[] getSortParameters(long pointer);
+
   /**
    * Get the sorts used to instantiate the sort parameters of a parametric
    * sort (parametric datatype or uninterpreted sort constructor sort,

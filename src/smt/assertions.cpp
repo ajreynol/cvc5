@@ -37,7 +37,8 @@ Assertions::Assertions(Env& env)
     : EnvObj(env),
       d_assertionList(userContext()),
       d_assertionListDefs(userContext()),
-      d_globalDefineFunLemmasIndex(userContext(), 0)
+      d_globalDefineFunLemmasIndex(userContext(), 0),
+      d_sortParameters(env)
 {
 }
 
@@ -100,13 +101,21 @@ std::unordered_set<Node> Assertions::getCurrentAssertionListDefitions() const
 
 void Assertions::addFormula(TNode n, bool isFunDef, bool maybeHasFv)
 {
-  if (expr::hasSortParameter(n))
+  bool schematic = expr::hasSortParameter(n);
+  if (schematic && maybeHasFv && expr::hasFreeVar(n))
   {
     throw ModalException(
-        "Reasoning with global sort parameters is not supported");
+        "Cannot process a schematic assertion with free variables.");
   }
   // add to assertion list
   d_assertionList.push_back(n);
+  if (schematic)
+  {
+    if (isFunDef) d_assertionListDefs.push_back(n);
+    // Schematic definitions must not become substitutions before their sorts
+    // have been instantiated. The signature may grow before check-sat.
+    return;
+  }
   if (n.isConst() && n.getConst<bool>())
   {
     // true, nothing to do
@@ -225,11 +234,6 @@ void Assertions::addFormula(TNode n, bool isFunDef, bool maybeHasFv)
 
 void Assertions::addDefineFunDefinition(Node n, bool global)
 {
-  if (expr::hasSortParameter(n))
-  {
-    throw ModalException(
-        "Reasoning with global sort parameters is not supported");
-  }
   if (global)
   {
     // Global definitions are asserted at check-sat-time because we have to

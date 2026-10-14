@@ -587,6 +587,27 @@ TEST_F(TestCApiBlackSolver, declare_sort_parameter)
       cvc5_sort_is_equal(a, cvc5_declare_sort(d_solver, "A", 0, false)));
 }
 
+TEST_F(TestCApiBlackSolver, sort_parameter_instances)
+{
+  cvc5_set_logic(d_solver, "QF_UFLIA");
+  Cvc5Sort a = cvc5_declare_sort_parameter(d_solver, "A", true);
+  Cvc5Term c = cvc5_declare_fun(d_solver, "c", 0, nullptr, a, true);
+  Cvc5Term ci = cvc5_term_instantiate(c, d_int);
+  Cvc5Sort from[] = {a}, to[] = {d_int};
+  ASSERT_TRUE(
+      cvc5_term_is_equal(ci, cvc5_term_substitute_sorts(c, 1, from, to)));
+  size_t size;
+  const Cvc5Sort* parameters = cvc5_sort_get_sort_parameters(a, &size);
+  ASSERT_EQ(size, 1);
+  ASSERT_TRUE(cvc5_sort_is_equal(parameters[0], a));
+  Cvc5Term args[] = {ci, cvc5_mk_integer_int64(d_tm, 0)};
+  cvc5_assert_formula(d_solver, cvc5_mk_term(d_tm, CVC5_KIND_EQUAL, 2, args));
+  ASSERT_TRUE(cvc5_result_is_sat(cvc5_check_sat(d_solver)));
+  ASSERT_CVC5_ERROR(cvc5_term_instantiate(nullptr, d_int), "invalid term");
+  ASSERT_CVC5_ERROR(cvc5_term_substitute_sorts(c, 1, nullptr, to),
+                    "unexpected NULL argument");
+}
+
 TEST_F(TestCApiBlackSolver, define_fun)
 {
   Cvc5Sort bv_sort = cvc5_mk_bv_sort(d_tm, 32);

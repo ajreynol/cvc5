@@ -771,6 +771,9 @@ class NodeManager
   /** Make a global SMT-LIB sort parameter. */
   TypeNode mkSortParameter(const std::string& name, bool fresh = true);
 
+  /** Canonical instance of a variable at a substituted sort. */
+  Node mkSortParameterInstance(Node variable, TypeNode type, size_t index = 0);
+
   /** Whether any global sort parameters have been created. */
   bool hasSortParameters() const { return d_hasSortParameters; }
 
@@ -1108,6 +1111,9 @@ class NodeManager
   std::map<std::pair<std::string, size_t>, TypeNode> d_nfreshSorts;
   /** Global sort parameters allocated with fresh = false. */
   std::map<std::string, TypeNode> d_nfreshSortParameters;
+  /** Instances are shared across solvers using this node manager. */
+  std::map<std::pair<Node, TypeNode>, std::vector<Node>>
+      d_sortParameterInstances;
   /** Avoid scanning ordinary terms for global sort parameters. */
   bool d_hasSortParameters = false;
 

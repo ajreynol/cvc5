@@ -304,6 +304,8 @@ libcvc5_add_sources(
   smt/abduction_solver.cpp
   smt/abduction_solver.h
   smt/assertions.cpp
+  smt/sort_parameter_manager.cpp
+  smt/sort_parameter_manager.h
   smt/assertions.h
   smt/check_models.cpp
   smt/check_models.h

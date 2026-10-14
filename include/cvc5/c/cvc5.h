@@ -765,6 +765,11 @@ CVC5_EXPORT Cvc5Sort cvc5_sort_instantiate(Cvc5Sort sort,
 CVC5_EXPORT const Cvc5Sort* cvc5_sort_get_instantiated_parameters(Cvc5Sort sort,
                                                                   size_t* size);
 
+/** Get the global sort parameters in a sort. The returned array is temporary.
+ */
+CVC5_EXPORT const Cvc5Sort* cvc5_sort_get_sort_parameters(Cvc5Sort sort,
+                                                          size_t* size);
+
 /**
  * Substitution of Sorts.
  *
@@ -1231,6 +1236,15 @@ CVC5_EXPORT Cvc5Kind cvc5_term_get_kind(Cvc5Term term);
  * @return The sort of the term.
  */
 CVC5_EXPORT Cvc5Sort cvc5_term_get_sort(Cvc5Term term);
+
+/** Instantiate a free symbol at a sort or function codomain. */
+CVC5_EXPORT Cvc5Term cvc5_term_instantiate(Cvc5Term term, Cvc5Sort sort);
+
+/** Simultaneously replace global sort parameters throughout a term. */
+CVC5_EXPORT Cvc5Term cvc5_term_substitute_sorts(Cvc5Term term,
+                                                size_t size,
+                                                const Cvc5Sort parameters[],
+                                                const Cvc5Sort replacements[]);
 
 /**
  * Replace a given term `t` with term `replacement` in a given term.
@@ -4265,12 +4279,14 @@ CVC5_EXPORT Cvc5Sort cvc5_declare_sort(Cvc5* cvc5,
                                        uint32_t arity,
                                        bool fresh);
 
+/** Register an existing sort in this solver's current signature. */
+CVC5_EXPORT void cvc5_register_sort(Cvc5* cvc5, Cvc5Sort sort);
+
 /**
  * Declare a global SMT-LIB sort parameter: `(declare-sort-parameter <symbol>)`.
  * Sort parameters are implicitly universally quantified in each assertion.
  * They are distinct from uninterpreted sorts and local datatype parameters.
- * @warning Solving formulas containing global sort parameters is not yet
- *          supported. Such formulas are rejected when asserted or assumed.
+ * Solving may return unknown if sort instantiation is incomplete.
  * @param cvc5 The solver instance.
  * @param symbol The name of the sort parameter.
  * @param fresh Whether to create a fresh parameter. If false, calls with the

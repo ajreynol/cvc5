@@ -148,6 +148,23 @@ public class Term extends AbstractPointer implements Comparable<Term>, Iterable<
 
   private native long getSort(long pointer);
 
+  /** Instantiate a free symbol at a sort or function codomain. */
+  public Term instantiate(Sort sort)
+  {
+    return new Term(instantiate(pointer, sort.getPointer()));
+  }
+
+  private native long instantiate(long pointer, long sortPointer);
+
+  /** Simultaneously replace global sort parameters throughout a term. */
+  public Term substituteSorts(Sort[] parameters, Sort[] replacements)
+  {
+    return new Term(substituteSorts(
+        pointer, Utils.getPointers(parameters), Utils.getPointers(replacements)));
+  }
+
+  private native long substituteSorts(long pointer, long[] parameters, long[] replacements);
+
   /**
    * Replace {@code term} with {@code replacement} in this term.
    *

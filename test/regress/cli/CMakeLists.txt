@@ -1424,16 +1424,40 @@ set(regress_0_tests
   regress0/parser/define_sort.smt2
   regress0/parser/define-fun-shadow-dec.smt2
   regress0/parser/double-bind.smt2
+  regress0/parser/sort-parameter-array-instance.smt2
+  regress0/parser/sort-parameter-ascription.smt2
   regress0/parser/sort-parameter-assuming.smt2
+  regress0/parser/sort-parameter-assumption-scope.smt2
   regress0/parser/sort-parameter-compound.smt2
+  regress0/parser/sort-parameter-core.smt2
+  regress0/parser/sort-parameter-datatype-instance.smt2
   regress0/parser/sort-parameter-datatype.smt2
   regress0/parser/sort-parameter-declare.smt2
   regress0/parser/sort-parameter-define-sort.smt2
+  regress0/parser/sort-parameter-definition-extra.smt2
+  regress0/parser/sort-parameter-definition.smt2
   regress0/parser/sort-parameter-duplicate.smt2
+  regress0/parser/sort-parameter-global-definition.smt2
+  regress0/parser/sort-parameter-global-signature.smt2
   regress0/parser/sort-parameter-global.smt2
+  regress0/parser/sort-parameter-higher-order.smt2
+  regress0/parser/sort-parameter-infinite.smt2
+  regress0/parser/sort-parameter-instances.smt2
+  regress0/parser/sort-parameter-late-sort.smt2
+  regress0/parser/sort-parameter-let-function.smt2
+  regress0/parser/sort-parameter-let-monomorphic.smt2
+  regress0/parser/sort-parameter-limit.smt2
   regress0/parser/sort-parameter-local-datatype.smt2
+  regress0/parser/sort-parameter-negation.smt2
   regress0/parser/sort-parameter-parse-only.smt2
+  regress0/parser/sort-parameter-pending-declaration.smt2
+  regress0/parser/sort-parameter-qualified-constant.smt2
+  regress0/parser/sort-parameter-qualified-function.smt2
+  regress0/parser/sort-parameter-recursive.smt2
+  regress0/parser/sort-parameter-reset-signature.smt2
+  regress0/parser/sort-parameter-rigid-ascription.smt2
   regress0/parser/sort-parameter-scopes.smt2
+  regress0/parser/sort-parameter-shared-rank.smt2
   regress0/parser/sort-parameter-singleton.smt2
   regress0/parser/sort-parameter-sort-collision.smt2
   regress0/parser/sort-parameter-theory-collision.smt2

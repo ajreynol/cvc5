@@ -565,6 +565,23 @@ JNIEXPORT jlongArray JNICALL Java_io_github_cvc5_Sort_getInstantiatedParameters(
   CVC5_JAVA_API_TRY_CATCH_END_RETURN(env, nullptr);
 }
 
+JNIEXPORT jlongArray JNICALL
+Java_io_github_cvc5_Sort_getSortParameters(JNIEnv* env, jobject, jlong pointer)
+{
+  CVC5_JAVA_API_TRY_CATCH_BEGIN;
+  Sort* current = reinterpret_cast<Sort*>(pointer);
+  std::vector<Sort> sorts = current->getSortParameters();
+  std::vector<jlong> sortPointers(sorts.size());
+  for (size_t i = 0; i < sorts.size(); i++)
+  {
+    sortPointers[i] = reinterpret_cast<jlong>(new Sort(sorts[i]));
+  }
+  jlongArray ret = env->NewLongArray(sorts.size());
+  env->SetLongArrayRegion(ret, 0, sorts.size(), sortPointers.data());
+  return ret;
+  CVC5_JAVA_API_TRY_CATCH_END_RETURN(env, nullptr);
+}
+
 /*
  * Class:     io_github_cvc5_Sort
  * Method:    getUninterpretedSortConstructor

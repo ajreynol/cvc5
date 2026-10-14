@@ -52,6 +52,7 @@
 #include "expr/plugin.h"
 #include "expr/sequence.h"
 #include "expr/skolem_manager.h"
+#include "expr/sort_parameter_converter.h"
 #include "expr/sygus_grammar.h"
 #include "expr/type_node.h"
 #include "options/base_options.h"
@@ -1747,6 +1748,15 @@ std::vector<Sort> Sort::getInstantiatedParameters() const
   CVC5_API_TRY_CATCH_END;
 }
 
+std::vector<Sort> Sort::getSortParameters() const
+{
+  CVC5_API_TRY_CATCH_BEGIN;
+  CVC5_API_CHECK_NOT_NULL;
+  return typeNodeVectorToSorts(
+      d_nm, internal::SortParameterConverter::getParameters(*d_type));
+  CVC5_API_TRY_CATCH_END;
+}
+
 Sort Sort::substitute(const Sort& sort, const Sort& replacement) const
 {
   CVC5_API_TRY_CATCH_BEGIN;
@@ -2638,6 +2648,61 @@ Sort Term::getSort() const
   //////// all checks before this line
   return Sort(d_nm, d_node->getType());
   ////////
+  CVC5_API_TRY_CATCH_END;
+}
+
+Term Term::instantiate(const Sort& sort) const
+{
+  CVC5_API_TRY_CATCH_BEGIN;
+  CVC5_API_CHECK_NOT_NULL;
+  CVC5_API_CHECK_SORT(sort);
+  CVC5_API_CHECK(sort.d_type->isFirstClass()
+                 && !sort.isUninterpretedSortConstructor())
+      << "expected a first-class sort";
+  CVC5_API_CHECK(d_node->getKind() == internal::Kind::VARIABLE)
+      << "expected a free constant or function";
+  internal::TypeNode pattern = d_node->getType();
+  if (pattern.isFunction() && !sort.d_type->isFunction())
+  {
+    pattern = pattern.getRangeType();
+  }
+  std::map<internal::TypeNode, internal::TypeNode> substitution;
+  CVC5_API_CHECK(internal::SortParameterConverter::match(
+      pattern, *sort.d_type, substitution))
+      << "requested sort is not an instance of the symbol's sort";
+  std::vector<internal::TypeNode> from, to;
+  for (const auto& [p, t] : substitution)
+  {
+    from.push_back(p);
+    to.push_back(t);
+  }
+  internal::SortParameterConverter converter(d_nm.get(), from, to);
+  return Term(d_nm, converter.convert(*d_node, false));
+  CVC5_API_TRY_CATCH_END;
+}
+
+Term Term::substituteSorts(const std::vector<Sort>& parameters,
+                           const std::vector<Sort>& replacements) const
+{
+  CVC5_API_TRY_CATCH_BEGIN;
+  CVC5_API_CHECK_NOT_NULL;
+  CVC5_API_CHECK(parameters.size() == replacements.size())
+      << "expected equally sized sort parameter and replacement vectors";
+  for (size_t i = 0; i < parameters.size(); ++i)
+  {
+    CVC5_API_CHECK_SORT(parameters[i]);
+    CVC5_API_CHECK_SORT(replacements[i]);
+    CVC5_API_CHECK(parameters[i].getKind() == SortKind::SORT_PARAMETER_SORT)
+        << "expected a global sort parameter";
+    CVC5_API_CHECK(replacements[i].d_type->isFirstClass()
+                   && !replacements[i].isUninterpretedSortConstructor())
+        << "expected a first-class replacement sort";
+  }
+  internal::SortParameterConverter converter(
+      d_nm.get(),
+      Sort::sortVectorToTypeNodes(parameters),
+      Sort::sortVectorToTypeNodes(replacements));
+  return Term(d_nm, converter.convert(*d_node, false));
   CVC5_API_TRY_CATCH_END;
 }
 
@@ -5574,8 +5639,25 @@ Term TermManager::mkTermHelper(Kind kind, const std::vector<Term>& children)
   }
   std::vector<internal::Node> echildren = Term::termVectorToNodes(children);
   internal::Kind k = extToIntKind(kind);
+  bool partialPolymorphicApplication = false;
+  if ((kind == Kind::APPLY_UF || kind == Kind::HO_APPLY)
+      && echildren.size() > 1)
+  {
+    std::vector<internal::Node> arguments(echildren.begin() + 1,
+                                          echildren.end());
+    echildren[0] = internal::SortParameterConverter::inferApplication(
+        echildren[0], arguments);
+    partialPolymorphicApplication =
+        kind == Kind::APPLY_UF && echildren[0] != *children[0].d_node
+        && echildren[0].getType().isFunction()
+        && echildren.size() < echildren[0].getType().getNumChildren();
+  }
   internal::Node res;
-  if (echildren.size() > 2)
+  if (partialPolymorphicApplication)
+  {
+    res = d_nm->mkLeftAssociative(internal::Kind::HO_APPLY, echildren);
+  }
+  else if (echildren.size() > 2)
   {
     if (kind == Kind::INTS_DIVISION || kind == Kind::XOR || kind == Kind::SUB
         || kind == Kind::DIVISION || kind == Kind::HO_APPLY
@@ -7377,7 +7459,9 @@ Sort Solver::declareDatatype(
   {
     dtdecl.addConstructor(ctors[i]);
   }
-  return Sort(d_tm.d_nm, d_tm.d_nm->mkDatatypeType(*dtdecl.d_dtype));
+  internal::TypeNode type = d_tm.d_nm->mkDatatypeType(*dtdecl.d_dtype);
+  d_slv->declareSort(type);
+  return Sort(d_tm.d_nm, type);
   ////////
   CVC5_API_TRY_CATCH_END;
 }
@@ -7428,6 +7512,14 @@ Sort Solver::declareSortParameter(const std::string& symbol, bool fresh) const
   d_slv->declareSort(type);
   return Sort(d_tm.d_nm, type);
   ////////
+  CVC5_API_TRY_CATCH_END;
+}
+
+void Solver::declareSort(const Sort& sort) const
+{
+  CVC5_API_TRY_CATCH_BEGIN;
+  CVC5_API_SOLVER_CHECK_SORT(sort);
+  d_slv->declareSort(*sort.d_type);
   CVC5_API_TRY_CATCH_END;
 }
 

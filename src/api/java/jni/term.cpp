@@ -1150,3 +1150,37 @@ JNIEXPORT jlong JNICALL Java_io_github_cvc5_Term_hashCode(JNIEnv* env,
   return static_cast<jlong>(std::hash<cvc5::Term>()(*result));
   CVC5_JAVA_API_TRY_CATCH_END_RETURN(env, 0);
 }
+
+JNIEXPORT jlong JNICALL Java_io_github_cvc5_Term_instantiate(JNIEnv* env,
+                                                             jobject,
+                                                             jlong pointer,
+                                                             jlong sortPointer)
+{
+  CVC5_JAVA_API_TRY_CATCH_BEGIN;
+  Term* term = reinterpret_cast<Term*>(pointer);
+  Sort* sort = reinterpret_cast<Sort*>(sortPointer);
+  return reinterpret_cast<jlong>(new Term(term->instantiate(*sort)));
+  CVC5_JAVA_API_TRY_CATCH_END_RETURN(env, 0);
+}
+
+JNIEXPORT jlong JNICALL
+Java_io_github_cvc5_Term_substituteSorts(JNIEnv* env,
+                                         jobject,
+                                         jlong pointer,
+                                         jlongArray parameters,
+                                         jlongArray replacements)
+{
+  CVC5_JAVA_API_TRY_CATCH_BEGIN;
+  Term* term = reinterpret_cast<Term*>(pointer);
+  auto readSorts = [env](jlongArray array) {
+    jsize size = env->GetArrayLength(array);
+    std::vector<jlong> pointers(size);
+    env->GetLongArrayRegion(array, 0, size, pointers.data());
+    std::vector<Sort> sorts;
+    for (jlong p : pointers) sorts.push_back(*reinterpret_cast<Sort*>(p));
+    return sorts;
+  };
+  return reinterpret_cast<jlong>(new Term(
+      term->substituteSorts(readSorts(parameters), readSorts(replacements))));
+  CVC5_JAVA_API_TRY_CATCH_END_RETURN(env, 0);
+}

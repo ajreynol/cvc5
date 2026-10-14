@@ -31,6 +31,7 @@
 #include "expr/node_visitor.h"
 #include "expr/sequence.h"
 #include "expr/skolem_manager.h"
+#include "expr/sort_parameter_converter.h"
 #include "options/io_utils.h"
 #include "options/language.h"
 #include "printer/let_binding.h"
@@ -63,6 +64,18 @@ using namespace std;
 namespace cvc5::internal {
 namespace printer {
 namespace smt2 {
+
+/** Print the declaration name, without a sort ascription. */
+static void toStreamSortParameterSymbol(std::ostream& out, TNode n)
+{
+  Node origin = n.hasAttribute(SortParameterOriginAttr())
+                    ? n.getAttribute(SortParameterOriginAttr())
+                    : Node(n);
+  if (origin.hasName())
+    out << cvc5::internal::quoteSymbol(origin.getName());
+  else
+    out << "var_" << origin.getId();
+}
 
 static void toStreamRational(std::ostream& out, const Rational& r, bool isReal)
 {
@@ -602,6 +615,15 @@ bool Smt2Printer::toStreamBase(std::ostream& out,
   }
   else if (n.isVar())
   {
+    if (k == Kind::VARIABLE
+        && (n.hasAttribute(SortParameterOriginAttr())
+            || n.getType().hasSortParameter()))
+    {
+      out << "(as ";
+      toStreamSortParameterSymbol(out, n);
+      out << " " << n.getType() << ")";
+      return true;
+    }
     bool printed = false;
     if (k == Kind::SKOLEM)
     {
@@ -662,6 +684,15 @@ bool Smt2Printer::toStreamBase(std::ostream& out,
   }
   else if (k == Kind::APPLY_UF)
   {
+    if (n.getOperator().getKind() == Kind::VARIABLE
+        && (n.getOperator().hasAttribute(SortParameterOriginAttr())
+            || n.getOperator().getType().hasSortParameter()))
+    {
+      out << "((as ";
+      toStreamSortParameterSymbol(out, n.getOperator());
+      out << " " << n.getType() << ") ";
+      return false;
+    }
     if (!n.getOperator().isVar())
     {
       // Must print as HO apply instead. This ensures un-beta-reduced function
@@ -1648,16 +1679,27 @@ void Smt2Printer::toStreamModelTerm(std::ostream& out,
                                     const Node& n,
                                     const Node& value) const
 {
+  Node symbol = n.hasAttribute(SortParameterOriginAttr())
+                    ? n.getAttribute(SortParameterOriginAttr())
+                    : n;
+  std::stringstream name;
+  if (symbol.getKind() == Kind::VARIABLE && symbol.getType().hasSortParameter())
+  {
+    toStreamSortParameterSymbol(name, symbol);
+  }
+  else
+    name << symbol;
   if (value.getKind() == Kind::LAMBDA)
   {
     TypeNode rangeType = n.getType().getRangeType();
-    out << "(define-fun " << n << " " << value[0] << " " << rangeType << " ";
+    out << "(define-fun " << name.str() << " " << value[0] << " " << rangeType
+        << " ";
     toStream(out, value[1]);
     out << ")" << endl;
   }
   else
   {
-    out << "(define-fun " << n << " () " << n.getType() << " ";
+    out << "(define-fun " << name.str() << " () " << n.getType() << " ";
     toStream(out, value);
     out << ")" << endl;
   }
@@ -1859,7 +1901,15 @@ void Smt2Printer::toStreamCmdDefineFunctionRec(
       }
       out << "(";
     }
-    out << funcs[i] << " ";
+    if (funcs[i].getType().hasSortParameter())
+    {
+      toStreamSortParameterSymbol(out, funcs[i]);
+    }
+    else
+    {
+      out << funcs[i];
+    }
+    out << " ";
     // print its type signature
     toStreamSortedVarList(out, formals[i]);
     TypeNode type = funcs[i].getType();

@@ -12,6 +12,7 @@
 
 #include "smt/smt_driver.h"
 
+#include "expr/node_algorithm.h"
 #include "options/base_options.h"
 #include "options/main_options.h"
 #include "options/smt_options.h"
@@ -120,7 +121,7 @@ Result SmtDriver::checkSat(const std::vector<Node>& assumptions)
   // case if the candidate model can be verified to satisfy the input
   // assertions. Note this is done before the context is popped below, so that
   // the assumptions of this call are taken into account.
-  if (options().smt.modelVerify)
+  if (options().smt.modelVerify && as.getSortParameterManager().isComplete())
   {
     if (result.getStatus() == Result::UNKNOWN && verifyUnknownModel(result))
     {
@@ -163,7 +164,19 @@ bool SmtDriver::verifyUnknownModel(const Result& r)
   // is done when building or getting models.
   ResourceManager* rm = d_env.getResourceManager();
   rm->setEnabled(false);
-  bool ret = d_modelVerifier.verify(m, al);
+  context::Context temporaryContext;
+  context::CDList<Node> groundAssertions(&temporaryContext);
+  for (Node assertion : al)
+  {
+    if (!expr::hasSortParameter(assertion))
+      groundAssertions.push_back(assertion);
+  }
+  for (Node instance :
+       d_smt.getAssertions().getSortParameterManager().getInstances())
+  {
+    groundAssertions.push_back(instance);
+  }
+  bool ret = d_modelVerifier.verify(m, groundAssertions);
   rm->setEnabled(true);
   return ret;
 }
@@ -175,6 +188,8 @@ void SmtDriver::getNextAssertionsInternal(preprocessing::AssertionPipeline& ap)
   d_smt.getAssertions().refresh();
   // get the next assertions based on the implementation of this driver
   getNextAssertions(ap);
+  Assertions& assertions = d_smt.getAssertions();
+  assertions.getSortParameterManager().instantiate(assertions, ap);
 }
 
 void SmtDriver::refreshAssertions()
@@ -261,7 +276,7 @@ void SmtDriverSingleCall::getNextAssertions(
   size_t alsize = al.size();
   for (size_t i = d_assertionListIndex.get(); i < alsize; ++i)
   {
-    ap.push_back(al[i], true);
+    if (!expr::hasSortParameter(al[i])) ap.push_back(al[i], true);
   }
   d_assertionListIndex = alsize;
 }

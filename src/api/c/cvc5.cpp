@@ -754,6 +754,26 @@ const Cvc5Sort* cvc5_sort_get_instantiated_parameters(Cvc5Sort sort,
   return cvc5::cvc5_capi_has_error() || res.empty() ? nullptr : res.data();
 }
 
+const Cvc5Sort* cvc5_sort_get_sort_parameters(Cvc5Sort sort, size_t* size)
+{
+  static thread_local std::vector<Cvc5Sort> res;
+  CVC5_CAPI_TRY_CATCH_BEGIN;
+  CVC5_CAPI_CHECK_SORT(sort);
+  CVC5_CAPI_CHECK_NOT_NULL(size);
+  res.clear();
+  auto sorts = sort->d_sort.getSortParameters();
+  auto tm = sort->d_tm;
+  for (auto& s : sorts)
+  {
+    res.push_back(tm->export_sort(s));
+  }
+  *size = res.size();
+  CVC5_CAPI_TRY_CATCH_END;
+  // On error, `size` may be invalid (e.g. NULL) and `res` may hold stale data,
+  // so we must not dereference `size` here; gate on the error state instead.
+  return cvc5::cvc5_capi_has_error() || res.empty() ? nullptr : res.data();
+}
+
 Cvc5Sort cvc5_sort_substitute(Cvc5Sort sort, Cvc5Sort s, Cvc5Sort replacement)
 {
   Cvc5Sort res = nullptr;
@@ -1855,6 +1875,43 @@ Cvc5Sort cvc5_term_get_sort(Cvc5Term term)
   CVC5_CAPI_TRY_CATCH_BEGIN;
   CVC5_CAPI_CHECK_TERM(term);
   res = term->d_tm->export_sort(term->d_term.getSort());
+  CVC5_CAPI_TRY_CATCH_END;
+  return res;
+}
+
+Cvc5Term cvc5_term_instantiate(Cvc5Term term, Cvc5Sort sort)
+{
+  Cvc5Term res = nullptr;
+  CVC5_CAPI_TRY_CATCH_BEGIN;
+  CVC5_CAPI_CHECK_TERM(term);
+  CVC5_CAPI_CHECK_SORT(sort);
+  res = term->d_tm->export_term(term->d_term.instantiate(sort->d_sort));
+  CVC5_CAPI_TRY_CATCH_END;
+  return res;
+}
+
+Cvc5Term cvc5_term_substitute_sorts(Cvc5Term term,
+                                    size_t size,
+                                    const Cvc5Sort parameters[],
+                                    const Cvc5Sort replacements[])
+{
+  Cvc5Term res = nullptr;
+  CVC5_CAPI_TRY_CATCH_BEGIN;
+  CVC5_CAPI_CHECK_TERM(term);
+  if (size > 0)
+  {
+    CVC5_CAPI_CHECK_NOT_NULL(parameters);
+    CVC5_CAPI_CHECK_NOT_NULL(replacements);
+  }
+  std::vector<cvc5::Sort> ps, rs;
+  for (size_t i = 0; i < size; ++i)
+  {
+    CVC5_CAPI_CHECK_SORT_AT_IDX(parameters, i);
+    CVC5_CAPI_CHECK_SORT_AT_IDX(replacements, i);
+    ps.push_back(parameters[i]->d_sort);
+    rs.push_back(replacements[i]->d_sort);
+  }
+  res = term->d_tm->export_term(term->d_term.substituteSorts(ps, rs));
   CVC5_CAPI_TRY_CATCH_END;
   return res;
 }
@@ -4704,6 +4761,15 @@ Cvc5Sort cvc5_declare_sort(Cvc5* cvc5,
 /* .................................................................... */
 /* Formula Handling                                                     */
 /* .................................................................... */
+
+void cvc5_register_sort(Cvc5* cvc5, Cvc5Sort sort)
+{
+  CVC5_CAPI_TRY_CATCH_BEGIN;
+  CVC5_CAPI_CHECK_NOT_NULL(cvc5);
+  CVC5_CAPI_CHECK_SORT(sort);
+  cvc5->d_solver.declareSort(sort->d_sort);
+  CVC5_CAPI_TRY_CATCH_END;
+}
 
 Cvc5Sort cvc5_declare_sort_parameter(Cvc5* cvc5, const char* symbol, bool fresh)
 {

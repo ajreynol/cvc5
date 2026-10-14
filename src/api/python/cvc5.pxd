@@ -450,6 +450,7 @@ cdef extern from "<cvc5/cvc5.h>" namespace "cvc5":
         Sort declareDatatype(const string& symbol, const vector[DatatypeConstructorDecl]& ctors)
         Term declareFun(const string& symbol, const vector[Sort]& sorts, Sort sort, bint fresh) except +
         Sort declareSort(const string& symbol, uint32_t arity, bint fresh) except +
+        void declareSort(const Sort&) except +
         Sort declareSortParameter(const string& symbol, bint fresh) except +
         Term defineFun(const string& symbol, const vector[Term]& bound_vars,
                        Sort sort, Term term, bint glbl) except +
@@ -561,6 +562,7 @@ cdef extern from "<cvc5/cvc5.h>" namespace "cvc5":
         Datatype getDatatype() except +
         Sort instantiate(const vector[Sort]& params) except +
         vector[Sort] getInstantiatedParameters() except +
+        vector[Sort] getSortParameters() except +
         Sort substitute(const Sort & es, const Sort & reps) except +
         Sort substitute(const vector[Sort] & es, const vector[Sort] & reps) except +
         size_t getDatatypeConstructorArity() except +
@@ -630,6 +632,8 @@ cdef extern from "<cvc5/cvc5.h>" namespace "cvc5":
         uint64_t getId() except +
         Kind getKind() except +
         Sort getSort() except +
+        Term instantiate(const Sort&) except +
+        Term substituteSorts(const vector[Sort]&, const vector[Sort]&) except +
         Term substitute(const Term & es, const Term & reps) except +
         Term substitute(const vector[Term] & es, const vector[Term] & reps) except +
         bint hasOp() except +

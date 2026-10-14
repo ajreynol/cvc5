@@ -15,6 +15,8 @@
 #include "expr/aci_norm.h"
 #include "expr/node_algorithm.h"
 #include "expr/skolem_manager.h"
+#include "expr/sort_parameter_converter.h"
+#include "expr/sort_to_term.h"
 #include "rewriter/rewrite_db.h"
 #include "rewriter/rewrite_db_term_process.h"
 #include "rewriter/rewrite_proof_rule.h"
@@ -42,6 +44,7 @@ BuiltinProofRuleChecker::BuiltinProofRuleChecker(NodeManager* nm,
 void BuiltinProofRuleChecker::registerTo(ProofChecker* pc)
 {
   pc->registerChecker(ProofRule::ASSUME, this);
+  pc->registerChecker(ProofRule::INSTANTIATE_SORTS, this);
   pc->registerChecker(ProofRule::SCOPE, this);
   pc->registerChecker(ProofRule::SUBS, this);
   pc->registerChecker(ProofRule::EVALUATE, this);
@@ -209,6 +212,31 @@ Node BuiltinProofRuleChecker::checkInternal(ProofRule id,
 {
   NodeManager* nm = nodeManager();
   // compute what was proven
+  if (id == ProofRule::INSTANTIATE_SORTS)
+  {
+    if (children.size() != 1 || args.size() % 2 != 0) return Node::null();
+    std::vector<TypeNode> parameters, replacements;
+    for (size_t i = 0; i < args.size(); i += 2)
+    {
+      if (args[i].getKind() != Kind::SORT_TO_TERM
+          || args[i + 1].getKind() != Kind::SORT_TO_TERM)
+      {
+        return Node::null();
+      }
+      TypeNode p = args[i].getConst<SortToTerm>().getType();
+      TypeNode r = args[i + 1].getConst<SortToTerm>().getType();
+      if (p.getKind() != Kind::SORT_PARAMETER_TYPE || r.hasSortParameter()
+          || !r.isFirstClass() || r.isUninterpretedSortConstructor())
+      {
+        return Node::null();
+      }
+      parameters.push_back(p);
+      replacements.push_back(r);
+    }
+    SortParameterConverter converter(nm, parameters, replacements);
+    Node result = converter.convert(children[0], false);
+    return expr::hasSortParameter(result) ? Node::null() : result;
+  }
   if (id == ProofRule::ASSUME)
   {
     Assert(children.empty());

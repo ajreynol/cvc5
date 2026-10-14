@@ -63,6 +63,8 @@ libcvc5_add_sources(
   node_builder.h
   node_converter.cpp
   node_converter.h
+  sort_parameter_converter.cpp
+  sort_parameter_converter.h
   node_manager_attributes.h
   node_self_iterator.h
   node_trie.cpp
