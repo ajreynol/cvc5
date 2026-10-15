@@ -1533,8 +1533,11 @@ in the same session):
 |---|---|---|
 | Development set (88) | 73, 1 unknown, 307 s | 70, 1 unknown, 314 s |
 | The 21 sample benchmarks Stage 3 gave up on | 5, 2 unknown | 9, 2 unknown |
-| Every tenth of `quant-07-25` (613) | SAMPLE-HOSTED | SAMPLE-STAGE3 |
+| Every tenth of `quant-07-25` (613) | 578, 2 unknown | 580, 2 unknown |
+| Time on the 578 of the sample both solve | 376 s | 353 s |
 
+On the sample, Stage 3 solves every benchmark the hosted engine solves, and
+two more. The port's own search solves 586 and 589 in the same two runs.
 On the development set, the 3 benchmarks only the hosted engine solves take
 it 8.6 to 10 s, at the time limit. On the quantified regressions with
 assertions, neither mode gives a wrong answer. Stage 3's only failures that
