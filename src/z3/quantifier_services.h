@@ -33,7 +33,6 @@ class Env;
 
 namespace z3 {
 
-class Fingerprint;
 class Region;
 struct Params;
 struct Statistics;
@@ -48,11 +47,6 @@ struct Statistics;
  * theory side tells it when a quantifier is asserted or deleted, when an
  * enode becomes relevant, when two classes merge, and when to propagate, to
  * run a final check, to push, to pop and to restart.
- *
- * A few services loop back into the stack, as in Z3, where the stack
- * reaches itself through smt::context: addInstance and getGeneration of a
- * quantifier are the quantifier manager's, and addFingerprint and
- * containsInstance use the fingerprints, which the context holds.
  */
 class QuantifierServices
 {
@@ -119,29 +113,6 @@ class QuantifierServices
                                    Node& root) = 0;
   /** Make a permanent instance a root again (--z3-qi-permanent-local). */
   virtual void reactivateInstance(TNode root) = 0;
-
-  // -------------------------------------- loops back into the stack itself
-  /** QuantifierManager::addInstance. */
-  virtual bool addInstance(
-      TNode q,
-      TNode pat,
-      size_t numBindings,
-      ENode* const* bindings,
-      uint32_t maxGeneration,
-      uint32_t minTopGeneration,
-      uint32_t maxTopGeneration,
-      std::vector<std::pair<ENode*, ENode*>>& usedENodes) = 0;
-  /** QuantifierManager::getGeneration. */
-  virtual uint32_t getGeneration(TNode q) const = 0;
-  /** Whether the fingerprint of q with these bindings exists. */
-  virtual bool containsInstance(TNode q,
-                                size_t numBindings,
-                                ENode* const* bindings) = 0;
-  /** Insert a fingerprint, or return null if it exists. */
-  virtual Fingerprint* addFingerprint(uint64_t data,
-                                      uint32_t dataHash,
-                                      size_t numArgs,
-                                      ENode* const* args) = 0;
 
   // ------------------------------------------------------- infrastructure
   virtual Statistics& getStats() = 0;

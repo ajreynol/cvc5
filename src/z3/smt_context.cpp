@@ -64,7 +64,6 @@ SmtContext::SmtContext(Env& env, Params& p)
       d_patternInference(env.getNodeManager(), d_params),
       d_qmanager(nullptr),
       d_random(p.d_randomSeed),
-      d_fingerprints(d_region),
       d_finalCheckIdx(0),
       d_trueENode(nullptr),
       d_falseENode(nullptr),
@@ -1459,38 +1458,6 @@ void SmtContext::notifyBoolVarDeleted(TNode n)
   }
 }
 
-bool SmtContext::containsInstance(TNode q,
-                                  size_t numBindings,
-                                  ENode* const* bindings)
-{
-  return d_fingerprints.contains(
-      q.getId(), static_cast<uint32_t>(q.getId()), numBindings, bindings);
-}
-
-bool SmtContext::addInstance(TNode q,
-                             TNode pat,
-                             size_t numBindings,
-                             ENode* const* bindings,
-                             uint32_t maxGeneration,
-                             uint32_t minTopGeneration,
-                             uint32_t maxTopGeneration,
-                             std::vector<std::pair<ENode*, ENode*>>& usedENodes)
-{
-  return d_qmanager->addInstance(q,
-                                 pat,
-                                 numBindings,
-                                 bindings,
-                                 maxGeneration,
-                                 minTopGeneration,
-                                 maxTopGeneration,
-                                 usedENodes);
-}
-
-uint32_t SmtContext::getGeneration(TNode q) const
-{
-  return d_qmanager->getGeneration(q);
-}
-
 bool SmtContext::internalizedQuantifiers() const
 {
   return !d_qmanager->empty();
@@ -1503,7 +1470,6 @@ void SmtContext::pushTheoryScope()
   d_justificationsLims.push_back(d_justifications.size());
 
   d_qmanager->push();
-  d_fingerprints.pushScope();
 
   for (Theory* t : d_theorySet)
   {
@@ -1514,7 +1480,6 @@ void SmtContext::pushTheoryScope()
 void SmtContext::popTheoryScopeBegin(size_t numScopes)
 {
   d_qmanager->pop(numScopes);
-  d_fingerprints.popScope(numScopes);
 }
 
 void SmtContext::popTheoryScopeEnd(size_t numScopes, uint32_t newLvl)

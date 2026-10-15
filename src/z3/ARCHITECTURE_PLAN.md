@@ -1164,4 +1164,5 @@ more time than the core's own search; without delayed units
 (`--no-z3-host-delay-units`) it is slightly worse, with local instances
 (`--z3-host-local-instances`) slightly better, and it is three times faster
 than the hosted engine of the previous round. Local instances are now the
-default of the hosted engine.
+default of the hosted engine; the next run confirmed the choice, though
+narrowly (host3 against host3nl: close, local instances slightly better).

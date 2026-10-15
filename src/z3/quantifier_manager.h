@@ -80,6 +80,9 @@ class QuantifierManager
                    ENode* const* bindings,
                    uint32_t generation = 0);
 
+  /** Whether an instance of q with these bindings was made in scope. */
+  bool containsInstance(TNode q, size_t numBindings, ENode* const* bindings);
+
   void initSearchEh();
   void assignEh(TNode q);
   void addEqEh(ENode* n1, ENode* n2);

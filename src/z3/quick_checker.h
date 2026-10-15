@@ -34,6 +34,7 @@
 namespace cvc5::internal {
 namespace z3 {
 
+class QuantifierManager;
 class QuantifierServices;
 
 /**
@@ -44,7 +45,7 @@ class QuantifierServices;
 class QuickChecker
 {
  public:
-  QuickChecker(QuantifierServices& c);
+  QuickChecker(QuantifierServices& c, QuantifierManager& qm);
 
   /**
    * Instantiate the instances the current model falsifies.
@@ -166,6 +167,8 @@ class QuickChecker
   static constexpr size_t s_maxTuplesPerQuantifier = 2000;
 
   QuantifierServices& d_context;
+  /** The quantifier manager, which receives the instances. */
+  QuantifierManager& d_qm;
   Collector d_collector;
   std::vector<ENodeVector> d_candidateVectors;
   struct NodeBoolHash

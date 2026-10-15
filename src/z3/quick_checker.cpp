@@ -20,6 +20,7 @@
 #include "expr/node_manager.h"
 #include "z3/ast.h"
 #include "z3/enode.h"
+#include "z3/quantifier_manager.h"
 #include "z3/quantifier_services.h"
 #include "z3/util/util.h"
 
@@ -195,8 +196,8 @@ void QuickChecker::Collector::operator()(TNode q,
 
 // --------------------------------------------------------- quick checker
 
-QuickChecker::QuickChecker(QuantifierServices& c)
-    : d_context(c), d_collector(c), d_numBindings(0), d_total(false)
+QuickChecker::QuickChecker(QuantifierServices& c, QuantifierManager& qm)
+    : d_context(c), d_qm(qm), d_collector(c), d_numBindings(0), d_total(false)
 {
 }
 
@@ -285,7 +286,7 @@ bool QuickChecker::processFirstNew(TNode q)
     {
       d_bindings[i] = d_candidateVectors[i][it[i]];
     }
-    if (d_context.containsInstance(q, d_numBindings, d_bindings.data()))
+    if (d_qm.containsInstance(q, d_numBindings, d_bindings.data()))
     {
       continue;
     }
@@ -296,14 +297,14 @@ bool QuickChecker::processFirstNew(TNode q)
           d_context.getMaxGeneration(d_numBindings, d_bindings.data());
       if (falsified)
       {
-        return d_context.addInstance(q,
-                                     TNode::null(),
-                                     d_numBindings,
-                                     d_bindings.data(),
-                                     maxGeneration,
-                                     0,
-                                     0,
-                                     emptyUsedENodes);
+        return d_qm.addInstance(q,
+                                TNode::null(),
+                                d_numBindings,
+                                d_bindings.data(),
+                                maxGeneration,
+                                0,
+                                0,
+                                emptyUsedENodes);
       }
       haveFallback = true;
       fallback = d_bindings;
@@ -318,14 +319,14 @@ bool QuickChecker::processFirstNew(TNode q)
                        << std::endl;
   uint32_t maxGeneration =
       d_context.getMaxGeneration(d_numBindings, fallback.data());
-  return d_context.addInstance(q,
-                               TNode::null(),
-                               d_numBindings,
-                               fallback.data(),
-                               maxGeneration,
-                               0,
-                               0,
-                               emptyUsedENodes);
+  return d_qm.addInstance(q,
+                          TNode::null(),
+                          d_numBindings,
+                          fallback.data(),
+                          maxGeneration,
+                          0,
+                          0,
+                          emptyUsedENodes);
 }
 
 bool QuickChecker::processCandidates(TNode q, bool unsat)
@@ -353,7 +354,7 @@ bool QuickChecker::processCandidates(TNode q, bool unsat)
     {
       d_bindings[i] = d_candidateVectors[i][it[i]];
     }
-    if (d_context.containsInstance(q, d_numBindings, d_bindings.data()))
+    if (d_qm.containsInstance(q, d_numBindings, d_bindings.data()))
     {
       continue;
     }
@@ -365,14 +366,14 @@ bool QuickChecker::processCandidates(TNode q, bool unsat)
     }
     uint32_t maxGeneration =
         d_context.getMaxGeneration(d_numBindings, d_bindings.data());
-    if (d_context.addInstance(q,
-                              TNode::null(), /* no pattern was used */
-                              d_numBindings,
-                              d_bindings.data(),
-                              maxGeneration,
-                              0, /* the top generations are only available */
-                              0, /* for the instances the MAM creates */
-                              emptyUsedENodes))
+    if (d_qm.addInstance(q,
+                         TNode::null(), /* no pattern was used */
+                         d_numBindings,
+                         d_bindings.data(),
+                         maxGeneration,
+                         0, /* the top generations are only available */
+                         0, /* for the instances the MAM creates */
+                         emptyUsedENodes))
     {
       result = true;
     }

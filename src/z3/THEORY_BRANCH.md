@@ -4,7 +4,7 @@ Date: 2026-10-14
 
 Source snapshot: `d7b68ff497`
 
-Status: Phase A measured (section 6); Phase C in progress, steps 1 and 2
+Status: Phase A measured (section 6); Phase C in progress, steps 1 to 4
 done.
 
 The propositional branch has been measured
@@ -288,6 +288,39 @@ As Stage 1B did for `PropCore`, in steps that each leave answers and
   (894 runs, the 15 that time out compared under `--rlimit`). On ten Verus
   benchmarks the core solves in 1 to 6 s, run one at a time and three times
   each, the time ratio is 0.994: the indirection costs nothing measurable.
+- **Step 3: done** (2026-10-15), for the stack's own state. The
+  fingerprints moved from `SmtContext` into `QuantifierManager`, which
+  pushes and pops them where `SmtContext` did. `Mam` (and its compiler),
+  `EnumInst` and `QuickChecker` hold the quantifier manager, so the four
+  services that looped back into the stack left the contract, which is now
+  36 methods, all of the theory side. Pattern inference stays in
+  `SmtContext`: it is a preprocessing utility, like the normalizers and
+  NNF that also live there, rather than state of the stack, and it depends
+  on `SmtContext`'s parameters and lifetime, which `AssertionPreparation`
+  outlives; moving the preprocessing utilities together is a separate
+  cleanup. Answers and `z3::` counters unchanged (894 runs, 16 compared
+  under `--rlimit`).
+- **Step 4: done** (2026-10-15). Matching, the decision of when to make an
+  instance, and making it are separate. The MAM and the quick checker
+  report a match to the quantifier manager, which drops the ones made in
+  scope (by fingerprint) and gives the others to an `InstancePolicy`
+  ([instance_policy.h](instance_policy.h)); the base class makes an
+  instance (substitution, rewriting, the clause `(or (not q) ...)`, the
+  permanent instances, internalization). `QiQueue` is Z3's policy and the
+  default. `Cvc5InstancePolicy` makes every match, with no cost and no
+  threshold, its terms one generation above the match's, as cvc5's
+  instantiation levels count, and keeps the instance checker, as cvc5's
+  `--inst-no-entail` does; it has two timings, which are the switch
+  `--z3-qi-policy`:
+  - `eager`: at the next propagation, Z3's timing without its triage;
+  - `cvc5`: in rounds, at final checks, every match found since, cvc5's
+    timing, with matching still incremental.
+
+  `z3` against `eager` measures the triage; `eager` against `cvc5`, the
+  timing; and `cvc5` is how the port's matcher would instantiate under
+  cvc5's quantifiers engine, which is what Phase D would start from.
+  Neither bounds a matching loop, as cvc5 does not. With the default,
+  answers and `z3::` counters are unchanged.
 
 ### Phase D: toward cvc5
 

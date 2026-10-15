@@ -21,8 +21,10 @@
 namespace cvc5::internal {
 namespace z3 {
 
-EnumInst::EnumInst(QuantifierServices& ctx, size_t maxPerRound)
-    : d_context(ctx), d_checker(ctx), d_maxPerRound(maxPerRound), d_qIdx(0)
+EnumInst::EnumInst(QuantifierServices& ctx,
+                   QuantifierManager& qm,
+                   size_t maxPerRound)
+    : d_context(ctx), d_checker(ctx, qm), d_maxPerRound(maxPerRound), d_qIdx(0)
 {
   // The assignment is completed to a total model, so that a falsified
   // binding can actually be found; see QuickChecker::setTotal.

@@ -1364,6 +1364,8 @@ libcvc5_add_sources(
   z3/explainer.h
   z3/fingerprints.cpp
   z3/fingerprints.h
+  z3/instance_policy.cpp
+  z3/instance_policy.h
   z3/internalizer.cpp
   z3/justification.cpp
   z3/justification.h

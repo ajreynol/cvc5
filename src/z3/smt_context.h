@@ -49,7 +49,6 @@
 #include "z3/enode.h"
 #include "z3/eq_justification.h"
 #include "z3/explainer.h"
-#include "z3/fingerprints.h"
 #include "z3/justification.h"
 #include "z3/nnf.h"
 #include "z3/params.h"
@@ -215,8 +214,8 @@ class SmtContext final : protected EnvObj, public QuantifierServices
   void pushTheoryScope();
 
   /**
-   * Pop numScopes scopes of the quantifier manager and the fingerprints,
-   * before the Boolean variables are unassigned.
+   * Pop numScopes scopes of the quantifier manager, before the Boolean
+   * variables are unassigned.
    */
   void popTheoryScopeBegin(size_t numScopes);
 
@@ -392,8 +391,6 @@ class SmtContext final : protected EnvObj, public QuantifierServices
 
   const ENodeVector& enodes() const override { return d_enodes; }
 
-  uint32_t getGeneration(TNode q) const override;
-
   uint32_t getGeneration(ENode* e) const override
   {
     // Patterns with equalities are not supported, so there is no need to
@@ -426,14 +423,6 @@ class SmtContext final : protected EnvObj, public QuantifierServices
 
   /** True if the input contains universal quantifiers. */
   bool hasQuantifiers() const { return d_prop.hasQuantifiers(); }
-
-  Fingerprint* addFingerprint(uint64_t data,
-                              uint32_t dataHash,
-                              size_t numArgs,
-                              ENode* const* args) override
-  {
-    return d_fingerprints.insert(data, dataHash, numArgs, args);
-  }
 
   TheoryId getVarTheory(BoolVar v) const { return getBdata(v).getTheory(); }
 
@@ -670,19 +659,6 @@ class SmtContext final : protected EnvObj, public QuantifierServices
   void forcePhase(BoolVar v, bool phase) { d_prop.forcePhase(v, phase); }
 
   void forcePhase(Literal l) { d_prop.forcePhase(l); }
-
-  bool containsInstance(TNode q,
-                        size_t numBindings,
-                        ENode* const* bindings) override;
-
-  bool addInstance(TNode q,
-                   TNode pat,
-                   size_t numBindings,
-                   ENode* const* bindings,
-                   uint32_t maxGeneration,
-                   uint32_t minTopGeneration,
-                   uint32_t maxTopGeneration,
-                   std::vector<std::pair<ENode*, ENode*>>& usedENodes) override;
 
   void setGlobalGeneration(uint32_t generation) { d_generation = generation; }
 
@@ -1037,7 +1013,6 @@ class SmtContext final : protected EnvObj, public QuantifierServices
   TheoryStatus d_theoryStatus;
   std::unique_ptr<QuantifierManager> d_qmanager;
   RandomGen d_random;
-  FingerprintSet d_fingerprints;
 
   /** The expressions already internalized as enodes. */
   std::vector<Node> d_eInternalizedStack;

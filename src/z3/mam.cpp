@@ -70,9 +70,12 @@ constexpr bool s_isCgrSupport = true;
 bool isGroundPat(TNode n) { return !expr::hasBoundVar(n); }
 
 /** Internalize a ground pattern subterm and return its enode. */
-ENode* mkPatENode(QuantifierServices& ctx, TNode qa, TNode n)
+ENode* mkPatENode(QuantifierServices& ctx,
+                  QuantifierManager& qm,
+                  TNode qa,
+                  TNode n)
 {
-  ctx.internalize(n, false, ctx.getGeneration(qa));
+  ctx.internalize(n, false, qm.getGeneration(qa));
   ENode* e = ctx.getENode(n);
   Assert(e != nullptr);
   return e;
@@ -854,10 +857,12 @@ class Compiler
 {
  public:
   Compiler(QuantifierServices& ctx,
+           QuantifierManager& qm,
            CodeTreeManager& ctMg,
            LabelHasher& h,
            bool useFilters = true)
       : d_context(ctx),
+        d_qm(qm),
         d_ctManager(ctMg),
         d_lblHasher(h),
         d_useFilters(useFilters),
@@ -1062,7 +1067,7 @@ class Compiler
       {
         // Ground applications are constants: they are turned into enodes
         // eagerly and only have to be compared.
-        ENode* e = mkPatENode(d_context, d_qa, p);
+        ENode* e = mkPatENode(d_context, d_qm, d_qa, p);
         d_seq.push_back(d_ctManager.mkCheck(reg, e));
         // reset the mark: the register was fully processed
         setCheckMark(reg, NOT_CHECKED);
@@ -1205,7 +1210,7 @@ class Compiler
     {
       uint32_t oreg = d_tree->d_numRegs;
       d_tree->d_numRegs += 1;
-      ENode* e = mkPatENode(d_context, d_qa, n);
+      ENode* e = mkPatENode(d_context, d_qm, d_qa, n);
       d_seq.push_back(d_ctManager.mkGetENode(oreg, e));
       return oreg;
     }
@@ -1331,7 +1336,7 @@ class Compiler
           Assert(isApp(curr));
           if (isGroundPat(curr))
           {
-            ENode* e = mkPatENode(d_context, d_qa, curr);
+            ENode* e = mkPatENode(d_context, d_qm, d_qa, curr);
             joints.push_back(TaggedPtr::tag(e, GROUND_TERM_TAG));
             continue;
           }
@@ -1507,7 +1512,7 @@ class Compiler
     {
       return false;
     }
-    ENode* nPrime = mkPatENode(d_context, d_qa, r);
+    ENode* nPrime = mkPatENode(d_context, d_qm, d_qa, r);
     // Comparing the roots is safe, because the modifications to the code tree
     // are chronological.
     return instr->d_enode->getRoot() == nPrime->getRoot();
@@ -1524,7 +1529,7 @@ class Compiler
     Assert(isApp(p));
     if (isGroundPat(p))
     {
-      ENode* e = mkPatENode(d_context, d_qa, p);
+      ENode* e = mkPatENode(d_context, d_qm, d_qa, p);
       if (!e->hasLblHash())
       {
         e->setLblHash(d_context.getTrailStack());
@@ -1940,6 +1945,7 @@ class Compiler
   }
 
   QuantifierServices& d_context;
+  QuantifierManager& d_qm;
   CodeTreeManager& d_ctManager;
   LabelHasher& d_lblHasher;
   bool d_useFilters;
@@ -3058,12 +3064,12 @@ bool isFlatAssociative(ENode* n)
 class MamImpl : public Mam
 {
  public:
-  MamImpl(QuantifierServices& ctx, bool useFilters)
-      : Mam(ctx),
+  MamImpl(QuantifierServices& ctx, QuantifierManager& qm, bool useFilters)
+      : Mam(ctx, qm),
         d_useFilters(useFilters),
         d_lblHasher(ctx),
         d_ctManager(d_lblHasher, d_trailStack),
-        d_compiler(ctx, d_ctManager, d_lblHasher, useFilters),
+        d_compiler(ctx, qm, d_ctManager, d_lblHasher, useFilters),
         d_interpreter(ctx, *this, useFilters),
         d_trees(ctx, d_compiler, d_trailStack),
         d_region(d_trailStack.getRegion()),
@@ -3215,14 +3221,14 @@ class MamImpl : public Mam
     uint32_t minGen = 0;
     uint32_t maxGen = 0;
     d_interpreter.getMinMaxTopGeneration(minGen, maxGen);
-    d_context.addInstance(q,
-                          pat,
-                          numBindings,
-                          bindings,
-                          maxGeneration,
-                          minGen,
-                          maxGen,
-                          usedENodes);
+    d_qm.addInstance(q,
+                     pat,
+                     numBindings,
+                     bindings,
+                     maxGeneration,
+                     minGen,
+                     maxGen,
+                     usedENodes);
   }
 
   bool isShared(ENode* n) const override
@@ -3636,7 +3642,7 @@ class MamImpl : public Mam
       if (isGroundPat(pat[i]))
       {
         pos = static_cast<uint32_t>(i);
-        return mkPatENode(d_context, q, pat[i]);
+        return mkPatENode(d_context, d_qm, q, pat[i]);
       }
     }
     return nullptr;
@@ -3667,7 +3673,7 @@ class MamImpl : public Mam
 
       if (isGroundPat(child))
       {
-        ENode* n = mkPatENode(d_context, q, child);
+        ENode* n = mkPatENode(d_context, d_qm, q, child);
         updatePlbls(plbl);
         if (!n->hasLblHash())
         {
@@ -3978,7 +3984,7 @@ class MamImpl : public Mam
       TNode pat = mp[i];
       if (isGroundPat(pat))
       {
-        ENode* e = mkPatENode(d_context, q, pat);
+        ENode* e = mkPatENode(d_context, d_qm, q, pat);
         d_context.markAsRelevant(e);
         d_context.pushTrail(AddSharedENodeTrail(*this, e));
         d_sharedENodes.insert(e);
@@ -3994,7 +4000,7 @@ class MamImpl : public Mam
       todo.pop_back();
       if (isGroundPat(n))
       {
-        ENode* e = mkPatENode(d_context, q, n);
+        ENode* e = mkPatENode(d_context, d_qm, q, n);
         d_context.pushTrail(AddSharedENodeTrail(*this, e));
         d_sharedENodes.insert(e);
       }
@@ -4058,7 +4064,10 @@ class MamImpl : public Mam
 
 }  // namespace
 
-Mam* mkMam(QuantifierServices& ctx) { return new MamImpl(ctx, true); }
+Mam* mkMam(QuantifierServices& ctx, QuantifierManager& qm)
+{
+  return new MamImpl(ctx, qm, true);
+}
 
 }  // namespace z3
 }  // namespace cvc5::internal

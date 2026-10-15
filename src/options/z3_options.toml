@@ -488,6 +488,24 @@ name   = "Z3 Core"
   help       = "print per-quantifier instantiation counts, as Z3's smt.qi.profile does"
 
 [[option]]
+  name       = "z3QiPolicy"
+  category   = "expert"
+  long       = "z3-qi-policy=MODE"
+  type       = "Z3QiPolicyMode"
+  default    = "Z3"
+  help       = "when the instances of the matches found are made"
+  help_mode  = "Instantiation policies for --z3."
+[[option.mode.Z3]]
+  name = "z3"
+  help = "Z3's queue: an instance gets a cost, and is made during propagation if its cost is within the eager threshold, else delayed to a final check if within the lazy threshold."
+[[option.mode.EAGER]]
+  name = "eager"
+  help = "Every new match is made at the next propagation, with no cost and no delay: Z3's timing without its triage."
+[[option.mode.CVC5]]
+  name = "cvc5"
+  help = "As cvc5 instantiates: in rounds, at final checks, every match found since. Matching stays incremental."
+
+[[option]]
   name       = "z3QiChecker"
   category   = "expert"
   long       = "z3-qi-checker"

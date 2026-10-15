@@ -16,13 +16,9 @@
 #include "z3/qi_queue.h"
 
 #include <algorithm>
-#include <fstream>
 #include <unordered_map>
 
 #include "base/output.h"
-#include "expr/node_manager.h"
-#include "options/z3_options.h"
-#include "smt/env.h"
 #include "z3/ast.h"
 #include "z3/enode.h"
 #include "z3/quantifier_manager.h"
@@ -33,11 +29,7 @@ namespace cvc5::internal {
 namespace z3 {
 
 QiQueue::QiQueue(QuantifierManager& qm, QuantifierServices& ctx, Params& params)
-    : d_qm(qm),
-      d_context(ctx),
-      d_params(params),
-      d_checker(ctx),
-      d_eagerCostThreshold(0)
+    : InstancePolicy(qm, ctx, params), d_eagerCostThreshold(0)
 {
   d_vals.resize(CV_NUM_VARS, 0.0f);
 }
@@ -59,11 +51,6 @@ void QiQueue::setup()
     AlwaysAssert(ok);
   }
   d_eagerCostThreshold = d_params.d_qiEagerThreshold;
-}
-
-TNode QiQueue::getQuantifier(Fingerprint* f) const
-{
-  return d_qm.getQuantifierById(f->getData());
 }
 
 QuantifierStat* QiQueue::setValues(TNode q,
@@ -194,104 +181,22 @@ void QiQueue::instantiate(Entry& ent)
   ent.d_instantiated = true;
 
   QuantifierStat* stat = d_qm.getStat(q);
-
-  if (d_context.getEnv().getOptions().z3.z3QiChecker
-      && d_checker.isSat(getQuantBody(q), numBindings, bindings))
+  if (skipSatisfied(q, stat, numBindings, bindings))
   {
-    // The instance is already satisfied, so creating it would be wasted
-    // work. It still counts as an instantiation, as it does in Z3.
-    stat->incNumInstancesCheckerSat();
-    d_context.getStats().d_numInstancesCheckerSat++;
     return;
   }
-
-  // Substitute the bindings for the canonical quantified variables. Note
-  // bindings[i] is the binding of the i-th variable of the bound variable
-  // list, which is the variable at de Bruijn level i.
-  TNode bvl = q[0];
-  Assert(bvl.getNumChildren() == numBindings);
-  std::vector<Node> vars;
-  std::vector<Node> subs;
-  for (size_t i = 0; i < numBindings; ++i)
+  Node lemma = mkLemma(q, stat, numBindings, bindings);
+  if (lemma.isNull())
   {
-    vars.push_back(bvl[i]);
-    subs.push_back(bindings[i]->getExpr());
-  }
-  Node instance = getQuantBody(q).substitute(
-      vars.begin(), vars.end(), subs.begin(), subs.end());
-
-  Trace("z3-qi-raw") << "RAWINST " << instance << std::endl;
-  Trace("z3-events") << "INSTANCE " << instance << std::endl;
-  const std::string& dumpTo =
-      d_context.getEnv().getOptions().z3.z3DumpInstances;
-  if (!dumpTo.empty())
-  {
-    // One line per instance, before the rewriter runs, which is the point at
-    // which Z3's qi_queue trace prints its "new instance".
-    std::ofstream out(dumpTo, std::ios::app);
-    out << instance << "\n";
-  }
-  if (d_qm.inForcedRematch())
-  {
-    Trace("z3-qi-missed") << "MISSED q" << q.getId() << " " << instance
-                          << std::endl;
-  }
-  Node sInstance = d_context.rewriteInstance(instance);
-
-  if (sInstance.getKind() == Kind::CONST_BOOLEAN && sInstance.getConst<bool>())
-  {
-    stat->incNumInstancesSimplifyTrue();
-    d_context.getStats().d_numInstancesSimplifyTrue++;
     return;
   }
-
-  NodeManager* nm = q.getNodeManager();
-  Node notQ = nm->mkNode(Kind::NOT, q);
-  Node lemma;
-  if (sInstance.getKind() == Kind::OR)
-  {
-    std::vector<Node> args;
-    args.push_back(notQ);
-    args.insert(args.end(), sInstance.begin(), sInstance.end());
-    lemma = nm->mkNode(Kind::OR, args);
-  }
-  else if (sInstance.getKind() == Kind::CONST_BOOLEAN
-           && !sInstance.getConst<bool>())
-  {
-    lemma = notQ;
-  }
-  else
-  {
-    lemma = nm->mkNode(Kind::OR, notQ, sInstance);
-  }
-  if (d_params.d_qiPermanent)
-  {
-    auto it = d_permanentInstances.find(lemma);
-    if (it != d_permanentInstances.end())
-    {
-      // the instance is still asserted
-      d_context.getStats().d_numInstancesRediscovered++;
-      if (d_params.d_qiPermanentLocal)
-      {
-        d_context.reactivateInstance(it->second);
-      }
-      return;
-    }
-  }
-  stat->incNumInstances();
   d_instances.push_back(lemma);
   d_stats.d_numInstances++;
-  d_context.getStats().d_numInstances++;
   uint32_t gen = getNewGen(q, generation, ent.d_cost);
   Trace("z3-qi") << "[instance] q" << q.getId() << " nargs " << numBindings
                  << " gen " << generation << " cost " << ent.d_cost
                  << " newgen " << gen << std::endl;
-  Trace("z3-qi-lemma") << "  lemma: " << lemma << std::endl;
-  Node root;
-  if (d_context.internalizeInstance(lemma, gen, root))
-  {
-    d_permanentInstances[lemma] = root;
-  }
+  assertLemma(lemma, gen);
 }
 
 void QiQueue::pushScope()

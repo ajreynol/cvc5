@@ -18,6 +18,8 @@
  * it. Delayed instances are reconsidered at final check and dropped entirely
  * if their cost exceeds the lazy threshold. This triage, not the matching
  * itself, is what keeps the number of instances bounded.
+ *
+ * It is the default InstancePolicy (--z3-qi-policy=z3).
  */
 
 #include "cvc5_private.h"
@@ -31,9 +33,9 @@
 #include <vector>
 
 #include "expr/node.h"
-#include "z3/checker.h"
 #include "z3/cost_function.h"
 #include "z3/fingerprints.h"
+#include "z3/instance_policy.h"
 #include "z3/params.h"
 #include "z3/quantifier_stat.h"
 #include "z3/types.h"
@@ -52,12 +54,12 @@ struct QiQueueStats
   QiQueueStats() { reset(); }
 };
 
-class QiQueue
+class QiQueue : public InstancePolicy
 {
  public:
   QiQueue(QuantifierManager& qm, QuantifierServices& ctx, Params& params);
 
-  void setup();
+  void setup() override;
 
   /**
    * Enqueue a new instance. The fingerprint holds the quantifier and the
@@ -67,23 +69,23 @@ class QiQueue
               TNode pat,
               uint32_t generation,
               uint32_t minTopGeneration,
-              uint32_t maxTopGeneration);
+              uint32_t maxTopGeneration) override;
 
-  void instantiate();
+  void instantiate() override;
 
-  bool hasWork() const { return !d_newEntries.empty(); }
+  bool hasWork() const override { return !d_newEntries.empty(); }
 
-  void initSearchEh();
+  void initSearchEh() override;
 
   /**
    * Instantiate the delayed entries whose cost is within the lazy threshold.
    * Returns true if nothing was instantiated, i.e. the final check succeeds.
    */
-  bool finalCheckEh();
+  bool finalCheckEh() override;
 
-  void pushScope();
-  void popScope(size_t numScopes);
-  void reset();
+  void pushScope() override;
+  void popScope(size_t numScopes) override;
+  void reset() override;
 
   const QiQueueStats& getStats() const { return d_stats; }
 
@@ -124,14 +126,7 @@ class QiQueue
   void instantiate(Entry& ent);
   void getMinMaxCosts(float& min, float& max) const;
 
-  /** The quantifier a fingerprint stands for. */
-  TNode getQuantifier(Fingerprint* f) const;
-
-  QuantifierManager& d_qm;
-  QuantifierServices& d_context;
-  Params& d_params;
   QiQueueStats d_stats;
-  Checker d_checker;
   CostFunction d_costFunction;
   CostFunction d_newGenFunction;
   std::vector<float> d_vals;
@@ -140,12 +135,6 @@ class QiQueue
   std::vector<Entry> d_newEntries;
   std::vector<Entry> d_delayedEntries;
   std::vector<Node> d_instances;
-  /**
-   * With --z3-qi-permanent, the instances asserted as lemmas that survive
-   * backtracking, which are not asserted again when matching finds them
-   * again, each with the formula asserted for it.
-   */
-  std::unordered_map<Node, Node> d_permanentInstances;
   std::vector<size_t> d_instantiatedTrail;
   std::vector<Scope> d_scopes;
 };

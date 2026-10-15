@@ -33,12 +33,16 @@
 namespace cvc5::internal {
 namespace z3 {
 
+class QuantifierManager;
 class QuantifierServices;
 
 class Mam
 {
  public:
-  Mam(QuantifierServices& ctx) : d_context(ctx) {}
+  Mam(QuantifierServices& ctx, QuantifierManager& qm)
+      : d_context(ctx), d_qm(qm)
+  {
+  }
 
   virtual ~Mam() = default;
 
@@ -79,9 +83,11 @@ class Mam
 
  protected:
   QuantifierServices& d_context;
+  /** The quantifier manager, which receives the matches. */
+  QuantifierManager& d_qm;
 };
 
-Mam* mkMam(QuantifierServices& ctx);
+Mam* mkMam(QuantifierServices& ctx, QuantifierManager& qm);
 
 }  // namespace z3
 }  // namespace cvc5::internal

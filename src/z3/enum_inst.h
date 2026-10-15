@@ -43,6 +43,7 @@
 namespace cvc5::internal {
 namespace z3 {
 
+class QuantifierManager;
 class QuantifierServices;
 
 class EnumInst
@@ -54,7 +55,7 @@ class EnumInst
    * only ever adds a falsified instance, but its model is complete while the
    * assignment here is partial, so the weaker criterion finds more.
    */
-  EnumInst(QuantifierServices& ctx, size_t maxPerRound);
+  EnumInst(QuantifierServices& ctx, QuantifierManager& qm, size_t maxPerRound);
 
   /**
    * Add at most one instance for each of the given quantifiers. Returns true

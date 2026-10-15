@@ -27,9 +27,13 @@
 #include <unordered_map>
 
 #include "base/output.h"
+#include "options/z3_options.h"
+#include "smt/env.h"
 #include "z3/ast.h"
 #include "z3/enode.h"
 #include "z3/enum_inst.h"
+#include "z3/fingerprints.h"
+#include "z3/instance_policy.h"
 #include "z3/mam.h"
 #include "z3/qi_queue.h"
 #include "z3/quantifier_services.h"
@@ -42,12 +46,33 @@ namespace z3 {
 
 QuantifierManagerPlugin* mkDefaultPlugin();
 
+namespace {
+
+InstancePolicy* mkInstancePolicy(QuantifierManager& qm,
+                                 QuantifierServices& ctx,
+                                 Params& p)
+{
+  switch (ctx.getEnv().getOptions().z3.z3QiPolicy)
+  {
+    case options::Z3QiPolicyMode::EAGER:
+      return new Cvc5InstancePolicy(qm, ctx, p, true);
+    case options::Z3QiPolicyMode::CVC5:
+      return new Cvc5InstancePolicy(qm, ctx, p, false);
+    default: return new QiQueue(qm, ctx, p);
+  }
+}
+
+}  // namespace
+
 struct QuantifierManager::Imp
 {
   QuantifierManager& d_wrapper;
   QuantifierServices& d_context;
   Params& d_params;
-  QiQueue d_qiQueue;
+  /** When the instances of the matches found are made. */
+  std::unique_ptr<InstancePolicy> d_policy;
+  /** The fingerprints of the instances made in the current scopes. */
+  FingerprintSet d_fingerprints;
   std::unordered_map<Node, QuantifierStat*> d_quantifierStat;
   std::unordered_map<uint64_t, Node> d_id2Quant;
   QuantifierStatGen d_qstatGen;
@@ -62,11 +87,12 @@ struct QuantifierManager::Imp
       : d_wrapper(wrapper),
         d_context(ctx),
         d_params(p),
-        d_qiQueue(wrapper, ctx, p),
+        d_policy(mkInstancePolicy(wrapper, ctx, p)),
+        d_fingerprints(ctx.getRegion()),
         d_qstatGen(ctx.getRegion()),
         d_plugin(plugin)
   {
-    d_qiQueue.setup();
+    d_policy->setup();
   }
 
   QuantifierStat* getStat(TNode q) const
@@ -166,11 +192,11 @@ struct QuantifierManager::Imp
     maxGeneration = std::max(maxGeneration, getGeneration(q));
 
     getStat(q)->updateMaxGeneration(maxGeneration);
-    Fingerprint* f = d_context.addFingerprint(
+    Fingerprint* f = d_fingerprints.insert(
         q.getId(), static_cast<uint32_t>(q.getId()), numBindings, bindings);
     if (f != nullptr)
     {
-      d_qiQueue.insert(
+      d_policy->insert(
           f, pat, maxGeneration, minTopGeneration, maxTopGeneration);
       d_numInstances++;
     }
@@ -188,7 +214,7 @@ struct QuantifierManager::Imp
     {
       getStat(q)->resetNumInstancesCurrSearch();
     }
-    d_qiQueue.initSearchEh();
+    d_policy->initSearchEh();
     d_plugin->initSearchEh();
   }
 
@@ -203,24 +229,24 @@ struct QuantifierManager::Imp
   void push()
   {
     d_plugin->push();
-    d_qiQueue.pushScope();
+    d_policy->pushScope();
   }
 
   void pop(size_t numScopes)
   {
     d_plugin->pop(numScopes);
-    d_qiQueue.popScope(numScopes);
+    d_policy->popScope(numScopes);
   }
 
   bool canPropagate() const
   {
-    return d_qiQueue.hasWork() || d_plugin->canPropagate();
+    return d_policy->hasWork() || d_plugin->canPropagate();
   }
 
   void propagate()
   {
     d_plugin->propagate();
-    d_qiQueue.instantiate();
+    d_policy->instantiate();
   }
 
   bool checkQuantifier(TNode q) const
@@ -238,7 +264,7 @@ struct QuantifierManager::Imp
     {
       return true;
     }
-    QuickChecker mc(d_context);
+    QuickChecker mc(d_context, d_wrapper);
     bool result = true;
     for (const Node& q : d_quantifiers)
     {
@@ -250,7 +276,7 @@ struct QuantifierManager::Imp
     }
     if (d_params.d_qiQuickChecker == MC_UNSAT || !result)
     {
-      d_qiQueue.instantiate();
+      d_policy->instantiate();
       return result;
     }
     // MC_NO_SAT creates too many irrelevant instances to be worth it; model
@@ -262,7 +288,7 @@ struct QuantifierManager::Imp
         result = false;
       }
     }
-    d_qiQueue.instantiate();
+    d_policy->instantiate();
     return result;
   }
 
@@ -272,7 +298,7 @@ struct QuantifierManager::Imp
     {
       return d_plugin->finalCheckEh(false);
     }
-    FinalCheckStatus result = d_qiQueue.finalCheckEh() ? FC_DONE : FC_CONTINUE;
+    FinalCheckStatus result = d_policy->finalCheckEh() ? FC_DONE : FC_CONTINUE;
     FinalCheckStatus presult = d_plugin->finalCheckEh(full);
     if (presult != FC_DONE)
     {
@@ -438,6 +464,7 @@ void QuantifierManager::push()
   {
     d_imp->push();
   }
+  d_imp->d_fingerprints.pushScope();
 }
 
 void QuantifierManager::pop(size_t numScopes)
@@ -450,6 +477,15 @@ void QuantifierManager::pop(size_t numScopes)
   {
     d_imp->pop(numScopes);
   }
+  d_imp->d_fingerprints.popScope(numScopes);
+}
+
+bool QuantifierManager::containsInstance(TNode q,
+                                         size_t numBindings,
+                                         ENode* const* bindings)
+{
+  return d_imp->d_fingerprints.contains(
+      q.getId(), static_cast<uint32_t>(q.getId()), numBindings, bindings);
 }
 
 void QuantifierManager::reset() {}
@@ -494,8 +530,8 @@ class DefaultQmPlugin : public QuantifierManagerPlugin
     d_context = &(qm.getContext());
     d_params = &(d_context->getParams());
 
-    d_mam.reset(mkMam(*d_context));
-    d_lazyMam.reset(mkMam(*d_context));
+    d_mam.reset(mkMam(*d_context, qm));
+    d_lazyMam.reset(mkMam(*d_context, qm));
   }
 
   bool modelBased() const override { return d_params->d_mbqi; }
@@ -730,7 +766,7 @@ class DefaultQmPlugin : public QuantifierManagerPlugin
       if (d_enumInst == nullptr)
       {
         d_enumInst.reset(
-            new EnumInst(*d_context, d_params->d_enumInstMaxPerRound));
+            new EnumInst(*d_context, *d_qm, d_params->d_enumInstMaxPerRound));
       }
       if (d_enumInst->instantiate(d_qm->quantifiers()))
       {
