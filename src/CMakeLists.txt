@@ -737,6 +737,8 @@ libcvc5_add_sources(
   theory/ee_manager_central.h
   theory/ee_manager_distributed.cpp
   theory/ee_manager_distributed.h
+  theory/ee_manager_none.cpp
+  theory/ee_manager_none.h
   theory/ee_setup_info.h
   theory/evaluator.cpp
   theory/evaluator.h
@@ -1159,6 +1161,8 @@ libcvc5_add_sources(
   theory/shared_solver.h
   theory/shared_solver_distributed.cpp
   theory/shared_solver_distributed.h
+  theory/shared_solver_none.cpp
+  theory/shared_solver_none.h
   theory/shared_terms_database.cpp
   theory/shared_terms_database.h
   theory/skolem_lemma.cpp
@@ -1364,6 +1368,8 @@ libcvc5_add_sources(
   z3/explainer.h
   z3/fingerprints.cpp
   z3/fingerprints.h
+  z3/host_core.cpp
+  z3/host_core.h
   z3/instance_policy.cpp
   z3/instance_policy.h
   z3/internalizer.cpp
@@ -1413,6 +1419,8 @@ libcvc5_add_sources(
   z3/theory_cvc5.h
   z3/theory_datatype.cpp
   z3/theory_datatype.h
+  z3/theory_slot.cpp
+  z3/theory_slot.h
   z3/theory_status.cpp
   z3/theory_status.h
   z3/types.cpp

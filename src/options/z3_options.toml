@@ -25,6 +25,21 @@ name   = "Z3 Core"
   help = "cvc5's propositional engine (CNF conversion, CDCL(T) solver, decision heuristic), with PropCore mirroring the assignment for the theory side."
 
 [[option]]
+  name       = "z3TheoryEngine"
+  category   = "expert"
+  long       = "z3-theory-engine=MODE"
+  type       = "Z3TheoryEngineMode"
+  default    = "Z3"
+  help       = "the theory engine over the ported Z3 theory components"
+  help_mode  = "Theory engines for --z3."
+[[option.mode.Z3]]
+  name = "z3"
+  help = "The port's own theory engine (Z3TheoryEngine)."
+[[option.mode.CVC5]]
+  name = "cvc5"
+  help = "cvc5's TheoryEngine, with the port's components in its theory slots, sharing the port's E-graph; implies --z3-prop-engine=cvc5 and --ee-mode=none (Stage 3 of src/z3/ARCHITECTURE_PLAN.md)."
+
+[[option]]
   name       = "z3HostAxiomDecisions"
   category   = "expert"
   long       = "z3-host-axiom-decisions"

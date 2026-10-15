@@ -15,6 +15,7 @@
 #ifndef CVC5__THEORY_ENGINE_H
 #define CVC5__THEORY_ENGINE_H
 
+#include <functional>
 #include <memory>
 #include <vector>
 
@@ -142,6 +143,26 @@ class TheoryEngine : protected EnvObj
         new theory::OutputChannel(statisticsRegistry(), this, theoryId);
     d_theoryTable[theoryId] =
         new TheoryClass(d_env, *d_theoryOut[theoryId], theory::Valuation(this));
+    getRewriter()->registerTheoryRewriter(
+        theoryId, d_theoryTable[theoryId]->getTheoryRewriter());
+  }
+
+  /**
+   * Adds the theory that mk makes from the output channel and the valuation
+   * of the slot theoryId, as addTheory does for a theory class. Used to put
+   * other implementations in the theory slots (--z3-theory-engine=cvc5).
+   */
+  void addTheory(
+      theory::TheoryId theoryId,
+      const std::function<theory::Theory*(theory::OutputChannel&,
+                                          theory::Valuation)>& mk)
+  {
+    Assert(d_theoryTable[theoryId] == nullptr
+           && d_theoryOut[theoryId] == nullptr);
+    d_theoryOut[theoryId] =
+        new theory::OutputChannel(statisticsRegistry(), this, theoryId);
+    d_theoryTable[theoryId] =
+        mk(*d_theoryOut[theoryId], theory::Valuation(this));
     getRewriter()->registerTheoryRewriter(
         theoryId, d_theoryTable[theoryId]->getTheoryRewriter());
   }

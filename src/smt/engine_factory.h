@@ -45,6 +45,13 @@ class EngineFactory
   /** Make the theory engine selected by the options of env. */
   static std::unique_ptr<TheoryEngine> mkTheoryEngine(Env& env);
   /**
+   * Add the theories of te, which must have been made by mkTheoryEngine, if
+   * the options of env select other implementations than cvc5's own
+   * theories (--z3-theory-engine=cvc5). Returns false if they do not, in
+   * which case the caller adds cvc5's theories.
+   */
+  static bool addTheories(Env& env, TheoryEngine* te);
+  /**
    * Make the propositional engine paired with te, which must have been made
    * by mkTheoryEngine.
    */

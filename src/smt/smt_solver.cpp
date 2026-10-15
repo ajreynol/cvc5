@@ -61,10 +61,14 @@ void SmtSolver::finishInit()
   d_theoryEngine = EngineFactory::mkTheoryEngine(d_env);
 
   // Add the theories
-  for (theory::TheoryId id = theory::THEORY_FIRST; id < theory::THEORY_LAST;
-       ++id)
+  if (!EngineFactory::addTheories(d_env, d_theoryEngine.get()))
   {
-    theory::TheoryConstructor::addTheory(d_theoryEngine.get(), id);
+    for (theory::TheoryId id = theory::THEORY_FIRST;
+         id < theory::THEORY_LAST;
+         ++id)
+    {
+      theory::TheoryConstructor::addTheory(d_theoryEngine.get(), id);
+    }
   }
   // Add the proof checkers for each theory
   ProofNodeManager* pnm = d_env.getProofNodeManager();

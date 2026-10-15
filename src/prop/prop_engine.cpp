@@ -184,6 +184,11 @@ void PropEngine::assertLemma(theory::InferenceId id,
                              TrustNode tlemma,
                              theory::LemmaProperty p)
 {
+  if (isLemmaPropertyUnprocessed(p))
+  {
+    assertLemmaUnprocessed(id, tlemma, p);
+    return;
+  }
   bool removable = isLemmaPropertyRemovable(p);
   bool local = isLemmaPropertyLocal(p);
   bool inprocess = isLemmaPropertyInprocess(p);

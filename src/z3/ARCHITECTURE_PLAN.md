@@ -5,8 +5,8 @@ Date: 2026-10-10
 Source snapshot: `da001fa639` (`Preset`)
 
 Status: Stages 1A and 1B implemented. See the progress record in section
-14. Stage 2 (section 15) is implemented as a hosted engine. Stage 3 is
-planned in section 16.
+14. Stage 2 (section 15) is implemented as a hosted engine. Stage 3
+(section 16) is implemented through step 4.
 
 ## 1. Objective and migration principle
 
@@ -1295,6 +1295,123 @@ unchanged.
    host3, it becomes the configuration of `--z3-prop-engine=cvc5`;
    `Z3TheoryEngine`'s overrides are removed and `TheoryEngine`'s methods
    are made non-virtual again.
+
+### Audit (step 1)
+
+- **Equality engines `TheoryEngine` makes** (`EqEngineManagerDistributed`):
+  one for the shared terms (`SharedSolverDistributed`), a master engine in
+  quantified logics (built on the quantifiers engine), one per theory whose
+  `needsEqualityEngine` is true, and one for the model
+  (`ModelManagerDistributed`). Today, under `--z3`, all of them exist for
+  the native theories, unused by the search. `Theory::needsEqualityEngine`
+  is false by default; BOOL and BUILTIN keep that default.
+- **The equality engine mode `none`** therefore needs: an engine manager
+  that allocates nothing (and rejects a theory that asks for an engine); a
+  shared solver with no engine, whose preregistration takes the path
+  without sharing (`PreRegisterVisitor`), and that hands equalities between
+  shared terms, which `assertToTheory` sends to it for BUILTIN, to the
+  BUILTIN slot; no model manager (`getModel` then returns null, which the
+  `Valuation` setters of unevaluated kinds already tolerate, and model
+  building reports failure); and `combineTheories` doing nothing.
+- **The quantifiers engine** is used by `TheoryEngine` in three places:
+  `finishInit` (taken from the quantifiers theory, asserted non-null, then
+  initialized), `notifyCombineTheories`, and the last call. All three are
+  skipped when the quantifiers slot provides none.
+- **Which slots `TheoryEngine` checks and asks to propagate** is fixed per
+  theory id by the generated traits: BOOL and BUILTIN have no check; only
+  ARITH and BV are asked to propagate; presolve goes to UF, ARITH, BV,
+  QUANTIFIERS and others, notifyRestart to ARITH only. A theory may
+  propagate, send lemmas and report conflicts from its check, as UF does.
+  So the core's work runs in the check of one **driver slot**: the enabled
+  slot with the largest id, other than BOOL and BUILTIN (QUANTIFIERS in a
+  quantified logic). It first takes the facts queued at every slot,
+  including BOOL's (the Boolean variables, which relevancy needs) and
+  BUILTIN's, then does what `Z3TheoryEngine::check` does.
+- **Preprocessing** reaches theories through their rewriters (registered
+  when a theory is added), `ppRewrite`, `ppStaticLearn`, `ppAssert` and
+  `ppNotifyAssertions`. The native theories' `finishInit` needs an
+  equality engine for UF and DATATYPES (asserted), ARITH (its linear
+  solver), and BV (if it asks for one); QUANTIFIERS' needs none (its
+  constructor makes a quantifiers engine, which is never initialized). So
+  a slot's native delegate is initialized with an equality engine of its
+  own (`Theory::finishInitStandalone`), as today's native theories have
+  one, except QUANTIFIERS (`finishInit`, since its standalone setup would
+  ask for the master engine), BOOL and BUILTIN. These engines serve
+  preprocessing only; the search uses none. QUANTIFIERS' delegate does not
+  receive `ppNotifyAssertions`, which only feeds the uninitialized
+  quantifiers engine.
+- **Lemmas** go from `OutputChannel::lemma` to `PropEngine::assertLemma`,
+  which preprocesses them. `LemmaProperty` is a bit set (removable, send
+  atoms, needs justify, inprocess, local); a further bit marks a lemma not
+  to be preprocessed, which `PropEngine` sends to `assertLemmaUnprocessed`.
+- **Facts** reach a theory through `Theory::assertFact`, which queues them;
+  the theory reads its queue in `check`. The driver slot reads all the
+  queues, so facts reach the core grouped by slot within a round, not in
+  the order they were asserted (the open question on fact order).
+
+### Progress
+
+Steps 1 to 4 are done (2026-10-15); step 5 waits for the measurements.
+
+- **Step 2, the switches.** `--ee-mode=none` (`EqEngineManagerNone`, which
+  allocates nothing and rejects a theory that asks; `SharedSolverNone`,
+  which keeps no shared terms, preregisters as without sharing and asserts
+  the equalities it is handed to BUILTIN; no model manager, with
+  `getModel` returning null and model building failing; `combineTheories`
+  doing nothing). `TheoryEngine` works without a quantifiers engine in that
+  mode. `LemmaProperty::UNPROCESSED` sends a lemma to
+  `PropEngine::assertLemmaUnprocessed`. `SetDefaults` turns the mode back
+  to `distributed` for a solver not using the slots, since a subsolver
+  copies its parent's options with `--z3` turned off. Point 5 of the plan
+  (`Valuation` access to the decisions) was not needed: the core reads the
+  prop engine's state through `TheoryEngine::getPropEngine`. Native
+  configurations are unchanged (a native regression subset, 405 tests).
+- **Step 3, the shared core.** `HostCore` ([host_core.h](host_core.h)) holds
+  what `Z3TheoryEngine` did in hosted mode, and sends lemmas, propagations,
+  phases and incompleteness through `HostCoreOutput`. `Z3TheoryEngine`
+  implements that output over the prop engine directly; answers and `z3::`
+  counters of the hosted configuration are unchanged (447 runs, 7 compared
+  under `--rlimit`).
+- **Step 4, the slots.** `--z3-theory-engine=cvc5` (which implies
+  `--z3-prop-engine=cvc5` and `--ee-mode=none`) makes `EngineFactory` build
+  a plain `TheoryEngine` and fill every slot with a `TheorySlot`
+  ([theory_slot.h](theory_slot.h)), through a new `TheoryEngine::addTheory`
+  that takes a maker. The slots share a `SlotBackend`, which owns the
+  `SharedBackend` and the `HostCore` and sends the core's output through
+  the driver slot's output channel; `Z3HostedPropEngine` takes the backend
+  and the core from it. Each slot owns cvc5's theory for its id for
+  preprocessing, initialized with an equality engine of its own (QUANTIFIERS
+  without). The driver drains the other slots' queues by running their
+  `check` (a slot cannot read another's queue), which then hands the facts
+  to the core in `preNotifyFact`; slots never exit `check` early. On the
+  way: the core no longer splits on atoms with free variables (atoms of
+  patterns and quantifier bodies), which `TheoryEngine::lemma` rejects and
+  the hosted engine sent unchecked.
+
+**Results** (10 s, `verus-best`):
+
+| | port's own search | hosted (host3) | Stage 3 |
+|---|---|---|---|
+| Development set (88) | 87, 169 s | 74, 280 s | **88, 92 s** |
+| Every tenth of `quant-07-25` (613) | 586 | 572 | **612** |
+| Time on those both solve, against the port's own search | | +15% | **-29%** |
+
+No "sat" answers, no errors, one unknown on the sample. On the quantified
+regressions with assertions, no wrong answers and 170 solved (the port's
+own search 170, hosted 168); the failures are the four of the other modes
+and an assertion-build check that rejects a free variable in four
+higher-order quantifiers as the port normalizes them, which the other
+engines never preregister. The 27 benchmarks of the sample that only
+Stage 3 solves give "unsat" with assertions on; 18 are declared unsat and
+none sat, and the port's own search confirms 8 of the other 9 in 60 s.
+
+On the benchmarks looked at, Stage 3 does a fraction of the hosted engine's
+work (a tenth of the decisions and instances), which is not yet explained.
+Candidates: `TheoryEngine` checks only when facts were asserted, where the
+hosted engine ran the core at every callback of the SAT solver; the core's
+propagations come back to their slots as facts, so a check can run the
+core again before returning; facts reach the core grouped by slot. Each is
+measurable, and attributing the gain is the next step, before step 5.
 
 ### After Stage 3
 

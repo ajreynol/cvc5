@@ -23,13 +23,14 @@
 namespace cvc5::internal {
 namespace z3 {
 
+class HostCore;
 class SharedBackend;
-class Z3TheoryEngine;
 
 /**
  * The propositional engine used with --z3 --z3-prop-engine=cvc5: cvc5's own
- * PropEngine (CNF conversion, CDCL(T) solver, decision heuristic), paired
- * with Z3TheoryEngine in hosted mode by smt::EngineFactory.
+ * PropEngine (CNF conversion, CDCL(T) solver, decision heuristic), paired by
+ * smt::EngineFactory with Z3TheoryEngine in hosted mode, or with cvc5's
+ * TheoryEngine and the port's theory slots (--z3-theory-engine=cvc5).
  *
  * It differs from PropEngine only in its input: the preprocessed assertions
  * are first prepared for the core (AssertionPreparation), as Z3PropEngine
@@ -40,7 +41,15 @@ class Z3TheoryEngine;
 class Z3HostedPropEngine : public prop::PropEngine
 {
  public:
-  Z3HostedPropEngine(Env& env, Z3TheoryEngine* te);
+  /**
+   * @param te The paired theory engine.
+   * @param backend The ported core.
+   * @param core The core under cvc5's prop engine, which te drives.
+   */
+  Z3HostedPropEngine(Env& env,
+                     TheoryEngine* te,
+                     SharedBackend& backend,
+                     HostCore& core);
   ~Z3HostedPropEngine() override;
 
   /** Make a fresh core, as Z3PropEngine does. */
@@ -58,10 +67,10 @@ class Z3HostedPropEngine : public prop::PropEngine
   bool supports(prop::SearchFeature f) const override;
 
  private:
-  /** The paired theory engine. */
-  Z3TheoryEngine* d_te;
-  /** The state shared with d_te, which owns it. */
+  /** The ported core. */
   SharedBackend& d_backend;
+  /** The core under cvc5's prop engine. */
+  HostCore& d_core;
   /** The preparation of assertions for the core. */
   AssertionPreparation d_prep;
 };

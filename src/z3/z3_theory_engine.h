@@ -18,14 +18,11 @@
 #define CVC5__Z3__Z3_THEORY_ENGINE_H
 
 #include <memory>
-#include <unordered_set>
-#include <utility>
 #include <vector>
 
-#include "context/context.h"
 #include "theory/theory_engine.h"
+#include "z3/host_core.h"
 #include "z3/shared_backend.h"
-#include "z3/util/literal.h"
 
 namespace cvc5::internal {
 namespace z3 {
@@ -52,9 +49,8 @@ namespace z3 {
  *
  * Hosted (--z3-prop-engine=cvc5), this class also implements the search
  * contract that cvc5's prop engine uses (preRegister, assertFact, check,
- * propagations, explanations), over the propositional side of the core in
- * host mode, which mirrors the assignment for the theory side (see
- * PropCore::hostInit). Its scopes follow the SAT context.
+ * propagations, explanations), through HostCore, with what the core learns
+ * sent to the prop engine directly.
  */
 class Z3TheoryEngine : public TheoryEngine
 {
@@ -63,10 +59,10 @@ class Z3TheoryEngine : public TheoryEngine
   ~Z3TheoryEngine() override;
   /** Get the state shared with the paired Z3PropEngine. */
   SharedBackend& getBackend() { return d_backend; }
+  /** The core under cvc5's prop engine, hosted. */
+  HostCore& getCore() { return *d_core; }
   /** Whether cvc5's prop engine drives this engine. */
   bool isHosted() const { return d_hosted; }
-  /** Forget the state of the previous context; see Z3HostedPropEngine. */
-  void hostReset();
 
   // ------------------------------------------- the search contract, hosted
   void preRegister(TNode atom) override;
@@ -81,103 +77,32 @@ class Z3TheoryEngine : public TheoryEngine
   bool needCheck() const override;
 
  private:
-  /** Pops the propositional side when the SAT context pops. */
-  class PopNotify : public context::ContextNotifyObj
+  /** Sends what the core learns to the prop engine directly. */
+  class Output : public HostCoreOutput
   {
    public:
-    PopNotify(context::Context* c, Z3TheoryEngine& te)
-        : context::ContextNotifyObj(c), d_te(te)
-    {
-    }
-
-   protected:
-    void contextNotifyPop() override { d_te.notifyPop(); }
+    Output(Z3TheoryEngine& te) : d_te(te) {}
+    void lemma(const Node& lem,
+               theory::LemmaProperty p,
+               bool notifyDecisions) override;
+    void propagate(const Node& lit) override;
+    void preferPhase(TNode atom, bool phase) override;
+    void setModelUnsound(theory::IncompleteId id) override;
 
    private:
     Z3TheoryEngine& d_te;
   };
-  /** Note a pop of the SAT context, which syncLevel follows. */
-  void notifyPop();
-  /** Push or pop the core's scopes to the level of the SAT context. */
-  void syncLevel();
-  /** Send the conflict made of the host literals lits. */
-  void sendConflict(const std::vector<Literal>& lits);
-  /** Send the formulas recorded by the propositional side as lemmas. */
-  void sendLemmas();
-  /**
-   * Send the lemma lem, unless it was sent before, or send it again as a
-   * lemma local to the SAT context if local is true.
-   */
-  void sendLemma(const Node& lem, bool local, bool notifyDecisions);
-  /**
-   * The lemma to send for lem. CaDiCaL restarts on a clause that is a unit
-   * once the literals false at its base level are removed, to assign that
-   * literal at the base level. Most conflicts and many instances are such
-   * units here (the conflict that refutes a decision, the instance of an
-   * asserted quantifier whose guards are asserted), and the restart undoes
-   * every instance made since. Z3's search delays such units instead (see
-   * PropCore::resolveConflict). Below the second decision level, this
-   * weakens such a lemma with the negation of the first decision, so that
-   * CaDiCaL assigns its literal out of order at the first decision level
-   * and backtracks at most one level (chronological backtracking). The
-   * lemma itself is sent at the next check near the base level, with
-   * notifyDecisions as given.
-   */
-  Node delayUnit(const Node& lem, bool notifyDecisions);
-  /**
-   * Collect the literals the propositional side assigned since the last
-   * call, other than those the host asserted, that are atoms of cvc5's
-   * search, as propagations.
-   */
-  void collectPropagations();
-  /**
-   * Make the relevant, unassigned variables of the core into decisions for
-   * cvc5, with a splitting lemma (or v (not v)) that cvc5's decision heuristic
-   * must justify, unless one was sent before. These are the atoms the theory
-   * side expects the search to decide (for instance the case splits of
-   * datatypes, or the equalities of model-based combination), and the gates
-   * that relevancy needs assigned, which cvc5 may leave unassigned when it
-   * stops on a partial assignment.
-   */
-  void splitPendingAtoms();
-  /**
-   * Split on the variables that became relevant since the last call, which
-   * cvc5 does not know and are still unassigned, as the core's relevancy
-   * queue would decide them.
-   */
-  void splitNewlyRelevant();
-  /** Send the splitting lemma for v, unless it was sent before. */
-  void split(BoolVar v);
-  /** Propagate, and report what follows; returns false on a conflict. */
-  bool propagateAndReport();
-  /** The node of the literal l, as cvc5 knows it. */
-  Node literalNode(Literal l);
 
   /** The ported core. */
   SharedBackend d_backend;
   /** Whether cvc5's prop engine drives this engine. */
   bool d_hosted;
-  /** Whether the propositional side was set up (presolve). */
-  bool d_setup;
-  /** Whether a conflict was sent in the current context. */
-  bool d_conflictSent;
-  /** Whether cvc5 must call check again, see needCheck. */
-  bool d_needCheck;
+  /** The output of the core, hosted. */
+  Output d_output;
+  /** The core under cvc5's prop engine, hosted. */
+  std::unique_ptr<HostCore> d_core;
   /** The propagations not yet given to cvc5. */
   std::vector<Node> d_propagations;
-  /** How far in the assigned literals propagations were collected. */
-  size_t d_reportIdx;
-  /** The atoms registered by cvc5 before the next check. */
-  std::vector<Node> d_preregistered;
-  /** The lemmas sent, which are permanent in cvc5. */
-  std::unordered_set<Node> d_lemmasSent;
-  /**
-   * The lemmas weakened by delayUnit, to send as they are, see check, with
-   * whether cvc5's decision heuristic must justify them.
-   */
-  std::vector<std::pair<Node, bool>> d_delayedUnits;
-  /** Follows the pops of the SAT context. */
-  std::unique_ptr<PopNotify> d_popNotify;
 };
 
 }  // namespace z3

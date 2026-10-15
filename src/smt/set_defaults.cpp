@@ -136,9 +136,40 @@ void SetDefaults::setDefaultsPre(Options& opts)
   // src/z3/README.md. Reject what it cannot do rather than answering from
   // cvc5's own engines, which it leaves constructed but inactive and which
   // have therefore seen none of the assertions.
+  if (opts.theory.eeMode == options::EqEngineMode::NONE
+      && !(opts.z3.z3
+           && opts.z3.z3TheoryEngine == options::Z3TheoryEngineMode::CVC5))
+  {
+    // Only the port's theory slots work without equality engines. A
+    // subsolver copies the options of its parent with --z3 turned off.
+    SET_AND_NOTIFY(theory,
+                   eeMode,
+                   options::EqEngineMode::DISTRIBUTED,
+                   "no --z3-theory-engine=cvc5");
+  }
   if (opts.z3.z3)
   {
     checkZ3Capabilities(opts);
+    if (opts.z3.z3TheoryEngine == options::Z3TheoryEngineMode::CVC5)
+    {
+      // cvc5's theory engine over the port's components needs cvc5's prop
+      // engine, and no equality engines: the components share the port's
+      // E-graph (src/z3/ARCHITECTURE_PLAN.md, section 16).
+      if (!opts.z3.z3PropEngineWasSetByUser)
+      {
+        SET_AND_NOTIFY(z3,
+                       z3PropEngine,
+                       options::Z3PropEngineMode::CVC5,
+                       "--z3-theory-engine=cvc5");
+      }
+      else if (opts.z3.z3PropEngine != options::Z3PropEngineMode::CVC5)
+      {
+        throw OptionException(
+            "--z3-theory-engine=cvc5 requires --z3-prop-engine=cvc5");
+      }
+      SET_AND_NOTIFY(
+          theory, eeMode, options::EqEngineMode::NONE, "--z3-theory-engine=cvc5");
+    }
   }
   // safe options
   if (options().base.safeMode != options::SafeMode::UNRESTRICTED)

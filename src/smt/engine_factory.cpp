@@ -18,6 +18,7 @@
 #include "theory/theory_engine.h"
 #include "z3/z3_hosted_prop_engine.h"
 #include "z3/z3_prop_engine.h"
+#include "z3/theory_slot.h"
 #include "z3/z3_theory_engine.h"
 
 namespace cvc5::internal {
@@ -27,6 +28,13 @@ std::unique_ptr<TheoryEngine> EngineFactory::mkTheoryEngine(Env& env)
 {
   if (env.getOptions().z3.z3)
   {
+    if (env.getOptions().z3.z3TheoryEngine
+        == options::Z3TheoryEngineMode::CVC5)
+    {
+      // cvc5's own theory engine, with the port's components in its theory
+      // slots (addTheories)
+      return std::make_unique<TheoryEngine>(env);
+    }
     // With cvc5's prop engine, the theory engine is driven through the
     // search contract of TheoryEngine itself.
     bool hosted =
@@ -36,16 +44,36 @@ std::unique_ptr<TheoryEngine> EngineFactory::mkTheoryEngine(Env& env)
   return std::make_unique<TheoryEngine>(env);
 }
 
+bool EngineFactory::addTheories(Env& env, TheoryEngine* te)
+{
+  if (env.getOptions().z3.z3
+      && env.getOptions().z3.z3TheoryEngine
+             == options::Z3TheoryEngineMode::CVC5)
+  {
+    z3::addTheorySlots(env, *te);
+    return true;
+  }
+  return false;
+}
+
 std::unique_ptr<prop::PropEngine> EngineFactory::mkPropEngine(Env& env,
                                                               TheoryEngine* te)
 {
   if (env.getOptions().z3.z3)
   {
+    if (env.getOptions().z3.z3TheoryEngine
+        == options::Z3TheoryEngineMode::CVC5)
+    {
+      z3::SlotBackend& sb = z3::getSlotBackend(*te);
+      return std::make_unique<z3::Z3HostedPropEngine>(
+          env, te, sb.getBackend(), sb.getCore());
+    }
     Assert(dynamic_cast<z3::Z3TheoryEngine*>(te) != nullptr);
     z3::Z3TheoryEngine* zte = static_cast<z3::Z3TheoryEngine*>(te);
     if (zte->isHosted())
     {
-      return std::make_unique<z3::Z3HostedPropEngine>(env, zte);
+      return std::make_unique<z3::Z3HostedPropEngine>(
+          env, te, zte->getBackend(), zte->getCore());
     }
     return std::make_unique<z3::Z3PropEngine>(env, zte);
   }
