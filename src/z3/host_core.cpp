@@ -358,9 +358,10 @@ void HostCore::sendLemma(const Node& lem, bool local, bool notifyDecisions)
       return;
     }
   }
-  d_out.lemma(sent,
-              local ? theory::LemmaProperty::LOCAL : theory::LemmaProperty::NONE,
-              notifyDecisions);
+  d_out.lemma(
+      sent,
+      local ? theory::LemmaProperty::LOCAL : theory::LemmaProperty::NONE,
+      notifyDecisions);
   d_needCheck = true;
 }
 

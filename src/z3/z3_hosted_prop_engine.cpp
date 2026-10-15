@@ -15,10 +15,9 @@
 #include "z3/z3_hosted_prop_engine.h"
 
 #include "prop/cnf_stream.h"
-#include "z3/shared_backend.h"
-#include "z3/smt_context.h"
 #include "z3/host_core.h"
 #include "z3/shared_backend.h"
+#include "z3/smt_context.h"
 
 namespace cvc5::internal {
 namespace z3 {

@@ -335,7 +335,10 @@ QuantifierManager::QuantifierManager(QuantifierServices& ctx, Params& fp)
 
 QuantifierManager::~QuantifierManager() {}
 
-QuantifierServices& QuantifierManager::getContext() const { return d_imp->d_context; }
+QuantifierServices& QuantifierManager::getContext() const
+{
+  return d_imp->d_context;
+}
 
 void QuantifierManager::add(TNode q, uint32_t generation)
 {

@@ -360,10 +360,7 @@ class SmtContext final : protected EnvObj, public QuantifierServices
 
   const std::vector<Theory*>& theories() const { return d_theorySet; }
 
-  uint32_t getScopeLevel() const override
-  {
-    return d_prop.getScopeLevel();
-  }
+  uint32_t getScopeLevel() const override { return d_prop.getScopeLevel(); }
 
   uint32_t getBaseLevel() const { return d_prop.getBaseLevel(); }
 
@@ -442,10 +439,7 @@ class SmtContext final : protected EnvObj, public QuantifierServices
   TrailStack& getTrailStack() override { return d_trailStack; }
 
   // ------------------------------------------------------ internalization
-  bool bInternalized(TNode n) const override
-  {
-    return d_prop.bInternalized(n);
-  }
+  bool bInternalized(TNode n) const override { return d_prop.bInternalized(n); }
 
   bool litInternalized(TNode n) const override
   {

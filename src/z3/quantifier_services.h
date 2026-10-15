@@ -75,8 +75,7 @@ class QuantifierServices
   virtual bool isDiseq(ENode* n1, ENode* n2) const = 0;
   /** The generation of the class of e. */
   virtual uint32_t getGeneration(ENode* e) const = 0;
-  virtual uint32_t getMaxGeneration(size_t numENodes,
-                                    ENode* const* enodes) = 0;
+  virtual uint32_t getMaxGeneration(size_t numENodes, ENode* const* enodes) = 0;
   /** The value of the class of n, if it has one. */
   virtual bool getValue(ENode* n, Node& value) = 0;
   /** Internalize the ground term n of a pattern. */

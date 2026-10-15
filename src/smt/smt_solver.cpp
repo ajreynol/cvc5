@@ -63,8 +63,7 @@ void SmtSolver::finishInit()
   // Add the theories
   if (!EngineFactory::addTheories(d_env, d_theoryEngine.get()))
   {
-    for (theory::TheoryId id = theory::THEORY_FIRST;
-         id < theory::THEORY_LAST;
+    for (theory::TheoryId id = theory::THEORY_FIRST; id < theory::THEORY_LAST;
          ++id)
     {
       theory::TheoryConstructor::addTheory(d_theoryEngine.get(), id);

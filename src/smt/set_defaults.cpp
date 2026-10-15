@@ -180,8 +180,10 @@ void SetDefaults::setDefaultsPre(Options& opts)
     {
       // no equality engines: the components share the port's E-graph
       // (src/z3/ARCHITECTURE_PLAN.md, section 16)
-      SET_AND_NOTIFY(
-          theory, eeMode, options::EqEngineMode::NONE, "--z3-theory-engine=cvc5");
+      SET_AND_NOTIFY(theory,
+                     eeMode,
+                     options::EqEngineMode::NONE,
+                     "--z3-theory-engine=cvc5");
     }
   }
   // safe options

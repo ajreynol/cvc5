@@ -203,8 +203,7 @@ bool TheorySlot::ppAssert(TrustNode tin,
   return d_native->ppAssert(tin, outSubstitutions);
 }
 
-TrustNode TheorySlot::ppRewrite(TNode n,
-                                std::vector<theory::SkolemLemma>& lems)
+TrustNode TheorySlot::ppRewrite(TNode n, std::vector<theory::SkolemLemma>& lems)
 {
   return d_native->ppRewrite(n, lems);
 }
@@ -299,7 +298,8 @@ void addTheorySlots(Env& env, TheoryEngine& te)
 
 SlotBackend& getSlotBackend(TheoryEngine& te)
 {
-  TheorySlot* s = dynamic_cast<TheorySlot*>(te.theoryOf(theory::THEORY_BUILTIN));
+  TheorySlot* s =
+      dynamic_cast<TheorySlot*>(te.theoryOf(theory::THEORY_BUILTIN));
   Assert(s != nullptr);
   return s->getSlotBackend();
 }

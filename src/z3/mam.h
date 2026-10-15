@@ -39,8 +39,7 @@ class QuantifierServices;
 class Mam
 {
  public:
-  Mam(QuantifierServices& ctx, QuantifierManager& qm)
-      : d_context(ctx), d_qm(qm)
+  Mam(QuantifierServices& ctx, QuantifierManager& qm) : d_context(ctx), d_qm(qm)
   {
   }
 

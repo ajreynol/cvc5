@@ -152,10 +152,9 @@ class TheoryEngine : protected EnvObj
    * of the slot theoryId, as addTheory does for a theory class. Used to put
    * other implementations in the theory slots (--z3-theory-engine=cvc5).
    */
-  void addTheory(
-      theory::TheoryId theoryId,
-      const std::function<theory::Theory*(theory::OutputChannel&,
-                                          theory::Valuation)>& mk)
+  void addTheory(theory::TheoryId theoryId,
+                 const std::function<theory::Theory*(theory::OutputChannel&,
+                                                     theory::Valuation)>& mk)
   {
     Assert(d_theoryTable[theoryId] == nullptr
            && d_theoryOut[theoryId] == nullptr);

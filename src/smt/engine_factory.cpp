@@ -16,9 +16,9 @@
 #include "prop/prop_engine.h"
 #include "smt/env.h"
 #include "theory/theory_engine.h"
+#include "z3/theory_slot.h"
 #include "z3/z3_hosted_prop_engine.h"
 #include "z3/z3_prop_engine.h"
-#include "z3/theory_slot.h"
 #include "z3/z3_theory_engine.h"
 
 namespace cvc5::internal {
@@ -28,8 +28,7 @@ std::unique_ptr<TheoryEngine> EngineFactory::mkTheoryEngine(Env& env)
 {
   if (env.getOptions().z3.z3)
   {
-    if (env.getOptions().z3.z3TheoryEngine
-        == options::Z3TheoryEngineMode::CVC5)
+    if (env.getOptions().z3.z3TheoryEngine == options::Z3TheoryEngineMode::CVC5)
     {
       // cvc5's own theory engine, with the port's components in its theory
       // slots (addTheories)
@@ -61,8 +60,7 @@ std::unique_ptr<prop::PropEngine> EngineFactory::mkPropEngine(Env& env,
 {
   if (env.getOptions().z3.z3)
   {
-    if (env.getOptions().z3.z3TheoryEngine
-        == options::Z3TheoryEngineMode::CVC5)
+    if (env.getOptions().z3.z3TheoryEngine == options::Z3TheoryEngineMode::CVC5)
     {
       z3::SlotBackend& sb = z3::getSlotBackend(*te);
       return std::make_unique<z3::Z3HostedPropEngine>(
