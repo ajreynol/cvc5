@@ -80,6 +80,26 @@ struct Statistics
   uint64_t d_numInstancesSimplifyTrue;
   /** instances not asserted again, being permanent (--z3-qi-permanent) */
   uint64_t d_numInstancesRediscovered;
+  /** Under cvc5's prop engine (--z3-prop-engine=cvc5): */
+  /** checks at standard and full effort */
+  uint64_t d_numHostChecks;
+  uint64_t d_numHostFullChecks;
+  /** pops of the core's scopes, and scopes popped */
+  uint64_t d_numHostPops;
+  uint64_t d_numHostScopesPopped;
+  /** pops to the base level, which are cvc5's restarts */
+  uint64_t d_numHostRestarts;
+  /** lemmas sent, and lemmas not sent again */
+  uint64_t d_numHostLemmas;
+  uint64_t d_numHostDuplicateLemmas;
+  /** conflicts, propagations and explanations given to cvc5 */
+  uint64_t d_numHostConflicts;
+  uint64_t d_numHostPropagations;
+  uint64_t d_numHostExplanations;
+  /** splitting lemmas for relevant, unassigned variables */
+  uint64_t d_numHostSplits;
+  /** lemmas sent weakened, see Z3TheoryEngine::delayUnit */
+  uint64_t d_numHostDelayedUnits;
   /** matches that were already instantiated (Z3's missed instantiations) */
   uint64_t d_numMissedInstances;
   /** relevantEh calls the matcher received */

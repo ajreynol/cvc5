@@ -1289,6 +1289,10 @@ void PropCore::relevantEh(TNode n)
         d_ctx.enqueueAtom(Literal(v, val == L_FALSE));
       }
     }
+    if (d_hosted && getAssignment(v) == L_UNDEF)
+    {
+      d_hostRelevant.push_back(n);
+    }
   }
   d_caseSplitQueue->relevantEh(n);
   d_ctx.relevantEh(n);
@@ -3023,12 +3027,6 @@ void PropCore::mkClause(Literal l1, Literal l2, Literal l3, Justification* j)
 void PropCore::hostInit()
 {
   d_hosted = true;
-  // cvc5 asserts atoms that are not in this side's encoding of the input,
-  // for instance those its rewriter makes of the atoms of lemmas, so their
-  // relevance is unknown here. Every assigned atom other than a quantifier
-  // reaches the theories, as with --no-z3-relevancy-deliver (B1a, which
-  // made no difference); relevancy still restricts matching and the checker.
-  d_params.d_relevancyDeliver = false;
   checkPreamble();
   d_ctx.setupContext(d_params.d_autoConfig);
   popToBaseLvl();
@@ -3189,10 +3187,14 @@ void PropCore::hostExplainConflict(std::vector<Literal>& out)
   hostExpand(todo, out);
 }
 
-void PropCore::hostTakeLemmas(std::vector<Node>& out)
+void PropCore::hostTakeLemmas(std::vector<Node>& lemmas,
+                              std::vector<Node>& instances)
 {
-  out.insert(out.end(), d_hostLemmas.begin(), d_hostLemmas.end());
+  lemmas.insert(lemmas.end(), d_hostLemmas.begin(), d_hostLemmas.end());
   d_hostLemmas.clear();
+  instances.insert(
+      instances.end(), d_hostInstances.begin(), d_hostInstances.end());
+  d_hostInstances.clear();
 }
 
 FinalCheckStatus PropCore::hostFinalCheck(Failure& f)

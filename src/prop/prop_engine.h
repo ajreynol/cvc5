@@ -173,11 +173,14 @@ class PropEngine : protected EnvObj
    * form preprocessing produces, and whose lemmas must refer to the same
    * atoms as the SAT solver's, such as the ported Z3 core
    * (z3::Z3TheoryEngine): preprocessing would rewrite a lemma made of
-   * assigned literals into one over new atoms.
+   * assigned literals into one over new atoms. If notifyDecisions is false,
+   * the lemma is not an assertion for the decision engine either, which then
+   * does not need to justify it.
    */
   void assertLemmaUnprocessed(theory::InferenceId id,
                               TrustNode tlemma,
-                              theory::LemmaProperty p);
+                              theory::LemmaProperty p,
+                              bool notifyDecisions = true);
 
   /**
    * This is called when a theory propagation was explained with texp.
@@ -461,7 +464,8 @@ class PropEngine : protected EnvObj
                             const std::vector<theory::SkolemLemma>& ppLemmas,
                             bool removable,
                             bool inprocess,
-                            bool local);
+                            bool local,
+                            bool notifyDecisions = true);
 
   /**
    * Indicates that the SAT solver is currently solving something and we should

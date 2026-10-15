@@ -225,7 +225,8 @@ void PropEngine::assertLemma(theory::InferenceId id,
 
 void PropEngine::assertLemmaUnprocessed(theory::InferenceId id,
                                         TrustNode tlemma,
-                                        theory::LemmaProperty p)
+                                        theory::LemmaProperty p,
+                                        bool notifyDecisions)
 {
   Trace("te-lemma") << "Unprocessed lemma: " << tlemma.getProven() << std::endl;
   std::vector<theory::SkolemLemma> ppLemmas;
@@ -234,7 +235,8 @@ void PropEngine::assertLemmaUnprocessed(theory::InferenceId id,
                        ppLemmas,
                        isLemmaPropertyRemovable(p),
                        isLemmaPropertyInprocess(p),
-                       isLemmaPropertyLocal(p));
+                       isLemmaPropertyLocal(p),
+                       notifyDecisions);
 }
 
 void PropEngine::assertTrustedLemmaInternal(theory::InferenceId id,
@@ -329,7 +331,8 @@ void PropEngine::assertLemmasInternal(
     const std::vector<theory::SkolemLemma>& ppLemmas,
     bool removable,
     bool inprocess,
-    bool local)
+    bool local,
+    bool notifyDecisions)
 {
   // notify skolem definitions first to ensure that the computation of
   // when a literal contains a skolem is accurate in the calls below.
@@ -367,7 +370,7 @@ void PropEngine::assertLemmasInternal(
   // block after the one below has mixed performance on SMT-LIB strings logics.
   Trace("prop") << "Notify assertions..." << std::endl;
   // also add to the decision engine, where notice we don't need proofs
-  if (!trn.isNull())
+  if (!trn.isNull() && notifyDecisions)
   {
     // notify the theory proxy of the lemma
     d_theoryProxy->notifyAssertion(trn.getProven(), TNode::null(), true, local);

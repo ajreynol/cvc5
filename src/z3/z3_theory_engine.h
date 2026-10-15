@@ -19,6 +19,7 @@
 
 #include <memory>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "context/context.h"
@@ -95,12 +96,34 @@ class Z3TheoryEngine : public TheoryEngine
    private:
     Z3TheoryEngine& d_te;
   };
-  /** Follow a pop of the SAT context. */
+  /** Note a pop of the SAT context, which syncLevel follows. */
   void notifyPop();
+  /** Push or pop the core's scopes to the level of the SAT context. */
+  void syncLevel();
   /** Send the conflict made of the host literals lits. */
   void sendConflict(const std::vector<Literal>& lits);
   /** Send the formulas recorded by the propositional side as lemmas. */
   void sendLemmas();
+  /**
+   * Send the lemma lem, unless it was sent before, or send it again as a
+   * lemma local to the SAT context if local is true.
+   */
+  void sendLemma(const Node& lem, bool local, bool notifyDecisions);
+  /**
+   * The lemma to send for lem. CaDiCaL restarts on a clause that is a unit
+   * once the literals false at its base level are removed, to assign that
+   * literal at the base level. Most conflicts and many instances are such
+   * units here (the conflict that refutes a decision, the instance of an
+   * asserted quantifier whose guards are asserted), and the restart undoes
+   * every instance made since. Z3's search delays such units instead (see
+   * PropCore::resolveConflict). Below the second decision level, this
+   * weakens such a lemma with the negation of the first decision, so that
+   * CaDiCaL assigns its literal out of order at the first decision level
+   * and backtracks at most one level (chronological backtracking). The
+   * lemma itself is sent at the next check near the base level, with
+   * notifyDecisions as given.
+   */
+  Node delayUnit(const Node& lem, bool notifyDecisions);
   /**
    * Collect the literals the propositional side assigned since the last
    * call, other than those the host asserted, that are atoms of cvc5's
@@ -117,9 +140,17 @@ class Z3TheoryEngine : public TheoryEngine
    * stops on a partial assignment.
    */
   void splitPendingAtoms();
+  /**
+   * Split on the variables that became relevant since the last call, which
+   * cvc5 does not know and are still unassigned, as the core's relevancy
+   * queue would decide them.
+   */
+  void splitNewlyRelevant();
+  /** Send the splitting lemma for v, unless it was sent before. */
+  void split(BoolVar v);
   /** Propagate, and report what follows; returns false on a conflict. */
   bool propagateAndReport();
-  /** The node of the literal l. */
+  /** The node of the literal l, as cvc5 knows it. */
   Node literalNode(Literal l);
 
   /** The ported core. */
@@ -140,6 +171,11 @@ class Z3TheoryEngine : public TheoryEngine
   std::vector<Node> d_preregistered;
   /** The lemmas sent, which are permanent in cvc5. */
   std::unordered_set<Node> d_lemmasSent;
+  /**
+   * The lemmas weakened by delayUnit, to send as they are, see check, with
+   * whether cvc5's decision heuristic must justify them.
+   */
+  std::vector<std::pair<Node, bool>> d_delayedUnits;
   /** Follows the pops of the SAT context. */
   std::unique_ptr<PopNotify> d_popNotify;
 };

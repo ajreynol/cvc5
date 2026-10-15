@@ -1042,8 +1042,16 @@ benchmarks, though not on the regressions. The corrections, each needed:
   justification. Stopping at it would have presented cvc5 with a reason
   assigned after the literal it explains, which made CaDiCaL's conflict
   analysis crash.
-- **Delivery is unfiltered** (B1a): cvc5 asserts atoms whose relevance the
-  core cannot know.
+- **The core's not-gate variables reach cvc5 as their argument.** The core
+  has variables for the not-gates nested in terms, whose atom is itself a
+  negation. Their negative literal, and the splitting lemma over them, would
+  have been a double negation, which cvc5 meets unrewritten (lemmas are not
+  preprocessed) and has no literal for; this crashed on three anvil
+  benchmarks.
+- **Delivery is filtered by relevancy, as in the core's own search.** It was
+  unfiltered at first (B1a), which hid the datatypes split rewritten into an
+  equality; with lemmas no longer preprocessed, cvc5 asserts the core's own
+  atoms, and the filter is back.
 
 Two things tried and not kept: caching instances in the core (B2c) makes
 the hosted engine slower and solve fewer, since cvc5 keeps the instance
@@ -1065,3 +1073,88 @@ many matches as the core's own search, while the mirror's own work
 cvc5's justification heuristic takes about 8% of the time. The search
 itself (cvc5's decisions and backtracking under the theory side's eager
 instantiation) is the place to look next.
+
+### Closing the gap
+
+Measured on a development set of 88 benchmarks (the 24 the core's own
+search solves and the hosted engine did not, and the 60 slowest of the
+others; 10 s), where the core's own search solves 87 in 169 s.
+
+**The core pops lazily, and reports only its theory propagations.** cvc5
+pops its context one level at a time when it backjumps; the core follows
+when it is next asked something, popping all the levels at once. Of the
+core's assignments, only those a theory derived are reported as
+propagations: what the core derives from a clause, cvc5 derives from the
+same clause. Neither changed the solved count (61 then).
+
+**CaDiCaL restarts on every unit lemma, and the core's search does not.**
+CaDiCaL backtracks to its base level for a clause that is a unit once the
+literals false there are removed (`add_new_original_clause` and
+`handle_external_clause`), to assign that literal there. Most of the
+hosted engine's conflicts are such units (the conflict that refutes a
+decision: on `mimalloc-smt-alloc_generic.5`, 322 of the 364 clauses the
+core's own search learns are units), and so are many instances (of an
+asserted quantifier whose guards are asserted). Each restart undid every
+instance made since, which matching then made again, and cvc5's heuristic
+decided again everything it had decided: 30 decisions per conflict
+against 3 for the core's own search, and nine times its matches. The
+core's search avoids this with Z3's `delay_units`: it backjumps one level
+and asserts the unit there again after every backtrack, until a restart
+asserts it at the base level. Without `delay_units`, the core's own
+search behaves on that benchmark like the hosted engine (3.2 s against
+0.8 s, eight times the instances), and solves 83 of the development set
+in 197 s.
+
+The hosted engine now does the same (`--z3-host-delay-units`, on by
+default): below the second decision level, a lemma that would be a unit
+at the base level is weakened with the negation of the first decision.
+CaDiCaL then backtracks to the conflict level, minus one, and assigns the
+literal out of order at the first level (chronological backtracking),
+where it stays until CaDiCaL backtracks below that level. The weakened
+lemma holds only under that decision, so it is not counted as sent: when
+the core makes it again under another first decision, it is sent again.
+The lemma itself is sent at the next check at the first level or below,
+where it costs at most one level, as Z3 asserts its delayed units after a
+restart. Without that last part, the same unit was refuted again after
+every change of the first decision (420 literals refuted 3,802 times on a
+controller benchmark). With it, `mimalloc-smt-alloc_generic.5` takes
+0.7 s (0.8 s for the core's search; 2.4 s before), and the hosted engine
+solves 74 of the development set in 280 s (62 in 359 s before).
+
+CaDiCaL's own options do not help: no restarts, and always
+chronological backtracking, change nothing, since these backtracks come
+from the lemmas, not from CaDiCaL's restart policy or its conflict
+analysis.
+
+**Tried and not kept** (development set, with delayed units):
+
+- Instances local to the SAT context (`--z3-host-local-instances`): 73.
+  cvc5's heuristic then decides far less on some benchmarks (a fifth of
+  the time on `cs59`) and far more on others; mixed.
+- Splitting lemmas local to the SAT context: 65.
+- Permanent instances with scoped relevancy (B2c): 70.
+- Theory axioms not justified by cvc5's heuristic
+  (`--no-z3-host-axiom-decisions`): 74, no difference.
+- Not internalizing the atoms cvc5 registers until cvc5 asserts them: 74,
+  5% less time. On `cs59` (three times faster), the arithmetic tableau is
+  otherwise ten times the size of the core's own search's, and pivoting
+  takes three quarters of the time.
+- Instances not justified by cvc5's heuristic at all: fast unknowns. The
+  core's relevancy makes the disjuncts of a true disjunction relevant only
+  once one is true, so the final check finds nothing to split; the core's
+  case split queue decides such a disjunction itself.
+
+**What remains.** cvc5 keeps every instance it is sent, and its heuristic
+justifies all of them, in every branch; the core's own search keeps only
+the instances of the current branch. Without restarts to cut it, the
+trail grows deep: on `alloc_generic.3` up to 2,004 levels (the core's own
+search makes 2,285 decisions in all). Local instances are the direct
+answer to this, and the next thing to understand is why they make some
+benchmarks worse.
+
+**Status** (10 s, `verus-best`, with delayed units): on every tenth
+benchmark of `quant-07-25` (613), 572 solved against 587 for the core's
+own search (561 before), with no "sat" answers, no errors, and 2 unknowns
+against 4; 15% slower on the 568 both solve (27% before). On the
+quantified regressions with assertions, no wrong answers and no failures
+other than those without the switch.

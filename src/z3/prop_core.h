@@ -578,14 +578,23 @@ class PropCore : protected EnvObj
   /** As hostExplain, for the current conflict. */
   void hostExplainConflict(std::vector<Literal>& out);
   /** Record the formula n, an instance, to be asserted by the host. */
-  void hostRecordLemma(TNode n) { d_hostLemmas.push_back(n); }
+  void hostRecordInstance(TNode n) { d_hostInstances.push_back(n); }
   /**
-   * Move to out the formulas recorded for the host since the last call:
-   * instances, and the clauses of theory axioms and lemmas.
+   * Move to lemmas the clauses of theory axioms and lemmas recorded for the
+   * host since the last call, and to instances the instances.
    */
-  void hostTakeLemmas(std::vector<Node>& out);
+  void hostTakeLemmas(std::vector<Node>& lemmas, std::vector<Node>& instances);
   /** Propagate to a fixpoint; returns false on a conflict. */
   bool hostPropagate() { return propagate(); }
+  /**
+   * Move to out the expressions of the variables that became relevant while
+   * unassigned since the last call.
+   */
+  void hostTakeRelevant(std::vector<Node>& out)
+  {
+    out.insert(out.end(), d_hostRelevant.begin(), d_hostRelevant.end());
+    d_hostRelevant.clear();
+  }
   /** Run the theory side's final check. */
   FinalCheckStatus hostFinalCheck(Failure& f);
 
@@ -881,6 +890,9 @@ class PropCore : protected EnvObj
   std::vector<bool> d_hostAssigned;
   /** The formulas recorded for the host; see hostTakeLemmas. */
   std::vector<Node> d_hostLemmas;
+  std::vector<Node> d_hostInstances;
+  /** The unassigned variables that became relevant; see hostTakeRelevant. */
+  std::vector<Node> d_hostRelevant;
 
   /** The theory side. */
   SmtContext& d_ctx;

@@ -1654,7 +1654,7 @@ bool SmtContext::internalizeInstance(TNode body,
   if (d_prop.isHosted())
   {
     // under cvc5's prop engine, the instance is also a lemma there
-    d_prop.hostRecordLemma(norm);
+    d_prop.hostRecordInstance(norm);
   }
   internalizeAssertion(norm, generation);
   return false;
@@ -2235,6 +2235,18 @@ void SmtContext::registerStatistics()
   add("z3::instancesCheckerSat", d_stats.d_numInstancesCheckerSat);
   add("z3::instancesSimplifyTrue", d_stats.d_numInstancesSimplifyTrue);
   add("z3::instancesRediscovered", d_stats.d_numInstancesRediscovered);
+  add("z3::hostChecks", d_stats.d_numHostChecks);
+  add("z3::hostFullChecks", d_stats.d_numHostFullChecks);
+  add("z3::hostPops", d_stats.d_numHostPops);
+  add("z3::hostScopesPopped", d_stats.d_numHostScopesPopped);
+  add("z3::hostRestarts", d_stats.d_numHostRestarts);
+  add("z3::hostLemmas", d_stats.d_numHostLemmas);
+  add("z3::hostDuplicateLemmas", d_stats.d_numHostDuplicateLemmas);
+  add("z3::hostConflicts", d_stats.d_numHostConflicts);
+  add("z3::hostPropagations", d_stats.d_numHostPropagations);
+  add("z3::hostExplanations", d_stats.d_numHostExplanations);
+  add("z3::hostSplits", d_stats.d_numHostSplits);
+  add("z3::hostDelayedUnits", d_stats.d_numHostDelayedUnits);
   add("z3::missedInstances", d_stats.d_numMissedInstances);
   add("z3::mamRelevantEh", d_stats.d_numMamRelevantEh);
   add("z3::mamRelevantApp", d_stats.d_numMamRelevantApp);

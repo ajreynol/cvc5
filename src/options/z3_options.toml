@@ -24,6 +24,30 @@ name   = "Z3 Core"
   name = "cvc5"
   help = "cvc5's propositional engine (CNF conversion, CDCL(T) solver, decision heuristic), with PropCore mirroring the assignment for the theory side."
 
+[[option]]
+  name       = "z3HostAxiomDecisions"
+  category   = "expert"
+  long       = "z3-host-axiom-decisions"
+  type       = "bool"
+  default    = "true"
+  help       = "with --z3-prop-engine=cvc5, make the theory axioms and lemmas of the ported core assertions of cvc5's decision heuristic, which then justifies them; when false they are only clauses, as in Z3, where relevancy does not make them goals"
+
+[[option]]
+  name       = "z3HostLocalInstances"
+  category   = "expert"
+  long       = "z3-host-local-instances"
+  type       = "bool"
+  default    = "false"
+  help       = "with --z3-prop-engine=cvc5, send quantifier instances as lemmas local to the SAT context (as cvc5's --inst-local), so that cvc5's decision heuristic considers an instance only where it was last made"
+
+[[option]]
+  name       = "z3HostDelayUnits"
+  category   = "expert"
+  long       = "z3-host-delay-units"
+  type       = "bool"
+  default    = "true"
+  help       = "with --z3-prop-engine=cvc5, weaken a lemma that is a unit at the base level of the SAT solver with the negation of the first decision, so that the SAT solver assigns its literal at the first decision level rather than restarting (as Z3's delay_units)"
+
 # ---------------------------------------------------------------- core search
 
 [[option]]

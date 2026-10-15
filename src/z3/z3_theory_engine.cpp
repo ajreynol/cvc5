@@ -16,6 +16,7 @@
 
 #include "base/output.h"
 #include "expr/node_algorithm.h"
+#include "options/z3_options.h"
 #include "proof/trust_node.h"
 #include "prop/prop_engine.h"
 #include "smt/env.h"
@@ -93,7 +94,7 @@ void Z3TheoryEngine::assertFact(TNode literal)
     return;
   }
   PropCore& core = d_backend.getPropCore();
-  core.hostSyncLevel(context()->getLevel());
+  syncLevel();
   Trace("z3-host") << "assert " << literal << std::endl;
   Literal l = core.hostLiteral(literal);
   std::vector<Literal> conflict;
@@ -113,6 +114,12 @@ void Z3TheoryEngine::check(theory::Theory::Effort effort)
   d_needCheck = false;
   // cvc5 has taken the propagations of the previous check
   d_propagations.clear();
+  Statistics& stats = d_backend.getContext().getStats();
+  stats.d_numHostChecks++;
+  if (theory::Theory::fullEffort(effort))
+  {
+    stats.d_numHostFullChecks++;
+  }
   Trace("z3-host") << "check " << effort << " at level "
                    << context()->getLevel() << " conflictSent "
                    << d_conflictSent << std::endl;
@@ -127,7 +134,26 @@ void Z3TheoryEngine::check(theory::Theory::Effort effort)
     return;
   }
   PropCore& core = d_backend.getPropCore();
-  core.hostSyncLevel(context()->getLevel());
+  syncLevel();
+  if (context()->getLevel() <= 1 && !d_delayedUnits.empty())
+  {
+    // As Z3 asserts its delayed units after a restart, the lemmas weakened
+    // by delayUnit are sent as they are near the base level, where CaDiCaL
+    // backtracks at most one level for them.
+    for (const std::pair<Node, bool>& du : d_delayedUnits)
+    {
+      if (d_lemmasSent.insert(du.first).second)
+      {
+        getPropEngine()->assertLemmaUnprocessed(
+            theory::InferenceId::UNKNOWN,
+            TrustNode::mkTrustLemma(du.first),
+            theory::LemmaProperty::NONE,
+            du.second);
+        d_needCheck = true;
+      }
+    }
+    d_delayedUnits.clear();
+  }
   for (const Node& atom : d_preregistered)
   {
     core.hostLiteral(atom);
@@ -247,11 +273,13 @@ TrustNode Z3TheoryEngine::getExplanation(TNode literal)
   {
     return TheoryEngine::getExplanation(literal);
   }
+  syncLevel();
   PropCore& core = d_backend.getPropCore();
   Literal l = core.hostLiteral(literal);
   Assert(core.getAssignment(l) == L_TRUE);
   std::vector<Literal> lits;
   core.hostExplain(l, lits);
+  d_backend.getContext().getStats().d_numHostExplanations++;
   NodeManager* nm = nodeManager();
   Node exp;
   if (lits.empty())
@@ -289,13 +317,27 @@ void Z3TheoryEngine::notifyPop()
   {
     return;
   }
+  // The core follows when it is next asked something (syncLevel): a
+  // backjump pops the SAT context one level at a time, and the core pops
+  // all of them at once.
+  d_conflictSent = false;
+}
+
+void Z3TheoryEngine::syncLevel()
+{
   PropCore& core = d_backend.getPropCore();
   uint32_t lvl = context()->getLevel();
   if (core.getScopeLevel() > lvl)
   {
-    core.hostSyncLevel(lvl);
+    Statistics& stats = d_backend.getContext().getStats();
+    stats.d_numHostPops++;
+    stats.d_numHostScopesPopped += core.getScopeLevel() - lvl;
+    if (lvl == 0)
+    {
+      stats.d_numHostRestarts++;
+    }
   }
-  d_conflictSent = false;
+  core.hostSyncLevel(lvl);
   size_t size = core.assignedLiterals().size();
   if (d_reportIdx > size)
   {
@@ -314,9 +356,11 @@ void Z3TheoryEngine::sendConflict(const std::vector<Literal>& lits)
   Node lem = disj.empty()       ? nm->mkConst(false)
              : disj.size() == 1 ? disj[0]
                                 : nm->mkNode(Kind::OR, disj);
+  lem = delayUnit(lem, false);
   getPropEngine()->assertLemmaUnprocessed(theory::InferenceId::UNKNOWN,
                                           TrustNode::mkTrustLemma(lem),
                                           theory::LemmaProperty::NONE);
+  d_backend.getContext().getStats().d_numHostConflicts++;
   d_conflictSent = true;
   d_needCheck = true;
 }
@@ -324,20 +368,107 @@ void Z3TheoryEngine::sendConflict(const std::vector<Literal>& lits)
 void Z3TheoryEngine::sendLemmas()
 {
   std::vector<Node> lems;
-  d_backend.getPropCore().hostTakeLemmas(lems);
+  std::vector<Node> insts;
+  d_backend.getPropCore().hostTakeLemmas(lems, insts);
+  // With --z3-host-local-instances, an instance is local to the SAT context,
+  // as with cvc5's --inst-local: cvc5 adds its clause once, but its decision
+  // heuristic treats it as an assertion only in the context where it was
+  // last made. The core makes it again when matching finds it again after
+  // backtracking, as Z3 does, and it is then sent again, which makes it an
+  // assertion there again. Otherwise an instance is sent once.
+  bool local = options().z3.z3HostLocalInstances;
+  for (const Node& inst : insts)
+  {
+    sendLemma(inst, local, true);
+  }
   for (const Node& lem : lems)
   {
-    // cvc5 keeps its lemmas, while the core makes an instance or an axiom
-    // again after backtracking
-    if (!d_lemmasSent.insert(lem).second)
+    sendLemma(lem, false, options().z3.z3HostAxiomDecisions);
+  }
+}
+
+void Z3TheoryEngine::sendLemma(const Node& lem,
+                               bool local,
+                               bool notifyDecisions)
+{
+  Statistics& stats = d_backend.getContext().getStats();
+  // cvc5 keeps its lemmas, while the core makes an instance or an axiom
+  // again after backtracking, so a lemma is sent once. A lemma weakened by
+  // delayUnit holds only under the first decision it was weakened with, so
+  // it is sent again when the core makes it again, as is or weakened by the
+  // first decision of then.
+  Node sent = lem;
+  if (d_lemmasSent.find(lem) == d_lemmasSent.end())
+  {
+    sent = delayUnit(lem, notifyDecisions);
+  }
+  if (d_lemmasSent.insert(sent).second)
+  {
+    stats.d_numHostLemmas++;
+  }
+  else
+  {
+    stats.d_numHostDuplicateLemmas++;
+    if (!local)
     {
+      return;
+    }
+  }
+  getPropEngine()->assertLemmaUnprocessed(
+      theory::InferenceId::UNKNOWN,
+      TrustNode::mkTrustLemma(sent),
+      local ? theory::LemmaProperty::LOCAL : theory::LemmaProperty::NONE,
+      notifyDecisions);
+  d_needCheck = true;
+}
+
+Node Z3TheoryEngine::delayUnit(const Node& lem, bool notifyDecisions)
+{
+  if (!options().z3.z3HostDelayUnits || context()->getLevel() < 2)
+  {
+    return lem;
+  }
+  prop::PropEngine* pe = getPropEngine();
+  std::vector<Node> disj;
+  if (lem.getKind() == Kind::OR)
+  {
+    disj.insert(disj.end(), lem.begin(), lem.end());
+  }
+  else
+  {
+    disj.push_back(lem);
+  }
+  // the disjuncts that are not false at the base level
+  size_t open = 0;
+  for (const Node& d : disj)
+  {
+    bool pol = d.getKind() != Kind::NOT;
+    TNode atom = pol ? d : d[0];
+    bool value;
+    if (pe->isSatLiteral(atom) && pe->isFixed(atom)
+        && pe->hasValue(atom, value))
+    {
+      if (value == pol)
+      {
+        // satisfied at the base level, which CaDiCaL ignores
+        return lem;
+      }
       continue;
     }
-    getPropEngine()->assertLemmaUnprocessed(theory::InferenceId::UNKNOWN,
-                                            TrustNode::mkTrustLemma(lem),
-                                            theory::LemmaProperty::NONE);
-    d_needCheck = true;
+    if (++open > 1)
+    {
+      return lem;
+    }
   }
+  std::vector<Node> decisions = pe->getPropDecisions();
+  if (decisions.empty())
+  {
+    return lem;
+  }
+  disj.push_back(decisions[0].negate());
+  d_backend.getContext().getStats().d_numHostDelayedUnits++;
+  d_delayedUnits.emplace_back(lem, notifyDecisions);
+  return nodeManager()->mkNode(Kind::OR, disj);
 }
 
 void Z3TheoryEngine::collectPropagations()
@@ -353,7 +484,12 @@ void Z3TheoryEngine::collectPropagations()
   {
     Literal l = assigned[d_reportIdx];
     BoolVar v = l.var();
-    if (core.isHostAssigned(v))
+    // Only the theory side's own propagations: what this side derives from
+    // its clauses, cvc5 derives from the same clauses, or learns through a
+    // conflict when the clause is this side's only (a gate of a term ITE,
+    // for instance).
+    if (core.isHostAssigned(v)
+        || core.getJustification(v).getKind() != BJustification::JUSTIFICATION)
     {
       continue;
     }
@@ -364,38 +500,72 @@ void Z3TheoryEngine::collectPropagations()
       continue;
     }
     d_propagations.push_back(literalNode(l));
+    d_backend.getContext().getStats().d_numHostPropagations++;
   }
+}
+
+void Z3TheoryEngine::splitNewlyRelevant()
+{
+  PropCore& core = d_backend.getPropCore();
+  std::vector<Node> rel;
+  core.hostTakeRelevant(rel);
+  prop::PropEngine* pe = getPropEngine();
+  for (const Node& n : rel)
+  {
+    // A variable cvc5 knows is decided by its heuristic when an assertion
+    // needs it; the core's own variables (the conditions of term ITEs, for
+    // instance) are decided only through a split.
+    if (!core.bInternalized(n) || pe->isSatLiteral(n))
+    {
+      continue;
+    }
+    BoolVar v = core.getBoolVar(n);
+    if (core.getAssignment(v) == L_UNDEF && core.isRelevant(v))
+    {
+      split(v);
+    }
+  }
+}
+
+void Z3TheoryEngine::split(BoolVar v)
+{
+  PropCore& core = d_backend.getPropCore();
+  prop::PropEngine* pe = getPropEngine();
+  TNode atom = core.boolVar2Expr(v);
+  if (atom.isNull() || atom.isConst())
+  {
+    return;
+  }
+  // The core has variables for the not-gates nested in terms; cvc5 splits
+  // on their argument, since lemmas are not rewritten (see literalNode).
+  bool pol = atom.getKind() != Kind::NOT;
+  TNode a = pol ? atom : atom[0];
+  Node lem = nodeManager()->mkNode(Kind::OR, a, a.notNode());
+  if (!d_lemmasSent.insert(lem).second)
+  {
+    return;
+  }
+  getPropEngine()->assertLemmaUnprocessed(theory::InferenceId::UNKNOWN,
+                                          TrustNode::mkTrustLemma(lem),
+                                          theory::LemmaProperty::NONE);
+  d_backend.getContext().getStats().d_numHostSplits++;
+  if (core.tryTrueFirst(v) && pe->isSatLiteral(a))
+  {
+    pe->preferPhase(a, pol);
+  }
+  d_needCheck = true;
 }
 
 void Z3TheoryEngine::splitPendingAtoms()
 {
   PropCore& core = d_backend.getPropCore();
-  prop::PropEngine* pe = getPropEngine();
-  NodeManager* nm = nodeManager();
   for (size_t i = 0, n = core.getNumBoolVars(); i < n; ++i)
   {
     BoolVar v = static_cast<BoolVar>(i);
-    TNode atom = core.boolVar2Expr(v);
-    if (atom.isNull() || atom.isConst() || core.getAssignment(v) != L_UNDEF
-        || !core.isRelevant(v))
+    if (core.getAssignment(v) == L_UNDEF && core.isRelevant(v))
     {
-      continue;
+      split(v);
     }
-    Node lem = nm->mkNode(Kind::OR, atom, atom.notNode());
-    Trace("z3-host") << "split " << atom << std::endl;
-    if (!d_lemmasSent.insert(lem).second)
-    {
-      continue;
-    }
-    getPropEngine()->assertLemmaUnprocessed(theory::InferenceId::UNKNOWN,
-                                            TrustNode::mkTrustLemma(lem),
-                                            theory::LemmaProperty::NONE);
-    // cvc5's preprocessing of the lemma may have rewritten the atom
-    if (core.tryTrueFirst(v) && pe->isSatLiteral(atom))
-    {
-      pe->preferPhase(atom, true);
-    }
-    d_needCheck = true;
   }
 }
 
@@ -413,12 +583,21 @@ bool Z3TheoryEngine::propagateAndReport()
     return false;
   }
   collectPropagations();
+  splitNewlyRelevant();
   return true;
 }
 
 Node Z3TheoryEngine::literalNode(Literal l)
 {
-  return d_backend.getPropCore().literal2Expr(l);
+  PropCore& core = d_backend.getPropCore();
+  if (l == s_trueLiteral || l == s_falseLiteral)
+  {
+    return core.literal2Expr(l);
+  }
+  // The core has variables for the not-gates nested in terms, whose negative
+  // literal is cvc5's atom rather than a double negation.
+  Node atom = core.boolVar2Expr(l.var());
+  return l.sign() ? atom.negate() : atom;
 }
 
 }  // namespace z3
