@@ -107,17 +107,38 @@ Result SmtDriverZ3Replay::checkSatNext(preprocessing::AssertionPipeline& ap)
   theory::initializeSubsolver(nodeManager(), port, ssi, timeout != 0, timeout);
   Result portResult;
   std::map<Node, std::vector<std::vector<Node>>> insts;
+  const bool traceReplay = TraceIsOn("z3-replay");
   {
     TimerStat::CodeTimer timer(d_portTime);
     for (Node a : d_smt.getPreprocessedAssertions())
     {
       port->assertFormula(a);
     }
+    Trace("z3-replay") << "z3-replay: start Z3 subsolver call (assertions="
+                       << d_smt.getPreprocessedAssertions().size() << ")"
+                       << std::endl;
     portResult = port->checkSat();
-    Trace("z3-replay") << "z3-replay: port " << portResult << std::endl;
-    if (portResult.getStatus() == Result::UNSAT)
+    // Also expose partial recordings for sat/unknown when tracing. Only an
+    // unsat result passes these hints to native confirmation below.
+    if (portResult.getStatus() == Result::UNSAT || traceReplay)
     {
       port->getInstantiationTermVectors(insts);
+    }
+    if (traceReplay)
+    {
+      size_t numInstantiations = 0;
+      for (const auto& entry : insts)
+      {
+        numInstantiations += entry.second.size();
+      }
+      Trace("z3-replay")
+          << "z3-replay: Z3 subsolver result=" << portResult
+          << ", recorded-instantiations=" << numInstantiations
+          << ", unsat-core-instantiations="
+          << (portResult.getStatus() == Result::UNSAT
+                  ? "unavailable (Z3 port does not track unsat cores)"
+                  : "not-applicable")
+          << std::endl;
     }
   }
   if (portResult.getStatus() != Result::UNSAT)
@@ -140,7 +161,11 @@ Result SmtDriverZ3Replay::checkSatNext(preprocessing::AssertionPipeline& ap)
   Result result;
   {
     TimerStat::CodeTimer timer(d_replayTime);
+    Trace("z3-replay") << "z3-replay: start native cvc5 confirmation"
+                       << std::endl;
     result = d_smt.checkSatInternal();
+    Trace("z3-replay") << "z3-replay: native cvc5 result=" << result
+                       << std::endl;
   }
   if (replay != nullptr)
   {

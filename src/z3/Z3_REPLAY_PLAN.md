@@ -47,7 +47,25 @@ Use `--stats-internal` for `z3::replay::*` counters and timers:
 - `confirmed`, `unconfirmed`, `refuted`: outcomes;
 - `portTime`, `nativeTime`: time spent in each phase.
 
-In a tracing build, `-t z3-replay` reports the two results and pending counts.
+In a tracing build, add `-t z3-replay` to see when the Z3 subsolver starts,
+its result and recorded instantiation count, then the native confirmation
+start, result, and pending counts. For example:
+
+```text
+z3-replay: start Z3 subsolver call (assertions=3)
+z3-replay: Z3 subsolver result=unsat, recorded-instantiations=1, unsat-core-instantiations=unavailable (Z3 port does not track unsat cores)
+z3-replay: start native cvc5 confirmation
+z3-replay: native cvc5 result=unsat
+z3-replay: pending hints 0, unmapped 0
+z3-replay: confirmed
+```
+
+`recorded-instantiations` counts all retained replay hints, deduplicated per
+port quantifier, including unmapped hints and instances that simplify to
+true. It is not an unsat-core count: the port has no unsat-core extraction.
+For sat/unknown, the trace reports the hints recorded before the subsolver
+finished and marks the core count `not-applicable`; native confirmation is
+skipped.
 
 The current mapping pairs outer universal quantifiers before and after the
 port's assertion preparation, checking arity and positional types. This is
