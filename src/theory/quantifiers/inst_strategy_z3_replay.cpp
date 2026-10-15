@@ -56,6 +56,7 @@ void InstStrategyZ3Replay::check(CVC5_UNUSED Theory::Effort e, QEffort quant_e)
   {
     return;
   }
+  beginCallDebug();
   // Only instantiate quantifiers actually asserted by native cvc5. In
   // particular, a port-prepared or nested quantifier is not an assumption.
   std::vector<Node> asserted;
@@ -82,6 +83,7 @@ void InstStrategyZ3Replay::check(CVC5_UNUSED Theory::Effort e, QEffort quant_e)
     {
       if (d_qstate.isInConflict())
       {
+        endCallDebug();
         return;
       }
       std::vector<Node> terms = std::move(vectors.back());
@@ -108,6 +110,7 @@ void InstStrategyZ3Replay::check(CVC5_UNUSED Theory::Effort e, QEffort quant_e)
     }
     d_pending.erase(it);
   }
+  endCallDebug();
 }
 
 size_t InstStrategyZ3Replay::getNumPending() const

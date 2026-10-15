@@ -47,6 +47,12 @@ Use `--stats-internal` for `z3::replay::*` counters and timers:
 - `confirmed`, `unconfirmed`, `refuted`: outcomes;
 - `portTime`, `nativeTime`: time spent in each phase.
 
+Use `-o inst-strategy` to report native replay rounds alongside the ordinary
+native strategies, e.g. `(inst-strategy z3-replay :inst 1 :time 0.0001)`.
+The `:inst` count is the number of lemmas queued in that round; `:time`
+measures that native replay round, excluding the earlier Z3 subsolver call.
+The `portTime` and `nativeTime` statistics separate the two solver phases.
+
 In a tracing build, add `-t z3-replay` to see when the Z3 subsolver starts,
 its result and recorded instantiation count, then the native confirmation
 start, result, and pending counts. For example:
@@ -88,6 +94,41 @@ its search configuration. Replay also exposed two existing teardown bugs:
 the datatype theory freed variable data before undoing trails into it, and
 the shared trail stack destroyed borrowed, reusable trail objects. Both
 lifetimes are now handled explicitly.
+
+### Reproducible performance example
+
+With `--user-pat=strict --no-cbqi` on both configurations, this benchmark
+shows a substantial benefit from the recorded instantiations:
+
+```sh
+bench=/local/ajreynol/benchmarks/quant-07-25/sundance/UFDTLIA/20241211-verus/anvil/fluent-smt-fluent_controller__fluentbit__proof__helper_invariants__proof__make_fluentbit_pod_spec_determined_by_spec_and_name.smt2
+prod/bin/cvc5 --user-pat=strict --no-cbqi --tlimit-per=60000 "$bench"
+prod/bin/cvc5 --user-pat=strict --no-cbqi --tlimit-per=60000 \
+  --z3 --z3-replay --z3-preset=verus-best "$bench"
+```
+
+On 2026-10-15, sequential runs of the same production binary gave native
+cvc5 `unsat` in 30.94 s and replay `unsat` in 0.467, 0.481, and 0.480 s
+(approximately 64x faster using the replay median). These are total wall
+times, including parsing, preprocessing, and the Z3 subcall. No proof or
+diagnostic output options were used for these timing runs.
+
+A separate replay run with `--produce-proofs --check-proofs
+--check-proofs-complete --stats-internal -o inst-strategy` returned unsat
+in 1.15 s. It added all 654 recorded hints, with no hints left pending, and
+all native instantiation lemmas had inference ID `QUANTIFIERS_INST_Z3_REPLAY`.
+Replay also returned unsat with `--no-e-matching --no-cegqi --no-enum-inst
+--no-mbqi` added (and `--no-cbqi` retained); native cvc5 without replay
+returned unknown with those strategies disabled.
+
+This is a useful performance example, not a general speedup claim. A search
+over 421 selected benchmarks (the `slow/` directory plus previously fast
+replay cases), with a 10 s limit and the same pattern/CBQI options, found
+416 cases solved by both configurations; replay was faster on only 15 of
+those. Two additional cases were solved only by replay within that limit,
+two only by native cvc5, and one by neither. Recording every hint, running
+a second solver, and still requiring native SAT/theory search can cost more
+than simply letting native instantiation find the refutation.
 
 
 ## 1. Why
