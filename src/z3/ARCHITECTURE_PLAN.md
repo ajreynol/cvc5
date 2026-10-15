@@ -8,7 +8,10 @@ Status: Stages 1A and 1B implemented. See the progress record in section
 14. Stage 2 (section 15) is implemented as a hosted engine. Stage 3
 (section 16) is implemented through step 4 and is the default configuration
 of `--z3`; its first results came from a soundness bug, fixed, and its extra
-unknowns from two bugs, fixed (section 16, Progress).
+unknowns from two bugs, fixed (section 16, Progress). Stage 4 (section 17),
+cvc5's theories next to the port's components, starting with only the
+quantifiers slot from the port, is planned. Section 2 shows the current
+architecture.
 
 ## 1. Objective and migration principle
 
@@ -49,7 +52,54 @@ The relevant implementation is described in [README.md](README.md) and
 from different configurations and benchmark samples; this proposal does not
 treat them as one reproducible performance baseline.
 
-The current search path is:
+### Today (2026-10-15)
+
+`--z3` has three configurations, one per stage reached:
+
+| Configuration | Options | Propositional search | Theory orchestration | Below it |
+|---|---|---|---|---|
+| **Stage 3, the default** (section 16) | `--z3` | cvc5's `PropEngine` (CNF, CaDiCaL, justification decisions) | cvc5's `TheoryEngine`, a `TheorySlot` in every slot, no equality engines | `HostCore` over the shared core |
+| Stage 2, the hosted engine (section 15) | `--z3-theory-engine=z3` | cvc5's `PropEngine` | `Z3TheoryEngine`, overriding `TheoryEngine`'s search contract | `HostCore` over the shared core |
+| Stage 1, the port's own search (section 14) | `--z3-prop-engine=z3` | `PropCore`, Z3's search | `Z3TheoryEngine` | the shared core |
+
+The shared core is the `SharedBackend`: `SmtContext` (the E-graph, the
+theory plugins, the quantifier stack) and `PropCore`. Under cvc5's prop
+engine, `PropCore` runs in host mode. It mirrors cvc5's assignment for the
+theory side and computes relevancy, and it does not search.
+
+The default configuration:
+
+```mermaid
+flowchart TD
+    SE[Native SolverEngine] --> SS[Native SmtSolver]
+    SS --> PP[Native preprocessing]
+    PP --> AP["AssertionPreparation (NNF, skolemization, patterns)"]
+    AP --> PE["Native PropEngine (Z3HostedPropEngine): CNF, CaDiCaL, decisions"]
+    AP --> PC
+    PE <-->|facts, checks, propagations, explanations, lemmas| TE["Native TheoryEngine (--ee-mode=none)"]
+    TE --> SL["TheorySlot in every slot; each keeps cvc5's theory for preprocessing"]
+    SL -->|"facts, drained by the driver slot (QUANTIFIERS in a quantified logic)"| HC[HostCore]
+    HC -->|"lemmas (instances, conflicts, splits), propagations"| SL
+    HC --> PC["PropCore, host mode: assignment mirror, relevancy"]
+    HC --> SC["SmtContext: E-graph, theory plugins, quantifier stack"]
+    PC <--> SC
+```
+
+The port's own search:
+
+```mermaid
+flowchart TD
+    SS[Native SmtSolver] --> ZP[Z3PropEngine]
+    SS --> ZT[Z3TheoryEngine]
+    ZP --> PC["PropCore: Z3's search"]
+    ZT --> SC[SmtContext]
+    PC <-->|scheduling and backtracking contract| SC
+    SS -. preprocessing services .-> NE[Native PropEngine and TheoryEngine]
+```
+
+### At the start (2026-10-10)
+
+The search path was:
 
 ```mermaid
 flowchart TD
@@ -64,30 +114,34 @@ flowchart TD
     ZS -. constructs for infrastructure .-> NE[Native PropEngine and TheoryEngine]
 ```
 
-In [SolverEngine::finishInit](../smt/solver_engine.cpp), the `--z3` option
-replaces the previously constructed `SmtSolver` with `Z3SmtSolver`. The
-replacement also causes the SyGuS and quantifier-elimination solver wrappers
-to be reconstructed around the new SMT solver.
+Stage 1A removed `Z3SmtSolver`. In `SolverEngine::finishInit`, the `--z3`
+option replaced the previously constructed `SmtSolver` with `Z3SmtSolver`.
+The replacement also caused the SyGuS and quantifier-elimination solver
+wrappers to be reconstructed around the new SMT solver.
 
-[Z3SmtSolver](../smt/z3_smt_solver.h) overrides initialization, assertion
-delivery, satisfiability checking, push/pop, trail reset, interruption, and
-assertion reset. Its initialization still calls the native
-`SmtSolver::finishInit`, constructing native propositional and theory engines
-for infrastructure. Actual search runs in a separate `z3::SmtContext`.
+`Z3SmtSolver` overrode initialization, assertion delivery, satisfiability
+checking, push/pop, trail reset, interruption, and assertion reset. Its
+initialization still called the native `SmtSolver::finishInit`, constructing
+native propositional and theory engines for infrastructure. Actual search ran
+in a separate `z3::SmtContext`.
 
-This produces two architectural problems:
+This produced two architectural problems:
 
-- SMT orchestration has an alternative implementation, so changes to native
-  orchestration can bypass the experiment or need a separate implementation.
-- Existing engine accessors expose native engine objects even though the
-  active search state belongs to the port. Each consumer must be understood
-  before those accessors can serve as a reliable abstraction boundary.
+- SMT orchestration had an alternative implementation, so changes to native
+  orchestration could bypass the experiment or need a separate
+  implementation.
+- Existing engine accessors exposed native engine objects even though the
+  active search state belonged to the port. Each consumer had to be
+  understood before those accessors could serve as a reliable abstraction
+  boundary.
 
-The port already uses cvc5 `Node`, rewriting, and preprocessing. The task is
-therefore to restore ownership and communication boundaries around search,
-not to replace the term representation again.
+The port already used cvc5 `Node`, rewriting, and preprocessing. The task
+was therefore to restore ownership and communication boundaries around
+search, not to replace the term representation again.
 
 ## 3. The first milestone
+
+Reached: Stages 1A and 1B (section 14).
 
 The first target is a single native `SmtSolver`, using selectable
 propositional and theory engine implementations:
@@ -1178,7 +1232,7 @@ Drive the port's theory side with cvc5's own `TheoryEngine`, under cvc5's
 propositional engine, with the port's components in the theory slots:
 
 ```
-Stage 2 (now):  PropEngine → Z3TheoryEngine (a TheoryEngine that overrides the search contract)
+Stage 2:        PropEngine → Z3TheoryEngine (a TheoryEngine that overrides the search contract)
                                → SmtContext (one E-graph, plugins, quantifier stack) + PropCore mirror
 Stage 3:        PropEngine → TheoryEngine → slots BOOL, UF, ARITH, BV, DATATYPES, QUANTIFIERS
                                each a port component, all over the shared SmtContext + PropCore mirror
@@ -1568,9 +1622,8 @@ engine answers unknown.
   core shrinks to the E-graph and the relevancy mirror, a service shared by
   the slots, in the role of cvc5's central equality engine.
 - **Deferred:** replacing the E-graph with cvc5's equality engines (and
-  with it Phase C, step 6), native theories next to the port's components
-  (which needs combination between the E-graph and cvc5's equality
-  engines), and cvc5's quantifiers engine.
+  with it Phase C, step 6), and cvc5's quantifiers engine. Native theories
+  next to the port's components are section 17.
 
 ### Open questions
 
@@ -1588,3 +1641,105 @@ engine answers unknown.
   construction, or the UF slot.
 - **The cost of the indirection** through `TheoryEngine` (per-theory fact
   queues and checks) against the hosted engine's direct calls.
+
+## 17. Stage 4: cvc5's theories next to the port's components
+
+### Goal
+
+Choose, per theory slot, between the port's component and cvc5's own
+theory, so that each part of the port can be measured against its cvc5
+counterpart inside one architecture. The first configuration replaces only
+QUANTIFIERS:
+
+- cvc5's own theories do the ground reasoning, with their equality
+  engines, theory combination and care graph, as without `--z3`.
+- The port does matching and instantiation, in the QUANTIFIERS slot.
+
+```mermaid
+flowchart TD
+    PE["Native PropEngine (Z3HostedPropEngine)"] <-->|facts, checks, propagations, explanations, lemmas| TE["Native TheoryEngine (distributed equality engines, sharing, care graph)"]
+    TE --> NT["cvc5's UF, arithmetic, datatypes, bit-vectors, ..."]
+    TE --> QS[QUANTIFIERS: TheorySlot]
+    TE -. a copy of every asserted literal .-> QS
+    QS --> HC["HostCore: a shadow of the ground state, and the quantifier stack"]
+    HC -->|"lemmas only: instances, conflicts, splits"| QS
+```
+
+Compared with Stage 3, this isolates cvc5's ground reasoning, sharing and
+combination against the port's E-graph and plugins, with the same
+quantifier stack, relevancy and propositional engine.
+
+### What it needs
+
+**cvc5 side: switches, inert unless selected.**
+
+1. **Slot selection** (for instance `--z3-slots=all|quantifiers`).
+   `addTheorySlots` puts a `TheorySlot` in the chosen slots only, and
+   `SmtSolver` constructs cvc5's theory in the others. `--ee-mode=none` only
+   when every slot is the port's; otherwise cvc5's default.
+2. **No master equality engine without a quantifiers engine.** In a
+   quantified logic, `EqEngineManagerDistributed` builds the master
+   equality engine from the quantifiers engine, which the port's slot does
+   not provide. Build none when there is no quantifiers engine, and let
+   `TheoryEngine::finishInit` accept that whenever QUANTIFIERS is the port's.
+3. **A copy of every fact for the slot.** `TheoryEngine` gives each literal
+   only to the theory that owns its atom (and equalities to the shared
+   solver), but the port's core needs the whole assignment: for its E-graph,
+   for relevancy, and for evaluating instances. A theory that asks
+   (`Theory::observesAllFacts`, read at `finishInit`, as
+   `checksWithoutFacts` is) also receives every literal asserted from the
+   SAT solver. cvc5's theories do not ask, so they are unaffected.
+
+**Port side.**
+
+4. **The core as a shadow.**
+   - It runs as in Stage 3, on the copies: E-graph, arithmetic and datatype
+     plugins, bridge, relevancy mirror. Its ground reasoning duplicates that
+     of cvc5's theories, and it keeps matching modulo the equalities it
+     derives.
+   - It sends lemmas only: instances, conflicts and splits.
+   - It reports no propagations. With sharing on, `TheoryEngine` explains a
+     theory's propagation from the facts asserted to that theory, and the
+     core explains from everyone's facts: the soundness bug of Stage 3
+     (section 16). Lemmas need no explanation.
+5. **The driver is QUANTIFIERS,** and there is no other slot to drain.
+
+### Steps
+
+1. **Audit** (no code): what cvc5's theories, the model manager and the
+   combination engine expect from a quantifiers engine in a quantified
+   logic, now that there may be none. One example is the model builder the
+   quantifiers engine supplies.
+2. **The switches** (1 to 3), and the shadow mode of the core (4, 5).
+3. **Validation and measurement:**
+   - The quantified regressions with assertions, then the development set
+     and the sample.
+   - Measured against Stage 3. The difference is cvc5's ground reasoning
+     and sharing, the cost of the duplicated ground reasoning, and the
+     propagations the core no longer reports.
+4. **Shrink the shadow.** Remove the core's own ground plugins one at a
+   time, arithmetic first.
+   - Instead, the E-graph is fed the equalities cvc5's theories derive.
+     These come from their equality engines, as the master equality engine
+     collects them for cvc5's quantifiers engine.
+   - That way matching stays modulo those equalities.
+   - At the end, the core is the quantifier stack over an E-graph that
+     mirrors cvc5's equalities, plus the relevancy mirror.
+5. **Other single slots from the port** (only ARITH, only DATATYPES, next to
+   cvc5's UF and quantifiers engine). These need the port's component to
+   take part in theory combination, which a shadow does not provide:
+   - registering shared terms;
+   - the care graph;
+   - explaining the shared equalities it propagates from its own facts.
+
+   Planned after step 4.
+
+### Open questions
+
+- **Duplicated conflicts.** The shadow finds ground conflicts that cvc5's
+  theories also find. Sending them is sound but repeats work. Measure
+  before suppressing them.
+- **The core's own input.** The core takes its copy of the prepared input
+  from `Z3HostedPropEngine`. Its relevancy and matching need that copy. In
+  this mode, cvc5's theories see the same prepared assertions through the
+  CNF.
