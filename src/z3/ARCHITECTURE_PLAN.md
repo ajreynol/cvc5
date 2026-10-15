@@ -1158,3 +1158,10 @@ own search (561 before), with no "sat" answers, no errors, and 2 unknowns
 against 4; 15% slower on the 568 both solve (27% before). On the
 quantified regressions with assertions, no wrong answers and no failures
 other than those without the switch.
+
+On all of `quant-07-25` at 60 s (2026-10-15): the hosted engine takes 66%
+more time than the core's own search; without delayed units
+(`--no-z3-host-delay-units`) it is slightly worse, with local instances
+(`--z3-host-local-instances`) slightly better, and it is three times faster
+than the hosted engine of the previous round. Local instances are now the
+default of the hosted engine.

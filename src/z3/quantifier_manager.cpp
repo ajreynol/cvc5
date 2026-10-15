@@ -32,8 +32,9 @@
 #include "z3/enum_inst.h"
 #include "z3/mam.h"
 #include "z3/qi_queue.h"
+#include "z3/quantifier_services.h"
 #include "z3/quick_checker.h"
-#include "z3/smt_context.h"
+#include "z3/statistics.h"
 #include "z3/util/trail.h"
 
 namespace cvc5::internal {
@@ -44,7 +45,7 @@ QuantifierManagerPlugin* mkDefaultPlugin();
 struct QuantifierManager::Imp
 {
   QuantifierManager& d_wrapper;
-  SmtContext& d_context;
+  QuantifierServices& d_context;
   Params& d_params;
   QiQueue d_qiQueue;
   std::unordered_map<Node, QuantifierStat*> d_quantifierStat;
@@ -55,7 +56,7 @@ struct QuantifierManager::Imp
   size_t d_numInstances = 0;
 
   Imp(QuantifierManager& wrapper,
-      SmtContext& ctx,
+      QuantifierServices& ctx,
       Params& p,
       QuantifierManagerPlugin* plugin)
       : d_wrapper(wrapper),
@@ -299,8 +300,8 @@ struct QuantifierManager::Imp
   }
 };
 
-QuantifierManager::QuantifierManager(SmtContext& ctx, Params& fp)
-    : d_lazyScopes(0), d_lazy(true)
+QuantifierManager::QuantifierManager(QuantifierServices& ctx, Params& fp)
+    : d_lazyScopes(0), d_lazy(true), d_inForcedRematch(false)
 {
   d_imp.reset(new Imp(*this, ctx, fp, mkDefaultPlugin()));
   d_imp->d_plugin->setManager(*this);
@@ -308,7 +309,7 @@ QuantifierManager::QuantifierManager(SmtContext& ctx, Params& fp)
 
 QuantifierManager::~QuantifierManager() {}
 
-SmtContext& QuantifierManager::getContext() const { return d_imp->d_context; }
+QuantifierServices& QuantifierManager::getContext() const { return d_imp->d_context; }
 
 void QuantifierManager::add(TNode q, uint32_t generation)
 {
@@ -709,10 +710,10 @@ class DefaultQmPlugin : public QuantifierManagerPlugin
       // A diagnostic: re-run every code tree over every enode, ignoring
       // relevancy. If this finds anything, incremental matching lost it.
       size_t before = d_context->getStats().d_numInstances;
-      d_context->d_inForcedRematch = true;
+      d_qm->setInForcedRematch(true);
       d_mam->rematch(false);
       d_qm->propagate();
-      d_context->d_inForcedRematch = false;
+      d_qm->setInForcedRematch(false);
       if (d_context->getStats().d_numInstances != before)
       {
         Trace("z3-rematch") << "force rematch found "
@@ -741,7 +742,7 @@ class DefaultQmPlugin : public QuantifierManagerPlugin
 
   QuantifierManager* d_qm;
   Params* d_params;
-  SmtContext* d_context;
+  QuantifierServices* d_context;
   std::unique_ptr<Mam> d_mam;
   std::unique_ptr<Mam> d_lazyMam;
   std::unique_ptr<EnumInst> d_enumInst;

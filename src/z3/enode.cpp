@@ -147,19 +147,19 @@ void ENode::replaceThVar(TheoryVar v, TheoryId id)
 
 void ENode::delThVar(TheoryId id) { d_thVarList.delVar(id); }
 
-void ENode::setLblHash(SmtContext& ctx)
+void ENode::setLblHash(TrailStack& trail)
 {
   Assert(d_lblHash == -1);
   // d_lblHash is different from -1 if and only if there is a pattern that
   // contains this enode, so a trail restores it to -1.
-  ctx.pushTrail(ValueTrail<int8_t>(d_lblHash));
+  trail.push(ValueTrail<int8_t>(d_lblHash));
   uint32_t h = hashU(getOwnerId());
   d_lblHash = static_cast<int8_t>(h & (approxSetCapacity() - 1));
   // propagate the modification to the root's label set
   ApproxSet& rLbls = d_root->d_lbls;
   if (!rLbls.mayContain(static_cast<uint32_t>(d_lblHash)))
   {
-    ctx.pushTrail(ValueTrail<ApproxSet>(rLbls));
+    trail.push(ValueTrail<ApproxSet>(rLbls));
     rLbls.insert(static_cast<uint32_t>(d_lblHash));
   }
 }

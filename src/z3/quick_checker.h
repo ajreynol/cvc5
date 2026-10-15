@@ -34,7 +34,7 @@
 namespace cvc5::internal {
 namespace z3 {
 
-class SmtContext;
+class QuantifierServices;
 
 /**
  * Finds quantifier instantiations that the current model falsifies.
@@ -44,7 +44,7 @@ class SmtContext;
 class QuickChecker
 {
  public:
-  QuickChecker(SmtContext& c);
+  QuickChecker(QuantifierServices& c);
 
   /**
    * Instantiate the instances the current model falsifies.
@@ -84,7 +84,7 @@ class QuickChecker
   class Collector
   {
    public:
-    Collector(SmtContext& c);
+    Collector(QuantifierServices& c);
 
     void operator()(TNode q,
                     bool conservative,
@@ -129,7 +129,7 @@ class QuickChecker
     void collect(TNode n, TNode f, size_t idx);
     void saveResult(std::vector<ENodeVector>& candidates);
 
-    SmtContext& d_context;
+    QuantifierServices& d_context;
     bool d_conservative;
     size_t d_numVars;
     /** mapping: variable level -> whether a candidate set was found */
@@ -165,7 +165,7 @@ class QuickChecker
   /** How many binding tuples instantiateFirstNew may scan. */
   static constexpr size_t s_maxTuplesPerQuantifier = 2000;
 
-  SmtContext& d_context;
+  QuantifierServices& d_context;
   Collector d_collector;
   std::vector<ENodeVector> d_candidateVectors;
   struct NodeBoolHash

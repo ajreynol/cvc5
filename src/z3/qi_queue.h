@@ -42,7 +42,7 @@ namespace cvc5::internal {
 namespace z3 {
 
 class QuantifierManager;
-class SmtContext;
+class QuantifierServices;
 
 struct QiQueueStats
 {
@@ -55,7 +55,7 @@ struct QiQueueStats
 class QiQueue
 {
  public:
-  QiQueue(QuantifierManager& qm, SmtContext& ctx, Params& params);
+  QiQueue(QuantifierManager& qm, QuantifierServices& ctx, Params& params);
 
   void setup();
 
@@ -128,7 +128,7 @@ class QiQueue
   TNode getQuantifier(Fingerprint* f) const;
 
   QuantifierManager& d_qm;
-  SmtContext& d_context;
+  QuantifierServices& d_context;
   Params& d_params;
   QiQueueStats d_stats;
   Checker d_checker;

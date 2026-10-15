@@ -37,15 +37,15 @@ namespace cvc5::internal {
 namespace z3 {
 
 class QuantifierManagerPlugin;
-class SmtContext;
+class QuantifierServices;
 
 class QuantifierManager
 {
  public:
-  QuantifierManager(SmtContext& ctx, Params& fp);
+  QuantifierManager(QuantifierServices& ctx, Params& fp);
   ~QuantifierManager();
 
-  SmtContext& getContext() const;
+  QuantifierServices& getContext() const;
 
   void add(TNode q, uint32_t generation);
   void del(TNode q);
@@ -115,11 +115,16 @@ class QuantifierManager
   const std::vector<Node>& quantifiers() const;
   size_t numQuantifiers() const;
 
+  /** A diagnostic flag: set while the forced rematch runs. */
+  bool inForcedRematch() const { return d_inForcedRematch; }
+  void setInForcedRematch(bool value) { d_inForcedRematch = value; }
+
  private:
   struct Imp;
   std::unique_ptr<Imp> d_imp;
   size_t d_lazyScopes;
   bool d_lazy;
+  bool d_inForcedRematch;
   void flush();
 };
 

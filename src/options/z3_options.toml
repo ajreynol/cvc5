@@ -37,7 +37,7 @@ name   = "Z3 Core"
   category   = "expert"
   long       = "z3-host-local-instances"
   type       = "bool"
-  default    = "false"
+  default    = "true"
   help       = "with --z3-prop-engine=cvc5, send quantifier instances as lemmas local to the SAT context (as cvc5's --inst-local), so that cvc5's decision heuristic considers an instance only where it was last made"
 
 [[option]]

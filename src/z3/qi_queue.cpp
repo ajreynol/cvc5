@@ -26,12 +26,13 @@
 #include "z3/ast.h"
 #include "z3/enode.h"
 #include "z3/quantifier_manager.h"
-#include "z3/smt_context.h"
+#include "z3/quantifier_services.h"
+#include "z3/statistics.h"
 
 namespace cvc5::internal {
 namespace z3 {
 
-QiQueue::QiQueue(QuantifierManager& qm, SmtContext& ctx, Params& params)
+QiQueue::QiQueue(QuantifierManager& qm, QuantifierServices& ctx, Params& params)
     : d_qm(qm),
       d_context(ctx),
       d_params(params),
@@ -230,7 +231,7 @@ void QiQueue::instantiate(Entry& ent)
     std::ofstream out(dumpTo, std::ios::app);
     out << instance << "\n";
   }
-  if (d_context.d_inForcedRematch)
+  if (d_qm.inForcedRematch())
   {
     Trace("z3-qi-missed") << "MISSED q" << q.getId() << " " << instance
                           << std::endl;

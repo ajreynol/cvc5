@@ -4,7 +4,8 @@ Date: 2026-10-14
 
 Source snapshot: `d7b68ff497`
 
-Status: audit only. No code changed.
+Status: Phase A measured (section 6); Phase C in progress, steps 1 and 2
+done.
 
 The propositional branch has been measured
 ([PROPOSITIONAL_BRANCH.md](PROPOSITIONAL_BRANCH.md), section 3). Of the
@@ -263,6 +264,30 @@ As Stage 1B did for `PropCore`, in steps that each leave answers and
    rounds (Phase B) are a scheduling policy.
 6. **Wrap the enode accesses of the MAM** (T7) behind accessors, which is
    the precondition for running it over another E-graph.
+
+**Progress.**
+
+- **Steps 1 and 2: done** (2026-10-15). The outbound contract is
+  `QuantifierServices` ([quantifier_services.h](quantifier_services.h)),
+  which `SmtContext` implements; the stack (`QuantifierManager` and its
+  plugin, `Mam`, `QiQueue`, `Checker`, `QuickChecker`, `EnumInst`) holds
+  that interface and no longer includes `smt_context.h`. It has 40
+  methods, in the groups above: the term view (13), the Boolean view (6),
+  the relevance view (6), the instance sink (3), and the infrastructure
+  (8, with the trail through `getTrailStack`). The other four loop back into
+  the stack, as in Z3, where the stack reaches itself through
+  `smt::context`: `addInstance` and the generation of a quantifier are the
+  quantifier manager's, and `addFingerprint` and `containsInstance` use the
+  fingerprints, which `SmtContext` holds; step 3 removes them. The inbound
+  contract is `QuantifierManager`'s interface, unchanged. On the way:
+  `QuantifierManager` is no longer a friend of `SmtContext`; the forced
+  rematch flag, which only the stack uses, moved into `QuantifierManager`;
+  and `ENode::setLblHash` takes the trail instead of the context.
+  `SmtContext` is `final`, so the rest of the theory side still calls it
+  directly. Answers and `z3::` counters are unchanged on the comparison set
+  (894 runs, the 15 that time out compared under `--rlimit`). On ten Verus
+  benchmarks the core solves in 1 to 6 s, run one at a time and three times
+  each, the time ratio is 0.994: the indirection costs nothing measurable.
 
 ### Phase D: toward cvc5
 

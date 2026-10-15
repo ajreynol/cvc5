@@ -370,12 +370,12 @@ void Z3TheoryEngine::sendLemmas()
   std::vector<Node> lems;
   std::vector<Node> insts;
   d_backend.getPropCore().hostTakeLemmas(lems, insts);
-  // With --z3-host-local-instances, an instance is local to the SAT context,
-  // as with cvc5's --inst-local: cvc5 adds its clause once, but its decision
-  // heuristic treats it as an assertion only in the context where it was
-  // last made. The core makes it again when matching finds it again after
-  // backtracking, as Z3 does, and it is then sent again, which makes it an
-  // assertion there again. Otherwise an instance is sent once.
+  // An instance is local to the SAT context (--z3-host-local-instances, the
+  // default), as with cvc5's --inst-local: cvc5 adds its clause once, but its
+  // decision heuristic treats it as an assertion only in the context where
+  // it was last made. The core makes it again when matching finds it again
+  // after backtracking, as Z3 does, and it is then sent again, which makes it
+  // an assertion there again. Otherwise an instance is sent once.
   bool local = options().z3.z3HostLocalInstances;
   for (const Node& inst : insts)
   {

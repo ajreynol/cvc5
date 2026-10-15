@@ -1383,6 +1383,7 @@ libcvc5_add_sources(
   z3/qi_queue.h
   z3/quantifier_manager.cpp
   z3/quantifier_manager.h
+  z3/quantifier_services.h
   z3/quantifier_stat.cpp
   z3/quantifier_stat.h
   z3/quick_checker.cpp

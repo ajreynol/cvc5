@@ -15,13 +15,13 @@
 #include "base/output.h"
 #include "z3/ast.h"
 #include "z3/enode.h"
-#include "z3/smt_context.h"
+#include "z3/quantifier_services.h"
 #include "z3/util/util.h"
 
 namespace cvc5::internal {
 namespace z3 {
 
-EnumInst::EnumInst(SmtContext& ctx, size_t maxPerRound)
+EnumInst::EnumInst(QuantifierServices& ctx, size_t maxPerRound)
     : d_context(ctx), d_checker(ctx), d_maxPerRound(maxPerRound), d_qIdx(0)
 {
   // The assignment is completed to a total model, so that a falsified

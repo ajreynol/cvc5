@@ -33,6 +33,7 @@ namespace cvc5::internal {
 namespace z3 {
 
 class SmtContext;
+class TrailStack;
 
 /** The justification for the transitivity rule. */
 struct TransJustification
@@ -453,7 +454,7 @@ class ENode
 
   uint32_t getIscopeLvl() const { return d_iscopeLvl; }
 
-  void setLblHash(SmtContext& ctx);
+  void setLblHash(TrailStack& trail);
 
   bool hasLblHash() const { return d_lblHash >= 0; }
 

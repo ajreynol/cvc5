@@ -20,7 +20,7 @@
 #include "expr/node_manager.h"
 #include "z3/ast.h"
 #include "z3/enode.h"
-#include "z3/smt_context.h"
+#include "z3/quantifier_services.h"
 #include "z3/util/util.h"
 
 namespace cvc5::internal {
@@ -53,7 +53,7 @@ bool isCoreKind(Kind k)
 
 // ------------------------------------------------------------- collector
 
-QuickChecker::Collector::Collector(SmtContext& c)
+QuickChecker::Collector::Collector(QuantifierServices& c)
     : d_context(c), d_conservative(true), d_numVars(0)
 {
 }
@@ -195,7 +195,7 @@ void QuickChecker::Collector::operator()(TNode q,
 
 // --------------------------------------------------------- quick checker
 
-QuickChecker::QuickChecker(SmtContext& c)
+QuickChecker::QuickChecker(QuantifierServices& c)
     : d_context(c), d_collector(c), d_numBindings(0), d_total(false)
 {
 }

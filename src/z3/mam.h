@@ -33,12 +33,12 @@
 namespace cvc5::internal {
 namespace z3 {
 
-class SmtContext;
+class QuantifierServices;
 
 class Mam
 {
  public:
-  Mam(SmtContext& ctx) : d_context(ctx) {}
+  Mam(QuantifierServices& ctx) : d_context(ctx) {}
 
   virtual ~Mam() = default;
 
@@ -78,10 +78,10 @@ class Mam
   virtual bool isShared(ENode* n) const = 0;
 
  protected:
-  SmtContext& d_context;
+  QuantifierServices& d_context;
 };
 
-Mam* mkMam(SmtContext& ctx);
+Mam* mkMam(QuantifierServices& ctx);
 
 }  // namespace z3
 }  // namespace cvc5::internal

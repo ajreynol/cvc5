@@ -43,7 +43,7 @@
 namespace cvc5::internal {
 namespace z3 {
 
-class SmtContext;
+class QuantifierServices;
 
 class EnumInst
 {
@@ -54,7 +54,7 @@ class EnumInst
    * only ever adds a falsified instance, but its model is complete while the
    * assignment here is partial, so the weaker criterion finds more.
    */
-  EnumInst(SmtContext& ctx, size_t maxPerRound);
+  EnumInst(QuantifierServices& ctx, size_t maxPerRound);
 
   /**
    * Add at most one instance for each of the given quantifiers. Returns true
@@ -63,7 +63,7 @@ class EnumInst
   bool instantiate(const std::vector<Node>& quantifiers);
 
  private:
-  SmtContext& d_context;
+  QuantifierServices& d_context;
   QuickChecker d_checker;
   /** how many instances one final check may add */
   size_t d_maxPerRound;

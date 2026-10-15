@@ -49,7 +49,8 @@
 #include "z3/ast.h"
 #include "z3/enode.h"
 #include "z3/quantifier_manager.h"
-#include "z3/smt_context.h"
+#include "z3/quantifier_services.h"
+#include "z3/statistics.h"
 #include "z3/util/approx_set.h"
 #include "z3/util/hash.h"
 #include "z3/util/tagged_ptr.h"
@@ -69,7 +70,7 @@ constexpr bool s_isCgrSupport = true;
 bool isGroundPat(TNode n) { return !expr::hasBoundVar(n); }
 
 /** Internalize a ground pattern subterm and return its enode. */
-ENode* mkPatENode(SmtContext& ctx, TNode qa, TNode n)
+ENode* mkPatENode(QuantifierServices& ctx, TNode qa, TNode n)
 {
   ctx.internalize(n, false, ctx.getGeneration(qa));
   ENode* e = ctx.getENode(n);
@@ -86,7 +87,7 @@ ENode* mkPatENode(SmtContext& ctx, TNode qa, TNode n)
 class LabelHasher
 {
  public:
-  LabelHasher(SmtContext& ctx) : d_ctx(ctx) {}
+  LabelHasher(QuantifierServices& ctx) : d_ctx(ctx) {}
 
   uint8_t operator()(TNode lbl)
   {
@@ -135,7 +136,7 @@ class LabelHasher
     d_lbl2Hash[lblId] = static_cast<int8_t>(c & (approxSetCapacity() - 1));
   }
 
-  SmtContext& d_ctx;
+  QuantifierServices& d_ctx;
   /** Cache: declaration id to hash. */
   std::vector<int8_t> d_lbl2Hash;
 };
@@ -852,7 +853,7 @@ class CodeTreeManager
 class Compiler
 {
  public:
-  Compiler(SmtContext& ctx,
+  Compiler(QuantifierServices& ctx,
            CodeTreeManager& ctMg,
            LabelHasher& h,
            bool useFilters = true)
@@ -1526,7 +1527,7 @@ class Compiler
       ENode* e = mkPatENode(d_context, d_qa, p);
       if (!e->hasLblHash())
       {
-        e->setLblHash(d_context);
+        e->setLblHash(d_context.getTrailStack());
       }
       return e->getLblHash();
     }
@@ -1543,7 +1544,7 @@ class Compiler
     uint32_t reg = instr->d_reg;
     if (instr->d_enode != nullptr && !instr->d_enode->hasLblHash())
     {
-      instr->d_enode->setLblHash(d_context);
+      instr->d_enode->setLblHash(d_context.getTrailStack());
     }
     TNode r = getRegister(reg);
     return !r.isNull()
@@ -1751,7 +1752,7 @@ class Compiler
               // and only the maximal ones get a hash there.
               if (!n1->hasLblHash())
               {
-                n1->setLblHash(d_context);
+                n1->setLblHash(d_context.getTrailStack());
               }
               uint32_t h1 = n1->getLblHash();
               uint32_t h2 = getPatLblHash(reg);
@@ -1938,7 +1939,7 @@ class Compiler
     return std::find(d_todo.begin(), d_todo.end(), reg) != d_todo.end();
   }
 
-  SmtContext& d_context;
+  QuantifierServices& d_context;
   CodeTreeManager& d_ctManager;
   LabelHasher& d_lblHasher;
   bool d_useFilters;
@@ -2017,7 +2018,7 @@ struct BacktrackPoint
 class Interpreter
 {
  public:
-  Interpreter(SmtContext& ctx, Mam& ma, bool useFilters)
+  Interpreter(QuantifierServices& ctx, Mam& ma, bool useFilters)
       : d_context(ctx),
         d_mam(ma),
         d_useFilters(useFilters),
@@ -2282,7 +2283,7 @@ class Interpreter
 
   ENode* initContinue(const Cont* c, uint16_t expectedNumArgs);
 
-  SmtContext& d_context;
+  QuantifierServices& d_context;
   Mam& d_mam;
   bool d_useFilters;
   ENodeVector d_registers;
@@ -2812,7 +2813,7 @@ backtrack:
 class CodeTreeMap
 {
  public:
-  CodeTreeMap(SmtContext& ctx, Compiler& c, TrailStack& s)
+  CodeTreeMap(QuantifierServices& ctx, Compiler& c, TrailStack& s)
       : d_context(ctx), d_compiler(c), d_trailStack(s)
   {
   }
@@ -2912,7 +2913,7 @@ class CodeTreeMap
     uint32_t d_lblId;
   };
 
-  SmtContext& d_context;
+  QuantifierServices& d_context;
   Compiler& d_compiler;
   /** mapping: label id -> tree */
   std::vector<CodeTree*> d_trees;
@@ -3057,7 +3058,7 @@ bool isFlatAssociative(ENode* n)
 class MamImpl : public Mam
 {
  public:
-  MamImpl(SmtContext& ctx, bool useFilters)
+  MamImpl(QuantifierServices& ctx, bool useFilters)
       : Mam(ctx),
         d_useFilters(useFilters),
         d_lblHasher(ctx),
@@ -3670,7 +3671,7 @@ class MamImpl : public Mam
         updatePlbls(plbl);
         if (!n->hasLblHash())
         {
-          n->setLblHash(d_context);
+          n->setLblHash(d_context.getTrailStack());
         }
         updatePc(d_lblHasher(plbl), n->getLblHash(), newPath, q, mp);
         continue;
@@ -4057,7 +4058,7 @@ class MamImpl : public Mam
 
 }  // namespace
 
-Mam* mkMam(SmtContext& ctx) { return new MamImpl(ctx, true); }
+Mam* mkMam(QuantifierServices& ctx) { return new MamImpl(ctx, true); }
 
 }  // namespace z3
 }  // namespace cvc5::internal
