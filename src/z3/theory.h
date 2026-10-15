@@ -34,7 +34,7 @@ namespace cvc5::internal {
 namespace z3 {
 
 class Justification;
-class Params;
+struct Params;
 class SmtContext;
 
 /**

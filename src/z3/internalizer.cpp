@@ -119,13 +119,6 @@ void getForeignDescendants(TNode n,
 /** The threshold above which internalization switches to a topological sort. */
 constexpr uint32_t s_deepExprThreshold = 1024;
 
-/**
- * Above this many arguments, Z3 encodes a distinct with auxiliary values
- * instead of expanding it. cvc5's rewriter normally eliminates distinct
- * before the core sees it, so this path is not expected to be reached.
- */
-constexpr size_t s_distinctSzThreshold = 32;
-
 }  // namespace
 
 void SmtContext::updateGeneration(ENode* e)

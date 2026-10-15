@@ -89,7 +89,7 @@ struct BoolVarData
 
   void setNotifyTheory(TheoryId thid)
   {
-    Assert(thid >= 0 && thid < 255);
+    Assert(static_cast<uint32_t>(thid) < 255);
     d_notifyTheory = static_cast<uint32_t>(thid) + 1;
     d_atom = true;
   }

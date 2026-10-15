@@ -36,7 +36,7 @@
 namespace cvc5::internal {
 namespace z3 {
 
-class Params;
+struct Params;
 
 /**
  * A pattern p1 is smaller than a pattern p2 iff every instance of p2 is also

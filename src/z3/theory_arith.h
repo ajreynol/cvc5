@@ -342,9 +342,9 @@ class TheoryArith : public Theory
     bool isAtom() const { return d_atom; }
     const InfNumeral& getValue() const { return d_value; }
     virtual bool hasJustification() const { return false; }
-    virtual void pushJustification(Antecedents& antecedents,
-                                   const Numeral& coeff,
-                                   bool proofsEnabled)
+    virtual void pushJustification(CVC5_UNUSED Antecedents& antecedents,
+                                   CVC5_UNUSED const Numeral& coeff,
+                                   CVC5_UNUSED bool proofsEnabled)
     {
     }
     virtual std::ostream& print(const TheoryArith& th, std::ostream& out) const;

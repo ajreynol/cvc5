@@ -514,9 +514,8 @@ class CodeTreeManager;
 class CodeTree
 {
  public:
-  CodeTree(LabelHasher& h, TNode lbl, uint16_t numArgs, bool filterCandidates)
-      : d_lblHasher(h),
-        d_rootLbl(lbl),
+  CodeTree(TNode lbl, uint16_t numArgs, bool filterCandidates)
+      : d_rootLbl(lbl),
         d_numArgs(numArgs),
         d_filterCandidates(filterCandidates),
         d_numRegs(numArgs + 1),
@@ -617,7 +616,6 @@ class CodeTree
     }
   }
 
-  LabelHasher& d_lblHasher;
   TNode d_rootLbl;
   /** needed to avoid matching an n-ary application of the wrong arity */
   uint32_t d_numArgs;
@@ -641,7 +639,7 @@ class CodeTreeManager
 
   CodeTree* mkCodeTree(TNode lbl, uint16_t numArgs, bool filterCandidates)
   {
-    CodeTree* r = new CodeTree(d_lblHasher, lbl, numArgs, filterCandidates);
+    CodeTree* r = new CodeTree(lbl, numArgs, filterCandidates);
     r->d_root = mkInit(numArgs);
     return r;
   }

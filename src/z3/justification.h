@@ -383,8 +383,9 @@ class ExtTheoryEqPropagationJustification : public ExtTheorySimpleJustification
   const char* getName() const override { return "ext-theory-eq-propagation"; }
 
  private:
-  ENode* d_lhs;
-  ENode* d_rhs;
+  /** The sides of the equality, which Z3 keeps for its proofs (not ported). */
+  CVC5_UNUSED_FIELD ENode* d_lhs;
+  CVC5_UNUSED_FIELD ENode* d_rhs;
 };
 
 /**

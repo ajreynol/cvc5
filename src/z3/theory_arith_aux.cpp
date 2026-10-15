@@ -320,7 +320,7 @@ TheoryArith::Antecedents::~Antecedents() { --d_th.d_antecedentsIndex; }
 //
 // -----------------------------------
 
-std::ostream& TheoryArith::Bound::print(const TheoryArith& th,
+std::ostream& TheoryArith::Bound::print(CVC5_UNUSED const TheoryArith& th,
                                         std::ostream& out) const
 {
   return out << "v" << getVar() << " "
@@ -386,7 +386,7 @@ std::ostream& TheoryArith::Atom::print(const TheoryArith& th,
 //
 // -----------------------------------
 
-std::ostream& TheoryArith::EqBound::print(const TheoryArith& th,
+std::ostream& TheoryArith::EqBound::print(CVC5_UNUSED const TheoryArith& th,
                                           std::ostream& out) const
 {
   return out << "#" << d_lhs->getOwnerId() << " " << d_lhs->getExpr() << " = "
@@ -1270,10 +1270,12 @@ bool TheoryArith::hasInterfaceEquality(TheoryVar x)
  * Maximize (Minimize) the given temporary row.
  * Return true if succeeded.
  */
-TheoryArith::MaxMinT TheoryArith::maxMin(Row& r,
-                                         bool max,
-                                         bool maintainIntegrality,
-                                         bool& hasShared)
+TheoryArith::MaxMinT TheoryArith::maxMin(
+    Row& r,
+    bool max,
+    // Z3's maintain_integrality; every caller passes false
+    CVC5_UNUSED bool maintainIntegrality,
+    bool& hasShared)
 {
   d_stats.d_maxMin++;
   size_t bestEfforts = 0;
