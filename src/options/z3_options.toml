@@ -2,6 +2,20 @@ id     = "Z3"
 name   = "Z3 Core"
 
 [[option]]
+  name       = "z3Replay"
+  category   = "expert"
+  long       = "z3-replay"
+  type       = "bool"
+  default    = "false"
+  help       = "confirm the ported Z3 core's unsat answers by replaying its instantiations in native cvc5 (supports proofs)"
+
+[[option]]
+  name       = "z3RecordInstantiations"
+  category   = "undocumented"
+  type       = "bool"
+  default    = "false"
+
+[[option]]
   name       = "z3"
   category   = "expert"
   long       = "z3"

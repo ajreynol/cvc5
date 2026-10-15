@@ -368,6 +368,8 @@ libcvc5_add_sources(
   smt/smt_driver.h
   smt/smt_driver_deep_restarts.cpp
   smt/smt_driver_deep_restarts.h
+  smt/smt_driver_z3_replay.cpp
+  smt/smt_driver_z3_replay.h
   smt/smt_mode.cpp
   smt/smt_mode.h
   smt/smt_solver.cpp
@@ -926,6 +928,8 @@ libcvc5_add_sources(
   theory/quantifiers/inst_strategy_pool.h
   theory/quantifiers/inst_strategy_sub_conflict.cpp
   theory/quantifiers/inst_strategy_sub_conflict.h
+  theory/quantifiers/inst_strategy_z3_replay.cpp
+  theory/quantifiers/inst_strategy_z3_replay.h
   theory/quantifiers/instantiate.cpp
   theory/quantifiers/instantiate.h
   theory/quantifiers/instantiation_list.cpp

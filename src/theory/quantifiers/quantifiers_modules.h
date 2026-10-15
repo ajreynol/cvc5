@@ -26,6 +26,7 @@
 #include "theory/quantifiers/inst_strategy_mbqi.h"
 #include "theory/quantifiers/inst_strategy_pool.h"
 #include "theory/quantifiers/inst_strategy_sub_conflict.h"
+#include "theory/quantifiers/inst_strategy_z3_replay.h"
 #include "theory/quantifiers/mbqi_enum.h"
 #include "theory/quantifiers/oracle_engine.h"
 #include "theory/quantifiers/quant_conflict_find.h"
@@ -83,6 +84,8 @@ class QuantifiersModules
   std::unique_ptr<QuantConflictFind> d_qcf;
   /** Sub-conflict strategy */
   std::unique_ptr<InstStrategySubConflict> d_issc;
+  /** Untrusted port hints, reconstructed by native instantiation. */
+  std::unique_ptr<InstStrategyZ3Replay> d_z3Replay;
   /** subgoal generator */
   std::unique_ptr<ConjectureGenerator> d_sg_gen;
   /** ceg instantiation */

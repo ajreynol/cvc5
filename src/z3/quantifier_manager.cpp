@@ -25,6 +25,7 @@
 #include <memory>
 #include <sstream>
 #include <unordered_map>
+#include <unordered_set>
 
 #include "base/output.h"
 #include "options/z3_options.h"
@@ -327,13 +328,98 @@ struct QuantifierManager::Imp
 };
 
 QuantifierManager::QuantifierManager(QuantifierServices& ctx, Params& fp)
-    : d_lazyScopes(0), d_lazy(true), d_inForcedRematch(false)
+    : d_lazyScopes(0),
+      d_lazy(true),
+      d_inForcedRematch(false),
+      d_recordInstantiations(ctx.getEnv().getOptions().z3.z3RecordInstantiations)
 {
   d_imp.reset(new Imp(*this, ctx, fp, mkDefaultPlugin()));
   d_imp->d_plugin->setManager(*this);
 }
 
 QuantifierManager::~QuantifierManager() {}
+
+void QuantifierManager::recordInstantiation(Node q,
+                                           const std::vector<Node>& terms)
+{
+  if (d_recordInstantiations)
+  {
+    d_instantiations[q].insert(terms);
+  }
+}
+
+void QuantifierManager::recordQuantifierOrigins(Node input, Node prepared)
+{
+  if (!d_recordInstantiations)
+  {
+    return;
+  }
+  // Stop at every binder: nested quantifiers need a parent instantiation,
+  // and an existential has no universal counterpart in the native solver.
+  auto collect = [](Node n) {
+    std::vector<Node> result;
+    std::vector<Node> pending{n};
+    std::unordered_set<Node> visited;
+    while (!pending.empty())
+    {
+      Node cur = pending.back();
+      pending.pop_back();
+      if (!visited.insert(cur).second)
+      {
+        continue;
+      }
+      if (cur.getKind() == Kind::FORALL)
+      {
+        result.push_back(cur);
+      }
+      else if (cur.getKind() != Kind::EXISTS
+               && cur.getKind() != Kind::LAMBDA)
+      {
+        // Reverse insertion keeps the original left-to-right traversal.
+        for (size_t i = cur.getNumChildren(); i > 0; --i)
+        {
+          pending.push_back(cur[i - 1]);
+        }
+      }
+    }
+    return result;
+  };
+  std::vector<Node> src = collect(input);
+  std::vector<Node> dst = collect(prepared);
+  if (src.size() != dst.size())
+  {
+    return;
+  }
+  for (size_t i = 0; i < src.size(); ++i)
+  {
+    if (src[i][0].getNumChildren() != dst[i][0].getNumChildren())
+    {
+      continue;
+    }
+    bool sameTypes = true;
+    for (size_t j = 0; j < src[i][0].getNumChildren(); ++j)
+    {
+      sameTypes &= src[i][0][j].getType() == dst[i][0][j].getType();
+    }
+    if (sameTypes)
+    {
+      d_quantifierOrigins.emplace(dst[i], src[i]);
+    }
+  }
+}
+
+void QuantifierManager::getInstantiationTermVectors(
+    std::map<Node, std::vector<std::vector<Node>>>& insts) const
+{
+  for (const auto& [q, terms] : d_instantiations)
+  {
+    auto it = d_quantifierOrigins.find(q);
+    // Keep unmapped quantifiers so that the consumer can count and skip them.
+    Node original = it == d_quantifierOrigins.end() ? q : it->second;
+    auto& dest = insts[original];
+    dest.insert(dest.end(), terms.begin(), terms.end());
+  }
+}
 
 QuantifierServices& QuantifierManager::getContext() const { return d_imp->d_context; }
 

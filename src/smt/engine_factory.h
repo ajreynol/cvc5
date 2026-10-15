@@ -15,7 +15,11 @@
 #ifndef CVC5__SMT__ENGINE_FACTORY_H
 #define CVC5__SMT__ENGINE_FACTORY_H
 
+#include <map>
 #include <memory>
+#include <vector>
+
+#include "expr/node.h"
 
 namespace cvc5::internal {
 
@@ -42,6 +46,11 @@ namespace smt {
 class EngineFactory
 {
  public:
+  /** Read untrusted instantiation hints from any of the port's engine modes. */
+  static void getZ3InstantiationTermVectors(
+      Env& env,
+      TheoryEngine* te,
+      std::map<Node, std::vector<std::vector<Node>>>& insts);
   /** Make the theory engine selected by the options of env. */
   static std::unique_ptr<TheoryEngine> mkTheoryEngine(Env& env);
   /**

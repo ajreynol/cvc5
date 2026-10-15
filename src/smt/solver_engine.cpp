@@ -37,6 +37,7 @@
 #include "options/quantifiers_options.h"
 #include "options/smt_options.h"
 #include "options/theory_options.h"
+#include "options/z3_options.h"
 #include "preprocessing/passes/synth_rew_rules.h"
 #include "printer/printer.h"
 #include "proof/unsat_core.h"
@@ -45,6 +46,7 @@
 #include "smt/assertions.h"
 #include "smt/check_models.h"
 #include "smt/context_manager.h"
+#include "smt/engine_factory.h"
 #include "smt/env.h"
 #include "smt/expand_definitions.h"
 #include "smt/find_synth_solver.h"
@@ -60,6 +62,7 @@
 #include "smt/set_defaults.h"
 #include "smt/smt_driver.h"
 #include "smt/smt_driver_deep_restarts.h"
+#include "smt/smt_driver_z3_replay.h"
 #include "smt/smt_solver.h"
 #include "smt/solver_engine_state.h"
 #include "smt/solver_engine_stats.h"
@@ -178,6 +181,14 @@ void SolverEngine::finishInit()
 
   // Call finish init on the set defaults module. This inializes the logic
   // and the best default options based on our heuristics.
+  // Preserve the requested port configuration before native defaults (in
+  // particular proof defaults) modify the main solver's options.
+  std::unique_ptr<Options> replayOptions;
+  if (options().z3.z3Replay && !d_isInternalSubsolver)
+  {
+    replayOptions = std::make_unique<Options>();
+    replayOptions->copyValues(options());
+  }
   SetDefaults sdefaults(*d_env, d_isInternalSubsolver);
   sdefaults.setDefaults(d_env->d_logic, getOptions());
 
@@ -208,7 +219,12 @@ void SolverEngine::finishInit()
   d_smtSolver->finishInit();
 
   // make SMT solver driver based on options
-  if (options().smt.deepRestartMode != options::DeepRestartMode::NONE)
+  if (options().z3.z3Replay)
+  {
+    d_smtDriver = std::make_unique<SmtDriverZ3Replay>(
+        *d_env, *d_smtSolver, d_ctxManager.get(), *replayOptions);
+  }
+  else if (options().smt.deepRestartMode != options::DeepRestartMode::NONE)
   {
     d_smtDriver.reset(new SmtDriverDeepRestarts(
         *d_env.get(), *d_smtSolver.get(), d_ctxManager.get()));
@@ -2144,6 +2160,12 @@ void SolverEngine::getInstantiationTermVectors(
   if (ssolver != nullptr)
   {
     return ssolver->getInstantiationTermVectors(insts);
+  }
+  if (options().z3.z3)
+  {
+    EngineFactory::getZ3InstantiationTermVectors(
+        *d_env, d_smtSolver->getTheoryEngine(), insts);
+    return;
   }
   QuantifiersEngine* qe =
       getAvailableQuantifiersEngine("getInstantiationTermVectors");

@@ -14,6 +14,16 @@ the same for both configurations. What `--z3` changes is the pair of engines
 `SmtSolver` drives them through the same search contract as it does cvc5's
 engines, and they run the search in a `z3::SmtContext`.
 
+## Native replay and proofs
+
+Use `--z3 --z3-preset=verus-best --z3-replay --produce-proofs --check-proofs`
+to confirm the port's unsat answer with native cvc5. The port supplies
+instantiation terms; native cvc5 reconstructs the lemmas and proves the
+refutation. Native E-matching remains enabled. Replay supports all three
+port engine configurations, and reports unknown when confirmation fails.
+See [Z3_REPLAY_PLAN.md](Z3_REPLAY_PLAN.md) for usage, statistics, and current
+mapping limitations.
+
 ## Integration with cvc5's engines
 
 These files are cvc5 code, not ported from Z3:

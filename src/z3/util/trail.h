@@ -27,6 +27,7 @@
 
 #include "base/check.h"
 #include "z3/util/region.h"
+#include "z3/util/tagged_ptr.h"
 
 namespace cvc5::internal {
 namespace z3 {
@@ -302,19 +303,24 @@ class NewObjTrail : public Trail
 };
 
 /**
- * Undo trail objects down to oldSize, destroying them as it goes. The objects
- * themselves live in a region, so only their destructors run here; the memory
- * is reclaimed when the region scope is popped.
+ * Undo trail objects down to oldSize. Tag 0 denotes a region-owned object,
+ * whose destructor must run before the region is popped. Tag 1 denotes a
+ * borrowed trail (often a member reused for many entries), which must not be
+ * destroyed here.
  */
-inline void undoTrailStack(std::vector<Trail*>& s, size_t oldSize)
+inline void undoTrailStack(std::vector<TaggedPtr>& s, size_t oldSize)
 {
   Assert(oldSize <= s.size());
   size_t i = s.size();
   while (i != oldSize)
   {
     --i;
-    s[i]->undo();
-    s[i]->~Trail();
+    Trail* t = s[i].untag<Trail>();
+    t->undo();
+    if (s[i].getTag() == 0)
+    {
+      t->~Trail();
+    }
   }
   s.resize(oldSize);
 }
@@ -340,14 +346,15 @@ class TrailStack
     undoTrailStack(d_trailStack, 0);
   }
 
-  /** Push an already-allocated trail object. */
-  void pushPtr(Trail* t) { d_trailStack.push_back(t); }
+  /** Push a borrowed trail object, which must outlive its stack entries. */
+  void pushPtr(Trail* t) { d_trailStack.push_back(TaggedPtr::tag(t, 1)); }
 
   /** Copy obj into the region and push it. */
   template <typename TrailObject>
   void push(const TrailObject& obj)
   {
-    d_trailStack.push_back(new (d_region) TrailObject(obj));
+    d_trailStack.push_back(
+        TaggedPtr::tag(new (d_region) TrailObject(obj), 0));
   }
 
   size_t getNumScopes() const { return d_scopes.size(); }
@@ -382,7 +389,7 @@ class TrailStack
   }
 
  private:
-  std::vector<Trail*> d_trailStack;
+  std::vector<TaggedPtr> d_trailStack;
   std::vector<size_t> d_scopes;
   Region d_region;
 };

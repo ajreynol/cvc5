@@ -2818,6 +2818,12 @@ set(regress_0_tests
   regress0/z3/quant-incomplete-unknown.smt2
   regress0/z3/quant-infer-pattern.smt2
   regress0/z3/reset-assertions.smt2
+  regress0/z3/replay-datatypes.smt2
+  regress0/z3/replay-default.smt2
+  regress0/z3/replay-ground.smt2
+  regress0/z3/replay-guarded.smt2
+  regress0/z3/replay-instantiations.smt2
+  regress0/z3/replay-unconfirmed.smt2
   regress0/z3/unsupported-assumptions.smt2
   regress0/z3/unsupported-declare-pool.smt2
   regress0/z3/unsupported-deep-restart.smt2

@@ -18,6 +18,7 @@
 #include "options/z3_options.h"
 #include "smt/env.h"
 #include "z3/ast.h"
+#include "z3/quantifier_manager.h"
 #include "z3/smt_context.h"
 
 namespace cvc5::internal {
@@ -53,7 +54,7 @@ void AssertionPreparation::apply(SmtContext& ctx,
   NgPushAppIte& lift = ctx.getNgPushAppIte();
   // The rest of the pipeline, applied to a formula already in negation
   // normal form.
-  auto assertNnf = [&](Node res) {
+  auto assertNnf = [&](Node res, Node original) {
     if (doRewrite)
     {
       res = rw.rewrite(res);
@@ -68,6 +69,10 @@ void AssertionPreparation::apply(SmtContext& ctx,
     }
     res = pi.apply(norm.normalize(cn.normalize(res)));
     res = doRewrite ? rw.rewrite(res) : res;
+    if (!original.isNull())
+    {
+      ctx.getQuantifierManager()->recordQuantifierOrigins(original, res);
+    }
     core.assertFormula(res);
     if (prepared != nullptr)
     {
@@ -81,9 +86,9 @@ void AssertionPreparation::apply(SmtContext& ctx,
     // nnf_cnf pushes ahead of the formula.
     for (const Node& def : nnf.takeDefinitions())
     {
-      assertNnf(def);
+      assertNnf(def, Node::null());
     }
-    assertNnf(res);
+    assertNnf(res, a);
   }
 }
 

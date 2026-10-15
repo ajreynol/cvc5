@@ -78,6 +78,10 @@ TheoryDatatype::TheoryDatatype(SmtContext& ctx)
 
 TheoryDatatype::~TheoryDatatype()
 {
+  // Trails contain pointers into VarData. Undo them before freeing their
+  // targets; TrailStack's member destructor would otherwise write into freed
+  // memory. Replay destroys the port before native solving reuses that memory.
+  d_trailStack.reset();
   for (VarData* d : d_varData)
   {
     delete d;

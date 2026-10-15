@@ -358,6 +358,8 @@ enum class InferenceId
   QUANTIFIERS_INST_CBQI_PROP,
   // conflicting instantiation from sub conflict-based instantiation
   QUANTIFIERS_INST_SUB_CONFLICT,
+  /** Native instantiation using an untrusted hint from the ported Z3 core. */
+  QUANTIFIERS_INST_Z3_REPLAY,
   // unsat core from sub conflict-based instantiation
   QUANTIFIERS_SUB_UC,
   // instantiation from naive exhaustive instantiation in finite model finding

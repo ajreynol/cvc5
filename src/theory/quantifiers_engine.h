@@ -37,6 +37,7 @@ namespace quantifiers {
 class QuantifiersModule;
 class FirstOrderModel;
 class Instantiate;
+class InstStrategyZ3Replay;
 class QModelBuilder;
 class QuantifiersInferenceManager;
 class QuantifiersModules;
@@ -66,6 +67,8 @@ class QuantifiersEngine : protected EnvObj
                     quantifiers::QuantifiersInferenceManager& qim,
                     ProofNodeManager* pnm);
   ~QuantifiersEngine();
+  /** Replay module, or null when replay is disabled. */
+  quantifiers::InstStrategyZ3Replay* getZ3Replay();
   /** The quantifiers registry */
   quantifiers::QuantifiersRegistry& getQuantifiersRegistry();
   //---------------------- utilities

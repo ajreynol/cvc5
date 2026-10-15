@@ -1,11 +1,76 @@
-# Proposal: `--z3-replay`, trusted confirmation of the port's unsat answers
+# `--z3-replay`: native confirmation of the port's unsat answers
 
 Date: 2026-10-15
 
 Branch: forked from `eagerInst-z3-1` (at `1ca8138236` plus the warning fixes
 that followed it).
 
-Status: proposal, not implemented.
+Status: implemented on `eagerInst-z3-replay`, based on `d385b82f7f`.
+The sections below retain the original design and motivation. The current
+implementation and its limits are summarized here.
+
+## Running the implementation
+
+```
+cvc5 --z3 --z3-preset=verus-best --z3-replay --produce-proofs \
+  --check-proofs --tlimit-per=60000 benchmark.smt2
+```
+
+`--z3` is optional with `--z3-replay`. The main solver always uses native
+cvc5 engines. The port runs in a fresh subsolver, with the requested Z3
+preset and engine configuration, on the native solver's preprocessed input.
+Proof options apply to the native solver only. Add `--dump-proofs` to print
+the resulting native proof, or `--produce-unsat-cores --check-unsat-cores`
+to check its assumptions. All three port configurations are supported:
+the default, `--z3-prop-engine=cvc5`, and `--z3-theory-engine=cvc5`.
+
+Native E-matching and other native instantiation strategies retain their
+normal defaults. `--no-e-matching` disables native E-matching only. To
+isolate the recorded hints further, also pass `--no-cbqi --no-cegqi
+--no-enum-inst --no-mbqi`.
+
+The port must return unsat before native confirmation is attempted. Other
+port results become unknown. An unsat answer always comes from native
+cvc5; a native unknown remains unknown. A native sat answer is returned
+with a `z3-replay: REFUTED` warning. With `--tlimit-per`, the port receives
+half the remaining query time; the parent's timer keeps running throughout.
+Resource limits are independently enforced by each solver.
+
+Use `--stats-internal` for `z3::replay::*` counters and timers:
+
+- `received`: recorded term vectors, deduplicated per port quantifier,
+  including unmapped ones;
+- `attempted`, `invalid`, `added`: native replay attempts, rejected malformed
+  terms, and successfully added instantiation lemmas;
+- `pending`: hints not consumed before native search finished;
+- `unmapped`: pending hints whose quantifier was never registered natively;
+- `confirmed`, `unconfirmed`, `refuted`: outcomes;
+- `portTime`, `nativeTime`: time spent in each phase.
+
+In a tracing build, `-t z3-replay` reports the two results and pending counts.
+
+The current mapping pairs outer universal quantifiers before and after the
+port's assertion preparation, checking arity and positional types. This is
+an untrusted coverage heuristic. Every accepted hint must name a quantifier
+actually asserted by native cvc5, and its terms must be closed and correctly
+typed. Only `Instantiate::addInstantiation` constructs its lemma and proof.
+No prepared assertion, port lemma, conflict, or unsat core is imported.
+
+Nested quantifiers introduced by instances, named quantifier definitions,
+and translation between port-specific and native skolems are not yet
+mapped. They can leave a refutation unconfirmed; they cannot justify an
+incorrect native unsat answer. The second preprocessing uses
+`--simplification=none` to reduce quantifier reshaping, but exact preservation
+is not guaranteed. Global negation and deep restarts are rejected. Validation
+focuses on single-query benchmarks; incremental use is not an acceptance
+target.
+
+Recording is enabled only in the replay subsolver. Ordinary `--z3` retains
+its search configuration. Replay also exposed two existing teardown bugs:
+the datatype theory freed variable data before undoing trails into it, and
+the shared trail stack destroyed borrowed, reusable trail objects. Both
+lifetimes are now handled explicitly.
+
 
 ## 1. Why
 
@@ -319,3 +384,64 @@ the subsolver's options and the pairs, for a reproduction.
   The port can only give all instantiations; the main solver's unsat core
   (with `--produce-unsat-cores` on the main solver only) could report which
   ones mattered, which is useful for attribution in its own right.
+
+
+## 9. Initial validation (2026-10-15)
+
+Both production and assertion/debug builds pass all 47 files in
+`regress0/z3`, including six new replay regressions. The new tests exercise
+all three port configurations, guarded and multi-variable quantifiers,
+ground contradictions, port non-refutations, native proofs and unsat cores.
+The isolated replay tests disable native instantiation, and the same formulas
+return unknown without replay. An eagerly checked proof contains native
+`INSTANTIATE` steps and no `TRUST` steps. Tiny time/resource budgets return
+unknown. Valgrind reports no memory errors for the Verus benchmark that
+exposed the datatype teardown use-after-free.
+
+The corpus sample consists of every tenth path in the lexicographically
+sorted recursive list of `.smt2` files under
+`/local/ajreynol/benchmarks/quant-07-25` (613 of 6,127 files). Each run uses
+`--z3 --z3-replay --z3-preset=verus-best --produce-proofs --check-proofs
+--stats-internal --tlimit-per=10000`, plus the engine selector. There are six
+concurrent processes. This measures the current replay configuration; it is
+not a timing comparison with the original standalone port runs above.
+
+| Port engine | Native unsat confirmations | Unknown | Parse errors | Native sat / REFUTED |
+|---|---:|---:|---:|---:|
+| Own search | 532 | 80 | 1 | 0 |
+| Hosted (`--z3-prop-engine=cvc5`) | 518 | 94 | 1 | 0 |
+| Stage 3 (`--z3-theory-engine=cvc5`) | 530 | 82 | 1 | 0 |
+
+All three parse errors refer to the same reduced input,
+`dd.noderep-smt-spec__unbounded_log__UnboundedLog.4.smt2`, which declares `.`
+as a symbol. No benchmark was modified. There were no crashes in the final
+sample run.
+
+| Port engine | Hints received | Hints attempted | Native replay lemmas | Pending hints | Port time (s) | Native time (s) |
+|---|---:|---:|---:|---:|---:|---:|
+| Own search | 270,109 | 252,801 | 246,805 | 17,308 | 241.3 | 687.6 |
+| Hosted | 342,220 | 312,868 | 307,037 | 29,352 | 286.0 | 713.4 |
+| Stage 3 | 235,708 | 226,674 | 224,813 | 9,034 | 98.0 | 962.5 |
+
+Totals include unsuccessful runs. Pending hints include unmapped quantifiers
+and hints not needed before a native refutation; they are not a count of
+incorrect instantiations. No malformed term vector was encountered. The
+`unmapped` counter was added after this full run to distinguish these cases.
+A final 31-file smoke run with this counter reports 776/18,660 hints unmapped
+for own search, 847/19,988 for hosted, and 323/16,744 for Stage 3.
+
+On a smaller sample (every twentieth entry of the 613-file sample), the
+normal native configuration confirms 24 of 30 parseable inputs in each
+engine mode. Disabling native E-matching, conflict-based, counterexample-based,
+enumerative, and model-based instantiation confirms 16 with the port's own
+search and 15 with each other engine. Consequently, these results do not
+establish that the recorded hints alone suffice for every confirmed query.
+Native E-matching remains enabled by default, as requested.
+
+Proof checking here is cvc5's internal checking, not external certificate
+checking. One own-search run (`ironkv-smt-cmessage_v.17.smt2`) contains one
+native `TRUST` step (`THEORY_INFERENCE_DATATYPES`) in the final proof;
+`--check-proofs-complete` rejects that proof. The other confirmed sample proofs
+contain no `TRUST` steps in their rule statistics. Replay adds no trusted
+proof rule. Use `--check-proofs-complete` when incomplete native proofs must
+be rejected.

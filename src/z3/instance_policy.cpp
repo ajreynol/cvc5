@@ -76,6 +76,7 @@ Node InstancePolicy::mkLemma(TNode q,
   }
   Node instance = getQuantBody(q).substitute(
       vars.begin(), vars.end(), subs.begin(), subs.end());
+  d_qm.recordInstantiation(q, subs);
 
   Trace("z3-qi-raw") << "RAWINST " << instance << std::endl;
   Trace("z3-events") << "INSTANCE " << instance << std::endl;

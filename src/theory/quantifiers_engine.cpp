@@ -43,6 +43,11 @@ using namespace cvc5::internal::theory::quantifiers;
 namespace cvc5::internal {
 namespace theory {
 
+InstStrategyZ3Replay* QuantifiersEngine::getZ3Replay()
+{
+  return d_qmodules->d_z3Replay.get();
+}
+
 QuantifiersEngine::QuantifiersEngine(Env& env,
                                      QuantifiersState& qs,
                                      QuantifiersRegistry& qr,

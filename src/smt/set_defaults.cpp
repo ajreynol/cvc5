@@ -132,6 +132,25 @@ void SetDefaults::setDefaults(LogicInfo& logic, Options& opts)
 
 void SetDefaults::setDefaultsPre(Options& opts)
 {
+  if (opts.z3.z3Replay)
+  {
+    if (d_isInternalSubsolver)
+    {
+      // Native subsolvers must not recursively start a replay driver.
+      SET_AND_NOTIFY(z3, z3Replay, false, "internal subsolver");
+    }
+    else
+    {
+      if (opts.quantifiers.globalNegate
+          || opts.smt.deepRestartMode != options::DeepRestartMode::NONE)
+      {
+        throw OptionException(
+            "--z3-replay does not support --global-negate or --deep-restart");
+      }
+      // The main solver, including preprocessing and proofs, is native cvc5.
+      SET_AND_NOTIFY(z3, z3, false, "--z3-replay");
+    }
+  }
   // The ported Z3 core has a deliberately minimal supported surface; see
   // src/z3/README.md. Reject what it cannot do rather than answering from
   // cvc5's own engines, which it leaves constructed but inactive and which

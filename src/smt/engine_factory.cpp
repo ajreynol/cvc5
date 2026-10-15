@@ -16,13 +16,33 @@
 #include "prop/prop_engine.h"
 #include "smt/env.h"
 #include "theory/theory_engine.h"
+#include "z3/quantifier_manager.h"
+#include "z3/shared_backend.h"
+#include "z3/smt_context.h"
+#include "z3/theory_slot.h"
 #include "z3/z3_hosted_prop_engine.h"
 #include "z3/z3_prop_engine.h"
-#include "z3/theory_slot.h"
 #include "z3/z3_theory_engine.h"
 
 namespace cvc5::internal {
 namespace smt {
+
+void EngineFactory::getZ3InstantiationTermVectors(
+    Env& env,
+    TheoryEngine* te,
+    std::map<Node, std::vector<std::vector<Node>>>& insts)
+{
+  Assert(env.getOptions().z3.z3);
+  z3::SharedBackend& backend =
+      env.getOptions().z3.z3TheoryEngine == options::Z3TheoryEngineMode::CVC5
+          ? z3::getSlotBackend(*te).getBackend()
+          : static_cast<z3::Z3TheoryEngine*>(te)->getBackend();
+  if (backend.hasContext())
+  {
+    backend.getContext().getQuantifierManager()->getInstantiationTermVectors(
+        insts);
+  }
+}
 
 std::unique_ptr<TheoryEngine> EngineFactory::mkTheoryEngine(Env& env)
 {

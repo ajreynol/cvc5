@@ -24,8 +24,10 @@
 #ifndef CVC5__Z3__QUANTIFIER_MANAGER_H
 #define CVC5__Z3__QUANTIFIER_MANAGER_H
 
+#include <map>
 #include <memory>
 #include <ostream>
+#include <set>
 #include <vector>
 
 #include "expr/node.h"
@@ -46,6 +48,14 @@ class QuantifierManager
   ~QuantifierManager();
 
   QuantifierServices& getContext() const;
+
+  /** Record replay hints, retaining them across search backtracking. */
+  void recordInstantiation(Node q, const std::vector<Node>& terms);
+  /** Pair outer universal quantifiers before and after assertion preparation.
+   * This is a heuristic for replay coverage, never a proof of equivalence. */
+  void recordQuantifierOrigins(Node input, Node prepared);
+  void getInstantiationTermVectors(
+      std::map<Node, std::vector<std::vector<Node>>>& insts) const;
 
   void add(TNode q, uint32_t generation);
   void del(TNode q);
@@ -128,6 +138,10 @@ class QuantifierManager
   size_t d_lazyScopes;
   bool d_lazy;
   bool d_inForcedRematch;
+  /** Enabled only in the replay subsolver; ordinary --z3 pays no storage cost. */
+  bool d_recordInstantiations;
+  std::map<Node, Node> d_quantifierOrigins;
+  std::map<Node, std::set<std::vector<Node>>> d_instantiations;
   void flush();
 };
 

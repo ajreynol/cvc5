@@ -22,6 +22,7 @@
 #include "options/main_options.h"
 #include "options/sets_options.h"
 #include "options/smt_options.h"
+#include "options/z3_options.h"
 #include "preprocessing/assertion_pipeline.h"
 #include "prop/prop_engine.h"
 #include "smt/assertions.h"
@@ -215,6 +216,7 @@ const context::CDHashMap<size_t, Node>& SmtSolver::getPreprocessedSkolemMap()
 bool SmtSolver::trackPreprocessedAssertions() const
 {
   return options().smt.deepRestartMode != options::DeepRestartMode::NONE
+         || options().z3.z3Replay
          || options().smt.produceProofs;
 }
 
