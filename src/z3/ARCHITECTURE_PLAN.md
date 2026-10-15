@@ -5,7 +5,8 @@ Date: 2026-10-10
 Source snapshot: `da001fa639` (`Preset`)
 
 Status: Stages 1A and 1B implemented. See the progress record in section
-14. Stage 2 is planned in section 15.
+14. Stage 2 (section 15) is implemented as a hosted engine. Stage 3 is
+planned in section 16.
 
 ## 1. Objective and migration principle
 
@@ -1166,3 +1167,163 @@ more time than the core's own search; without delayed units
 than the hosted engine of the previous round. Local instances are now the
 default of the hosted engine; the next run confirmed the choice, though
 narrowly (host3 against host3nl: close, local instances slightly better).
+
+## 16. Stage 3: cvc5's theory engine over the port's theory components
+
+### Goal
+
+Drive the port's theory side with cvc5's own `TheoryEngine`, under cvc5's
+propositional engine, with the port's components in the theory slots:
+
+```
+Stage 2 (now):  PropEngine → Z3TheoryEngine (a TheoryEngine that overrides the search contract)
+                               → SmtContext (one E-graph, plugins, quantifier stack) + PropCore mirror
+Stage 3:        PropEngine → TheoryEngine → slots BOOL, UF, ARITH, BV, DATATYPES, QUANTIFIERS
+                               each a port component, all over the shared SmtContext + PropCore mirror
+```
+
+This is the theory-orchestration level of section 12. It retires the last
+Z3-specific engine above the theories: `Z3TheoryEngine`'s overrides go, and
+the methods of `TheoryEngine` that Stage 2 made virtual can be made
+non-virtual again. Below the slots, the port's theory side is unchanged.
+
+### Constraints
+
+- **The port's E-graph stays.** Its plugins (arithmetic, datatypes, the
+  quantifier stack, the bit-vector bridge) are built on one shared E-graph,
+  as in Z3, and replacing it with cvc5's equality engines is not on the
+  table. So the port's components do not request an equality engine
+  (`Theory::needsEqualityEngine` keeps its default, false), and switches
+  make `TheoryEngine` allocate none: the port's E-graph is the only one, as
+  now.
+- **cvc5's quantifiers engine is not used.** The quantifiers slot holds the
+  port's quantifier stack; no `QuantifiersEngine` is created.
+- **Measured under cvc5's propositional engine,** against the hosted
+  configuration (host3), the convention of THEORY_BRANCH.md.
+
+### What `TheoryEngine` does that the hosted engine bypasses
+
+`Z3TheoryEngine` overrides `preRegister`, `assertFact`, `check`,
+`propagate`, `getExplanation` and the rest, and so skips everything
+`TheoryEngine` does in between. Running through `TheoryEngine` brings these
+back, and each needs either a slot method or a switch:
+
+| `TheoryEngine` machinery | Today, natively | Under Stage 3 |
+|---|---|---|
+| Theory construction (`TheoryConstructor::addTheory`, per slot) | the native theory | the port's slot component, chosen at construction (`EngineFactory`/`SmtSolver`) |
+| Equality engines (`CombinationEngine` → `EqEngineManagerDistributed::initializeTheories`) | shared-terms engine, master engine (quantified logics), one per theory that asks, model engine | none, by switch |
+| Shared terms (`SharedSolver`: `preRegister`, `assertShared`, `preNotifySharedFact`, `explain`) | tracks terms shared between theories | inert, by switch: shared terms live in the one E-graph |
+| Theory combination (`combineTheories`, care graph, at full effort) | splits on shared terms | none, by switch: combination happens inside the E-graph (and the port's model-based arithmetic) |
+| Quantifiers engine (`d_quantEngine`: `finishInit`, `notifyCombineTheories`, last call) | from the quantifiers theory | none, by switch |
+| Model building and last call (`resetModel`, `buildModel`, `postProcessModel`) | builds the candidate model | none: models are refused under `--z3` |
+| Lemmas (`OutputChannel::lemma` → `PropEngine::assertLemma`) | preprocessed | not preprocessed, through a lemma property: the port's atoms are not in rewritten form, and preprocessing them is what gave wrong "sat" answers in Stage 2 |
+| Facts (`assertToTheory`, per-theory queues read in `check`) | per theory | each slot forwards its facts to the shared core |
+| Check order (each enabled theory, in id order, then `propagate`) | per theory | the shared core's work runs once per round (see the open questions) |
+| Explanations (`getExplanation` → the propagating theory's `explain`) | per theory | forwarded to the shared core, as `Z3TheoryEngine::getExplanation` does now |
+| Decisions, phases (`DecisionManager`, `OutputChannel::preferPhase`) | per theory | splitting lemmas and phases as now; `Valuation` needs the list of decisions for delayed units |
+
+### The pieces
+
+**cvc5 side: switches, set by `SetDefaults` under this configuration,
+inert otherwise.**
+
+1. An equality engine mode with no equality engines (for instance
+   `--ee-mode=none`, internal): `CombinationEngine` creates no equality
+   engine manager allocation, an inert shared solver and no model
+   equality engine, and `combineTheories` does nothing. A theory slot that
+   asks for an equality engine in this mode is an error, so a native theory
+   left in a slot by mistake is caught.
+2. A quantified logic without a quantifiers engine: `TheoryEngine` keeps
+   `d_quantEngine` null and skips its three uses, and no master equality
+   engine is made.
+3. No model building or last call in this mode (or a guard that makes them
+   no-ops), since models are refused under `--z3`.
+4. A lemma property, or an output channel method, for lemmas that are not
+   preprocessed, with control over whether the decision heuristic sees them
+   (the hosted engine's `assertLemmaUnprocessed` with `notifyDecisions`).
+5. `Valuation` access to the current decisions (the first one weakens
+   delayed units).
+6. Construction: under this configuration, `EngineFactory` makes a plain
+   `TheoryEngine`, and the port's components are added to the slots instead
+   of the native theories (`TheoryEngine::addTheory<T>`).
+
+Each switch is checked on its own to leave native configurations
+unchanged.
+
+**Port side: the shared core and the slot components.**
+
+7. **The shared core.** What `Z3TheoryEngine` does in hosted mode moves to
+   a core object shared by the slots: the `SharedBackend` (`SmtContext`
+   and `PropCore` in host mode), following the SAT context, asserting
+   facts, propagating and reporting, explanations, conflicts sent as
+   lemmas, delayed units, splitting lemmas, the final check loop. Its
+   behavior is that of the hosted engine.
+8. **Slot components.** One component per slot (BOOL, UF, ARITH, BV,
+   DATATYPES, QUANTIFIERS), a `theory::Theory` that does not request an
+   equality engine and forwards to the core: `preRegisterTerm`, the facts
+   it receives, `check`, `propagate`, `explain`, `presolve`, `postsolve`,
+   `notifyRestart`. BOOL is needed because Boolean variables belong to it,
+   and the core's relevancy needs their values. The other slots (arrays,
+   strings, floating point, sets) get a component that marks the model
+   unsound, as the port does now for their atoms.
+9. **Preprocessing.** Today the native theories in `TheoryEngine` serve
+   preprocessing: theory rewriters, `ppRewrite`, static learning, solving
+   equalities (`ppAssert`), sort inference. A slot component keeps that
+   service by owning an instance of the native theory and delegating those
+   calls to it. Which of these calls rely on the native theory's
+   `finishInit` or on its equality engine is the first thing to check, per
+   slot.
+
+### Steps
+
+1. **Audit** (no code): for each slot, the preprocessing calls and their
+   dependencies (point 9); the uses of equality engines, the shared solver,
+   the quantifiers engine and the model in `TheoryEngine`'s search path
+   that the switches must cover; the order in which facts reach theories.
+2. **The switches** (1 to 6), off by default; native configurations
+   unchanged.
+3. **The shared core** (7): move the hosted logic out of `Z3TheoryEngine`;
+   the hosted configuration keeps answers and `z3::` counters unchanged.
+4. **The slot components** (8, 9) and the configuration that selects them
+   (for instance `--z3-theory-engine=cvc5`, with `--z3-prop-engine=cvc5`).
+   Checked on the sample of `quant-07-25` and the quantified regressions
+   with assertions (no wrong answers, no crashes, unknowns not much above
+   host3's), then measured against host3. `z3::` counters are not expected
+   to match: facts reach the core per theory, at check time, rather than
+   one by one as they are asserted.
+5. **Retire the hosted engine:** when Stage 3 is at least as good as
+   host3, it becomes the configuration of `--z3-prop-engine=cvc5`;
+   `Z3TheoryEngine`'s overrides are removed and `TheoryEngine`'s methods
+   are made non-virtual again.
+
+### After Stage 3
+
+- **Each slot takes over its own part of the core,** one at a time, each
+  checked to leave behavior unchanged: ARITH drives the arithmetic plugin,
+  DATATYPES the datatype plugin, QUANTIFIERS the quantifier stack through
+  `QuantifierManager`'s interface (where Phase C, step 5, of
+  THEORY_BRANCH.md lands: when to match and when to instantiate, mapped onto
+  the slot's check efforts), UF the E-graph and the internalizing walk. The
+  core shrinks to the E-graph and the relevancy mirror, a service shared by
+  the slots, in the role of cvc5's central equality engine.
+- **Deferred:** replacing the E-graph with cvc5's equality engines (and
+  with it Phase C, step 6), native theories next to the port's components
+  (which needs combination between the E-graph and cvc5's equality
+  engines), and cvc5's quantifiers engine.
+
+### Open questions
+
+- **Where the core's work runs.** `TheoryEngine` checks each enabled theory
+  in id order, then propagates. The core's propagation and matching should
+  run once per round, after all facts are in: in the last enabled slot's
+  check (QUANTIFIERS when the logic is quantified), or in a
+  `TheoryEngineModule`'s `postCheck`.
+- **Fact order.** The hosted engine asserts facts to the core in SAT order;
+  through `TheoryEngine`, each slot reads its own queue at check time.
+  Whether the order changes performance is measured in step 4; if it does,
+  the core can take facts in assertion order from the facts lists of all
+  slots.
+- **Who owns the core:** the engine factory, handing it to each slot at
+  construction, or the UF slot.
+- **The cost of the indirection** through `TheoryEngine` (per-theory fact
+  queues and checks) against the hosted engine's direct calls.

@@ -267,6 +267,14 @@ As Stage 1B did for `PropCore`, in steps that each leave answers and
 
 **Progress.**
 
+From 2026-10-15 on, experiments on the theory side run under cvc5's
+propositional engine (`--z3-prop-engine=cvc5`, ARCHITECTURE_PLAN.md section
+15) and are compared with its default configuration, since what counts is
+what holds under cvc5's search. The steps that should not change behavior
+are checked in both modes: steps 1 to 4 leave answers and `z3::` counters
+unchanged under cvc5's propositional engine as well (447 runs with
+`verus-best`, 7 that time out compared under `--rlimit`).
+
 - **Steps 1 and 2: done** (2026-10-15). The outbound contract is
   `QuantifierServices` ([quantifier_services.h](quantifier_services.h)),
   which `SmtContext` implements; the stack (`QuantifierManager` and its
@@ -320,7 +328,40 @@ As Stage 1B did for `PropCore`, in steps that each leave answers and
   timing; and `cvc5` is how the port's matcher would instantiate under
   cvc5's quantifiers engine, which is what Phase D would start from.
   Neither bounds a matching loop, as cvc5 does not. With the default,
-  answers and `z3::` counters are unchanged.
+  answers and `z3::` counters are unchanged (894 runs, 15 compared under
+  `--rlimit`); on the ten Verus benchmarks, the time ratio of steps 3 and 4
+  together is 0.990. Neither new timing gives a wrong answer or a new
+  failure on the quantified regressions with assertions.
+
+  **First reading, under the port's own search** (development set of 88
+  hard Verus benchmarks, 10 s;
+  to be confirmed on the full set): `z3` solves 87 in 169 s, `eager` 88 in
+  162 s, `cvc5` 38 in 563 s. The gain is in the timing: making instances
+  during propagation rather than in rounds at final checks. Z3's triage
+  (costs, thresholds, the lazy queue) adds nothing here, as Phase A's q2
+  suggested. For Phase D, this is the branch where cvc5 needs a quantifiers
+  module that instantiates at standard effort.
+
+  **Full set, under the port's own search** (60 s, 2026-10-15): `eager` is
+  close to the default `z3`,
+  solving nearly as many in nearly the same time; `cvc5` is bad. Under the
+  Verus presets, Z3's policy differs from `eager` only by a depth cap: the
+  weight of a quantifier is 1 (unless pattern inference raised it), so an
+  instance costs its generation plus 1 and its terms get that generation,
+  as with `eager`; a match costing at most the eager threshold (100) is
+  made at once, as with `eager`; a costlier one is made only if the checker
+  finds it in conflict, since the lazy threshold (20) is below the eager
+  one and the final check never makes a delayed instance. So the cost
+  function and the lazy queue do nothing here, and the cap at about 100
+  generations accounts for what `z3` gains over `eager`.
+
+  **Under cvc5's propositional engine** (60 s, 2026-10-15): `eager` is
+  significantly worse than the default (host3eager against host3). The
+  depth cap matters there: cvc5 keeps every instance clause it is sent,
+  across branches, while the core's own search deletes instances on
+  backtracking, so without the cap the chains of instances accumulate.
+  The reading under the core's own search did not transfer, which is why
+  theory-side experiments now run under cvc5's propositional engine.
 
 ### Phase D: toward cvc5
 
