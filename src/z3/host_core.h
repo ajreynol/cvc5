@@ -182,6 +182,11 @@ class HostCore : protected EnvObj
   size_t d_numReported;
   /** How far in the assigned literals propagations were collected. */
   size_t d_reportIdx;
+  /**
+   * The lowest level the SAT context popped to since the last syncLevel, or
+   * UINT32_MAX if it did not pop.
+   */
+  uint32_t d_popLevel;
   /** The atoms registered by cvc5 before the next check. */
   std::vector<Node> d_preregistered;
   /** The lemmas sent, which are permanent in cvc5. */

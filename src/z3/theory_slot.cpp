@@ -148,7 +148,10 @@ TheorySlot::TheorySlot(Env& env,
 {
   d_theoryState = &d_state;
   // The driver's check runs the core even when its own fact queue is empty:
-  // the facts may be queued at the other slots.
+  // the facts may be queued at the other slots. TheoryEngine then also
+  // checks the slots when no fact was asserted at all, as the hosted engine
+  // runs the core at every check: the core may have work left from the
+  // previous one (see HostCore::needCheck).
   d_checkEarlyExit = false;
   d_sb->registerSlot(this);
 }

@@ -158,6 +158,11 @@ bool SmtDriver::verifyUnknownModel(const Result& r)
   // This is the candidate model that would be returned by a call to get-model
   // if we responded unknown for this query.
   theory::TheoryModel* m = d_smt.getTheoryEngine()->getModel();
+  if (m == nullptr)
+  {
+    // there is no model with --ee-mode=none
+    return false;
+  }
   const context::CDList<Node>& al = d_smt.getAssertions().getAssertionList();
   // We disable the resource manager while verifying the model, similar to what
   // is done when building or getting models.

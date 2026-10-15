@@ -7,7 +7,8 @@ Source snapshot: `da001fa639` (`Preset`)
 Status: Stages 1A and 1B implemented. See the progress record in section
 14. Stage 2 (section 15) is implemented as a hosted engine. Stage 3
 (section 16) is implemented through step 4; its first results came from a
-soundness bug, fixed (section 16, Progress).
+soundness bug, fixed, and its extra unknowns from two bugs, fixed (section
+16, Progress).
 
 ## 1. Objective and migration principle
 
@@ -1471,6 +1472,75 @@ another session.)
 Stage 3 is now close to the hosted engine, as designed, but gives up
 (unknown) more often. That is a completeness question to look into before
 step 5.
+
+**The extra unknowns had two causes, both fixed** (2026-10-15). Neither
+was a wrong answer: in each, the core reached a final check with nothing
+left to do and gave up.
+
+1. **The core kept the facts of a branch cvc5 had left.** The core
+   follows the SAT context lazily: `notifyPop` notes a pop, and
+   `syncLevel` pops the core to the current level at the next call.
+   - When cvc5 popped below some level and pushed back to it or higher
+     between two calls, the core popped nothing and kept the facts of the
+     abandoned branch.
+   - On `mimalloc-smt-os_commit.2`, it then sent a conflict that included
+     literals cvc5 had not assigned.
+   - It took that conflict for pending (`d_conflictSent`) and ignored every
+     later check, so the final check answered unknown.
+
+   The fix: `notifyPop` records the lowest level reached, and `syncLevel`
+   pops the core to it before following the current level. The hosted
+   engine had the same bug, so the fix changes its searches too. In
+   assertion builds, `sendConflict` now checks that each literal of a
+   conflict is false in cvc5.
+2. **`TheoryEngine` does not check the theories at standard effort when no
+   fact is new.** The hosted engine runs the core at every check, and the
+   core relies on it.
+   - After sending lemmas, the core asks for another check (`needCheck`)
+     to finish its pending propagations, instances, delayed units and
+     newly preregistered atoms.
+   - Under `TheoryEngine`, that check found no new fact and skipped the
+     theories, so the core's pending work waited for the next decision. On
+     `noderep-smt-exec__log.19`, that happened on 171 of the 1,333
+     standard checks before the first final check.
+   - The search then diverged. It reached full effort 31 times, where the
+     hosted engine never does on that benchmark, and the last final check
+     found nothing left to instantiate.
+
+   The fix: a theory that clears `d_checkEarlyExit`, so that it is checked
+   with an empty queue, is now also checked when no fact was asserted at
+   all. `TheoryEngine` reads this at `finishInit` through
+   `Theory::checksWithoutFacts`. Only the slots clear the flag, so native
+   configurations are unchanged. On `log.19`, Stage 3 then answers unsat
+   with the hosted engine's counters within 3%:
+
+   | `log.19` | hosted | Stage 3 |
+   |---|---|---|
+   | checks | 2,224 | 2,175 |
+   | conflicts | 335 | 331 |
+   | instances | 4,129 | 4,144 |
+
+A third fix came from the regressions with assertions. After an unknown,
+`--model-verify` dereferenced the null model of `--ee-mode=none`, which
+caused 12 segfaults. The option is on by default, and active once
+`SetDefaults` turns on models for sygus-inst in NIA logics.
+`SmtDriver::verifyUnknownModel` now gives up when there is no model.
+
+**Results with the three fixes** (10 s, `verus-best`; hosted and Stage 3 run
+in the same session):
+
+| | hosted | Stage 3 |
+|---|---|---|
+| Development set (88) | 73, 1 unknown, 307 s | 70, 1 unknown, 314 s |
+| The 21 sample benchmarks Stage 3 gave up on | 5, 2 unknown | 9, 2 unknown |
+| Every tenth of `quant-07-25` (613) | SAMPLE-HOSTED | SAMPLE-STAGE3 |
+
+On the development set, the 3 benchmarks only the hosted engine solves take
+it 8.6 to 10 s, at the time limit. On the quantified regressions with
+assertions, neither mode gives a wrong answer. Stage 3's only failures that
+the hosted engine does not have are the four higher-order quantifiers the
+port normalizes with a free variable (deferred). On those four, the hosted
+engine answers unknown.
 
 ### After Stage 3
 

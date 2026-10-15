@@ -12,6 +12,9 @@
 
 #include "z3/host_core.h"
 
+#include <algorithm>
+#include <cstdint>
+
 #include "base/output.h"
 #include "expr/node_algorithm.h"
 #include "options/z3_options.h"
@@ -47,7 +50,8 @@ HostCore::HostCore(Env& env,
       d_conflictSent(false),
       d_needCheck(false),
       d_numReported(0),
-      d_reportIdx(0)
+      d_reportIdx(0),
+      d_popLevel(UINT32_MAX)
 {
   d_popNotify = std::make_unique<PopNotify>(context(), *this);
 }
@@ -61,6 +65,7 @@ void HostCore::reset()
   d_needCheck = false;
   d_numReported = 0;
   d_reportIdx = 0;
+  d_popLevel = UINT32_MAX;
   d_preregistered.clear();
   d_lemmasSent.clear();
 }
@@ -236,13 +241,19 @@ Node HostCore::explain(TNode literal)
 
 void HostCore::notifyPop()
 {
+  // The core follows when it is next asked something (syncLevel): a
+  // backjump pops the SAT context one level at a time, and the core pops
+  // all of them at once, down to the lowest level reached, even if the SAT
+  // context has pushed again since.
+  uint32_t lvl = context()->getLevel();
+  if (lvl < d_popLevel)
+  {
+    d_popLevel = lvl;
+  }
   if (!d_setup)
   {
     return;
   }
-  // The core follows when it is next asked something (syncLevel): a
-  // backjump pops the SAT context one level at a time, and the core pops
-  // all of them at once.
   d_conflictSent = false;
 }
 
@@ -250,15 +261,20 @@ void HostCore::syncLevel()
 {
   PropCore& core = d_backend.getPropCore();
   uint32_t lvl = context()->getLevel();
-  if (core.getScopeLevel() > lvl)
+  // The scopes above the lowest level the SAT context reached since the last
+  // call belong to a branch it left, even if it is now as deep again.
+  uint32_t popTo = std::min(lvl, d_popLevel);
+  d_popLevel = UINT32_MAX;
+  if (core.getScopeLevel() > popTo)
   {
     Statistics& stats = d_backend.getContext().getStats();
     stats.d_numHostPops++;
-    stats.d_numHostScopesPopped += core.getScopeLevel() - lvl;
-    if (lvl == 0)
+    stats.d_numHostScopesPopped += core.getScopeLevel() - popTo;
+    if (popTo == 0)
     {
       stats.d_numHostRestarts++;
     }
+    core.hostSyncLevel(popTo);
   }
   core.hostSyncLevel(lvl);
   size_t size = core.assignedLiterals().size();
@@ -275,6 +291,15 @@ void HostCore::sendConflict(const std::vector<Literal>& lits)
   for (Literal l : lits)
   {
     disj.push_back(literalNode(~l));
+#ifdef CVC5_ASSERTIONS
+    // The conflict is made of facts cvc5 asserted, unless the core kept the
+    // facts of a branch cvc5 left (see syncLevel).
+    prop::PropEngine* pe = d_te.getPropEngine();
+    bool val = true;
+    Assert(pe->isSatLiteral(disj.back()) && pe->hasValue(disj.back(), val)
+           && !val)
+        << "conflict literal not false in cvc5: " << disj.back();
+#endif
   }
   Node lem = disj.empty()       ? nm->mkConst(false)
              : disj.size() == 1 ? disj[0]
