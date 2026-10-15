@@ -167,6 +167,16 @@ class TheoryEngine : protected EnvObj
         theoryId, d_theoryTable[theoryId]->getTheoryRewriter());
   }
 
+  /**
+   * Whether theories share terms through this engine: the logic has more
+   * than one theory, and theories have equality engines. With
+   * --ee-mode=none, the theory solvers share their own equality reasoning
+   * (the ported Z3 components, which share one E-graph), so the engine
+   * routes facts, propagations and explanations as without sharing: an
+   * explanation comes from the theory that owns the literal, as a whole.
+   */
+  bool isSharingEnabled() const;
+
   /** Register theory proof rule checkers to the given proof checker */
   void initializeProofChecker(ProofChecker* pc);
 

@@ -209,6 +209,10 @@ Node HostCore::explain(TNode literal)
   syncLevel();
   PropCore& core = d_backend.getPropCore();
   Literal l = core.hostLiteral(literal);
+  // cvc5 asks only for the explanation of a literal the core propagated,
+  // which is still true there; an assumption (a literal cvc5 asserted) has
+  // none, and the core would explain it as a fact of the base level.
+  Assert(!core.isHostAssigned(l.var()));
   Assert(core.getAssignment(l) == L_TRUE);
   std::vector<Literal> lits;
   core.hostExplain(l, lits);

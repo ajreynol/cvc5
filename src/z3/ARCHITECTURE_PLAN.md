@@ -6,7 +6,8 @@ Source snapshot: `da001fa639` (`Preset`)
 
 Status: Stages 1A and 1B implemented. See the progress record in section
 14. Stage 2 (section 15) is implemented as a hosted engine. Stage 3
-(section 16) is implemented through step 4.
+(section 16) is implemented through step 4; its first results came from a
+soundness bug, fixed (section 16, Progress).
 
 ## 1. Objective and migration principle
 
@@ -1388,7 +1389,8 @@ Steps 1 to 4 are done (2026-10-15); step 5 waits for the measurements.
   patterns and quantifier bodies), which `TheoryEngine::lemma` rejects and
   the hosted engine sent unchecked.
 
-**Results** (10 s, `verus-best`):
+**Results, withdrawn** (10 s, `verus-best`; these came from the soundness
+bug described below):
 
 | | port's own search | hosted (host3) | Stage 3 |
 |---|---|---|---|
@@ -1405,13 +1407,70 @@ engines never preregister. The 27 benchmarks of the sample that only
 Stage 3 solves give "unsat" with assertions on; 18 are declared unsat and
 none sat, and the port's own search confirms 8 of the other 9 in 60 s.
 
-On the benchmarks looked at, Stage 3 does a fraction of the hosted engine's
-work (a tenth of the decisions and instances), which is not yet explained.
-Candidates: `TheoryEngine` checks only when facts were asserted, where the
-hosted engine ran the core at every callback of the SAT solver; the core's
-propagations come back to their slots as facts, so a check can run the
-core again before returning; facts reach the core grouped by slot. Each is
-measurable, and attributing the gain is the next step, before step 5.
+**The gain was a soundness bug, now fixed** (2026-10-15). With more than
+one enabled theory, `TheoryEngine` explains a propagation through its
+sharing machinery (`getExplanation` with a vector of `NodeTheoryPair`).
+
+How it went wrong:
+1. Each literal of a theory's explanation is looked up among the facts
+   asserted to that theory (the propagation map).
+2. A literal not found there is taken for a propagation of the theory
+   itself, which is then asked to explain it.
+3. The driver slot explains with literals that were asserted to the other
+   slots: a `has_type` atom asserted to UF, say. So `TheoryEngine` asked the
+   core to explain assumptions.
+4. The core has no derivation for a literal cvc5 asserted. It returned the
+   empty explanation, as for a fact of its base level.
+5. The assumption was missing from the reason clause CaDiCaL learned: an
+   unsound clause.
+
+On the development set this happened 60,760 times, in 76 of the 88
+benchmarks, and it is what made Stage 3 fast. On
+`mimalloc-smt-alloc_generic.5`, the searches of Stage 3 and of the hosted
+engine are step for step identical until the first such reason. No wrong
+answer was observed, but the Verus benchmarks are all unsat, and its unsat
+answers could not be trusted.
+
+How it was found:
+- The preprocessed assertions are the same in both modes.
+- Every fact reaches the core.
+- The divergence on that benchmark is the reason of one propagated literal:
+  `{has_type(ll@0)}` in the hosted engine, empty in Stage 3, the empty one
+  coming from a second, recursive call of the core's `explain`.
+
+The checks run before (wrong answers with assertions on, declared statuses,
+literals of explanations true in cvc5's assignment) could not see it. This
+is the case `--z3-replay` (Z3_REPLAY_PLAN.md) is meant to cover.
+
+The fix: under `--ee-mode=none`, `TheoryEngine::isSharingEnabled()` is
+false. The slots share their reasoning through the E-graph, so facts,
+propagations, explanations and conflicts take the paths without sharing,
+where the theory that owns a literal explains it and the core's explanation
+is taken as is. `HostCore::explain` asserts that it is never asked to
+explain an assumption. With the fix:
+- **The searches coincide:** Stage 3's search on that benchmark is the
+  hosted engine's (972 decisions and 818 conflicts in both).
+- **No assumption is explained:** none on the development set, in either
+  mode.
+- **Regressions with assertions:** no wrong answers and no new failures
+  (167 solved; hosted 168).
+
+**Results with the fix** (10 s, `verus-best`):
+
+| | port's own search | hosted (host3) | Stage 3 |
+|---|---|---|---|
+| Development set (88) | 87, 169 s | 72, 315 s | 64, 272 s |
+| Every tenth of `quant-07-25` (613) | 584 | 572 | 565 |
+| Time on those both solve, against the port's own search | | +15% | +19% |
+| Unknowns on the sample | 4 | 2 | 21 |
+
+(On the development set, the hosted engine was run in the same session as
+Stage 3, so the two are comparable with each other; its 74 earlier was
+another session.)
+
+Stage 3 is now close to the hosted engine, as designed, but gives up
+(unknown) more often. That is a completeness question to look into before
+step 5.
 
 ### After Stage 3
 

@@ -14,39 +14,28 @@ Every answer of `--z3` comes from untrusted code: the ported core
 integrates it with cvc5 (the hosted engine, `HostCore`, the theory slots of
 Stage 3). Nothing checks an "unsat".
 
-This matters now. Stage 3 (`--z3-theory-engine=cvc5`, ARCHITECTURE_PLAN.md
-section 16) is far better than both the port's own search and the hosted
-engine, and the gain is not explained:
+This mattered concretely. Stage 3 (`--z3-theory-engine=cvc5`,
+ARCHITECTURE_PLAN.md section 16) first appeared far better than both the
+port's own search and the hosted engine:
 
-| 10 s, `verus-best` | port's own search | hosted (host3) | Stage 3 |
+| 10 s, `verus-best` | port's own search | hosted (host3) | Stage 3, first version |
 |---|---|---|---|
 | Development set (88 hard Verus benchmarks) | 87 in 169 s | 74 in 280 s | 88 in 92 s |
 | Every tenth benchmark of `quant-07-25` (613) | 586 | 572 | 612 |
 
-The user's own 60 s runs on the full set agree.
+The gain came from a soundness bug. `TheoryEngine`'s sharing machinery
+asked the core to explain literals that cvc5 had asserted (assumptions).
+The core answered with empty explanations, so the reason clauses CaDiCaL
+learned dropped assumptions: 60,760 times on 76 of the 88 benchmarks. It is
+fixed (ARCHITECTURE_PLAN.md section 16, "Progress").
 
-The checks done so far found nothing wrong:
-- **The problem is the same:** the preprocessed assertions match the hosted
-  engine's, apart from bound-variable numbering.
-- **The core sees every fact cvc5 asserts.**
-- **Wrong answers and failures:**
-  - the quantified regressions with assertions on give no wrong answer,
-    including the satisfiable ones;
-  - the benchmarks that only Stage 3 solves give unsat with assertions on;
-  - no declared status is contradicted.
-- **Explanations:** every literal of every explanation the core gives is
-  true in cvc5's assignment.
+None of the checks run at the time caught it:
+- the quantified regressions with assertions on gave no wrong answers;
+- no declared status was contradicted, since the Verus benchmarks are all
+  unsat;
+- every literal of every explanation was true in cvc5's assignment.
 
-On `mimalloc-smt-alloc_generic.5`, the hosted and Stage 3 searches are step
-for step identical for 554 decisions and backtracks. Then, after the same
-weakened unit lemma, CaDiCaL finds a literal implied at the first decision
-level in Stage 3 and at level 12 in the hosted search. It backjumps to level
-0 and finishes about 1,250 steps sooner.
-
-CaDiCaL takes the level of a theory propagation from its explanation. So
-the core explained that literal from base-level facts only, which is valid
-only if everything the core holds at its base level is valid. The checks
-above cannot rule that out.
+It took a step-by-step comparison of two searches to find it.
 
 `--z3-replay` settles this kind of question for good, for any configuration
 of the port: an unsat answer is confirmed by cvc5's own solver, or reported
@@ -293,15 +282,12 @@ Acceptance:
 
 ## 7. What to look for
 
-The question that started this: do Stage 3's extra solves confirm?
-- **They confirm at the rate of the port's own search:** the gain is real,
-  and attributing it (ARCHITECTURE_PLAN.md section 16, "Results") is a
-  search question.
-- **They confirm at a clearly lower rate:** look for an invalid explanation
-  or lemma, starting from the divergence described in section 1.
-
-A "sat" from the main solver is the strongest signal. Keep the benchmark,
-the subsolver's options and the pairs, for a reproduction.
+- **The confirmation rate per mode,** and how it moves when the port
+  changes. A change that raises the solved count but lowers the
+  confirmation rate deserves the suspicion the first Stage 3 results
+  deserved (section 1).
+- **A "sat" from the main solver** is the strongest signal. Keep the
+  benchmark, the subsolver's options and the pairs, for a reproduction.
 
 ## 8. Open questions
 
