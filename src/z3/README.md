@@ -5,14 +5,31 @@ it, exposed through the `--z3` option. The purpose is experimental: to measure
 how much of Z3's quantifier performance is reproducible inside cvc5, by
 replicating the algorithms that produce it rather than approximating them.
 
-Enabling `--z3` replaces cvc5's CDCL(T) engine. Everything else stays cvc5's:
-the parser, the term representation (`Node`), the rewriter, the
-preprocessor, and the SMT-level orchestration in `smt::SmtSolver`, which is
-the same for both configurations. What `--z3` changes is the pair of engines
-`smt::EngineFactory` constructs for it: `z3::Z3PropEngine` and
-`z3::Z3TheoryEngine` in place of cvc5's `PropEngine` and `TheoryEngine`.
-`SmtSolver` drives them through the same search contract as it does cvc5's
-engines, and they run the search in a `z3::SmtContext`.
+Enabling `--z3` replaces cvc5's theory reasoning with the port's. Everything
+else stays cvc5's: the parser, the term representation (`Node`), the
+rewriter, the preprocessor, and the SMT-level orchestration in
+`smt::SmtSolver`, which is the same for every configuration. What `--z3`
+changes is the engines `smt::EngineFactory` constructs for it. There are three
+configurations:
+
+- **cvc5's engines over the port's components, the default**
+  (`--z3-prop-engine=cvc5 --z3-theory-engine=cvc5`). cvc5's `PropEngine` and
+  `TheoryEngine` run the search, and the port's components fill the theory
+  slots (`theory_slot.*`). The components share one core (`host_core.*`),
+  in which `PropCore` mirrors cvc5's assignment for the theory side. cvc5
+  makes no equality engines (`--ee-mode=none`). See section 16 of
+  `ARCHITECTURE_PLAN.md`.
+- **The hosted engine** (`--z3-theory-engine=z3`, with cvc5's prop engine).
+  cvc5's `PropEngine` runs over `z3::Z3TheoryEngine`, which runs the same
+  core directly. See section 15 of `ARCHITECTURE_PLAN.md`.
+- **The port's own search** (`--z3-prop-engine=z3`).
+  `z3::Z3PropEngine` and `z3::Z3TheoryEngine` replace cvc5's `PropEngine`
+  and `TheoryEngine`. `SmtSolver` drives them through the same search
+  contract as it does cvc5's engines, and they run Z3's search in a
+  `z3::SmtContext`.
+
+Unless it says otherwise, the rest of this file describes the port's own
+search.
 
 ## Integration with cvc5's engines
 
@@ -256,8 +273,9 @@ scopes, assumptions, or cvc5's quantifiers engine taking part in the search.
 `Z3PropEngine::supports` answers no to all three. `SolverEngine` itself no
 longer knows about `--z3`.
 
-`regress0/z3/` pins all of this, together with the core behaviour under both
-presets: `unsupported-*.smt2` for the boundary, `incremental-checks*.smt2`
+`regress0/z3/` pins all of this. It also pins the core's behaviour under the
+default configuration, the hosted engine and the port's own search, with
+the default options and with `--z3-preset=z3`: `unsupported-*.smt2` for the boundary, `incremental-checks*.smt2`
 and `reset-assertions.smt2` for what is supported, and
 `quant-incomplete-unknown.smt2` for the obligation that a query the port
 cannot decide stays `unknown` and never becomes `sat`. Every test there
@@ -304,8 +322,8 @@ Following the instruction to reuse cvc5's own solvers where they exist:
   closure (`enode.*`, `cg_table.*`), as in Z3.
 - **Datatypes** are a port of Z3's `theory_datatype`, which plugs straight
   into the ported `z3::Theory` interface.
-- **Arithmetic** is, with `--z3-arith=native` (which the Verus preset
-  selects), a port of Z3's `theory_arith<mi_ext>` -- the simplex-based solver
+- **Arithmetic** is, with `--z3-arith=native` (the default, as in
+  Verus), a port of Z3's `theory_arith<mi_ext>` -- the simplex-based solver
   `smt.arith.solver=2` selects, and so the one Verus runs: rows and columns,
   bounds over rationals with an infinitesimal, `make_feasible` with Bland's
   rule, bound propagation, fixed-variable and offset equalities, `assume_eqs`
@@ -316,8 +334,8 @@ Following the instruction to reuse cvc5's own solvers where they exist:
   `smt.arith.nl=true`, `arith_eq_solver` (only used with
   `arith.int_eq_branch`). cvc5's total division operators get one extra axiom
   each, fixing their value at a zero divisor (`mkTotalDivZeroAxiom`).
-- **Bit-vectors, and arithmetic under `--z3-arith=bridge`** (the default
-  outside the Verus preset), go through `theory_cvc5.{h,cpp}`, which is
+- **Bit-vectors, and arithmetic under `--z3-arith=bridge`** (which
+  `--z3-preset=z3` selects), go through `theory_cvc5.{h,cpp}`, which is
   not from Z3. It is a Nelson-Oppen style bridge: the core owns the Boolean
   structure, the equalities and the instantiation, and at each final check the
   assigned arithmetic and bit-vector literals are handed to a cvc5 subsolver
@@ -411,24 +429,31 @@ answers in 0.08s with these. With `auto_config=false`, `setup` takes
 `CFG_BASIC`, so none of `setup_AUFLIA`'s settings apply either -- no "always
 false" phase, no geometric restarts, no `ng_lift_ite`, no pattern database.
 
-There are two presets. `--z3-preset=verus` selects that configuration; it
-sets each corresponding
-`--z3-*` option that was not given explicitly (`--z3-auto-config`,
-`--z3-mbqi`, `--z3-case-split=relevancy`, `--z3-qi-eager-threshold=100`,
-`--z3-delay-units`, `--z3-pattern-inference`, `--z3-arith-nl`), so any one of
-them can still be overridden. `--z3-preset=verus-best` is the same except
-for the two of Verus's settings that cost answers here: pattern inference and
-nonlinear arithmetic are left on, and `--z3-arith-nl-fallback` is enabled.
-That is worth 15 of the 16 benchmarks the plain Verus configuration leaves
-unknown, for about 5% more time, and Z3 behaves the same way when given the
-same options -- so `verus` is the preset to compare against Z3 with, and
-`verus-best` the one to solve benchmarks with. See `FIDELITY.md`.
+The defaults of the `--z3-*` options are those of
+`--z3-preset=verus-best`, the configuration to solve benchmarks with. It
+takes Verus's settings except the two that cost answers here: pattern
+inference and nonlinear arithmetic are left on, and `--z3-arith-nl-fallback`
+is enabled. That is worth 15 of the 16 benchmarks the plain Verus
+configuration leaves unknown, for about 5% more time, and Z3 behaves the
+same way when given the same options. Two other presets change the
+defaults:
+
+- **`--z3-preset=verus`** is Verus's configuration exactly
+  (`--no-z3-pattern-inference --no-z3-arith-nl --no-z3-arith-nl-fallback`).
+  It is the one to compare against Z3 with; see `FIDELITY.md`.
+- **`--z3-preset=z3`** is Z3's own defaults, with auto configuration
+  (`--z3-auto-config --z3-mbqi --z3-case-split=activity-delay-new
+  --z3-qi-eager-threshold=10 --no-z3-delay-units --z3-arith=bridge
+  --no-z3-arith-nl-fallback`).
+
+A preset sets only the options that were not given explicitly, so any one
+of them can still be overridden.
 
 `--z3-ng-lift-ite` defaults to `auto`, which follows
 `--z3-auto-config` the way Z3's own parameter follows `setup_AUFLIA`.
 `rewriter.sort_disjunctions` has no counterpart, since the rewriter is
-cvc5's; `smt.arith.solver=2` is `--z3-arith=native`, which both presets
-select.
+cvc5's. `smt.arith.solver=2` is `--z3-arith=native`, the default, which
+`verus` keeps.
 `smt.arith.nl=false` is `--no-z3-arith-nl`. It reproduces what
 `theory_arith` does with `m_nl_arith` off, which is more than giving up:
 
@@ -453,6 +478,11 @@ Without the option the port solved 11 benchmarks Verus's Z3 answers
 "unknown" on, all of which Z3 solves too with `smt.arith.nl=true`.
 
 ## Where it stands
+
+The measurements in this section predate the current defaults (2026-10-15).
+In them, `--z3` is the port's own search with Z3's defaults, which is now
+`--z3 --z3-prop-engine=z3 --z3-preset=z3`. Likewise, `--z3-preset=verus` here
+is now `--z3 --z3-prop-engine=z3 --z3-preset=verus`.
 
 Measured 2026-10-09 on a fixed 300-benchmark sample of
 `~/benchmarks/quant-07-25` (seeded `random.sample` over all 6124 `.smt2`

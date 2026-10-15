@@ -1,5 +1,6 @@
 ; COMMAND-LINE: --z3
-; COMMAND-LINE: --z3 --z3-preset=verus-best
+; COMMAND-LINE: --z3 --z3-prop-engine=z3 --z3-preset=z3
+; COMMAND-LINE: --z3 --z3-prop-engine=z3
 ; EXPECT: unsat
 ; DISABLE-TESTER: model
 ; DISABLE-TESTER: proof

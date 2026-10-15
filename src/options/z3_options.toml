@@ -14,12 +14,12 @@ name   = "Z3 Core"
   category   = "expert"
   long       = "z3-prop-engine=MODE"
   type       = "Z3PropEngineMode"
-  default    = "Z3"
+  default    = "CVC5"
   help       = "the propositional engine over the ported Z3 theory engine"
   help_mode  = "Propositional engines for --z3."
 [[option.mode.Z3]]
   name = "z3"
-  help = "The ported Z3 core's own search (PropCore)."
+  help = "The ported Z3 core's own search (PropCore); implies --z3-theory-engine=z3."
 [[option.mode.CVC5]]
   name = "cvc5"
   help = "cvc5's propositional engine (CNF conversion, CDCL(T) solver, decision heuristic), with PropCore mirroring the assignment for the theory side."
@@ -29,15 +29,15 @@ name   = "Z3 Core"
   category   = "expert"
   long       = "z3-theory-engine=MODE"
   type       = "Z3TheoryEngineMode"
-  default    = "Z3"
+  default    = "CVC5"
   help       = "the theory engine over the ported Z3 theory components"
   help_mode  = "Theory engines for --z3."
 [[option.mode.Z3]]
   name = "z3"
-  help = "The port's own theory engine (Z3TheoryEngine)."
+  help = "The port's own theory engine (Z3TheoryEngine), under either propositional engine."
 [[option.mode.CVC5]]
   name = "cvc5"
-  help = "cvc5's TheoryEngine, with the port's components in its theory slots, sharing the port's E-graph; implies --z3-prop-engine=cvc5 and --ee-mode=none (Stage 3 of src/z3/ARCHITECTURE_PLAN.md)."
+  help = "cvc5's TheoryEngine, with the port's components in its theory slots, sharing the port's E-graph; requires --z3-prop-engine=cvc5 and implies --ee-mode=none (Stage 3 of src/z3/ARCHITECTURE_PLAN.md)."
 
 [[option]]
   name       = "z3HostAxiomDecisions"
@@ -70,7 +70,7 @@ name   = "Z3 Core"
   category   = "expert"
   long       = "z3-auto-config"
   type       = "bool"
-  default    = "true"
+  default    = "false"
   help       = "configure the ported Z3 core per logic, as Z3's auto_config does"
 
 [[option]]
@@ -87,7 +87,7 @@ name   = "Z3 Core"
   category   = "expert"
   long       = "z3-case-split=MODE"
   type       = "Z3CaseSplitMode"
-  default    = "ACTIVITY_DELAY_NEW"
+  default    = "RELEVANCY"
   help       = "case split strategy of the ported Z3 core"
   help_mode  = "Case split strategies of the ported Z3 core."
 [[option.mode.ACTIVITY]]
@@ -209,7 +209,7 @@ name   = "Z3 Core"
   category   = "expert"
   long       = "z3-delay-units"
   type       = "bool"
-  default    = "false"
+  default    = "true"
   help       = "delay the propagation of unit clauses in the ported Z3 core"
 
 # Switches for the experiments of src/z3/PROPOSITIONAL_BRANCH.md, phase B.
@@ -405,18 +405,18 @@ name   = "Z3 Core"
   category   = "expert"
   long       = "z3-preset=MODE"
   type       = "Z3PresetMode"
-  default    = "DEFAULT"
+  default    = "VERUS_BEST"
   help       = "a named Z3 configuration; it sets the --z3-* options the user did not set explicitly"
   help_mode  = "Named configurations of the ported Z3 core."
-[[option.mode.DEFAULT]]
-  name = "default"
-  help = "Z3's own defaults, with auto configuration."
-[[option.mode.VERUS]]
-  name = "verus"
-  help = "The options Verus runs Z3 with: auto_config=false smt.mbqi=false smt.case_split=3 smt.qi.eager_threshold=100 smt.delay_units=true smt.arith.solver=2 smt.arith.nl=false pi.enabled=false."
 [[option.mode.VERUS_BEST]]
   name = "verus-best"
-  help = "Verus's options except the two that cost answers here, plus the nonlinear fallback: pattern inference and nonlinear arithmetic are on and --z3-arith-nl-fallback is enabled."
+  help = "The defaults of the --z3-* options: Verus's options except the two that cost answers here, plus the nonlinear fallback. As Verus: no auto configuration, no MBQI, the relevancy case split, an eager threshold of 100, delayed units and the ported arithmetic (auto_config=false smt.mbqi=false smt.case_split=3 smt.qi.eager_threshold=100 smt.delay_units=true smt.arith.solver=2). Unlike Verus: pattern inference and nonlinear arithmetic are on, and --z3-arith-nl-fallback is enabled."
+[[option.mode.VERUS]]
+  name = "verus"
+  help = "The options Verus runs Z3 with: verus-best with pattern inference and nonlinear arithmetic off and no nonlinear fallback (pi.enabled=false smt.arith.nl=false)."
+[[option.mode.Z3]]
+  name = "z3"
+  help = "Z3's own defaults, with auto configuration: --z3-auto-config --z3-mbqi --z3-case-split=activity-delay-new --z3-qi-eager-threshold=10 --no-z3-delay-units --z3-arith=bridge --no-z3-arith-nl-fallback."
 
 [[option]]
   name       = "z3PatternInference"
@@ -431,7 +431,7 @@ name   = "Z3 Core"
   category   = "expert"
   long       = "z3-arith=MODE"
   type       = "Z3ArithMode"
-  default    = "BRIDGE"
+  default    = "NATIVE"
   help       = "how the ported core solves arithmetic"
   help_mode  = "Arithmetic solvers of the ported Z3 core."
 [[option.mode.BRIDGE]]
@@ -446,7 +446,7 @@ name   = "Z3 Core"
   category   = "expert"
   long       = "z3-arith-nl-fallback"
   type       = "bool"
-  default    = "false"
+  default    = "true"
   help       = "when the ported theory_arith gives up on a nonlinear subproblem, decide it with the cvc5 subsolver of the theory bridge instead"
 
 [[option]]
@@ -589,7 +589,7 @@ name   = "Z3 Core"
   category   = "expert"
   long       = "z3-mbqi"
   type       = "bool"
-  default    = "true"
+  default    = "false"
   help       = "use model based quantifier instantiation in the ported Z3 core"
 
 [[option]]
@@ -613,7 +613,7 @@ name   = "Z3 Core"
   category   = "expert"
   long       = "z3-qi-eager-threshold=F"
   type       = "double"
-  default    = "10.0"
+  default    = "100.0"
   minimum    = "0.0"
   help       = "instantiations whose cost exceeds this are delayed"
 

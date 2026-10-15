@@ -6,9 +6,9 @@ Source snapshot: `da001fa639` (`Preset`)
 
 Status: Stages 1A and 1B implemented. See the progress record in section
 14. Stage 2 (section 15) is implemented as a hosted engine. Stage 3
-(section 16) is implemented through step 4; its first results came from a
-soundness bug, fixed, and its extra unknowns from two bugs, fixed (section
-16, Progress).
+(section 16) is implemented through step 4 and is the default configuration
+of `--z3`; its first results came from a soundness bug, fixed, and its extra
+unknowns from two bugs, fixed (section 16, Progress).
 
 ## 1. Objective and migration principle
 
@@ -1544,6 +1544,18 @@ assertions, neither mode gives a wrong answer. Stage 3's only failures that
 the hosted engine does not have are the four higher-order quantifiers the
 port normalizes with a free variable (deferred). On those four, the hosted
 engine answers unknown.
+
+**Stage 3 is the default** (2026-10-15).
+- `--z3` alone now runs cvc5's prop and theory engines over the port's
+  components.
+- The defaults of the `--z3-*` options are now those of `verus-best`. The
+  presets `verus` and `z3` (Z3's own defaults) change them; see
+  [README.md](README.md), "Configurations".
+- The other two configurations stay available. The hosted engine is
+  `--z3-theory-engine=z3`. The port's own search is `--z3-prop-engine=z3`,
+  which also selects `--z3-theory-engine=z3` unless the user set it.
+- Step 5's removal of `Z3TheoryEngine`'s hosted overrides waits while the
+  hosted engine is still useful as a reference.
 
 ### After Stage 3
 

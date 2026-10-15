@@ -146,34 +146,43 @@ void Params::initialize(const Options& opts)
   d_arithNl = opts.z3.z3ArithNl;
   d_arithNlFallback = opts.z3.z3ArithNlFallback;
   d_arithNative = opts.z3.z3Arith == options::Z3ArithMode::NATIVE;
-  const bool verus = opts.z3.z3Preset == options::Z3PresetMode::VERUS
-                     || opts.z3.z3Preset == options::Z3PresetMode::VERUS_BEST;
-  if (verus)
+  // The defaults of the options are those of verus-best: the options Verus
+  // passes to Z3 (auto_config=false smt.mbqi=false smt.case_split=3
+  // smt.qi.eager_threshold=100 smt.delay_units=true smt.arith.solver=2),
+  // except pi.enabled=false and smt.arith.nl=false, plus the nonlinear
+  // fallback. rewriter.sort_disjunctions=false has no counterpart, since
+  // the rewriter is cvc5's. The other presets change what the user did not
+  // set.
+  const options::HolderZ3& z = opts.z3;
+  switch (z.z3Preset)
   {
-    // The options Verus passes to Z3 (auto_config=false smt.mbqi=false
-    // smt.case_split=3 smt.qi.eager_threshold=100 smt.delay_units=true
-    // pi.enabled=false smt.arith.nl=false smt.arith.solver=2).
-    // rewriter.sort_disjunctions=false has no counterpart, since the
-    // rewriter is cvc5's.
-    const options::HolderZ3& z = opts.z3;
-    if (!z.z3AutoConfigWasSetByUser) d_autoConfig = false;
-    if (!z.z3MbqiWasSetByUser) d_mbqi = false;
-    if (!z.z3CaseSplitWasSetByUser) d_caseSplitStrategy = CS_RELEVANCY;
-    if (!z.z3QiEagerThresholdWasSetByUser) d_qiEagerThreshold = 100.0;
-    if (!z.z3DelayUnitsWasSetByUser) d_delayUnits = true;
-    // smt.arith.solver=2
-    if (!z.z3ArithWasSetByUser) d_arithNative = true;
-    // pi.enabled and smt.arith.nl are the two Verus turns off that cost
-    // answers on these benchmarks: pattern inference is worth three of the
-    // sixteen the plain Verus configuration leaves unknown, and nonlinear
-    // arithmetic -- with the fallback that stands in for the unported
-    // process_non_linear -- is worth twelve more. Z3 behaves the same way
-    // when given the same options, so verus-best is a better configuration
-    // rather than a departure from Z3; see FIDELITY.md.
-    const bool best = opts.z3.z3Preset == options::Z3PresetMode::VERUS_BEST;
-    if (!z.z3PatternInferenceWasSetByUser) d_piEnabled = best;
-    if (!z.z3ArithNlWasSetByUser) d_arithNl = best;
-    if (best && !z.z3ArithNlFallbackWasSetByUser) d_arithNlFallback = true;
+    case options::Z3PresetMode::VERUS:
+      // pi.enabled and smt.arith.nl are the two Verus turns off that cost
+      // answers on these benchmarks: pattern inference is worth three of the
+      // sixteen the plain Verus configuration leaves unknown, and nonlinear
+      // arithmetic -- with the fallback that stands in for the unported
+      // process_non_linear -- is worth twelve more. Z3 behaves the same way
+      // when given the same options, so verus-best is a better configuration
+      // rather than a departure from Z3; see FIDELITY.md.
+      if (!z.z3PatternInferenceWasSetByUser) d_piEnabled = false;
+      if (!z.z3ArithNlWasSetByUser) d_arithNl = false;
+      if (!z.z3ArithNlFallbackWasSetByUser) d_arithNlFallback = false;
+      break;
+    case options::Z3PresetMode::Z3:
+      // Z3's own defaults, with auto configuration, and the arithmetic
+      // bridge standing in for Z3's default arithmetic solver
+      if (!z.z3AutoConfigWasSetByUser) d_autoConfig = true;
+      if (!z.z3MbqiWasSetByUser) d_mbqi = true;
+      if (!z.z3CaseSplitWasSetByUser)
+      {
+        d_caseSplitStrategy = CS_ACTIVITY_DELAY_NEW;
+      }
+      if (!z.z3QiEagerThresholdWasSetByUser) d_qiEagerThreshold = 10.0;
+      if (!z.z3DelayUnitsWasSetByUser) d_delayUnits = false;
+      if (!z.z3ArithWasSetByUser) d_arithNative = false;
+      if (!z.z3ArithNlFallbackWasSetByUser) d_arithNlFallback = false;
+      break;
+    default: break;
   }
   switch (opts.z3.z3NgLiftIte)
   {

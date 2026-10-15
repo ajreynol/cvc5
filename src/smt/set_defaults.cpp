@@ -150,23 +150,36 @@ void SetDefaults::setDefaultsPre(Options& opts)
   if (opts.z3.z3)
   {
     checkZ3Capabilities(opts);
-    if (opts.z3.z3TheoryEngine == options::Z3TheoryEngineMode::CVC5)
+    // cvc5's theory engine over the port's components needs cvc5's prop
+    // engine: the port's own search drives only the port's own theory
+    // engine. Whichever of the two the user did not set gives way.
+    if (opts.z3.z3TheoryEngine == options::Z3TheoryEngineMode::CVC5
+        && opts.z3.z3PropEngine == options::Z3PropEngineMode::Z3)
     {
-      // cvc5's theory engine over the port's components needs cvc5's prop
-      // engine, and no equality engines: the components share the port's
-      // E-graph (src/z3/ARCHITECTURE_PLAN.md, section 16).
-      if (!opts.z3.z3PropEngineWasSetByUser)
+      if (!opts.z3.z3TheoryEngineWasSetByUser)
       {
-        SET_AND_NOTIFY(z3,
-                       z3PropEngine,
-                       options::Z3PropEngineMode::CVC5,
-                       "--z3-theory-engine=cvc5");
+        SET_AND_NOTIFY_VAL_SYM(z3,
+                               z3TheoryEngine,
+                               options::Z3TheoryEngineMode::Z3,
+                               "--z3-prop-engine=z3");
       }
-      else if (opts.z3.z3PropEngine != options::Z3PropEngineMode::CVC5)
+      else if (!opts.z3.z3PropEngineWasSetByUser)
+      {
+        SET_AND_NOTIFY_VAL_SYM(z3,
+                               z3PropEngine,
+                               options::Z3PropEngineMode::CVC5,
+                               "--z3-theory-engine=cvc5");
+      }
+      else
       {
         throw OptionException(
             "--z3-theory-engine=cvc5 requires --z3-prop-engine=cvc5");
       }
+    }
+    if (opts.z3.z3TheoryEngine == options::Z3TheoryEngineMode::CVC5)
+    {
+      // no equality engines: the components share the port's E-graph
+      // (src/z3/ARCHITECTURE_PLAN.md, section 16)
       SET_AND_NOTIFY(
           theory, eeMode, options::EqEngineMode::NONE, "--z3-theory-engine=cvc5");
     }

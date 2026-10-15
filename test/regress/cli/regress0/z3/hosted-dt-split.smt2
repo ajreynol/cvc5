@@ -1,5 +1,6 @@
-; COMMAND-LINE: --z3 --z3-prop-engine=cvc5
-; COMMAND-LINE: --z3 --z3-preset=verus-best --z3-prop-engine=cvc5
+; COMMAND-LINE: --z3
+; COMMAND-LINE: --z3 --z3-theory-engine=z3 --z3-preset=z3
+; COMMAND-LINE: --z3 --z3-theory-engine=z3
 ; EXPECT: sat
 ; DISABLE-TESTER: model
 ; DISABLE-TESTER: proof
