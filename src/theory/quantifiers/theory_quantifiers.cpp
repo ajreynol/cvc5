@@ -115,6 +115,11 @@ void TheoryQuantifiers::presolve()
   {
     getQuantifiersEngine()->presolve();
   }
+  else if (d_observeAllFacts)
+  {
+    // the ported core (--z3) is presolved in every logic
+    d_qengine->presolve();
+  }
 }
 
 bool TheoryQuantifiers::ppAssert(TrustNode tin,

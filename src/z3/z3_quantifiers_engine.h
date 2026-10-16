@@ -20,6 +20,7 @@
 #include <memory>
 
 #include "theory/quantifiers_engine.h"
+#include "z3/assertion_preparation.h"
 #include "z3/host_core.h"
 #include "z3/shared_backend.h"
 
@@ -61,10 +62,17 @@ class Z3QuantifiersEngine : public theory::QuantifiersEngine,
                       theory::quantifiers::QuantifiersInferenceManager& qim,
                       ProofNodeManager* pnm);
   ~Z3QuantifiersEngine();
-  /** The ported core. */
-  SharedBackend& getBackend() { return d_backend; }
-  /** The core under cvc5's prop engine. */
-  HostCore& getCore() { return *d_core; }
+  /**
+   * Make a fresh core, for the theory engine te, after its prop engine was
+   * made.
+   */
+  void resetCore(TheoryEngine* te);
+  /**
+   * Prepare the preprocessed assertions for the core (AssertionPreparation),
+   * and assert them to it. The prepared formulas are those cvc5 converts.
+   */
+  void prepareAssertions(const std::vector<Node>& assertions,
+                         std::vector<Node>& prepared);
 
   //--------------------------------------------- the quantifiers engine
   /** None: the model builder of TheoryEngine is the default one. */
@@ -101,6 +109,8 @@ class Z3QuantifiersEngine : public theory::QuantifiersEngine,
   SharedBackend d_backend;
   /** The core under cvc5's prop engine. */
   std::unique_ptr<HostCore> d_core;
+  /** The preparation of assertions for the core. */
+  AssertionPreparation d_prep;
 };
 
 }  // namespace z3

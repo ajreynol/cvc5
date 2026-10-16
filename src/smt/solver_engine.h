@@ -79,10 +79,6 @@ class TimeoutCoreManager;
 
 /* -------------------------------------------------------------------------- */
 
-namespace prop {
-enum class SearchFeature;
-}  // namespace prop
-
 namespace theory {
 class TheoryModel;
 class QuantifiersEngine;
@@ -1013,12 +1009,10 @@ class CVC5_EXPORT SolverEngine
   Result checkSatInternal(const std::vector<Node>& assumptions);
 
   /**
-   * Throw a ModalException if the search engine does not support f, which
-   * the command named by cmd requires; see prop::PropEngine::supports. This
-   * requires that the engines have been made, i.e. that finishInit has been
-   * called.
+   * Throw a ModalException if the command named by cmd is used with --z3,
+   * whose ported core does not support it.
    */
-  void checkEngineSupports(prop::SearchFeature f, const char* cmd) const;
+  void checkZ3Supports(const char* cmd) const;
 
   /**
    * Check that all Expr in formals are of BOUND_VARIABLE kind, where func is

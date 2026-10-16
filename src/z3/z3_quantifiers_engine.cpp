@@ -17,6 +17,7 @@
 #include "theory/quantifiers/quantifiers_state.h"
 #include "theory/quantifiers/skolemize.h"
 #include "z3/shadow_feed.h"
+#include "z3/smt_context.h"
 
 namespace cvc5::internal {
 namespace z3 {
@@ -32,8 +33,22 @@ Z3QuantifiersEngine::Z3QuantifiersEngine(
     : QuantifiersEngine(env, qs, qr, tr, qim, pnm),
       d_out(out),
       d_backend(env),
-      d_core(std::make_unique<HostCore>(env, d_backend, *this))
+      d_core(std::make_unique<HostCore>(env, d_backend, *this)),
+      d_prep(env)
 {
+}
+
+void Z3QuantifiersEngine::resetCore(TheoryEngine* te)
+{
+  d_backend.resetContext();
+  d_core->reset(te);
+}
+
+void Z3QuantifiersEngine::prepareAssertions(const std::vector<Node>& assertions,
+                                            std::vector<Node>& prepared)
+{
+  d_prep.apply(
+      d_backend.getContext(), d_backend.getPropCore(), assertions, prepared);
 }
 
 Z3QuantifiersEngine::~Z3QuantifiersEngine() {}

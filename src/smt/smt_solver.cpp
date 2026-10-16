@@ -34,8 +34,8 @@
 #include "theory/logic_info.h"
 #include "theory/theory_engine.h"
 #include "theory/theory_traits.h"
+#include "theory/quantifiers/theory_quantifiers.h"
 #include "z3/z3_quantifiers_engine.h"
-#include "z3/z3_hosted_prop_engine.h"
 
 using namespace std;
 
@@ -56,18 +56,23 @@ SmtSolver::SmtSolver(Env& env, SolverEngineStatistics& stats)
 
 SmtSolver::~SmtSolver() {}
 
-std::unique_ptr<prop::PropEngine> SmtSolver::mkPropEngine()
+z3::Z3QuantifiersEngine* SmtSolver::getZ3QuantifiersEngine()
+{
+  Assert(options().z3.z3);
+  // the engine the quantifiers theory owns, which owns the core in every
+  // logic, while the theory engine uses it only in quantified logics
+  return static_cast<z3::Z3QuantifiersEngine*>(
+      static_cast<theory::quantifiers::TheoryQuantifiers*>(
+          d_theoryEngine->theoryOf(theory::THEORY_QUANTIFIERS))
+          ->getOwnedQuantifiersEngine());
+}
+
+void SmtSolver::resetZ3Core()
 {
   if (options().z3.z3)
   {
-    // the quantifiers engine of the quantifiers theory owns the ported core
-    z3::Z3QuantifiersEngine* qe = static_cast<z3::Z3QuantifiersEngine*>(
-        d_theoryEngine->theoryOf(theory::THEORY_QUANTIFIERS)
-            ->getQuantifiersEngine());
-    return std::make_unique<z3::Z3HostedPropEngine>(
-        d_env, d_theoryEngine.get(), qe->getBackend(), qe->getCore());
+    getZ3QuantifiersEngine()->resetCore(d_theoryEngine.get());
   }
-  return std::make_unique<prop::PropEngine>(d_env, d_theoryEngine.get());
 }
 
 void SmtSolver::finishInit()
@@ -96,13 +101,14 @@ void SmtSolver::finishInit()
    * are unregistered by the obsolete PropEngine object before registered
    * again by the new PropEngine object */
   d_propEngine.reset(nullptr);
-  d_propEngine = mkPropEngine();
+  d_propEngine.reset(new prop::PropEngine(d_env, d_theoryEngine.get()));
 
   Trace("smt-debug") << "Setting up theory engine..." << std::endl;
   d_theoryEngine->setPropEngine(getPropEngine());
   Trace("smt-debug") << "Finishing init for theory engine..." << std::endl;
   d_theoryEngine->finishInit();
   d_propEngine->finishInit();
+  resetZ3Core();
   finishInitPreprocessor();
 
   if (options().proof.proofLog)
@@ -123,12 +129,13 @@ void SmtSolver::resetAssertions()
    * statistics are unregistered by the obsolete PropEngine object before
    * registered again by the new PropEngine object */
   d_propEngine.reset(nullptr);
-  d_propEngine = mkPropEngine();
+  d_propEngine.reset(new prop::PropEngine(d_env, d_theoryEngine.get()));
   d_theoryEngine->setPropEngine(getPropEngine());
   // Notice that we do not reset TheoryEngine, nor does it require calling
   // finishInit again. In particular, TheoryEngine::finishInit does not
   // depend on knowing the associated PropEngine.
   d_propEngine->finishInit();
+  resetZ3Core();
   // must reset the preprocessor as well
   finishInitPreprocessor();
 }
@@ -179,7 +186,22 @@ void SmtSolver::assertToInternal(preprocessing::AssertionPipeline& ap)
   preprocessing::IteSkolemMap& ism = ap.getIteSkolemMap();
   // assert to prop engine, which will convert to CNF
   d_env.verbose(2) << "converting to CNF..." << endl;
-  d_propEngine->assertInputFormulas(assertions, ism);
+  if (options().z3.z3)
+  {
+    // The assertions are prepared for the ported core, which takes them, and
+    // the prepared formulas are converted instead. The skolem map is not
+    // passed on, since its indices refer to the assertions before
+    // preparation; skolem definitions are then ordinary assertions for the
+    // decision heuristic.
+    std::vector<Node> prepared;
+    getZ3QuantifiersEngine()->prepareAssertions(assertions, prepared);
+    std::unordered_map<size_t, Node> noSkolems;
+    d_propEngine->assertInputFormulas(prepared, noSkolems);
+  }
+  else
+  {
+    d_propEngine->assertInputFormulas(assertions, ism);
+  }
 
   // It is important to distinguish the input assertions from the skolem
   // definitions, as the decision justification heuristic treates the latter

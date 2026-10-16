@@ -43,6 +43,12 @@ class TheoryQuantifiers : public Theory
   TheoryRewriter* getTheoryRewriter() override;
   /** get the proof checker of this theory */
   ProofRuleChecker* getProofChecker() override;
+  /**
+   * The quantifiers engine this theory owns, which the theory engine uses
+   * only in quantified logics, but which with --z3 owns the ported core in
+   * every logic.
+   */
+  QuantifiersEngine* getOwnedQuantifiersEngine() { return d_qengine.get(); }
   /** finish initialization */
   void finishInit() override;
   /** needs equality engine */

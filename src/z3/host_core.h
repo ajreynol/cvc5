@@ -73,8 +73,8 @@ class HostCore : protected EnvObj
   HostCore(Env& env, SharedBackend& backend, HostCoreOutput& out);
   ~HostCore();
   /**
-   * Forget the state of the previous context, for the theory engine te; see
-   * Z3HostedPropEngine.
+   * Forget the state of the previous context, for the theory engine te, whose
+   * prop engine was just made; see Z3QuantifiersEngine::resetCore.
    */
   void reset(TheoryEngine* te);
 

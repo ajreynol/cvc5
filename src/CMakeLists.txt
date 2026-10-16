@@ -1391,10 +1391,8 @@ libcvc5_add_sources(
   z3/util/util.h
   z3/watch_list.cpp
   z3/watch_list.h
-  z3/z3_hosted_prop_engine.cpp
   z3/z3_quantifiers_engine.cpp
   z3/z3_quantifiers_engine.h
-  z3/z3_hosted_prop_engine.h
 )
 
 # suppress deprecated warnings to not error in CI

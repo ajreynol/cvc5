@@ -24,6 +24,7 @@
 #include "options/proof_options.h"
 #include "options/prop_options.h"
 #include "options/smt_options.h"
+#include "options/z3_options.h"
 #include "proof/proof_node_algorithm.h"
 #include "prop/cnf_stream.h"
 #include "prop/proof_cnf_stream.h"
@@ -57,11 +58,6 @@ class ScopedBool
 };
 
 PropEngine::PropEngine(Env& env, TheoryEngine* te)
-    : PropEngine(env, te, FormulaLitPolicy::TRACK)
-{
-}
-
-PropEngine::PropEngine(Env& env, TheoryEngine* te, FormulaLitPolicy flp)
     : EnvObj(env),
       d_inCheckSat(false),
       d_theoryEngine(te),
@@ -88,8 +84,13 @@ PropEngine::PropEngine(Env& env, TheoryEngine* te, FormulaLitPolicy flp)
       env, statisticsRegistry(), env.getResourceManager(), d_theoryProxy, "");
 
   // create CnfStream with new SAT solver
-  d_cnfStream =
-      new CnfStream(env, d_satSolver, d_theoryProxy, userContext, flp, "prop");
+  // With --z3, Boolean variables are asserted to the theory engine like
+  // atoms: the ported core derives the values of its gates from those of
+  // their leaves, for relevancy, and Boolean variables are leaves.
+  FormulaLitPolicy flp = options().z3.z3 ? FormulaLitPolicy::TRACK_AND_NOTIFY_VAR
+                                         : FormulaLitPolicy::TRACK;
+  d_cnfStream = new CnfStream(
+      env, d_satSolver, d_theoryProxy, userContext, flp, "prop");
 
   // connect theory proxy
   d_theoryProxy->finishInit(d_satSolver, d_cnfStream);
@@ -184,17 +185,20 @@ void PropEngine::assertLemma(theory::InferenceId id,
                              TrustNode tlemma,
                              theory::LemmaProperty p)
 {
-  if (isLemmaPropertyUnprocessed(p))
-  {
-    assertLemmaUnprocessed(id, tlemma, p);
-    return;
-  }
   bool removable = isLemmaPropertyRemovable(p);
   bool local = isLemmaPropertyLocal(p);
   bool inprocess = isLemmaPropertyInprocess(p);
 
-  // call preprocessor
+  // call preprocessor, unless the lemma is to be converted as it is, for a
+  // theory whose lemmas must refer to the same atoms as the SAT solver's,
+  // such as the ported Z3 core (--z3), which applies cvc5's preprocessing
+  // itself before it makes them
   std::vector<theory::SkolemLemma> ppLemmas;
+  if (isLemmaPropertyUnprocessed(p))
+  {
+    assertLemmasInternal(id, tlemma, ppLemmas, removable, inprocess, local);
+    return;
+  }
   TrustNode tplemma = d_theoryProxy->preprocessLemma(tlemma, ppLemmas);
 
   // do final checks on the lemmas we are about to send
@@ -226,20 +230,6 @@ void PropEngine::assertLemma(theory::InferenceId id,
 
   // now, assert the lemmas
   assertLemmasInternal(id, tplemma, ppLemmas, removable, inprocess, local);
-}
-
-void PropEngine::assertLemmaUnprocessed(theory::InferenceId id,
-                                        TrustNode tlemma,
-                                        theory::LemmaProperty p)
-{
-  Trace("te-lemma") << "Unprocessed lemma: " << tlemma.getProven() << std::endl;
-  std::vector<theory::SkolemLemma> ppLemmas;
-  assertLemmasInternal(id,
-                       tlemma,
-                       ppLemmas,
-                       isLemmaPropertyRemovable(p),
-                       isLemmaPropertyInprocess(p),
-                       isLemmaPropertyLocal(p));
 }
 
 void PropEngine::assertTrustedLemmaInternal(theory::InferenceId id,
@@ -733,8 +723,6 @@ void PropEngine::interrupt()
   d_satSolver->interrupt();
   Trace("prop") << "interrupt()" << std::endl;
 }
-
-bool PropEngine::supports(SearchFeature /* f */) const { return true; }
 
 void PropEngine::spendResource(Resource r)
 {

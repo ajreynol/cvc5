@@ -37,8 +37,9 @@ class SmtContext;
  * the theory side makes on its hot paths stay cheap.
  *
  * The quantifiers engine (Z3QuantifiersEngine) owns this class for as long
- * as the theory engine exists. SmtSolver replaces its PropEngine on reset-assertions, and each new
- * Z3HostedPropEngine replaces the SmtContext when it is initialized.
+ * as the theory engine exists. SmtSolver replaces its PropEngine on
+ * reset-assertions, after which the SmtContext is replaced as well (see
+ * Z3QuantifiersEngine::resetCore).
  */
 class SharedBackend : protected EnvObj
 {

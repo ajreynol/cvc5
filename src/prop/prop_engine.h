@@ -49,33 +49,10 @@ class CDCLTSatSolver;
 class ProofCnfStream;
 class PropPfManager;
 class TheoryProxy;
-enum class FormulaLitPolicy : uint32_t;
-
-/**
- * The optional features of a search implementation that a command may
- * require. See PropEngine::supports.
- */
-enum class SearchFeature
-{
-  /** Pushing and popping user scopes. */
-  USER_SCOPES,
-  /** Checking satisfiability under assumptions. */
-  ASSUMPTIONS,
-  /**
-   * cvc5's quantifiers engine taking part in the search, which is what makes
-   * the declarations it consumes (term pools, oracles) and the queries it
-   * answers (instantiations, quantifier elimination) meaningful.
-   */
-  QUANTIFIERS_ENGINE
-};
 
 /**
  * PropEngine is the abstraction of a Sat Solver, providing methods for
  * solving the SAT problem and conversion to CNF (via the CnfStream).
- *
- * The virtual methods below (finishInit, assertInputFormulas and supports)
- * are overridden by the engine that prepares the assertions for the ported
- * Z3 core (--z3), see z3/z3_hosted_prop_engine.h.
  */
 class PropEngine : protected EnvObj
 {
@@ -84,23 +61,18 @@ class PropEngine : protected EnvObj
    * Create a PropEngine with a particular decision and theory engine.
    */
   PropEngine(Env& env, TheoryEngine* te);
-  /**
-   * As above, with the policy for the literals of formulas of the CNF
-   * stream (see FormulaLitPolicy); the constructor above uses TRACK.
-   */
-  PropEngine(Env& env, TheoryEngine* te, FormulaLitPolicy flp);
 
   /**
    * Destructor.
    */
-  virtual ~PropEngine();
+  ~PropEngine();
 
   /**
    * Finish initialize. Call this after construction just before we are
    * ready to use this class. Should be called after TheoryEngine::finishInit.
    * This method converts and asserts true and false into the CNF stream.
    */
-  virtual void finishInit();
+  void finishInit();
 
   /**
    * Preprocess the given node. Return the REWRITE trust node corresponding to
@@ -147,8 +119,8 @@ class PropEngine : protected EnvObj
    * corresponds to. For example, if (ite C (= k a) (= k b)) is the i^th
    * assertion, then skolemMap may contain the entry { i -> k }.
    */
-  virtual void assertInputFormulas(const std::vector<Node>& assertions,
-                                   std::unordered_map<size_t, Node>& skolemMap);
+  void assertInputFormulas(const std::vector<Node>& assertions,
+                           std::unordered_map<size_t, Node>& skolemMap);
 
   /**
    * Converts the given formula to CNF and assert the CNF to the SAT solver.
@@ -162,16 +134,6 @@ class PropEngine : protected EnvObj
   void assertLemma(theory::InferenceId id,
                    TrustNode tlemma,
                    theory::LemmaProperty p);
-
-  /**
-   * As assertLemma, but without preprocessing the lemma: its atoms are
-   * converted as they are. For a theory whose lemmas must refer to the same
-   * atoms as the SAT solver's, such as the ported Z3 core (--z3), which
-   * applies cvc5's preprocessing itself before it makes them.
-   */
-  void assertLemmaUnprocessed(theory::InferenceId id,
-                              TrustNode tlemma,
-                              theory::LemmaProperty p);
 
   /**
    * This is called when a theory propagation was explained with texp.
@@ -326,13 +288,6 @@ class PropEngine : protected EnvObj
    * Can potentially throw a ModalException.
    */
   void interrupt();
-
-  /**
-   * Whether this engine, together with the theory engine it was made with,
-   * supports the optional feature f. A command that requires f is refused
-   * when it does not. cvc5's own engines support every feature.
-   */
-  virtual bool supports(SearchFeature f) const;
 
   /**
    * Informs the ResourceManager that a resource has been spent.  If out of
