@@ -29,22 +29,25 @@ using namespace cvc5::internal::theory;
 
 QuantifiersPreprocess::QuantifiersPreprocess(
     PreprocessingPassContext* preprocContext)
-    : PreprocessingPass(preprocContext, "quantifiers-preprocess") {};
+    : PreprocessingPass(preprocContext, "quantifiers-preprocess"),
+      d_qp(new quantifiers::QuantifiersPreprocess(d_env))
+{
+}
+
+QuantifiersPreprocess::~QuantifiersPreprocess() {}
 
 PreprocessingPassResult QuantifiersPreprocess::applyInternal(
     AssertionPipeline* assertionsToPreprocess)
 {
   size_t size = assertionsToPreprocess->size();
-  quantifiers::QuantifiersPreprocess qp(d_env);
   for (size_t i = 0; i < size; ++i)
   {
     Node prev = (*assertionsToPreprocess)[i];
-    TrustNode trn = qp.preprocess(prev);
+    TrustNode trn = d_qp->preprocess(prev);
     if (!trn.isNull())
     {
-      Node next = trn.getNode();
-      assertionsToPreprocess->replace(
-          i, next, nullptr, TrustId::PREPROCESS_QUANTIFIERS_PP);
+      assertionsToPreprocess->replaceTrusted(
+          i, trn, TrustId::PREPROCESS_QUANTIFIERS_PP);
       assertionsToPreprocess->ensureRewritten(i);
       Trace("quantifiers-preprocess") << "*** Pre-skolemize " << prev << endl;
       Trace("quantifiers-preprocess")

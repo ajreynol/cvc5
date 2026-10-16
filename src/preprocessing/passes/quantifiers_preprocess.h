@@ -21,6 +21,11 @@
 #include "preprocessing/preprocessing_pass.h"
 
 namespace cvc5::internal {
+
+namespace theory::quantifiers {
+class QuantifiersPreprocess;
+}
+
 namespace preprocessing {
 namespace passes {
 
@@ -28,10 +33,15 @@ class QuantifiersPreprocess : public PreprocessingPass
 {
  public:
   QuantifiersPreprocess(PreprocessingPassContext* preprocContext);
+  ~QuantifiersPreprocess();
 
  protected:
   PreprocessingPassResult applyInternal(
       AssertionPipeline* assertionsToPreprocess) override;
+
+ private:
+  /** The quantifiers preprocessor, which also provides proofs */
+  std::unique_ptr<theory::quantifiers::QuantifiersPreprocess> d_qp;
 };
 
 }  // namespace passes
