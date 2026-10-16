@@ -371,7 +371,7 @@ void TheoryEngine::printAssertions(const char* tag)
           }
         }
 
-        if (isSharingEnabled())
+        if (logicInfo().isSharingEnabled())
         {
           TheoryState* state = theory->getTheoryState();
           if (state != nullptr)
@@ -502,7 +502,7 @@ void TheoryEngine::check(Theory::Effort effort)
       {
         d_stats.d_fullEffortChecks++;
         // We do combination if all has been processed and we are in fullcheck
-        if (isSharingEnabled() && !d_factsAsserted && !needCheck()
+        if (logicInfo().isSharingEnabled() && !d_factsAsserted && !needCheck()
             && !d_inConflict)
         {
           d_stats.d_combineTheoriesCalls++;
@@ -719,19 +719,11 @@ bool TheoryEngine::properConflict(TNode conflict) const
   return true;
 }
 
-bool TheoryEngine::isSharingEnabled() const
-{
-  return logicInfo().isSharingEnabled()
-         && options().theory.eeMode != options::EqEngineMode::NONE;
-}
-
 TheoryModel* TheoryEngine::getModel()
 {
   Assert(d_tc != nullptr);
   TheoryModel* m = d_tc->getModel();
-  // there is no model with --ee-mode=none
-  Assert(m != nullptr
-         || options().theory.eeMode == options::EqEngineMode::NONE);
+  Assert(m != nullptr);
   return m;
 }
 
@@ -1106,7 +1098,7 @@ void TheoryEngine::assertToTheory(TNode assertion,
   }
 
   // If sharing is disabled, things are easy
-  if (!isSharingEnabled())
+  if (!logicInfo().isSharingEnabled())
   {
     Assert(assertion == originalAssertion);
     if (fromTheoryId == THEORY_SAT_SOLVER)
@@ -1278,7 +1270,7 @@ void TheoryEngine::assertFact(TNode literal)
     }
   }
 
-  if (isSharingEnabled())
+  if (logicInfo().isSharingEnabled())
   {
     // If any shared terms, it's time to do sharing work
     d_sharedSolver->preNotifySharedFact(atom);
@@ -1356,7 +1348,7 @@ bool TheoryEngine::propagate(TNode literal, theory::TheoryId theory)
   bool polarity = literal.getKind() != Kind::NOT;
   TNode atom = polarity ? literal : literal[0];
 
-  if (isSharingEnabled() && atom.getKind() == Kind::EQUAL)
+  if (logicInfo().isSharingEnabled() && atom.getKind() == Kind::EQUAL)
   {
     if (d_propEngine->isSatLiteral(literal))
     {
@@ -1438,7 +1430,7 @@ TrustNode TheoryEngine::getExplanation(TNode node)
 
   // If we're not in shared mode, explanations are simple
   TrustNode texplanation;
-  if (!isSharingEnabled())
+  if (!logicInfo().isSharingEnabled())
   {
     Trace("theory::explain")
         << "TheoryEngine::getExplanation: sharing is NOT enabled. "
@@ -1749,7 +1741,7 @@ void TheoryEngine::conflict(TrustNode tconflict,
   markInConflict();
 
   // In the multiple-theories case, we need to reconstruct the conflict
-  if (isSharingEnabled())
+  if (logicInfo().isSharingEnabled())
   {
     // Create the workplace for explanations
     std::vector<NodeTheoryPair> vec;

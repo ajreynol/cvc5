@@ -107,28 +107,6 @@ class LabelHasher
     return static_cast<uint8_t>(d_lbl2Hash[lblId]);
   }
 
-  void print(std::ostream& out) const
-  {
-    out << "lbl-hasher:\n";
-    bool first = true;
-    for (size_t i = 0; i < d_lbl2Hash.size(); ++i)
-    {
-      if (d_lbl2Hash[i] != -1)
-      {
-        if (first)
-        {
-          first = false;
-        }
-        else
-        {
-          out << ", ";
-        }
-        out << i << " -> " << static_cast<int>(d_lbl2Hash[i]);
-      }
-    }
-    out << "\n";
-  }
-
  private:
   void mkLblHash(uint32_t lblId)
   {
@@ -346,166 +324,6 @@ struct IsCgr : public Instr
   }
 };
 
-void printNumArgs(std::ostream& out, size_t numArgs)
-{
-  if (numArgs <= 6)
-  {
-    out << numArgs;
-  }
-  else
-  {
-    out << "N";
-  }
-}
-
-std::ostream& operator<<(std::ostream& out, const Instr& instr)
-{
-  switch (instr.d_opcode)
-  {
-    case INIT1:
-    case INIT2:
-    case INIT3:
-    case INIT4:
-    case INIT5:
-    case INIT6:
-    case INITN:
-      out << "(INIT";
-      if (instr.d_opcode <= INIT6)
-      {
-        out << (instr.d_opcode - INIT1 + 1);
-      }
-      else
-      {
-        out << "N";
-      }
-      out << ")";
-      break;
-    case BIND1:
-    case BIND2:
-    case BIND3:
-    case BIND4:
-    case BIND5:
-    case BIND6:
-    case BINDN:
-    {
-      const Bind& b = static_cast<const Bind&>(instr);
-      out << "(BIND";
-      printNumArgs(out, b.d_numArgs);
-      out << " " << b.d_label << " " << b.d_ireg << " " << b.d_oreg << ")";
-      break;
-    }
-    case GET_CGR1:
-    case GET_CGR2:
-    case GET_CGR3:
-    case GET_CGR4:
-    case GET_CGR5:
-    case GET_CGR6:
-    case GET_CGRN:
-    {
-      const GetCgr& c = static_cast<const GetCgr&>(instr);
-      out << "(GET_CGR";
-      printNumArgs(out, c.d_numArgs);
-      out << " " << c.d_label << " " << c.d_oreg;
-      for (uint16_t i = 0; i < c.d_numArgs; ++i)
-      {
-        out << " " << c.iregsPtr()[i];
-      }
-      out << ")";
-      break;
-    }
-    case IS_CGR:
-    {
-      const IsCgr& c = static_cast<const IsCgr&>(instr);
-      out << "(IS_CGR " << c.d_label << " " << c.d_ireg;
-      for (uint16_t i = 0; i < c.d_numArgs; ++i)
-      {
-        out << " " << c.iregsPtr()[i];
-      }
-      out << ")";
-      break;
-    }
-    case YIELD1:
-    case YIELD2:
-    case YIELD3:
-    case YIELD4:
-    case YIELD5:
-    case YIELD6:
-    case YIELDN:
-    {
-      const Yield& y = static_cast<const Yield&>(instr);
-      out << "(YIELD";
-      printNumArgs(out, y.d_numBindings);
-      out << " #" << y.d_qa.getId();
-      for (uint16_t i = 0; i < y.d_numBindings; ++i)
-      {
-        out << " " << y.bindingsPtr()[i];
-      }
-      out << ")";
-      break;
-    }
-    case CONTINUE:
-    {
-      const Cont& c = static_cast<const Cont&>(instr);
-      out << "(CONTINUE " << c.d_label << " " << c.d_numArgs << " " << c.d_oreg
-          << " " << c.d_lblSet << " (";
-      for (uint16_t i = 0; i < c.d_numArgs; ++i)
-      {
-        if (i > 0)
-        {
-          out << " ";
-        }
-        TaggedPtr bare = c.jointsPtr()[i];
-        switch (bare.getTag())
-        {
-          case NULL_TAG: out << "nil"; break;
-          case GROUND_TERM_TAG:
-            out << "#" << bare.untag<ENode>()->getOwnerId();
-            break;
-          case VAR_TAG: out << bare.unboxInt(); break;
-          case NESTED_VAR_TAG:
-          {
-            Joint2* j = bare.untag<Joint2>();
-            out << "(" << j->d_decl << " " << j->d_argPos << " " << j->d_reg
-                << ")";
-            break;
-          }
-        }
-      }
-      out << "))";
-      break;
-    }
-    case COMPARE:
-      out << "(COMPARE " << static_cast<const Compare&>(instr).d_reg1 << " "
-          << static_cast<const Compare&>(instr).d_reg2 << ")";
-      break;
-    case CHECK:
-      out << "(CHECK " << static_cast<const Check&>(instr).d_reg << " #"
-          << static_cast<const Check&>(instr).d_enode->getOwnerId() << ")";
-      break;
-    case FILTER:
-    case CFILTER:
-    case PFILTER:
-    {
-      const Filter& f = static_cast<const Filter&>(instr);
-      const char* op =
-          instr.d_opcode == FILTER
-              ? "FILTER"
-              : (instr.d_opcode == CFILTER ? "CFILTER" : "PFILTER");
-      out << "(" << op << " " << f.d_reg << " " << f.d_lblSet << ")";
-      break;
-    }
-    case GET_ENODE:
-      out << "(GET_ENODE " << static_cast<const GetENodeInstr&>(instr).d_oreg
-          << " #"
-          << static_cast<const GetENodeInstr&>(instr).d_enode->getOwnerId()
-          << ")";
-      break;
-    case CHOOSE: out << "(CHOOSE)"; break;
-    case NOOP: out << "(NOOP)"; break;
-  }
-  return out;
-}
-
 // --------------------------------------------------------------- code tree
 
 class Compiler;
@@ -572,49 +390,9 @@ class CodeTree
 
   const ENodeVector& getCandidates() const { return d_candidates; }
 
-  void print(std::ostream& out) const
-  {
-    out << "function: " << d_rootLbl << "\n";
-    out << "num. regs:    " << d_numRegs << "\n"
-        << "num. choices: " << d_numChoices << "\n";
-    printSeq(out, d_root, 0);
-  }
-
  private:
   friend class Compiler;
   friend class CodeTreeManager;
-
-  void printSeq(std::ostream& out, Instr* head, size_t indent) const
-  {
-    for (size_t i = 0; i < indent; ++i)
-    {
-      out << "    ";
-    }
-    Instr* curr = head;
-    out << *curr;
-    curr = curr->d_next;
-    while (curr != nullptr && curr->d_opcode != CHOOSE
-           && curr->d_opcode != NOOP)
-    {
-      out << "\n" << *curr;
-      curr = curr->d_next;
-    }
-    out << "\n";
-    if (curr != nullptr)
-    {
-      printChildren(out, static_cast<Choose*>(curr), indent + 1);
-    }
-  }
-
-  void printChildren(std::ostream& out, Choose* firstChild, size_t indent) const
-  {
-    Choose* curr = firstChild;
-    while (curr != nullptr)
-    {
-      printSeq(out, curr, indent);
-      curr = curr->d_alt;
-    }
-  }
 
   TNode d_rootLbl;
   /** needed to avoid matching an n-ary application of the wrong arity */
@@ -857,13 +635,11 @@ class Compiler
   Compiler(QuantifierServices& ctx,
            QuantifierManager& qm,
            CodeTreeManager& ctMg,
-           LabelHasher& h,
-           bool useFilters = true)
+           LabelHasher& h)
       : d_context(ctx),
         d_qm(qm),
         d_ctManager(ctMg),
         d_lblHasher(h),
-        d_useFilters(useFilters),
         d_tree(nullptr),
         d_numChoices(0),
         d_isTmpTree(false)
@@ -1081,7 +857,7 @@ class Compiler
       }
       d_matchedExprs[p] = reg;
 
-      if (d_useFilters && getCheckMark(reg) != CHECK_SINGLETON)
+      if (getCheckMark(reg) != CHECK_SINGLETON)
       {
         ApproxSet s(d_lblHasher(getDecl(p)));
         d_seq.push_back(d_ctManager.mkFilter(reg, s));
@@ -1281,10 +1057,7 @@ class Compiler
       TNode lbl = getDecl(p);
       uint16_t numPArgs = static_cast<uint16_t>(p.getNumChildren());
       ApproxSet s;
-      if (d_useFilters)
-      {
-        s.insert(d_lblHasher(lbl));
-      }
+      s.insert(d_lblHasher(lbl));
 
       if (foundBoundedMp)
       {
@@ -1654,7 +1427,7 @@ class Compiler
           {
             weight += 2;
           }
-          else if (d_useFilters && isSemiCompatible(static_cast<Check*>(curr)))
+          else if (isSemiCompatible(static_cast<Check*>(curr)))
           {
             weight += 1;
           }
@@ -1746,7 +1519,7 @@ class Compiler
               setCheckMark(reg, NOT_CHECKED);
               d_compatible.push_back(curr);
             }
-            else if (d_useFilters && isSemiCompatible(chk))
+            else if (isSemiCompatible(chk))
             {
               uint32_t reg = chk->d_reg;
               ENode* n1 = chk->d_enode;
@@ -1798,7 +1571,6 @@ class Compiler
             }
             break;
           case CFILTER:
-            Assert(d_useFilters);
             if (isCfilterCompatible(static_cast<Filter*>(curr)))
             {
               uint32_t reg = static_cast<Filter*>(curr)->d_reg;
@@ -1813,7 +1585,6 @@ class Compiler
           case FILTER:
           {
             Filter* flt = static_cast<Filter*>(curr);
-            Assert(d_useFilters);
             if (isCompatible(flt))
             {
               uint32_t reg = flt->d_reg;
@@ -1946,7 +1717,6 @@ class Compiler
   QuantifierManager& d_qm;
   CodeTreeManager& d_ctManager;
   LabelHasher& d_lblHasher;
-  bool d_useFilters;
   std::vector<Node> d_registers;
   /** the registers that still have patterns to process */
   std::vector<uint32_t> d_todo;
@@ -2022,10 +1792,9 @@ struct BacktrackPoint
 class Interpreter
 {
  public:
-  Interpreter(QuantifierServices& ctx, Mam& ma, bool useFilters)
+  Interpreter(QuantifierServices& ctx, Mam& ma)
       : d_context(ctx),
         d_mam(ma),
-        d_useFilters(useFilters),
         d_top(0),
         d_pc(nullptr),
         d_maxGeneration(0),
@@ -2289,7 +2058,6 @@ class Interpreter
 
   QuantifierServices& d_context;
   Mam& d_mam;
-  bool d_useFilters;
   ENodeVector d_registers;
   ENodeVector d_bindings;
   ENodeVector d_args;
@@ -2308,12 +2076,6 @@ class Interpreter
   ENode* d_app;
   const Bind* d_b;
 
-  /**
-   * Z3 records here the equalities a match relied on, for its proof log. This
-   * port does not produce that log, so the vector is always empty; it is kept
-   * because onMatch passes it on.
-   */
-  std::vector<std::pair<ENode*, ENode*>> d_usedENodes;
   /** used to compute the min and max top generation */
   ENodeVector d_patternInstances;
   std::vector<uint32_t> d_minTopGeneration;
@@ -2345,7 +2107,7 @@ ENode* Interpreter::initContinue(const Cont* c, uint16_t expectedNumArgs)
       continue;
     }
     ENode* r = n->getRoot();
-    if (d_useFilters && r->getPlbls().emptyIntersection(c->d_lblSet))
+    if (r->getPlbls().emptyIntersection(c->d_lblSet))
     {
       return nullptr;
     }
@@ -2619,12 +2381,8 @@ main_loop:
       {
         return false;
       }
-      d_mam.onMatch(y->d_qa,
-                    y->d_pat,
-                    d_numArgs,
-                    d_bindings.data(),
-                    d_maxGeneration,
-                    d_usedENodes);
+      d_mam.onMatch(
+          y->d_qa, y->d_pat, d_numArgs, d_bindings.data(), d_maxGeneration);
       goto backtrack;
     }
 
@@ -2652,8 +2410,7 @@ main_loop:
       for (uint16_t i = 0; i < d_numArgs; ++i)
       {
         d_args[i] = d_registers[iregs[i]];
-        if (d_useFilters
-            && c->d_lblSet.emptyIntersection(d_args[i]->getRoot()->getPlbls()))
+        if (c->d_lblSet.emptyIntersection(d_args[i]->getRoot()->getPlbls()))
         {
           goto backtrack;
         }
@@ -2879,15 +2636,6 @@ class CodeTreeMap
     }
   }
 
-  void reset()
-  {
-    for (CodeTree* t : d_trees)
-    {
-      delete t;
-    }
-    d_trees.clear();
-  }
-
   CodeTree* getCodeTreeFor(TNode lbl) const
   {
     uint32_t lblId = d_context.getDeclIdOption(lbl);
@@ -3009,30 +2757,6 @@ struct PathTree
   {
   }
 
-  void print(std::ostream& out, size_t indent) const
-  {
-    const PathTree* curr = this;
-    while (curr != nullptr)
-    {
-      for (size_t i = 0; i < indent; ++i)
-      {
-        out << "  ";
-      }
-      out << curr->d_label << ":" << curr->d_argIdx;
-      if (curr->d_groundArg != nullptr)
-      {
-        out << ":#" << curr->d_groundArg->getOwnerId() << ":"
-            << curr->d_groundArgIdx;
-      }
-      out << "  " << curr->d_filter << " " << curr->d_code << "\n";
-      if (curr->d_firstChild != nullptr)
-      {
-        curr->d_firstChild->print(out, indent + 1);
-      }
-      curr = curr->d_sibling;
-    }
-  }
-
   TNode d_label;
   uint16_t d_argIdx;
   uint16_t d_groundArgIdx;
@@ -3062,13 +2786,12 @@ bool isFlatAssociative(ENode* n)
 class MamImpl : public Mam
 {
  public:
-  MamImpl(QuantifierServices& ctx, QuantifierManager& qm, bool useFilters)
+  MamImpl(QuantifierServices& ctx, QuantifierManager& qm)
       : Mam(ctx, qm),
-        d_useFilters(useFilters),
         d_lblHasher(ctx),
         d_ctManager(d_lblHasher, d_trailStack),
-        d_compiler(ctx, qm, d_ctManager, d_lblHasher, useFilters),
-        d_interpreter(ctx, *this, useFilters),
+        d_compiler(ctx, qm, d_ctManager, d_lblHasher),
+        d_interpreter(ctx, *this),
         d_trees(ctx, d_compiler, d_trailStack),
         d_region(d_trailStack.getRegion()),
         d_r1(nullptr),
@@ -3137,31 +2860,6 @@ class MamImpl : public Mam
     d_trailStack.popScope(numScopes);
   }
 
-  void reset() override
-  {
-    d_trailStack.reset();
-    d_trees.reset();
-    d_toMatch.clear();
-    d_newPatterns.clear();
-    d_isPlbl.clear();
-    d_isClbl.clear();
-    resetPpPc();
-    d_tmpRegion.reset();
-  }
-
-  void print(std::ostream& out) override
-  {
-    out << "mam:\n";
-    d_lblHasher.print(out);
-    for (CodeTree* t : d_trees.getCodeTrees())
-    {
-      if (t != nullptr)
-      {
-        t->print(out);
-      }
-    }
-  }
-
   void match() override
   {
     for (CodeTree* t : d_toMatch)
@@ -3184,7 +2882,7 @@ class MamImpl : public Mam
     }
   }
 
-  void rematch(bool useIrrelevant) override
+  void rematch() override
   {
     for (CodeTree* t : d_trees.getCodeTrees())
     {
@@ -3200,7 +2898,7 @@ class MamImpl : public Mam
       for (size_t i = 0; i < d_context.enodesOf(lbl).size(); ++i)
       {
         ENode* curr = d_context.enodesOf(lbl)[i];
-        if (useIrrelevant || d_context.isRelevantForMatching(curr))
+        if (d_context.isRelevantForMatching(curr))
         {
           d_interpreter.executeCore(t, curr);
         }
@@ -3212,26 +2910,14 @@ class MamImpl : public Mam
                TNode pat,
                size_t numBindings,
                ENode* const* bindings,
-               uint32_t maxGeneration,
-               std::vector<std::pair<ENode*, ENode*>>& usedENodes) override
+               uint32_t maxGeneration) override
   {
     d_context.getStats().d_numMamMatches++;
     uint32_t minGen = 0;
     uint32_t maxGen = 0;
     d_interpreter.getMinMaxTopGeneration(minGen, maxGen);
-    d_qm.addInstance(q,
-                     pat,
-                     numBindings,
-                     bindings,
-                     maxGeneration,
-                     minGen,
-                     maxGen,
-                     usedENodes);
-  }
-
-  bool isShared(ENode* n) const override
-  {
-    return !d_sharedENodes.empty() && d_sharedENodes.count(n) > 0;
+    d_qm.addInstance(
+        q, pat, numBindings, bindings, maxGeneration, minGen, maxGen);
   }
 
   /**
@@ -3754,7 +3440,7 @@ class MamImpl : public Mam
         // miss potential new matches.
         ENode* currChild = n->getRoot();
 
-        if (d_useFilters && currChild->getPlbls().emptyIntersection(filter))
+        if (currChild->getPlbls().emptyIntersection(filter))
         {
           continue;
         }
@@ -4015,7 +3701,6 @@ class MamImpl : public Mam
     }
   }
 
-  bool d_useFilters;
   TrailStack d_trailStack;
   LabelHasher d_lblHasher;
   CodeTreeManager d_ctManager;
@@ -4064,7 +3749,7 @@ class MamImpl : public Mam
 
 Mam* mkMam(QuantifierServices& ctx, QuantifierManager& qm)
 {
-  return new MamImpl(ctx, qm, true);
+  return new MamImpl(ctx, qm);
 }
 
 }  // namespace z3

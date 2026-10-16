@@ -77,11 +77,6 @@ inline uint32_t combineHash(uint32_t h1, uint32_t h2)
   return hashU(h1);
 }
 
-inline uint32_t hashUU(uint32_t a, uint32_t b)
-{
-  return combineHash(hashU(a), hashU(b));
-}
-
 /**
  * Bob Jenkins' hash over a composite object with n children, where khasher
  * hashes the "kind" of the object and chasher hashes its i-th child. Kept
@@ -145,17 +140,6 @@ uint32_t getCompositeHash(Composite app,
       hashMix(a, b, c);
       return c;
   }
-}
-
-inline uint32_t hashUll(uint64_t a)
-{
-  a = (~a) + (a << 18);
-  a ^= (a >> 31);
-  a = a * 21;
-  a ^= (a >> 11);
-  a = a + (a << 6);
-  a ^= (a >> 22);
-  return static_cast<uint32_t>(a);
 }
 
 }  // namespace z3

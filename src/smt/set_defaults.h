@@ -138,10 +138,10 @@ class SetDefaults : protected EnvObj
   void setDefaultsPre(Options& opts);
   /**
    * Throw an OptionException for any option the ported Z3 core
-   * (--z3) does not support. Its supported surface is deliberately minimal;
-   * see src/z3/README.md. The alternative to refusing is answering out of
-   * cvc5's own engines, which --z3 leaves constructed but inactive, and which
-   * have therefore seen none of the assertions.
+   * (--z3) does not support. Its supported surface is deliberately minimal.
+   * The alternative to refusing is answering out of cvc5's quantifiers
+   * engine, which --z3 replaces, and which has therefore seen none of the
+   * quantified formulas.
    */
   void checkZ3Capabilities(Options& opts) const;
   //------------------------- finalization of the logic

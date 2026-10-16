@@ -56,7 +56,7 @@ class Mam
   virtual void match() = 0;
 
   /** Re-execute every code tree from scratch. */
-  virtual void rematch(bool useIrrelevant = false) = 0;
+  virtual void rematch() = 0;
 
   virtual bool hasWork() const = 0;
 
@@ -66,19 +66,12 @@ class Mam
   /** Notification that the classes of r1 and r2 merged. */
   virtual void addEqEh(ENode* r1, ENode* r2) = 0;
 
-  virtual void reset() = 0;
-
-  virtual void print(std::ostream& out) = 0;
-
   /** Report a match to the quantifier manager. */
   virtual void onMatch(TNode q,
                        TNode pat,
                        size_t numBindings,
                        ENode* const* bindings,
-                       uint32_t maxGeneration,
-                       std::vector<std::pair<ENode*, ENode*>>& usedENodes) = 0;
-
-  virtual bool isShared(ENode* n) const = 0;
+                       uint32_t maxGeneration) = 0;
 
  protected:
   QuantifierServices& d_context;

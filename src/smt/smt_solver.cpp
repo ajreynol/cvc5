@@ -22,10 +22,10 @@
 #include "options/main_options.h"
 #include "options/sets_options.h"
 #include "options/smt_options.h"
+#include "options/z3_options.h"
 #include "preprocessing/assertion_pipeline.h"
 #include "prop/prop_engine.h"
 #include "smt/assertions.h"
-#include "smt/engine_factory.h"
 #include "smt/env.h"
 #include "smt/logic_exception.h"
 #include "smt/preprocessor.h"
@@ -34,6 +34,8 @@
 #include "theory/logic_info.h"
 #include "theory/theory_engine.h"
 #include "theory/theory_traits.h"
+#include "z3/theory_slot.h"
+#include "z3/z3_hosted_prop_engine.h"
 
 using namespace std;
 
@@ -54,15 +56,29 @@ SmtSolver::SmtSolver(Env& env, SolverEngineStatistics& stats)
 
 SmtSolver::~SmtSolver() {}
 
+std::unique_ptr<prop::PropEngine> SmtSolver::mkPropEngine()
+{
+  if (options().z3.z3)
+  {
+    z3::TheorySlot& ts = z3::getTheorySlot(*d_theoryEngine);
+    return std::make_unique<z3::Z3HostedPropEngine>(
+        d_env, d_theoryEngine.get(), ts.getBackend(), ts.getCore());
+  }
+  return std::make_unique<prop::PropEngine>(d_env, d_theoryEngine.get());
+}
+
 void SmtSolver::finishInit()
 {
   // We have mutual dependency here, so we add the prop engine to the theory
   // engine later (it is non-essential there)
-  d_theoryEngine = EngineFactory::mkTheoryEngine(d_env);
+  d_theoryEngine.reset(new TheoryEngine(d_env));
 
-  // Add the theories: those the configuration selects, then cvc5's own in
-  // the other slots
-  EngineFactory::addTheories(d_env, d_theoryEngine.get());
+  // Add the theories: the ported Z3 core in the quantifiers slot with --z3,
+  // then cvc5's own in the other slots
+  if (options().z3.z3)
+  {
+    z3::addTheorySlots(d_env, *d_theoryEngine);
+  }
   for (theory::TheoryId id = theory::THEORY_FIRST; id < theory::THEORY_LAST;
        ++id)
   {
@@ -85,7 +101,7 @@ void SmtSolver::finishInit()
    * are unregistered by the obsolete PropEngine object before registered
    * again by the new PropEngine object */
   d_propEngine.reset(nullptr);
-  d_propEngine = EngineFactory::mkPropEngine(d_env, d_theoryEngine.get());
+  d_propEngine = mkPropEngine();
 
   Trace("smt-debug") << "Setting up theory engine..." << std::endl;
   d_theoryEngine->setPropEngine(getPropEngine());
@@ -112,7 +128,7 @@ void SmtSolver::resetAssertions()
    * statistics are unregistered by the obsolete PropEngine object before
    * registered again by the new PropEngine object */
   d_propEngine.reset(nullptr);
-  d_propEngine = EngineFactory::mkPropEngine(d_env, d_theoryEngine.get());
+  d_propEngine = mkPropEngine();
   d_theoryEngine->setPropEngine(getPropEngine());
   // Notice that we do not reset TheoryEngine, nor does it require calling
   // finishInit again. In particular, TheoryEngine::finishInit does not

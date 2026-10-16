@@ -19,11 +19,8 @@
 namespace cvc5::internal {
 namespace z3 {
 
-Explainer::Explainer(SmtContext& ctx, DynAckManager& dynAckManager)
-    : d_ctx(ctx),
-      d_dynAckManager(dynAckManager),
-      d_todoJsQhead(0),
-      d_antecedents(nullptr)
+Explainer::Explainer(SmtContext& ctx)
+    : d_ctx(ctx), d_todoJsQhead(0), d_antecedents(nullptr)
 {
 }
 
@@ -83,7 +80,6 @@ void Explainer::eqJustification2Literals(ENode* lhs,
       break;
     case EqJustification::CONGRUENCE:
     {
-      d_dynAckManager.usedCgEh(lhs->getExpr(), rhs->getExpr());
       uint32_t numArgs = lhs->getNumArgs();
       Assert(numArgs == rhs->getNumArgs());
       if (js.usedCommutativity())
@@ -119,7 +115,6 @@ void Explainer::eq2Literals(ENode* n1, ENode* n2)
   ENode* c = findCommonAncestor(n1, n2);
   eqBranch2Literals(n1, c);
   eqBranch2Literals(n2, c);
-  d_dynAckManager.usedEqEh(n1->getExpr(), n2->getExpr(), c->getExpr());
 }
 
 void Explainer::explain(Justification* js, LiteralVector& result)
@@ -166,24 +161,6 @@ void Explainer::rollback(size_t checkpoint)
   d_todoJsQhead = checkpoint;
   d_todoEqs.clear();
   d_alreadyProcessedEqs.clear();
-}
-
-void Explainer::justification2Literals(Justification* js, LiteralVector& result)
-{
-  Assert(isClear());
-  explain(js, result);
-  rollback(0);
-  Assert(d_todoEqs.empty());
-}
-
-void Explainer::eq2Literals(ENode* n1, ENode* n2, LiteralVector& result)
-{
-  Assert(isClear());
-  d_antecedents = &result;
-  d_todoEqs.push_back(ENodePair(n1, n2));
-  processJustifications();
-  rollback(0);
-  Assert(d_todoEqs.empty());
 }
 
 }  // namespace z3

@@ -841,14 +841,6 @@ Node PatternInference::reduceQuantifier(TNode q, TNode newBody)
   {
     std::vector<Node> none;
     mkPatterns(baseLevel, numDecls, newBody, none, newPatterns);
-    if (d_params.d_piWarnings && !newPatterns.empty())
-    {
-      std::stringstream ss;
-      ss << "ignoring nopats annotation because no other pattern was found "
-            "(quantifier id: "
-         << getQid(q) << ")";
-      Warning() << ss.str() << std::endl;
-    }
   }
 
   if (d_params.d_piArith == Params::AP_CONSERVATIVE)
@@ -886,13 +878,6 @@ Node PatternInference::reduceQuantifier(TNode q, TNode newBody)
 
   if (newPatterns.empty())
   {
-    if (d_params.d_piWarnings)
-    {
-      std::stringstream ss;
-      ss << "failed to find a pattern for quantifier (quantifier id: "
-         << getQid(q) << ")";
-      Warning() << ss.str() << std::endl;
-    }
     if (newBody == q[1])
     {
       return q;

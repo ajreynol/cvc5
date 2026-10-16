@@ -13,7 +13,6 @@
 #include "theory/shared_solver.h"
 
 #include "expr/node_visitor.h"
-#include "options/theory_options.h"
 #include "theory/ee_setup_info.h"
 #include "theory/logic_info.h"
 #include "theory/theory_engine.h"
@@ -55,8 +54,7 @@ void SharedSolver::preRegister(TNode atom)
   // global cache. This is because shared terms must be associated with the
   // given atom, and thus it must traverse the set of subterms in each atom.
   // See term_registration_visitor.h for more details.
-  if (d_logicInfo.isSharingEnabled()
-      && options().theory.eeMode != options::EqEngineMode::NONE)
+  if (d_logicInfo.isSharingEnabled())
   {
     // Collect the shared terms in atom, as well as calling preregister on the
     // appropriate theories in atom.

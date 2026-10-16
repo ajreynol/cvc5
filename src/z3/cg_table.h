@@ -180,8 +180,6 @@ class CgTable
 
   void erase(ENode* n);
 
-  bool contains(ENode* n) const;
-
   /** The element congruent to n, or null. */
   ENode* find(ENode* n) const;
 
@@ -189,10 +187,6 @@ class CgTable
   bool containsPtr(ENode* n) const;
 
   void reset();
-
-  void print(std::ostream& out) const;
-
-  bool checkInvariant() const;
 
  private:
   Table mkTableFor(ENode* n);

@@ -133,17 +133,11 @@ inline TNode getQuantBody(TNode q)
   return q[1];
 }
 
-/** True if quantifier q carries an explicit pattern annotation. */
-bool hasPatterns(TNode q);
-
 /**
  * The explicit patterns of q, each as the vector of terms of a (possibly
  * multi-) pattern. Empty if q has no pattern annotation.
  */
 void getPatterns(TNode q, std::vector<std::vector<Node>>& patterns);
-
-/** The ":no-pattern" annotations of q. */
-void getNoPatterns(TNode q, std::vector<Node>& noPatterns);
 
 /**
  * The instantiation weight of q, from its ":weight" annotation, defaulting to
@@ -160,9 +154,6 @@ uint32_t getWeight(TNode q);
  * whose only usable pattern contains arithmetic.
  */
 void setWeight(TNode q, uint32_t w);
-
-/** The ":qid" of q as a string, or the empty string if it has none. */
-std::string getQid(TNode q);
 
 /** Attribute holding one plus the weight of a quantifier. */
 struct QuantWeightTag
@@ -196,17 +187,12 @@ uint32_t getDepth(TNode n);
 class ConnectiveNormalizer
 {
  public:
-  ConnectiveNormalizer(NodeManager* nm, bool eliminateAnd)
-      : d_nm(nm), d_eliminateAnd(eliminateAnd)
-  {
-  }
+  ConnectiveNormalizer(NodeManager* nm) : d_nm(nm) {}
 
   Node normalize(TNode n);
 
  private:
   NodeManager* d_nm;
-  /** Whether a conjunction is rewritten as a negated disjunction. */
-  bool d_eliminateAnd;
   std::unordered_map<Node, Node> d_cache;
 };
 

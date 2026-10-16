@@ -31,7 +31,6 @@
 #include "z3/ast.h"
 #include "z3/b_justification.h"
 #include "z3/bool_var_data.h"
-#include "z3/case_split_queue.h"
 #include "z3/clause.h"
 #include "z3/justification.h"
 #include "z3/params.h"
@@ -46,61 +45,27 @@
 namespace cvc5::internal {
 namespace z3 {
 
-class ConflictResolution;
 class SmtContext;
 
-/** The reason for an "unknown" result from check(). */
-enum Failure
-{
-  OK,
-  UNKNOWN,
-  MEMOUT,
-  /** the external cancel flag was set */
-  CANCELED,
-  /** the maximum number of conflicts was reached */
-  NUM_CONFLICTS,
-  /** a theory is incomplete */
-  THEORY,
-  RESOURCE_LIMIT,
-  /** the logical context contains universal quantifiers */
-  QUANTIFIERS
-};
-
-std::ostream& operator<<(std::ostream& out, Failure f);
-
 /**
- * The Boolean search of the core: the Boolean variables and their
- * assignment, the watch lists and the clauses, Boolean constraint
- * propagation, the variable activity and phase heuristics, the case split
- * queue, the scope levels, conflict resolution, relevancy, and the search
- * driver (search, restarts, decisions, the propagation fixpoint and
- * backtracking).
+ * The Boolean side of the core: the Boolean variables and their assignment,
+ * the watch lists and the clauses of the Boolean structure, Boolean
+ * constraint propagation, relevancy, the scope levels, and the propagation
+ * fixpoint.
  *
- * This is the propositional side of the boundary described in
- * PROP_THEORY_SPLIT.md. The theory side, SmtContext, owns this object. The
- * driver calls the theory side through its scheduling and backtracking
- * contract: theoryPropagate and hasPendingTheoryWork for the propagation
- * fixpoint, finalCheck when every variable is assigned, initSearchEh,
- * restartEh and checkModel around the search, notifyConflictResolved after
- * each conflict, clearPropagationQueues when a conflict is found, and
- * pushTheoryScope, popTheoryScopeBegin and popTheoryScopeEnd when scopes are
- * pushed and popped. Besides that, what this side asks of the theory side
- * goes through the SmtContext reference d_ctx and is limited to:
- *  - handing assigned atoms to the theory side (enqueueAtom);
- *  - notifying it that a term became relevant (relevantEh), after this side
- *    has handled the notification; and the members of an equivalence class,
- *    which share their relevancy, for the relevancy propagator (findENode);
- *  - configuring the core and internalizing the asserted formulas
- *    (setupContext, internalizeAssertion, and internalizeRec for the
- *    arguments of a root assertion), recreating the atoms of clauses that
- *    survive backtracking (internalize), and caching the generations the
- *    latter had (cacheGeneration);
- *  - at the end of a check, whether a satisfying assignment is a model
- *    (canConfirmModel) and the quantifier profile (reportQuantifierProfile);
- *  - removing a deleted quantifier variable (notifyBoolVarDeleted);
- *  - the phase hint of a theory (getTheory);
- *  - the infrastructure the two sides share: the trail, the region-allocated
- *    justifications and the random number generator.
+ * It runs in host mode: cvc5's prop engine searches, and this class mirrors,
+ * for the theory side, the assignment of the atoms that cvc5 asserts. It
+ * never decides or resolves a conflict itself, and its scopes follow cvc5's
+ * SAT context (see HostCore). Its clauses stay private: what it hands to
+ * cvc5 is what the theory side records (hostRecordInstance and
+ * hostRecordLemma).
+ *
+ * The theory side, SmtContext, owns this object. This side calls it through
+ * theoryPropagate and hasPendingTheoryWork for the propagation fixpoint,
+ * finalCheck, initSearchEh, and pushTheoryScope, popTheoryScopeBegin and
+ * popTheoryScopeEnd when scopes are pushed and popped; besides that, it
+ * hands it the assigned atoms (enqueueAtom), notifies it of relevant terms
+ * (relevantEh), and has it internalize the asserted formulas.
  */
 class PropCore : protected EnvObj
 {
@@ -119,21 +84,12 @@ class PropCore : protected EnvObj
   PropCore(const PropCore&) = delete;
   PropCore& operator=(const PropCore&) = delete;
 
-  /**
-   * Make the conflict resolution and the case split queue, which the theory
-   * side's constructor calls.
-   */
-  void finishInit();
   /** Make the variable of t, the constant true, assigned by an axiom. */
   void initTrue(TNode t);
   /** Delete all clauses, when the context is flushed. */
   void flushClauses();
 
-  // --------------------------------------------- input and the entry points
-  //
-  // These are what Z3PropEngine drives: the formulas asserted to the core,
-  // the checks and the user scopes.
-
+  // ------------------------------------------------------------------- input
   /** Assert a (prepared) formula. */
   void assertFormula(TNode e);
 
@@ -150,38 +106,14 @@ class PropCore : protected EnvObj
 
   TNode getAssertedFormula(size_t idx) const { return d_assertedFormulas[idx]; }
 
-  const std::vector<Node>& getAssertedFormulas() const
-  {
-    return d_assertedFormulas;
-  }
-
   /** True if the input contains quantifiers. */
   bool hasQuantifiers() const { return d_hasQuantifiers; }
-
-  /** Run the search over the asserted formulas. */
-  LBool check();
-
-  /** Configure the core and then run the search. */
-  LBool setupAndCheck();
-
-  /** Push a user scope. */
-  void push();
-
-  /** Pop numScopes user scopes. */
-  void pop(size_t numScopes);
-
-  /** Why the last search answered L_UNDEF. */
-  const std::string& getReasonUnknown() const { return d_unknown; }
-
-  void setReasonUnknown(const std::string& msg) { d_unknown = msg; }
 
   // ------------------------------------------------------ Boolean variables
   BoolVar mkBoolVar(TNode n);
 
   /** Undo the last mkBoolVar; invoked from the trail. */
   void undoMkBoolVar();
-
-  void resetBoolVars() { d_expr2BoolVar.clear(); }
 
   BoolVar getBoolVar(TNode n) const { return d_expr2BoolVar[n.getId()]; }
 
@@ -198,8 +130,6 @@ class PropCore : protected EnvObj
   }
 
   TNode boolVar2Expr(BoolVar v) const { return d_boolVar2Expr[v]; }
-
-  Node literal2Expr(Literal l) const;
 
   Literal getLiteral(TNode n) const;
 
@@ -219,18 +149,12 @@ class PropCore : protected EnvObj
     return n.getKind() == Kind::NOT ? bInternalized(n[0]) : bInternalized(n);
   }
 
-  size_t getNumBInternalized() const { return d_bInternalizedStack.size(); }
-
-  TNode getBInternalized(size_t idx) const { return d_bInternalizedStack[idx]; }
-
   BoolVarData& getBdata(BoolVar v) { return d_bdata[v]; }
 
   const BoolVarData& getBdata(BoolVar v) const { return d_bdata[v]; }
 
   /** The scope level at which v was assigned. */
   uint32_t getAssignLevel(BoolVar v) const { return getBdata(v).d_scopeLvl; }
-
-  uint32_t getAssignLevel(Literal l) const { return getAssignLevel(l.var()); }
 
   /** The scope level at which v was internalized. */
   uint32_t getInternLevel(BoolVar v) const
@@ -267,40 +191,29 @@ class PropCore : protected EnvObj
   /** Like getAssignment, but returns L_UNDEF if n is not internalized. */
   LBool findAssignment(TNode n) const;
 
-  const LiteralVector& assignedLiterals() const { return d_assignedLiterals; }
-
   BJustification getJustification(BoolVar v) const
   {
     return getBdata(v).justification();
   }
 
-  void setJustification(BoolVar v, BoolVarData& d, const BJustification& j);
-
-  void assign(Literal l, const BJustification& j, bool decision = false)
+  void assign(Literal l, const BJustification& j)
   {
     Assert(l != s_falseLiteral);
     Assert(l != s_nullLiteral);
     switch (getAssignment(l))
     {
       case L_FALSE: setConflict(j, ~l); break;
-      case L_UNDEF: assignCore(l, j, decision); break;
+      case L_UNDEF: assignCore(l, j); break;
       case L_TRUE: return;
     }
   }
 
-  void assign(Literal l, Justification* j, bool decision = false)
+  void assign(Literal l, Justification* j)
   {
-    assign(l,
-           j != nullptr ? BJustification(j) : BJustification::mkAxiom(),
-           decision);
+    assign(l, j != nullptr ? BJustification(j) : BJustification::mkAxiom());
   }
 
-  void assignCore(Literal l, BJustification j, bool decision = false);
-
-  /** The position in the assignment of the next literal bcp visits. */
-  size_t getQhead() const { return d_qhead; }
-
-  void setQhead(size_t qhead) { d_qhead = qhead; }
+  void assignCore(Literal l, BJustification j);
 
   /** Boolean constraint propagation; returns false on a conflict. */
   bool bcp();
@@ -321,112 +234,17 @@ class PropCore : protected EnvObj
     return d_conflict != s_nullBJustification || d_assertedInconsistent;
   }
 
-  BJustification getConflict() const { return d_conflict; }
-
-  Literal getNotL() const { return d_notL; }
-
-  /** Record that a formula asserted false. */
-  void setAssertedInconsistent() { d_assertedInconsistent = true; }
-
-  bool isAssertedInconsistent() const { return d_assertedInconsistent; }
-
-  // ------------------------------------------------------------- heuristics
-  const std::vector<double>& getActivityVector() const { return d_activity; }
-
-  double getActivity(BoolVar v) const { return d_activity[v]; }
-
-  void setActivity(BoolVar v, double act) { d_activity[v] = act; }
-
-  void activityChanged(BoolVar v, bool increased)
-  {
-    if (increased)
-    {
-      d_caseSplitQueue->activityIncreasedEh(v);
-    }
-    else
-    {
-      d_caseSplitQueue->activityDecreasedEh(v);
-    }
-  }
-
-  void incBvarActivity(BoolVar v, double inc = 1.0)
-  {
-    double& act = d_activity[v];
-    act += d_bvarInc * inc;
-    if (act > s_activityLimit)
-    {
-      rescaleBoolVarActivity();
-    }
-    d_caseSplitQueue->activityIncreasedEh(v);
-  }
-
-  void decayBvarActivity() { d_bvarInc *= d_params.d_invDecay; }
-
-  uint64_t getBirthdate(BoolVar v) const { return d_birthdate[v]; }
-
-  /**
-   * Force the given phase the next time v is case split. Has no effect if
-   * phase caching is disabled.
-   */
-  void forcePhase(BoolVar v, bool phase)
-  {
-    BoolVarData& d = getBdata(v);
-    d.d_phaseAvailable = true;
-    d.d_phase = phase;
-  }
-
-  void forcePhase(Literal l) { forcePhase(l.var(), !l.sign()); }
-
-  void setTrueFirstFlag(BoolVar v);
-
-  bool tryTrueFirst(BoolVar v) const { return getBdata(v).tryTrueFirst(); }
-
-  /** The phase to assign the decision variable var, true for positive. */
-  bool guess(BoolVar var, LBool phase);
-
-  void updatePhaseCacheCounter();
-
-  void forgetPhaseOfVarsInCurrentLevel();
-
   // -------------------------------------------------------------- relevancy
-  uint32_t relevancyLvl() const
-  {
-    return std::min(d_relevancyLvl, d_params.d_relevancyLvl);
-  }
-
-  bool relevancy() const { return relevancyLvl() > 0; }
-
-  /** The relevancy level chosen when the context was configured. */
-  uint32_t getConfiguredRelevancyLvl() const { return d_relevancyLvl; }
-
-  void setConfiguredRelevancyLvl(uint32_t lvl) { d_relevancyLvl = lvl; }
-
-  /**
-   * Whether an assigned atom other than a quantifier reaches the theories
-   * only once it is relevant: at relevancy level 2, unless
-   * --no-z3-relevancy-deliver.
-   */
-  bool relevancyGatesAtoms() const
-  {
-    return relevancyLvl() >= 2 && d_params.d_relevancyDeliver;
-  }
-
-  RelevancyPropagator& getRelevancyPropagator()
-  {
-    return *d_relevancyPropagator;
-  }
+  //
+  // Relevancy runs at level 2: an assigned atom other than a quantifier
+  // reaches the theory side only once it is relevant.
 
   bool isRelevantCore(TNode n) const
   {
     return d_relevancyPropagator->isRelevant(n);
   }
 
-  bool isRelevantCore(Literal l) const
-  {
-    return isRelevantCore(boolVar2Expr(l.var()));
-  }
-
-  bool isRelevant(TNode n) const { return !relevancy() || isRelevantCore(n); }
+  bool isRelevant(TNode n) const { return isRelevantCore(n); }
 
   bool isRelevant(BoolVar v) const { return isRelevant(boolVar2Expr(v)); }
 
@@ -446,17 +264,6 @@ class PropCore : protected EnvObj
 
   void markAsRelevant(Literal l) { markAsRelevant(l.var()); }
 
-  template <typename Eh>
-  RelevancyEh* mkRelevancyEh(const Eh& eh)
-  {
-    return d_relevancyPropagator->mkRelevancyEh(eh);
-  }
-
-  void addRelevancyEh(TNode source, RelevancyEh* eh)
-  {
-    d_relevancyPropagator->addHandler(source, eh);
-  }
-
   void addRelevancyDependency(TNode source, TNode target)
   {
     d_relevancyPropagator->addDependency(source, target);
@@ -467,25 +274,15 @@ class PropCore : protected EnvObj
     d_relevancyPropagator->addWatch(boolVar2Expr(l.var()), !l.sign(), eh);
   }
 
-  void addRelWatch(Literal l, TNode n)
-  {
-    d_relevancyPropagator->addWatch(boolVar2Expr(l.var()), !l.sign(), n);
-  }
-
   /**
    * The event handler invoked by the relevancy propagator when n becomes
    * relevant. This side requeues an assigned atom that now reaches the theory
-   * side, and notifies the case split queue; then the theory side is
-   * notified.
+   * side; then the theory side is notified.
    */
   void relevantEh(TNode n);
 
   /** Destroy the relevancy propagator, when the context is flushed. */
   void flushRelevancy() { d_relevancyPropagator.reset(nullptr); }
-
-  double getAgility() const { return d_agility; }
-
-  CaseSplitQueue& getCaseSplitQueue() { return *d_caseSplitQueue; }
 
   // -------------------------------------------------- the Boolean structure
   //
@@ -501,53 +298,12 @@ class PropCore : protected EnvObj
    */
   void assertRoot(TNode n);
 
-  /**
-   * Assert the root formula n, after the theory side has internalized its
-   * subterms, as a theory lemma whose literals are the disjuncts of n, which
-   * survives backtracking and garbage collection (--z3-qi-permanent). As Z3
-   * does for the theory lemmas it reinitializes, every literal is marked
-   * relevant; with --z3-qi-permanent-local, n is instead a root of the
-   * current scope only, for relevancy and the case split queue, as a scoped
-   * instance is (see reactivatePermanentRoot). Returns false if the lemma is
-   * a single literal, which is asserted at the current scope only.
-   */
-  bool assertPermanentLemma(TNode n);
-
-  /**
-   * Make the permanent lemma n, asserted by assertPermanentLemma under
-   * --z3-qi-permanent-local, a root again in the current scope, when matching
-   * finds the instance again.
-   */
-  void reactivatePermanentRoot(TNode n);
-
-  /** The statistics, shared with the theory side. */
-  Statistics& getStats() { return d_stats; }
-
-  /**
-   * A value of the theory side's random number generator, which the case
-   * split queue shares with the theories.
-   */
-  int getRandomValue();
-
-  /** See SmtContext::isExtDiseqAtom. */
-  bool isExtDiseqAtom(BoolVar v);
-
-  /** See SmtContext::conflictResolutionEh. */
-  void conflictResolutionEh(BoolVar v);
-
   // ------------------------------------------------------------ host mode
-  // With --z3-prop-engine=cvc5, cvc5's prop engine searches, and this class
-  // mirrors, for the theory side, the assignment of the atoms that cvc5
-  // asserts: it never decides or resolves a conflict itself. Its scopes
-  // follow cvc5's SAT context. See ARCHITECTURE_PLAN.md, section 15.
-
   /**
-   * Enter host mode and prepare the search as check() does: configure the
-   * theory side, internalize the asserted formulas and start the search.
+   * Prepare the search: configure the theory side, internalize the asserted
+   * formulas and start the search.
    */
   void hostInit();
-  /** Whether host mode is on. */
-  bool isHosted() const { return d_hosted; }
   /** Push or pop scopes until the scope level is lvl. */
   void hostSyncLevel(uint32_t lvl);
   /**
@@ -571,29 +327,17 @@ class PropCore : protected EnvObj
     return v < d_hostAssigned.size() && d_hostAssigned[v];
   }
   /**
-   * Set out to the host literals, above the base level, that imply the
-   * assigned literal l through the justifications of this side.
+   * The host literals that explain the current conflict, literals of the base
+   * level being dropped, as they are permanent.
    */
-  void hostExplain(Literal l, std::vector<Literal>& out);
-  /** As hostExplain, for the current conflict. */
   void hostExplainConflict(std::vector<Literal>& out);
   /** Record the formula n, an instance, to be asserted by the host. */
   void hostRecordInstance(TNode n) { d_hostInstances.push_back(n); }
   /** Record the formula n, which holds globally, to be asserted by the host. */
   void hostRecordLemma(TNode n) { d_hostLemmas.push_back(n); }
   /**
-   * Keep the clauses of the theory side's axioms and lemmas from the host,
-   * which then gets only what is recorded explicitly (hostRecordInstance,
-   * hostRecordLemma). For the shadow of HostCore, under cvc5's own theories,
-   * which do their own ground reasoning and would not take the atoms of
-   * the port's theory plugins.
-   */
-  void hostSetShadow(bool shadow) { d_hostShadow = shadow; }
-  /** Whether the theory side's clauses stay private; see hostSetShadow. */
-  bool isHostShadow() const { return d_hostShadow; }
-  /**
-   * Move to lemmas the clauses of theory axioms and lemmas recorded for the
-   * host since the last call, and to instances the instances.
+   * Move to lemmas the formulas recorded for the host since the last call,
+   * and to instances the instances.
    */
   void hostTakeLemmas(std::vector<Node>& lemmas, std::vector<Node>& instances);
   /** Propagate to a fixpoint; returns false on a conflict. */
@@ -608,7 +352,7 @@ class PropCore : protected EnvObj
     d_hostRelevant.clear();
   }
   /** Run the theory side's final check. */
-  FinalCheckStatus hostFinalCheck(Failure& f);
+  FinalCheckStatus hostFinalCheck();
 
   /**
    * Add the clauses that define the Boolean variable of the gate n in terms
@@ -620,98 +364,29 @@ class PropCore : protected EnvObj
   void mkGateClause(size_t numLits, Literal* lits);
   void mkGateClause(Literal l1, Literal l2);
   void mkGateClause(Literal l1, Literal l2, Literal l3);
-  void mkGateClause(Literal l1, Literal l2, Literal l3, Literal l4);
 
   // ---------------------------------------------------------------- clauses
-  Clause* mkClause(size_t numLits,
-                   Literal* lits,
-                   Justification* j,
-                   ClauseKind k = CLS_AUX,
-                   ClauseDelEh* delEh = nullptr);
-
-  void mkClause(Literal l1, Literal l2, Justification* j);
-
-  void mkClause(Literal l1, Literal l2, Literal l3, Justification* j);
-
-  const ClauseVector& getLemmas() const { return d_lemmas; }
-
-  size_t getNumAuxClauses() const { return d_auxClauses.size(); }
-
-  /** The expression of each Boolean variable, indexed by the variable. */
-  const std::vector<Node>& getBoolVar2ExprMap() const { return d_boolVar2Expr; }
-
-  const WatchList& getWatch(Literal l) const { return d_watches[l.index()]; }
-
-  bool binaryClauseOptEnabled() const { return d_params.d_binaryClauseOpt; }
-
-  /** Simplify the clauses at the base level, when there is new work. */
-  void simplifyClauses();
-
-  size_t getNumUnitsToReassert() const { return d_unitsToReassert.size(); }
+  /** Make an auxiliary clause, which is deleted on backtracking. */
+  Clause* mkClause(size_t numLits, Literal* lits);
 
   void addUnitToReassert(TNode unit, bool sign, bool relevant)
   {
     d_unitsToReassert.push_back(ReplayUnit{unit, sign, relevant});
   }
 
-  /**
-   * Cache the generations of the atoms of the clauses and units that will be
-   * reinitialized when backtracking to newScopeLvl.
-   */
-  void cacheGeneration(uint32_t newScopeLvl);
-
-  /** Cache the generations of the atoms of lits that newScopeLvl deletes. */
-  void cacheGeneration(size_t numLits,
-                       const Literal* lits,
-                       uint32_t newScopeLvl);
-
-  /**
-   * Reinitialize the lemmas that contain Boolean variables deleted during
-   * backtracking numScopes levels; numBoolVars is the number of variables
-   * that survived.
-   */
-  void reinitClauses(size_t numScopes, size_t numBoolVars);
-
-  void reassertUnits(size_t unitsToReassertLim);
-
   // ----------------------------------------------------------------- scopes
   uint32_t getScopeLevel() const { return d_scopeLvl; }
 
-  uint32_t getBaseLevel() const { return d_baseLvl; }
+  bool atBaseLevel() const { return d_scopeLvl == 0; }
 
-  bool atBaseLevel() const { return d_scopeLvl == d_baseLvl; }
-
-  uint32_t getSearchLevel() const { return d_searchLvl; }
-
-  bool atSearchLevel() const { return d_scopeLvl == d_searchLvl; }
-
-  void setSearchLevel(uint32_t lvl) { d_searchLvl = lvl; }
-
-  /** The position in the assignment stack of the decision at scopeLvl. */
-  size_t getDecisionLiteralPos(uint32_t scopeLvl) const
-  {
-    Assert(scopeLvl > d_baseLvl);
-    return d_scopes[scopeLvl - 1].d_assignedLiteralsLim;
-  }
-
-  /** Open a new search scope, on both sides. */
+  /** Open a new scope, on both sides. */
   void pushScope();
-
-  /** Open a new user scope, after pushScope. */
-  void pushBaseScope();
 
   /** Backtrack numScopes scopes, on both sides. */
   void popScope(size_t numScopes);
 
-  /** Backtrack to the base (user) level. */
+  /** Backtrack to the base level. */
   void popToBaseLvl();
-
-  /** Backtrack to the search level. */
-  void popToSearchLvl();
-
-  // ---------------------------------------------------------- search driver
-  /** Run the search, from the search level. */
-  LBool search();
 
   /** Propagate to a fixpoint; returns false on a conflict. */
   bool propagate();
@@ -719,29 +394,14 @@ class PropCore : protected EnvObj
   /** Whether either side has propagation work pending. */
   bool canPropagate() const;
 
-  /**
-   * Resolve the current conflict, learning a clause and backjumping. Returns
-   * false if the conflict is at the search level, i.e. unsatisfiable.
-   */
-  bool resolveConflict();
-
-  /** True if the search was interrupted or ran out of resources. */
+  /** True if the resource limits were exceeded. */
   bool getCancelFlag();
 
-  void interrupt() { d_interrupted = true; }
-
+  /**
+   * True if the resource limits were exceeded during this search, which
+   * then stays out of resources.
+   */
   bool resourceLimitsExceeded();
-
-  Failure getLastSearchFailure() const { return d_lastSearchFailure; }
-
-  void setLastSearchFailure(Failure f) { d_lastSearchFailure = f; }
-
-  bool isSearching() const { return d_searching; }
-
-  uint64_t getNumConflicts() const { return d_numConflicts; }
-
-  /** Reset the state of conflict resolution before a check. */
-  void resetConflictResolution();
 
  private:
   struct Scope
@@ -749,13 +409,6 @@ class PropCore : protected EnvObj
     size_t d_assignedLiteralsLim;
     size_t d_auxClausesLim;
     size_t d_unitsToReassertLim;
-  };
-
-  struct BaseScope
-  {
-    size_t d_lemmasLim;
-    size_t d_simpQheadLim;
-    bool d_inconsistent;
   };
 
   /** The trail object that undoes mkBoolVar. */
@@ -769,19 +422,12 @@ class PropCore : protected EnvObj
     PropCore& d_core;
   };
 
-  static constexpr double s_activityLimit = 1e100;
-  static constexpr double s_invActivityLimit = 1e-100;
-
-  void rescaleBoolVarActivity();
-  void addScores(size_t n, const Literal* lits);
   void unassignVars(size_t oldLim);
 
   // the Boolean structure
   void assertDefault(TNode n);
-  void assertDistinct(TNode n);
   void mkRootClause(size_t numLits, Literal* lits);
   void mkRootClause(Literal l1, Literal l2);
-  void mkRootClause(Literal l1, Literal l2, Literal l3);
   void addAndRelWatches(TNode n);
   void addOrRelWatches(TNode n);
   void addImpliesRelWatches(TNode n);
@@ -794,74 +440,23 @@ class PropCore : protected EnvObj
   void mkIteCnstr(TNode n);
 
   void propagateRelevancy(size_t qhead);
-  void recordRelevancy(size_t n, const Literal* lits);
-  void restoreRelevancy(size_t n, const Literal* lits);
 
-  bool checkPreamble();
-  LBool checkFinalize(LBool r);
-
-  // search driver
-  /** Reset the search state and the heuristics at the start of a search. */
-  void initSearch();
-  void endSearch();
-  void incLimits();
-  bool restart(LBool& status, uint32_t currLvl);
-  void tick(uint32_t& counter) const;
-  LBool boundedSearch();
-  bool decide();
-  /** Delete inactive lemmas, by the configured strategy. */
-  void delInactiveLemmas();
   /**
-   * Backtrack numScopes scopes, without resetting the cached generations, and
-   * return the number of Boolean variables before the clauses are
-   * reinitialized, which is what tells reinitClauses which variables were
-   * deleted.
+   * Cache the generations of the atoms of the units that will be reasserted
+   * when backtracking to newScopeLvl.
    */
-  size_t popScopeCore(size_t numScopes);
-  size_t popClauses(uint32_t newLvl);
-  void unassignToScope(uint32_t newLvl);
-  void popScopeLevels(uint32_t newLvl);
+  void cacheGeneration(uint32_t newScopeLvl);
+  void reassertUnits(size_t unitsToReassertLim);
 
   // clause management
-  bool trackOccs() const { return d_params.d_phaseSelection == PS_OCCURRENCE; }
-  void decRef(Literal l);
-  void incRef(Literal l);
-  void removeLitOccs(const Clause& cls, size_t numBoolVars);
-  void addLitOccs(const Clause& cls);
   void removeWatchLiteral(Clause* cls, size_t idx);
-  void removeWatch(BoolVar v);
-  void removeClsOccs(Clause* cls);
   void delClause(Clause* cls);
   void delClauses(ClauseVector& v, size_t oldSize);
-  bool isUnitClause(const Clause* c) const;
-  bool isEmptyClause(const Clause* c) const;
-  void cacheGeneration(const Clause* cls, uint32_t newScopeLvl);
   bool simplifyAuxClauseLiterals(size_t& numLits,
                                  Literal* lits,
                                  LiteralVector& simpLits);
-  bool simplifyAuxLemmaLiterals(size_t& numLits, Literal* lits);
-  void markForReinit(Clause* cls, uint32_t scopeLvl, bool reinternalizeAtoms);
-  uint32_t getMaxIscopeLvl(size_t numLits, const Literal* lits) const;
-  bool useBinaryClauseOpt(Literal l1, Literal l2, bool lemma) const;
-  int selectLearnedWatchLit(const Clause* cls) const;
-  int selectWatchLit(const Clause* cls, int startingAt) const;
+  bool useBinaryClauseOpt(Literal l1, Literal l2) const;
   void addWatchLiteral(Clause* cls, size_t idx);
-  bool simplifyClause(Clause& cls);
-  size_t simplifyClauses(ClauseVector& clauses, size_t startingAt);
-  bool isJustifying(Clause* cls) const
-  {
-    for (size_t i = 0; i < 2; ++i)
-    {
-      BJustification js = getJustification((*cls)[i].var());
-      if (js.getKind() == BJustification::CLAUSE && js.getClause() == cls)
-      {
-        return true;
-      }
-    }
-    return false;
-  }
-  /** Mark the root n relevant, as assertRoot does. */
-  void markRootRelevant(TNode n);
 
   /** Push to todo the antecedents of consequent under js. */
   void hostAntecedents(Literal consequent,
@@ -874,32 +469,6 @@ class PropCore : protected EnvObj
    */
   void hostExpand(std::vector<Literal>& todo, std::vector<Literal>& out);
 
-  /**
-   * Whether cls is a permanent instance whose relevancy is scoped
-   * (--z3-qi-permanent-local); reinitializing it does not mark its literals
-   * relevant.
-   */
-  bool isLocalPermanent(const Clause* cls) const
-  {
-    return cls->isPermanent() && d_params.d_qiPermanentLocal;
-  }
-
-  bool canDelete(Clause* cls) const
-  {
-    if (cls->inReinitStack() || cls->isPermanent())
-    {
-      return false;
-    }
-    return !isJustifying(cls);
-  }
-  void delInactiveLemmas1();
-  void delInactiveLemmas2();
-  bool moreThanKUnassignedLiterals(Clause* cls, size_t k);
-
-  /** Whether host mode is on; see hostInit. */
-  bool d_hosted = false;
-  /** Whether the clauses of the theory side stay private; see hostSetShadow. */
-  bool d_hostShadow = false;
   /** For each variable, whether its value was asserted by the host. */
   std::vector<bool> d_hostAssigned;
   /** The formulas recorded for the host; see hostTakeLemmas. */
@@ -913,11 +482,7 @@ class PropCore : protected EnvObj
   Params& d_params;
   Statistics& d_stats;
 
-  /** The relevancy level chosen when the context was configured. */
-  uint32_t d_relevancyLvl;
   std::unique_ptr<RelevancyPropagator> d_relevancyPropagator;
-  /** Scratch space for recordRelevancy and restoreRelevancy. */
-  std::vector<bool> d_relevantConflictLiterals;
 
   /** Maps the id of an expression to its Boolean variable. */
   std::vector<BoolVar> d_expr2BoolVar;
@@ -929,30 +494,11 @@ class PropCore : protected EnvObj
   std::vector<int8_t> d_assignment;
   /** The watch list of each literal. */
   std::vector<WatchList> d_watches;
-  /** The occurrence count of each literal. */
-  std::vector<uint32_t> d_litOccs;
   std::vector<BoolVarData> d_bdata;
-  std::vector<double> d_activity;
-  std::vector<double> d_litScores[2];
-  std::vector<uint64_t> d_birthdate;
   ClauseVector d_auxClauses;
-  ClauseVector d_lemmas;
-  std::vector<ClauseVector> d_clausesToReinit;
   std::vector<ReplayUnit> d_unitsToReassert;
   LiteralVector d_assignedLiterals;
   size_t d_qhead;
-  size_t d_simpQhead;
-  /** The budget for clause simplification; it may become negative. */
-  int64_t d_simpCounter;
-  std::unique_ptr<CaseSplitQueue> d_caseSplitQueue;
-  double d_bvarInc;
-  bool d_phaseCacheOn;
-  /** Used to decide when to turn phase caching on and off. */
-  uint32_t d_phaseCounter;
-  /** The default phase when phase caching is in use. */
-  bool d_phaseDefault;
-  /** How often assignments flip their cached phase; drives restarts. */
-  double d_agility;
 
   /*
     A conflict is usually a single justification, i.e. a justification for
@@ -971,33 +517,14 @@ class PropCore : protected EnvObj
   size_t d_assertedFormulasQhead;
   bool d_hasQuantifiers;
   bool d_internalizingAssertions;
-  /** Why the last search answered L_UNDEF. */
-  std::string d_unknown;
 
-  std::unique_ptr<ConflictResolution> d_conflictResolution;
-
-  // search driver
-  Failure d_lastSearchFailure;
+  /** Whether the search started (hostInit). */
   bool d_searching;
-  bool d_interrupted;
-  uint64_t d_numConflicts;
-  uint64_t d_numConflictsSinceRestart;
-  uint64_t d_numConflictsSinceLemmaGc;
-  uint64_t d_numRestarts;
-  uint64_t d_restartThreshold;
-  uint64_t d_restartOuterThreshold;
-  uint32_t d_lubyIdx;
-  uint64_t d_lemmaGcThreshold;
+  /** Whether the resource limits were exceeded during this search. */
+  bool d_resourceOut;
 
   uint32_t d_scopeLvl;
-  uint32_t d_baseLvl;
-  /**
-   * Greater than d_baseLvl when assumptions are used, and equal to it
-   * otherwise.
-   */
-  uint32_t d_searchLvl;
   std::vector<Scope> d_scopes;
-  std::vector<BaseScope> d_baseScopes;
 
   MkBoolVarTrail d_mkBoolVarTrail;
 };

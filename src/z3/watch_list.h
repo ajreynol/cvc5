@@ -78,22 +78,11 @@ class WatchList
     }
   }
 
-  void resetAndReleaseMemory()
-  {
-    destroy();
-    d_data = nullptr;
-  }
-
   ClauseIterator beginClause() { return reinterpret_cast<Clause**>(d_data); }
 
   ClauseIterator endClause()
   {
     return reinterpret_cast<Clause**>(d_data + endCls());
-  }
-
-  ClauseIterator findClause(const Clause* c)
-  {
-    return std::find(beginClause(), endClause(), c);
   }
 
   Literal* beginLiterals()
@@ -114,16 +103,6 @@ class WatchList
   const Literal* endLiterals() const
   {
     return reinterpret_cast<const Literal*>(d_data + endLits());
-  }
-
-  Literal* findLiteral(const Literal& l)
-  {
-    return std::find(beginLiterals(), endLiterals(), l);
-  }
-
-  const Literal* findLiteral(const Literal& l) const
-  {
-    return std::find(beginLiterals(), endLiterals(), l);
   }
 
   void insertClause(Clause* c)
@@ -150,8 +129,6 @@ class WatchList
   void removeClause(Clause* c);
 
   void removeDeleted();
-
-  void removeLiteral(Literal l);
 
   void setEndClause(ClauseIterator newEnd)
   {

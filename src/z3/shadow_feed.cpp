@@ -16,8 +16,6 @@
 
 #include <algorithm>
 
-#include "expr/node_algorithm.h"
-#include "options/z3_options.h"
 #include "theory/uf/equality_engine.h"
 #include "z3/shared_backend.h"
 #include "z3/smt_context.h"
@@ -29,7 +27,6 @@ ShadowFeed::ShadowFeed(Env& env, SharedBackend& backend)
     : EnvObj(env),
       d_backend(backend),
       d_master(nullptr),
-      d_import(options().z3.z3ShadowImport),
       d_coreTerm(context()),
       d_coreIdx(context(), 0)
 {
@@ -64,9 +61,7 @@ void ShadowFeed::eqNotifyMerge(TNode t1, TNode t2)
   }
 }
 
-void ShadowFeed::eqNotifyDisequal(TNode /*t1*/,
-                                  TNode /*t2*/,
-                                  TNode /*reason*/)
+void ShadowFeed::eqNotifyDisequal(TNode /*t1*/, TNode /*t2*/, TNode /*reason*/)
 {
 }
 
@@ -85,29 +80,6 @@ void ShadowFeed::merge(TNode a, TNode b)
   }
   ctx.assumeExternalEq(a, b);
   ctx.getStats().d_numShadowMerges++;
-}
-
-bool ShadowFeed::import(TNode t, TNode other)
-{
-  SmtContext& ctx = d_backend.getContext();
-  if (ctx.eInternalized(t))
-  {
-    return true;
-  }
-  if (expr::hasBoundVar(t) || expr::hasClosure(t))
-  {
-    return false;
-  }
-  ENode* o = ctx.getENode(other);
-  ctx.internalize(t, false, ctx.getGeneration(o));
-  if (!ctx.eInternalized(t))
-  {
-    return false;
-  }
-  // as Z3's datatype plugin does with the terms it makes
-  ctx.markAsRelevant(ctx.getENode(t));
-  ctx.getStats().d_numShadowImports++;
-  return true;
 }
 
 void ShadowFeed::apply()
@@ -137,19 +109,11 @@ void ShadowFeed::apply()
     if (c1.isNull())
     {
       // r1 represents the merged class, which now holds c2
-      if (d_import && import(r1, c2))
-      {
-        merge(r1, c2);
-      }
       d_coreTerm.insert(r1, c2);
       continue;
     }
     if (c2.isNull())
     {
-      if (d_import && import(r2, c1))
-      {
-        merge(r2, c1);
-      }
       continue;
     }
     merge(c1, c2);
@@ -170,10 +134,6 @@ void ShadowFeed::apply()
     if (c.isNull())
     {
       d_coreTerm.insert(r, t);
-      if (r != t && d_import && import(r, t))
-      {
-        merge(r, t);
-      }
     }
     else
     {

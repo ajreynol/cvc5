@@ -52,7 +52,6 @@ ENode* ENode::init(void* mem,
   n->d_mark = false;
   n->d_mark2 = false;
   n->d_interpreted = false;
-  n->d_suppressArgs = suppressArgs;
   n->d_eq = owner.getKind() == Kind::EQUAL;
   n->d_commutative = n->d_numArgs == 2 && z3::isCommutative(owner);
   n->d_bool = owner.getType().isBoolean();
@@ -60,7 +59,6 @@ ENode* ENode::init(void* mem,
   n->d_cgcEnabled = cgcEnabled;
   n->d_iscopeLvl = iscopeLvl;
   n->d_lblHash = -1;
-  n->d_isShared = 2;
   uint32_t numArgs = n->d_numArgs;
   ENode** args = n->argsPtr();
   for (uint32_t i = 0; i < numArgs; ++i)
@@ -68,7 +66,6 @@ ENode* ENode::init(void* mem,
     ENode* arg = app2enode[owner[i].getId()];
     Assert(arg != nullptr);
     args[i] = arg;
-    arg->getRoot()->d_isShared = 2;
     if (updateChildrenParent)
     {
       arg->getRoot()->d_parents.push_back(n);
@@ -128,25 +125,6 @@ void ENode::delEh(bool updateChildrenParent)
   this->~ENode();
 }
 
-size_t ENode::getNumThVars() const { return d_thVarList.size(); }
-
-TheoryVar ENode::getThVar(TheoryId thId) const
-{
-  return d_thVarList.find(thId);
-}
-
-void ENode::addThVar(TheoryVar v, TheoryId id, Region& r)
-{
-  d_thVarList.addVar(v, id, r);
-}
-
-void ENode::replaceThVar(TheoryVar v, TheoryId id)
-{
-  d_thVarList.replace(v, id);
-}
-
-void ENode::delThVar(TheoryId id) { d_thVarList.delVar(id); }
-
 void ENode::setLblHash(TrailStack& trail)
 {
   Assert(d_lblHash == -1);
@@ -162,41 +140,6 @@ void ENode::setLblHash(TrailStack& trail)
     trail.push(ValueTrail<ApproxSet>(rLbls));
     rLbls.insert(static_cast<uint32_t>(d_lblHash));
   }
-}
-
-ENode* ENode::getEqENodeWithMinGen(SmtContext* ctx)
-{
-  ENode* r = this;
-  ENode* curr = this;
-  uint32_t rGen = ctx->getGeneration(r);
-  do
-  {
-    uint32_t currGen = ctx->getGeneration(curr);
-    if (currGen == 0)
-    {
-      return curr;
-    }
-    if (currGen < rGen)
-    {
-      r = curr;
-      rGen = currGen;
-    }
-    curr = curr->d_next;
-  } while (curr != this);
-  return r;
-}
-
-void ENode::printLbls(std::ostream& out) const
-{
-  out << "#" << getOwnerId() << "  ->  #" << getRoot()->getOwnerId()
-      << ", lbls: " << getLbls() << ", plbls: " << getPlbls()
-      << ", root->lbls: " << getRoot()->getLbls()
-      << ", root->plbls: " << getRoot()->getPlbls();
-  if (hasLblHash())
-  {
-    out << ", lbl-hash: " << static_cast<int>(getLblHash());
-  }
-  out << "\n";
 }
 
 bool congruent(ENode* n1, ENode* n2, bool& comm)
@@ -288,7 +231,6 @@ void TmpENode::setCapacity(size_t newCapacity)
   n->d_cgcEnabled = true;
   n->d_funcDeclId = UINT32_MAX;
   n->d_lblHash = -1;
-  n->d_isShared = 2;
   n->d_decl = decl;
   n->d_commutative = commutative;
 }
@@ -314,8 +256,6 @@ ENode* TmpENode::set(TNode decl,
   std::memcpy(r->argsPtr(), args, sizeof(ENode*) * numArgs);
   return r;
 }
-
-void TmpENode::reset() { getENode()->d_funcDeclId = UINT32_MAX; }
 
 }  // namespace z3
 }  // namespace cvc5::internal

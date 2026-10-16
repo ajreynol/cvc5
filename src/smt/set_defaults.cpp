@@ -132,85 +132,12 @@ void SetDefaults::setDefaults(LogicInfo& logic, Options& opts)
 
 void SetDefaults::setDefaultsPre(Options& opts)
 {
-  // The ported Z3 core has a deliberately minimal supported surface; see
-  // src/z3/README.md. Reject what it cannot do rather than answering from
-  // cvc5's own engines, which it leaves constructed but inactive and which
-  // have therefore seen none of the assertions.
-  if (opts.theory.eeMode == options::EqEngineMode::NONE
-      && !(opts.z3.z3
-           && opts.z3.z3TheoryEngine == options::Z3TheoryEngineMode::CVC5
-           && opts.z3.z3Slots == options::Z3SlotsMode::ALL))
-  {
-    // Only the port's theory slots work without equality engines, when they
-    // fill every slot. A subsolver copies the options of its parent with
-    // --z3 turned off.
-    SET_AND_NOTIFY(theory,
-                   eeMode,
-                   options::EqEngineMode::DISTRIBUTED,
-                   "no --z3-theory-engine=cvc5 --z3-slots=all");
-  }
   if (opts.z3.z3)
   {
+    // The ported Z3 core has a deliberately minimal supported surface.
+    // Reject what it cannot do rather than answering from cvc5's
+    // quantifiers engine, which it replaces.
     checkZ3Capabilities(opts);
-    // cvc5's theory engine over the port's components needs cvc5's prop
-    // engine: the port's own search drives only the port's own theory
-    // engine. Whichever of the two the user did not set gives way.
-    if (opts.z3.z3TheoryEngine == options::Z3TheoryEngineMode::CVC5
-        && opts.z3.z3PropEngine == options::Z3PropEngineMode::Z3)
-    {
-      if (!opts.z3.z3TheoryEngineWasSetByUser)
-      {
-        SET_AND_NOTIFY_VAL_SYM(z3,
-                               z3TheoryEngine,
-                               options::Z3TheoryEngineMode::Z3,
-                               "--z3-prop-engine=z3");
-      }
-      else if (!opts.z3.z3PropEngineWasSetByUser)
-      {
-        SET_AND_NOTIFY_VAL_SYM(z3,
-                               z3PropEngine,
-                               options::Z3PropEngineMode::CVC5,
-                               "--z3-theory-engine=cvc5");
-      }
-      else
-      {
-        throw OptionException(
-            "--z3-theory-engine=cvc5 requires --z3-prop-engine=cvc5");
-      }
-    }
-    if (opts.z3.z3TheoryEngine != options::Z3TheoryEngineMode::CVC5)
-    {
-      if (opts.z3.z3SlotsWasSetByUser
-          && opts.z3.z3Slots != options::Z3SlotsMode::ALL)
-      {
-        throw OptionException("--z3-slots requires --z3-theory-engine=cvc5");
-      }
-    }
-    else if (opts.z3.z3Slots == options::Z3SlotsMode::ALL)
-    {
-      // no equality engines: the components share the port's E-graph
-      // (src/z3/ARCHITECTURE_PLAN.md, section 16)
-      SET_AND_NOTIFY(theory,
-                     eeMode,
-                     options::EqEngineMode::NONE,
-                     "--z3-theory-engine=cvc5");
-    }
-    else
-    {
-      // cvc5's own theories in the other slots need the input and the
-      // instances in their preprocessed form, without term if-then-else
-      // (src/z3/ARCHITECTURE_PLAN.md, section 17)
-      if (opts.z3.z3NativeTermFormulasWasSetByUser
-          && opts.z3.z3NativeTermFormulas)
-      {
-        throw OptionException(
-            "--z3-native-term-formulas requires --z3-slots=all");
-      }
-      SET_AND_NOTIFY(
-          z3, z3NativeTermFormulas, false, "--z3-slots other than all");
-      SET_AND_NOTIFY(
-          z3, z3TheoryPreprocess, true, "--z3-slots other than all");
-    }
   }
   // safe options
   if (options().base.safeMode != options::SafeMode::UNRESTRICTED)
@@ -1188,15 +1115,14 @@ void SetDefaults::checkZ3Capabilities(Options& opts) const
   // What the ported core does support is one or more check-sat calls with
   // assertions between them, and reset-assertions. Everything below either
   // has no implementation in the port or would be answered out of cvc5's
-  // inactive engines; each of these was observed returning a wrong answer
-  // rather than failing, which is worse than refusing.
+  // quantifiers engine, which the port replaces and which therefore has seen
+  // none of the quantified formulas.
   const char* unsupported = nullptr;
   if (opts.smt.produceModels || opts.smt.checkModels
       || opts.smt.debugCheckModels)
   {
-    // The model would be built from the inactive native TheoryEngine: asking
-    // for one over (distinct a b c) reported a universe of size one.
-    // debugCheckModels is listed because it turns on checkModels further
+    // The port builds no model of the quantified formulas. debugCheckModels
+    // is listed because it turns on checkModels further
     // down in this same method, after this check has run.
     unsupported = "--produce-models";
   }
@@ -1253,6 +1179,12 @@ void SetDefaults::checkZ3Capabilities(Options& opts) const
   else if (opts.quantifiers.sygus)
   {
     unsupported = "sygus";
+  }
+  else if (opts.theory.eeMode == options::EqEngineMode::CENTRAL)
+  {
+    // The central equality engine builds its master equality engine for
+    // cvc5's quantifiers engine, which the port replaces.
+    unsupported = "--ee-mode=central";
   }
   if (unsupported != nullptr)
   {

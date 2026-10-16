@@ -98,8 +98,6 @@ class EqJustification
     return d_data != other.d_data;
   }
 
-  static EqJustification mkAxiom() { return EqJustification(); }
-
   static EqJustification mkCg(bool comm = false)
   {
     return EqJustification(comm);

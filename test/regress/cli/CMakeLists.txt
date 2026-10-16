@@ -2817,7 +2817,6 @@ set(regress_0_tests
   regress0/z3/ematch-repeated-var.smt2
   regress0/z3/hosted-dt-split.smt2
   regress0/z3/hosted-quant.smt2
-  regress0/z3/incremental-checks-quant.smt2
   regress0/z3/incremental-checks.smt2
   regress0/z3/quant-generation.smt2
   regress0/z3/quant-incomplete-unknown.smt2

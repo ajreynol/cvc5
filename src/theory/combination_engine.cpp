@@ -17,11 +17,9 @@
 #include "theory/care_graph.h"
 #include "theory/ee_manager_central.h"
 #include "theory/ee_manager_distributed.h"
-#include "theory/ee_manager_none.h"
 #include "theory/model_manager.h"
 #include "theory/model_manager_distributed.h"
 #include "theory/shared_solver_distributed.h"
-#include "theory/shared_solver_none.h"
 #include "theory/theory_engine.h"
 
 namespace cvc5::internal {
@@ -66,13 +64,6 @@ CombinationEngine::CombinationEngine(Env& env,
     d_mmanager.reset(
         new ModelManagerDistributed(env, d_te, *d_eemanager.get()));
   }
-  else if (options().theory.eeMode == options::EqEngineMode::NONE)
-  {
-    // no equality engines, hence no shared terms and no model
-    d_sharedSolver.reset(new SharedSolverNone(env, d_te));
-    d_eemanager.reset(
-        new EqEngineManagerNone(env, d_te, *d_sharedSolver.get()));
-  }
   else
   {
     Unhandled() << "CombinationEngine::finishInit: equality engine mode "
@@ -90,11 +81,7 @@ void CombinationEngine::finishInit()
   // and the (provided) shared solver
   d_eemanager->initializeTheories();
 
-  if (d_mmanager == nullptr)
-  {
-    // no model (--ee-mode=none)
-    return;
-  }
+  Assert(d_mmanager != nullptr);
   // initialize the model manager, based on the notify object of this class
   eq::EqualityEngineNotify* meen = getModelEqualityEngineNotify();
   d_mmanager->finishInit(meen);
@@ -105,27 +92,18 @@ const EeTheoryInfo* CombinationEngine::getEeTheoryInfo(TheoryId tid) const
   return d_eemanager->getEeTheoryInfo(tid);
 }
 
-void CombinationEngine::resetModel()
-{
-  if (d_mmanager != nullptr)
-  {
-    d_mmanager->resetModel();
-  }
-}
+void CombinationEngine::resetModel() { d_mmanager->resetModel(); }
 
 void CombinationEngine::postProcessModel(bool incomplete)
 {
   d_eemanager->notifyModel(incomplete);
   // postprocess with the model
-  if (d_mmanager != nullptr)
-  {
-    d_mmanager->postProcessModel(incomplete);
-  }
+  d_mmanager->postProcessModel(incomplete);
 }
 
 theory::TheoryModel* CombinationEngine::getModel()
 {
-  return d_mmanager == nullptr ? nullptr : d_mmanager->getModel();
+  return d_mmanager->getModel();
 }
 
 SharedSolver* CombinationEngine::getSharedSolver()

@@ -73,13 +73,9 @@ enum class SearchFeature
  * PropEngine is the abstraction of a Sat Solver, providing methods for
  * solving the SAT problem and conversion to CNF (via the CnfStream).
  *
- * The virtual methods below (finishInit, assertInputFormulas, checkSat, push,
- * pop, resetTrail, getAssertionLevel, interrupt and supports) are the search
- * contract through which the SMT layer drives the engine. They are virtual so
- * that the search can be run by an alternative implementation selected when
- * the engines are constructed, see smt/engine_factory.h. They are called
- * about once per command, so the methods that theories call during the search
- * are left non-virtual.
+ * The virtual methods below (finishInit, assertInputFormulas and supports)
+ * are overridden by the engine that prepares the assertions for the ported
+ * Z3 core (--z3), see z3/z3_hosted_prop_engine.h.
  */
 class PropEngine : protected EnvObj
 {
@@ -169,18 +165,13 @@ class PropEngine : protected EnvObj
 
   /**
    * As assertLemma, but without preprocessing the lemma: its atoms are
-   * converted as they are. For a theory engine whose atoms are not in the
-   * form preprocessing produces, and whose lemmas must refer to the same
-   * atoms as the SAT solver's, such as the ported Z3 core
-   * (z3::Z3TheoryEngine): preprocessing would rewrite a lemma made of
-   * assigned literals into one over new atoms. If notifyDecisions is false,
-   * the lemma is not an assertion for the decision engine either, which then
-   * does not need to justify it.
+   * converted as they are. For a theory whose lemmas must refer to the same
+   * atoms as the SAT solver's, such as the ported Z3 core (--z3), which
+   * applies cvc5's preprocessing itself before it makes them.
    */
   void assertLemmaUnprocessed(theory::InferenceId id,
                               TrustNode tlemma,
-                              theory::LemmaProperty p,
-                              bool notifyDecisions = true);
+                              theory::LemmaProperty p);
 
   /**
    * This is called when a theory propagation was explained with texp.
@@ -245,7 +236,7 @@ class PropEngine : protected EnvObj
    * Checks the current context for satisfiability.
    *
    */
-  virtual Result checkSat();
+  Result checkSat();
 
   /**
    * Get the value of a boolean variable.
@@ -305,23 +296,23 @@ class PropEngine : protected EnvObj
   /**
    * Push the context level.
    */
-  virtual void push();
+  void push();
 
   /**
    * Pop the context level.
    */
-  virtual void pop();
+  void pop();
 
   /*
    * Reset the decisions in the DPLL(T) SAT solver at the current assertion
    * level.
    */
-  virtual void resetTrail();
+  void resetTrail();
 
   /**
    * Get the assertion level of the SAT solver.
    */
-  virtual uint32_t getAssertionLevel() const;
+  uint32_t getAssertionLevel() const;
 
   /**
    * Return true if we are currently searching (either in this or
@@ -334,7 +325,7 @@ class PropEngine : protected EnvObj
    *
    * Can potentially throw a ModalException.
    */
-  virtual void interrupt();
+  void interrupt();
 
   /**
    * Whether this engine, together with the theory engine it was made with,
@@ -464,8 +455,7 @@ class PropEngine : protected EnvObj
                             const std::vector<theory::SkolemLemma>& ppLemmas,
                             bool removable,
                             bool inprocess,
-                            bool local,
-                            bool notifyDecisions = true);
+                            bool local);
 
   /**
    * Indicates that the SAT solver is currently solving something and we should

@@ -176,35 +176,6 @@ void CgTable::erase(ENode* n)
   }
 }
 
-bool CgTable::contains(ENode* n) const
-{
-  Assert(n->getNumArgs() > 0);
-  Table t = getTable(n);
-  switch (t.d_kind)
-  {
-    case UNARY:
-    {
-      const UnaryTable* tb = static_cast<const UnaryTable*>(t.d_table);
-      return tb->find(n) != tb->end();
-    }
-    case BINARY:
-    {
-      const BinaryTable* tb = static_cast<const BinaryTable*>(t.d_table);
-      return tb->find(n) != tb->end();
-    }
-    case BINARY_COMM:
-    {
-      const CommTable* tb = static_cast<const CommTable*>(t.d_table);
-      return tb->find(n) != tb->end();
-    }
-    default:
-    {
-      const NaryTable* tb = static_cast<const NaryTable*>(t.d_table);
-      return tb->find(n) != tb->end();
-    }
-  }
-}
-
 ENode* CgTable::find(ENode* n) const
 {
   Assert(n->getNumArgs() > 0);
@@ -242,84 +213,6 @@ bool CgTable::containsPtr(ENode* n) const
 {
   ENode* r = find(n);
   return r == n;
-}
-
-void CgTable::print(std::ostream& out) const
-{
-  for (const std::pair<const TNode, uint32_t>& kv : d_funcDecl2Id)
-  {
-    Table t = d_tables[kv.second];
-    out << kv.first << ": ";
-    switch (t.d_kind)
-    {
-      case UNARY:
-        out << "un ";
-        for (ENode* n : *static_cast<const UnaryTable*>(t.d_table))
-        {
-          out << n->getOwnerId() << " ";
-        }
-        break;
-      case BINARY:
-        out << "b ";
-        for (ENode* n : *static_cast<const BinaryTable*>(t.d_table))
-        {
-          out << n->getOwnerId() << " ";
-        }
-        break;
-      case BINARY_COMM:
-        out << "bc ";
-        for (ENode* n : *static_cast<const CommTable*>(t.d_table))
-        {
-          out << n->getOwnerId() << " ";
-        }
-        break;
-      case NARY:
-        out << "nary ";
-        for (ENode* n : *static_cast<const NaryTable*>(t.d_table))
-        {
-          out << n->getOwnerId() << " ";
-        }
-        break;
-    }
-    out << "\n";
-  }
-}
-
-bool CgTable::checkInvariant() const
-{
-#ifdef CVC5_ASSERTIONS
-  for (const Table& t : d_tables)
-  {
-    switch (t.d_kind)
-    {
-      case UNARY:
-        for (ENode* n : *static_cast<const UnaryTable*>(t.d_table))
-        {
-          Assert(n->isCgr());
-        }
-        break;
-      case BINARY:
-        for (ENode* n : *static_cast<const BinaryTable*>(t.d_table))
-        {
-          Assert(n->isCgr());
-        }
-        break;
-      case BINARY_COMM:
-        for (ENode* n : *static_cast<const CommTable*>(t.d_table))
-        {
-          Assert(n->isCgr());
-        }
-        break;
-      case NARY:
-        for (ENode* n : *static_cast<const NaryTable*>(t.d_table))
-        {
-          Assert(n->isCgr());
-        }
-        break;
-    }
-  }
-#endif
-  return true;
 }
 
 }  // namespace z3

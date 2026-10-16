@@ -23,36 +23,8 @@
 namespace cvc5::internal {
 namespace z3 {
 
-void RelevancyEh::markAsRelevant(RelevancyPropagator& rp, TNode n)
-{
-  rp.markAsRelevant(n);
-}
-
-void RelevancyEh::markArgsAsRelevant(RelevancyPropagator& rp, TNode n)
-{
-  size_t j = n.getNumChildren();
-  while (j > 0)
-  {
-    --j;
-    rp.markAsRelevant(n[j]);
-  }
-}
-
 void SimpleRelevancyEh::operator()(RelevancyPropagator& rp)
 {
-  rp.markAsRelevant(d_target);
-}
-
-void PairRelevancyEh::operator()(RelevancyPropagator& rp)
-{
-  if (!rp.isRelevant(d_source1))
-  {
-    return;
-  }
-  if (!rp.isRelevant(d_source2))
-  {
-    return;
-  }
   rp.markAsRelevant(d_target);
 }
 
@@ -125,25 +97,6 @@ class IteRelevancyEh : public RelevancyEh
 class IteTermRelevancyEh : public RelevancyEh
 {
  public:
-  IteTermRelevancyEh(TNode p, TNode thenEq, TNode elseEq)
-      : d_parent(p), d_thenEq(thenEq), d_elseEq(elseEq)
-  {
-  }
-  void operator()(RelevancyPropagator& rp) override
-  {
-    if (!rp.isRelevant(d_parent))
-    {
-      return;
-    }
-    rp.markAsRelevant(d_parent[0]);
-    switch (rp.getContext().getAssignment(d_parent[0]))
-    {
-      case L_FALSE: rp.markAsRelevant(d_elseEq); break;
-      case L_UNDEF: break;
-      case L_TRUE: rp.markAsRelevant(d_thenEq); break;
-    }
-  }
-
  private:
   TNode d_parent;
   TNode d_thenEq;
@@ -159,16 +112,10 @@ RelevancyPropagator::RelevancyPropagator(PropCore& core, SmtContext& theory)
 
 RelevancyPropagator::~RelevancyPropagator() {}
 
-bool RelevancyPropagator::enabled() const { return d_core.relevancy(); }
-
 Region& RelevancyPropagator::getRegion() const { return d_theory.getRegion(); }
 
 void RelevancyPropagator::addDependency(TNode src, TNode target)
 {
-  if (!enabled())
-  {
-    return;
-  }
   if (isRelevant(src))
   {
     markAsRelevant(target);
@@ -201,13 +148,6 @@ RelevancyEh* RelevancyPropagator::mkIteRelevancyEh(TNode n)
 {
   Assert(n.getKind() == Kind::ITE);
   return mkRelevancyEh(IteRelevancyEh(n));
-}
-
-RelevancyEh* RelevancyPropagator::mkTermIteRelevancyEh(TNode c,
-                                                       TNode t,
-                                                       TNode e)
-{
-  return mkRelevancyEh(IteTermRelevancyEh(c, t, e));
 }
 
 RelevancyPropagator::RelevancyEhs* RelevancyPropagator::getHandlers(
@@ -257,10 +197,6 @@ void RelevancyPropagator::setWatches(TNode n, bool val, RelevancyEhs* ehs)
 
 void RelevancyPropagator::addHandler(TNode source, RelevancyEh* eh)
 {
-  if (!enabled())
-  {
-    return;
-  }
   if (isRelevantCore(source))
   {
     eh->operator()(*this, source);
@@ -276,10 +212,6 @@ void RelevancyPropagator::addHandler(TNode source, RelevancyEh* eh)
 
 void RelevancyPropagator::addWatch(TNode n, bool val, RelevancyEh* eh)
 {
-  if (!enabled())
-  {
-    return;
-  }
   LBool lval = d_core.findAssignment(n);
   if (!val)
   {
@@ -295,30 +227,6 @@ void RelevancyPropagator::addWatch(TNode n, bool val, RelevancyEh* eh)
       d_trail.push_back(EhTrail(n, val));
       break;
     case L_TRUE: eh->operator()(*this, n, val); break;
-  }
-}
-
-void RelevancyPropagator::addWatch(TNode n, bool val, TNode target)
-{
-  if (!enabled())
-  {
-    return;
-  }
-  LBool lval = d_core.findAssignment(n);
-  if (!val)
-  {
-    lval = ~lval;
-  }
-  switch (lval)
-  {
-    case L_FALSE: return;
-    case L_UNDEF:
-      addWatch(n, val, mkRelevancyEh(SimpleRelevancyEh(target)));
-      break;
-    case L_TRUE:
-      markAsRelevant(target);
-      propagate();
-      break;
   }
 }
 
@@ -391,25 +299,8 @@ void RelevancyPropagator::setRelevant(TNode n)
   d_core.relevantEh(n);
 }
 
-void RelevancyPropagator::markAndPropagate(TNode n)
-{
-  if (!enabled())
-  {
-    return;
-  }
-  if (!isRelevantCore(n))
-  {
-    markAsRelevant(n);
-    propagate();
-  }
-}
-
 void RelevancyPropagator::markAsRelevant(TNode n)
 {
-  if (!enabled())
-  {
-    return;
-  }
   if (!isRelevantCore(n))
   {
     ENode* e = d_theory.findENode(n);
@@ -605,10 +496,6 @@ void RelevancyPropagator::propagate()
 
 void RelevancyPropagator::assignEh(TNode n, bool val)
 {
-  if (!enabled())
-  {
-    return;
-  }
   if (isRelevantCore(n))
   {
     switch (n.getKind())
@@ -624,19 +511,6 @@ void RelevancyPropagator::assignEh(TNode n, bool val)
   {
     ehs->head()->operator()(*this, n, val);
     ehs = ehs->tail();
-  }
-}
-
-void RelevancyPropagator::print(std::ostream& out) const
-{
-  if (enabled() && !d_relevantExprs.empty())
-  {
-    out << "relevant exprs:\n";
-    for (const Node& n : d_relevantExprs)
-    {
-      out << "#" << n.getId() << " ";
-    }
-    out << "\n";
   }
 }
 

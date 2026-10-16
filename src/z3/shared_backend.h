@@ -30,23 +30,15 @@ class PropCore;
 class SmtContext;
 
 /**
- * The parameters and the two sides of the ported Z3 core.
+ * The parameters and the two sides of the ported Z3 core: a propositional
+ * side, PropCore, which in host mode mirrors cvc5's assignment, and a theory
+ * side, SmtContext (the E-graph, relevancy and the quantifier stack). The
+ * PropCore is allocated inside the SmtContext, so that the Boolean queries
+ * the theory side makes on its hot paths stay cheap.
  *
- * The core is divided into a propositional side, PropCore, and a theory side,
- * SmtContext, with the interface between them described in
- * PROP_THEORY_SPLIT.md. Z3PropEngine drives the propositional side, which in
- * turn drives the theory side. The PropCore is allocated inside the
- * SmtContext, so that the Boolean queries the theory side makes on its hot
- * paths cost no more than before the division; this class owns the two
- * together, and Z3TheoryEngine owns this class.
- *
- * The lifetimes follow those of the native engines. SmtSolver keeps its
- * TheoryEngine for as long as it exists, and so the parameters live as long as
- * the SmtSolver does: auto configuration writes to them on the first check,
- * and a context made after reset-assertions sees what it wrote. SmtSolver
- * replaces its PropEngine on reset-assertions, and each new Z3PropEngine
- * replaces the SmtContext when it is initialized. Neither engine keeps a
- * reference to the SmtContext, so neither can see a replaced one.
+ * The slot (TheorySlot) owns this class for as long as the theory engine
+ * exists. SmtSolver replaces its PropEngine on reset-assertions, and each new
+ * Z3HostedPropEngine replaces the SmtContext when it is initialized.
  */
 class SharedBackend : protected EnvObj
 {
@@ -58,28 +50,13 @@ class SharedBackend : protected EnvObj
    * same parameters.
    */
   void resetContext();
-  /** Whether resetContext has been called. */
-  bool hasContext() const { return d_ctx != nullptr; }
-  /**
-   * Get the theory side, the SmtContext. Requires hasContext(). Z3PropEngine
-   * uses it only to prepare assertions, whose utilities belong to it.
-   */
+  /** Get the theory side. Requires that resetContext has been called. */
   SmtContext& getContext();
-  /** Get the SmtContext. Requires hasContext(). */
-  const SmtContext& getContext() const;
-  /**
-   * Get the propositional side, which Z3PropEngine drives. Requires
-   * hasContext().
-   */
+  /** Get the propositional side. Requires that resetContext has been called. */
   PropCore& getPropCore();
-  /** Get the propositional side. Requires hasContext(). */
-  const PropCore& getPropCore() const;
 
  private:
-  /**
-   * The parameters of the core, defaulted as in Z3. These must outlive
-   * d_ctx, which refers to them.
-   */
+  /** The parameters of the core. These must outlive d_ctx. */
   Params d_params;
   /** The core. */
   std::unique_ptr<SmtContext> d_ctx;

@@ -24,7 +24,6 @@
 #include <unordered_set>
 #include <vector>
 
-#include "z3/dyn_ack.h"
 #include "z3/enode.h"
 #include "z3/eq_justification.h"
 #include "z3/justification.h"
@@ -38,15 +37,14 @@ class SmtContext;
 /**
  * Explains justifications and equalities as the literals they depend on.
  *
- * The antecedents of a theory propagation are obtained from its
- * Justification, which marks them through the methods below, and the
- * antecedents of an equality are read off the E-graph's transitivity forest.
- * This is the interface through which conflict resolution, on the side of the
- * Boolean search, learns about the reasoning of the E-graph and the theories.
+ * The antecedents of a propagation are obtained from its Justification,
+ * which marks them through the methods below, and the antecedents of an
+ * equality are read off the E-graph's transitivity forest. This is how the
+ * conflicts the core sends to cvc5 (PropCore::hostExplainConflict) are
+ * explained in terms of the literals cvc5 asserted.
  *
  * Explanations share their caches until rollback is called: a justification
- * or an equality that was explained since then is not explained again. This
- * is what lets conflict resolution explain each antecedent once per conflict.
+ * or an equality that was explained since then is not explained again.
  */
 class Explainer
 {
@@ -62,7 +60,7 @@ class Explainer
   using ENodePairSet = std::unordered_set<ENodePair, ENodePairHash>;
 
  public:
-  Explainer(SmtContext& ctx, DynAckManager& dackManager);
+  Explainer(SmtContext& ctx);
 
   SmtContext& getContext() { return d_ctx; }
 
@@ -111,24 +109,12 @@ class Explainer
    */
   void explain(Justification* js, LiteralVector& result);
 
-  /** The position to roll back to, in order to undo later explanations. */
-  size_t getCheckpoint() const { return d_todoJsQhead; }
-
   /**
    * Forget the justifications explained since checkpoint, so that they are
    * explained again when next asked. The cache of explained equalities is
    * cleared entirely.
    */
   void rollback(size_t checkpoint);
-
-  /** True if nothing has been explained since the last rollback to 0. */
-  bool isClear() const
-  {
-    return d_todoJs.empty() && d_todoJsQhead == 0 && d_todoEqs.empty();
-  }
-
-  /** The antecedent literals of a justification object, from a clear state. */
-  void justification2Literals(Justification* js, LiteralVector& result);
 
   /** The antecedent literals of the equality n1 = n2, from a clear state. */
   void eq2Literals(ENode* n1, ENode* n2, LiteralVector& result);
@@ -144,7 +130,6 @@ class Explainer
   void processJustifications();
 
   SmtContext& d_ctx;
-  DynAckManager& d_dynAckManager;
 
   JustificationVector d_todoJs;
   size_t d_todoJsQhead;

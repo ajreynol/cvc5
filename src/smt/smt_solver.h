@@ -133,6 +133,11 @@ class SmtSolver : protected EnvObj
   bool trackPreprocessedAssertions() const;
   /** Finish initialization of preprocessor */
   void finishInitPreprocessor();
+  /**
+   * Make the propositional engine over the theory engine: with --z3, the
+   * one that prepares the assertions for the ported Z3 core.
+   */
+  std::unique_ptr<prop::PropEngine> mkPropEngine();
   /** The preprocessor of this SMT solver */
   Preprocessor d_pp;
   /** Assertions manager */

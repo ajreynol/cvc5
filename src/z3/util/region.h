@@ -80,9 +80,6 @@ class Region
   /** Pop numScopes scopes. */
   void popScope(size_t numScopes);
 
-  /** Print the number of pages currently held, for debugging. */
-  void printMemStats(std::ostream& out) const;
-
  private:
   /** Alignment applied to every allocation. */
   static constexpr size_t s_align = alignof(std::max_align_t);

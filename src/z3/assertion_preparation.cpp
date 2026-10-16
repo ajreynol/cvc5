@@ -15,7 +15,6 @@
 
 #include "z3/assertion_preparation.h"
 
-#include "options/z3_options.h"
 #include "smt/env.h"
 #include "z3/ast.h"
 #include "z3/smt_context.h"
@@ -28,7 +27,7 @@ AssertionPreparation::AssertionPreparation(Env& env) : EnvObj(env) {}
 void AssertionPreparation::apply(SmtContext& ctx,
                                  PropCore& core,
                                  const std::vector<Node>& assertions,
-                                 std::vector<Node>* prepared)
+                                 std::vector<Node>& prepared)
 {
   // Rewrite the quantifiers of each assertion over the canonical variables
   // the core and the E-matching engine expect; see z3/ast.h.
@@ -45,49 +44,22 @@ void AssertionPreparation::apply(SmtContext& ctx,
   // and again after pattern inference; nnf_cnf rewrites each formula it
   // produces as well. Both are here, around the rest of the pipeline.
   AssertionRewriter& rw = ctx.getAssertionRewriter();
-  const bool doRewrite = options().z3.z3RewriteAssertions;
-  // Z3's ng_lift_ite, which reduce() runs after the rewrite that follows NNF
-  // and follows with another rewrite (reduce_and_solve); see
-  // z3/push_app_ite.h.
-  const bool doLiftIte = ctx.getParams().d_ngLiftIte != Params::LI_NONE;
-  NgPushAppIte& lift = ctx.getNgPushAppIte();
   // The rest of the pipeline, applied to a formula already in negation
   // normal form.
   auto assertNnf = [&](Node res) {
-    if (doRewrite)
-    {
-      res = rw.rewrite(res);
-    }
-    if (doLiftIte)
-    {
-      Node lifted = lift.apply(res);
-      if (lifted != res)
-      {
-        res = doRewrite ? rw.rewrite(lifted) : lifted;
-      }
-    }
+    res = rw.rewrite(res);
     res = pi.apply(norm.normalize(cn.normalize(res)));
-    res = doRewrite ? rw.rewrite(res) : res;
-    const SmtContext::Cvc5Preprocessor& cpp = ctx.getCvc5Preprocessor();
-    if (cpp)
+    res = rw.rewrite(res);
+    // the form cvc5's theories take, and the skolem definitions it needs
+    std::vector<Node> defs;
+    res = ctx.getCvc5Preprocessor()(res, defs);
+    for (const Node& d : defs)
     {
-      // the form cvc5's theories take, and the skolem definitions it needs
-      std::vector<Node> defs;
-      res = cpp(res, defs);
-      for (const Node& d : defs)
-      {
-        core.assertFormula(d);
-        if (prepared != nullptr)
-        {
-          prepared->push_back(d);
-        }
-      }
+      core.assertFormula(d);
+      prepared.push_back(d);
     }
     core.assertFormula(res);
-    if (prepared != nullptr)
-    {
-      prepared->push_back(res);
-    }
+    prepared.push_back(res);
   };
   for (const Node& a : assertions)
   {

@@ -61,14 +61,6 @@ class UIntSet
            && (d_words[w] & (UINT64_C(1) << (v % s_bitsPerWord))) != 0;
   }
 
-  void reset() { std::fill(d_words.begin(), d_words.end(), UINT64_C(0)); }
-
-  void resetAndReleaseMemory()
-  {
-    d_words.clear();
-    d_words.shrink_to_fit();
-  }
-
   bool empty() const
   {
     for (uint64_t w : d_words)

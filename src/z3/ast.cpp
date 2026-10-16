@@ -76,23 +76,6 @@ bool isCommutative(TNode n)
   }
 }
 
-bool hasPatterns(TNode q)
-{
-  Assert(isQuantifier(q));
-  if (q.getNumChildren() < 3)
-  {
-    return false;
-  }
-  for (const Node& p : q[2])
-  {
-    if (p.getKind() == Kind::INST_PATTERN)
-    {
-      return true;
-    }
-  }
-  return false;
-}
-
 void getPatterns(TNode q, std::vector<std::vector<Node>>& patterns)
 {
   Assert(isQuantifier(q));
@@ -105,22 +88,6 @@ void getPatterns(TNode q, std::vector<std::vector<Node>>& patterns)
     if (p.getKind() == Kind::INST_PATTERN)
     {
       patterns.emplace_back(p.begin(), p.end());
-    }
-  }
-}
-
-void getNoPatterns(TNode q, std::vector<Node>& noPatterns)
-{
-  Assert(isQuantifier(q));
-  if (q.getNumChildren() < 3)
-  {
-    return;
-  }
-  for (const Node& p : q[2])
-  {
-    if (p.getKind() == Kind::INST_NO_PATTERN)
-    {
-      noPatterns.insert(noPatterns.end(), p.begin(), p.end());
     }
   }
 }
@@ -142,33 +109,6 @@ void setWeight(TNode q, uint32_t w)
 {
   Assert(isQuantifier(q));
   q.setAttribute(QuantWeightAttr(), static_cast<uint64_t>(w) + 1);
-}
-
-std::string getQid(TNode q)
-{
-  Assert(isQuantifier(q));
-  if (q.getNumChildren() < 3)
-  {
-    return "";
-  }
-  for (const Node& p : q[2])
-  {
-    if (p.getKind() != Kind::INST_ATTRIBUTE || p.getNumChildren() < 2)
-    {
-      continue;
-    }
-    // The parser builds (INST_ATTRIBUTE "qid" name). QuantNameAttribute is
-    // only set on the first child once cvc5's quantifiers module has
-    // processed the attribute, which never happens under --z3, so the
-    // string is checked as well.
-    if (p[0].getAttribute(theory::QuantNameAttribute())
-        || (p[0].getKind() == Kind::CONST_STRING
-            && p[0].getConst<String>() == String("qid")))
-    {
-      return p[1].getName();
-    }
-  }
-  return "";
 }
 
 uint32_t getDepth(TNode n)
@@ -248,26 +188,6 @@ Node ConnectiveNormalizer::normalize(TNode n)
   {
     Assert(children.size() == 2);
     ret = d_nm->mkNode(Kind::EQUAL, children[0], children[1]).notNode();
-  }
-  else if (k == Kind::AND && d_eliminateAnd)
-  {
-    // Z3's core never sees a conjunction: asserted_formulas::reduce() calls
-    // set_eliminate_and(true) once NNF is done, and the rewrite pass that
-    // follows turns every (and a b) into (not (or (not a) (not b))).
-    //
-    // This is off by default even so, which is the one place in this port
-    // where a faithful reproduction of Z3 measured worse. On the formula
-    // examined most closely it does what it should -- decisions went from
-    // 3469 to 2856 against Z3's 2590, Boolean variables from 7406 to 7076 --
-    // but over the 300-benchmark sample it cost nine solved benchmarks.
-    // Something downstream is tuned, deliberately or not, to the conjunctions
-    // being there; until that is found, the measurement wins.
-    std::vector<Node> negated;
-    for (const Node& c : children)
-    {
-      negated.push_back(c.notNode());
-    }
-    ret = d_nm->mkNode(Kind::OR, negated).notNode();
   }
   else
   {

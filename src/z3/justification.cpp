@@ -31,46 +31,18 @@ void ExternalEqJustification::getAntecedents(Explainer& e)
 }
 
 UnitResolutionJustification::UnitResolutionJustification(SmtContext& ctx,
-                                                         Justification* js,
                                                          size_t numLits,
                                                          const Literal* lits)
-    : d_antecedent(js), d_numLiterals(numLits)
+    : d_numLiterals(numLits)
 {
-  Assert(js == nullptr || js->inRegion());
   Region& r = ctx.getRegion();
   d_literals = static_cast<Literal*>(r.allocate(sizeof(Literal) * numLits));
   std::memcpy(d_literals, lits, sizeof(Literal) * numLits);
   Assert(d_numLiterals > 0);
 }
 
-UnitResolutionJustification::UnitResolutionJustification(Justification* js,
-                                                         size_t numLits,
-                                                         const Literal* lits)
-    : Justification(false),  // the object is not allocated in a region
-      d_antecedent(js),
-      d_numLiterals(numLits)
-{
-  Assert(js == nullptr || !js->inRegion());
-  d_literals = new Literal[numLits];
-  std::memcpy(d_literals, lits, sizeof(Literal) * numLits);
-  Assert(numLits != 0);
-}
-
-UnitResolutionJustification::~UnitResolutionJustification()
-{
-  if (!inRegion())
-  {
-    delete[] d_literals;
-    delete d_antecedent;
-  }
-}
-
 void UnitResolutionJustification::getAntecedents(Explainer& e)
 {
-  if (d_antecedent != nullptr)
-  {
-    e.markJustification(d_antecedent);
-  }
   for (size_t i = 0; i < d_numLiterals; ++i)
   {
     e.markLiteral(d_literals[i]);
@@ -111,63 +83,6 @@ void MpIffJustification::getAntecedents(Explainer& e)
   LBool val = ctx.getAssignment(v);
   Literal l(v, val == L_FALSE);
   e.markLiteral(l);
-}
-
-SimpleJustification::SimpleJustification(SmtContext& ctx,
-                                         size_t numLits,
-                                         const Literal* lits)
-    : d_numLiterals(numLits), d_literals(nullptr)
-{
-  Region& r = ctx.getRegion();
-  if (numLits != 0)
-  {
-    d_literals = static_cast<Literal*>(r.allocate(sizeof(Literal) * numLits));
-    std::memcpy(d_literals, lits, sizeof(Literal) * numLits);
-#ifdef CVC5_ASSERTIONS
-    for (size_t i = 0; i < numLits; ++i)
-    {
-      Assert(lits[i] != s_nullLiteral);
-    }
-#endif
-  }
-}
-
-void SimpleJustification::getAntecedents(Explainer& e)
-{
-  for (size_t i = 0; i < d_numLiterals; ++i)
-  {
-    e.markLiteral(d_literals[i]);
-  }
-}
-
-ExtSimpleJustification::ExtSimpleJustification(SmtContext& ctx,
-                                               size_t numLits,
-                                               const Literal* lits,
-                                               size_t numEqs,
-                                               const ENodePair* eqs)
-    : SimpleJustification(ctx, numLits, lits), d_numEqs(numEqs), d_eqs(nullptr)
-{
-  Region& r = ctx.getRegion();
-  if (numEqs != 0)
-  {
-    d_eqs = static_cast<ENodePair*>(r.allocate(sizeof(ENodePair) * numEqs));
-    std::uninitialized_copy(eqs, eqs + numEqs, d_eqs);
-#ifdef CVC5_ASSERTIONS
-    for (size_t i = 0; i < numEqs; ++i)
-    {
-      Assert(eqs[i].first->getRoot() == eqs[i].second->getRoot());
-    }
-#endif
-  }
-}
-
-void ExtSimpleJustification::getAntecedents(Explainer& e)
-{
-  SimpleJustification::getAntecedents(e);
-  for (size_t i = 0; i < d_numEqs; ++i)
-  {
-    e.markEq(d_eqs[i].first, d_eqs[i].second);
-  }
 }
 
 }  // namespace z3

@@ -39,19 +39,7 @@ SmtContext& SharedBackend::getContext()
   return *d_ctx;
 }
 
-const SmtContext& SharedBackend::getContext() const
-{
-  Assert(d_ctx != nullptr);
-  return *d_ctx;
-}
-
 PropCore& SharedBackend::getPropCore()
-{
-  Assert(d_ctx != nullptr);
-  return d_ctx->getPropCore();
-}
-
-const PropCore& SharedBackend::getPropCore() const
 {
   Assert(d_ctx != nullptr);
   return d_ctx->getPropCore();

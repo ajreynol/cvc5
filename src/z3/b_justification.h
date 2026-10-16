@@ -103,20 +103,6 @@ class BJustification
 /** The null justification: a CLAUSE kind with a null clause. */
 inline const BJustification s_nullBJustification(static_cast<Clause*>(nullptr));
 
-inline std::ostream& operator<<(std::ostream& out, BJustification::Kind k)
-{
-  switch (k)
-  {
-    case BJustification::CLAUSE: return out << "clause";
-    case BJustification::BIN_CLAUSE: return out << "bin_clause";
-    case BJustification::AXIOM: return out << "axiom";
-    case BJustification::JUSTIFICATION: return out << "theory";
-  }
-  return out;
-}
-
-using JustifiedLiteral = std::pair<Literal, BJustification>;
-
 }  // namespace z3
 }  // namespace cvc5::internal
 

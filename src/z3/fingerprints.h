@@ -51,8 +51,6 @@ class Fingerprint
     Assert(idx < d_numArgs);
     return d_args[idx];
   }
-  ENode* const* begin() const { return d_args; }
-  ENode* const* end() const { return begin() + getNumArgs(); }
 
  protected:
   uint64_t d_data = 0;
@@ -95,21 +93,8 @@ class FingerprintSet
 
   size_t size() const { return d_fingerprints.size(); }
 
-  bool contains(uint64_t data,
-                uint32_t dataHash,
-                size_t numArgs,
-                ENode* const* args);
-
-  void reset();
   void pushScope();
   void popScope(size_t numScopes);
-  void print(std::ostream& out) const;
-
-  /** A slow, exhaustive containment check, for debugging. */
-  bool slowContains(uint64_t data,
-                    uint32_t dataHash,
-                    size_t numArgs,
-                    ENode* const* args) const;
 
  private:
   Fingerprint* mkDummy(uint64_t data,

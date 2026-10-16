@@ -19,7 +19,6 @@
 
 #include <memory>
 #include <unordered_set>
-#include <utility>
 #include <vector>
 
 #include "context/context.h"
@@ -40,9 +39,8 @@ class ShadowFeed;
 class SharedBackend;
 
 /**
- * Where HostCore sends what it learns. Z3TheoryEngine implements it over the
- * prop engine directly (--z3-prop-engine=cvc5); the theory slots of Stage 3
- * over their output channel (ARCHITECTURE_PLAN.md, section 16).
+ * Where HostCore sends what it learns: the output channel of the quantifiers
+ * slot (TheorySlot).
  */
 class HostCoreOutput
 {
@@ -50,25 +48,23 @@ class HostCoreOutput
   virtual ~HostCoreOutput() = default;
   /**
    * Send a lemma, which must not be preprocessed: its atoms are those of the
-   * SAT solver. With notifyDecisions false, the decision heuristic does not
-   * have to justify it.
+   * SAT solver.
    */
-  virtual void lemma(const Node& lem,
-                     theory::LemmaProperty p,
-                     bool notifyDecisions) = 0;
-  /** Report the literal lit, which the core derived, as a propagation. */
-  virtual void propagate(const Node& lit) = 0;
-  /** Prefer the phase of the decision on atom. */
-  virtual void preferPhase(TNode atom, bool phase) = 0;
+  virtual void lemma(const Node& lem, theory::LemmaProperty p) = 0;
   /** Record that a model would be unsound. */
   virtual void setModelUnsound(theory::IncompleteId id) = 0;
 };
 
 /**
- * The search contract of cvc5's prop engine (preregistration, facts, checks,
- * propagations, explanations), implemented over the propositional side of
- * the core in host mode, which mirrors the assignment for the theory side
- * (see PropCore::hostInit). Its scopes follow the SAT context.
+ * The search contract of cvc5's prop engine (preregistration, facts and
+ * checks), implemented over the propositional side of the core in host
+ * mode, which mirrors the assignment for the theory side (see
+ * PropCore::hostInit). Its scopes follow the SAT context.
+ *
+ * The core is a shadow of the ground state of cvc5's theories, made from a
+ * copy of every fact: it sends instances, conflicts and splits as lemmas,
+ * which need no explanation, and reports no propagations, and the formulas
+ * it asserts go through cvc5's preprocessing first.
  */
 class HostCore : protected EnvObj
 {
@@ -89,14 +85,7 @@ class HostCore : protected EnvObj
   void check(theory::Theory::Effort effort);
   /** Set up the propositional side, once. */
   void presolve();
-  /** The explanation of a literal the core propagated. */
-  Node explain(TNode literal);
-  /** Whether cvc5 must call check again. */
-  bool needCheck() const { return d_needCheck; }
-  /**
-   * The feed of the equalities of cvc5's theories, in the shadow mode
-   * without the port's plugins, or null.
-   */
+  /** The feed of the equalities of cvc5's theories. */
   ShadowFeed* getShadowFeed() { return d_feed.get(); }
 
  private:
@@ -127,36 +116,27 @@ class HostCore : protected EnvObj
    * Send the lemma lem, unless it was sent before, or send it again as a
    * lemma local to the SAT context if local is true.
    */
-  void sendLemma(const Node& lem, bool local, bool notifyDecisions);
+  void sendLemma(const Node& lem, bool local);
   /**
    * The lemma to send for lem. CaDiCaL restarts on a clause that is a unit
    * once the literals false at its base level are removed, to assign that
    * literal at the base level. Most conflicts and many instances are such
    * units here (the conflict that refutes a decision, the instance of an
    * asserted quantifier whose guards are asserted), and the restart undoes
-   * every instance made since. Z3's search delays such units instead (see
-   * PropCore::resolveConflict). Below the second decision level, this
+   * every instance made since. Z3's search delays such units instead (its
+   * delay_units). Below the second decision level, this
    * weakens such a lemma with the negation of the first decision, so that
    * CaDiCaL assigns its literal out of order at the first decision level
    * and backtracks at most one level (chronological backtracking). The
-   * lemma itself is sent at the next check near the base level, with
-   * notifyDecisions as given.
+   * lemma itself is sent at the next check near the base level.
    */
-  Node delayUnit(const Node& lem, bool notifyDecisions);
-  /**
-   * Report the literals the propositional side assigned since the last
-   * call, other than those the host asserted, that are atoms of cvc5's
-   * search, as propagations.
-   */
-  void collectPropagations();
+  Node delayUnit(const Node& lem);
   /**
    * Make the relevant, unassigned variables of the core into decisions for
    * cvc5, with a splitting lemma (or v (not v)) that cvc5's decision heuristic
-   * must justify, unless one was sent before. These are the atoms the theory
-   * side expects the search to decide (for instance the case splits of
-   * datatypes, or the equalities of model-based combination), and the gates
-   * that relevancy needs assigned, which cvc5 may leave unassigned when it
-   * stops on a partial assignment.
+   * must justify, unless one was sent before. These are the gates that
+   * relevancy needs assigned, which cvc5 may leave unassigned when it stops
+   * on a partial assignment.
    */
   void splitPendingAtoms();
   /**
@@ -174,7 +154,7 @@ class HostCore : protected EnvObj
   /**
    * The form of n that cvc5's theories take, by cvc5's lemma preprocessing,
    * adding to defs the definitions of the skolems it introduces; see
-   * SmtContext::setCvc5Preprocessor. For the shadow mode.
+   * SmtContext::setCvc5Preprocessor.
    */
   Node preprocessForTheories(TNode n, std::vector<Node>& defs);
 
@@ -193,35 +173,19 @@ class HostCore : protected EnvObj
   bool d_conflictSent;
   /** The level of the SAT context at which the conflict was found. */
   uint32_t d_conflictLevel;
-  /** Whether cvc5 must call check again, see needCheck. */
+  /** Whether cvc5 must call check again. */
   bool d_needCheck;
-  /** How many propagations the current check reported. */
-  size_t d_numReported;
-  /** How far in the assigned literals propagations were collected. */
-  size_t d_reportIdx;
   /**
    * The lowest level the SAT context popped to since the last syncLevel, or
    * UINT32_MAX if it did not pop.
    */
   uint32_t d_popLevel;
-  /**
-   * Whether cvc5's theories fill the other theory slots (--z3-slots other
-   * than all). The core then keeps a shadow of the ground state, from a copy
-   * of every fact: it sends instances, conflicts and splits as lemmas, which
-   * need no explanation, and reports no propagations, and the formulas it
-   * asserts go through cvc5's preprocessing first (ARCHITECTURE_PLAN.md,
-   * section 17).
-   */
-  bool d_shadow;
   /** The atoms registered by cvc5 before the next check. */
   std::vector<Node> d_preregistered;
   /** The lemmas sent, which are permanent in cvc5. */
   std::unordered_set<Node> d_lemmasSent;
-  /**
-   * The lemmas weakened by delayUnit, to send as they are, see check, with
-   * whether cvc5's decision heuristic must justify them.
-   */
-  std::vector<std::pair<Node, bool>> d_delayedUnits;
+  /** The lemmas weakened by delayUnit, to send as they are, see check. */
+  std::vector<Node> d_delayedUnits;
   /** Follows the pops of the SAT context. */
   std::unique_ptr<PopNotify> d_popNotify;
   /** See getShadowFeed. */

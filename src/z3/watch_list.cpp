@@ -144,26 +144,5 @@ void WatchList::removeDeleted()
   }
 }
 
-void WatchList::removeLiteral(Literal l)
-{
-  Literal* begin = beginLiterals();
-  Literal* end = endLiterals();
-  Literal* it = std::find(begin, end, l);
-  if (it == end)
-  {
-    return;
-  }
-  Literal* prev = it;
-  while (it != begin)
-  {
-    Assert(it == prev);
-    --it;
-    *prev = *it;
-    --prev;
-  }
-  Assert(prev == begin);
-  beginLitsCore() += sizeof(Literal);
-}
-
 }  // namespace z3
 }  // namespace cvc5::internal

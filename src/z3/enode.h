@@ -26,7 +26,6 @@
 #include "z3/eq_justification.h"
 #include "z3/types.h"
 #include "z3/util/approx_set.h"
-#include "z3/util/id_var_list.h"
 #include "z3/util/region.h"
 
 namespace cvc5::internal {
@@ -48,8 +47,6 @@ struct TransJustification
 
 /** Maps the id of a term to its enode. */
 using App2ENode = std::vector<ENode*>;
-
-using TheoryVarList = IdVarList<s_nullTheoryId, s_nullTheoryVar>;
 
 class TmpENode;
 
@@ -94,8 +91,6 @@ class ENode
   uint32_t d_mark2 : 1;
   /** True if the node is an interpreted constant. */
   uint32_t d_interpreted : 1;
-  /** True if the arguments of the owner should not be accessed. */
-  uint32_t d_suppressArgs : 1;
   /** True if the owner is an equality. */
   uint32_t d_eq : 1;
   /** True if the owner is a binary application of a commutative operator. */
@@ -109,8 +104,6 @@ class ENode
   uint32_t d_mergeTf : 1;
   /** True if congruence closure is enabled for this node. */
   uint32_t d_cgcEnabled : 1;
-  /** 0 - not shared, 1 - shared, 2 - invalid state. */
-  uint32_t d_isShared : 2;
   /** The scope level at which this node was internalized. */
   uint32_t d_iscopeLvl;
   /** Different from -1 if this node is used in a pattern. */
@@ -133,8 +126,6 @@ class ENode
   */
   /** The parent enodes of this equivalence class. */
   ENodeVector d_parents;
-  /** The theories that care about this node. */
-  TheoryVarList d_thVarList;
   /** A justification for this node being equal to its root. */
   TransJustification d_trans;
   ApproxSet d_lbls;
@@ -146,13 +137,6 @@ class ENode
   friend class Mam;
   friend class TmpENode;
   friend class SetMergeTfTrail;
-  friend class AddThVarTrail;
-  friend class ReplaceThVarTrail;
-
-  TheoryVarList* getThVarListPtr()
-  {
-    return d_thVarList.getVar() == s_nullTheoryVar ? nullptr : &d_thVarList;
-  }
 
   /**
    * True if this node should be merged with the true (false) enode when the
@@ -189,12 +173,6 @@ class ENode
                      bool updateChildrenParent);
 
  public:
-  void addThVar(TheoryVar v, TheoryId id, Region& r);
-
-  void replaceThVar(TheoryVar v, TheoryId id);
-
-  void delThVar(TheoryId id);
-
   static size_t getENodeSize(size_t numArgs)
   {
     return sizeof(ENode) + numArgs * sizeof(ENode*);
@@ -247,38 +225,9 @@ class ENode
 
   TypeNode getSort() const { return d_owner.getType(); }
 
-  TheoryId getFamilyId() const
-  {
-    return isApp() ? familyIdOf(d_owner) : theory::THEORY_BOOL;
-  }
-
   size_t hash() const { return d_owner.getId(); }
 
-  LBool isShared() const
-  {
-    switch (d_isShared)
-    {
-      case 0: return L_FALSE;
-      case 1: return L_TRUE;
-      default: return L_UNDEF;
-    }
-  }
-
-  void setIsShared(LBool s)
-  {
-    switch (s)
-    {
-      case L_TRUE: d_isShared = 1; break;
-      case L_FALSE: d_isShared = 0; break;
-      default: d_isShared = 2; break;
-    }
-  }
-
   ENode* getRoot() const { return d_root; }
-
-  bool isRoot() const { return d_root == this; }
-
-  void setRoot(ENode* r) { d_root = r; }
 
   ENode* getNext() const { return d_next; }
 
@@ -299,12 +248,7 @@ class ENode
 
    public:
     ConstArgs(const ENode& n) : d_n(n) {}
-    ConstArgs(const ENode* n) : d_n(*n) {}
-    ENode* const* begin() const { return d_n.argsPtr(); }
-    ENode* const* end() const { return d_n.argsPtr() + d_n.getNumArgs(); }
   };
-
-  ConstArgs getConstArgs() const { return ConstArgs(this); }
 
   uint32_t getClassSize() const { return d_classSize; }
 
@@ -434,24 +378,6 @@ class ENode
   iterator begin() { return iterator(this, nullptr); }
   iterator end() { return iterator(this, this); }
 
-  const TheoryVarList* getThVarList() const
-  {
-    return d_thVarList.getVar() == s_nullTheoryVar ? nullptr : &d_thVarList;
-  }
-
-  bool hasThVars() const { return d_thVarList.getVar() != s_nullTheoryVar; }
-
-  size_t getNumThVars() const;
-
-  TheoryVar getThVar(TheoryId thId) const;
-
-  TransJustification getTransJustification() { return d_trans; }
-
-  /**
-   * The enode in this equivalence class with the smallest generation.
-   */
-  ENode* getEqENodeWithMinGen(SmtContext* ctx);
-
   uint32_t getIscopeLvl() const { return d_iscopeLvl; }
 
   void setLblHash(TrailStack& trail);
@@ -468,18 +394,7 @@ class ENode
   ApproxSet& getLbls() { return d_lbls; }
 
   ApproxSet& getPlbls() { return d_plbls; }
-
-  const ApproxSet& getLbls() const { return d_lbls; }
-
-  const ApproxSet& getPlbls() const { return d_plbls; }
-
-  void printLbls(std::ostream& out) const;
 };
-
-inline bool sameEqc(const ENode* n1, const ENode* n2)
-{
-  return n1->getRoot() == n2->getRoot();
-}
 
 /**
  * True if n1 and n2 are congruent. Sets comm to true if they are congruent
@@ -514,8 +429,6 @@ class TmpENode
 
   /** Configure this enode to stand for decl(args[0], ..., args[n-1]). */
   ENode* set(TNode decl, bool commutative, size_t numArgs, ENode* const* args);
-
-  void reset();
 
  private:
   ENode* getENode() { return reinterpret_cast<ENode*>(d_enodeData); }

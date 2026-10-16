@@ -19,17 +19,24 @@
 #include <unordered_map>
 
 #include "base/output.h"
+#include "options/z3_options.h"
+#include "smt/env.h"
 #include "z3/ast.h"
 #include "z3/enode.h"
 #include "z3/quantifier_manager.h"
 #include "z3/quantifier_services.h"
+#include "z3/quantifier_stat.h"
 #include "z3/statistics.h"
 
 namespace cvc5::internal {
 namespace z3 {
 
 QiQueue::QiQueue(QuantifierManager& qm, QuantifierServices& ctx, Params& params)
-    : InstancePolicy(qm, ctx, params), d_eagerCostThreshold(0)
+    : d_qm(qm),
+      d_context(ctx),
+      d_params(params),
+      d_checker(ctx),
+      d_eagerCostThreshold(0)
 {
   d_vals.resize(CV_NUM_VARS, 0.0f);
 }
@@ -129,8 +136,7 @@ void QiQueue::instantiate()
     }
     if (d_stats.d_numInstances > d_params.d_qiMaxInstances)
     {
-      d_context.setReasonUnknown(
-          "the maximum number of quantifier instances was reached");
+      // the maximum number of quantifier instances was reached
       break;
     }
     Fingerprint* f = curr.d_qb;
@@ -224,50 +230,10 @@ void QiQueue::popScope(size_t numScopes)
   d_scopes.resize(newLvl);
 }
 
-void QiQueue::reset()
-{
-  d_newEntries.clear();
-  d_delayedEntries.clear();
-  d_instances.clear();
-  d_scopes.clear();
-}
-
 void QiQueue::initSearchEh() { d_newEntries.clear(); }
 
 bool QiQueue::finalCheckEh()
 {
-  if (d_params.d_qiConservativeFinalCheck)
-  {
-    // Only the cheapest of the delayed instances are created.
-    bool init = false;
-    float minCost = 0.0;
-    size_t sz = d_delayedEntries.size();
-    for (size_t i = 0; i < sz; ++i)
-    {
-      Entry& e = d_delayedEntries[i];
-      if (!e.d_instantiated && e.d_cost <= d_params.d_qiLazyThreshold
-          && (!init || e.d_cost < minCost))
-      {
-        init = true;
-        minCost = e.d_cost;
-      }
-    }
-    bool result = true;
-    for (size_t i = 0; i < sz; ++i)
-    {
-      Entry& e = d_delayedEntries[i];
-      if (!e.d_instantiated && e.d_cost <= minCost)
-      {
-        result = false;
-        d_instantiatedTrail.push_back(i);
-        d_stats.d_numLazyInstances++;
-        d_context.getStats().d_numLazyInstances++;
-        instantiate(e);
-      }
-    }
-    return result;
-  }
-
   bool result = true;
   for (size_t i = 0; i < d_delayedEntries.size(); ++i)
   {
@@ -295,65 +261,87 @@ struct DelayedQaInfo
 
 }  // namespace
 
-void QiQueue::printDelayedInstancesStats(std::ostream& out) const
+TNode QiQueue::getQuantifier(Fingerprint* f) const
 {
-  std::unordered_map<Node, DelayedQaInfo> qa2Info;
-  std::vector<Node> qas;
-  for (const Entry& e : d_delayedEntries)
-  {
-    if (e.d_instantiated)
-    {
-      continue;
-    }
-    Node qa = getQuantifier(e.d_qb);
-    auto it = qa2Info.find(qa);
-    if (it != qa2Info.end())
-    {
-      it->second.d_num++;
-      it->second.d_minCost = std::min(it->second.d_minCost, e.d_cost);
-      it->second.d_maxCost = std::max(it->second.d_maxCost, e.d_cost);
-    }
-    else
-    {
-      qas.push_back(qa);
-      DelayedQaInfo info;
-      info.d_num = 1;
-      info.d_minCost = e.d_cost;
-      info.d_maxCost = e.d_cost;
-      qa2Info[qa] = info;
-    }
-  }
-  for (const Node& qa : qas)
-  {
-    const DelayedQaInfo& info = qa2Info[qa];
-    out << getQid(qa) << ": " << info.d_num << " [" << info.d_minCost << ", "
-        << info.d_maxCost << "]\n";
-  }
+  return d_qm.getQuantifierById(f->getData());
 }
 
-void QiQueue::getMinMaxCosts(float& min, float& max) const
+bool QiQueue::skipSatisfied(TNode q,
+                            QuantifierStat* stat,
+                            size_t numBindings,
+                            ENode* const* bindings)
 {
-  min = 0.0f;
-  max = 0.0f;
-  bool found = false;
-  for (const Entry& e : d_delayedEntries)
+  if (d_context.getEnv().getOptions().z3.z3QiChecker
+      && d_checker.isSat(getQuantBody(q), numBindings, bindings))
   {
-    if (!e.d_instantiated)
-    {
-      float c = e.d_cost;
-      if (found)
-      {
-        min = std::min(min, c);
-        max = std::max(max, c);
-      }
-      else
-      {
-        found = true;
-        min = c;
-        max = c;
-      }
-    }
+    // The instance is already satisfied, so creating it would be wasted
+    // work. It still counts as an instantiation, as it does in Z3.
+    stat->incNumInstancesCheckerSat();
+    d_context.getStats().d_numInstancesCheckerSat++;
+    return true;
   }
+  return false;
+}
+
+Node QiQueue::mkLemma(TNode q,
+                      QuantifierStat* stat,
+                      size_t numBindings,
+                      ENode* const* bindings)
+{
+  // Substitute the bindings for the canonical quantified variables. Note
+  // bindings[i] is the binding of the i-th variable of the bound variable
+  // list, which is the variable at de Bruijn level i.
+  TNode bvl = q[0];
+  Assert(bvl.getNumChildren() == numBindings);
+  std::vector<Node> vars;
+  std::vector<Node> subs;
+  for (size_t i = 0; i < numBindings; ++i)
+  {
+    vars.push_back(bvl[i]);
+    subs.push_back(bindings[i]->getExpr());
+  }
+  Node instance = getQuantBody(q).substitute(
+      vars.begin(), vars.end(), subs.begin(), subs.end());
+
+  Trace("z3-qi-raw") << "RAWINST " << instance << std::endl;
+  Trace("z3-events") << "INSTANCE " << instance << std::endl;
+  Node sInstance = d_context.rewriteInstance(instance);
+
+  if (sInstance.getKind() == Kind::CONST_BOOLEAN && sInstance.getConst<bool>())
+  {
+    stat->incNumInstancesSimplifyTrue();
+    d_context.getStats().d_numInstancesSimplifyTrue++;
+    return Node::null();
+  }
+
+  NodeManager* nm = q.getNodeManager();
+  Node notQ = nm->mkNode(Kind::NOT, q);
+  Node lemma;
+  if (sInstance.getKind() == Kind::OR)
+  {
+    std::vector<Node> args;
+    args.push_back(notQ);
+    args.insert(args.end(), sInstance.begin(), sInstance.end());
+    lemma = nm->mkNode(Kind::OR, args);
+  }
+  else if (sInstance.getKind() == Kind::CONST_BOOLEAN
+           && !sInstance.getConst<bool>())
+  {
+    lemma = notQ;
+  }
+  else
+  {
+    lemma = nm->mkNode(Kind::OR, notQ, sInstance);
+  }
+  stat->incNumInstances();
+  d_context.getStats().d_numInstances++;
+  return lemma;
+}
+
+void QiQueue::assertLemma(TNode lemma, uint32_t generation)
+{
+  Trace("z3-qi-lemma") << "  lemma: " << lemma << std::endl;
+  d_context.internalizeInstance(lemma, generation);
 }
 
 }  // namespace z3

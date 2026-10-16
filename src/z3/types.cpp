@@ -32,7 +32,6 @@ std::ostream& operator<<(std::ostream& out, FinalCheckStatus st)
   {
     case FC_DONE: out << "done"; break;
     case FC_CONTINUE: out << "continue"; break;
-    case FC_GIVEUP: out << "giveup"; break;
   }
   return out;
 }

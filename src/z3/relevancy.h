@@ -63,8 +63,6 @@ class RelevancyEh
   virtual void operator()(RelevancyPropagator& rp) = 0;
 
  protected:
-  void markAsRelevant(RelevancyPropagator& rp, TNode n);
-  void markArgsAsRelevant(RelevancyPropagator& rp, TNode n);
 };
 
 /** Marks a single target as relevant. */
@@ -75,22 +73,6 @@ class SimpleRelevancyEh : public RelevancyEh
   void operator()(RelevancyPropagator& rp) override;
 
  private:
-  TNode d_target;
-};
-
-/** Marks a target as relevant once both sources are relevant. */
-class PairRelevancyEh : public RelevancyEh
-{
- public:
-  PairRelevancyEh(TNode s1, TNode s2, TNode t)
-      : d_source1(s1), d_source2(s2), d_target(t)
-  {
-  }
-  void operator()(RelevancyPropagator& rp) override;
-
- private:
-  TNode d_source1;
-  TNode d_source2;
   TNode d_target;
 };
 
@@ -110,8 +92,6 @@ class RelevancyPropagator
   RelevancyPropagator(PropCore& core, SmtContext& theory);
   ~RelevancyPropagator();
 
-  SmtContext& getContext() { return d_theory; }
-
   /** Install a handler invoked whenever n is marked as relevant. */
   void addHandler(TNode source, RelevancyEh* eh);
 
@@ -128,7 +108,7 @@ class RelevancyPropagator
   void markAsRelevant(TNode n);
 
   /** True if the given expression is marked as relevant. */
-  bool isRelevant(TNode n) const { return !enabled() || isRelevantCore(n); }
+  bool isRelevant(TNode n) const { return isRelevantCore(n); }
 
   bool isRelevantCore(TNode n) const
   {
@@ -151,11 +131,6 @@ class RelevancyPropagator
   /** Backtrack. */
   void pop(size_t numScopes);
 
-  void print(std::ostream& out) const;
-
-  /** True if relevancy propagation is enabled. */
-  bool enabled() const;
-
   /** The region allocator of the owning SmtContext. */
   Region& getRegion() const;
 
@@ -172,7 +147,6 @@ class RelevancyPropagator
   RelevancyEh* mkImpliesRelevancyEh(TNode n);
   RelevancyEh* mkAndRelevancyEh(TNode n);
   RelevancyEh* mkIteRelevancyEh(TNode n);
-  RelevancyEh* mkTermIteRelevancyEh(TNode c, TNode t, TNode e);
 
   /** Marks the children of n as relevant. Requires n to be relevant. */
   void propagateRelevantApp(TNode n);
@@ -184,9 +158,6 @@ class RelevancyPropagator
   void propagateRelevantImplies(TNode n);
   /** The relevancy rule for an if-then-else. */
   void propagateRelevantIte(TNode n);
-
-  /** Mark n as relevant and propagate, if it is not relevant already. */
-  void markAndPropagate(TNode n);
 
  private:
   /** An immutable list of handlers, allocated in the region. */

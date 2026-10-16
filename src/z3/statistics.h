@@ -19,7 +19,7 @@
 #define CVC5__Z3__STATISTICS_H
 
 #include <cstdint>
-#include <ostream>
+#include <cstring>
 
 namespace cvc5::internal {
 namespace z3 {
@@ -28,11 +28,7 @@ struct Statistics
 {
   uint64_t d_numPropagations;
   uint64_t d_numBinPropagations;
-  uint64_t d_numConflicts;
-  uint64_t d_numSatConflicts;
-  uint64_t d_numDecisions;
   uint64_t d_numAddEq;
-  uint64_t d_numRestarts;
   uint64_t d_numFinalChecks;
   uint64_t d_numMkBoolVar;
   uint64_t d_numDelBoolVar;
@@ -42,34 +38,10 @@ struct Statistics
   uint64_t d_numDelClause;
   uint64_t d_numMkBinClause;
   uint64_t d_numMkLits;
-  uint64_t d_numDynAck;
-  uint64_t d_numDelDynAck;
-  /** nonlinear subproblems handed to the bridge, and the conflicts found */
-  uint64_t d_numArithNlFallbacks;
-  uint64_t d_numArithNlFallbackConflicts;
-  /** interface equalities the core was asked to split on, as Z3's
-   * arith-assume-eqs, and the entailed ones a bridge propagated, as its
-   * arith-fixed-eqs. The two are worth keeping apart: a propagation is one
-   * congruence merge, a split is a Boolean variable the search has to decide.
-   */
-  uint64_t d_numInterfaceEqs;
-  uint64_t d_numPropagatedEqs;
-  /** shared terms a separating model kept apart, so needing no split */
-  uint64_t d_numSeparatedEqs;
-  /** groups of shared terms the model gave the same value, and their size */
-  uint64_t d_numSharedGroups;
-  uint64_t d_numCoincidingShared;
   uint64_t d_maxGeneration;
-  uint64_t d_numMinimizedLits;
-  /** literals in the learned clauses, summed, for the average clause size */
-  uint64_t d_numLearnedLits;
-  uint64_t d_numChecks;
-  uint64_t d_numSimplifications;
-  uint64_t d_numDelClauses;
   uint64_t d_numAssignments;
-  /** assertions handed to the core, and the DAG size of them together */
+  /** assertions handed to the core */
   uint64_t d_numAssertedFormulas;
-  uint64_t d_numAssertedExprs;
   /** quantifier instantiations produced by E-matching */
   uint64_t d_numInstances;
   /** instantiations dropped because their cost exceeded the lazy threshold */
@@ -78,9 +50,6 @@ struct Statistics
   uint64_t d_numInstancesCheckerSat;
   /** instances whose body simplified to true */
   uint64_t d_numInstancesSimplifyTrue;
-  /** instances not asserted again, being permanent (--z3-qi-permanent) */
-  uint64_t d_numInstancesRediscovered;
-  /** Under cvc5's prop engine (--z3-prop-engine=cvc5): */
   /** checks at standard and full effort */
   uint64_t d_numHostChecks;
   uint64_t d_numHostFullChecks;
@@ -92,18 +61,15 @@ struct Statistics
   /** lemmas sent, and lemmas not sent again */
   uint64_t d_numHostLemmas;
   uint64_t d_numHostDuplicateLemmas;
-  /** conflicts, propagations and explanations given to cvc5 */
+  /** conflicts given to cvc5 */
   uint64_t d_numHostConflicts;
-  uint64_t d_numHostPropagations;
-  uint64_t d_numHostExplanations;
   /** splitting lemmas for relevant, unassigned variables */
   uint64_t d_numHostSplits;
-  /** merges of the shadow from cvc5's theories, and terms imported */
+  /** merges of the shadow from cvc5's theories */
   uint64_t d_numShadowMerges;
-  uint64_t d_numShadowImports;
   /** conflicts of the shadow not sent, for want of an explanation */
   uint64_t d_numShadowUnexplained;
-  /** lemmas sent weakened, see Z3TheoryEngine::delayUnit */
+  /** lemmas sent weakened, see HostCore::delayUnit */
   uint64_t d_numHostDelayedUnits;
   /** matches that were already instantiated (Z3's missed instantiations) */
   uint64_t d_numMissedInstances;
@@ -125,28 +91,10 @@ struct Statistics
   uint64_t d_numMamExecs;
   /** matches the matching abstract machine reported */
   uint64_t d_numMamMatches;
-  /** datatype occurs checks, splits and axioms */
-  uint64_t d_numDtOccursCheck;
-  uint64_t d_numDtSplits;
-  uint64_t d_numDtConstructorAx;
-  uint64_t d_numDtAccessorAx;
-  uint64_t d_numDtUpdateFieldAx;
-  /** assumptions passed to the subsolver, summed over the calls */
-  uint64_t d_bridgeAssumptions;
-  /** literals asserted to the subsolver permanently */
-  uint64_t d_bridgeAsserted;
-  /** milliseconds spent in the cvc5 subsolver of the theory bridge */
-  uint64_t d_bridgeTimeMs;
-  /** calls to the cvc5 subsolver of the theory bridge */
-  uint64_t d_numBridgeChecks;
-  /** conflicts the cvc5 subsolver of the theory bridge found */
-  uint64_t d_numBridgeConflicts;
 
   Statistics() { reset(); }
 
-  void reset();
-
-  void print(std::ostream& out) const;
+  void reset() { std::memset(this, 0, sizeof(Statistics)); }
 };
 
 }  // namespace z3

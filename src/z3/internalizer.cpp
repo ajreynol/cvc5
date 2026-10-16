@@ -27,7 +27,6 @@
 #include "expr/node_manager.h"
 #include "smt/env.h"
 #include "theory/theory.h"
-#include "z3/arith_util.h"
 #include "z3/quantifier_manager.h"
 #include "z3/smt_context.h"
 #include "z3/util/util.h"
@@ -45,12 +44,6 @@ bool isTrueNode(TNode n)
 bool isFalseNode(TNode n)
 {
   return n.getKind() == Kind::CONST_BOOLEAN && !n.getConst<bool>();
-}
-
-/** An if-then-else over terms, rather than over formulas. */
-bool isTermIte(TNode n)
-{
-  return n.getKind() == Kind::ITE && !n.getType().isBoolean();
 }
 
 constexpr char s_white = 0;
@@ -82,39 +75,6 @@ void setColor(std::vector<char>& tcolors,
     colors.resize(n.getId() + 1, s_white);
   }
   colors[n.getId()] = color;
-}
-
-/**
- * The foreign descendants of n: the descendants whose theory differs from
- * fid. For example the foreign descendants of (+ a (+ (f b) (* 2 (h (+ c
- * d))))) are a, (f b) and (h (+ c d)).
- */
-void getForeignDescendants(TNode n,
-                           TheoryId fid,
-                           std::vector<Node>& descendants)
-{
-  std::vector<Node> todo{n};
-  std::unordered_set<Node> visited;
-  while (!todo.empty())
-  {
-    Node curr = todo.back();
-    todo.pop_back();
-    if (!visited.insert(curr).second)
-    {
-      continue;
-    }
-    if (!isApp(curr) || familyIdOf(curr) != fid)
-    {
-      descendants.push_back(curr);
-      continue;
-    }
-    size_t j = curr.getNumChildren();
-    while (j > 0)
-    {
-      --j;
-      todo.push_back(curr[j]);
-    }
-  }
 }
 
 /** The threshold above which internalization switches to a topological sort. */
@@ -242,27 +202,6 @@ bool SmtContext::tsVisitChildren(TNode n,
   }
 
   bool visited = true;
-  TheoryId fid = familyIdOf(n);
-  Theory* th = getTheory(fid);
-  bool defInt = th == nullptr || th->defaultInternalizer();
-  if (!defInt)
-  {
-    std::vector<Node> descendants;
-    getForeignDescendants(n, fid, descendants);
-    for (const Node& arg : descendants)
-    {
-      tsVisitChild(arg, false, todo, visited);
-    }
-    return visited;
-  }
-
-  if (isTermIte(n))
-  {
-    tsVisitChild(n[0], true, todo, visited);
-    tsVisitChild(n[1], false, todo, visited);
-    tsVisitChild(n[2], false, todo, visited);
-    return visited;
-  }
   bool newGateCtx =
       n.getType().isBoolean() && (isGate(n) || n.getKind() == Kind::NOT);
   size_t j = n.getNumChildren();
@@ -329,8 +268,7 @@ void SmtContext::internalizeDeep(const Node* exprs, size_t numExprs)
         && shouldInternalizeRec(n))
     {
       // A deep expression is internalized through a topological sort, to
-      // avoid overflowing the stack. Note the theory internalizers do rely on
-      // recursive descent, so internalization over them stays top-down.
+      // avoid overflowing the stack.
       d_tsTodo.push_back(ExprBoolPair(n, true));
     }
   }
@@ -362,19 +300,6 @@ void SmtContext::internalizeAssertion(TNode n, uint32_t generation)
   d_generation = oldGeneration;
 }
 
-bool SmtContext::internalizePermanentLemma(TNode n, uint32_t generation)
-{
-  uint32_t oldGeneration = d_generation;
-  d_generation = generation;
-  d_stats.d_maxGeneration =
-      std::max<uint64_t>(generation, d_stats.d_maxGeneration);
-  internalizeDeep(n);
-  Assert(n.getType().isBoolean());
-  bool permanent = d_prop.assertPermanentLemma(n);
-  d_generation = oldGeneration;
-  return permanent;
-}
-
 void SmtContext::internalize(TNode n, bool gateCtx, uint32_t generation)
 {
   uint32_t oldGeneration = d_generation;
@@ -385,55 +310,10 @@ void SmtContext::internalize(TNode n, bool gateCtx, uint32_t generation)
   d_generation = oldGeneration;
 }
 
-void SmtContext::ensureInternalized(TNode e)
-{
-  if (!eInternalized(e))
-  {
-    internalize(e, false);
-  }
-  if (isApp(e) && !e.getType().isBoolean())
-  {
-    internalizeTerm(e);
-  }
-}
-
 void SmtContext::internalize(TNode n, bool gateCtx)
 {
   internalizeDeep(n);
   internalizeRec(n, gateCtx);
-}
-
-void SmtContext::internalize(const Node* exprs, size_t numExprs, bool gateCtx)
-{
-  internalizeDeep(exprs, numExprs);
-  for (size_t i = 0; i < numExprs; ++i)
-  {
-    internalizeRec(exprs[i], gateCtx);
-  }
-}
-
-ENode* SmtContext::nonGroundInternalize(TNode e)
-{
-  if (eInternalized(e))
-  {
-    return getENode(e);
-  }
-  if (!expr::hasBoundVar(e))
-  {
-    internalize(e, false);
-    return getENode(e);
-  }
-  // The term has bound variables, so it cannot be given an enode directly.
-  // Represent it by a fresh proxy constant constrained to be equal to it.
-  Node fn = NodeManager::mkDummySkolem("z3proxy", e.getType());
-  Node eq = nodeManager()->mkNode(Kind::EQUAL, fn, e);
-  assertFormula(eq);
-  internalizeAssertions();
-  if (!eInternalized(fn))
-  {
-    internalize(fn, false);
-  }
-  return getENode(fn);
 }
 
 void SmtContext::internalizeRec(TNode n, bool gateCtx)
@@ -479,13 +359,9 @@ void SmtContext::internalizeFormula(TNode n, bool gateCtx)
     // An enode is still necessary if n is not in a gate context and is an
     // application. A quantifier is handled here as well: Z3 relies on its own
     // preprocessing to keep quantifiers out of term positions, which cvc5's
-    // does not, so the enode has to be built rather than assumed away. Note
-    // that such a quantifier may be assigned false, which assignQuantifier
-    // ignores, hence the model-unsoundness mark.
+    // does not, so the enode has to be built rather than assumed away.
     if (!gateCtx && isQuantifier(n))
     {
-      markUnsupported();
-      markModelUnsound(theory::THEORY_QUANTIFIERS);
       if (!eInternalized(n))
       {
         mkENode(n,
@@ -532,10 +408,6 @@ void SmtContext::internalizeFormula(TNode n, bool gateCtx)
   {
     internalizeDistinct(n, gateCtx);
   }
-  else if (isApp(n) && internalizeTheoryAtom(n, gateCtx))
-  {
-    return;
-  }
   else if (isQuantifier(n))
   {
     internalizeQuantifier(n, gateCtx);
@@ -552,14 +424,7 @@ void SmtContext::internalizeEq(TNode n, bool gateCtx)
   Assert(n.getKind() == Kind::EQUAL);
   internalizeFormulaCore(n, gateCtx);
   BoolVar v = getBoolVar(n);
-  BoolVarData& d = getBdata(v);
-  d.setEqFlag();
-
-  Theory* th = getTheory(theory::Theory::theoryOf(n[0].getType()));
-  if (th != nullptr)
-  {
-    th->internalizeEqEh(n, v);
-  }
+  getBdata(v).setEqFlag();
 }
 
 void SmtContext::internalizeDistinct(TNode n, bool gateCtx)
@@ -602,44 +467,6 @@ void SmtContext::internalizeDistinct(TNode n, bool gateCtx)
   }
 }
 
-bool SmtContext::internalizeTheoryAtom(TNode n, bool gateCtx)
-{
-  Assert(!bInternalized(n));
-  Theory* th = getTheory(familyIdOf(n));
-  if (th == nullptr || !th->internalizeAtom(n, gateCtx))
-  {
-    return false;
-  }
-  Assert(bInternalized(n));
-  BoolVar v = getBoolVar(n);
-  if (!gateCtx)
-  {
-    // Outside a gate context the formula must be associated with an enode.
-    if (!eInternalized(n))
-    {
-      mkENode(n,
-              true, /* suppress the arguments: congruence is not used here */
-              true, /* merge with true/false, since this is not a gate */
-              false /* congruence closure is not enabled */);
-    }
-    else
-    {
-      ENode* e = getENode(n);
-      setEnodeFlag(v, true);
-      setMergeTf(e, v, true);
-    }
-  }
-  if (eInternalized(n))
-  {
-    setEnodeFlag(v, true);
-    if (getAssignment(v) != L_UNDEF)
-    {
-      propagateBoolVarENode(v);
-    }
-  }
-  return true;
-}
-
 void SmtContext::internalizeQuantifier(TNode q, bool gateCtx)
 {
   Assert(!bInternalized(q));
@@ -647,8 +474,6 @@ void SmtContext::internalizeQuantifier(TNode q, bool gateCtx)
   {
     // Z3's preprocessing puts every formula in a form where only universal
     // quantifiers survive, so its internalizer has no case for exists.
-    markUnsupported();
-    markModelUnsound(theory::THEORY_QUANTIFIERS);
     mkBoolVar(q);
     return;
   }
@@ -658,12 +483,8 @@ void SmtContext::internalizeQuantifier(TNode q, bool gateCtx)
     // Z3 asserts gateCtx here: its rewriter guarantees a quantifier only ever
     // occurs as an argument of a gate. cvc5's preprocessor gives no such
     // guarantee -- a Boolean-sorted argument of an uninterpreted function is
-    // enough to break it -- so rather than following Z3 into undefined
-    // behaviour the query is answered "unknown".
-    Trace("z3") << "unsupported: quantifier in a non-gate context: " << q
-                << std::endl;
-    markUnsupported();
-    markModelUnsound(theory::THEORY_QUANTIFIERS);
+    // enough to break it.
+    Trace("z3") << "quantifier in a non-gate context: " << q << std::endl;
     mkENode(q,
             true, /* suppress the arguments */
             true, /* merge with true/false, since this is not a gate */
@@ -682,7 +503,6 @@ void SmtContext::internalizeFormulaCore(TNode n, bool gateCtx)
   Assert(!bInternalized(n));
   Assert(!eInternalized(n));
 
-  checkTheorySupported(n);
   bool isGateN = isGate(n) || n.getKind() == Kind::NOT;
   // process the arguments
   for (const Node& arg : n)
@@ -813,97 +633,18 @@ void SmtContext::internalizeTerm(TNode n)
 {
   if (eInternalized(n))
   {
-    ENode* e = getENode(n);
-    updateGeneration(e);
-    Theory* th = getTheory(familyIdOf(n));
-    if (th != nullptr)
-    {
-      // Some theories decide not to create theory variables for a nested
-      // application. For example, arithmetic internalizing (+ (* 2 x) y)
-      // creates enodes for both applications but a theory variable only for
-      // the +, keeping (* 2 x) internal to arithmetic. If the core later
-      // internalizes (f (* 2 x)), the term is no longer internal and does
-      // need a theory variable.
-      if (!th->isAttachedToVar(e))
-      {
-        th->internalizeTerm(n);
-      }
-    }
+    updateGeneration(getENode(n));
     return;
   }
-
-  if (isTermIte(n))
-  {
-    internalizeIteTerm(n);
-    return;  // the sort constraint is applied by internalizeIteTerm
-  }
-  if (!internalizeTheoryTerm(n))
-  {
-    internalizeUninterpreted(n);
-  }
+  // A term if-then-else does not occur here: the formulas the core
+  // internalizes are in the form cvc5's theories take, without them.
+  internalizeUninterpreted(n);
   Assert(eInternalized(n));
-  applySortCnstr(n, getENode(n));
-}
-
-void SmtContext::internalizeIteTerm(TNode n)
-{
-  Assert(!eInternalized(n));
-  TNode c = n[0];
-  TNode t = n[1];
-  TNode e = n[2];
-  Node eq1 = mkEqAtom(n, t);
-  Node eq2 = mkEqAtom(n, e);
-  mkENode(n,
-          true,  /* suppress the arguments: congruence is not used on ites */
-          false, /* a term, so it is not merged with true/false */
-          false /* congruence closure is not enabled */);
-  internalizeRec(c, true);
-  internalizeRec(t, false);
-  internalizeRec(e, false);
-  internalizeRec(eq1, true);
-  internalizeRec(eq2, true);
-  Literal cLit = getLiteral(c);
-  Literal eq1Lit = getLiteral(eq1);
-  Literal eq2Lit = getLiteral(eq2);
-  mkGateClause(~cLit, eq1Lit);
-  mkGateClause(cLit, eq2Lit);
-  if (relevancy())
-  {
-    RelevancyEh* eh =
-        d_prop.getRelevancyPropagator().mkTermIteRelevancyEh(n, eq1, eq2);
-    addRelWatch(cLit, eh);
-    addRelWatch(~cLit, eh);
-    addRelevancyEh(n, eh);
-  }
-  Assert(eInternalized(n));
-}
-
-bool SmtContext::internalizeTheoryTerm(TNode n)
-{
-  Theory* th = getTheory(familyIdOf(n));
-  return th != nullptr && th->internalizeTerm(n);
-}
-
-void SmtContext::checkTheorySupported(TNode n)
-{
-  TheoryId fid = familyIdOf(n);
-  // The core reasons about these itself: Boolean structure, equality and
-  // congruence over uninterpreted symbols.
-  if (fid == theory::THEORY_BOOL || fid == theory::THEORY_BUILTIN
-      || fid == theory::THEORY_UF || fid == s_nullTheoryId)
-  {
-    return;
-  }
-  if (getTheory(fid) == nullptr)
-  {
-    markModelUnsound(fid);
-  }
 }
 
 void SmtContext::internalizeUninterpreted(TNode n)
 {
   Assert(!eInternalized(n));
-  checkTheorySupported(n);
   // process the arguments
   for (const Node& arg : n)
   {
@@ -915,16 +656,15 @@ void SmtContext::internalizeUninterpreted(TNode n)
     return;
   }
 
-  // Without the arithmetic plugin (a shadow of cvc5's theories), its
-  // arithmetic terms keep its congruence policy: Z3 never enables congruence
-  // closure for (+ ...) and (* ...) (TheoryArith::enableCgcFor).
-  bool cgc = getTheory(theory::THEORY_ARITH) != nullptr
-             || !(arith::isAdd(n) || arith::isMul(n));
-  ENode* e = mkENode(n,
-                     false, /* do not suppress the arguments */
-                     false, /* a term, so it is not merged with true/false */
-                     cgc);
-  applySortCnstr(n, e);
+  // The arithmetic terms keep the congruence policy of Z3's arithmetic
+  // plugin, which never enables congruence closure for (+ ...) and (* ...)
+  // (theory_arith::enable_cgc_for).
+  Kind k = n.getKind();
+  bool cgc = k != Kind::ADD && k != Kind::MULT && k != Kind::NONLINEAR_MULT;
+  mkENode(n,
+          false, /* do not suppress the arguments */
+          false, /* a term, so it is not merged with true/false */
+          cgc);
 }
 
 uint32_t SmtContext::generationOf(TNode n)
@@ -934,13 +674,9 @@ uint32_t SmtContext::generationOf(TNode n)
   {
     return itg->second;
   }
-  if (d_prop.isHosted())
-  {
-    // the first internalization records the generation for later ones
-    auto ith = d_hostGeneration.emplace(n, d_generation).first;
-    return ith->second;
-  }
-  return d_generation;
+  // the first internalization records the generation for later ones
+  auto ith = d_hostGeneration.emplace(n, d_generation).first;
+  return ith->second;
 }
 
 ENode* SmtContext::mkENode(TNode n,
@@ -1043,126 +779,6 @@ void SmtContext::undoMkENode()
   d_enodes.pop_back();
   d_eInternalizedStack.pop_back();
   d_stickyGenerationUpdates.erase(e);
-}
-
-void SmtContext::applySortCnstr(TNode term, ENode* e)
-{
-  TypeNode s = term.getType();
-  Theory* th = getTheory(theory::Theory::theoryOf(s));
-  if (th != nullptr)
-  {
-    th->applySortCnstr(e, s);
-  }
-}
-
-void SmtContext::mkThClause(TheoryId /*tid*/,
-                            size_t numLits,
-                            Literal* lits,
-                            ClauseKind k)
-{
-  mkClause(numLits, lits, nullptr, k);
-}
-
-void SmtContext::mkThAxiom(TheoryId tid, Literal l1) { mkThAxiom(tid, 1, &l1); }
-
-void SmtContext::mkThAxiom(TheoryId tid, Literal l1, Literal l2)
-{
-  Literal ls[2] = {l1, l2};
-  mkThAxiom(tid, 2, ls);
-}
-
-void SmtContext::mkThAxiom(TheoryId tid, Literal l1, Literal l2, Literal l3)
-{
-  Literal ls[3] = {l1, l2, l3};
-  mkThAxiom(tid, 3, ls);
-}
-
-namespace {
-
-/** Undoes addThVar. */
-class AddThVarTrail : public Trail
-{
- public:
-  AddThVarTrail(ENode* n, TheoryId thId) : d_enode(n), d_thId(thId) {}
-
-  void undo() override
-  {
-    TheoryVar v = d_enode->getThVar(d_thId);
-    Assert(v != s_nullTheoryVar);
-    d_enode->delThVar(d_thId);
-    ENode* root = d_enode->getRoot();
-    if (root != d_enode && root->getThVar(d_thId) == v)
-    {
-      root->delThVar(d_thId);
-    }
-  }
-
- private:
-  ENode* d_enode;
-  TheoryId d_thId;
-};
-
-/** Undoes replaceThVar. */
-class ReplaceThVarTrail : public Trail
-{
- public:
-  ReplaceThVarTrail(ENode* n, TheoryId thId, TheoryVar oldVar)
-      : d_enode(n), d_thId(thId), d_oldThVar(oldVar)
-  {
-  }
-
-  void undo() override
-  {
-    Assert(d_enode->getThVar(d_thId) != s_nullTheoryVar);
-    d_enode->replaceThVar(d_oldThVar, d_thId);
-  }
-
- private:
-  ENode* d_enode;
-  TheoryId d_thId;
-  TheoryVar d_oldThVar;
-};
-
-}  // namespace
-
-void SmtContext::attachThVar(ENode* n, Theory* th, TheoryVar v)
-{
-  // Attach the theory variable v of th to n. This must be invoked whenever a
-  // theory creates a new theory variable. Note that newEqEh and newDiseqEh of
-  // th may be invoked before this returns.
-  Assert(!th->isAttachedToVar(n));
-  TheoryId thId = th->getId();
-  TheoryVar oldV = n->getThVar(thId);
-  if (oldV == s_nullTheoryVar)
-  {
-    ENode* r = n->getRoot();
-    TheoryVar v2 = r->getThVar(thId);
-    n->addThVar(v, thId, getRegion());
-    pushTrail(AddThVarTrail(n, thId));
-    if (v2 == s_nullTheoryVar)
-    {
-      if (r != n)
-      {
-        r->addThVar(v, thId, getRegion());
-      }
-      pushNewThDiseqs(r, v, th);
-    }
-    else if (r != n)
-    {
-      pushNewThEq(thId, v2, v);
-    }
-  }
-  else
-  {
-    // There is already a variable oldV in the variable list of n, moved there
-    // by an earlier addEq.
-    Assert(th->getENode(oldV) != n);
-    Assert(n->getRoot()->getThVar(thId) != s_nullTheoryVar);
-    n->replaceThVar(v, thId);
-    pushTrail(ReplaceThVarTrail(n, thId, oldV));
-    pushNewThEq(thId, v, oldV);
-  }
-  Assert(th->isAttachedToVar(n));
 }
 
 }  // namespace z3

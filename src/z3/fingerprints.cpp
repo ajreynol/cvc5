@@ -66,18 +66,6 @@ Fingerprint* FingerprintSet::mkDummy(uint64_t data,
   return &d_dummy;
 }
 
-std::ostream& operator<<(std::ostream& out, const Fingerprint& f)
-{
-  out << f.getDataHash() << " "
-      << " num_args " << f.getNumArgs() << " ";
-  for (const ENode* arg : f)
-  {
-    out << " " << arg->getOwnerId();
-  }
-  out << "\n";
-  return out;
-}
-
 namespace {
 
 struct ArgData
@@ -130,29 +118,6 @@ Fingerprint* FingerprintSet::insert(uint64_t data,
   return f;
 }
 
-bool FingerprintSet::contains(uint64_t data,
-                              uint32_t dataHash,
-                              size_t numArgs,
-                              ENode* const* args)
-{
-  Fingerprint* d = mkDummy(data, dataHash, numArgs, args);
-  if (d_set.count(d) != 0)
-  {
-    return true;
-  }
-  for (size_t i = 0; i < numArgs; ++i)
-  {
-    d->d_args[i] = d->d_args[i]->getRoot();
-  }
-  return d_set.count(d) != 0;
-}
-
-void FingerprintSet::reset()
-{
-  d_set.clear();
-  d_fingerprints.clear();
-}
-
 void FingerprintSet::pushScope() { d_scopes.push_back(d_fingerprints.size()); }
 
 void FingerprintSet::popScope(size_t numScopes)
@@ -175,46 +140,6 @@ void FingerprintSet::popScope(size_t numScopes)
   }
   d_fingerprints.resize(oldSize);
   d_scopes.resize(newLvl);
-}
-
-void FingerprintSet::print(std::ostream& out) const
-{
-  out << "fingerprints:\n";
-  for (const Fingerprint* f : d_fingerprints)
-  {
-    out << f->getData() << " " << *f;
-  }
-}
-
-bool FingerprintSet::slowContains(uint64_t data,
-                                  uint32_t /*dataHash*/,
-                                  size_t numArgs,
-                                  ENode* const* args) const
-{
-  for (const Fingerprint* f : d_fingerprints)
-  {
-    if (f->getData() != data)
-    {
-      continue;
-    }
-    if (f->getNumArgs() != numArgs)
-    {
-      continue;
-    }
-    size_t i = 0;
-    for (; i < numArgs; ++i)
-    {
-      if (f->getArg(i)->getRoot() != args[i]->getRoot())
-      {
-        break;
-      }
-    }
-    if (i == numArgs)
-    {
-      return true;
-    }
-  }
-  return false;
 }
 
 }  // namespace z3

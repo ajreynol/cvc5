@@ -105,13 +105,6 @@ class ApproxSetTpl : private ToUnsigned
     return (d_set & elemToSet(e)) != ApproxSetTraits<R>::s_zero;
   }
 
-  bool mustNotContain(const T& e) const { return !mayContain(e); }
-
-  friend ApproxSetTpl mkUnion(const ApproxSetTpl& s1, const ApproxSetTpl& s2)
-  {
-    return rawToSet(s1.d_set | s2.d_set);
-  }
-
   friend ApproxSetTpl mkIntersection(const ApproxSetTpl& s1,
                                      const ApproxSetTpl& s2)
   {
@@ -125,39 +118,6 @@ class ApproxSetTpl : private ToUnsigned
   void operator-=(const ApproxSetTpl& other) { d_set &= ~(other.d_set); }
 
   bool empty() const { return d_set == ApproxSetTraits<R>::s_zero; }
-
-  /** Return true if this is definitely not a subset of s2. */
-  bool mustNotSubset(const ApproxSetTpl& s2) const
-  {
-    return (d_set & ~(s2.d_set)) != ApproxSetTraits<R>::s_zero;
-  }
-
-  /** Return true if this definitely does not subsume s2. */
-  bool mustNotSubsume(const ApproxSetTpl& s2) const
-  {
-    return mustNotSubset(s2);
-  }
-
-  /** Return true if the two approximations are definitely different. */
-  friend bool mustNotEq(const ApproxSetTpl& s1, const ApproxSetTpl& s2)
-  {
-    return s1.d_set != s2.d_set;
-  }
-
-  /** Return true if the two approximations may denote equal sets. */
-  friend bool mayEq(const ApproxSetTpl& s1, const ApproxSetTpl& s2)
-  {
-    return s1.d_set == s2.d_set;
-  }
-
-  /** Return true if s1 and s2 are the same approximated set. */
-  bool equiv(const ApproxSetTpl& s2) const { return d_set == s2.d_set; }
-
-  /** Return true if the approximation of s1 is a subset of that of s2. */
-  friend bool approxSubset(const ApproxSetTpl& s1, const ApproxSetTpl& s2)
-  {
-    return s2.equiv(mkUnion(s1, s2));
-  }
 
   void reset() { d_set = ApproxSetTraits<R>::s_zero; }
 
@@ -239,16 +199,7 @@ class ApproxSet : public UApproxSet
   {
     return static_cast<uint32_t>(__builtin_popcountll(d_set));
   }
-
-  void print(std::ostream& out) const;
-
-  friend bool operator==(const ApproxSet& s1, const ApproxSet& s2)
-  {
-    return mayEq(s1, s2);
-  }
 };
-
-std::ostream& operator<<(std::ostream& out, const ApproxSet& s);
 
 }  // namespace z3
 }  // namespace cvc5::internal

@@ -164,15 +164,5 @@ void Region::popScope(size_t numScopes)
   }
 }
 
-void Region::printMemStats(std::ostream& out) const
-{
-  size_t n = 0;
-  for (Page* p = d_currPage; p != nullptr; p = p->d_prev)
-  {
-    n++;
-  }
-  out << "num. pages:      " << n << "\n";
-}
-
 }  // namespace z3
 }  // namespace cvc5::internal

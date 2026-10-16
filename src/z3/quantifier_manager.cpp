@@ -22,439 +22,241 @@
 #include "z3/quantifier_manager.h"
 
 #include <algorithm>
-#include <memory>
 #include <sstream>
-#include <unordered_map>
 
 #include "base/output.h"
-#include "options/z3_options.h"
-#include "smt/env.h"
 #include "z3/ast.h"
 #include "z3/enode.h"
-#include "z3/enum_inst.h"
-#include "z3/fingerprints.h"
-#include "z3/instance_policy.h"
 #include "z3/mam.h"
-#include "z3/qi_queue.h"
 #include "z3/quantifier_services.h"
-#include "z3/quick_checker.h"
 #include "z3/statistics.h"
 #include "z3/util/trail.h"
 
 namespace cvc5::internal {
 namespace z3 {
 
-QuantifierManagerPlugin* mkDefaultPlugin();
-
-namespace {
-
-InstancePolicy* mkInstancePolicy(QuantifierManager& qm,
-                                 QuantifierServices& ctx,
-                                 Params& p)
+QuantifierManager::QuantifierManager(QuantifierServices& ctx, Params& p)
+    : d_context(ctx),
+      d_params(p),
+      d_queue(*this, ctx, p),
+      d_fingerprints(ctx.getRegion()),
+      d_qstatGen(ctx.getRegion()),
+      d_lazyMatchingIdx(0),
+      d_active(false),
+      d_lazyScopes(0),
+      d_lazy(true)
 {
-  switch (ctx.getEnv().getOptions().z3.z3QiPolicy)
-  {
-    case options::Z3QiPolicyMode::EAGER:
-      return new Cvc5InstancePolicy(qm, ctx, p, true);
-    case options::Z3QiPolicyMode::CVC5:
-      return new Cvc5InstancePolicy(qm, ctx, p, false);
-    default: return new QiQueue(qm, ctx, p);
-  }
-}
-
-}  // namespace
-
-struct QuantifierManager::Imp
-{
-  QuantifierManager& d_wrapper;
-  QuantifierServices& d_context;
-  Params& d_params;
-  /** When the instances of the matches found are made. */
-  std::unique_ptr<InstancePolicy> d_policy;
-  /** The fingerprints of the instances made in the current scopes. */
-  FingerprintSet d_fingerprints;
-  std::unordered_map<Node, QuantifierStat*> d_quantifierStat;
-  std::unordered_map<uint64_t, Node> d_id2Quant;
-  QuantifierStatGen d_qstatGen;
-  std::vector<Node> d_quantifiers;
-  std::unique_ptr<QuantifierManagerPlugin> d_plugin;
-  size_t d_numInstances = 0;
-
-  Imp(QuantifierManager& wrapper,
-      QuantifierServices& ctx,
-      Params& p,
-      QuantifierManagerPlugin* plugin)
-      : d_wrapper(wrapper),
-        d_context(ctx),
-        d_params(p),
-        d_policy(mkInstancePolicy(wrapper, ctx, p)),
-        d_fingerprints(ctx.getRegion()),
-        d_qstatGen(ctx.getRegion()),
-        d_plugin(plugin)
-  {
-    d_policy->setup();
-  }
-
-  QuantifierStat* getStat(TNode q) const
-  {
-    auto it = d_quantifierStat.find(q);
-    Assert(it != d_quantifierStat.end());
-    return it->second;
-  }
-
-  uint32_t getGeneration(TNode q) const
-  {
-    auto it = d_quantifierStat.find(q);
-    return it == d_quantifierStat.end() ? 0 : it->second->getGeneration();
-  }
-
-  void add(TNode q, uint32_t generation)
-  {
-    QuantifierStat* stat = d_qstatGen(q, generation);
-    d_quantifierStat[q] = stat;
-    d_id2Quant[q.getId()] = q;
-    d_quantifiers.push_back(q);
-    d_plugin->add(q);
-  }
-
-  bool hasQuantifiers() const { return !d_quantifiers.empty(); }
-
-  void printStats(std::ostream& out) const
-  {
-    for (TNode q : d_quantifiers)
-    {
-      printStats(out, q);
-    }
-  }
-
-  void printStats(std::ostream& out, TNode q) const
-  {
-    QuantifierStat* s = getStat(q);
-    uint32_t numInstances = s->getNumInstances();
-    uint32_t numInstancesSimplifyTrue = s->getNumInstancesSimplifyTrue();
-    uint32_t numInstancesCheckerSat = s->getNumInstancesCheckerSat();
-    if (numInstances > 0 || numInstancesSimplifyTrue > 0
-        || numInstancesCheckerSat > 0)
-    {
-      out << "[quantifier_instances] " << getQid(q) << " : " << numInstances
-          << " : " << numInstancesSimplifyTrue << " : "
-          << numInstancesCheckerSat << " : " << s->getMaxGeneration() << " : "
-          << s->getMaxCost();
-      // Z3 identifies the quantifier by its qid, which these benchmarks do
-      // not set. The patterns identify it just as well and, unlike a
-      // generated name, they can be lined up against another solver's run.
-      std::vector<std::vector<Node>> patterns;
-      getPatterns(q, patterns);
-      for (const std::vector<Node>& mp : patterns)
-      {
-        out << " :pattern (";
-        for (const Node& p : mp)
-        {
-          out << " " << p;
-        }
-        out << " )";
-      }
-      out << "\n";
-    }
-  }
-
-  void del(TNode q)
-  {
-    if (d_params.d_qiProfile)
-    {
-      std::stringstream ss;
-      printStats(ss, q);
-      Warning() << ss.str();
-    }
-    d_quantifiers.pop_back();
-    d_quantifierStat.erase(q);
-    d_plugin->del(q);
-  }
-
-  bool empty() const { return d_quantifiers.empty(); }
-
-  bool isShared(ENode* n) const { return d_plugin->isShared(n); }
-
-  bool addInstance(TNode q,
-                   TNode pat,
-                   size_t numBindings,
-                   ENode* const* bindings,
-                   uint32_t maxGeneration,
-                   uint32_t minTopGeneration,
-                   uint32_t maxTopGeneration,
-                   std::vector<std::pair<ENode*, ENode*>>& /*usedENodes*/)
-  {
-    if (d_quantifierStat.count(q) == 0)
-    {
-      return false;
-    }
-
-    maxGeneration = std::max(maxGeneration, getGeneration(q));
-
-    getStat(q)->updateMaxGeneration(maxGeneration);
-    Fingerprint* f = d_fingerprints.insert(
-        q.getId(), static_cast<uint32_t>(q.getId()), numBindings, bindings);
-    if (f != nullptr)
-    {
-      d_policy->insert(
-          f, pat, maxGeneration, minTopGeneration, maxTopGeneration);
-      d_numInstances++;
-    }
-    else
-    {
-      d_context.getStats().d_numMissedInstances++;
-    }
-    return f != nullptr;
-  }
-
-  void initSearchEh()
-  {
-    d_numInstances = 0;
-    for (const Node& q : d_quantifiers)
-    {
-      getStat(q)->resetNumInstancesCurrSearch();
-    }
-    d_policy->initSearchEh();
-    d_plugin->initSearchEh();
-  }
-
-  void assignEh(TNode q) { d_plugin->assignEh(q); }
-
-  void addEqEh(ENode* n1, ENode* n2) { d_plugin->addEqEh(n1, n2); }
-
-  void relevantEh(ENode* n) { d_plugin->relevantEh(n); }
-
-  void restartEh() { d_plugin->restartEh(); }
-
-  void push()
-  {
-    d_plugin->push();
-    d_policy->pushScope();
-  }
-
-  void pop(size_t numScopes)
-  {
-    d_plugin->pop(numScopes);
-    d_policy->popScope(numScopes);
-  }
-
-  bool canPropagate() const
-  {
-    return d_policy->hasWork() || d_plugin->canPropagate();
-  }
-
-  void propagate()
-  {
-    d_plugin->propagate();
-    d_policy->instantiate();
-  }
-
-  bool checkQuantifier(TNode q) const
-  {
-    return d_context.isRelevant(q) && d_context.getAssignment(q) == L_TRUE;
-  }
-
-  /**
-   * Instantiate the quantifiers the current model falsifies. Returns false if
-   * new instances were created, which means the search is not done.
-   */
-  bool quickCheckQuantifiers()
-  {
-    if (d_params.d_qiQuickChecker == MC_NO || d_quantifiers.empty())
-    {
-      return true;
-    }
-    QuickChecker mc(d_context, d_wrapper);
-    bool result = true;
-    for (const Node& q : d_quantifiers)
-    {
-      if (checkQuantifier(q)
-          && mc.instantiateUnsat(q, d_params.d_qiQuickCheckerConservative))
-      {
-        result = false;
-      }
-    }
-    if (d_params.d_qiQuickChecker == MC_UNSAT || !result)
-    {
-      d_policy->instantiate();
-      return result;
-    }
-    // MC_NO_SAT creates too many irrelevant instances to be worth it; model
-    // based instantiation is the better option there.
-    for (const Node& q : d_quantifiers)
-    {
-      if (checkQuantifier(q) && mc.instantiateNotSat(q))
-      {
-        result = false;
-      }
-    }
-    d_policy->instantiate();
-    return result;
-  }
-
-  FinalCheckStatus finalCheckEh(bool full)
-  {
-    if (!full)
-    {
-      return d_plugin->finalCheckEh(false);
-    }
-    FinalCheckStatus result = d_policy->finalCheckEh() ? FC_DONE : FC_CONTINUE;
-    FinalCheckStatus presult = d_plugin->finalCheckEh(full);
-    if (presult != FC_DONE)
-    {
-      result = presult;
-    }
-    if (d_context.canPropagate())
-    {
-      result = FC_CONTINUE;
-    }
-    if (result == FC_DONE && !d_params.d_qiLazyQuickChecker
-        && !quickCheckQuantifiers())
-    {
-      result = FC_CONTINUE;
-    }
-    return result;
-  }
-
-  CheckModelResult checkModel()
-  {
-    if (empty())
-    {
-      return SAT;
-    }
-    return d_plugin->checkModel();
-  }
-};
-
-QuantifierManager::QuantifierManager(QuantifierServices& ctx, Params& fp)
-    : d_lazyScopes(0), d_lazy(true), d_inForcedRematch(false)
-{
-  d_imp.reset(new Imp(*this, ctx, fp, mkDefaultPlugin()));
-  d_imp->d_plugin->setManager(*this);
+  d_queue.setup();
+  d_mam.reset(mkMam(ctx, *this));
+  d_lazyMam.reset(mkMam(ctx, *this));
 }
 
 QuantifierManager::~QuantifierManager() {}
-
-QuantifierServices& QuantifierManager::getContext() const
-{
-  return d_imp->d_context;
-}
 
 void QuantifierManager::add(TNode q, uint32_t generation)
 {
   if (d_lazy)
   {
-    // The plugin's scopes are only created once the first quantifier shows
-    // up, so that a problem without quantifiers pays nothing.
     while (d_lazyScopes > 0)
     {
       --d_lazyScopes;
-      d_imp->push();
+      pushCore();
     }
     d_lazy = false;
   }
-  d_imp->add(q, generation);
+  QuantifierStat* stat = d_qstatGen(q, generation);
+  d_quantifierStat[q] = stat;
+  d_id2Quant[q.getId()] = q;
+  d_quantifiers.push_back(q);
 }
 
-void QuantifierManager::del(TNode q) { d_imp->del(q); }
-
-bool QuantifierManager::empty() const { return d_imp->empty(); }
-
-bool QuantifierManager::isShared(ENode* n) const { return d_imp->isShared(n); }
+void QuantifierManager::del(TNode q)
+{
+  d_quantifiers.pop_back();
+  d_quantifierStat.erase(q);
+}
 
 QuantifierStat* QuantifierManager::getStat(TNode q) const
 {
-  return d_imp->getStat(q);
+  auto it = d_quantifierStat.find(q);
+  Assert(it != d_quantifierStat.end());
+  return it->second;
 }
 
 TNode QuantifierManager::getQuantifierById(uint64_t id) const
 {
-  auto it = d_imp->d_id2Quant.find(id);
-  Assert(it != d_imp->d_id2Quant.end());
+  auto it = d_id2Quant.find(id);
+  Assert(it != d_id2Quant.end());
   return it->second;
 }
 
 uint32_t QuantifierManager::getGeneration(TNode q) const
 {
-  return d_imp->getGeneration(q);
-}
-
-bool QuantifierManager::addInstance(
-    TNode q,
-    TNode pat,
-    size_t numBindings,
-    ENode* const* bindings,
-    uint32_t maxGeneration,
-    uint32_t minTopGeneration,
-    uint32_t maxTopGeneration,
-    std::vector<std::pair<ENode*, ENode*>>& usedENodes)
-{
-  return d_imp->addInstance(q,
-                            pat,
-                            numBindings,
-                            bindings,
-                            maxGeneration,
-                            minTopGeneration,
-                            maxTopGeneration,
-                            usedENodes);
+  auto it = d_quantifierStat.find(q);
+  return it == d_quantifierStat.end() ? 0 : it->second->getGeneration();
 }
 
 bool QuantifierManager::addInstance(TNode q,
+                                    TNode pat,
                                     size_t numBindings,
                                     ENode* const* bindings,
-                                    uint32_t generation)
+                                    uint32_t maxGeneration,
+                                    uint32_t minTopGeneration,
+                                    uint32_t maxTopGeneration)
 {
-  std::vector<std::pair<ENode*, ENode*>> tmp;
-  return addInstance(q,
-                     TNode::null(),
-                     numBindings,
-                     bindings,
-                     generation,
-                     generation,
-                     generation,
-                     tmp);
+  if (d_quantifierStat.count(q) == 0)
+  {
+    return false;
+  }
+  maxGeneration = std::max(maxGeneration, getGeneration(q));
+  getStat(q)->updateMaxGeneration(maxGeneration);
+  Fingerprint* f = d_fingerprints.insert(
+      q.getId(), static_cast<uint32_t>(q.getId()), numBindings, bindings);
+  if (f != nullptr)
+  {
+    d_queue.insert(f, pat, maxGeneration, minTopGeneration, maxTopGeneration);
+  }
+  else
+  {
+    d_context.getStats().d_numMissedInstances++;
+  }
+  return f != nullptr;
 }
 
-void QuantifierManager::initSearchEh() { d_imp->initSearchEh(); }
+void QuantifierManager::initSearchEh()
+{
+  for (const Node& q : d_quantifiers)
+  {
+    getStat(q)->resetNumInstancesCurrSearch();
+  }
+  d_queue.initSearchEh();
+  d_lazyMatchingIdx = 0;
+}
 
-void QuantifierManager::assignEh(TNode q) { d_imp->assignEh(q); }
+void QuantifierManager::assignEh(TNode q)
+{
+  d_active = true;
+  if (TraceIsOn("z3-qpat"))
+  {
+    size_t numPats = 0;
+    std::stringstream arities;
+    if (q.getNumChildren() == 3)
+    {
+      for (const Node& a : q[2])
+      {
+        if (a.getKind() == Kind::INST_PATTERN)
+        {
+          numPats++;
+          arities << " " << a.getNumChildren();
+        }
+      }
+    }
+    Trace("z3-qpat") << "[assign-quant] q" << q.getId() << " pats=" << numPats
+                     << " arity" << arities.str() << " " << q << std::endl;
+  }
+  // A multi-pattern is only matched eagerly up to a bound, since matching
+  // one is much more expensive than matching a unary pattern. The bound is
+  // raised by one when the quantifier has no unary pattern at all, so that
+  // at least one of its patterns is always matched eagerly.
+  std::vector<std::vector<Node>> patterns;
+  getPatterns(q, patterns);
+  bool hasUnaryPattern = false;
+  for (const std::vector<Node>& mp : patterns)
+  {
+    if (mp.size() == 1)
+    {
+      hasUnaryPattern = true;
+      break;
+    }
+  }
+  uint32_t numEagerMultiPatterns = d_params.d_qiMaxEagerMultipatterns;
+  if (!hasUnaryPattern)
+  {
+    numEagerMultiPatterns++;
+  }
+  if (q.getNumChildren() != 3)
+  {
+    return;
+  }
+  size_t j = 0;
+  for (const Node& mp : q[2])
+  {
+    if (mp.getKind() != Kind::INST_PATTERN)
+    {
+      continue;
+    }
+    bool unary = mp.getNumChildren() == 1;
+    if (!unary && j >= numEagerMultiPatterns)
+    {
+      d_lazyMam->addPattern(q, mp);
+    }
+    else
+    {
+      d_mam->addPattern(q, mp);
+    }
+    if (!unary)
+    {
+      j++;
+    }
+  }
+}
 
 void QuantifierManager::addEqEh(ENode* n1, ENode* n2)
 {
-  d_imp->addEqEh(n1, n2);
+  if (!empty())
+  {
+    d_mam->addEqEh(n1, n2);
+  }
 }
 
-void QuantifierManager::relevantEh(ENode* n) { d_imp->relevantEh(n); }
+void QuantifierManager::relevantEh(ENode* n)
+{
+  if (!empty())
+  {
+    d_mam->relevantEh(n, false);
+    d_lazyMam->relevantEh(n, true);
+  }
+}
 
 FinalCheckStatus QuantifierManager::finalCheckEh(bool full)
 {
-  return d_imp->finalCheckEh(full);
+  if (!full)
+  {
+    return FC_DONE;
+  }
+  FinalCheckStatus result = d_queue.finalCheckEh() ? FC_DONE : FC_CONTINUE;
+  if (!empty() && d_lazyMatchingIdx < d_params.d_qiMaxLazyMultipatternMatching)
+  {
+    d_lazyMam->rematch();
+    d_context.pushTrail(ValueTrail<size_t>(d_lazyMatchingIdx));
+    d_lazyMatchingIdx++;
+  }
+  if (d_context.canPropagate())
+  {
+    result = FC_CONTINUE;
+  }
+  return result;
 }
 
-void QuantifierManager::restartEh() { d_imp->restartEh(); }
-
-bool QuantifierManager::canPropagate() const { return d_imp->canPropagate(); }
-
-void QuantifierManager::propagate() { d_imp->propagate(); }
-
-bool QuantifierManager::modelBased() const
+bool QuantifierManager::canPropagate() const
 {
-  return d_imp->d_plugin->modelBased();
+  return d_queue.hasWork() || (d_active && d_mam->hasWork());
 }
 
-bool QuantifierManager::hasQuantifiers() const
+void QuantifierManager::propagate()
 {
-  return d_imp->hasQuantifiers();
+  if (d_active)
+  {
+    d_mam->match();
+  }
+  d_queue.instantiate();
 }
 
-bool QuantifierManager::mbqiEnabled(TNode q) const
+void QuantifierManager::pushCore()
 {
-  return d_imp->d_plugin->mbqiEnabled(q);
-}
-
-QuantifierManager::CheckModelResult QuantifierManager::checkModel()
-{
-  return d_imp->checkModel();
+  d_mam->pushScope();
+  d_lazyMam->pushScope();
+  d_queue.pushScope();
 }
 
 void QuantifierManager::push()
@@ -465,9 +267,9 @@ void QuantifierManager::push()
   }
   else
   {
-    d_imp->push();
+    pushCore();
   }
-  d_imp->d_fingerprints.pushScope();
+  d_fingerprints.pushScope();
 }
 
 void QuantifierManager::pop(size_t numScopes)
@@ -478,321 +280,12 @@ void QuantifierManager::pop(size_t numScopes)
   }
   else
   {
-    d_imp->pop(numScopes);
-  }
-  d_imp->d_fingerprints.popScope(numScopes);
-}
-
-bool QuantifierManager::containsInstance(TNode q,
-                                         size_t numBindings,
-                                         ENode* const* bindings)
-{
-  return d_imp->d_fingerprints.contains(
-      q.getId(), static_cast<uint32_t>(q.getId()), numBindings, bindings);
-}
-
-void QuantifierManager::reset() {}
-
-void QuantifierManager::print(std::ostream& /*out*/) const {}
-
-void QuantifierManager::printStats(std::ostream& out) const
-{
-  d_imp->printStats(out);
-}
-
-const std::vector<Node>& QuantifierManager::quantifiers() const
-{
-  return d_imp->d_quantifiers;
-}
-
-size_t QuantifierManager::numQuantifiers() const
-{
-  return d_imp->d_quantifiers.size();
-}
-
-namespace {
-
-/** The default strategy: E-matching, as in Z3. */
-class DefaultQmPlugin : public QuantifierManagerPlugin
-{
- public:
-  DefaultQmPlugin()
-      : d_qm(nullptr),
-        d_params(nullptr),
-        d_context(nullptr),
-        d_newENodeQhead(0),
-        d_lazyMatchingIdx(0),
-        d_active(false)
-  {
-  }
-
-  void setManager(QuantifierManager& qm) override
-  {
-    Assert(d_qm == nullptr);
-    d_qm = &qm;
-    d_context = &(qm.getContext());
-    d_params = &(d_context->getParams());
-
-    d_mam.reset(mkMam(*d_context, qm));
-    d_lazyMam.reset(mkMam(*d_context, qm));
-  }
-
-  bool modelBased() const override { return d_params->d_mbqi; }
-
-  bool mbqiEnabled(TNode /*q*/) const override { return true; }
-
-  void add(TNode q) override
-  {
-    if (d_params->d_mbqi && mbqiEnabled(q))
-    {
-      d_active = true;
-    }
-  }
-
-  void del(TNode /*q*/) override {}
-
-  void push() override
-  {
-    d_mam->pushScope();
-    d_lazyMam->pushScope();
-  }
-
-  void pop(size_t numScopes) override
-  {
     d_mam->popScope(numScopes);
     d_lazyMam->popScope(numScopes);
+    d_queue.popScope(numScopes);
   }
-
-  void initSearchEh() override { d_lazyMatchingIdx = 0; }
-
-  void assignEh(TNode q) override
-  {
-    d_active = true;
-    if (!d_params->d_ematching)
-    {
-      return;
-    }
-    if (TraceIsOn("z3-qpat"))
-    {
-      size_t numPats = 0;
-      if (q.getNumChildren() == 3)
-      {
-        for (const Node& a : q[2])
-        {
-          if (a.getKind() == Kind::INST_PATTERN)
-          {
-            numPats++;
-          }
-        }
-      }
-      std::stringstream arities;
-      if (q.getNumChildren() == 3)
-      {
-        for (const Node& a : q[2])
-        {
-          if (a.getKind() == Kind::INST_PATTERN)
-          {
-            arities << " " << a.getNumChildren();
-          }
-        }
-      }
-      Trace("z3-qpat") << "[assign-quant] q" << q.getId() << " pats=" << numPats
-                       << " arity" << arities.str() << " " << q << std::endl;
-    }
-    // A multi-pattern is only matched eagerly up to a bound, since matching
-    // one is much more expensive than matching a unary pattern. The bound is
-    // raised by one when the quantifier has no unary pattern at all, so that
-    // at least one of its patterns is always matched eagerly.
-    std::vector<std::vector<Node>> patterns;
-    getPatterns(q, patterns);
-    bool hasUnaryPattern = false;
-    for (const std::vector<Node>& mp : patterns)
-    {
-      if (mp.size() == 1)
-      {
-        hasUnaryPattern = true;
-        break;
-      }
-    }
-    uint32_t numEagerMultiPatterns = d_params->d_qiMaxEagerMultipatterns;
-    if (!hasUnaryPattern)
-    {
-      numEagerMultiPatterns++;
-    }
-    TNode ipl = q.getNumChildren() == 3 ? q[2] : TNode::null();
-    size_t j = 0;
-    if (!ipl.isNull())
-    {
-      for (const Node& mp : ipl)
-      {
-        if (mp.getKind() != Kind::INST_PATTERN)
-        {
-          continue;
-        }
-        bool unary = mp.getNumChildren() == 1;
-        if (!unary && j >= numEagerMultiPatterns)
-        {
-          d_lazyMam->addPattern(q, mp);
-        }
-        else
-        {
-          d_mam->addPattern(q, mp);
-        }
-        if (!unary)
-        {
-          j++;
-        }
-      }
-    }
-  }
-
-  bool useEmatching() const { return d_params->d_ematching && !d_qm->empty(); }
-
-  void addEqEh(ENode* e1, ENode* e2) override
-  {
-    if (useEmatching())
-    {
-      d_mam->addEqEh(e1, e2);
-    }
-  }
-
-  /**
-   * Whether the code trees are fed from the enode list rather than as enodes
-   * become relevant: without relevancy, or when relevancy does not restrict
-   * matching.
-   */
-  bool matchAllENodes() const
-  {
-    return !d_context->relevancy() || !d_params->d_relevancyMatch;
-  }
-
-  void relevantEh(ENode* e) override
-  {
-    if (useEmatching() && !matchAllENodes())
-    {
-      d_mam->relevantEh(e, false);
-      d_lazyMam->relevantEh(e, true);
-    }
-  }
-
-  bool canPropagate() const override { return d_active && d_mam->hasWork(); }
-
-  void restartEh() override {}
-
-  bool isShared(ENode* n) const override
-  {
-    return d_active && (d_mam->isShared(n) || d_lazyMam->isShared(n));
-  }
-
-  void propagate() override
-  {
-    if (!d_active)
-    {
-      return;
-    }
-    d_mam->match();
-    if (matchAllENodes() && useEmatching())
-    {
-      // Every new enode is a matching candidate, so the code trees are fed
-      // directly from the enode list.
-      const ENodeVector& enodes = d_context->enodes();
-      size_t sz = enodes.size();
-      if (sz > d_newENodeQhead)
-      {
-        d_context->pushTrail(ValueTrail<size_t>(d_newENodeQhead));
-        while (d_newENodeQhead < sz)
-        {
-          ENode* e = enodes[d_newENodeQhead];
-          d_mam->relevantEh(e, false);
-          d_lazyMam->relevantEh(e, true);
-          d_newENodeQhead++;
-        }
-      }
-    }
-  }
-
-  QuantifierManager::CheckModelResult checkModel() override
-  {
-    // Model based quantifier instantiation is not ported, so the search
-    // cannot confirm that the candidate model satisfies the quantifiers.
-    return QuantifierManager::UNKNOWN;
-  }
-
-  FinalCheckStatus finalCheckEh(bool full) override
-  {
-    if (!full)
-    {
-      if (d_params->d_qiLazyInstantiation)
-      {
-        return finalCheckQuant();
-      }
-      return FC_DONE;
-    }
-    return finalCheckQuant();
-  }
-
- private:
-  FinalCheckStatus finalCheckQuant()
-  {
-    if (useEmatching())
-    {
-      if (d_lazyMatchingIdx < d_params->d_qiMaxLazyMultipatternMatching)
-      {
-        d_lazyMam->rematch();
-        d_context->pushTrail(ValueTrail<size_t>(d_lazyMatchingIdx));
-        d_lazyMatchingIdx++;
-      }
-    }
-    if (d_params->d_forceRematch && useEmatching() && !d_mam->hasWork()
-        && !d_lazyMam->hasWork())
-    {
-      // A diagnostic: re-run every code tree over every enode, ignoring
-      // relevancy. If this finds anything, incremental matching lost it.
-      size_t before = d_context->getStats().d_numInstances;
-      d_qm->setInForcedRematch(true);
-      d_mam->rematch(false);
-      d_qm->propagate();
-      d_qm->setInForcedRematch(false);
-      if (d_context->getStats().d_numInstances != before)
-      {
-        Trace("z3-rematch") << "force rematch found "
-                            << (d_context->getStats().d_numInstances - before)
-                            << " new instances" << std::endl;
-        return FC_CONTINUE;
-      }
-    }
-    if (d_params->d_enumInst && !d_qm->empty() && !d_mam->hasWork()
-        && !d_lazyMam->hasWork())
-    {
-      // E-matching has nothing left to do, which is where Z3 turns to model
-      // based instantiation; see z3/enum_inst.h.
-      if (d_enumInst == nullptr)
-      {
-        d_enumInst.reset(
-            new EnumInst(*d_context, *d_qm, d_params->d_enumInstMaxPerRound));
-      }
-      if (d_enumInst->instantiate(d_qm->quantifiers()))
-      {
-        return FC_CONTINUE;
-      }
-    }
-    return FC_DONE;
-  }
-
-  QuantifierManager* d_qm;
-  Params* d_params;
-  QuantifierServices* d_context;
-  std::unique_ptr<Mam> d_mam;
-  std::unique_ptr<Mam> d_lazyMam;
-  std::unique_ptr<EnumInst> d_enumInst;
-  size_t d_newENodeQhead;
-  size_t d_lazyMatchingIdx;
-  bool d_active;
-};
-
-}  // namespace
-
-QuantifierManagerPlugin* mkDefaultPlugin() { return new DefaultQmPlugin(); }
+  d_fingerprints.popScope(numScopes);
+}
 
 }  // namespace z3
 }  // namespace cvc5::internal

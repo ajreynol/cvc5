@@ -33,16 +33,11 @@ namespace z3 {
 /** A Boolean variable is just an index. */
 using BoolVar = uint32_t;
 
-using BoolVarVector = std::vector<BoolVar>;
-
 /** The absence of a Boolean variable. */
 inline constexpr BoolVar s_nullBoolVar = UINT32_MAX >> 1;
 
 /** The variable reserved for the constant true. */
 inline constexpr BoolVar s_trueBoolVar = 0;
-
-/** The first variable available for input formulas. */
-inline constexpr BoolVar s_firstBoolVar = 1;
 
 /**
  * A literal. The positive literal of variable b is represented by 2*b and the
@@ -66,14 +61,6 @@ class Literal
   constexpr BoolVar var() const { return d_val >> 1; }
 
   constexpr bool sign() const { return (d_val & 1u) != 0; }
-
-  /** The positive literal of the same variable. */
-  Literal unsign() const
-  {
-    Literal l;
-    l.d_val = d_val & ~1u;
-    return l;
-  }
 
   /** The dense index of this literal, in [0, 2*numVars). */
   uint32_t index() const { return d_val; }
@@ -144,26 +131,6 @@ using LiteralVector = std::vector<Literal>;
 struct LiteralToUnsigned
 {
   uint32_t operator()(Literal l) const { return l.toUint(); }
-};
-
-using LiteralApproxSet = ApproxSetTpl<Literal, LiteralToUnsigned, uint32_t>;
-
-using VarApproxSet = ApproxSetTpl<BoolVar, UnsignedToUnsigned, uint32_t>;
-
-/** Negate every literal of lits into result. */
-template <typename T>
-void negLiterals(size_t numLits, const Literal* lits, T& result)
-{
-  for (size_t i = 0; i < numLits; ++i)
-  {
-    result.push_back(~lits[i]);
-  }
-}
-
-/** Hash functor for Literal, for use with std:: containers. */
-struct LiteralHashFunction
-{
-  size_t operator()(Literal l) const { return l.hash(); }
 };
 
 }  // namespace z3

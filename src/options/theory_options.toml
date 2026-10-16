@@ -72,9 +72,6 @@ name   = "Theory Layer"
 [[option.mode.CENTRAL]]
   name = "central"
   help = "All applicable theories use the central equality engine."
-[[option.mode.NONE]]
-  name = "none"
-  help = "No equality engines, for theory solvers that keep their own equality reasoning (the ported Z3 components); there is no theory combination and no model."
 
 [[option]]
   name       = "tcMode"

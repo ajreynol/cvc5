@@ -13,7 +13,6 @@
 #include "theory/combination_care_graph.h"
 
 #include "expr/node_visitor.h"
-#include "options/theory_options.h"
 #include "prop/prop_engine.h"
 #include "theory/care_graph.h"
 #include "theory/model_manager.h"
@@ -34,11 +33,6 @@ CombinationCareGraph::~CombinationCareGraph() {}
 void CombinationCareGraph::combineTheories()
 {
   Trace("combineTheories") << "TheoryEngine::combineTheories()" << std::endl;
-  if (options().theory.eeMode == options::EqEngineMode::NONE)
-  {
-    // the theory solvers share their own equality reasoning
-    return;
-  }
 
   // Care graph we'll be building
   CareGraph careGraph;
@@ -99,11 +93,6 @@ void CombinationCareGraph::combineTheories()
 bool CombinationCareGraph::buildModel()
 {
   // building the model happens as a separate step
-  if (d_mmanager == nullptr)
-  {
-    // no model (--ee-mode=none)
-    return false;
-  }
   return d_mmanager->buildModel();
 }
 

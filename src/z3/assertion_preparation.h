@@ -32,12 +32,12 @@ class SmtContext;
 /**
  * The stage between cvc5's preprocessing and the ported core, which
  * establishes the invariants the core inherits from Z3's own preprocessing
- * (asserted_formulas::reduce()) and that cvc5's preprocessing does not; see
- * the README. In order, each assertion is converted to negation normal form,
+ * (asserted_formulas::reduce()) and that cvc5's preprocessing does not. In
+ * order, each assertion is converted to negation normal form,
  * naming the quantifiers below atoms, after which each definition introduced
- * by the naming and then the formula itself is rewritten (optionally),
- * ite-lifted (optionally), normalized and given inferred patterns, rewritten
- * again (optionally) and asserted to the core.
+ * by the naming and then the formula itself is rewritten, normalized and
+ * given inferred patterns, rewritten again, put in the form cvc5's theories
+ * take, and asserted to the core.
  *
  * This is part of the propositional engine's input conversion, as the CNF
  * conversion is in cvc5's own engine. The definitions it introduces are
@@ -55,13 +55,12 @@ class AssertionPreparation : protected EnvObj
   AssertionPreparation(Env& env);
   /**
    * Prepare assertions, in order, with the utilities of ctx, and assert the
-   * results to core. If prepared is not null, the results are also appended
-   * to it, in order.
+   * results to core. The results are also appended to prepared, in order.
    */
   void apply(SmtContext& ctx,
              PropCore& core,
              const std::vector<Node>& assertions,
-             std::vector<Node>* prepared = nullptr);
+             std::vector<Node>& prepared);
 };
 
 }  // namespace z3

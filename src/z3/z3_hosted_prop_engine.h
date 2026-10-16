@@ -27,16 +27,14 @@ class HostCore;
 class SharedBackend;
 
 /**
- * The propositional engine used with --z3 --z3-prop-engine=cvc5: cvc5's own
- * PropEngine (CNF conversion, CDCL(T) solver, decision heuristic), paired by
- * smt::EngineFactory with Z3TheoryEngine in hosted mode, or with cvc5's
- * TheoryEngine and the port's theory slots (--z3-theory-engine=cvc5).
+ * The propositional engine used with --z3: cvc5's own PropEngine (CNF
+ * conversion, CDCL(T) solver, decision heuristic), over cvc5's TheoryEngine
+ * with the ported core in the quantifiers slot.
  *
  * It differs from PropEngine only in its input: the preprocessed assertions
- * are first prepared for the core (AssertionPreparation), as Z3PropEngine
- * does, and the prepared formulas go both to the core's propositional side,
- * which mirrors the search for the theory side, and to cvc5's CNF
- * conversion. See ARCHITECTURE_PLAN.md, section 15.
+ * are first prepared for the core (AssertionPreparation), and the prepared
+ * formulas go both to the core's propositional side, which mirrors the
+ * search for the theory side, and to cvc5's CNF conversion.
  */
 class Z3HostedPropEngine : public prop::PropEngine
 {
@@ -52,7 +50,7 @@ class Z3HostedPropEngine : public prop::PropEngine
                      HostCore& core);
   ~Z3HostedPropEngine() override;
 
-  /** Make a fresh core, as Z3PropEngine does. */
+  /** Make a fresh core. */
   void finishInit() override;
   /**
    * Prepare the assertions for the core, assert them to it, and convert the
@@ -63,7 +61,7 @@ class Z3HostedPropEngine : public prop::PropEngine
   void assertInputFormulas(
       const std::vector<Node>& assertions,
       std::unordered_map<size_t, Node>& skolemMap) override;
-  /** As Z3PropEngine: the core supports none of the optional features. */
+  /** The core supports none of the optional features. */
   bool supports(prop::SearchFeature f) const override;
 
  private:

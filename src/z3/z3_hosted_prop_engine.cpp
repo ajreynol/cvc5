@@ -51,7 +51,7 @@ void Z3HostedPropEngine::assertInputFormulas(
 {
   std::vector<Node> prepared;
   d_prep.apply(
-      d_backend.getContext(), d_backend.getPropCore(), assertions, &prepared);
+      d_backend.getContext(), d_backend.getPropCore(), assertions, prepared);
   std::unordered_map<size_t, Node> noSkolems;
   PropEngine::assertInputFormulas(prepared, noSkolems);
 }

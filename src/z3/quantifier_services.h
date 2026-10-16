@@ -10,8 +10,7 @@
  * What the quantifier stack uses of the theory side.
  *
  * Not ported from Z3, where the quantifier stack calls smt::context
- * directly: this is the outbound half of the contract of the stack, which
- * Phase C of THEORY_BRANCH.md extracts.
+ * directly: this is the outbound half of the contract of the stack.
  */
 
 #include "cvc5_private.h"
@@ -38,15 +37,15 @@ struct Params;
 struct Statistics;
 
 /**
- * The services the quantifier stack (QuantifierManager and its plugin, the
- * matcher Mam, the instance queue QiQueue, Checker, QuickChecker and
- * EnumInst) uses of the theory side, which SmtContext implements. The stack
+ * The services the quantifier stack (QuantifierManager, the matcher Mam, the
+ * instance queue QiQueue and Checker) uses of the theory side, which
+ * SmtContext implements. The stack
  * calls nothing else of the theory side; it reads enodes directly.
  *
  * The inbound half of the contract is QuantifierManager's interface: the
  * theory side tells it when a quantifier is asserted or deleted, when an
  * enode becomes relevant, when two classes merge, and when to propagate, to
- * run a final check, to push, to pop and to restart.
+ * run a final check, to push and to pop.
  */
 class QuantifierServices
 {
@@ -58,8 +57,6 @@ class QuantifierServices
   virtual bool eInternalized(TNode n) const = 0;
   /** The enode of n, which must have one. */
   virtual ENode* getENode(TNode n) const = 0;
-  /** All enodes, in the order of their creation. */
-  virtual const ENodeVector& enodes() const = 0;
   /** The enodes of the applications of decl. */
   virtual const ENodeVector& enodesOf(TNode decl) const = 0;
   virtual size_t getNumENodesOf(TNode decl) const = 0;
@@ -76,8 +73,6 @@ class QuantifierServices
   /** The generation of the class of e. */
   virtual uint32_t getGeneration(ENode* e) const = 0;
   virtual uint32_t getMaxGeneration(size_t numENodes, ENode* const* enodes) = 0;
-  /** The value of the class of n, if it has one. */
-  virtual bool getValue(ENode* n, Node& value) = 0;
   /** Internalize the ground term n of a pattern. */
   virtual void internalize(TNode n, bool gateCtx, uint32_t generation) = 0;
 
@@ -91,11 +86,10 @@ class QuantifierServices
   virtual bool canPropagate() const = 0;
 
   // ------------------------------------------------------- relevance view
-  virtual bool relevancy() const = 0;
   virtual bool isRelevant(TNode n) const = 0;
-  /** Whether E-matching considers n (--z3-relevancy-match). */
+  /** Whether E-matching considers n: n is relevant. */
   virtual bool isRelevantForMatching(ENode* n) const = 0;
-  /** Whether the instance checkers consider n (--z3-relevancy-check). */
+  /** Whether the instance checkers consider n: n is relevant. */
   virtual bool isRelevantForChecking(TNode n) const = 0;
   virtual bool isRelevantForChecking(ENode* n) const = 0;
   virtual void markAsRelevant(ENode* n) = 0;
@@ -107,11 +101,7 @@ class QuantifierServices
    * Internalize the body of an instance with its generation; see
    * SmtContext::internalizeInstance.
    */
-  virtual bool internalizeInstance(TNode body,
-                                   uint32_t generation,
-                                   Node& root) = 0;
-  /** Make a permanent instance a root again (--z3-qi-permanent-local). */
-  virtual void reactivateInstance(TNode root) = 0;
+  virtual void internalizeInstance(TNode body, uint32_t generation) = 0;
 
   // ------------------------------------------------------- infrastructure
   virtual Statistics& getStats() = 0;
@@ -128,7 +118,6 @@ class QuantifierServices
   }
   virtual bool getCancelFlag() = 0;
   virtual bool resourceLimitsExceeded() = 0;
-  virtual void setReasonUnknown(const std::string& msg) = 0;
 };
 
 }  // namespace z3

@@ -12,15 +12,17 @@
  * Ported from Z3 (MIT License, Copyright (c) Microsoft Corporation),
  * file src/smt/smt_context.h, and recast in cvc5 style.
  *
- * This is Z3's CDCL(T) engine. It owns the Boolean search (watch lists,
- * propagation, conflict resolution, restarts, lemma garbage collection), the
- * E-graph (congruence closure over enodes), relevancy propagation, the
- * case-split queue, the theory plugins, and the quantifier manager.
+ * The theory side of the core: the E-graph (congruence closure over
+ * enodes), the internalizer, and the quantifier manager. Its propositional
+ * side, PropCore, mirrors cvc5's assignment (see HostCore); the ground
+ * reasoning is cvc5's theories', whose equalities reach the E-graph through
+ * the ShadowFeed.
  *
- * What is deliberately not ported: proof production, the user propagator,
- * parallel and lookahead search, consequence finding, Z3's asserted_formulas
- * preprocessing pipeline (cvc5's Preprocessor is used instead), lambdas, and
- * Z3's label literals.
+ * Of Z3's context, only what E-matching and quantifier instantiation need
+ * is ported: not its search (decisions, conflict resolution, restarts, lemma
+ * garbage collection), its theory plugins, proof production, or Z3's
+ * asserted_formulas preprocessing pipeline (cvc5's Preprocessor is used
+ * instead).
  */
 
 #include "cvc5_private.h"
@@ -42,11 +44,8 @@
 #include "z3/ast.h"
 #include "z3/b_justification.h"
 #include "z3/bool_var_data.h"
-#include "z3/case_split_queue.h"
 #include "z3/cg_table.h"
 #include "z3/clause.h"
-#include "z3/conflict_resolution.h"
-#include "z3/dyn_ack.h"
 #include "z3/enode.h"
 #include "z3/eq_justification.h"
 #include "z3/explainer.h"
@@ -55,16 +54,12 @@
 #include "z3/params.h"
 #include "z3/pattern_inference.h"
 #include "z3/prop_core.h"
-#include "z3/push_app_ite.h"
 #include "z3/quantifier_manager.h"
 #include "z3/quantifier_services.h"
 #include "z3/relevancy.h"
 #include "z3/statistics.h"
-#include "z3/theory.h"
-#include "z3/theory_status.h"
 #include "z3/types.h"
 #include "z3/util/literal.h"
-#include "z3/util/random_gen.h"
 #include "z3/util/trail.h"
 #include "z3/util/uint_set.h"
 #include "z3/util/util.h"
@@ -73,20 +68,7 @@
 namespace cvc5::internal {
 namespace z3 {
 
-class ModelGenerator;
 class QuantifierManager;
-class Cvc5Bridge;
-
-/** How the core is configured. Z3's config_mode. */
-enum ConfigMode
-{
-  /** no automatic configuration */
-  CFG_BASIC,
-  /** configure from the logic */
-  CFG_LOGIC,
-  /** configure from the static features of the input */
-  CFG_AUTO
-};
 
 /**
  * The theory side of the ported core; PropCore is the propositional side.
@@ -94,10 +76,6 @@ enum ConfigMode
  */
 class SmtContext final : protected EnvObj, public QuantifierServices
 {
-  friend class ModelGenerator;
-  friend class ConflictResolution;
-  friend class DynAckManager;
-
  public:
   /** The search statistics. Public, as in Z3. */
   Statistics d_stats;
@@ -114,40 +92,10 @@ class SmtContext final : protected EnvObj, public QuantifierServices
   SmtContext(const SmtContext&) = delete;
   SmtContext& operator=(const SmtContext&) = delete;
 
-  // --------------------------------------------------------------- setup
-  /** Register a theory plugin. Takes ownership. */
-  void registerPlugin(Theory* th);
-
-  /**
-   * Configure the core. A logical context can only be configured at scope
-   * level zero and before internalizing any formula.
-   */
-  void setupContext(bool useStaticFeatures);
-
-  void setupComponents();
-
-  ConfigMode getConfigMode(bool useStaticFeatures) const;
-
   // ---------------------------------------------------------- assertions
   //
-  // The asserted formulas, the checks and user scopes are driven by the
-  // propositional side, PropCore; Z3PropEngine calls it. The methods below
-  // forward to it for the theory side.
-
-  /** Assert a (prepared) formula. */
-  void assertFormula(TNode e) { d_prop.assertFormula(e); }
-
-  /** A development hook: dump the assigned relevant literals to a file. */
-  void dumpCandidateModel(const char* path);
-
-  /** Write what the core was given, as a parsable benchmark. */
-  void dumpAssertions(const char* path);
-
-  /** A development hook: check the candidate model with a cvc5 subsolver. */
-  void checkCandidateModel();
-
-  /** Internalize the assertions that have not been internalized yet. */
-  void internalizeAssertions() { d_prop.internalizeAssertions(); }
+  // The asserted formulas and the checks are driven by the propositional
+  // side, PropCore. The methods below forward to it for the theory side.
 
   size_t getNumAssertedFormulas() const
   {
@@ -165,15 +113,6 @@ class SmtContext final : protected EnvObj, public QuantifierServices
    */
   void internalizeAssertion(TNode n, uint32_t generation);
 
-  /**
-   * As internalizeAssertion, but through PropCore::assertPermanentLemma, whose
-   * result is returned.
-   */
-  bool internalizePermanentLemma(TNode n, uint32_t generation);
-
-  // -------------------------------------------------------------- search
-  Failure getLastSearchFailure() const { return d_prop.getLastSearchFailure(); }
-
   // ------------------------------------- the scheduling and backtracking
   //                                       contract, called by PropCore
   /**
@@ -189,27 +128,8 @@ class SmtContext final : protected EnvObj, public QuantifierServices
   /** Called at the start of a search. */
   void initSearchEh();
 
-  /**
-   * The final check, when every Boolean variable is assigned. If the theory
-   * side gives up for a known reason, failure is set to it, and otherwise to
-   * OK.
-   */
-  FinalCheckStatus finalCheck(Failure& failure);
-
-  /** Called on a restart, after backtracking to the search level. */
-  void restartEh();
-
-  /**
-   * Whether a satisfying assignment of the quantifier-free part is a model.
-   * SAT if there are no quantifiers to check.
-   */
-  QuantifierManager::CheckModelResult checkModel();
-
-  /** Called after each conflict is resolved, when the search continues. */
-  void notifyConflictResolved();
-
-  /** Drop the pending propagations, when a conflict is found. */
-  void clearPropagationQueues();
+  /** The final check, when every relevant Boolean variable is assigned. */
+  FinalCheckStatus finalCheck();
 
   /** Push a scope of the theory side, after the propositional side's. */
   void pushTheoryScope();
@@ -221,44 +141,22 @@ class SmtContext final : protected EnvObj, public QuantifierServices
   void popTheoryScopeBegin(size_t numScopes);
 
   /**
-   * Pop numScopes scopes of the rest of the theory side, down to newLvl,
-   * after the Boolean variables are unassigned: the trail, the theories, the
-   * justifications, the propagation queues and the region.
+   * Pop numScopes scopes of the rest of the theory side, after the Boolean
+   * variables are unassigned: the trail, the propagation queues and the
+   * region, where the justifications live.
    */
-  void popTheoryScopeEnd(size_t numScopes, uint32_t newLvl);
+  void popTheoryScopeEnd(size_t numScopes);
 
   void resetCacheGeneration();
 
   Explainer& getExplainer() { return d_explainer; }
 
-  void setReasonUnknown(const std::string& msg) override
-  {
-    d_prop.setReasonUnknown(msg);
-  }
-
-  /** Print the quantifier profile, if requested, when a check finishes. */
-  void reportQuantifierProfile();
-
-  /**
-   * Whether an assignment that satisfies the Boolean abstraction may be
-   * reported as a model; see TheoryStatus::canConfirmModel.
-   */
-  bool canConfirmModel(std::string& reason) const;
-
-  std::ostream& printLastFailure(std::ostream& out) const;
-
   // ----------------------------------------------------------- accessors
   Params& getParams() override { return d_params; }
-
-  const Params& getParams() const { return d_params; }
 
   Statistics& getStats() override { return d_stats; }
 
   Region& getRegion() override { return d_region; }
-
-  bool relevancy() const override { return d_prop.relevancy(); }
-
-  uint32_t relevancyLvl() const { return d_prop.relevancyLvl(); }
 
   ENode* getENode(TNode n) const override
   {
@@ -275,8 +173,7 @@ class SmtContext final : protected EnvObj, public QuantifierServices
   // ------------------------------------- the Boolean search, see PropCore
   //
   // The methods below forward to the propositional side, d_prop. They are
-  // the Boolean API that the theory side, the theory plugins and the
-  // quantifier engine use.
+  // the Boolean API that the theory side and the quantifier engine use.
 
   /** The propositional side. */
   PropCore& getPropCore() { return d_prop; }
@@ -289,11 +186,7 @@ class SmtContext final : protected EnvObj, public QuantifierServices
 
   BoolVar getBoolVarOfId(size_t id) const { return d_prop.getBoolVarOfId(id); }
 
-  const ClauseVector& getLemmas() const { return d_prop.getLemmas(); }
-
   Literal getLiteral(TNode n) const { return d_prop.getLiteral(n); }
-
-  bool hasENode(BoolVar v) const { return getBdata(v).isENode(); }
 
   ENode* boolVar2ENode(BoolVar v) const
   {
@@ -314,20 +207,15 @@ class SmtContext final : protected EnvObj, public QuantifierServices
     return n == d_falseENode ? s_falseLiteral : Literal(enode2BoolVar(n));
   }
 
-  size_t getNumBoolVars() const { return d_prop.getNumBoolVars(); }
-
   BoolVarData& getBdata(BoolVar v) { return d_prop.getBdata(v); }
 
   const BoolVarData& getBdata(BoolVar v) const { return d_prop.getBdata(v); }
 
+  bool hasENode(BoolVar v) const { return getBdata(v).isENode(); }
+
   LBool getAssignment(Literal l) const { return d_prop.getAssignment(l); }
 
   LBool getAssignment(BoolVar v) const { return d_prop.getAssignment(v); }
-
-  const LiteralVector& assignedLiterals() const
-  {
-    return d_prop.assignedLiterals();
-  }
 
   LBool getAssignment(TNode n) const override
   {
@@ -336,44 +224,11 @@ class SmtContext final : protected EnvObj, public QuantifierServices
 
   LBool getAssignment(ENode* n) const;
 
-  void setRandomSeed(uint32_t s) { d_random.setSeed(s); }
-
-  int getRandomValue() { return d_random(); }
-
-  bool isSearching() const { return d_prop.isSearching(); }
-
-  uint64_t getNumAssignments() const { return d_stats.d_numAssignments; }
-
-  uint64_t getBirthdate(BoolVar v) const { return d_prop.getBirthdate(v); }
-
-  /** The scope level at which v was assigned. */
-  uint32_t getAssignLevel(BoolVar v) const { return d_prop.getAssignLevel(v); }
-
-  uint32_t getAssignLevel(Literal l) const { return d_prop.getAssignLevel(l); }
-
-  /** The scope level at which v was internalized. */
-  uint32_t getInternLevel(BoolVar v) const { return d_prop.getInternLevel(v); }
-
-  Theory* getTheory(TheoryId thId) const
-  {
-    return thId == s_nullTheoryId ? nullptr : d_theories[thId];
-  }
-
-  const std::vector<Theory*>& theories() const { return d_theorySet; }
-
   uint32_t getScopeLevel() const override { return d_prop.getScopeLevel(); }
-
-  uint32_t getBaseLevel() const { return d_prop.getBaseLevel(); }
-
-  bool atBaseLevel() const { return d_prop.atBaseLevel(); }
-
-  uint32_t getSearchLevel() const { return d_prop.getSearchLevel(); }
 
   TNode boolVar2Expr(BoolVar v) const { return d_prop.boolVar2Expr(v); }
 
   bool isTrue(const ENode* n) const { return n == d_trueENode; }
-
-  bool isFalse(const ENode* n) const { return n == d_falseENode; }
 
   size_t getNumENodesOf(TNode decl) const override
   {
@@ -386,8 +241,6 @@ class SmtContext final : protected EnvObj, public QuantifierServices
     uint32_t id = getDeclIdOption(decl);
     return id < d_decl2ENodes.size() ? d_decl2ENodes[id] : d_emptyVector;
   }
-
-  const ENodeVector& enodes() const override { return d_enodes; }
 
   uint32_t getGeneration(ENode* e) const override
   {
@@ -416,17 +269,8 @@ class SmtContext final : protected EnvObj, public QuantifierServices
 
   void setGeneration(ENode* e, uint32_t generation);
 
-  /** True if the core internalized universal quantifiers. */
-  bool internalizedQuantifiers() const;
-
   /** True if the input contains universal quantifiers. */
   bool hasQuantifiers() const { return d_prop.hasQuantifiers(); }
-
-  TheoryId getVarTheory(BoolVar v) const { return getBdata(v).getTheory(); }
-
-  void setVarTheory(BoolVar v, TheoryId tid);
-
-  QuantifierManager* getQuantifierManager() { return d_qmanager.get(); }
 
   // ----------------------------------------------- backtracking support
   template <typename TrailObject>
@@ -468,13 +312,9 @@ class SmtContext final : protected EnvObj, public QuantifierServices
 
   Nnf& getNnf() { return d_nnf; }
 
-  /** Z3's ng_lift_ite step; see z3/push_app_ite.h. */
-  NgPushAppIte& getNgPushAppIte() { return d_ngPushAppIte; }
-
   /**
-   * The preprocessing of cvc5's own theories, when they fill theory slots
-   * next to the port's (--z3-slots other than all): it maps a formula to the
-   * form cvc5's theories take, adding to defs the definitions of the skolems
+   * The preprocessing of cvc5's own theories: it maps a formula to the form
+   * cvc5's theories take, adding to defs the definitions of the skolems
    * it introduces. The input (AssertionPreparation) and the instances
    * (internalizeInstance) go through it before the core asserts them and
    * hands them to cvc5, so that both see the same atoms.
@@ -484,7 +324,7 @@ class SmtContext final : protected EnvObj, public QuantifierServices
   {
     d_cvc5Preprocessor = std::move(p);
   }
-  /** The preprocessing of cvc5's theories, or null if there is none. */
+  /** The preprocessing of cvc5's theories. */
   const Cvc5Preprocessor& getCvc5Preprocessor() const
   {
     return d_cvc5Preprocessor;
@@ -492,7 +332,7 @@ class SmtContext final : protected EnvObj, public QuantifierServices
 
   /**
    * Merge the classes of a and b, which must be internalized as terms, since
-   * cvc5's theories made them equal (--no-z3-shadow-plugins). The merge is
+   * cvc5's theories made them equal. The merge is
    * queued for the next propagation. The core cannot explain it.
    */
   void assumeExternalEq(TNode a, TNode b)
@@ -515,79 +355,16 @@ class SmtContext final : protected EnvObj, public QuantifierServices
   /** The environment of the enclosing cvc5 solver. */
   const Env& getEnv() const override { return d_env; }
 
-  /** The shared state of the bridges to cvc5's own theory solvers. */
-  Cvc5Bridge& getCvc5Bridge();
-
   /**
-   * Record that the input uses a construct this port does not support, so
-   * that the search answers "unknown" instead of guessing.
+   * Internalize the body of a quantifier instance, in the form cvc5's
+   * theories take, after renormalizing its variables. The instance is
+   * asserted at the current scope.
    */
-  void markUnsupported() { d_theoryStatus.markUnsupported(); }
-
-  bool isUnsupported() const { return d_theoryStatus.isUnsupported(); }
-
-  /**
-   * Internalize the body of a quantifier instance, after renormalizing its
-   * variables. The instance is asserted at the current scope, or with
-   * --z3-qi-permanent as a lemma that survives backtracking. Returns true in
-   * the latter case, and then sets root to the formula asserted, for
-   * reactivateInstance.
-   */
-  bool internalizeInstance(TNode body,
-                           uint32_t generation,
-                           Node& root) override;
-
-  /**
-   * Make the permanent instance root a root again in the current scope, when
-   * matching finds it again (--z3-qi-permanent-local).
-   */
-  void reactivateInstance(TNode root) override
-  {
-    d_prop.reactivatePermanentRoot(root);
-  }
-
-  void ensureInternalized(TNode e);
+  void internalizeInstance(TNode body, uint32_t generation) override;
 
   void internalize(TNode n, bool gateCtx);
   void internalize(const Node* exprs, size_t numExprs, bool gateCtx);
   void internalize(TNode n, bool gateCtx, uint32_t generation) override;
-
-  ENode* nonGroundInternalize(TNode e);
-
-  Clause* mkClause(size_t numLits,
-                   Literal* lits,
-                   Justification* j,
-                   ClauseKind k = CLS_AUX,
-                   ClauseDelEh* delEh = nullptr)
-  {
-    return d_prop.mkClause(numLits, lits, j, k, delEh);
-  }
-
-  void mkClause(Literal l1, Literal l2, Justification* j)
-  {
-    d_prop.mkClause(l1, l2, j);
-  }
-
-  void mkClause(Literal l1, Literal l2, Literal l3, Justification* j)
-  {
-    d_prop.mkClause(l1, l2, l3, j);
-  }
-
-  void mkThClause(TheoryId tid, size_t numLits, Literal* lits, ClauseKind k);
-
-  void mkThAxiom(TheoryId tid, size_t numLits, Literal* lits)
-  {
-    mkThClause(tid, numLits, lits, CLS_TH_AXIOM);
-  }
-
-  void mkThAxiom(TheoryId tid, Literal l1);
-  void mkThAxiom(TheoryId tid, Literal l1, Literal l2);
-  void mkThAxiom(TheoryId tid, Literal l1, Literal l2, Literal l3);
-
-  void mkThAxiom(TheoryId tid, const LiteralVector& ls)
-  {
-    mkThAxiom(tid, ls.size(), const_cast<Literal*>(ls.data()));
-  }
 
   // ---------------------------------------------------- trail callbacks
   /** Undo an addEq; invoked from the trail. */
@@ -601,32 +378,13 @@ class SmtContext final : protected EnvObj, public QuantifierServices
 
   BoolVar mkBoolVar(TNode n) { return d_prop.mkBoolVar(n); }
 
-  /**
-   * Make the Boolean variable of atom, an atom of the theory tid, which is
-   * notified of its assignments. If hasENode, the enode of atom has already
-   * been made, and is merged with true or false when the variable is
-   * assigned. This is how a theory plugin registers an atom.
-   */
-  BoolVar mkTheoryAtomVar(TNode atom, TheoryId tid, bool hasENode = false);
-
   ENode* mkENode(TNode n, bool suppressArgs, bool mergeTf, bool cgcEnabled);
-
-  void attachThVar(ENode* n, Theory* th, TheoryVar v);
 
   template <typename JustificationT>
   Justification* mkJustification(const JustificationT& j)
   {
-    Justification* js = new (getRegion()) JustificationT(j);
-    Assert(js->inRegion());
-    if (js->hasDelEh())
-    {
-      d_justifications.push_back(js);
-    }
-    return js;
+    return new (getRegion()) JustificationT(j);
   }
-
-  /** Keep j, which is not in the region, until its scope is popped. */
-  void addJustification(Justification* j) { d_justifications.push_back(j); }
 
   /** Hand an assigned atom to the theory side; see propagateAtoms. */
   void enqueueAtom(Literal l) { d_atomPropagationQueue.push_back(l); }
@@ -640,19 +398,7 @@ class SmtContext final : protected EnvObj, public QuantifierServices
    */
   void cacheGeneration(TNode n, uint32_t newScopeLvl);
 
-  void mkGateClause(size_t numLits, Literal* lits)
-  {
-    d_prop.mkGateClause(numLits, lits);
-  }
   void mkGateClause(Literal l1, Literal l2) { d_prop.mkGateClause(l1, l2); }
-  void mkGateClause(Literal l1, Literal l2, Literal l3)
-  {
-    d_prop.mkGateClause(l1, l2, l3);
-  }
-  void mkGateClause(Literal l1, Literal l2, Literal l3, Literal l4)
-  {
-    d_prop.mkGateClause(l1, l2, l3, l4);
-  }
 
   /**
    * Internalize n, a subterm of an assertion, in the given context; see
@@ -663,48 +409,15 @@ class SmtContext final : protected EnvObj, public QuantifierServices
   void setEnodeFlag(BoolVar v, bool isNewVar);
 
   // ------------------------------------------------------------- engine
-  void assign(Literal l, const BJustification& j, bool decision = false)
-  {
-    d_prop.assign(l, j, decision);
-  }
+  void assign(Literal l, const BJustification& j) { d_prop.assign(l, j); }
 
-  void assign(Literal l, Justification* j, bool decision = false)
-  {
-    d_prop.assign(l, j, decision);
-  }
-
-  void setTrueFirstFlag(BoolVar v) { d_prop.setTrueFirstFlag(v); }
-
-  bool tryTrueFirst(BoolVar v) const { return d_prop.tryTrueFirst(v); }
-
-  bool assumeEq(ENode* lhs, ENode* rhs);
-
-  bool isShared(ENode* n) const;
-
-  bool isBetaRedex(ENode* p, ENode* n) const;
-
-  void assignEq(ENode* lhs, ENode* rhs, const EqJustification& js)
-  {
-    pushEq(lhs, rhs, js);
-  }
-
-  /**
-   * Force the given phase the next time v is case split. Has no effect if
-   * phase caching is disabled.
-   */
-  void forcePhase(BoolVar v, bool phase) { d_prop.forcePhase(v, phase); }
-
-  void forcePhase(Literal l) { d_prop.forcePhase(l); }
-
-  void setGlobalGeneration(uint32_t generation) { d_generation = generation; }
+  void assign(Literal l, Justification* j) { d_prop.assign(l, j); }
 
   void addEq(ENode* n1, ENode* n2, EqJustification js);
 
   void setConflict(Justification* js) { d_prop.setConflict(js); }
 
   bool inconsistent() const override { return d_prop.inconsistent(); }
-
-  uint64_t getNumConflicts() const { return d_prop.getNumConflicts(); }
 
   static bool isEq(const ENode* n1, const ENode* n2)
   {
@@ -728,40 +441,6 @@ class SmtContext final : protected EnvObj, public QuantifierServices
   }
 
   bool isDiseq(ENode* n1, ENode* n2) const override;
-
-  /**
-   * Check disequality using congruence and equality atoms, ignoring distinct
-   * root values.
-   */
-  bool isDiseqNoValueCheck(ENode* n1, ENode* n2) const;
-
-  bool isDiseqSlow(ENode* n1, ENode* n2) const;
-
-  /**
-   * An extended disequality check that looks through parents up to the given
-   * depth.
-   *
-   * Note Z3 indexes the deep case with an "almost congruence" table, which is
-   * not ported: that index exists for array extensionality, which this port
-   * does not cover. The shallow case is faithful, and the deep case falls back
-   * to the shallow search, which may report fewer disequalities than Z3 and so
-   * only weakens a branching heuristic.
-   */
-  bool isExtDiseq(ENode* n1, ENode* n2, uint32_t depth);
-
-  /**
-   * Whether v is the variable of an equality atom whose sides are known to be
-   * disequal, as isExtDiseq with depth 2 decides. For the lookahead of the
-   * relevancy case split queue (d_lookaheadDiseq), through PropCore.
-   */
-  bool isExtDiseqAtom(BoolVar v);
-
-  /**
-   * Tell the theory of the atom of v that conflict resolution marked v
-   * (Theory::conflictResolutionEh). Called by ConflictResolution through
-   * PropCore.
-   */
-  void conflictResolutionEh(BoolVar v);
 
   /** An enode congruent to decl(args), or null if there is none. */
   ENode* getENodeEqTo(TNode decl,
@@ -788,70 +467,24 @@ class SmtContext final : protected EnvObj, public QuantifierServices
 
   bool isRelevant(ENode* n) const { return isRelevant(n->getExpr()); }
 
-  bool isRelevant(BoolVar v) const { return d_prop.isRelevant(v); }
-
   bool isRelevant(Literal l) const { return d_prop.isRelevant(l); }
 
-  bool isRelevantCore(Literal l) const { return d_prop.isRelevantCore(l); }
+  /** Whether E-matching considers n. */
+  bool isRelevantForMatching(ENode* n) const override { return isRelevant(n); }
 
-  /**
-   * Whether E-matching considers n: n is relevant, or relevancy does not
-   * restrict matching (--no-z3-relevancy-match).
-   */
-  bool isRelevantForMatching(TNode n) const
-  {
-    return !d_params.d_relevancyMatch || isRelevant(n);
-  }
+  /** Whether the instance checkers consider n. */
+  bool isRelevantForChecking(TNode n) const override { return isRelevant(n); }
 
-  bool isRelevantForMatching(ENode* n) const override
-  {
-    return !d_params.d_relevancyMatch || isRelevant(n);
-  }
-
-  /**
-   * Whether the instance checkers consider n: n is relevant, or relevancy
-   * does not restrict them (--no-z3-relevancy-check).
-   */
-  bool isRelevantForChecking(TNode n) const override
-  {
-    return !d_params.d_relevancyCheck || isRelevant(n);
-  }
-
-  bool isRelevantForChecking(ENode* n) const override
-  {
-    return !d_params.d_relevancyCheck || isRelevant(n);
-  }
+  bool isRelevantForChecking(ENode* n) const override { return isRelevant(n); }
 
   void markAsRelevant(TNode n) { d_prop.markAsRelevant(n); }
 
   void markAsRelevant(ENode* n) override { markAsRelevant(n->getExpr()); }
 
-  void markAsRelevant(BoolVar v) { d_prop.markAsRelevant(v); }
-
-  void markAsRelevant(Literal l) { d_prop.markAsRelevant(l); }
-
-  template <typename Eh>
-  RelevancyEh* mkRelevancyEh(const Eh& eh)
-  {
-    return d_prop.mkRelevancyEh(eh);
-  }
-
-  void addRelevancyEh(TNode source, RelevancyEh* eh)
-  {
-    d_prop.addRelevancyEh(source, eh);
-  }
-
   void addRelevancyDependency(TNode source, TNode target)
   {
     d_prop.addRelevancyDependency(source, target);
   }
-
-  void addRelWatch(Literal l, RelevancyEh* eh) { d_prop.addRelWatch(l, eh); }
-
-  void addRelWatch(Literal l, TNode n) { d_prop.addRelWatch(l, n); }
-
-  // -------------------------------------------------- value extraction
-  bool getValue(ENode* n, Node& value) override;
 
   /**
    * Rewrite a quantifier instance before it is internalized. Z3 applies its
@@ -868,34 +501,11 @@ class SmtContext final : protected EnvObj, public QuantifierServices
   /** The dense id of decl, or UINT32_MAX if it has none yet. */
   uint32_t getDeclIdOption(TNode decl) const override;
 
-  /** The equality atom to create during the search for lhs = rhs. */
-  Node mkEqAtom(TNode lhs, TNode rhs);
-
-  // ------------------------------------------------------------ printing
-  std::ostream& printLiteral(std::ostream& out, Literal l) const;
-  std::ostream& printLiterals(std::ostream& out,
-                              size_t numLits,
-                              const Literal* lits) const;
-  std::ostream& print(std::ostream& out, BJustification j) const;
-  void print(std::ostream& out) const;
-  void printStatistics(std::ostream& out) const;
-
   /**
    * Expose the core's counters through cvc5's --stats, so that the search
    * behavior can be compared against Z3's own -st output.
    */
   void registerStatistics();
-
-  /**
-   * Record that a term of theory tid was internalized with no plugin to
-   * reason about it. The core then treats the term as uninterpreted, which
-   * only drops constraints: "unsat" stays sound, but "sat" does not, so the
-   * result is weakened to "unknown".
-   */
-  void markModelUnsound(TheoryId tid) { d_theoryStatus.markModelUnsound(tid); }
-
-  /** True if any theory was internalized without a plugin. */
-  bool isModelUnsound() const { return d_theoryStatus.isModelUnsound(); }
 
   bool resourceLimitsExceeded() override
   {
@@ -917,37 +527,19 @@ class SmtContext final : protected EnvObj, public QuantifierServices
     }
   };
 
-  struct NewThEq
-  {
-    TheoryId d_thId;
-    TheoryVar d_lhs;
-    TheoryVar d_rhs;
-    NewThEq(TheoryId id, TheoryVar l, TheoryVar r)
-        : d_thId(id), d_lhs(l), d_rhs(r)
-    {
-    }
-  };
-
   using ExprBoolPair = std::pair<Node, bool>;
 
-  // ----------------------------------------------------------- the E-graph
-  void pushNewThEq(TheoryId th, TheoryVar lhs, TheoryVar rhs);
-  void pushNewThDiseq(TheoryId th, TheoryVar lhs, TheoryVar rhs);
   void removeParentsFromCgTable(ENode* r1);
-  void reinsertParentsIntoCgTable(
-      ENode* r1, ENode* r2, ENode* n1, ENode* n2, EqJustification js);
+  void reinsertParentsIntoCgTable(ENode* r1, ENode* r2);
   void mergeCgcGenerations(ENode* e1, uint32_t e1Generation, ENode* e2);
   void setGenerationSticky(ENode* e, uint32_t generation);
   void invertTrans(ENode* n);
-  TheoryVar getClosestVar(ENode* n, TheoryId thId);
-  void mergeTheoryVars(ENode* r2, ENode* r1, EqJustification js);
   void propagateBoolENodeAssignment(ENode* r1, ENode* r2, ENode* n1, ENode* n2);
   void propagateBoolENodeAssignmentCore(ENode* source, ENode* target);
   void applyStickyUpdates(ENode* e1,
                           uint32_t e1Generation,
                           ENode* e2,
                           uint32_t e2Generation);
-  void restoreTheoryVars(ENode* r2, ENode* r1);
 
   void pushEq(ENode* lhs, ENode* rhs, const EqJustification& js)
   {
@@ -968,25 +560,19 @@ class SmtContext final : protected EnvObj, public QuantifierServices
 
   void assignQuantifier(TNode q);
 
+  void setConflict(const BJustification& js) { d_prop.setConflict(js); }
+
   void setConflict(const BJustification& js, Literal notL)
   {
     d_prop.setConflict(js, notL);
   }
 
-  void setConflict(const BJustification& js) { d_prop.setConflict(js); }
-
   // ----------------------------------------------------------- the search
   bool propagateEqs();
   bool propagateAtoms();
-  void pushNewThDiseqs(ENode* r, TheoryVar v, Theory* th);
   void propagateBoolVarENode(BoolVar v);
-  bool propagateTheories();
-  void propagateThEqs();
-  void propagateThDiseqs();
-  bool canTheoriesPropagate() const;
 
   // --------------------------------------------------------- backtracking
-  void delJustifications(JustificationVector& justifications, size_t oldLim);
 
   // -------------------------------------------------------- internalization
   void updateGeneration(ENode* n);
@@ -1011,18 +597,12 @@ class SmtContext final : protected EnvObj, public QuantifierServices
   void internalizeFormula(TNode n, bool gateCtx);
   void internalizeEq(TNode n, bool gateCtx);
   void internalizeDistinct(TNode n, bool gateCtx);
-  bool internalizeTheoryAtom(TNode n, bool gateCtx);
   void internalizeQuantifier(TNode q, bool gateCtx);
   void internalizeFormulaCore(TNode n, bool gateCtx);
   void setMergeTf(ENode* n, BoolVar v, bool isNewVar);
   void internalizeTerm(TNode n);
-  void internalizeIteTerm(TNode n);
-  bool internalizeTheoryTerm(TNode n);
   void internalizeUninterpreted(TNode n);
-  /** Check that some plugin can reason about n's theory. */
-  void checkTheorySupported(TNode n);
   void undoMkENode();
-  void applySortCnstr(TNode term, ENode* e);
 
   void init();
   void flush();
@@ -1039,32 +619,18 @@ class SmtContext final : protected EnvObj, public QuantifierServices
   ConnectiveNormalizer d_connNormalizer;
   AssertionRewriter d_assertionRewriter;
   Nnf d_nnf;
-  NgPushAppIte d_ngPushAppIte;
   /** See setCvc5Preprocessor. */
   Cvc5Preprocessor d_cvc5Preprocessor;
   /** The justification of the equalities of cvc5's theories. */
   ExternalEqJustification d_externalJustification;
   /** See takeUnexplainable. */
   bool d_unexplainable = false;
-  std::unique_ptr<Cvc5Bridge> d_cvc5Bridge;
   PatternInference d_patternInference;
-  /**
-   * What the theory side knows about whether a satisfying assignment is a
-   * model, which checkFinalize consults.
-   */
-  TheoryStatus d_theoryStatus;
   std::unique_ptr<QuantifierManager> d_qmanager;
-  RandomGen d_random;
 
   /** The expressions already internalized as enodes. */
   std::vector<Node> d_eInternalizedStack;
 
-  JustificationVector d_justifications;
-  /** The size of d_justifications when each open scope was pushed. */
-  std::vector<size_t> d_justificationsLims;
-
-  /** A circular counter used to give the theories a fair final check. */
-  size_t d_finalCheckIdx;
 
   // ------------------------------------- equality and uninterpreted functions
   ENode* d_trueENode;
@@ -1072,10 +638,6 @@ class SmtContext final : protected EnvObj, public QuantifierServices
   /** Maps the id of a term to its enode. */
   App2ENode d_app2ENode;
   ENodeVector d_enodes;
-  /** Maps a theory id to its plugin. */
-  std::vector<Theory*> d_theories;
-  /** The registered theories, for fast traversal. */
-  std::vector<Theory*> d_theorySet;
   /** Maps a declaration id to the enodes with that declaration. */
   std::vector<ENodeVector> d_decl2ENodes;
   std::unordered_map<TNode, uint32_t> d_declIds;
@@ -1088,8 +650,6 @@ class SmtContext final : protected EnvObj, public QuantifierServices
    */
   std::vector<std::pair<ENode*, uint32_t>> d_r1ParentGenerations;
   std::vector<NewEq> d_eqPropagationQueue;
-  std::vector<NewThEq> d_thEqPropagationQueue;
-  std::vector<NewThEq> d_thDiseqPropagationQueue;
   /** An auxiliary enode used to find congruent equality atoms. */
   ENode* d_isDiseqTmp;
   Node d_isDiseqTmpExpr;
@@ -1109,12 +669,7 @@ class SmtContext final : protected EnvObj, public QuantifierServices
   /** The generation of n: cached, recorded under cvc5, or the current one. */
   uint32_t generationOf(TNode n);
   std::unordered_set<TNode> d_cacheGenerationVisited;
-  DynAckManager d_dynAckManager;
-  /**
-   * The explanation of justifications and equalities for conflict
-   * resolution. It reports the congruences and equalities it uses to
-   * d_dynAckManager, so it is declared after it.
-   */
+  /** The explanation of justifications and equalities, for conflicts. */
   Explainer d_explainer;
 
   // ------------------------------------------------------------ backtracking
@@ -1122,9 +677,6 @@ class SmtContext final : protected EnvObj, public QuantifierServices
 
   /** A temporary variable used during internalization. */
   uint32_t d_generation;
-
-  // ------------------------------------------------------------------ engine
-  bool d_setupDone;
 
   /** Scratch space for the topological sort used by internalizeDeep. */
   std::vector<ExprBoolPair> d_tsTodo;

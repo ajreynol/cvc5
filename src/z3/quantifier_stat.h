@@ -45,15 +45,6 @@ class QuantifierStat
   /** The product of the sizes of the clauses this quantifier creates. */
   uint32_t getCaseSplitFactor() const { return d_caseSplitFactor; }
   uint32_t getNumNestedQuantifiers() const { return d_numNestedQuantifiers; }
-  uint32_t getNumInstances() const { return d_numInstances; }
-  uint32_t getNumInstancesSimplifyTrue() const
-  {
-    return d_numInstancesSimplifyTrue;
-  }
-  uint32_t getNumInstancesCheckerSat() const
-  {
-    return d_numInstancesCheckerSat;
-  }
   uint32_t getNumInstancesCurrSearch() const
   {
     return d_numInstancesCurrSearch;
@@ -69,8 +60,6 @@ class QuantifierStat
     d_numInstancesCurrSearch++;
   }
 
-  void incNumInstancesCurrBranch() { d_numInstancesCurrBranch++; }
-
   void resetNumInstancesCurrSearch() { d_numInstancesCurrSearch = 0; }
 
   void updateMaxGeneration(uint32_t g)
@@ -81,8 +70,6 @@ class QuantifierStat
     }
   }
 
-  uint32_t getMaxGeneration() const { return d_maxGeneration; }
-
   void updateMaxCost(float c)
   {
     if (d_maxCost < c)
@@ -90,8 +77,6 @@ class QuantifierStat
       d_maxCost = c;
     }
   }
-
-  float getMaxCost() const { return d_maxCost; }
 
  private:
   friend class QuantifierStatGen;

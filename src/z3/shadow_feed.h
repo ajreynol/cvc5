@@ -38,20 +38,15 @@ namespace z3 {
 class SharedBackend;
 
 /**
- * Feeds the E-graph of the ported core, when it is a shadow of cvc5's own
- * theories without the port's plugins (--no-z3-shadow-plugins), with the
- * equalities those theories derive, so that the core matches modulo them.
- * They come from cvc5's master equality engine, which collects the terms and
- * merges of the equality engines of all theories, as it does for cvc5's
+ * Feeds the E-graph of the ported core, a shadow of cvc5's own theories,
+ * with the equalities those theories derive, so that the core matches modulo
+ * them. They come from cvc5's master equality engine, which collects the terms
+ * and merges of the equality engines of all theories, as it does for cvc5's
  * quantifiers engine.
  *
  * The feed keeps, for each class of the master equality engine, a term the
  * core has internalized, and when two such classes merge, it merges their
- * terms in the core. With --z3-shadow-import, when a class with a term of
- * the core merges with one without, the representative of the latter is
- * internalized in the core and made relevant, so that matching sees it: the
- * constructor application a datatype tester implies, or the value of an
- * arithmetic term, for instance.
+ * terms in the core.
  *
  * The master equality engine keeps no reasons, so the core cannot explain
  * these merges (ExternalEqJustification).
@@ -66,8 +61,6 @@ class ShadowFeed : protected EnvObj, public theory::eq::EqualityEngineNotify
   {
     d_master = ee;
   }
-  /** Whether the feed has a master equality engine. */
-  bool isActive() const { return d_master != nullptr; }
   /**
    * Queue in the core the merges notified since the last call, and those of
    * the terms the core internalized since then, for its next propagation.
@@ -92,18 +85,11 @@ class ShadowFeed : protected EnvObj, public theory::eq::EqualityEngineNotify
   Node coreTermOf(TNode rep) const;
   /** Merge a and b, both internalized in the core, there. */
   void merge(TNode a, TNode b);
-  /**
-   * Internalize t in the core, made relevant, with the generation of the
-   * term of the core it is equal to, other. Returns whether t can be.
-   */
-  bool import(TNode t, TNode other);
 
   /** The ported core. */
   SharedBackend& d_backend;
   /** cvc5's master equality engine, or null. */
   theory::eq::EqualityEngine* d_master;
-  /** Whether terms are imported (--z3-shadow-import). */
-  bool d_import;
   /**
    * For a representative of the master equality engine, a term of the core
    * in its class, in the SAT context.

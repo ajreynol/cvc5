@@ -53,17 +53,10 @@ HostCore::HostCore(Env& env,
       d_conflictSent(false),
       d_conflictLevel(0),
       d_needCheck(false),
-      d_numReported(0),
-      d_reportIdx(0),
-      d_popLevel(UINT32_MAX),
-      d_shadow(options().z3.z3Slots != options::Z3SlotsMode::ALL)
+      d_popLevel(UINT32_MAX)
 {
   d_popNotify = std::make_unique<PopNotify>(context(), *this);
-  if (d_shadow && !options().z3.z3ShadowPlugins
-      && options().z3.z3ShadowEqualities)
-  {
-    d_feed = std::make_unique<ShadowFeed>(env, backend);
-  }
+  d_feed = std::make_unique<ShadowFeed>(env, backend);
 }
 
 HostCore::~HostCore() {}
@@ -73,22 +66,13 @@ void HostCore::reset()
   d_setup = false;
   d_conflictSent = false;
   d_needCheck = false;
-  d_numReported = 0;
-  d_reportIdx = 0;
   d_popLevel = UINT32_MAX;
   d_preregistered.clear();
   d_lemmasSent.clear();
-  if (d_shadow)
-  {
-    d_backend.getPropCore().hostSetShadow(true);
-  }
-  if (options().z3.z3TheoryPreprocess)
-  {
-    d_backend.getContext().setCvc5Preprocessor(
-        [this](TNode n, std::vector<Node>& defs) {
-          return preprocessForTheories(n, defs);
-        });
-  }
+  d_backend.getContext().setCvc5Preprocessor(
+      [this](TNode n, std::vector<Node>& defs) {
+        return preprocessForTheories(n, defs);
+      });
 }
 
 Node HostCore::preprocessForTheories(TNode n, std::vector<Node>& defs)
@@ -151,7 +135,6 @@ void HostCore::assertFact(TNode literal)
 void HostCore::check(theory::Theory::Effort effort)
 {
   d_needCheck = false;
-  d_numReported = 0;
   Statistics& stats = d_backend.getContext().getStats();
   stats.d_numHostChecks++;
   if (theory::Theory::fullEffort(effort))
@@ -173,21 +156,18 @@ void HostCore::check(theory::Theory::Effort effort)
   }
   PropCore& core = d_backend.getPropCore();
   syncLevel();
-  if (d_feed != nullptr)
-  {
-    // the equalities cvc5's theories derived since the last check
-    d_feed->apply();
-  }
+  // the equalities cvc5's theories derived since the last check
+  d_feed->apply();
   if (context()->getLevel() <= 1 && !d_delayedUnits.empty())
   {
     // As Z3 asserts its delayed units after a restart, the lemmas weakened
     // by delayUnit are sent as they are near the base level, where CaDiCaL
     // backtracks at most one level for them.
-    for (const std::pair<Node, bool>& du : d_delayedUnits)
+    for (const Node& du : d_delayedUnits)
     {
-      if (d_lemmasSent.insert(du.first).second)
+      if (d_lemmasSent.insert(du).second)
       {
-        d_out.lemma(du.first, theory::LemmaProperty::NONE, du.second);
+        d_out.lemma(du, theory::LemmaProperty::NONE);
         d_needCheck = true;
       }
     }
@@ -202,23 +182,16 @@ void HostCore::check(theory::Theory::Effort effort)
   {
     return;
   }
-  if (!theory::Theory::fullEffort(effort) || d_needCheck || d_numReported > 0)
+  if (!theory::Theory::fullEffort(effort) || d_needCheck)
   {
-    Trace("z3-host") << "check returns: needCheck " << d_needCheck
-                     << " propagations " << d_numReported << std::endl;
+    Trace("z3-host") << "check returns: needCheck " << d_needCheck << std::endl;
     return;
   }
   for (size_t i = 0; i < s_maxSilentFinalChecks; ++i)
   {
-    Failure f = OK;
-    FinalCheckStatus st = core.hostFinalCheck(f);
+    FinalCheckStatus st = core.hostFinalCheck();
     Trace("z3-host") << "final check " << st << " at level "
                      << context()->getLevel() << std::endl;
-    if (st == FC_GIVEUP)
-    {
-      d_out.setModelUnsound(theory::IncompleteId::UNKNOWN);
-      return;
-    }
     if (st == FC_DONE)
     {
       // The core's own search reaches a final check only once every relevant
@@ -230,16 +203,11 @@ void HostCore::check(theory::Theory::Effort effort)
       {
         return;
       }
-      std::string reason;
+      // The ground part of the model is cvc5's theories'; the quantified
+      // formulas are not checked against it.
       if (d_backend.getContext().hasQuantifiers())
       {
         d_out.setModelUnsound(theory::IncompleteId::QUANTIFIERS);
-      }
-      else if (!d_shadow && !d_backend.getContext().canConfirmModel(reason))
-      {
-        // As a shadow, the core has no say on the ground part of the model,
-        // which is cvc5's theories'.
-        d_out.setModelUnsound(theory::IncompleteId::UNKNOWN);
       }
       return;
     }
@@ -249,7 +217,7 @@ void HostCore::check(theory::Theory::Effort effort)
       return;
     }
     splitPendingAtoms();
-    if (d_needCheck || d_numReported > 0)
+    if (d_needCheck)
     {
       return;
     }
@@ -266,36 +234,6 @@ void HostCore::presolve()
   }
 }
 
-Node HostCore::explain(TNode literal)
-{
-  syncLevel();
-  PropCore& core = d_backend.getPropCore();
-  Literal l = core.hostLiteral(literal);
-  // cvc5 asks only for the explanation of a literal the core propagated,
-  // which is still true there; an assumption (a literal cvc5 asserted) has
-  // none, and the core would explain it as a fact of the base level.
-  Assert(!core.isHostAssigned(l.var()));
-  Assert(core.getAssignment(l) == L_TRUE);
-  std::vector<Literal> lits;
-  core.hostExplain(l, lits);
-  d_backend.getContext().getStats().d_numHostExplanations++;
-  NodeManager* nm = nodeManager();
-  if (lits.empty())
-  {
-    return nm->mkConst(true);
-  }
-  if (lits.size() == 1)
-  {
-    return literalNode(lits[0]);
-  }
-  std::vector<Node> conj;
-  for (Literal a : lits)
-  {
-    conj.push_back(literalNode(a));
-  }
-  return nm->mkNode(Kind::AND, conj);
-}
-
 void HostCore::notifyPop()
 {
   // The core follows when it is next asked something (syncLevel): a
@@ -307,10 +245,7 @@ void HostCore::notifyPop()
   {
     d_popLevel = lvl;
   }
-  if (d_feed != nullptr)
-  {
-    d_feed->notifyPop();
-  }
+  d_feed->notifyPop();
   if (!d_setup)
   {
     return;
@@ -345,11 +280,6 @@ void HostCore::syncLevel()
     core.hostSyncLevel(popTo);
   }
   core.hostSyncLevel(lvl);
-  size_t size = core.assignedLiterals().size();
-  if (d_reportIdx > size)
-  {
-    d_reportIdx = size;
-  }
 }
 
 void HostCore::sendConflict(const std::vector<Literal>& lits)
@@ -382,8 +312,8 @@ void HostCore::sendConflict(const std::vector<Literal>& lits)
   Node lem = disj.empty()       ? nm->mkConst(false)
              : disj.size() == 1 ? disj[0]
                                 : nm->mkNode(Kind::OR, disj);
-  lem = delayUnit(lem, false);
-  d_out.lemma(lem, theory::LemmaProperty::NONE, true);
+  lem = delayUnit(lem);
+  d_out.lemma(lem, theory::LemmaProperty::NONE);
   d_backend.getContext().getStats().d_numHostConflicts++;
   d_conflictSent = true;
   d_conflictLevel = context()->getLevel();
@@ -404,15 +334,15 @@ void HostCore::sendLemmas()
   bool local = options().z3.z3HostLocalInstances;
   for (const Node& inst : insts)
   {
-    sendLemma(inst, local, true);
+    sendLemma(inst, local);
   }
   for (const Node& lem : lems)
   {
-    sendLemma(lem, false, options().z3.z3HostAxiomDecisions);
+    sendLemma(lem, false);
   }
 }
 
-void HostCore::sendLemma(const Node& lem, bool local, bool notifyDecisions)
+void HostCore::sendLemma(const Node& lem, bool local)
 {
   Statistics& stats = d_backend.getContext().getStats();
   // cvc5 keeps its lemmas, while the core makes an instance or an axiom
@@ -423,7 +353,7 @@ void HostCore::sendLemma(const Node& lem, bool local, bool notifyDecisions)
   Node sent = lem;
   if (d_lemmasSent.find(lem) == d_lemmasSent.end())
   {
-    sent = delayUnit(lem, notifyDecisions);
+    sent = delayUnit(lem);
   }
   if (d_lemmasSent.insert(sent).second)
   {
@@ -438,13 +368,11 @@ void HostCore::sendLemma(const Node& lem, bool local, bool notifyDecisions)
     }
   }
   d_out.lemma(
-      sent,
-      local ? theory::LemmaProperty::LOCAL : theory::LemmaProperty::NONE,
-      notifyDecisions);
+      sent, local ? theory::LemmaProperty::LOCAL : theory::LemmaProperty::NONE);
   d_needCheck = true;
 }
 
-Node HostCore::delayUnit(const Node& lem, bool notifyDecisions)
+Node HostCore::delayUnit(const Node& lem)
 {
   if (!options().z3.z3HostDelayUnits || context()->getLevel() < 2)
   {
@@ -489,48 +417,8 @@ Node HostCore::delayUnit(const Node& lem, bool notifyDecisions)
   }
   disj.push_back(decisions[0].negate());
   d_backend.getContext().getStats().d_numHostDelayedUnits++;
-  d_delayedUnits.emplace_back(lem, notifyDecisions);
+  d_delayedUnits.push_back(lem);
   return nodeManager()->mkNode(Kind::OR, disj);
-}
-
-void HostCore::collectPropagations()
-{
-  if (d_shadow)
-  {
-    // cvc5's theories explain the propagations of the ground state; the
-    // core's would be explained from facts asserted to other theories
-    return;
-  }
-  PropCore& core = d_backend.getPropCore();
-  const LiteralVector& assigned = core.assignedLiterals();
-  prop::PropEngine* pe = d_te.getPropEngine();
-  if (d_reportIdx > assigned.size())
-  {
-    d_reportIdx = assigned.size();
-  }
-  for (; d_reportIdx < assigned.size(); ++d_reportIdx)
-  {
-    Literal l = assigned[d_reportIdx];
-    BoolVar v = l.var();
-    // Only the theory side's own propagations: what this side derives from
-    // its clauses, cvc5 derives from the same clauses, or learns through a
-    // conflict when the clause is this side's only (a gate of a term ITE,
-    // for instance).
-    if (core.isHostAssigned(v)
-        || core.getJustification(v).getKind() != BJustification::JUSTIFICATION)
-    {
-      continue;
-    }
-    TNode atom = core.boolVar2Expr(v);
-    if (atom.isNull() || atom.isConst() || expr::isBooleanConnective(atom)
-        || !pe->isSatLiteral(atom))
-    {
-      continue;
-    }
-    d_out.propagate(literalNode(l));
-    d_numReported++;
-    d_backend.getContext().getStats().d_numHostPropagations++;
-  }
 }
 
 void HostCore::splitNewlyRelevant()
@@ -575,7 +463,7 @@ void HostCore::split(BoolVar v)
     // the patterns and bodies of quantifiers
     return;
   }
-  if (d_shadow && !pe->isSatLiteral(a))
+  if (!pe->isSatLiteral(a))
   {
     // an atom of the core's own ground reasoning, which cvc5's theories do
     // instead
@@ -586,12 +474,8 @@ void HostCore::split(BoolVar v)
   {
     return;
   }
-  d_out.lemma(lem, theory::LemmaProperty::NONE, true);
+  d_out.lemma(lem, theory::LemmaProperty::NONE);
   d_backend.getContext().getStats().d_numHostSplits++;
-  if (core.tryTrueFirst(v) && pe->isSatLiteral(a))
-  {
-    d_out.preferPhase(a, pol);
-  }
   d_needCheck = true;
 }
 
@@ -622,7 +506,6 @@ bool HostCore::propagateAndReport()
     sendConflict(conflict);
     return false;
   }
-  collectPropagations();
   splitNewlyRelevant();
   return true;
 }
@@ -632,7 +515,7 @@ Node HostCore::literalNode(Literal l)
   PropCore& core = d_backend.getPropCore();
   if (l == s_trueLiteral || l == s_falseLiteral)
   {
-    return core.literal2Expr(l);
+    return nodeManager()->mkConst(l == s_trueLiteral);
   }
   // The core has variables for the not-gates nested in terms, whose negative
   // literal is cvc5's atom rather than a double negation.

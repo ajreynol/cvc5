@@ -167,10 +167,6 @@ class PushBackVector : public Trail
   V& d_vector;
 };
 
-/** Undo a push_back; Z3 spells the same thing two ways. */
-template <typename V>
-using PushBackTrail = PushBackVector<V>;
-
 /** Undo a push_back into one row of a vector of vectors. */
 template <typename V>
 class PushBack2Trail : public Trail
@@ -366,8 +362,6 @@ class TrailStack
     d_trailStack.push_back(new (d_region) TrailObject(obj));
   }
 
-  size_t getNumScopes() const { return d_scopes.size(); }
-
   void pushScope()
   {
     d_region.pushScope();
@@ -390,12 +384,6 @@ class TrailStack
   }
 
   size_t size() const { return d_trailStack.size(); }
-
-  void shrink(size_t newSize)
-  {
-    Assert(newSize <= d_trailStack.size());
-    d_trailStack.resize(newSize);
-  }
 
  private:
   std::vector<Trail*> d_trailStack;

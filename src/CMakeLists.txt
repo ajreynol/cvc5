@@ -311,8 +311,6 @@ libcvc5_add_sources(
   smt/context_manager.h
   smt/difficulty_post_processor.cpp
   smt/difficulty_post_processor.h
-  smt/engine_factory.cpp
-  smt/engine_factory.h
   smt/env.cpp
   smt/env.h
   smt/env_obj.cpp
@@ -737,8 +735,6 @@ libcvc5_add_sources(
   theory/ee_manager_central.h
   theory/ee_manager_distributed.cpp
   theory/ee_manager_distributed.h
-  theory/ee_manager_none.cpp
-  theory/ee_manager_none.h
   theory/ee_setup_info.h
   theory/evaluator.cpp
   theory/evaluator.h
@@ -1161,8 +1157,6 @@ libcvc5_add_sources(
   theory/shared_solver.h
   theory/shared_solver_distributed.cpp
   theory/shared_solver_distributed.h
-  theory/shared_solver_none.cpp
-  theory/shared_solver_none.h
   theory/shared_terms_database.cpp
   theory/shared_terms_database.h
   theory/skolem_lemma.cpp
@@ -1336,33 +1330,22 @@ libcvc5_add_sources(
   theory/uf/type_enumerator.h
   theory/valuation.cpp
   theory/valuation.h
-  z3/arith_eq_adapter.cpp
-  z3/arith_eq_adapter.h
-  z3/arith_util.h
   z3/assertion_preparation.cpp
   z3/assertion_preparation.h
   z3/ast.cpp
   z3/ast.h
   z3/b_justification.h
   z3/bool_var_data.h
-  z3/case_split_queue.cpp
-  z3/case_split_queue.h
   z3/cg_table.cpp
   z3/cg_table.h
   z3/checker.cpp
   z3/checker.h
   z3/clause.cpp
   z3/clause.h
-  z3/conflict_resolution.cpp
-  z3/conflict_resolution.h
   z3/cost_function.cpp
   z3/cost_function.h
-  z3/dyn_ack.cpp
-  z3/dyn_ack.h
   z3/enode.cpp
   z3/enode.h
-  z3/enum_inst.cpp
-  z3/enum_inst.h
   z3/eq_justification.h
   z3/explainer.cpp
   z3/explainer.h
@@ -1370,8 +1353,6 @@ libcvc5_add_sources(
   z3/fingerprints.h
   z3/host_core.cpp
   z3/host_core.h
-  z3/instance_policy.cpp
-  z3/instance_policy.h
   z3/internalizer.cpp
   z3/justification.cpp
   z3/justification.h
@@ -1382,8 +1363,6 @@ libcvc5_add_sources(
   z3/params.cpp
   z3/pattern_inference.cpp
   z3/pattern_inference.h
-  z3/push_app_ite.cpp
-  z3/push_app_ite.h
   z3/params.h
   z3/prop_core.cpp
   z3/prop_core.h
@@ -1394,65 +1373,32 @@ libcvc5_add_sources(
   z3/quantifier_services.h
   z3/quantifier_stat.cpp
   z3/quantifier_stat.h
-  z3/quick_checker.cpp
-  z3/quick_checker.h
   z3/relevancy.cpp
   z3/relevancy.h
-  z3/setup.cpp
-  z3/setup.h
   z3/shadow_feed.cpp
   z3/shadow_feed.h
   z3/shared_backend.cpp
   z3/shared_backend.h
   z3/smt_context.cpp
   z3/smt_context.h
-  z3/statistics.cpp
   z3/statistics.h
-  z3/theory.cpp
-  z3/theory.h
-  z3/theory_arith.h
-  z3/theory_arith_aux.cpp
-  z3/theory_arith_core.cpp
-  z3/theory_arith_eq.cpp
-  z3/theory_arith_int.cpp
-  z3/theory_arith_nl.cpp
-  z3/theory_arith_pp.cpp
-  z3/theory_cvc5.cpp
-  z3/theory_cvc5.h
-  z3/theory_datatype.cpp
-  z3/theory_datatype.h
   z3/theory_slot.cpp
   z3/theory_slot.h
-  z3/theory_status.cpp
-  z3/theory_status.h
   z3/types.cpp
   z3/types.h
-  z3/util/approx_set.cpp
   z3/util/approx_set.h
   z3/util/hash.h
-  z3/util/heap.h
-  z3/util/inf_rational.h
-  z3/util/id_var_list.h
   z3/util/literal.h
-  z3/util/luby.h
-  z3/util/nat_set.h
-  z3/util/numeral.h
-  z3/util/random_gen.h
   z3/util/region.cpp
   z3/util/region.h
   z3/util/tagged_ptr.h
   z3/util/trail.h
-  z3/util/union_find.h
   z3/util/uint_set.h
   z3/util/util.h
   z3/watch_list.cpp
   z3/watch_list.h
   z3/z3_hosted_prop_engine.cpp
   z3/z3_hosted_prop_engine.h
-  z3/z3_prop_engine.cpp
-  z3/z3_prop_engine.h
-  z3/z3_theory_engine.cpp
-  z3/z3_theory_engine.h
 )
 
 # suppress deprecated warnings to not error in CI

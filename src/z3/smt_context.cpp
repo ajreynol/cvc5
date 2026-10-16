@@ -34,19 +34,12 @@
 #include "util/resource_manager.h"
 #include "util/statistics_registry.h"
 #include "z3/quantifier_manager.h"
-#include "z3/theory_cvc5.h"
-#include "z3/util/luby.h"
 #include "z3/util/util.h"
 
 namespace cvc5::internal {
 namespace z3 {
 
 namespace {
-
-bool isFalseNode(TNode n)
-{
-  return n.getKind() == Kind::CONST_BOOLEAN && !n.getConst<bool>();
-}
 
 }  // namespace
 
@@ -55,37 +48,21 @@ SmtContext::SmtContext(Env& env, Params& p)
       d_params(p),
       d_prop(env, *this, p, d_stats),
       d_normalizer(env.getNodeManager()),
-      d_connNormalizer(env.getNodeManager(),
-                       env.getOptions().z3.z3EliminateAnd),
+      d_connNormalizer(env.getNodeManager()),
       d_assertionRewriter(env),
       d_nnf(env.getNodeManager()),
-      d_ngPushAppIte(env.getNodeManager(),
-                     p.d_ngLiftIte == Params::LI_CONSERVATIVE),
       d_patternInference(env.getNodeManager(), d_params),
       d_qmanager(nullptr),
-      d_random(p.d_randomSeed),
-      d_finalCheckIdx(0),
       d_trueENode(nullptr),
       d_falseENode(nullptr),
-      d_theories(s_numTheories, nullptr),
       d_isDiseqTmp(nullptr),
-      d_dynAckManager(*this, p),
-      d_explainer(*this, d_dynAckManager),
+      d_explainer(*this),
       d_generation(0),
-      d_setupDone(false),
       d_mkENodeTrail(*this)
 {
   d_qmanager.reset(new QuantifierManager(*this, p));
-  d_prop.finishInit();
-
   registerStatistics();
-
   init();
-
-  if (!relevancy())
-  {
-    d_params.d_relevancyLemma = false;
-  }
 }
 
 SmtContext::~SmtContext() { flush(); }
@@ -102,12 +79,7 @@ void SmtContext::init()
 void SmtContext::flush()
 {
   d_prop.flushRelevancy();
-  for (Theory* th : d_theorySet)
-  {
-    th->flushEh();
-  }
   d_prop.flushClauses();
-  delJustifications(d_justifications, 0);
   d_trailStack.reset();
   d_qmanager.reset(nullptr);
   if (d_isDiseqTmp != nullptr)
@@ -116,12 +88,6 @@ void SmtContext::flush()
     ENode::delDummy(d_isDiseqTmp);
     d_isDiseqTmp = nullptr;
   }
-  for (Theory* th : d_theorySet)
-  {
-    delete th;
-  }
-  d_theorySet.clear();
-  std::fill(d_theories.begin(), d_theories.end(), nullptr);
 }
 
 uint32_t SmtContext::getDeclId(TNode decl)
@@ -145,43 +111,6 @@ uint32_t SmtContext::getDeclIdOption(TNode decl) const
   }
   auto it = d_declIds.find(decl);
   return it == d_declIds.end() ? UINT32_MAX : it->second;
-}
-
-Node SmtContext::mkEqAtom(TNode lhs, TNode rhs)
-{
-  Theory* th = getTheory(theory::Theory::theoryOf(lhs.getType()));
-  if (th != nullptr)
-  {
-    return th->mkEqAtom(lhs, rhs);
-  }
-  if (lhs.getId() > rhs.getId())
-  {
-    std::swap(lhs, rhs);
-  }
-  return nodeManager()->mkNode(Kind::EQUAL, lhs, rhs);
-}
-
-void SmtContext::pushNewThEq(TheoryId th, TheoryVar lhs, TheoryVar rhs)
-{
-  Assert(lhs != rhs);
-  Assert(lhs != s_nullTheoryVar);
-  Assert(rhs != s_nullTheoryVar);
-  Assert(th != s_nullTheoryId);
-  d_thEqPropagationQueue.push_back(NewThEq(th, lhs, rhs));
-}
-
-void SmtContext::pushNewThDiseq(TheoryId th, TheoryVar lhs, TheoryVar rhs)
-{
-  Assert(lhs != rhs);
-  Assert(lhs != s_nullTheoryVar);
-  Assert(rhs != s_nullTheoryVar);
-  Assert(th != s_nullTheoryId);
-  Theory* t = getTheory(th);
-  if (t->getENode(lhs)->isInterpreted() && t->getENode(rhs)->isInterpreted())
-  {
-    return;
-  }
-  d_thDiseqPropagationQueue.push_back(NewThEq(th, lhs, rhs));
 }
 
 namespace {
@@ -253,8 +182,6 @@ void SmtContext::addEq(ENode* n1, ENode* n2, EqJustification js)
 
   d_qmanager->addEqEh(r1, r2);
 
-  mergeTheoryVars(n2, n1, js);
-
   // The proof forest, before:
   //   n1 -> ... -> r1
   //   n2 -> ... -> r2
@@ -274,7 +201,7 @@ void SmtContext::addEq(ENode* n1, ENode* n2, EqJustification js)
   } while (curr != r1);
 
   Assert(r1->getRoot() == r2);
-  reinsertParentsIntoCgTable(r1, r2, n1, n2, js);
+  reinsertParentsIntoCgTable(r1, r2);
 
   // The AddEqTrail is pushed after reinsertParentsIntoCgTable, because the
   // latter may push merge-generation trails and addEq must be undone before
@@ -291,7 +218,6 @@ void SmtContext::addEq(ENode* n1, ENode* n2, EqJustification js)
 
   // update the class size
   r2->d_classSize += r1->d_classSize;
-  r2->d_isShared = 2;
 }
 
 namespace {
@@ -339,15 +265,11 @@ void SmtContext::setGenerationSticky(ENode* n, uint32_t generation)
   d_stickyGenerationUpdates[n] = generation;
 }
 
-void SmtContext::reinsertParentsIntoCgTable(
-    ENode* r1, ENode* r2, ENode* n1, ENode* n2, EqJustification js)
+void SmtContext::reinsertParentsIntoCgTable(ENode* r1, ENode* r2)
 {
   // Reinsert the parents of r1 that removeParentsFromCgTable took out. Some
   // of them become congruent to other enodes, which propagates a new
   // equality. The ones that remain congruence roots move to r2's parent list.
-  //
-  // n1, n2 and js implement dynamic Ackermannization: js justifies n1 = n2,
-  // and that equality is the one that implied r1 = r2.
   ENodeVector& r2Parents = r2->d_parents;
   ENodeVector& r1Parents = r1->d_parents;
   size_t numR1Parents = r1Parents.size();
@@ -373,10 +295,6 @@ void SmtContext::reinsertParentsIntoCgTable(
         LBool val = getAssignment(v);
         if (val != L_TRUE)
         {
-          if (val == L_FALSE && js.getKind() == EqJustification::CONGRUENCE)
-          {
-            d_dynAckManager.cgConflictEh(n1->getExpr(), n2->getExpr());
-          }
           assign(Literal(v),
                  mkJustification(EqPropagationJustification(lhs, rhs)));
         }
@@ -455,132 +373,6 @@ void SmtContext::invertTrans(ENode* n)
   }
 }
 
-TheoryVar SmtContext::getClosestVar(ENode* n, TheoryId thId)
-{
-  // Return a theory variable for thId that is as close to n as possible along
-  // the proof branch n -> ... -> root. Sending the theories the natural chain
-  // of equalities, rather than always pairing against the root, keeps the
-  // justifications they build free of unnecessary detours.
-  if (thId == s_nullTheoryId)
-  {
-    return s_nullTheoryVar;
-  }
-  while (n != nullptr)
-  {
-    TheoryVar v = n->getThVar(thId);
-    if (v != s_nullTheoryVar)
-    {
-      return v;
-    }
-    n = n->d_trans.d_target;
-  }
-  return s_nullTheoryVar;
-}
-
-void SmtContext::mergeTheoryVars(ENode* n2, ENode* n1, EqJustification js)
-{
-  // Merge the theory variables of n2->getRoot() and n1->getRoot() into
-  // n2->getRoot(), propagating the new theory variable equalities.
-  ENode* r2 = n2->getRoot();
-  ENode* r1 = n1->getRoot();
-  if (!r1->hasThVars() && !r2->hasThVars())
-  {
-    return;
-  }
-
-  TheoryId fromTh = s_nullTheoryId;
-
-  if (js.getKind() == EqJustification::JUSTIFICATION)
-  {
-    fromTh = js.getJustification()->getFromTheory();
-  }
-
-  if (r2->d_thVarList.getNext() == nullptr
-      && r1->d_thVarList.getNext() == nullptr)
-  {
-    // the common case: r2 and r1 have at most one theory variable each
-    TheoryId t2 = static_cast<TheoryId>(r2->d_thVarList.getId());
-    TheoryId t1 = static_cast<TheoryId>(r1->d_thVarList.getId());
-    TheoryVar v2 = d_params.d_newCore2ThEq ? getClosestVar(n2, t2)
-                                           : r2->d_thVarList.getVar();
-    TheoryVar v1 = d_params.d_newCore2ThEq ? getClosestVar(n1, t1)
-                                           : r1->d_thVarList.getVar();
-    if (v2 != s_nullTheoryVar && v1 != s_nullTheoryVar)
-    {
-      if (t1 == t2)
-      {
-        // only send the equality to the theory if the theory did not
-        // propagate it itself
-        if (t1 != fromTh)
-        {
-          pushNewThEq(t1, v2, v1);
-        }
-      }
-      else
-      {
-        // the uncommon case: r2 ends up with two theory variables
-        r2->addThVar(v1, t1, getRegion());
-        pushNewThDiseqs(r2, v1, getTheory(t1));
-        pushNewThDiseqs(r1, v2, getTheory(t2));
-      }
-    }
-    else if (v1 == s_nullTheoryVar && v2 != s_nullTheoryVar)
-    {
-      pushNewThDiseqs(r1, v2, getTheory(t2));
-    }
-    else if (v1 != s_nullTheoryVar && v2 == s_nullTheoryVar)
-    {
-      r2->d_thVarList.setVar(v1);
-      r2->d_thVarList.setId(t1);
-      pushNewThDiseqs(r2, v1, getTheory(t1));
-    }
-    return;
-  }
-
-  // r1 and/or r2 have more than one theory variable
-  const TheoryVarList* l2 = r2->getThVarList();
-  while (l2 != nullptr)
-  {
-    TheoryId t2 = static_cast<TheoryId>(l2->getId());
-    TheoryVar v2 =
-        d_params.d_newCore2ThEq ? getClosestVar(n2, t2) : l2->getVar();
-    Assert(v2 != s_nullTheoryVar);
-    Assert(t2 != s_nullTheoryId);
-    TheoryVar v1 =
-        d_params.d_newCore2ThEq ? getClosestVar(n1, t2) : r1->getThVar(t2);
-
-    if (v1 != s_nullTheoryVar)
-    {
-      if (t2 != fromTh)
-      {
-        pushNewThEq(t2, v2, v1);
-      }
-    }
-    else
-    {
-      pushNewThDiseqs(r1, v2, getTheory(t2));
-    }
-    l2 = l2->getNext();
-  }
-
-  const TheoryVarList* l1 = r1->getThVarList();
-  while (l1 != nullptr)
-  {
-    TheoryId t1 = static_cast<TheoryId>(l1->getId());
-    TheoryVar v1 =
-        d_params.d_newCore2ThEq ? getClosestVar(n1, t1) : l1->getVar();
-    Assert(v1 != s_nullTheoryVar);
-    Assert(t1 != s_nullTheoryId);
-    TheoryVar v2 = r2->getThVar(t1);
-    if (v2 == s_nullTheoryVar)
-    {
-      r2->addThVar(v1, t1, getRegion());
-      pushNewThDiseqs(r2, v1, getTheory(t1));
-    }
-    l1 = l1->getNext();
-  }
-}
-
 void SmtContext::propagateBoolENodeAssignment(ENode* r1,
                                               ENode* r2,
                                               ENode* n1,
@@ -644,11 +436,6 @@ void SmtContext::propagateBoolENodeAssignmentCore(ENode* source, ENode* target)
     LBool val2 = getAssignment(v2);
     if (val2 != val)
     {
-      if (val2 != L_UNDEF && congruent(source, target)
-          && source->getNumArgs() > 0)
-      {
-        d_dynAckManager.cgConflictEh(source->getExpr(), target->getExpr());
-      }
       assign(Literal(v2, sign),
              mkJustification(MpIffJustification(source, target)));
     }
@@ -662,7 +449,6 @@ void SmtContext::undoAddEq(ENode* r1, ENode* n1, size_t r2NumParents)
 
   // restore r2's class size
   r2->d_classSize -= r1->d_classSize;
-  r2->d_isShared = 2;
 
   // unmerge the equivalence classes
   std::swap(r1->d_next, r2->d_next);
@@ -761,28 +547,6 @@ void SmtContext::undoAddEq(ENode* r1, ENode* n1, size_t r2NumParents)
 
   d_r1ParentGenerations.clear();
 
-  // restore the theory variables
-  if (r2->d_thVarList.getNext() == nullptr)
-  {
-    // the common case: r2 has at most one variable
-    TheoryVar v2 = r2->d_thVarList.getVar();
-    if (v2 != s_nullTheoryVar)
-    {
-      TheoryId t2 = static_cast<TheoryId>(r2->d_thVarList.getId());
-      if (getTheory(t2)->getENode(v2)->getRoot() != r2)
-      {
-        Assert(getTheory(t2)->getENode(v2)->getRoot() == r1);
-        // remove the variable from r2
-        r2->d_thVarList.setVar(s_nullTheoryVar);
-        r2->d_thVarList.setId(s_nullTheoryId);
-      }
-    }
-  }
-  else
-  {
-    restoreTheoryVars(r2, r1);
-  }
-
   // The proof forest, before: r1 -> ..  -> n1 -> n2 -> ... -> r2
   n1->d_trans.d_target = nullptr;
   n1->d_trans.d_justification = s_nullEqJustification;
@@ -822,118 +586,15 @@ void SmtContext::applyStickyUpdates(ENode* e1,
   }
 }
 
-void SmtContext::restoreTheoryVars(ENode* r2, ENode* r1)
-{
-  // Delete any theory variable v2 of r2 that is no longer equivalent to r2.
-  // Any such variable must instead be equivalent to r1, which is what the
-  // assertion below checks.
-  (void)r1;
-  Assert(r2->getRoot() == r2);
-  TheoryVarList* newL2 = nullptr;
-  TheoryVarList* l2 = r2->getThVarListPtr();
-  while (l2 != nullptr)
-  {
-    TheoryVar v2 = l2->getVar();
-    TheoryId t2 = static_cast<TheoryId>(l2->getId());
-
-    if (getTheory(t2)->getENode(v2)->getRoot() != r2)
-    {
-      Assert(getTheory(t2)->getENode(v2)->getRoot() == r1);
-      l2 = l2->getNext();
-    }
-    else
-    {
-      if (newL2 != nullptr)
-      {
-        newL2->setNext(l2);
-        newL2 = l2;
-      }
-      else
-      {
-        r2->d_thVarList = *l2;
-        newL2 = &(r2->d_thVarList);
-      }
-      l2 = l2->getNext();
-    }
-  }
-
-  if (newL2 != nullptr)
-  {
-    newL2->setNext(nullptr);
-  }
-  else
-  {
-    r2->d_thVarList.setVar(s_nullTheoryVar);
-    r2->d_thVarList.setNext(nullptr);
-  }
-}
-
 bool SmtContext::addDiseq(ENode* n1, ENode* n2)
 {
-  ENode* r1 = n1->getRoot();
-  ENode* r2 = n2->getRoot();
-
-  if (r1 == r2)
-  {
-    TheoryId t1 = static_cast<TheoryId>(r1->d_thVarList.getId());
-    if (t1 == s_nullTheoryId)
-    {
-      return false;
-    }
-    return getTheory(t1)->useDiseqs();
-  }
-
-  // propagate the disequality to the theories
-  if (r1->d_thVarList.getNext() == nullptr
-      && r2->d_thVarList.getNext() == nullptr)
-  {
-    // the common case: r2 and r1 have at most one theory variable each
-    TheoryId t1 = static_cast<TheoryId>(r1->d_thVarList.getId());
-    TheoryVar v1 = d_params.d_newCore2ThEq ? getClosestVar(n1, t1)
-                                           : r1->d_thVarList.getVar();
-    TheoryVar v2 = d_params.d_newCore2ThEq ? getClosestVar(n2, t1)
-                                           : r2->d_thVarList.getVar();
-    if (t1 != s_nullTheoryId && v1 != s_nullTheoryVar && v2 != s_nullTheoryVar
-        && t1 == static_cast<TheoryId>(r2->d_thVarList.getId()))
-    {
-      if (getTheory(t1)->useDiseqs())
-      {
-        pushNewThDiseq(t1, v1, v2);
-      }
-    }
-  }
-  else
-  {
-    const TheoryVarList* l1 = r1->getThVarList();
-    while (l1 != nullptr)
-    {
-      TheoryId t1 = static_cast<TheoryId>(l1->getId());
-      TheoryVar v1 =
-          d_params.d_newCore2ThEq ? getClosestVar(n1, t1) : l1->getVar();
-      Theory* th = getTheory(t1);
-      if (th->useDiseqs())
-      {
-        TheoryVar v2 =
-            d_params.d_newCore2ThEq ? getClosestVar(n2, t1) : r2->getThVar(t1);
-        if (v2 != s_nullTheoryVar)
-        {
-          pushNewThDiseq(t1, v1, v2);
-        }
-      }
-      l1 = l1->getNext();
-    }
-  }
-  return true;
+  // There is no theory plugin to tell of the disequality.
+  return n1->getRoot() != n2->getRoot();
 }
 
 bool SmtContext::isDiseq(ENode* n1, ENode* n2) const
 {
   return isDiseqCore(n1, n2, true);
-}
-
-bool SmtContext::isDiseqNoValueCheck(ENode* n1, ENode* n2) const
-{
-  return isDiseqCore(n1, n2, false);
 }
 
 bool SmtContext::isDiseqCore(ENode* n1,
@@ -975,94 +636,6 @@ bool SmtContext::isDiseqCore(ENode* n1,
     return l != s_trueLiteral
            && (l == s_falseLiteral
                || (isRelevant(l) && getAssignment(l) == L_FALSE));
-  }
-  return false;
-}
-
-bool SmtContext::isDiseqSlow(ENode* n1, ENode* n2) const
-{
-  if (n1->getNumParents() > n2->getNumParents())
-  {
-    std::swap(n1, n2);
-  }
-  for (ENode* parent : n1->getConstParents())
-  {
-    if (parent->isEq() && isRelevant(parent->getExpr())
-        && getAssignment(enode2BoolVar(parent)) == L_FALSE
-        && ((parent->getArg(0)->getRoot() == n1->getRoot()
-             && parent->getArg(1)->getRoot() == n2->getRoot())
-            || (parent->getArg(1)->getRoot() == n1->getRoot()
-                && parent->getArg(0)->getRoot() == n2->getRoot())))
-    {
-      return true;
-    }
-  }
-  return false;
-}
-
-bool SmtContext::isExtDiseq(ENode* n1, ENode* n2, uint32_t depth)
-{
-  ENode* r1 = n1->getRoot();
-  ENode* r2 = n2->getRoot();
-  if (r1 == r2)
-  {
-    return false;
-  }
-  if (r1->isInterpreted() && r2->isInterpreted())
-  {
-    return true;
-  }
-  if (isDiseq(n1, n2))
-  {
-    return true;
-  }
-  if (r1->getNumParents() > r2->getNumParents())
-  {
-    std::swap(n1, n2);
-    std::swap(r1, r2);
-  }
-  if (depth == 0)
-  {
-    return false;
-  }
-  for (ENode* p1 : r1->getConstParents())
-  {
-    if (!isRelevant(p1) || p1->isEq() || !p1->isCgr())
-    {
-      continue;
-    }
-    TNode f = p1->getDecl();
-    uint32_t numArgs = p1->getNumArgs();
-    for (ENode* p2 : r2->getConstParents())
-    {
-      if (!isRelevant(p2) || p2->isEq() || !p2->isCgr())
-      {
-        continue;
-      }
-      if (p1->getRoot() != p2->getRoot() && p2->getDecl() == f
-          && p2->getNumArgs() == numArgs)
-      {
-        uint32_t j = 0;
-        for (; j < numArgs; ++j)
-        {
-          ENode* arg1 = p1->getArg(j)->getRoot();
-          ENode* arg2 = p2->getArg(j)->getRoot();
-          if (arg1 == arg2)
-          {
-            continue;
-          }
-          if ((arg1 == r1 || arg1 == r2) && (arg2 == r1 || arg2 == r2))
-          {
-            continue;
-          }
-          break;
-        }
-        if (j == numArgs && isExtDiseq(p1, p2, depth - 1))
-        {
-          return true;
-        }
-      }
-    }
   }
   return false;
 }
@@ -1150,12 +723,6 @@ bool SmtContext::propagateAtoms()
         }
       }
     }
-    else if (d.isTheoryAtom())
-    {
-      Theory* th = getTheory(d.getTheory());
-      Assert(th != nullptr);
-      th->assignEh(v, val == L_TRUE);
-    }
     else if (d.isQuantifier())
     {
       // Note that with relevancy lemmas a quantifier may be asserted to
@@ -1178,44 +745,6 @@ bool SmtContext::propagateAtoms()
   return true;
 }
 
-namespace {
-
-/** Undoes setVarTheory. */
-class SetVarTheoryTrail : public Trail
-{
- public:
-  SetVarTheoryTrail(SmtContext& ctx, BoolVar v) : d_ctx(ctx), d_var(v) {}
-  void undo() override { d_ctx.getBdata(d_var).resetNotifyTheory(); }
-
- private:
-  SmtContext& d_ctx;
-  BoolVar d_var;
-};
-
-}  // namespace
-
-BoolVar SmtContext::mkTheoryAtomVar(TNode atom, TheoryId tid, bool hasENode)
-{
-  BoolVar v = mkBoolVar(atom);
-  setVarTheory(v, tid);
-  if (hasENode)
-  {
-    setEnodeFlag(v, true);
-  }
-  return v;
-}
-
-void SmtContext::setVarTheory(BoolVar v, TheoryId tid)
-{
-  Assert(getVarTheory(v) == s_nullTheoryId);
-  Assert(getInternLevel(v) <= getScopeLevel());
-  if (getScopeLevel() > getInternLevel(v))
-  {
-    pushTrail(SetVarTheoryTrail(*this, v));
-  }
-  getBdata(v).setNotifyTheory(tid);
-}
-
 void SmtContext::propagateBoolVarENode(BoolVar v)
 {
   // Propagate the truth value of v to the enode n associated with it: n is
@@ -1223,7 +752,7 @@ void SmtContext::propagateBoolVarENode(BoolVar v)
   Assert(getAssignment(v) != L_UNDEF);
   Assert(getBdata(v).isENode());
   LBool val = getAssignment(v);
-  Assert(v < getNumBoolVars());
+  Assert(v < d_prop.getNumBoolVars());
   ENode* n = boolVar2ENode(v);
 
   bool sign = val == L_FALSE;
@@ -1258,66 +787,6 @@ void SmtContext::propagateBoolVarENode(BoolVar v)
   }
 }
 
-void SmtContext::pushNewThDiseqs(ENode* r, TheoryVar v, Theory* th)
-{
-  // Traverse the disequalities of r's equivalence class and propagate them.
-  if (!th->useDiseqs())
-  {
-    return;
-  }
-  TheoryId thId = th->getId();
-  for (ENode* parent : r->getParents())
-  {
-    if (!parent->isEq())
-    {
-      continue;
-    }
-    BoolVar bv = getBoolVarOfId(parent->getOwnerId());
-    if (getAssignment(bv) != L_FALSE)
-    {
-      continue;
-    }
-    ENode* lhs = parent->getArg(0);
-    ENode* rhs = parent->getArg(1);
-    Assert(lhs->getRoot() == r->getRoot() || rhs->getRoot() == r->getRoot());
-    if (rhs->getRoot() == r->getRoot())
-    {
-      std::swap(lhs, rhs);
-    }
-    ENode* rhsRoot = rhs->getRoot();
-    TheoryVar rhsVar = d_params.d_newCore2ThEq ? getClosestVar(rhs, thId)
-                                               : rhsRoot->getThVar(thId);
-    if (d_params.d_newCore2ThEq)
-    {
-      TheoryVar lv = getClosestVar(lhs, thId);
-      if (lv != s_nullTheoryVar)
-      {
-        v = lv;
-      }
-    }
-    // If v == rhsVar then the core detects the inconsistency itself.
-    if (rhsVar != s_nullTheoryVar && v != rhsVar)
-    {
-      pushNewThDiseq(thId, v, rhsVar);
-    }
-  }
-}
-
-LBool SmtContext::getAssignment(ENode* n) const
-{
-  TNode owner = n->getExpr();
-  if (!owner.getType().isBoolean())
-  {
-    return L_UNDEF;
-  }
-  if (n == d_falseENode)
-  {
-    return L_FALSE;
-  }
-  BoolVar v = getBoolVarOfId(owner.getId());
-  return getAssignment(v);
-}
-
 void SmtContext::relevantEh(TNode n)
 {
   if (!isApp(n))
@@ -1326,85 +795,14 @@ void SmtContext::relevantEh(TNode n)
   }
   if (eInternalized(n))
   {
-    Assert(relevancy());
     d_qmanager->relevantEh(getENode(n));
   }
-
-  Theory* propagatedTh = nullptr;
-  TheoryId fid = familyIdOf(n);
-  if (fid != theory::THEORY_BOOL && fid != theory::THEORY_BUILTIN)
-  {
-    Theory* th = getTheory(fid);
-    if (th != nullptr)
-    {
-      th->relevantEh(n);
-      // remember that relevantEh was already invoked for this theory
-      propagatedTh = th;
-    }
-  }
-
-  if (eInternalized(n))
-  {
-    ENode* e = getENode(n);
-    const TheoryVarList* l = e->getThVarList();
-    while (l != nullptr)
-    {
-      TheoryId thId = static_cast<TheoryId>(l->getId());
-      Theory* th = getTheory(thId);
-      // do not invoke relevantEh twice for the same n
-      if (th != nullptr && th != propagatedTh)
-      {
-        th->relevantEh(n);
-      }
-      l = l->getNext();
-    }
-  }
-}
-
-bool SmtContext::propagateTheories()
-{
-  for (Theory* t : d_theorySet)
-  {
-    t->propagate();
-    if (inconsistent())
-    {
-      return false;
-    }
-  }
-  return true;
-}
-
-void SmtContext::propagateThEqs()
-{
-  for (size_t i = 0; i < d_thEqPropagationQueue.size() && !inconsistent(); ++i)
-  {
-    NewThEq curr = d_thEqPropagationQueue[i];
-    Theory* th = getTheory(curr.d_thId);
-    Assert(th != nullptr);
-    th->newEqEh(curr.d_lhs, curr.d_rhs);
-  }
-  d_thEqPropagationQueue.clear();
-}
-
-void SmtContext::propagateThDiseqs()
-{
-  for (size_t i = 0; i < d_thDiseqPropagationQueue.size() && !inconsistent();
-       ++i)
-  {
-    NewThEq curr = d_thDiseqPropagationQueue[i];
-    Theory* th = getTheory(curr.d_thId);
-    Assert(th != nullptr);
-    th->newDiseqEh(curr.d_lhs, curr.d_rhs);
-  }
-  d_thDiseqPropagationQueue.clear();
 }
 
 bool SmtContext::hasPendingTheoryWork() const
 {
   return !d_atomPropagationQueue.empty() || d_qmanager->canPropagate()
-         || canTheoriesPropagate() || !d_eqPropagationQueue.empty()
-         || !d_thEqPropagationQueue.empty()
-         || !d_thDiseqPropagationQueue.empty();
+         || !d_eqPropagationQueue.empty();
 }
 
 bool SmtContext::theoryPropagate()
@@ -1414,16 +812,6 @@ bool SmtContext::theoryPropagate()
     return false;
   }
   if (!propagateEqs())
-  {
-    return false;
-  }
-  propagateThEqs();
-  propagateThDiseqs();
-  if (inconsistent())
-  {
-    return false;
-  }
-  if (!propagateTheories())
   {
     return false;
   }
@@ -1438,18 +826,6 @@ bool SmtContext::theoryPropagate()
   return true;
 }
 
-bool SmtContext::canTheoriesPropagate() const
-{
-  for (Theory* t : d_theorySet)
-  {
-    if (t->canPropagate())
-    {
-      return true;
-    }
-  }
-  return false;
-}
-
 void SmtContext::assignQuantifier(TNode q) { d_qmanager->assignEh(q); }
 
 void SmtContext::notifyBoolVarDeleted(TNode n)
@@ -1460,23 +836,12 @@ void SmtContext::notifyBoolVarDeleted(TNode n)
   }
 }
 
-bool SmtContext::internalizedQuantifiers() const
-{
-  return !d_qmanager->empty();
-}
-
 void SmtContext::pushTheoryScope()
 {
   d_region.pushScope();
   getTrailStack().pushScope();
-  d_justificationsLims.push_back(d_justifications.size());
 
   d_qmanager->push();
-
-  for (Theory* t : d_theorySet)
-  {
-    t->pushScopeEh();
-  }
 }
 
 void SmtContext::popTheoryScopeBegin(size_t numScopes)
@@ -1484,47 +849,12 @@ void SmtContext::popTheoryScopeBegin(size_t numScopes)
   d_qmanager->pop(numScopes);
 }
 
-void SmtContext::popTheoryScopeEnd(size_t numScopes, uint32_t newLvl)
+void SmtContext::popTheoryScopeEnd(size_t numScopes)
 {
-  Assert(d_justificationsLims.size() > newLvl);
   d_trailStack.popScope(numScopes);
-
-  for (Theory* th : d_theorySet)
-  {
-    th->popScopeEh(numScopes);
-  }
-  delJustifications(d_justifications, d_justificationsLims[newLvl]);
-
   d_eqPropagationQueue.clear();
-  d_thEqPropagationQueue.clear();
   d_region.popScope(numScopes);
-  d_thDiseqPropagationQueue.clear();
   d_atomPropagationQueue.clear();
-  d_justificationsLims.resize(newLvl);
-}
-
-void SmtContext::delJustifications(JustificationVector& justifications,
-                                   size_t oldLim)
-{
-  Assert(oldLim <= justifications.size());
-  size_t i = justifications.size();
-  while (i != oldLim)
-  {
-    --i;
-    Justification* js = justifications[i];
-    js->delEh();
-    if (!js->inRegion())
-    {
-      delete js;
-    }
-    else
-    {
-      // A region-allocated justification still needs its destructor run,
-      // since some of them own vectors.
-      js->~Justification();
-    }
-  }
-  justifications.resize(oldLim);
 }
 
 void SmtContext::cacheGeneration(TNode n, uint32_t newScopeLvl)
@@ -1575,32 +905,11 @@ void SmtContext::resetCacheGeneration()
   d_cachedGeneration.clear();
 }
 
-void SmtContext::registerPlugin(Theory* th)
-{
-  if (getTheory(th->getFamilyId()) != nullptr)
-  {
-    // the context already has a theory for this family id
-    delete th;
-    return;
-  }
-  Assert(std::find(d_theorySet.begin(), d_theorySet.end(), th)
-         == d_theorySet.end());
-  d_theories[th->getFamilyId()] = th;
-  th->init();
-  d_theorySet.push_back(th);
-  for (uint32_t i = 0; i < getScopeLevel(); ++i)
-  {
-    th->pushScopeEh();
-  }
-}
-
-bool SmtContext::internalizeInstance(TNode body,
-                                     uint32_t generation,
-                                     Node& root)
+void SmtContext::internalizeInstance(TNode body, uint32_t generation)
 {
   if (inconsistent())
   {
-    return false;
+    return;
   }
   // The quantified variables are numbered by de Bruijn *level* (see
   // z3/ast.h), which Z3's relative de Bruijn indices make unnecessary there:
@@ -1612,580 +921,50 @@ bool SmtContext::internalizeInstance(TNode body,
   // variable level (the pattern compiler, the inverted path index, the
   // checker) would read the wrong slot. Renormalizing the instance restores
   // the invariant, and is idempotent on the parts that are already canonical.
-  Node norm = body;
-  if (d_cvc5Preprocessor)
+  //
+  // cvc5's theories take the instance in preprocessed form. A skolem
+  // definition holds globally, and cvc5's preprocessing gives it only once, so
+  // it is a root that is asserted again after each backtrack, as a delayed
+  // unit is, until it is asserted at the base level.
+  Assert(d_cvc5Preprocessor);
+  std::vector<Node> defs;
+  Node norm = d_cvc5Preprocessor(body, defs);
+  for (const Node& d : defs)
   {
-    // cvc5's theories take the instance in preprocessed form. A skolem
-    // definition holds globally, and cvc5's preprocessing gives it only
-    // once, so it is a root that is asserted again after each backtrack, as
-    // a delayed unit is, until it is asserted at the base level.
-    std::vector<Node> defs;
-    norm = d_cvc5Preprocessor(body, defs);
-    for (const Node& d : defs)
+    d_prop.hostRecordLemma(d);
+    if (d.isConst())
     {
-      d_prop.hostRecordLemma(d);
-      if (d.isConst())
-      {
-        continue;
-      }
-      internalizeAssertion(d, generation);
-      // a unit is reasserted as an atom and a sign
-      bool neg = d.getKind() == Kind::NOT;
-      d_prop.addUnitToReassert(neg ? d[0] : d, neg, true);
+      continue;
     }
+    internalizeAssertion(d, generation);
+    // a unit is reasserted as an atom and a sign
+    bool neg = d.getKind() == Kind::NOT;
+    d_prop.addUnitToReassert(neg ? d[0] : d, neg, true);
   }
   norm = d_normalizer.normalize(norm);
-  if (d_params.d_qiPermanent)
-  {
-    root = norm;
-    if (d_prop.isHostShadow())
-    {
-      // the clause of the permanent lemma stays private
-      d_prop.hostRecordLemma(norm);
-    }
-    return internalizePermanentLemma(norm, generation);
-  }
-  if (d_prop.isHosted())
-  {
-    // under cvc5's prop engine, the instance is also a lemma there
-    d_prop.hostRecordInstance(norm);
-  }
+  // the instance is also a lemma for cvc5's prop engine
+  d_prop.hostRecordInstance(norm);
   internalizeAssertion(norm, generation);
-  return false;
 }
 
-void SmtContext::checkCandidateModel()
+void SmtContext::initSearchEh() { d_qmanager->initSearchEh(); }
+
+FinalCheckStatus SmtContext::finalCheck()
 {
-  // A development hook: hand the assigned relevant literals to a full cvc5
-  // subsolver. If it reports unsat, the ported core accepted a state it
-  // should have refuted, which means a theory of this port is too weak
-  // rather than a quantifier instance being missing.
-  std::vector<Node> lits;
-  for (size_t i = 0; i < assignedLiterals().size(); ++i)
-  {
-    Literal l = assignedLiterals()[i];
-    Node a = boolVar2Expr(l.var());
-    if (a.isNull() || getBdata(l.var()).isQuantifier())
-    {
-      continue;
-    }
-    if (relevancy() && !isRelevantCore(l))
-    {
-      continue;
-    }
-    if (expr::hasClosure(a))
-    {
-      // A literal that still contains a quantifier would let the subsolver
-      // instantiate it, which is exactly what this check has to exclude.
-      continue;
-    }
-    lits.push_back(l.sign() ? a.notNode() : a);
-  }
-  std::unique_ptr<SolverEngine> sub;
-  Options subOptions;
-  subOptions.copyValues(d_env.getOptions());
-  subOptions.write_z3().z3 = false;
-  subOptions.write_smt().unsatAssumptions = true;
-  smt::SetDefaults::disableChecking(subOptions);
-  theory::SubsolverSetupInfo ssi(d_env, subOptions);
-  theory::initializeSubsolver(d_env.getNodeManager(), sub, ssi);
-  Result r = sub->checkSat(lits);
-  std::stringstream ss;
-  ss << "z3: candidate model over " << lits.size()
-     << " relevant literals: cvc5 says " << r << "\n";
-  if (r.getStatus() == Result::UNSAT)
-  {
-    for (const Node& c : sub->getUnsatAssumptions())
-    {
-      ss << "z3:   core: " << c << "\n";
-    }
-  }
-  Warning() << ss.str();
-}
-
-void SmtContext::dumpCandidateModel(const char* path)
-{
-  // A development hook: write the state E-matching saturated in as a
-  // self-contained benchmark -- the assigned relevant ground literals
-  // together with every quantified assertion of the query. Running cvc5 on
-  // it with --dump-instantiations answers the question this port keeps
-  // asking: if the file is unsat, saturation was premature, and the
-  // instantiations cvc5 prints are the ones E-matching failed to find.
-  std::vector<Node> asserts;
-  for (size_t i = 0; i < assignedLiterals().size(); ++i)
-  {
-    Literal l = assignedLiterals()[i];
-    Node a = boolVar2Expr(l.var());
-    if (a.isNull() || getBdata(l.var()).isQuantifier())
-    {
-      continue;
-    }
-    if (relevancy() && !isRelevantCore(l))
-    {
-      continue;
-    }
-    if (expr::hasClosure(a))
-    {
-      continue;
-    }
-    asserts.push_back(l.sign() ? a.notNode() : a);
-  }
-  for (const Node& a : d_prop.getAssertedFormulas())
-  {
-    if (expr::hasClosure(a))
-    {
-      asserts.push_back(a);
-    }
-  }
-  std::ofstream out(path);
-  smt::PrintBenchmark pb(d_env.getNodeManager(), Printer::getPrinter(out));
-  pb.printBenchmark(out, d_env.getLogicInfo().getLogicString(), {}, asserts);
-}
-
-void SmtContext::dumpAssertions(const char* path)
-{
-  // The formula this port's pipeline produces, so that Z3 can be run on the
-  // identical input: comparing instantiation counts against Z3 on the
-  // original file otherwise confuses a difference in search with a difference
-  // in preprocessing.
-  const std::vector<Node>& fmls = d_prop.getAssertedFormulas();
-  std::vector<Node> asserts(fmls.begin(), fmls.end());
-  std::ofstream out(path);
-  smt::PrintBenchmark pb(d_env.getNodeManager(), Printer::getPrinter(out));
-  pb.printBenchmark(out, d_env.getLogicInfo().getLogicString(), {}, asserts);
-}
-
-void SmtContext::reportQuantifierProfile()
-{
-  if (d_params.d_qiProfile && d_qmanager != nullptr)
-  {
-    // Z3 prints these as each quantifier is deleted, so the only way to see
-    // the whole table there is to let it finish; printing it once here is the
-    // same information, in the same format, without that dependence.
-    std::stringstream ss;
-    d_qmanager->printStats(ss);
-    Warning() << ss.str();
-  }
-}
-
-bool SmtContext::canConfirmModel(std::string& reason) const
-{
-  return d_theoryStatus.canConfirmModel(reason);
-}
-
-Cvc5Bridge& SmtContext::getCvc5Bridge()
-{
-  if (d_cvc5Bridge == nullptr)
-  {
-    d_cvc5Bridge.reset(new Cvc5Bridge(*this));
-  }
-  return *d_cvc5Bridge;
-}
-
-ConfigMode SmtContext::getConfigMode(bool useStaticFeatures) const
-{
-  if (!d_params.d_autoConfig)
-  {
-    return CFG_BASIC;
-  }
-  if (useStaticFeatures)
-  {
-    return CFG_AUTO;
-  }
-  return CFG_LOGIC;
-}
-
-void SmtContext::setupComponents()
-{
-  d_random.setSeed(d_params.d_randomSeed);
-  d_dynAckManager.setup();
-
-  if (!relevancy())
-  {
-    d_params.d_relevancyLemma = false;
-  }
-
-  for (Theory* th : d_theorySet)
-  {
-    th->setup();
-  }
-}
-
-void SmtContext::initSearchEh()
-{
-  for (Theory* th : d_theorySet)
-  {
-    th->initSearchEh();
-  }
-  d_qmanager->initSearchEh();
-  d_dynAckManager.initSearchEh();
-  d_finalCheckIdx = 0;
-}
-
-void SmtContext::notifyConflictResolved() { d_dynAckManager.propagateEh(); }
-
-void SmtContext::clearPropagationQueues()
-{
-  d_atomPropagationQueue.clear();
-  d_eqPropagationQueue.clear();
-  d_thEqPropagationQueue.clear();
-  d_thDiseqPropagationQueue.clear();
-}
-
-void SmtContext::restartEh()
-{
-  for (Theory* th : d_theorySet)
-  {
-    if (!inconsistent())
-    {
-      th->restartEh();
-    }
-  }
-
-  if (!inconsistent())
-  {
-    d_qmanager->restartEh();
-  }
-}
-
-QuantifierManager::CheckModelResult SmtContext::checkModel()
-{
-  if (!d_qmanager->hasQuantifiers())
-  {
-    return QuantifierManager::SAT;
-  }
-  const options::HolderZ3& z3opts = d_env.getOptions().z3;
-  if (!z3opts.z3DumpSaturated.empty())
-  {
-    dumpCandidateModel(z3opts.z3DumpSaturated.c_str());
-  }
-  if (z3opts.z3CheckSaturated)
-  {
-    checkCandidateModel();
-  }
-  return d_qmanager->checkModel();
-}
-
-FinalCheckStatus SmtContext::finalCheck(Failure& failure)
-{
-  failure = OK;
   d_stats.d_numFinalChecks++;
   Trace("z3-events") << "FINALCHECK " << d_stats.d_numFinalChecks << std::endl;
 
-  FinalCheckStatus ok = d_qmanager->finalCheckEh(false);
-  if (ok != FC_DONE)
+  FinalCheckStatus result = d_qmanager->finalCheckEh(false);
+  if (result != FC_DONE)
   {
-    return ok;
+    return result;
   }
-
-  size_t oldIdx = d_finalCheckIdx;
-  size_t numTh = d_theorySet.size();
-  size_t range = numTh + 1;
-  size_t level = 1;
-  size_t maxLevel = 1;
-  FinalCheckStatus result = FC_DONE;
-  Failure f = OK;
-
-  while (true)
-  {
-    FinalCheckStatus st;
-    if (d_finalCheckIdx < numTh && d_prop.isHostShadow())
-    {
-      // cvc5's own theories do the ground reasoning, and passed their full
-      // check; the core's plugins only keep its shadow of the ground state
-      st = FC_DONE;
-    }
-    else if (d_finalCheckIdx < numTh)
-    {
-      Theory* th = d_theorySet[d_finalCheckIdx];
-      st = th->finalCheckEh(level);
-      maxLevel = std::max(maxLevel, th->numFinalCheckLevels());
-      if (getCancelFlag())
-      {
-        f = CANCELED;
-        st = FC_GIVEUP;
-      }
-      else if (st == FC_GIVEUP)
-      {
-        f = THEORY;
-      }
-    }
-    else
-    {
-      st = d_qmanager->finalCheckEh(true);
-    }
-
-    d_finalCheckIdx = (d_finalCheckIdx + 1) % range;
-
-    switch (st)
-    {
-      case FC_DONE: break;
-      case FC_GIVEUP: result = FC_GIVEUP; break;
-      case FC_CONTINUE: return FC_CONTINUE;
-    }
-    if (d_finalCheckIdx == oldIdx)
-    {
-      if (level >= maxLevel || result == FC_DONE || result == FC_CONTINUE
-          || canPropagate())
-      {
-        break;
-      }
-      ++level;
-      // Re-evaluate at the higher level: clear the give-up state accumulated
-      // at the lower levels, so that a level that succeeds is not masked by a
-      // previous FC_GIVEUP.
-      result = FC_DONE;
-      f = OK;
-    }
-  }
-
-  if (canPropagate())
+  result = d_qmanager->finalCheckEh(true);
+  if (result != FC_CONTINUE && canPropagate())
   {
     return FC_CONTINUE;
   }
-
-  if (result == FC_GIVEUP && f != OK)
-  {
-    failure = f;
-  }
   return result;
-}
-
-bool SmtContext::assumeEq(ENode* lhs, ENode* rhs)
-{
-  if (lhs->getRoot() == rhs->getRoot())
-  {
-    // it is not necessary to assume the equality
-    return false;
-  }
-  Node eq = mkEqAtom(lhs->getExpr(), rhs->getExpr());
-  if (isFalseNode(eq))
-  {
-    return false;
-  }
-  bool r = false;
-  if (!bInternalized(eq))
-  {
-    // internalizeFormulaCore rather than internalize, so that the
-    // try-true-first flag is set before Theory::internalizeEqEh runs: the
-    // theories use that information to also mark their auxiliary atoms.
-    if (eq.getKind() == Kind::EQUAL)
-    {
-      internalizeFormulaCore(eq, true);
-      BoolVar v = getBoolVar(eq);
-      BoolVarData& d = getBdata(v);
-      d.setEqFlag();
-      setTrueFirstFlag(v);
-      Theory* th = getTheory(theory::Theory::theoryOf(eq[0].getType()));
-      if (th != nullptr)
-      {
-        th->internalizeEqEh(eq, v);
-      }
-    }
-    else
-    {
-      internalize(eq, true);
-    }
-    r = true;
-    d_stats.d_numInterfaceEqs++;
-  }
-  BoolVar v = getBoolVar(eq);
-  BoolVarData& d = getBdata(v);
-  if (!d.tryTrueFirst())
-  {
-    setTrueFirstFlag(v);
-    r = true;
-  }
-  if (getAssignment(v) == L_UNDEF)
-  {
-    r = true;
-  }
-  if (relevancy() && !isRelevant(eq))
-  {
-    markAsRelevant(eq);
-    r = true;
-  }
-  return r;
-}
-
-bool SmtContext::isExtDiseqAtom(BoolVar v)
-{
-  if (!hasENode(v))
-  {
-    return false;
-  }
-  ENode* n = boolVar2ENode(v);
-  if (!n->isEq())
-  {
-    return false;
-  }
-  return isExtDiseq(n->getArg(0), n->getArg(1), 2);
-}
-
-void SmtContext::conflictResolutionEh(BoolVar v)
-{
-  TNode n = boolVar2Expr(v);
-  if (!n.isNull() && isApp(n))
-  {
-    Theory* th = getTheory(familyIdOf(n));
-    if (th != nullptr)
-    {
-      th->conflictResolutionEh(n, v);
-    }
-  }
-}
-
-bool SmtContext::isShared(ENode* n) const
-{
-  n = n->getRoot();
-  switch (n->isShared())
-  {
-    case L_TRUE: return true;
-    case L_FALSE: return false;
-    default: break;
-  }
-
-  size_t numThVars = n->getNumThVars();
-  if (n->getExpr().getKind() == Kind::ITE)
-  {
-    n->setIsShared(L_TRUE);
-    return true;
-  }
-  switch (numThVars)
-  {
-    case 0: return false;
-    case 1:
-    {
-      if (d_qmanager->isShared(n))
-      {
-        return true;
-      }
-
-      // The node is shared if its equivalence class has a parent application
-      // belonging to another theory.
-      const TheoryVarList* l = n->getThVarList();
-      TheoryId thId = static_cast<TheoryId>(l->getId());
-
-      for (ENode* parent : n->getConstParents())
-      {
-        TheoryId fid = parent->getFamilyId();
-        if (fid != thId && fid != theory::THEORY_BOOL
-            && fid != theory::THEORY_BUILTIN)
-        {
-          if (isBetaRedex(parent, n))
-          {
-            continue;
-          }
-          n->setIsShared(L_TRUE);
-          return true;
-        }
-      }
-
-      // Some theories implement families of theories (arrays and tuples, for
-      // example), in which case the theory itself decides.
-      bool r = getTheory(thId)->isShared(l->getVar());
-      n->setIsShared(toLBool(r));
-      return r;
-    }
-    default: return true;
-  }
-}
-
-bool SmtContext::isBetaRedex(ENode* p, ENode* n) const
-{
-  Theory* th = getTheory(p->getFamilyId());
-  return th != nullptr && th->isBetaRedex(p, n);
-}
-
-bool SmtContext::getValue(ENode* n, Node& value)
-{
-  Theory* th = getTheory(theory::Theory::theoryOf(n->getSort()));
-  if (th == nullptr)
-  {
-    return false;
-  }
-  return th->getValue(n, value);
-}
-
-std::ostream& SmtContext::printLiteral(std::ostream& out, Literal l) const
-{
-  if (l == s_trueLiteral)
-  {
-    return out << "true";
-  }
-  if (l == s_falseLiteral)
-  {
-    return out << "false";
-  }
-  if (l == s_nullLiteral)
-  {
-    return out << "null";
-  }
-  if (l.sign())
-  {
-    out << "(not ";
-  }
-  out << boolVar2Expr(l.var());
-  if (l.sign())
-  {
-    out << ")";
-  }
-  return out;
-}
-
-std::ostream& SmtContext::printLiterals(std::ostream& out,
-                                        size_t numLits,
-                                        const Literal* lits) const
-{
-  out << "{";
-  for (size_t i = 0; i < numLits; ++i)
-  {
-    if (i > 0)
-    {
-      out << " or ";
-    }
-    printLiteral(out, lits[i]);
-  }
-  return out << "}";
-}
-
-std::ostream& SmtContext::print(std::ostream& out, BJustification j) const
-{
-  out << j.getKind();
-  switch (j.getKind())
-  {
-    case BJustification::CLAUSE:
-      if (j.getClause() != nullptr)
-      {
-        j.getClause()->print(out << " ", d_prop.getBoolVar2ExprMap());
-      }
-      break;
-    case BJustification::BIN_CLAUSE:
-      printLiteral(out << " ", j.getLiteral());
-      break;
-    case BJustification::JUSTIFICATION:
-      out << " " << j.getJustification()->getName();
-      break;
-    default: break;
-  }
-  return out;
-}
-
-void SmtContext::print(std::ostream& out) const
-{
-  out << "z3::context\n";
-  out << "scope level: " << getScopeLevel()
-      << ", base level: " << getBaseLevel()
-      << ", search level: " << getSearchLevel() << "\n";
-  out << "num bool vars: " << getNumBoolVars()
-      << ", num enodes: " << d_enodes.size()
-      << ", num aux clauses: " << d_prop.getNumAuxClauses()
-      << ", num lemmas: " << getLemmas().size() << "\n";
-}
-
-void SmtContext::printStatistics(std::ostream& out) const
-{
-  d_stats.print(out);
 }
 
 void SmtContext::registerStatistics()
@@ -2200,14 +979,9 @@ void SmtContext::registerStatistics()
   };
   add("z3::propagations", d_stats.d_numPropagations);
   add("z3::binPropagations", d_stats.d_numBinPropagations);
-  add("z3::conflicts", d_stats.d_numConflicts);
-  add("z3::satConflicts", d_stats.d_numSatConflicts);
-  add("z3::decisions", d_stats.d_numDecisions);
   add("z3::addEq", d_stats.d_numAddEq);
-  add("z3::restarts", d_stats.d_numRestarts);
   add("z3::finalChecks", d_stats.d_numFinalChecks);
   add("z3::assertedFormulas", d_stats.d_numAssertedFormulas);
-  add("z3::assertedExprs", d_stats.d_numAssertedExprs);
   add("z3::mkBoolVar", d_stats.d_numMkBoolVar);
   add("z3::delBoolVar", d_stats.d_numDelBoolVar);
   add("z3::mkENode", d_stats.d_numMkENode);
@@ -2216,25 +990,12 @@ void SmtContext::registerStatistics()
   add("z3::delClause", d_stats.d_numDelClause);
   add("z3::mkBinClause", d_stats.d_numMkBinClause);
   add("z3::mkLits", d_stats.d_numMkLits);
-  add("z3::dynAck", d_stats.d_numDynAck);
-  add("z3::arithNlFallbacks", d_stats.d_numArithNlFallbacks);
-  add("z3::arithNlFallbackConflicts", d_stats.d_numArithNlFallbackConflicts);
-  add("z3::interfaceEqs", d_stats.d_numInterfaceEqs);
-  add("z3::propagatedEqs", d_stats.d_numPropagatedEqs);
-  add("z3::separatedEqs", d_stats.d_numSeparatedEqs);
-  add("z3::sharedGroups", d_stats.d_numSharedGroups);
-  add("z3::coincidingShared", d_stats.d_numCoincidingShared);
   add("z3::maxGeneration", d_stats.d_maxGeneration);
-  add("z3::minimizedLits", d_stats.d_numMinimizedLits);
-  add("z3::learnedLits", d_stats.d_numLearnedLits);
-  add("z3::checks", d_stats.d_numChecks);
-  add("z3::simplifications", d_stats.d_numSimplifications);
   add("z3::assignments", d_stats.d_numAssignments);
   add("z3::instances", d_stats.d_numInstances);
   add("z3::lazyInstances", d_stats.d_numLazyInstances);
   add("z3::instancesCheckerSat", d_stats.d_numInstancesCheckerSat);
   add("z3::instancesSimplifyTrue", d_stats.d_numInstancesSimplifyTrue);
-  add("z3::instancesRediscovered", d_stats.d_numInstancesRediscovered);
   add("z3::hostChecks", d_stats.d_numHostChecks);
   add("z3::hostFullChecks", d_stats.d_numHostFullChecks);
   add("z3::hostPops", d_stats.d_numHostPops);
@@ -2243,11 +1004,8 @@ void SmtContext::registerStatistics()
   add("z3::hostLemmas", d_stats.d_numHostLemmas);
   add("z3::hostDuplicateLemmas", d_stats.d_numHostDuplicateLemmas);
   add("z3::hostConflicts", d_stats.d_numHostConflicts);
-  add("z3::hostPropagations", d_stats.d_numHostPropagations);
-  add("z3::hostExplanations", d_stats.d_numHostExplanations);
   add("z3::hostSplits", d_stats.d_numHostSplits);
   add("z3::shadowMerges", d_stats.d_numShadowMerges);
-  add("z3::shadowImports", d_stats.d_numShadowImports);
   add("z3::shadowUnexplained", d_stats.d_numShadowUnexplained);
   add("z3::hostDelayedUnits", d_stats.d_numHostDelayedUnits);
   add("z3::missedInstances", d_stats.d_numMissedInstances);
@@ -2260,21 +1018,7 @@ void SmtContext::registerStatistics()
   add("z3::mamCandidates", d_stats.d_numMamCandidates);
   add("z3::mamExecs", d_stats.d_numMamExecs);
   add("z3::mamMatches", d_stats.d_numMamMatches);
-  add("z3::dtOccursCheck", d_stats.d_numDtOccursCheck);
-  add("z3::dtSplits", d_stats.d_numDtSplits);
-  add("z3::dtConstructorAx", d_stats.d_numDtConstructorAx);
-  add("z3::dtAccessorAx", d_stats.d_numDtAccessorAx);
-  add("z3::dtUpdateFieldAx", d_stats.d_numDtUpdateFieldAx);
-  add("z3::bridgeAssumptions", d_stats.d_bridgeAssumptions);
-  add("z3::bridgeAsserted", d_stats.d_bridgeAsserted);
-  add("z3::bridgeTimeMs", d_stats.d_bridgeTimeMs);
-  add("z3::bridgeChecks", d_stats.d_numBridgeChecks);
-  add("z3::bridgeConflicts", d_stats.d_numBridgeConflicts);
 }
 
-std::ostream& SmtContext::printLastFailure(std::ostream& out) const
-{
-  return out << getLastSearchFailure();
-}
 }  // namespace z3
 }  // namespace cvc5::internal

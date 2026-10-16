@@ -119,11 +119,8 @@ class TheoryEngine : protected EnvObj
   /** Constructs a theory engine */
   TheoryEngine(Env& env);
 
-  /**
-   * Destroys a theory engine. Virtual since an alternative search
-   * implementation may extend this class, see smt/engine_factory.h.
-   */
-  virtual ~TheoryEngine();
+  /** Destroys a theory engine */
+  ~TheoryEngine();
 
   void interrupt();
 
@@ -150,7 +147,7 @@ class TheoryEngine : protected EnvObj
   /**
    * Adds the theory that mk makes from the output channel and the valuation
    * of the slot theoryId, as addTheory does for a theory class. Used to put
-   * other implementations in the theory slots (--z3-theory-engine=cvc5).
+   * the ported Z3 core in the quantifiers slot (--z3).
    */
   void addTheory(theory::TheoryId theoryId,
                  const std::function<theory::Theory*(theory::OutputChannel&,
@@ -165,16 +162,6 @@ class TheoryEngine : protected EnvObj
     getRewriter()->registerTheoryRewriter(
         theoryId, d_theoryTable[theoryId]->getTheoryRewriter());
   }
-
-  /**
-   * Whether theories share terms through this engine: the logic has more
-   * than one theory, and theories have equality engines. With
-   * --ee-mode=none, the theory solvers share their own equality reasoning
-   * (the ported Z3 components, which share one E-graph), so the engine
-   * routes facts, propagations and explanations as without sharing: an
-   * explanation comes from the theory that owns the literal, as a whole.
-   */
-  bool isSharingEnabled() const;
 
   /** Register theory proof rule checkers to the given proof checker */
   void initializeProofChecker(ProofChecker* pc);
@@ -256,10 +243,7 @@ class TheoryEngine : protected EnvObj
    * as it might decide to further instantiate some lemmas, precluding
    * a SAT response.
    */
-  virtual bool needCheck() const
-  {
-    return d_outputChannelUsed || d_lemmasAdded;
-  }
+  bool needCheck() const { return d_outputChannelUsed || d_lemmasAdded; }
   /**
    * Is the literal lit (possibly) critical for satisfying the input formula in
    * the current context? This call is applicable only during collectModelInfo
@@ -312,19 +296,19 @@ class TheoryEngine : protected EnvObj
    * Preregister a Theory atom with the responsible theory (or
    * theories).
    */
-  virtual void preRegister(TNode preprocessed);
+  void preRegister(TNode preprocessed);
 
   /**
    * Assert the formula to the appropriate theory.
    * @param node the assertion
    */
-  virtual void assertFact(TNode node);
+  void assertFact(TNode node);
 
   /**
    * Check all (currently-active) theories for conflicts.
    * @param effort the effort level to use
    */
-  virtual void check(theory::Theory::Effort effort);
+  void check(theory::Theory::Effort effort);
 
   /**
    * Calls ppStaticLearn() on all theories.
@@ -338,19 +322,19 @@ class TheoryEngine : protected EnvObj
    * Calls presolve() on all theories and returns true
    * if one of the theories discovers a conflict.
    */
-  virtual bool presolve();
+  bool presolve();
 
   /**
    * Resets the internal state.
    */
-  virtual void postsolve(prop::SatValue result);
+  void postsolve(prop::SatValue result);
 
   /**
    * Calls notifyRestart() on all active theories.
    */
-  virtual void notifyRestart();
+  void notifyRestart();
 
-  virtual void getPropagatedLiterals(std::vector<TNode>& literals)
+  void getPropagatedLiterals(std::vector<TNode>& literals)
   {
     for (; d_propagatedLiteralsIndex < d_propagatedLiterals.size();
          d_propagatedLiteralsIndex = d_propagatedLiteralsIndex + 1)
@@ -368,14 +352,14 @@ class TheoryEngine : protected EnvObj
    * solver to make as its next decision. Decision requests are managed by
    * the decision manager d_decManager.
    */
-  virtual Node getNextDecisionRequest();
+  Node getNextDecisionRequest();
 
   bool properConflict(TNode conflict) const;
 
   /**
    * Returns an explanation of the node propagated to the SAT solver.
    */
-  virtual TrustNode getExplanation(TNode node);
+  TrustNode getExplanation(TNode node);
 
   /**
    * Get the pointer to the model object used by this theory engine.

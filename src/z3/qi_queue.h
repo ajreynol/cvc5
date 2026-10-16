@@ -18,8 +18,6 @@
  * it. Delayed instances are reconsidered at final check and dropped entirely
  * if their cost exceeds the lazy threshold. This triage, not the matching
  * itself, is what keeps the number of instances bounded.
- *
- * It is the default InstancePolicy (--z3-qi-policy=z3).
  */
 
 #include "cvc5_private.h"
@@ -33,9 +31,9 @@
 #include <vector>
 
 #include "expr/node.h"
+#include "z3/checker.h"
 #include "z3/cost_function.h"
 #include "z3/fingerprints.h"
-#include "z3/instance_policy.h"
 #include "z3/params.h"
 #include "z3/quantifier_stat.h"
 #include "z3/types.h"
@@ -54,12 +52,12 @@ struct QiQueueStats
   QiQueueStats() { reset(); }
 };
 
-class QiQueue : public InstancePolicy
+class QiQueue
 {
  public:
   QiQueue(QuantifierManager& qm, QuantifierServices& ctx, Params& params);
 
-  void setup() override;
+  void setup();
 
   /**
    * Enqueue a new instance. The fingerprint holds the quantifier and the
@@ -69,27 +67,24 @@ class QiQueue : public InstancePolicy
               TNode pat,
               uint32_t generation,
               uint32_t minTopGeneration,
-              uint32_t maxTopGeneration) override;
+              uint32_t maxTopGeneration);
 
-  void instantiate() override;
+  void instantiate();
 
-  bool hasWork() const override { return !d_newEntries.empty(); }
+  bool hasWork() const { return !d_newEntries.empty(); }
 
-  void initSearchEh() override;
+  void initSearchEh();
 
   /**
    * Instantiate the delayed entries whose cost is within the lazy threshold.
    * Returns true if nothing was instantiated, i.e. the final check succeeds.
    */
-  bool finalCheckEh() override;
+  bool finalCheckEh();
 
-  void pushScope() override;
-  void popScope(size_t numScopes) override;
-  void reset() override;
+  void pushScope();
+  void popScope(size_t numScopes);
 
   const QiQueueStats& getStats() const { return d_stats; }
-
-  void printDelayedInstancesStats(std::ostream& out) const;
 
  private:
   struct Entry
@@ -124,7 +119,33 @@ class QiQueue : public InstancePolicy
                 uint32_t maxTopGeneration);
   uint32_t getNewGen(TNode q, uint32_t generation, float cost);
   void instantiate(Entry& ent);
-  void getMinMaxCosts(float& min, float& max) const;
+  /** The quantifier of the fingerprint f. */
+  TNode getQuantifier(Fingerprint* f) const;
+  /**
+   * Whether the checker finds the instance of q with these bindings already
+   * satisfied (--z3-qi-checker), in which case it is counted, as in Z3, but
+   * not made.
+   */
+  bool skipSatisfied(TNode q,
+                     QuantifierStat* stat,
+                     size_t numBindings,
+                     ENode* const* bindings);
+  /**
+   * The lemma (or (not q) instance) for the instance of q with these
+   * bindings, counted as made; or null if the instance rewrites to true.
+   */
+  Node mkLemma(TNode q,
+               QuantifierStat* stat,
+               size_t numBindings,
+               ENode* const* bindings);
+  /** Assert the lemma of an instance, with the generation of its terms. */
+  void assertLemma(TNode lemma, uint32_t generation);
+
+  QuantifierManager& d_qm;
+  QuantifierServices& d_context;
+  Params& d_params;
+  /** The instance checker. */
+  Checker d_checker;
 
   QiQueueStats d_stats;
   CostFunction d_costFunction;
