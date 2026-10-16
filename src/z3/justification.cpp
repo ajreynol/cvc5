@@ -25,6 +25,11 @@
 namespace cvc5::internal {
 namespace z3 {
 
+void ExternalEqJustification::getAntecedents(Explainer& e)
+{
+  e.getContext().noteUnexplainable();
+}
+
 UnitResolutionJustification::UnitResolutionJustification(SmtContext& ctx,
                                                          Justification* js,
                                                          size_t numLits,

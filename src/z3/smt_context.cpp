@@ -678,7 +678,9 @@ void SmtContext::undoAddEq(ENode* r1, ENode* n1, size_t r2NumParents)
     ENode* parent = *it;
     if (parent->isCgcEnabled())
     {
-      Assert(parent->isCgr());
+      Assert(parent->isCgr())
+          << "parent " << parent->getExpr() << " of " << r1->getExpr()
+          << " merged into " << r2->getExpr() << " is not a congruence root";
       Assert(d_cgTable.containsPtr(parent));
       if (!parent->isEq())
       {
@@ -2244,6 +2246,9 @@ void SmtContext::registerStatistics()
   add("z3::hostPropagations", d_stats.d_numHostPropagations);
   add("z3::hostExplanations", d_stats.d_numHostExplanations);
   add("z3::hostSplits", d_stats.d_numHostSplits);
+  add("z3::shadowMerges", d_stats.d_numShadowMerges);
+  add("z3::shadowImports", d_stats.d_numShadowImports);
+  add("z3::shadowUnexplained", d_stats.d_numShadowUnexplained);
   add("z3::hostDelayedUnits", d_stats.d_numHostDelayedUnits);
   add("z3::missedInstances", d_stats.d_numMissedInstances);
   add("z3::mamRelevantEh", d_stats.d_numMamRelevantEh);

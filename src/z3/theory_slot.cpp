@@ -16,9 +16,11 @@
 
 #include "options/z3_options.h"
 #include "smt/env.h"
+#include "theory/ee_setup_info.h"
 #include "theory/output_channel.h"
 #include "theory/theory_engine.h"
 #include "theory/theory_traits.h"
+#include "z3/shadow_feed.h"
 
 namespace cvc5::internal {
 namespace z3 {
@@ -181,8 +183,25 @@ ProofRuleChecker* TheorySlot::getProofChecker()
   return d_native->getProofChecker();
 }
 
+bool TheorySlot::needsEqualityEngine(theory::EeSetupInfo& esi)
+{
+  ShadowFeed* feed = d_sb->getCore().getShadowFeed();
+  if (feed == nullptr || getId() != theory::THEORY_QUANTIFIERS)
+  {
+    return false;
+  }
+  esi.d_useMaster = true;
+  esi.d_notify = feed;
+  return true;
+}
+
 void TheorySlot::finishInit()
 {
+  ShadowFeed* feed = d_sb->getCore().getShadowFeed();
+  if (feed != nullptr && d_equalityEngine != nullptr)
+  {
+    feed->setMasterEqualityEngine(d_equalityEngine);
+  }
   // cvc5's theory gets an equality engine of its own, as it would under its
   // own theory engine, unless it asks for the master one, which only the
   // quantifiers engine provides.

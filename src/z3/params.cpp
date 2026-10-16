@@ -146,6 +146,8 @@ void Params::initialize(const Options& opts)
   d_arithNl = opts.z3.z3ArithNl;
   d_arithNlFallback = opts.z3.z3ArithNlFallback;
   d_arithNative = opts.z3.z3Arith == options::Z3ArithMode::NATIVE;
+  d_theoryPlugins = opts.z3.z3Slots == options::Z3SlotsMode::ALL
+                    || opts.z3.z3ShadowPlugins;
   // The defaults of the options are those of verus-best: the options Verus
   // passes to Z3 (auto_config=false smt.mbqi=false smt.case_split=3
   // smt.qi.eager_threshold=100 smt.delay_units=true smt.arith.solver=2),

@@ -260,7 +260,8 @@ void Setup::setupAuflira(bool /*simpleArray*/)
 
 void Setup::setupArith()
 {
-  if (d_ctx.getTheory(theory::THEORY_ARITH) != nullptr)
+  if (!d_params.d_theoryPlugins
+      || d_ctx.getTheory(theory::THEORY_ARITH) != nullptr)
   {
     return;
   }
@@ -277,7 +278,8 @@ void Setup::setupArith()
 
 void Setup::setupBv()
 {
-  if (d_ctx.getTheory(theory::THEORY_BV) != nullptr)
+  if (!d_params.d_theoryPlugins
+      || d_ctx.getTheory(theory::THEORY_BV) != nullptr)
   {
     return;
   }
@@ -290,7 +292,8 @@ void Setup::setupBv()
 
 void Setup::setupDatatypes()
 {
-  if (d_ctx.getTheory(theory::THEORY_DATATYPES) != nullptr)
+  if (!d_params.d_theoryPlugins
+      || d_ctx.getTheory(theory::THEORY_DATATYPES) != nullptr)
   {
     return;
   }

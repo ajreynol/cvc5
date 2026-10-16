@@ -1400,6 +1400,8 @@ libcvc5_add_sources(
   z3/relevancy.h
   z3/setup.cpp
   z3/setup.h
+  z3/shadow_feed.cpp
+  z3/shadow_feed.h
   z3/shared_backend.cpp
   z3/shared_backend.h
   z3/smt_context.cpp

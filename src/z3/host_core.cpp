@@ -24,6 +24,7 @@
 #include "theory/skolem_lemma.h"
 #include "theory/theory_engine.h"
 #include "z3/prop_core.h"
+#include "z3/shadow_feed.h"
 #include "z3/shared_backend.h"
 #include "z3/smt_context.h"
 
@@ -50,6 +51,7 @@ HostCore::HostCore(Env& env,
       d_out(out),
       d_setup(false),
       d_conflictSent(false),
+      d_conflictLevel(0),
       d_needCheck(false),
       d_numReported(0),
       d_reportIdx(0),
@@ -57,6 +59,11 @@ HostCore::HostCore(Env& env,
       d_shadow(options().z3.z3Slots != options::Z3SlotsMode::ALL)
 {
   d_popNotify = std::make_unique<PopNotify>(context(), *this);
+  if (d_shadow && !options().z3.z3ShadowPlugins
+      && options().z3.z3ShadowEqualities)
+  {
+    d_feed = std::make_unique<ShadowFeed>(env, backend);
+  }
 }
 
 HostCore::~HostCore() {}
@@ -134,6 +141,7 @@ void HostCore::assertFact(TNode literal)
   Trace("z3-host") << "assert " << literal << std::endl;
   Literal l = core.hostLiteral(literal);
   std::vector<Literal> conflict;
+  d_backend.getContext().takeUnexplainable();
   if (!core.hostAssign(l, conflict))
   {
     sendConflict(conflict);
@@ -165,6 +173,11 @@ void HostCore::check(theory::Theory::Effort effort)
   }
   PropCore& core = d_backend.getPropCore();
   syncLevel();
+  if (d_feed != nullptr)
+  {
+    // the equalities cvc5's theories derived since the last check
+    d_feed->apply();
+  }
   if (context()->getLevel() <= 1 && !d_delayedUnits.empty())
   {
     // As Z3 asserts its delayed units after a restart, the lemmas weakened
@@ -222,8 +235,10 @@ void HostCore::check(theory::Theory::Effort effort)
       {
         d_out.setModelUnsound(theory::IncompleteId::QUANTIFIERS);
       }
-      else if (!d_backend.getContext().canConfirmModel(reason))
+      else if (!d_shadow && !d_backend.getContext().canConfirmModel(reason))
       {
+        // As a shadow, the core has no say on the ground part of the model,
+        // which is cvc5's theories'.
         d_out.setModelUnsound(theory::IncompleteId::UNKNOWN);
       }
       return;
@@ -292,11 +307,22 @@ void HostCore::notifyPop()
   {
     d_popLevel = lvl;
   }
+  if (d_feed != nullptr)
+  {
+    d_feed->notifyPop();
+  }
   if (!d_setup)
   {
     return;
   }
-  d_conflictSent = false;
+  // The core's conflict, at d_conflictLevel, holds until the SAT context
+  // pops below it. A conflict sent makes cvc5 backtrack below it at once;
+  // one that was not (see sendConflict) may see cvc5 pop to shallower levels
+  // that still hold it.
+  if (lvl < d_conflictLevel)
+  {
+    d_conflictSent = false;
+  }
 }
 
 void HostCore::syncLevel()
@@ -328,6 +354,16 @@ void HostCore::syncLevel()
 
 void HostCore::sendConflict(const std::vector<Literal>& lits)
 {
+  if (d_backend.getContext().takeUnexplainable())
+  {
+    // The conflict depends on an equality of cvc5's theories, which the
+    // core cannot explain: cvc5's theories find it themselves. Until cvc5
+    // backtracks, the core does nothing, as after a conflict it sent.
+    d_backend.getContext().getStats().d_numShadowUnexplained++;
+    d_conflictSent = true;
+    d_conflictLevel = context()->getLevel();
+    return;
+  }
   NodeManager* nm = nodeManager();
   std::vector<Node> disj;
   for (Literal l : lits)
@@ -350,6 +386,7 @@ void HostCore::sendConflict(const std::vector<Literal>& lits)
   d_out.lemma(lem, theory::LemmaProperty::NONE, true);
   d_backend.getContext().getStats().d_numHostConflicts++;
   d_conflictSent = true;
+  d_conflictLevel = context()->getLevel();
   d_needCheck = true;
 }
 
@@ -580,6 +617,7 @@ bool HostCore::propagateAndReport()
   if (!ok)
   {
     std::vector<Literal> conflict;
+    d_backend.getContext().takeUnexplainable();
     core.hostExplainConflict(conflict);
     sendConflict(conflict);
     return false;

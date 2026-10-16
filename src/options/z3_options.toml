@@ -55,6 +55,30 @@ name   = "Z3 Core"
   help = "The quantifiers slot only: cvc5's theories do the ground reasoning, and the port matches and instantiates over a shadow of the ground state; implies --no-z3-native-term-formulas and --z3-theory-preprocess (Stage 4 of src/z3/ARCHITECTURE_PLAN.md)."
 
 [[option]]
+  name       = "z3ShadowPlugins"
+  category   = "expert"
+  long       = "z3-shadow-plugins"
+  type       = "bool"
+  default    = "true"
+  help       = "with --z3-slots=quantifiers, run the port's arithmetic, datatype and bit-vector plugins in its shadow of the ground state; when off, the shadow is the E-graph alone, which takes the equalities cvc5's theories derive (--z3-shadow-equalities)"
+
+[[option]]
+  name       = "z3ShadowEqualities"
+  category   = "expert"
+  long       = "z3-shadow-equalities"
+  type       = "bool"
+  default    = "true"
+  help       = "with --no-z3-shadow-plugins, merge in the shadow's E-graph the terms cvc5's theories make equal, as cvc5's master equality engine records them"
+
+[[option]]
+  name       = "z3ShadowImport"
+  category   = "expert"
+  long       = "z3-shadow-import"
+  type       = "bool"
+  default    = "false"
+  help       = "with --z3-shadow-equalities, add to the shadow's E-graph the term of a class cvc5 merges with one of the shadow's terms (a constructor application or a value, say), so that matching sees it"
+
+[[option]]
   name       = "z3TheoryPreprocess"
   category   = "expert"
   long       = "z3-theory-preprocess"

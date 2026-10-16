@@ -132,6 +132,21 @@ class UnitResolutionJustification : public Justification
   Literal* d_literals;
 };
 
+/**
+ * The justification of an equality cvc5's theories derived, which the core
+ * cannot explain: cvc5's master equality engine, which records it, keeps no
+ * reasons. Explaining it notes that the explanation is incomplete (see
+ * SmtContext::takeUnexplainable), so that nothing that depends on it is sent
+ * to cvc5 as a lemma.
+ */
+class ExternalEqJustification : public Justification
+{
+ public:
+  ExternalEqJustification() : Justification(false) {}
+  void getAntecedents(Explainer& e) override;
+  const char* getName() const override { return "external-eq"; }
+};
+
 /** Two nodes with distinct interpreted roots were found equal. */
 class EqConflictJustification : public Justification
 {

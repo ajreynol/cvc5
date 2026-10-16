@@ -112,6 +112,12 @@ class TheorySlot : public theory::Theory
   theory::TheoryRewriter* getTheoryRewriter() override;
   ProofRuleChecker* getProofChecker() override;
   void finishInit() override;
+  /**
+   * None, except for the quantifiers slot when the core is a shadow fed by
+   * the equalities of cvc5's theories: it takes the master equality engine,
+   * as cvc5's quantifiers theory does, which notifies the feed.
+   */
+  bool needsEqualityEngine(theory::EeSetupInfo& esi) override;
   void ppStaticLearn(TNode in, std::vector<TrustNode>& learned) override;
   bool ppAssert(TrustNode tin,
                 theory::TrustSubstitutionMap& outSubstitutions) override;

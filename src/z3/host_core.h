@@ -36,6 +36,7 @@ class TheoryEngine;
 
 namespace z3 {
 
+class ShadowFeed;
 class SharedBackend;
 
 /**
@@ -92,6 +93,11 @@ class HostCore : protected EnvObj
   Node explain(TNode literal);
   /** Whether cvc5 must call check again. */
   bool needCheck() const { return d_needCheck; }
+  /**
+   * The feed of the equalities of cvc5's theories, in the shadow mode
+   * without the port's plugins, or null.
+   */
+  ShadowFeed* getShadowFeed() { return d_feed.get(); }
 
  private:
   /** Pops the propositional side when the SAT context pops. */
@@ -180,8 +186,13 @@ class HostCore : protected EnvObj
   HostCoreOutput& d_out;
   /** Whether the propositional side was set up (presolve). */
   bool d_setup;
-  /** Whether a conflict was sent in the current context. */
+  /**
+   * Whether the core is in conflict in the current context: a conflict was
+   * sent, or one was found that could not be (see sendConflict).
+   */
   bool d_conflictSent;
+  /** The level of the SAT context at which the conflict was found. */
+  uint32_t d_conflictLevel;
   /** Whether cvc5 must call check again, see needCheck. */
   bool d_needCheck;
   /** How many propagations the current check reported. */
@@ -213,6 +224,8 @@ class HostCore : protected EnvObj
   std::vector<std::pair<Node, bool>> d_delayedUnits;
   /** Follows the pops of the SAT context. */
   std::unique_ptr<PopNotify> d_popNotify;
+  /** See getShadowFeed. */
+  std::unique_ptr<ShadowFeed> d_feed;
 };
 
 }  // namespace z3

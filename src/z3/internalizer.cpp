@@ -27,6 +27,7 @@
 #include "expr/node_manager.h"
 #include "smt/env.h"
 #include "theory/theory.h"
+#include "z3/arith_util.h"
 #include "z3/quantifier_manager.h"
 #include "z3/smt_context.h"
 #include "z3/util/util.h"
@@ -914,10 +915,15 @@ void SmtContext::internalizeUninterpreted(TNode n)
     return;
   }
 
+  // Without the arithmetic plugin (a shadow of cvc5's theories), its
+  // arithmetic terms keep its congruence policy: Z3 never enables congruence
+  // closure for (+ ...) and (* ...) (TheoryArith::enableCgcFor).
+  bool cgc = getTheory(theory::THEORY_ARITH) != nullptr
+             || !(arith::isAdd(n) || arith::isMul(n));
   ENode* e = mkENode(n,
                      false, /* do not suppress the arguments */
                      false, /* a term, so it is not merged with true/false */
-                     true);
+                     cgc);
   applySortCnstr(n, e);
 }
 

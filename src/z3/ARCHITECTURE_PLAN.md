@@ -1875,6 +1875,73 @@ its trail refers to before undoing the trail. After an interrupted check,
 deleting the solver crashed; cvc5's command line exits without destructors,
 so only API users would see it. Fixed.
 
+**Step 4: the shadow without the port's plugins** (2026-10-16), selected by
+`--z3-slots=quantifiers --no-z3-shadow-plugins`.
+
+- **What the core keeps.** It has none of its arithmetic, datatype and
+  bit-vector plugins, so their terms and atoms are uninterpreted in its
+  E-graph.
+  - Arithmetic keeps Z3's congruence policy: `+` and `*` get no congruence
+    closure (`TheoryArith::enableCgcFor`).
+  - Enabling it exposed a bug in the core's commutative congruence:
+    undoing a merge found a parent that was no longer a congruence root.
+    Z3 takes that path only for equalities. The bug is still there, and is
+    reachable through the commutative bit-vector operations of the bridge.
+- **The feed of cvc5's equalities (`ShadowFeed`).** The E-graph gets them
+  from cvc5's master equality engine.
+  - That engine is now built for the quantifiers slot even without a
+    quantifiers engine, with the slot's notification class, the way
+    `TheoryQuantifiers` takes it for cvc5's quantifiers engine.
+  - For each class of the master engine, the feed keeps a term of the
+    core, and it merges the core's terms of classes that cvc5 merges.
+  - These merges have no explanation, since the master engine keeps no
+    reasons (`ExternalEqJustification`). A conflict of the core that
+    depends on one is not sent, and the core waits for cvc5's theories to
+    find it themselves.
+  - The core now leaves its conflict state only when the SAT context pops
+    below the conflict's level. Before, any pop ended it, which was enough
+    only for conflicts cvc5 had been sent.
+  - With `--z3-shadow-import`, the feed also internalizes the
+    representative of a class merged with one of the core's (a
+    constructor application, a value). That measured slightly worse, so it
+    is off.
+- **The core's final check** no longer marks the ground part of the model
+  unsound: that part is cvc5's theories'.
+- **Without the feed**, the core saturates early: `log.19` ends unknown
+  after 1,222 instances.
+
+| 10 s, `verus-best` | dev set (88) | sample (613) | time on the 560 of the sample both solve |
+|---|---|---|---|
+| Stage 3 | 72 | 575 | 323 s |
+| Stage 4, the port's plugins in the shadow | 59 | 557 | |
+| Stage 4, no plugins, equalities and imported terms | 62, 63 | 557 | |
+| **Stage 4, no plugins, equalities** | **64, 65** | **563** | **316 s** |
+
+On what both solve, Stage 4 without plugins is as fast as Stage 3. Against
+Stage 4 with the plugins, it is 26% faster on the 552 benchmarks both solve,
+and solves 6 more. Stage 3 still solves 15 benchmarks of the sample it does
+not, and it solves 3 that Stage 3 does not. Most of that gap is the
+preprocessing of instances measured above.
+
+Validation:
+- The quantified regressions with assertions: no wrong answers, 151 unsat
+  and 37 sat.
+- The development benchmarks either variant solves answer unsat with
+  assertions on.
+
+**Code** (coverage on the same runs as before):
+- The plugins no longer run: arithmetic executes 4 of its 6,435 lines,
+  datatypes and the bridge none. In all, the configuration executes 10,857
+  of the port's 28,064 executable lines (39%), about 14,000 lines of code.
+- The files it uses come to 22,300 lines of code. That leaves out the three
+  plugins, `Z3PropEngine` and `Z3TheoryEngine`, the decision queues,
+  conflict analysis and dynamic Ackermann, the quick checker, and the
+  arithmetic numerics.
+- Within those files, what it never runs is mostly `PropCore`'s search
+  loop, the plugin hooks of `SmtContext` and the internalizer, the instance
+  policies other than Z3's, and a few small files. Without it, a branch
+  with only this configuration would keep about 19,000 lines of code.
+
 ### Open questions
 
 - **Duplicated conflicts.** The shadow finds ground conflicts that cvc5's

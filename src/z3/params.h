@@ -358,6 +358,12 @@ struct Params
    * solver=2) rather than the bridge to cvc5's solver.
    */
   bool d_arithNative = false;
+  /**
+   * Whether the theory side has its arithmetic, datatype and bit-vector
+   * plugins. Not when the core is a shadow of cvc5's own theories without
+   * them (--no-z3-shadow-plugins).
+   */
+  bool d_theoryPlugins = true;
   // theory_arith_params, with the values updt_params gives them from the
   // parameter defaults where it sets them.
   bool d_arithEq2ineq = false;

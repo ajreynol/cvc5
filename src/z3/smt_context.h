@@ -490,6 +490,28 @@ class SmtContext final : protected EnvObj, public QuantifierServices
     return d_cvc5Preprocessor;
   }
 
+  /**
+   * Merge the classes of a and b, which must be internalized as terms, since
+   * cvc5's theories made them equal (--no-z3-shadow-plugins). The merge is
+   * queued for the next propagation. The core cannot explain it.
+   */
+  void assumeExternalEq(TNode a, TNode b)
+  {
+    pushEq(getENode(a), getENode(b), EqJustification(&d_externalJustification));
+  }
+  /** Note that an explanation went through an equality of cvc5's theories. */
+  void noteUnexplainable() { d_unexplainable = true; }
+  /**
+   * Whether an explanation went through an equality of cvc5's theories since
+   * the last call, which makes it incomplete.
+   */
+  bool takeUnexplainable()
+  {
+    bool u = d_unexplainable;
+    d_unexplainable = false;
+    return u;
+  }
+
   /** The environment of the enclosing cvc5 solver. */
   const Env& getEnv() const override { return d_env; }
 
@@ -1020,6 +1042,10 @@ class SmtContext final : protected EnvObj, public QuantifierServices
   NgPushAppIte d_ngPushAppIte;
   /** See setCvc5Preprocessor. */
   Cvc5Preprocessor d_cvc5Preprocessor;
+  /** The justification of the equalities of cvc5's theories. */
+  ExternalEqJustification d_externalJustification;
+  /** See takeUnexplainable. */
+  bool d_unexplainable = false;
   std::unique_ptr<Cvc5Bridge> d_cvc5Bridge;
   PatternInference d_patternInference;
   /**

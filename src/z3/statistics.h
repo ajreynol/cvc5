@@ -98,6 +98,11 @@ struct Statistics
   uint64_t d_numHostExplanations;
   /** splitting lemmas for relevant, unassigned variables */
   uint64_t d_numHostSplits;
+  /** merges of the shadow from cvc5's theories, and terms imported */
+  uint64_t d_numShadowMerges;
+  uint64_t d_numShadowImports;
+  /** conflicts of the shadow not sent, for want of an explanation */
+  uint64_t d_numShadowUnexplained;
   /** lemmas sent weakened, see Z3TheoryEngine::delayUnit */
   uint64_t d_numHostDelayedUnits;
   /** matches that were already instantiated (Z3's missed instantiations) */
