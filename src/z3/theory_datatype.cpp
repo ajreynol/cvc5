@@ -78,6 +78,9 @@ TheoryDatatype::TheoryDatatype(SmtContext& ctx)
 
 TheoryDatatype::~TheoryDatatype()
 {
+  // The trail refers to the variable data: undo it first. It is not empty
+  // when the search was interrupted, or for entries at the base level.
+  d_trailStack.reset();
   for (VarData* d : d_varData)
   {
     delete d;

@@ -1844,6 +1844,37 @@ On `fluentbit_config__proof__helper_invariants__owner_ref.2`, which only
 Stage 3 solves, Stage 4 makes 190,000 instances in 20 s where Stage 3 needs
 71,000.
 
+**The port's code that Stage 4 runs** (2026-10-16). Source-based coverage
+was measured over the development set (10 s) and the 447 quantified
+regressions (5 s), against the port's 27,900 executable lines (36,000 lines
+of code without comments):
+
+| Component | Code lines | Executed, Stage 4 | Executed, Stage 3 |
+|---|---|---|---|
+| Quantifier stack (MAM, queue, costs, fingerprints, checkers) | 6,989 | 67% | 67% |
+| E-graph and internalization | 5,631 | 66% | 72% |
+| Boolean side (`PropCore`, clauses, relevancy) | 4,873 | 61% | 61% |
+| Boolean search only (decision queues, conflict analysis, dynamic Ackermann, setup) | 2,550 | 16% | 16% |
+| Input preparation (NNF, skolemization, normalizers, pattern inference) | 1,936 | 85% | 84% |
+| Integration (slots, `HostCore`, hosted prop engine) | 1,049 | 76% | 88% |
+| Arithmetic plugin | 7,663 | 45% | 67% |
+| Datatype plugin | 1,102 | 58% | 84% |
+| cvc5 bridge (bit-vectors, nonlinear fallback) | 1,266 | 7% | 56% |
+| `Z3PropEngine`, `Z3TheoryEngine` | 307 | 0% | 0% |
+| Infrastructure (params, statistics, util) | 2,583 | 63% | 68% |
+| **Total** | **35,949** | **55%** | **65%** |
+
+What runs of the Boolean search is only construction: neither
+configuration searches with `PropCore`. In the shadow, the plugins run
+without their final checks, which skips the bridge, the integer part of
+arithmetic, and the datatype splits. The quick checker never runs under
+`verus-best`, which turns auto configuration off.
+
+Running the coverage found a teardown bug: `~TheoryDatatype` freed the data
+its trail refers to before undoing the trail. After an interrupted check,
+deleting the solver crashed; cvc5's command line exits without destructors,
+so only API users would see it. Fixed.
+
 ### Open questions
 
 - **Duplicated conflicts.** The shadow finds ground conflicts that cvc5's
