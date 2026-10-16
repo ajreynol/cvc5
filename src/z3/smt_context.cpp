@@ -51,12 +51,10 @@ SmtContext::SmtContext(Env& env, Params& p)
       d_connNormalizer(env.getNodeManager()),
       d_assertionRewriter(env),
       d_nnf(env.getNodeManager()),
-      d_patternInference(env.getNodeManager(), d_params),
       d_qmanager(nullptr),
       d_trueENode(nullptr),
       d_falseENode(nullptr),
       d_isDiseqTmp(nullptr),
-      d_explainer(*this),
       d_generation(0),
       d_mkENodeTrail(*this)
 {
@@ -1003,11 +1001,9 @@ void SmtContext::registerStatistics()
   add("z3::hostRestarts", d_stats.d_numHostRestarts);
   add("z3::hostLemmas", d_stats.d_numHostLemmas);
   add("z3::hostDuplicateLemmas", d_stats.d_numHostDuplicateLemmas);
-  add("z3::hostConflicts", d_stats.d_numHostConflicts);
   add("z3::hostSplits", d_stats.d_numHostSplits);
   add("z3::shadowMerges", d_stats.d_numShadowMerges);
-  add("z3::shadowUnexplained", d_stats.d_numShadowUnexplained);
-  add("z3::shadowWithheld", d_stats.d_numShadowWithheld);
+  add("z3::shadowConflicts", d_stats.d_numShadowConflicts);
   add("z3::hostDelayedUnits", d_stats.d_numHostDelayedUnits);
   add("z3::missedInstances", d_stats.d_numMissedInstances);
   add("z3::mamRelevantEh", d_stats.d_numMamRelevantEh);

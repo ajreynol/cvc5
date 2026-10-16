@@ -21,7 +21,7 @@ namespace z3 {
 void Params::initialize(const Options& opts)
 {
   // The defaults of the options are the values Verus passes to Z3
-  // (smt.qi.eager_threshold=100), except that pattern inference is on.
+  // (smt.qi.eager_threshold=100).
   d_qiCost = opts.z3.z3QiCost;
   d_qiNewGen = opts.z3.z3QiNewGen;
   d_qiEagerThreshold = opts.z3.z3QiEagerThreshold;
@@ -31,7 +31,6 @@ void Params::initialize(const Options& opts)
   uint64_t maxInst = opts.z3.z3QiMaxInstances;
   d_qiMaxInstances =
       maxInst > UINT32_MAX ? UINT32_MAX : static_cast<uint32_t>(maxInst);
-  d_piEnabled = opts.z3.z3PatternInference;
 }
 
 }  // namespace z3

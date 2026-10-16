@@ -1347,8 +1347,6 @@ libcvc5_add_sources(
   z3/enode.cpp
   z3/enode.h
   z3/eq_justification.h
-  z3/explainer.cpp
-  z3/explainer.h
   z3/fingerprints.cpp
   z3/fingerprints.h
   z3/host_core.cpp
@@ -1361,8 +1359,6 @@ libcvc5_add_sources(
   z3/nnf.cpp
   z3/nnf.h
   z3/params.cpp
-  z3/pattern_inference.cpp
-  z3/pattern_inference.h
   z3/params.h
   z3/prop_core.cpp
   z3/prop_core.h

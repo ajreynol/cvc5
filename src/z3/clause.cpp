@@ -21,24 +21,14 @@
 namespace cvc5::internal {
 namespace z3 {
 
-Clause* Clause::mk(size_t numLits, Literal* lits, Justification* js)
+Clause* Clause::mk(size_t numLits, Literal* lits)
 {
   Assert(numLits >= 2);
-  size_t sz = align(sizeof(Clause) + sizeof(Literal) * numLits);
-  if (js != nullptr)
-  {
-    sz += sizeof(Justification*);
-  }
-  void* mem = ::operator new(sz);
+  void* mem = ::operator new(sizeof(Clause) + sizeof(Literal) * numLits);
   Clause* cls = new (mem) Clause();
   cls->d_numLiterals = static_cast<uint32_t>(numLits);
-  cls->d_hasJustification = js != nullptr;
   cls->d_deleted = false;
   std::memcpy(cls->litsPtr(), lits, sizeof(Literal) * numLits);
-  if (js != nullptr)
-  {
-    *(const_cast<Justification**>(cls->getJustificationAddr())) = js;
-  }
   return cls;
 }
 

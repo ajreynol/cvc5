@@ -31,7 +31,6 @@
 namespace cvc5::internal {
 namespace z3 {
 
-class Explainer;
 class SmtContext;
 
 using JustificationVector = std::vector<Justification*>;
@@ -48,12 +47,6 @@ class Justification
  public:
   Justification() : d_mark(false) {}
   virtual ~Justification() = default;
-
-  /**
-   * Mark the antecedents of this justification, using the mark methods of the
-   * explainer.
-   */
-  virtual void getAntecedents(Explainer& /*e*/) {}
 
   void setMark()
   {
@@ -76,35 +69,13 @@ class Justification
 };
 
 /**
- * The justification of a clause whose false literals were removed when it was
- * made (unit resolution against them): the negations of those literals.
- */
-class UnitResolutionJustification : public Justification
-{
- public:
-  UnitResolutionJustification(SmtContext& ctx,
-                              size_t numLits,
-                              const Literal* lits);
-
-  void getAntecedents(Explainer& e) override;
-
- private:
-  size_t d_numLiterals;
-  Literal* d_literals;
-};
-
-/**
- * The justification of an equality cvc5's theories derived, which the core
- * cannot explain: cvc5's master equality engine, which records it, keeps no
- * reasons. Explaining it notes that the explanation is incomplete (see
- * SmtContext::takeUnexplainable), so that nothing that depends on it is sent
- * to cvc5 as a lemma.
+ * The justification of an equality cvc5's theories derived; cvc5's master
+ * equality engine, which records it, keeps no reasons.
  */
 class ExternalEqJustification : public Justification
 {
  public:
   ExternalEqJustification() {}
-  void getAntecedents(Explainer& e) override;
 };
 
 /** Two nodes with distinct interpreted roots were found equal. */
@@ -115,8 +86,6 @@ class EqConflictJustification : public Justification
       : d_node1(n1), d_node2(n2), d_js(js)
   {
   }
-
-  void getAntecedents(Explainer& e) override;
 
  private:
   ENode* d_node1;
@@ -130,8 +99,6 @@ class EqRootPropagationJustification : public Justification
  public:
   EqRootPropagationJustification(ENode* n) : d_node(n) {}
 
-  void getAntecedents(Explainer& e) override;
-
  private:
   ENode* d_node;
 };
@@ -141,8 +108,6 @@ class EqPropagationJustification : public Justification
 {
  public:
   EqPropagationJustification(ENode* n1, ENode* n2) : d_node1(n1), d_node2(n2) {}
-
-  void getAntecedents(Explainer& e) override;
 
  private:
   ENode* d_node1;
@@ -154,8 +119,6 @@ class MpIffJustification : public Justification
 {
  public:
   MpIffJustification(ENode* n1, ENode* n2) : d_node1(n1), d_node2(n2) {}
-
-  void getAntecedents(Explainer& e) override;
 
  private:
   /** p(x) */

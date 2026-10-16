@@ -25,21 +25,18 @@
 namespace cvc5::internal {
 namespace z3 {
 
-class Justification;
-
 /**
  * An auxiliary clause of the ported Z3 core, which encodes the Boolean
  * structure of the input and is deleted on backtracking.
  *
- * As in Z3, the literals are stored inline immediately after the header and
- * the justification, if any, after them, so that a clause costs one
- * allocation and its literals are contiguous.
+ * As in Z3, the literals are stored inline immediately after the header, so
+ * that a clause costs one allocation and its literals are contiguous.
  */
 class Clause
 {
  public:
-  /** Create a new clause, justified by js if it is not null. */
-  static Clause* mk(size_t numLits, Literal* lits, Justification* js);
+  /** Create a new clause. */
+  static Clause* mk(size_t numLits, Literal* lits);
 
   void deallocate();
 
@@ -55,11 +52,6 @@ class Clause
 
   Literal* end() { return litsPtr() + d_numLiterals; }
 
-  Justification* getJustification() const
-  {
-    return d_hasJustification ? *getJustificationAddr() : nullptr;
-  }
-
   void markAsDeleted()
   {
     Assert(!d_deleted);
@@ -70,19 +62,11 @@ class Clause
 
  private:
   uint32_t d_numLiterals;
-  /** true if a justification is attached to the clause */
-  uint32_t d_hasJustification : 1;
   /**
    * true if the clause is marked for deletion but was not deleted yet,
    * because it is still referenced from somewhere
    */
   uint32_t d_deleted : 1;
-
-  /** Round up to a pointer boundary. */
-  static constexpr size_t align(size_t r)
-  {
-    return (r + (sizeof(void*) - 1)) & ~(sizeof(void*) - 1);
-  }
 
   Literal* litsPtr()
   {
@@ -94,12 +78,6 @@ class Clause
   {
     return reinterpret_cast<const Literal*>(reinterpret_cast<const char*>(this)
                                             + sizeof(Clause));
-  }
-
-  Justification* const* getJustificationAddr() const
-  {
-    size_t addr = reinterpret_cast<size_t>(litsPtr() + d_numLiterals);
-    return reinterpret_cast<Justification* const*>(align(addr));
   }
 
   friend class PropCore;

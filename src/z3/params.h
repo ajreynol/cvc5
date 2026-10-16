@@ -58,28 +58,6 @@ struct Params
   uint32_t d_qiMaxLazyMultipatternMatching = 2;
   bool d_qiPromoteUnsat = true;
   uint32_t d_qiMaxInstances = UINT_MAX;
-
-  // ---------------------------------------------------- pattern inference
-  /** How arithmetic symbols may be used in an inferred pattern. */
-  enum ArithPatternInferenceKind
-  {
-    /** do not infer patterns with arithmetic terms */
-    AP_NO,
-    /** infer patterns with arithmetic terms only if there is no other option */
-    AP_CONSERVATIVE,
-    /** always use patterns with arithmetic terms */
-    AP_FULL
-  };
-
-  bool d_piEnabled = true;
-  uint32_t d_piMaxMultiPatterns = 0;
-  bool d_piBlockLoopPatterns = true;
-  bool d_piDecomposePatterns = true;
-  ArithPatternInferenceKind d_piArith = AP_CONSERVATIVE;
-  uint32_t d_piArithWeight = 5;
-  uint32_t d_piNonNestedArithWeight = 10;
-  int32_t d_piNopatWeight = -1;
-  bool d_piAvoidSkolems = true;
 };
 
 }  // namespace z3

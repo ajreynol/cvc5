@@ -35,8 +35,8 @@ class SmtContext;
  * (asserted_formulas::reduce()) and that cvc5's preprocessing does not. In
  * order, each assertion is converted to negation normal form,
  * naming the quantifiers below atoms, after which each definition introduced
- * by the naming and then the formula itself is rewritten, normalized and
- * given inferred patterns, rewritten again, put in the form cvc5's theories
+ * by the naming and then the formula itself is rewritten, normalized,
+ * rewritten again, put in the form cvc5's theories
  * take, and asserted to the core.
  *
  * This is part of the propositional engine's input conversion, as the CNF

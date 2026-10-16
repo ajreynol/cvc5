@@ -61,16 +61,12 @@ struct Statistics
   /** lemmas sent, and lemmas not sent again */
   uint64_t d_numHostLemmas;
   uint64_t d_numHostDuplicateLemmas;
-  /** conflicts given to cvc5 */
-  uint64_t d_numHostConflicts;
   /** splitting lemmas for relevant, unassigned variables */
   uint64_t d_numHostSplits;
   /** merges of the shadow from cvc5's theories */
   uint64_t d_numShadowMerges;
-  /** conflicts of the shadow not sent, for want of an explanation */
-  uint64_t d_numShadowUnexplained;
-  /** conflicts of the shadow not sent, by --no-z3-shadow-conflicts */
-  uint64_t d_numShadowWithheld;
+  /** conflicts of the shadow, left to cvc5's theories */
+  uint64_t d_numShadowConflicts;
   /** lemmas sent weakened, see HostCore::delayUnit */
   uint64_t d_numHostDelayedUnits;
   /** matches that were already instantiated (Z3's missed instantiations) */

@@ -50,7 +50,7 @@ HostCore::HostCore(Env& env,
       d_te(te),
       d_out(out),
       d_setup(false),
-      d_conflictSent(false),
+      d_inConflict(false),
       d_conflictLevel(0),
       d_needCheck(false),
       d_popLevel(UINT32_MAX)
@@ -64,7 +64,7 @@ HostCore::~HostCore() {}
 void HostCore::reset()
 {
   d_setup = false;
-  d_conflictSent = false;
+  d_inConflict = false;
   d_needCheck = false;
   d_popLevel = UINT32_MAX;
   d_preregistered.clear();
@@ -116,7 +116,7 @@ void HostCore::preRegister(TNode atom)
 
 void HostCore::assertFact(TNode literal)
 {
-  if (d_conflictSent)
+  if (d_inConflict)
   {
     return;
   }
@@ -124,11 +124,9 @@ void HostCore::assertFact(TNode literal)
   syncLevel();
   Trace("z3-host") << "assert " << literal << std::endl;
   Literal l = core.hostLiteral(literal);
-  std::vector<Literal> conflict;
-  d_backend.getContext().takeUnexplainable();
-  if (!core.hostAssign(l, conflict))
+  if (!core.hostAssign(l))
   {
-    sendConflict(conflict);
+    enterConflict();
   }
 }
 
@@ -142,12 +140,12 @@ void HostCore::check(theory::Theory::Effort effort)
     stats.d_numHostFullChecks++;
   }
   Trace("z3-host") << "check " << effort << " at level "
-                   << context()->getLevel() << " conflictSent "
-                   << d_conflictSent << std::endl;
-  if (d_conflictSent)
+                   << context()->getLevel() << " inConflict "
+                   << d_inConflict << std::endl;
+  if (d_inConflict)
   {
-    // The conflict sent in this context has not made cvc5 backtrack. A
-    // full check must then not let the model through.
+    // The core's conflict is for cvc5's theories to find, and they have not
+    // yet. A full check must then not let the model through.
     if (theory::Theory::fullEffort(effort))
     {
       d_out.setModelUnsound(theory::IncompleteId::UNKNOWN);
@@ -251,12 +249,10 @@ void HostCore::notifyPop()
     return;
   }
   // The core's conflict, at d_conflictLevel, holds until the SAT context
-  // pops below it. A conflict sent makes cvc5 backtrack below it at once;
-  // one that was not (see sendConflict) may see cvc5 pop to shallower levels
-  // that still hold it.
+  // pops below it; cvc5 may pop to shallower levels that still hold it.
   if (lvl < d_conflictLevel)
   {
-    d_conflictSent = false;
+    d_inConflict = false;
   }
 }
 
@@ -282,52 +278,14 @@ void HostCore::syncLevel()
   core.hostSyncLevel(lvl);
 }
 
-void HostCore::sendConflict(const std::vector<Literal>& lits)
+void HostCore::enterConflict()
 {
-  bool unexplainable = d_backend.getContext().takeUnexplainable();
-  if (unexplainable || !options().z3.z3ShadowConflicts)
-  {
-    // The conflict depends on an equality of cvc5's theories, which the
-    // core cannot explain, or conflicts are not sent
-    // (--no-z3-shadow-conflicts): cvc5's theories find it themselves. Until
-    // cvc5 backtracks, the core does nothing, as after a conflict it sent.
-    Statistics& stats = d_backend.getContext().getStats();
-    if (unexplainable)
-    {
-      stats.d_numShadowUnexplained++;
-    }
-    else
-    {
-      stats.d_numShadowWithheld++;
-    }
-    d_conflictSent = true;
-    d_conflictLevel = context()->getLevel();
-    return;
-  }
-  NodeManager* nm = nodeManager();
-  std::vector<Node> disj;
-  for (Literal l : lits)
-  {
-    disj.push_back(literalNode(~l));
-#ifdef CVC5_ASSERTIONS
-    // The conflict is made of facts cvc5 asserted, unless the core kept the
-    // facts of a branch cvc5 left (see syncLevel).
-    prop::PropEngine* pe = d_te.getPropEngine();
-    bool val = true;
-    Assert(pe->isSatLiteral(disj.back()) && pe->hasValue(disj.back(), val)
-           && !val)
-        << "conflict literal not false in cvc5: " << disj.back();
-#endif
-  }
-  Node lem = disj.empty()       ? nm->mkConst(false)
-             : disj.size() == 1 ? disj[0]
-                                : nm->mkNode(Kind::OR, disj);
-  lem = delayUnit(lem);
-  d_out.lemma(lem, theory::LemmaProperty::NONE);
-  d_backend.getContext().getStats().d_numHostConflicts++;
-  d_conflictSent = true;
+  // The conflict follows from the facts cvc5 asserted and the lemmas it was
+  // sent, so cvc5's theories find it themselves. Until cvc5 backtracks below
+  // the current level, the core does nothing.
+  d_backend.getContext().getStats().d_numShadowConflicts++;
+  d_inConflict = true;
   d_conflictLevel = context()->getLevel();
-  d_needCheck = true;
 }
 
 void HostCore::sendLemmas()
@@ -510,10 +468,7 @@ bool HostCore::propagateAndReport()
   sendLemmas();
   if (!ok)
   {
-    std::vector<Literal> conflict;
-    d_backend.getContext().takeUnexplainable();
-    core.hostExplainConflict(conflict);
-    sendConflict(conflict);
+    enterConflict();
     return false;
   }
   splitNewlyRelevant();

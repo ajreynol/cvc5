@@ -48,11 +48,9 @@
 #include "z3/clause.h"
 #include "z3/enode.h"
 #include "z3/eq_justification.h"
-#include "z3/explainer.h"
 #include "z3/justification.h"
 #include "z3/nnf.h"
 #include "z3/params.h"
-#include "z3/pattern_inference.h"
 #include "z3/prop_core.h"
 #include "z3/quantifier_manager.h"
 #include "z3/quantifier_services.h"
@@ -148,8 +146,6 @@ class SmtContext final : protected EnvObj, public QuantifierServices
   void popTheoryScopeEnd(size_t numScopes);
 
   void resetCacheGeneration();
-
-  Explainer& getExplainer() { return d_explainer; }
 
   // ----------------------------------------------------------- accessors
   Params& getParams() override { return d_params; }
@@ -304,8 +300,6 @@ class SmtContext final : protected EnvObj, public QuantifierServices
   /** The canonicalizer for quantifiers; see z3/ast.h. */
   QuantifierNormalizer& getNormalizer() { return d_normalizer; }
 
-  PatternInference& getPatternInference() { return d_patternInference; }
-
   ConnectiveNormalizer& getConnectiveNormalizer() { return d_connNormalizer; }
 
   AssertionRewriter& getAssertionRewriter() { return d_assertionRewriter; }
@@ -332,26 +326,13 @@ class SmtContext final : protected EnvObj, public QuantifierServices
 
   /**
    * Merge the classes of a and b, which must be internalized as terms, since
-   * cvc5's theories made them equal. The merge is
-   * queued for the next propagation. The core cannot explain it.
+   * cvc5's theories made them equal. The merge is queued for the next
+   * propagation.
    */
   void assumeExternalEq(TNode a, TNode b)
   {
     pushEq(getENode(a), getENode(b), EqJustification(&d_externalJustification));
   }
-  /** Note that an explanation went through an equality of cvc5's theories. */
-  void noteUnexplainable() { d_unexplainable = true; }
-  /**
-   * Whether an explanation went through an equality of cvc5's theories since
-   * the last call, which makes it incomplete.
-   */
-  bool takeUnexplainable()
-  {
-    bool u = d_unexplainable;
-    d_unexplainable = false;
-    return u;
-  }
-
   /** The environment of the enclosing cvc5 solver. */
   const Env& getEnv() const override { return d_env; }
 
@@ -623,9 +604,6 @@ class SmtContext final : protected EnvObj, public QuantifierServices
   Cvc5Preprocessor d_cvc5Preprocessor;
   /** The justification of the equalities of cvc5's theories. */
   ExternalEqJustification d_externalJustification;
-  /** See takeUnexplainable. */
-  bool d_unexplainable = false;
-  PatternInference d_patternInference;
   std::unique_ptr<QuantifierManager> d_qmanager;
 
   /** The expressions already internalized as enodes. */
@@ -668,8 +646,6 @@ class SmtContext final : protected EnvObj, public QuantifierServices
   /** The generation of n: cached, recorded under cvc5, or the current one. */
   uint32_t generationOf(TNode n);
   std::unordered_set<TNode> d_cacheGenerationVisited;
-  /** The explanation of justifications and equalities, for conflicts. */
-  Explainer d_explainer;
 
   // ------------------------------------------------------------ backtracking
   TrailStack d_trailStack;

@@ -2820,7 +2820,6 @@ set(regress_0_tests
   regress0/z3/incremental-checks.smt2
   regress0/z3/quant-generation.smt2
   regress0/z3/quant-incomplete-unknown.smt2
-  regress0/z3/quant-infer-pattern.smt2
   regress0/z3/reset-assertions.smt2
   regress0/z3/unsupported-assumptions.smt2
   regress0/z3/unsupported-declare-pool.smt2

@@ -108,8 +108,11 @@ class HostCore : protected EnvObj
   void notifyPop();
   /** Push or pop the core's scopes to the level of the SAT context. */
   void syncLevel();
-  /** Send the conflict made of the host literals lits. */
-  void sendConflict(const std::vector<Literal>& lits);
+  /**
+   * Note that the core is in conflict, which it leaves to cvc5's theories to
+   * find; see enterConflict in host_core.cpp.
+   */
+  void enterConflict();
   /** Send the formulas recorded by the propositional side as lemmas. */
   void sendLemmas();
   /**
@@ -166,11 +169,8 @@ class HostCore : protected EnvObj
   HostCoreOutput& d_out;
   /** Whether the propositional side was set up (presolve). */
   bool d_setup;
-  /**
-   * Whether the core is in conflict in the current context: a conflict was
-   * sent, or one was found that could not be (see sendConflict).
-   */
-  bool d_conflictSent;
+  /** Whether the core is in conflict in the current context. */
+  bool d_inConflict;
   /** The level of the SAT context at which the conflict was found. */
   uint32_t d_conflictLevel;
   /** Whether cvc5 must call check again. */

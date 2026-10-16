@@ -33,10 +33,6 @@ void AssertionPreparation::apply(SmtContext& ctx,
   // Rewrite the quantifiers of each assertion over the canonical variables
   // the core and the E-matching engine expect; see z3/ast.h.
   QuantifierNormalizer& norm = ctx.getNormalizer();
-  // Z3 infers patterns for the quantifiers that carry no :pattern annotation
-  // as part of its own preprocessing, so that step is run here, on the
-  // normalized form, before the formula reaches the core.
-  PatternInference& pi = ctx.getPatternInference();
   ConnectiveNormalizer& cn = ctx.getConnectiveNormalizer();
   // The core relies on every universal quantifier occurring positively, which
   // Z3 establishes with its own nnf pass; see z3/nnf.h.
@@ -47,7 +43,7 @@ void AssertionPreparation::apply(SmtContext& ctx,
   AssertionRewriter& rw = ctx.getAssertionRewriter();
   // Without the preparation (--no-z3-assertion-preparation), only what the
   // core cannot do without: the canonical variables, and the form cvc5's
-  // theories take; and pattern inference, which has its own option.
+  // theories take.
   bool full = options().z3.z3AssertionPreparation;
   // The rest of the pipeline, applied to a formula already in negation
   // normal form.
@@ -55,12 +51,12 @@ void AssertionPreparation::apply(SmtContext& ctx,
     if (full)
     {
       res = rw.rewrite(res);
-      res = pi.apply(norm.normalize(cn.normalize(res)));
+      res = norm.normalize(cn.normalize(res));
       res = rw.rewrite(res);
     }
     else
     {
-      res = pi.apply(norm.normalize(res));
+      res = norm.normalize(res);
     }
     // the form cvc5's theories take, and the skolem definitions it needs
     std::vector<Node> defs;

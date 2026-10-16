@@ -313,24 +313,10 @@ class PropCore : protected EnvObj
    */
   Literal hostLiteral(TNode n);
   /**
-   * Assign l, which the host asserted. If l is false here, return false and
-   * set conflict to host literals that are true in the host and contradict
-   * each other, l among them.
+   * Assign l, which the host asserted. Returns false if l is false here, a
+   * conflict.
    */
-  bool hostAssign(Literal l, std::vector<Literal>& conflict);
-  /**
-   * Whether the value of v was asserted by the host before this side derived
-   * it; explanations stop at such variables.
-   */
-  bool isHostAssigned(BoolVar v) const
-  {
-    return v < d_hostAssigned.size() && d_hostAssigned[v];
-  }
-  /**
-   * The host literals that explain the current conflict, literals of the base
-   * level being dropped, as they are permanent.
-   */
-  void hostExplainConflict(std::vector<Literal>& out);
+  bool hostAssign(Literal l);
   /** Record the formula n, an instance, to be asserted by the host. */
   void hostRecordInstance(TNode n) { d_hostInstances.push_back(n); }
   /** Record the formula n, which holds globally, to be asserted by the host. */
@@ -452,25 +438,10 @@ class PropCore : protected EnvObj
   void removeWatchLiteral(Clause* cls, size_t idx);
   void delClause(Clause* cls);
   void delClauses(ClauseVector& v, size_t oldSize);
-  bool simplifyAuxClauseLiterals(size_t& numLits,
-                                 Literal* lits,
-                                 LiteralVector& simpLits);
+  bool simplifyAuxClauseLiterals(size_t& numLits, Literal* lits);
   bool useBinaryClauseOpt(Literal l1, Literal l2) const;
   void addWatchLiteral(Clause* cls, size_t idx);
 
-  /** Push to todo the antecedents of consequent under js. */
-  void hostAntecedents(Literal consequent,
-                       const BJustification& js,
-                       std::vector<Literal>& todo);
-  /**
-   * Expand the literals of todo through their justifications down to host
-   * literals, which are appended to out; literals of the base level are
-   * dropped, as they are permanent.
-   */
-  void hostExpand(std::vector<Literal>& todo, std::vector<Literal>& out);
-
-  /** For each variable, whether its value was asserted by the host. */
-  std::vector<bool> d_hostAssigned;
   /** The formulas recorded for the host; see hostTakeLemmas. */
   std::vector<Node> d_hostLemmas;
   std::vector<Node> d_hostInstances;

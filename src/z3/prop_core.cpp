@@ -925,10 +925,6 @@ void PropCore::unassignVars(size_t oldLim)
     BoolVar v = l.var();
     BoolVarData& d = getBdata(v);
     d.setNullJustification();
-    if (v < d_hostAssigned.size())
-    {
-      d_hostAssigned[v] = false;
-    }
   }
 
   d_assignedLiterals.resize(oldLim);
@@ -1015,9 +1011,7 @@ void PropCore::undoMkBoolVar()
   d_bInternalizedStack.pop_back();
 }
 
-bool PropCore::simplifyAuxClauseLiterals(size_t& numLits,
-                                         Literal* lits,
-                                         LiteralVector& simpLits)
+bool PropCore::simplifyAuxClauseLiterals(size_t& numLits, Literal* lits)
 {
   // Simplify the literals of a transient (auxiliary) clause using the current
   // assignment, which is safe because such clauses are deleted on
@@ -1033,11 +1027,7 @@ bool PropCore::simplifyAuxClauseLiterals(size_t& numLits,
     switch (getAssignment(curr))
     {
       case L_FALSE:
-        if (curr != prev)
-        {
-          prev = curr;
-          simpLits.push_back(~curr);
-        }
+        prev = curr;
         break;  // ignore the literal
       case L_UNDEF:
         if (curr == ~prev)
@@ -1090,27 +1080,19 @@ void PropCore::addWatchLiteral(Clause* cls, size_t idx)
 
 Clause* PropCore::mkClause(size_t numLits, Literal* lits)
 {
-  LiteralVector simpLits;
-  if (!simplifyAuxClauseLiterals(numLits, lits, simpLits))
+  if (!simplifyAuxClauseLiterals(numLits, lits))
   {
     return nullptr;  // the clause is equivalent to true
-  }
-  // the literals removed for being false, if any, justify the clause
-  Justification* j = nullptr;
-  if (!simpLits.empty())
-  {
-    j = d_ctx.mkJustification(
-        UnitResolutionJustification(d_ctx, simpLits.size(), simpLits.data()));
   }
   d_stats.d_numMkLits += numLits;
 
   switch (numLits)
   {
     case 0:
-      setConflict(j == nullptr ? BJustification::mkAxiom() : BJustification(j));
+      setConflict(BJustification::mkAxiom());
       Assert(inconsistent());
       return nullptr;
-    case 1: assign(lits[0], j); return nullptr;
+    case 1: assign(lits[0], BJustification::mkAxiom()); return nullptr;
     case 2:
       if (useBinaryClauseOpt(lits[0], lits[1]))
       {
@@ -1133,7 +1115,7 @@ Clause* PropCore::mkClause(size_t numLits, Literal* lits)
     default:
     {
       d_stats.d_numMkClause++;
-      Clause* cls = Clause::mk(numLits, lits, j);
+      Clause* cls = Clause::mk(numLits, lits);
       d_auxClauses.push_back(cls);
       addWatchLiteral(cls, 0);
       addWatchLiteral(cls, 1);
@@ -1186,121 +1168,17 @@ Literal PropCore::hostLiteral(TNode n)
   return neg ? ~l : l;
 }
 
-bool PropCore::hostAssign(Literal l, std::vector<Literal>& conflict)
+bool PropCore::hostAssign(Literal l)
 {
-  BoolVar v = l.var();
-  if (v >= d_hostAssigned.size())
-  {
-    d_hostAssigned.resize(v + 1, false);
-  }
   switch (getAssignment(l))
   {
-    case L_TRUE:
-      // This side derived l before the host asserted it, so its own
-      // justification stays: the host may have assigned l after literals
-      // this side derived from it, which an explanation that stopped at l
-      // would then present to the host as reasons for them.
-      return true;
-    case L_UNDEF: assign(l, BJustification::mkAxiom()); break;
-    case L_FALSE:
-    {
-      // this side derived ~l, which the host contradicts
-      conflict.clear();
-      conflict.push_back(l);
-      std::vector<Literal> todo;
-      todo.push_back(~l);
-      hostExpand(todo, conflict);
-      return false;
-    }
+    // this side derived l before the host asserted it
+    case L_TRUE: return true;
+    case L_UNDEF: assign(l, BJustification::mkAxiom()); return true;
+    // this side derived ~l, which the host contradicts
+    case L_FALSE: return false;
   }
-  d_hostAssigned[v] = true;
   return true;
-}
-
-void PropCore::hostAntecedents(Literal consequent,
-                               const BJustification& js,
-                               std::vector<Literal>& todo)
-{
-  switch (js.getKind())
-  {
-    case BJustification::CLAUSE:
-    {
-      Clause* cls = js.getClause();
-      for (size_t i = 0, n = cls->getNumLiterals(); i < n; ++i)
-      {
-        Literal l = cls->getLiteral(i);
-        if (l != consequent)
-        {
-          todo.push_back(~l);
-        }
-      }
-      Justification* cjs = cls->getJustification();
-      if (cjs != nullptr)
-      {
-        LiteralVector lits;
-        d_ctx.getExplainer().explain(cjs, lits);
-        todo.insert(todo.end(), lits.begin(), lits.end());
-      }
-      break;
-    }
-    case BJustification::BIN_CLAUSE: todo.push_back(js.getLiteral()); break;
-    case BJustification::AXIOM: break;
-    case BJustification::JUSTIFICATION:
-    {
-      LiteralVector lits;
-      d_ctx.getExplainer().explain(js.getJustification(), lits);
-      todo.insert(todo.end(), lits.begin(), lits.end());
-      break;
-    }
-  }
-}
-
-void PropCore::hostExpand(std::vector<Literal>& todo, std::vector<Literal>& out)
-{
-  std::vector<BoolVar> marked;
-  while (!todo.empty())
-  {
-    Literal a = todo.back();
-    todo.pop_back();
-    BoolVar v = a.var();
-    if (isMarked(v))
-    {
-      continue;
-    }
-    setMark(v);
-    marked.push_back(v);
-    Assert(getAssignment(a) == L_TRUE);
-    if (getAssignLevel(v) == 0)
-    {
-      continue;
-    }
-    if (isHostAssigned(v))
-    {
-      out.push_back(a);
-      continue;
-    }
-    hostAntecedents(a, getJustification(v), todo);
-  }
-  for (BoolVar v : marked)
-  {
-    unsetMark(v);
-  }
-  d_ctx.getExplainer().rollback(0);
-}
-
-void PropCore::hostExplainConflict(std::vector<Literal>& out)
-{
-  out.clear();
-  Assert(inconsistent());
-  std::vector<Literal> todo;
-  Literal consequent = s_falseLiteral;
-  if (d_notL != s_nullLiteral)
-  {
-    todo.push_back(d_notL);
-    consequent = ~d_notL;
-  }
-  hostAntecedents(consequent, d_conflict, todo);
-  hostExpand(todo, out);
 }
 
 void PropCore::hostTakeLemmas(std::vector<Node>& lemmas,
