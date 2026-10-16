@@ -631,7 +631,6 @@ class SmtContext final : protected EnvObj, public QuantifierServices
   /** The expressions already internalized as enodes. */
   std::vector<Node> d_eInternalizedStack;
 
-
   // ------------------------------------- equality and uninterpreted functions
   ENode* d_trueENode;
   ENode* d_falseENode;
