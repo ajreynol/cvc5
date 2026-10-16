@@ -42,6 +42,8 @@ struct Statistics
   uint64_t d_numAssignments;
   /** assertions handed to the core */
   uint64_t d_numAssertedFormulas;
+  /** skolemizations of quantifiers assigned false */
+  uint64_t d_numSkolemizations;
   /** quantifier instantiations produced by E-matching */
   uint64_t d_numInstances;
   /** instantiations dropped because their cost exceeded the lazy threshold */

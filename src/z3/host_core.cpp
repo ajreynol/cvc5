@@ -89,11 +89,15 @@ Node HostCore::preprocessForTheories(TNode n, std::vector<Node>& defs)
   }
   // cvc5's rewriter would restructure a quantifier, which the core and cvc5
   // know as one atom, so only the parts outside the quantifiers are
-  // preprocessed: the Boolean structure above them is followed, and an atom
-  // with a quantifier inside is left as it is.
-  if (!expr::isBooleanConnective(n))
+  // preprocessed: the Boolean structure above them is followed, a quantifier
+  // is left as it is, and so are the closures in an atom.
+  if (n.isClosure())
   {
     return n;
+  }
+  if (!expr::isBooleanConnective(n))
+  {
+    return preprocessAroundClosures(n, defs);
   }
   NodeBuilder nb(nodeManager(), n.getKind());
   for (const Node& c : n)
@@ -101,6 +105,55 @@ Node HostCore::preprocessForTheories(TNode n, std::vector<Node>& defs)
     nb << preprocessForTheories(c, defs);
   }
   return nb.constructNode();
+}
+
+Node HostCore::preprocessAroundClosures(TNode n, std::vector<Node>& defs)
+{
+  // Each closure is held by a placeholder constant while the atom is
+  // preprocessed. The rest of the atom must be preprocessed all the same:
+  // a Boolean term in an argument, for instance, is otherwise not purified,
+  // and would reach cvc5's theories as a term (Verus emits such atoms for
+  // its lambdas).
+  std::vector<Node> closures;
+  std::unordered_set<TNode> visited;
+  std::vector<TNode> todo{n};
+  while (!todo.empty())
+  {
+    TNode cur = todo.back();
+    todo.pop_back();
+    if (!visited.insert(cur).second || !expr::hasClosure(cur))
+    {
+      continue;
+    }
+    if (cur.isClosure())
+    {
+      closures.push_back(cur);
+      continue;
+    }
+    todo.insert(todo.end(), cur.begin(), cur.end());
+  }
+  std::vector<Node> holders;
+  for (const Node& c : closures)
+  {
+    auto it = d_closureHolders.find(c);
+    if (it == d_closureHolders.end())
+    {
+      Node h = NodeManager::mkDummySkolem("z3hold", c.getType());
+      it = d_closureHolders.emplace(c, h).first;
+    }
+    holders.push_back(it->second);
+  }
+  Node m = n.substitute(
+      closures.begin(), closures.end(), holders.begin(), holders.end());
+  std::vector<Node> mdefs;
+  Node r = preprocessForTheories(m, mdefs);
+  for (const Node& d : mdefs)
+  {
+    defs.push_back(d.substitute(
+        holders.begin(), holders.end(), closures.begin(), closures.end()));
+  }
+  return r.substitute(
+      holders.begin(), holders.end(), closures.begin(), closures.end());
 }
 
 void HostCore::preRegister(TNode atom)

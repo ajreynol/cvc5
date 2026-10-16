@@ -15,7 +15,6 @@
 #include "expr/node_algorithm.h"
 #include "options/quantifiers_options.h"
 #include "theory/quantifiers/quant_util.h"
-#include "theory/quantifiers/quantifiers_attributes.h"
 #include "theory/quantifiers/skolemize.h"
 
 using namespace cvc5::internal::kind;
@@ -145,16 +144,12 @@ Node QuantifiersPreprocess::preSkolemizeQuantifiers(
   if (n.getKind() == Kind::FORALL)
   {
     Node ret = n;
-    QAttributes qa;
     if (n.getNumChildren() == 3)
     {
-      QuantAttributes::computeQuantAttributes(n, qa);
-    }
-    if (!qa.isStandard())
-    {
-      // Do not pre-skolemize non-standard quantified formulas, like recursive
-      // function definitions or sygus conjectures. Quantified formulas whose
-      // annotations are only patterns or names are standard.
+      // Do not pre-skolemize quantified formulas with three children.
+      // This includes non-standard quantified formulas
+      // like recursive function definitions, or sygus conjectures, and
+      // quantified formulas with triggers.
     }
     else if (polarity)
     {
@@ -171,11 +166,6 @@ Node QuantifiersPreprocess::preSkolemizeQuantifiers(
             visitedSub;
         Node pbody = preSkolemizeQuantifiers(n[1], polarity, fvss, visitedSub);
         children.push_back(pbody);
-        if (n.getNumChildren() == 3)
-        {
-          // keep the patterns, which mention only the variables of n
-          children.push_back(n[2]);
-        }
         // return processed quantifier
         ret = nm->mkNode(Kind::FORALL, children);
       }

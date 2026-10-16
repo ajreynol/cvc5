@@ -138,16 +138,6 @@ void SetDefaults::setDefaultsPre(Options& opts)
     // Reject what it cannot do rather than answering from cvc5's
     // quantifiers engine, which it replaces.
     checkZ3Capabilities(opts);
-    if (!opts.z3.z3AssertionPreparation)
-    {
-      // The core ignores a quantifier assigned false, so the existentials of
-      // the input must be skolemized before it sees them: the port's own
-      // preparation does it otherwise.
-      SET_AND_NOTIFY_IF_NOT_USER_VAL_SYM(quantifiers,
-                                         preSkolemQuant,
-                                         options::PreSkolemQuantMode::AGG,
-                                         "--no-z3-assertion-preparation");
-    }
   }
   // safe options
   if (options().base.safeMode != options::SafeMode::UNRESTRICTED)

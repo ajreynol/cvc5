@@ -343,6 +343,12 @@ class SmtContext final : protected EnvObj, public QuantifierServices
    */
   void internalizeInstance(TNode body, uint32_t generation) override;
 
+  /**
+   * Skolemize the quantifier q, which is assigned false, see
+   * smt_context.cpp.
+   */
+  void skolemize(TNode q);
+
   void internalize(TNode n, bool gateCtx);
   void internalize(const Node* exprs, size_t numExprs, bool gateCtx);
   void internalize(TNode n, bool gateCtx, uint32_t generation) override;
@@ -540,6 +546,12 @@ class SmtContext final : protected EnvObj, public QuantifierServices
   bool isDiseqCore(ENode* n1, ENode* n2, bool checkDistinctRootValues) const;
 
   void assignQuantifier(TNode q);
+  /**
+   * Internalize body as internalizeInstance does, and record it for cvc5 as
+   * an instance if instance is true, and otherwise as a lemma that holds
+   * globally.
+   */
+  void internalizeLemma(TNode body, uint32_t generation, bool instance);
 
   void setConflict(const BJustification& js) { d_prop.setConflict(js); }
 
@@ -643,6 +655,8 @@ class SmtContext final : protected EnvObj, public QuantifierServices
    * d_cachedGeneration serves, and take their generation from here.
    */
   std::unordered_map<Node, uint32_t> d_hostGeneration;
+  /** The skolemization lemma of each quantifier, see skolemize. */
+  std::unordered_map<Node, Node> d_skolemLemmas;
   /** The generation of n: cached, recorded under cvc5, or the current one. */
   uint32_t generationOf(TNode n);
   std::unordered_set<TNode> d_cacheGenerationVisited;

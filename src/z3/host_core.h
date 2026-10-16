@@ -18,6 +18,7 @@
 #define CVC5__Z3__HOST_CORE_H
 
 #include <memory>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -160,6 +161,12 @@ class HostCore : protected EnvObj
    * SmtContext::setCvc5Preprocessor.
    */
   Node preprocessForTheories(TNode n, std::vector<Node>& defs);
+  /**
+   * The form of n, an atom with closures below it, that cvc5's theories
+   * take: its parts outside the closures preprocessed, the closures as they
+   * are.
+   */
+  Node preprocessAroundClosures(TNode n, std::vector<Node>& defs);
 
   /** The ported core. */
   SharedBackend& d_backend;
@@ -186,6 +193,8 @@ class HostCore : protected EnvObj
   std::unordered_set<Node> d_lemmasSent;
   /** The lemmas weakened by delayUnit, to send as they are, see check. */
   std::vector<Node> d_delayedUnits;
+  /** The placeholder of each closure, see preprocessAroundClosures. */
+  std::unordered_map<Node, Node> d_closureHolders;
   /** Follows the pops of the SAT context. */
   std::unique_ptr<PopNotify> d_popNotify;
   /** See getShadowFeed. */
