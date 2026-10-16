@@ -69,6 +69,8 @@ struct Statistics
   uint64_t d_numShadowMerges;
   /** conflicts of the shadow not sent, for want of an explanation */
   uint64_t d_numShadowUnexplained;
+  /** conflicts of the shadow not sent, by --no-z3-shadow-conflicts */
+  uint64_t d_numShadowWithheld;
   /** lemmas sent weakened, see HostCore::delayUnit */
   uint64_t d_numHostDelayedUnits;
   /** matches that were already instantiated (Z3's missed instantiations) */

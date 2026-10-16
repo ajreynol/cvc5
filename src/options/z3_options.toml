@@ -101,3 +101,19 @@ name   = "Z3 Core"
   type       = "bool"
   default    = "true"
   help       = "skip an instance whose body the current assignment already satisfies"
+
+[[option]]
+  name       = "z3AssertionPreparation"
+  category   = "expert"
+  long       = "z3-assertion-preparation"
+  type       = "bool"
+  default    = "true"
+  help       = "prepare the input as Z3's preprocessing does (negation normal form with skolemization, pattern inference, connective normalization and rewriting); when off, the core takes cvc5's preprocessed assertions with only its canonical renaming of quantified variables, and pattern inference if --z3-pattern-inference"
+
+[[option]]
+  name       = "z3ShadowConflicts"
+  category   = "expert"
+  long       = "z3-shadow-conflicts"
+  type       = "bool"
+  default    = "true"
+  help       = "send the conflicts that the core's shadow of the ground state finds as lemmas; when off, the core waits for cvc5's theories to find them"

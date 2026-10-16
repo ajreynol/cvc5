@@ -284,12 +284,22 @@ void HostCore::syncLevel()
 
 void HostCore::sendConflict(const std::vector<Literal>& lits)
 {
-  if (d_backend.getContext().takeUnexplainable())
+  bool unexplainable = d_backend.getContext().takeUnexplainable();
+  if (unexplainable || !options().z3.z3ShadowConflicts)
   {
     // The conflict depends on an equality of cvc5's theories, which the
-    // core cannot explain: cvc5's theories find it themselves. Until cvc5
-    // backtracks, the core does nothing, as after a conflict it sent.
-    d_backend.getContext().getStats().d_numShadowUnexplained++;
+    // core cannot explain, or conflicts are not sent
+    // (--no-z3-shadow-conflicts): cvc5's theories find it themselves. Until
+    // cvc5 backtracks, the core does nothing, as after a conflict it sent.
+    Statistics& stats = d_backend.getContext().getStats();
+    if (unexplainable)
+    {
+      stats.d_numShadowUnexplained++;
+    }
+    else
+    {
+      stats.d_numShadowWithheld++;
+    }
     d_conflictSent = true;
     d_conflictLevel = context()->getLevel();
     return;

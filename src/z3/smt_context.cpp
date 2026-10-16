@@ -1007,6 +1007,7 @@ void SmtContext::registerStatistics()
   add("z3::hostSplits", d_stats.d_numHostSplits);
   add("z3::shadowMerges", d_stats.d_numShadowMerges);
   add("z3::shadowUnexplained", d_stats.d_numShadowUnexplained);
+  add("z3::shadowWithheld", d_stats.d_numShadowWithheld);
   add("z3::hostDelayedUnits", d_stats.d_numHostDelayedUnits);
   add("z3::missedInstances", d_stats.d_numMissedInstances);
   add("z3::mamRelevantEh", d_stats.d_numMamRelevantEh);

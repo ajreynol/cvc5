@@ -15,6 +15,7 @@
 
 #include "z3/assertion_preparation.h"
 
+#include "options/z3_options.h"
 #include "smt/env.h"
 #include "z3/ast.h"
 #include "z3/smt_context.h"
@@ -44,12 +45,23 @@ void AssertionPreparation::apply(SmtContext& ctx,
   // and again after pattern inference; nnf_cnf rewrites each formula it
   // produces as well. Both are here, around the rest of the pipeline.
   AssertionRewriter& rw = ctx.getAssertionRewriter();
+  // Without the preparation (--no-z3-assertion-preparation), only what the
+  // core cannot do without: the canonical variables, and the form cvc5's
+  // theories take; and pattern inference, which has its own option.
+  bool full = options().z3.z3AssertionPreparation;
   // The rest of the pipeline, applied to a formula already in negation
   // normal form.
   auto assertNnf = [&](Node res) {
-    res = rw.rewrite(res);
-    res = pi.apply(norm.normalize(cn.normalize(res)));
-    res = rw.rewrite(res);
+    if (full)
+    {
+      res = rw.rewrite(res);
+      res = pi.apply(norm.normalize(cn.normalize(res)));
+      res = rw.rewrite(res);
+    }
+    else
+    {
+      res = pi.apply(norm.normalize(res));
+    }
     // the form cvc5's theories take, and the skolem definitions it needs
     std::vector<Node> defs;
     res = ctx.getCvc5Preprocessor()(res, defs);
@@ -63,6 +75,11 @@ void AssertionPreparation::apply(SmtContext& ctx,
   };
   for (const Node& a : assertions)
   {
+    if (!full)
+    {
+      assertNnf(a);
+      continue;
+    }
     Node res = nnf.convert(a);
     // Naming a quantifier below an atom introduces definitions, which
     // nnf_cnf pushes ahead of the formula.
