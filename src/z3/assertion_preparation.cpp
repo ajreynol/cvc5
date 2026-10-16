@@ -68,6 +68,21 @@ void AssertionPreparation::apply(SmtContext& ctx,
     }
     res = pi.apply(norm.normalize(cn.normalize(res)));
     res = doRewrite ? rw.rewrite(res) : res;
+    const SmtContext::Cvc5Preprocessor& cpp = ctx.getCvc5Preprocessor();
+    if (cpp)
+    {
+      // the form cvc5's theories take, and the skolem definitions it needs
+      std::vector<Node> defs;
+      res = cpp(res, defs);
+      for (const Node& d : defs)
+      {
+        core.assertFormula(d);
+        if (prepared != nullptr)
+        {
+          prepared->push_back(d);
+        }
+      }
+    }
     core.assertFormula(res);
     if (prepared != nullptr)
     {

@@ -579,6 +579,18 @@ class PropCore : protected EnvObj
   void hostExplainConflict(std::vector<Literal>& out);
   /** Record the formula n, an instance, to be asserted by the host. */
   void hostRecordInstance(TNode n) { d_hostInstances.push_back(n); }
+  /** Record the formula n, which holds globally, to be asserted by the host. */
+  void hostRecordLemma(TNode n) { d_hostLemmas.push_back(n); }
+  /**
+   * Keep the clauses of the theory side's axioms and lemmas from the host,
+   * which then gets only what is recorded explicitly (hostRecordInstance,
+   * hostRecordLemma). For the shadow of HostCore, under cvc5's own theories,
+   * which do their own ground reasoning and would not take the atoms of
+   * the port's theory plugins.
+   */
+  void hostSetShadow(bool shadow) { d_hostShadow = shadow; }
+  /** Whether the theory side's clauses stay private; see hostSetShadow. */
+  bool isHostShadow() const { return d_hostShadow; }
   /**
    * Move to lemmas the clauses of theory axioms and lemmas recorded for the
    * host since the last call, and to instances the instances.
@@ -886,6 +898,8 @@ class PropCore : protected EnvObj
 
   /** Whether host mode is on; see hostInit. */
   bool d_hosted = false;
+  /** Whether the clauses of the theory side stay private; see hostSetShadow. */
+  bool d_hostShadow = false;
   /** For each variable, whether its value was asserted by the host. */
   std::vector<bool> d_hostAssigned;
   /** The formulas recorded for the host; see hostTakeLemmas. */

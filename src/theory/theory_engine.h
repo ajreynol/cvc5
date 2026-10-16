@@ -721,6 +721,11 @@ class TheoryEngine : protected EnvObj
    * was asserted, see Theory::checksWithoutFacts.
    */
   bool d_checkWithoutFacts;
+  /**
+   * The theories that receive every literal asserted from the SAT solver,
+   * see Theory::observesAllFacts.
+   */
+  std::vector<theory::Theory*> d_factObservers;
 
   /**
    * The splitter produces partitions when the compute-partitions option is

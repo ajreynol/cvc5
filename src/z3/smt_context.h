@@ -29,6 +29,7 @@
 #define CVC5__Z3__SMT_CONTEXT_H
 
 #include <deque>
+#include <functional>
 #include <memory>
 #include <set>
 #include <unordered_map>
@@ -469,6 +470,25 @@ class SmtContext final : protected EnvObj, public QuantifierServices
 
   /** Z3's ng_lift_ite step; see z3/push_app_ite.h. */
   NgPushAppIte& getNgPushAppIte() { return d_ngPushAppIte; }
+
+  /**
+   * The preprocessing of cvc5's own theories, when they fill theory slots
+   * next to the port's (--z3-slots other than all): it maps a formula to the
+   * form cvc5's theories take, adding to defs the definitions of the skolems
+   * it introduces. The input (AssertionPreparation) and the instances
+   * (internalizeInstance) go through it before the core asserts them and
+   * hands them to cvc5, so that both see the same atoms.
+   */
+  using Cvc5Preprocessor = std::function<Node(TNode, std::vector<Node>&)>;
+  void setCvc5Preprocessor(Cvc5Preprocessor p)
+  {
+    d_cvc5Preprocessor = std::move(p);
+  }
+  /** The preprocessing of cvc5's theories, or null if there is none. */
+  const Cvc5Preprocessor& getCvc5Preprocessor() const
+  {
+    return d_cvc5Preprocessor;
+  }
 
   /** The environment of the enclosing cvc5 solver. */
   const Env& getEnv() const override { return d_env; }
@@ -998,6 +1018,8 @@ class SmtContext final : protected EnvObj, public QuantifierServices
   AssertionRewriter d_assertionRewriter;
   Nnf d_nnf;
   NgPushAppIte d_ngPushAppIte;
+  /** See setCvc5Preprocessor. */
+  Cvc5Preprocessor d_cvc5Preprocessor;
   std::unique_ptr<Cvc5Bridge> d_cvc5Bridge;
   PatternInference d_patternInference;
   /**

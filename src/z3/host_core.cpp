@@ -17,9 +17,11 @@
 
 #include "base/output.h"
 #include "expr/node_algorithm.h"
+#include "expr/node_builder.h"
 #include "options/z3_options.h"
 #include "prop/prop_engine.h"
 #include "smt/env.h"
+#include "theory/skolem_lemma.h"
 #include "theory/theory_engine.h"
 #include "z3/prop_core.h"
 #include "z3/shared_backend.h"
@@ -51,7 +53,8 @@ HostCore::HostCore(Env& env,
       d_needCheck(false),
       d_numReported(0),
       d_reportIdx(0),
-      d_popLevel(UINT32_MAX)
+      d_popLevel(UINT32_MAX),
+      d_shadow(options().z3.z3Slots != options::Z3SlotsMode::ALL)
 {
   d_popNotify = std::make_unique<PopNotify>(context(), *this);
 }
@@ -68,6 +71,45 @@ void HostCore::reset()
   d_popLevel = UINT32_MAX;
   d_preregistered.clear();
   d_lemmasSent.clear();
+  if (d_shadow)
+  {
+    d_backend.getPropCore().hostSetShadow(true);
+  }
+  if (options().z3.z3TheoryPreprocess)
+  {
+    d_backend.getContext().setCvc5Preprocessor(
+        [this](TNode n, std::vector<Node>& defs) {
+          return preprocessForTheories(n, defs);
+        });
+  }
+}
+
+Node HostCore::preprocessForTheories(TNode n, std::vector<Node>& defs)
+{
+  if (!expr::hasClosure(n))
+  {
+    std::vector<theory::SkolemLemma> sks;
+    TrustNode trn = d_te.getPropEngine()->preprocess(n, sks);
+    for (const theory::SkolemLemma& sk : sks)
+    {
+      defs.push_back(sk.getProven());
+    }
+    return trn.isNull() ? Node(n) : trn.getNode();
+  }
+  // cvc5's rewriter would restructure a quantifier, which the core and cvc5
+  // know as one atom, so only the parts outside the quantifiers are
+  // preprocessed: the Boolean structure above them is followed, and an atom
+  // with a quantifier inside is left as it is.
+  if (!expr::isBooleanConnective(n))
+  {
+    return n;
+  }
+  NodeBuilder nb(nodeManager(), n.getKind());
+  for (const Node& c : n)
+  {
+    nb << preprocessForTheories(c, defs);
+  }
+  return nb.constructNode();
 }
 
 void HostCore::preRegister(TNode atom)
@@ -416,6 +458,12 @@ Node HostCore::delayUnit(const Node& lem, bool notifyDecisions)
 
 void HostCore::collectPropagations()
 {
+  if (d_shadow)
+  {
+    // cvc5's theories explain the propagations of the ground state; the
+    // core's would be explained from facts asserted to other theories
+    return;
+  }
   PropCore& core = d_backend.getPropCore();
   const LiteralVector& assigned = core.assignedLiterals();
   prop::PropEngine* pe = d_te.getPropEngine();
@@ -488,6 +536,12 @@ void HostCore::split(BoolVar v)
   {
     // not an atom of the search: the core has variables for the atoms in
     // the patterns and bodies of quantifiers
+    return;
+  }
+  if (d_shadow && !pe->isSatLiteral(a))
+  {
+    // an atom of the core's own ground reasoning, which cvc5's theories do
+    // instead
     return;
   }
   Node lem = nodeManager()->mkNode(Kind::OR, a, a.notNode());

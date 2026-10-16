@@ -14,6 +14,7 @@
 
 #include <sstream>
 
+#include "options/z3_options.h"
 #include "smt/env.h"
 #include "theory/output_channel.h"
 #include "theory/theory_engine.h"
@@ -71,27 +72,28 @@ theory::Theory* mkNativeTheory(Env& env,
 
 SlotBackend::SlotBackend(Env& env, TheoryEngine& te)
     : d_backend(env),
+      d_logic(env.getLogicInfo()),
       d_slots(theory::THEORY_LAST, nullptr),
       d_driver(theory::THEORY_LAST)
 {
   d_core = std::make_unique<HostCore>(env, d_backend, te, *this);
-  // The driver is the slot TheoryEngine checks last: the enabled one with
-  // the largest id, BOOL and BUILTIN having no check.
-  const LogicInfo& logic = env.getLogicInfo();
-  for (theory::TheoryId id = theory::THEORY_FIRST; id < theory::THEORY_LAST;
-       ++id)
-  {
-    if (id != theory::THEORY_BUILTIN && id != theory::THEORY_BOOL
-        && logic.isTheoryEnabled(id))
-    {
-      d_driver = id;
-    }
-  }
 }
 
 SlotBackend::~SlotBackend() {}
 
-void SlotBackend::registerSlot(TheorySlot* s) { d_slots[s->getId()] = s; }
+void SlotBackend::registerSlot(TheorySlot* s)
+{
+  theory::TheoryId id = s->getId();
+  d_slots[id] = s;
+  // The driver is the slot TheoryEngine checks last: the enabled one with
+  // the largest id, BOOL and BUILTIN having no check. The slots are made in
+  // id order.
+  if (id != theory::THEORY_BUILTIN && id != theory::THEORY_BOOL
+      && d_logic.isTheoryEnabled(id))
+  {
+    d_driver = id;
+  }
+}
 
 void SlotBackend::drainOtherSlots()
 {
@@ -153,6 +155,9 @@ TheorySlot::TheorySlot(Env& env,
   // runs the core at every check: the core may have work left from the
   // previous one (see HostCore::needCheck).
   d_checkEarlyExit = false;
+  // When cvc5's theories fill the other slots, the core takes every fact as
+  // a copy (section 17 of ARCHITECTURE_PLAN.md).
+  d_observeAllFacts = options().z3.z3Slots != options::Z3SlotsMode::ALL;
   d_sb->registerSlot(this);
 }
 
@@ -285,9 +290,15 @@ std::string TheorySlot::identify() const
 void addTheorySlots(Env& env, TheoryEngine& te)
 {
   std::shared_ptr<SlotBackend> sb = std::make_shared<SlotBackend>(env, te);
+  bool all = env.getOptions().z3.z3Slots == options::Z3SlotsMode::ALL;
   for (theory::TheoryId id = theory::THEORY_FIRST; id < theory::THEORY_LAST;
        ++id)
   {
+    if (!all && id != theory::THEORY_QUANTIFIERS)
+    {
+      // left to cvc5's theory
+      continue;
+    }
     te.addTheory(id,
                  [&env, id, sb](theory::OutputChannel& out,
                                 theory::Valuation valuation) {
@@ -298,8 +309,9 @@ void addTheorySlots(Env& env, TheoryEngine& te)
 
 SlotBackend& getSlotBackend(TheoryEngine& te)
 {
+  // QUANTIFIERS is the port's whenever any slot is
   TheorySlot* s =
-      dynamic_cast<TheorySlot*>(te.theoryOf(theory::THEORY_BUILTIN));
+      dynamic_cast<TheorySlot*>(te.theoryOf(theory::THEORY_QUANTIFIERS));
   Assert(s != nullptr);
   return s->getSlotBackend();
 }

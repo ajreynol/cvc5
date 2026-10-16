@@ -151,11 +151,10 @@ void TheoryEngine::finishInit()
   {
     // get the quantifiers engine, which is initialized by the quantifiers
     // theory
+    // This is null when the theory in the quantifiers slot handles the
+    // quantified formulas without a quantifiers engine (the ported Z3
+    // core's).
     d_quantEngine = d_theoryTable[THEORY_QUANTIFIERS]->getQuantifiersEngine();
-    // With --ee-mode=none, the quantifiers theory may handle the quantified
-    // formulas without a quantifiers engine (the ported Z3 core's).
-    Assert(d_quantEngine != nullptr
-           || options().theory.eeMode == options::EqEngineMode::NONE);
   }
   // finish initializing the quantifiers engine, which must come before
   // initializing theory combination, since quantifiers engine may have a
@@ -196,6 +195,10 @@ void TheoryEngine::finishInit()
     if (isTheoryEnabled(theoryId) && t->checksWithoutFacts())
     {
       d_checkWithoutFacts = true;
+    }
+    if (isTheoryEnabled(theoryId) && t->observesAllFacts())
+    {
+      d_factObservers.push_back(t);
     }
   }
 
@@ -1264,6 +1267,16 @@ void TheoryEngine::assertFact(TNode literal)
   // Get the atom
   bool polarity = literal.getKind() != Kind::NOT;
   TNode atom = polarity ? literal : literal[0];
+
+  // the theories that observe every fact get a copy of those of the others
+  for (Theory* t : d_factObservers)
+  {
+    if (t->getId() != d_env.theoryOf(atom))
+    {
+      t->assertFact(literal, false);
+      d_factsAsserted = true;
+    }
+  }
 
   if (isSharingEnabled())
   {

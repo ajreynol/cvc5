@@ -60,11 +60,13 @@ void SmtSolver::finishInit()
   // engine later (it is non-essential there)
   d_theoryEngine = EngineFactory::mkTheoryEngine(d_env);
 
-  // Add the theories
-  if (!EngineFactory::addTheories(d_env, d_theoryEngine.get()))
+  // Add the theories: those the configuration selects, then cvc5's own in
+  // the other slots
+  EngineFactory::addTheories(d_env, d_theoryEngine.get());
+  for (theory::TheoryId id = theory::THEORY_FIRST; id < theory::THEORY_LAST;
+       ++id)
   {
-    for (theory::TheoryId id = theory::THEORY_FIRST; id < theory::THEORY_LAST;
-         ++id)
+    if (d_theoryEngine->theoryOf(id) == nullptr)
     {
       theory::TheoryConstructor::addTheory(d_theoryEngine.get(), id);
     }

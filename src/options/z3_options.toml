@@ -40,6 +40,29 @@ name   = "Z3 Core"
   help = "cvc5's TheoryEngine, with the port's components in its theory slots, sharing the port's E-graph; requires --z3-prop-engine=cvc5 and implies --ee-mode=none (Stage 3 of src/z3/ARCHITECTURE_PLAN.md)."
 
 [[option]]
+  name       = "z3Slots"
+  category   = "expert"
+  long       = "z3-slots=MODE"
+  type       = "Z3SlotsMode"
+  default    = "ALL"
+  help       = "which theory slots of cvc5's TheoryEngine get the port's components under --z3-theory-engine=cvc5; cvc5's own theories fill the others"
+  help_mode  = "Theory slots for the port's components."
+[[option.mode.ALL]]
+  name = "all"
+  help = "Every slot, sharing the port's E-graph, with no equality engines (Stage 3 of src/z3/ARCHITECTURE_PLAN.md)."
+[[option.mode.QUANTIFIERS]]
+  name = "quantifiers"
+  help = "The quantifiers slot only: cvc5's theories do the ground reasoning, and the port matches and instantiates over a shadow of the ground state; implies --no-z3-native-term-formulas and --z3-theory-preprocess (Stage 4 of src/z3/ARCHITECTURE_PLAN.md)."
+
+[[option]]
+  name       = "z3TheoryPreprocess"
+  category   = "expert"
+  long       = "z3-theory-preprocess"
+  type       = "bool"
+  default    = "false"
+  help       = "under cvc5's prop engine, run cvc5's lemma preprocessing over the formulas the core asserts (its prepared input and its instances), as cvc5's own theories need; implied by --z3-slots other than all"
+
+[[option]]
   name       = "z3HostAxiomDecisions"
   category   = "expert"
   long       = "z3-host-axiom-decisions"

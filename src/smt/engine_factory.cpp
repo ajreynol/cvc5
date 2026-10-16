@@ -43,16 +43,14 @@ std::unique_ptr<TheoryEngine> EngineFactory::mkTheoryEngine(Env& env)
   return std::make_unique<TheoryEngine>(env);
 }
 
-bool EngineFactory::addTheories(Env& env, TheoryEngine* te)
+void EngineFactory::addTheories(Env& env, TheoryEngine* te)
 {
   if (env.getOptions().z3.z3
       && env.getOptions().z3.z3TheoryEngine
              == options::Z3TheoryEngineMode::CVC5)
   {
     z3::addTheorySlots(env, *te);
-    return true;
   }
-  return false;
 }
 
 std::unique_ptr<prop::PropEngine> EngineFactory::mkPropEngine(Env& env,

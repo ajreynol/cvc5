@@ -165,6 +165,12 @@ class HostCore : protected EnvObj
   bool propagateAndReport();
   /** The node of the literal l, as cvc5 knows it. */
   Node literalNode(Literal l);
+  /**
+   * The form of n that cvc5's theories take, by cvc5's lemma preprocessing,
+   * adding to defs the definitions of the skolems it introduces; see
+   * SmtContext::setCvc5Preprocessor. For the shadow mode.
+   */
+  Node preprocessForTheories(TNode n, std::vector<Node>& defs);
 
   /** The ported core. */
   SharedBackend& d_backend;
@@ -187,6 +193,15 @@ class HostCore : protected EnvObj
    * UINT32_MAX if it did not pop.
    */
   uint32_t d_popLevel;
+  /**
+   * Whether cvc5's theories fill the other theory slots (--z3-slots other
+   * than all). The core then keeps a shadow of the ground state, from a copy
+   * of every fact: it sends instances, conflicts and splits as lemmas, which
+   * need no explanation, and reports no propagations, and the formulas it
+   * asserts go through cvc5's preprocessing first (ARCHITECTURE_PLAN.md,
+   * section 17).
+   */
+  bool d_shadow;
   /** The atoms registered by cvc5 before the next check. */
   std::vector<Node> d_preregistered;
   /** The lemmas sent, which are permanent in cvc5. */

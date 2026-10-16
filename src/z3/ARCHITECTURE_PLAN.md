@@ -10,7 +10,9 @@ Status: Stages 1A and 1B implemented. See the progress record in section
 of `--z3`; its first results came from a soundness bug, fixed, and its extra
 unknowns from two bugs, fixed (section 16, Progress). Stage 4 (section 17),
 cvc5's theories next to the port's components, starting with only the
-quantifiers slot from the port, is planned. Section 2 shows the current
+quantifiers slot from the port, is under way: it runs
+(`--z3-slots=quantifiers`), soundly as far as checked, and is weaker than
+Stage 3 for now (section 17, Progress). Section 2 shows the current
 architecture.
 
 ## 1. Objective and migration principle
@@ -54,13 +56,15 @@ treat them as one reproducible performance baseline.
 
 ### Today (2026-10-15)
 
-`--z3` has three configurations, one per stage reached:
+`--z3` has three configurations, one per stage reached, and a fourth under
+way:
 
 | Configuration | Options | Propositional search | Theory orchestration | Below it |
 |---|---|---|---|---|
 | **Stage 3, the default** (section 16) | `--z3` | cvc5's `PropEngine` (CNF, CaDiCaL, justification decisions) | cvc5's `TheoryEngine`, a `TheorySlot` in every slot, no equality engines | `HostCore` over the shared core |
 | Stage 2, the hosted engine (section 15) | `--z3-theory-engine=z3` | cvc5's `PropEngine` | `Z3TheoryEngine`, overriding `TheoryEngine`'s search contract | `HostCore` over the shared core |
 | Stage 1, the port's own search (section 14) | `--z3-prop-engine=z3` | `PropCore`, Z3's search | `Z3TheoryEngine` | the shared core |
+| Stage 4, under way (section 17) | `--z3-slots=quantifiers` | cvc5's `PropEngine` | cvc5's `TheoryEngine`, with cvc5's theories and equality engines, and a `TheorySlot` in QUANTIFIERS | `HostCore` as a shadow of the ground state, for matching and instantiation |
 
 The shared core is the `SharedBackend`: `SmtContext` (the E-graph, the
 theory plugins, the quantifier stack) and `PropCore`. Under cvc5's prop
@@ -1733,6 +1737,112 @@ quantifier stack, relevancy and propositional engine.
    - explaining the shared equalities it propagates from its own facts.
 
    Planned after step 4.
+
+### Audit (step 1)
+
+- **cvc5's quantifiers engine.** Three places assume it exists in a
+  quantified logic:
+  - `TheoryEngine::finishInit`, which asserts it;
+  - `EqEngineManagerDistributed`, which builds the master equality engine
+    on it;
+  - `ModelManager`, which takes its model builder.
+
+  Each now accepts its absence. The central equality engine mode makes the
+  same assumption and is not supported with mixed slots, which use the
+  default, distributed.
+
+  The other uses are already null-safe: the last call and
+  `notifyCombineTheories` in `TheoryEngine`, and the sygus extension of
+  datatypes. So are `SolverEngine`'s entry points, which `--z3` refuses
+  before they reach the engine.
+- **Preprocessing, which the plan missed.** cvc5's theories take atoms in
+  preprocessed form: rewritten, theory-preprocessed (`ppRewrite`), and
+  without term if-then-else. Under `--z3`, two things break that.
+  - Term formula removal is skipped (`--z3-native-term-formulas`), so that
+    the core matches patterns over the original terms. Mixed slots turn it
+    off. The core then matches over cvc5's purified terms, so the baseline
+    to compare with is Stage 3 with `--no-z3-native-term-formulas`.
+  - The core's lemmas are not preprocessed (`LemmaProperty::UNPROCESSED`),
+    since the core and cvc5 must agree on the atoms. Instances are
+    rewritten (`rewriteInstance`) but still hold term if-then-else and
+    other constructs that preprocessing removes. So does the input after
+    the core's skolemization, which makes the bodies of existentials
+    ground.
+
+  So in shadow mode, every formula the core asserts goes through cvc5's
+  lemma preprocessing (`PropEngine::preprocess`) first, input and instances
+  alike (`SmtContext::setCvc5Preprocessor`). The skolem definitions it
+  produces are asserted too, and permanently, since preprocessing gives
+  each only once. cvc5's rewriter restructures quantifiers (miniscoping and
+  the like), so only the parts outside the quantifiers are preprocessed.
+
+### Progress
+
+Steps 1 and 2 are done, and step 3 is under way (2026-10-15).
+
+- **The switches.**
+  - `--z3-slots=quantifiers` puts a `TheorySlot` in QUANTIFIERS only.
+    `SmtSolver` fills every slot the engine factory leaves empty with cvc5's
+    theory.
+  - `Theory::observesAllFacts`: `TheoryEngine::assertFact` gives a copy of
+    each SAT literal to the observers that do not own it.
+  - The master equality engine and the model manager do without a
+    quantifiers engine.
+  - The mode implies `--no-z3-native-term-formulas` and
+    `--z3-theory-preprocess`. The latter is the preprocessing of the audit,
+    also available on its own under the hosted engine and Stage 3, to
+    measure it apart.
+- **The shadow** (`HostCore` in shadow mode). Running it showed that more
+  of the core has to stay private than the plan said:
+  - It reports no propagations.
+  - The clauses of the core's theory side stay private
+    (`PropCore::hostSetShadow`). They hold atoms of the port's plugins that
+    cvc5's theories reject; native arithmetic refuses the port's bound
+    atoms, which are not in its normal form. Only instances, skolem
+    definitions and conflicts reach cvc5, and the core splits only on atoms
+    cvc5 knows.
+  - Its final check skips the port's ground plugins. They asked to continue
+    for decisions on private atoms, and the core gave up after ten silent
+    rounds.
+  - The skolem definitions of an instance are roots that are asserted again
+    after each backtrack (the units-to-reassert of delayed units), since
+    preprocessing gives each only once.
+- **A bug that looked like a gain.** The first run on the development set
+  gave 76 unsat in 60 s, against 71 for Stage 3.
+  - A negated definition was reasserted as a unit with no variable.
+  - The assertion build crashed on it. The release build assigned an
+    arbitrary variable instead and answered fast, unsoundly.
+  - Fixed: the unit is now an atom and a sign. `reassertUnits` asserts that
+    the unit has a variable.
+- **Validation.**
+  - The quantified regressions with assertions: no wrong answers, 153 unsat
+    and 31 sat (Stage 3: 142 and 25). The failures are those of Stage 3.
+  - The 58 development benchmarks Stage 4 solves also answer unsat with
+    assertions on, including the check that every literal of a conflict
+    is false in cvc5.
+
+**First measurement** (development set, 10 s, `verus-best`, one session):
+
+| | unsat | unknown | timeout | total time |
+|---|---|---|---|---|
+| Stage 3 | 71 | 1 | 16 | 313 s |
+| Stage 3, input purified (`--no-z3-native-term-formulas`) | 71 | 1 | 16 | 315 s |
+| ... and instances preprocessed (`--z3-theory-preprocess`) | 65 | 1 | 22 | 354 s |
+| Stage 4 (`--z3-slots=quantifiers`) | 58, 59 | 1 | 29, 28 | 404 s, 401 s |
+
+Stage 4 solves no benchmark that Stage 3 with purified input does not. On
+the 58 both solve, it takes 100 s against 68 s.
+
+The loss splits into two parts of about the same size:
+- **Preprocessing the instances**, mainly purifying their term
+  if-then-else, which the port otherwise internalizes natively. Purifying
+  the input alone costs nothing.
+- **cvc5's ground reasoning, and the propagations the core no longer
+  reports.**
+
+On `fluentbit_config__proof__helper_invariants__owner_ref.2`, which only
+Stage 3 solves, Stage 4 makes 190,000 instances in 20 s where Stage 3 needs
+71,000.
 
 ### Open questions
 

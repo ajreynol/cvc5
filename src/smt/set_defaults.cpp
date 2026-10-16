@@ -138,14 +138,16 @@ void SetDefaults::setDefaultsPre(Options& opts)
   // have therefore seen none of the assertions.
   if (opts.theory.eeMode == options::EqEngineMode::NONE
       && !(opts.z3.z3
-           && opts.z3.z3TheoryEngine == options::Z3TheoryEngineMode::CVC5))
+           && opts.z3.z3TheoryEngine == options::Z3TheoryEngineMode::CVC5
+           && opts.z3.z3Slots == options::Z3SlotsMode::ALL))
   {
-    // Only the port's theory slots work without equality engines. A
-    // subsolver copies the options of its parent with --z3 turned off.
+    // Only the port's theory slots work without equality engines, when they
+    // fill every slot. A subsolver copies the options of its parent with
+    // --z3 turned off.
     SET_AND_NOTIFY(theory,
                    eeMode,
                    options::EqEngineMode::DISTRIBUTED,
-                   "no --z3-theory-engine=cvc5");
+                   "no --z3-theory-engine=cvc5 --z3-slots=all");
   }
   if (opts.z3.z3)
   {
@@ -176,7 +178,15 @@ void SetDefaults::setDefaultsPre(Options& opts)
             "--z3-theory-engine=cvc5 requires --z3-prop-engine=cvc5");
       }
     }
-    if (opts.z3.z3TheoryEngine == options::Z3TheoryEngineMode::CVC5)
+    if (opts.z3.z3TheoryEngine != options::Z3TheoryEngineMode::CVC5)
+    {
+      if (opts.z3.z3SlotsWasSetByUser
+          && opts.z3.z3Slots != options::Z3SlotsMode::ALL)
+      {
+        throw OptionException("--z3-slots requires --z3-theory-engine=cvc5");
+      }
+    }
+    else if (opts.z3.z3Slots == options::Z3SlotsMode::ALL)
     {
       // no equality engines: the components share the port's E-graph
       // (src/z3/ARCHITECTURE_PLAN.md, section 16)
@@ -184,6 +194,22 @@ void SetDefaults::setDefaultsPre(Options& opts)
                      eeMode,
                      options::EqEngineMode::NONE,
                      "--z3-theory-engine=cvc5");
+    }
+    else
+    {
+      // cvc5's own theories in the other slots need the input and the
+      // instances in their preprocessed form, without term if-then-else
+      // (src/z3/ARCHITECTURE_PLAN.md, section 17)
+      if (opts.z3.z3NativeTermFormulasWasSetByUser
+          && opts.z3.z3NativeTermFormulas)
+      {
+        throw OptionException(
+            "--z3-native-term-formulas requires --z3-slots=all");
+      }
+      SET_AND_NOTIFY(
+          z3, z3NativeTermFormulas, false, "--z3-slots other than all");
+      SET_AND_NOTIFY(
+          z3, z3TheoryPreprocess, true, "--z3-slots other than all");
     }
   }
   // safe options

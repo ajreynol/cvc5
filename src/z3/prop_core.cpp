@@ -2197,6 +2197,7 @@ void PropCore::reassertUnits(size_t unitsToReassertLim)
     ReplayUnit& ru = d_unitsToReassert[i];
     d_ctx.internalize(ru.d_unit, true);
     BoolVar v = getBoolVar(ru.d_unit);
+    Assert(v != s_nullBoolVar) << "unit without a variable: " << ru.d_unit;
     Literal l(v, ru.d_sign);
     assign(l, BJustification::mkAxiom());
     if (ru.d_relevant)
@@ -2838,7 +2839,8 @@ Clause* PropCore::mkClause(size_t numLits,
                            ClauseKind k,
                            ClauseDelEh* delEh)
 {
-  if (d_hosted && j == nullptr && (k == CLS_TH_AXIOM || k == CLS_TH_LEMMA))
+  if (d_hosted && !d_hostShadow && j == nullptr
+      && (k == CLS_TH_AXIOM || k == CLS_TH_LEMMA))
   {
     // A clause of the theory side is a lemma for the host. A clause with a
     // justification stands for its explanation, which reaches the host

@@ -1610,10 +1610,37 @@ bool SmtContext::internalizeInstance(TNode body,
   // variable level (the pattern compiler, the inverted path index, the
   // checker) would read the wrong slot. Renormalizing the instance restores
   // the invariant, and is idempotent on the parts that are already canonical.
-  Node norm = d_normalizer.normalize(body);
+  Node norm = body;
+  if (d_cvc5Preprocessor)
+  {
+    // cvc5's theories take the instance in preprocessed form. A skolem
+    // definition holds globally, and cvc5's preprocessing gives it only
+    // once, so it is a root that is asserted again after each backtrack, as
+    // a delayed unit is, until it is asserted at the base level.
+    std::vector<Node> defs;
+    norm = d_cvc5Preprocessor(body, defs);
+    for (const Node& d : defs)
+    {
+      d_prop.hostRecordLemma(d);
+      if (d.isConst())
+      {
+        continue;
+      }
+      internalizeAssertion(d, generation);
+      // a unit is reasserted as an atom and a sign
+      bool neg = d.getKind() == Kind::NOT;
+      d_prop.addUnitToReassert(neg ? d[0] : d, neg, true);
+    }
+  }
+  norm = d_normalizer.normalize(norm);
   if (d_params.d_qiPermanent)
   {
     root = norm;
+    if (d_prop.isHostShadow())
+    {
+      // the clause of the permanent lemma stays private
+      d_prop.hostRecordLemma(norm);
+    }
     return internalizePermanentLemma(norm, generation);
   }
   if (d_prop.isHosted())
@@ -1860,7 +1887,13 @@ FinalCheckStatus SmtContext::finalCheck(Failure& failure)
   while (true)
   {
     FinalCheckStatus st;
-    if (d_finalCheckIdx < numTh)
+    if (d_finalCheckIdx < numTh && d_prop.isHostShadow())
+    {
+      // cvc5's own theories do the ground reasoning, and passed their full
+      // check; the core's plugins only keep its shadow of the ground state
+      st = FC_DONE;
+    }
+    else if (d_finalCheckIdx < numTh)
     {
       Theory* th = d_theorySet[d_finalCheckIdx];
       st = th->finalCheckEh(level);

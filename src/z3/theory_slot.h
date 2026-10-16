@@ -41,7 +41,8 @@ class TheorySlot;
  * BUILTIN, which TheoryEngine checks last (QUANTIFIERS in a quantified
  * logic): its check gives the core the facts queued at every slot, then
  * does what the hosted engine's check does. See ARCHITECTURE_PLAN.md,
- * section 16.
+ * section 16. With --z3-slots=quantifiers, QUANTIFIERS is the only slot,
+ * and it receives a copy of every fact (section 17).
  */
 class SlotBackend : public HostCoreOutput
 {
@@ -71,6 +72,8 @@ class SlotBackend : public HostCoreOutput
 
   /** The ported core. */
   SharedBackend d_backend;
+  /** The logic, for the enabled slots. */
+  const LogicInfo& d_logic;
   /** The core under cvc5's prop engine. */
   std::unique_ptr<HostCore> d_core;
   /** The slots, by theory id. */
