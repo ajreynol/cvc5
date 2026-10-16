@@ -301,6 +301,18 @@ class NewObjTrail : public Trail
   T* d_obj;
 };
 
+/** Undo a trail object owned elsewhere; see TrailStack::pushPtr. */
+class PtrTrail : public Trail
+{
+ public:
+  PtrTrail(Trail* t) : d_trail(t) {}
+
+  void undo() override { d_trail->undo(); }
+
+ private:
+  Trail* d_trail;
+};
+
 /**
  * Undo trail objects down to oldSize, destroying them as it goes. The objects
  * themselves live in a region, so only their destructors run here; the memory
@@ -340,8 +352,12 @@ class TrailStack
     undoTrailStack(d_trailStack, 0);
   }
 
-  /** Push an already-allocated trail object. */
-  void pushPtr(Trail* t) { d_trailStack.push_back(t); }
+  /**
+   * Push a trail object that is not owned by the stack, such as a member of
+   * its owner, which is undone but not destroyed: it is pushed through a
+   * forwarder in the region, which undoTrailStack destroys instead.
+   */
+  void pushPtr(Trail* t) { push(PtrTrail(t)); }
 
   /** Copy obj into the region and push it. */
   template <typename TrailObject>
