@@ -231,7 +231,8 @@ Node QuantifiersPreprocess::preSkolemizeQuantifiers(
       else
       {
         // will skolemize current, process body
-        Node nn = preSkolemizeQuantifiers(n[1], polarity, fvs, visited, nullptr);
+        Node nn =
+            preSkolemizeQuantifiers(n[1], polarity, fvs, visited, nullptr);
         std::vector<Node> sk;
         Node sub;
         std::vector<unsigned> sub_vars;
@@ -339,7 +340,8 @@ void QuantifiersPreprocess::proveSkolemizeEq(CDProof* cdp,
   Node nbody = body.notNode();
   // (=> q body) by INSTANTIATE
   std::vector<Node> skc = Skolemize::getSkolemConstants(q);
-  lcdp.addStep(body, ProofRule::INSTANTIATE, {q}, {nm->mkNode(Kind::SEXPR, skc)});
+  lcdp.addStep(
+      body, ProofRule::INSTANTIATE, {q}, {nm->mkNode(Kind::SEXPR, skc)});
   Node imp1 = nm->mkNode(Kind::IMPLIES, q, body);
   lcdp.addStep(imp1, ProofRule::SCOPE, {body}, {q});
   Node c1 = nm->mkNode(Kind::OR, nq, body);

@@ -88,7 +88,10 @@ class QuantifiersPreprocess : protected EnvObj
    * Add to cdp a proof of (= a c) from proofs of (= a b) and (= b c), where
    * b is not added if it is equal to a or c.
    */
-  void addTrans(CDProof* cdp, const Node& a, const Node& b, const Node& c) const;
+  void addTrans(CDProof* cdp,
+                const Node& a,
+                const Node& b,
+                const Node& c) const;
   /**
    * Apply prenexing aggressively. Returns the prenex normal form of n.
    */
