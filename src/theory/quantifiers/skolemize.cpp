@@ -166,6 +166,12 @@ void Skolemize::getSelfSel(const DType& dt,
   }
 }
 
+Node Skolemize::getSkolemizationLemma(const Node& q) const
+{
+  NodeNodeMap::const_iterator it = d_skolemized.find(q);
+  return it == d_skolemized.end() ? Node::null() : Node((*it).second);
+}
+
 bool Skolemize::getSkolemConstantsInduction(Node q, std::vector<Node>& skolems)
 {
   std::unordered_map<Node, std::vector<Node>>::iterator it =

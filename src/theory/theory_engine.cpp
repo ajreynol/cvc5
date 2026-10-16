@@ -151,15 +151,13 @@ void TheoryEngine::finishInit()
   {
     // get the quantifiers engine, which is initialized by the quantifiers
     // theory
-    // This is null when the theory in the quantifiers slot handles the
-    // quantified formulas without a quantifiers engine (the ported Z3
-    // core's).
     d_quantEngine = d_theoryTable[THEORY_QUANTIFIERS]->getQuantifiersEngine();
+    Assert(d_quantEngine != nullptr);
   }
   // finish initializing the quantifiers engine, which must come before
   // initializing theory combination, since quantifiers engine may have a
   // special model builder object
-  if (d_quantEngine != nullptr)
+  if (logicInfo().isQuantified())
   {
     d_quantEngine->finishInit(this);
   }
@@ -514,7 +512,7 @@ void TheoryEngine::check(Theory::Effort effort)
                 d_stats.d_combineTheoriesTime);
             d_tc->combineTheories();
           }
-          if (d_quantEngine != nullptr)
+          if (logicInfo().isQuantified())
           {
             d_quantEngine->notifyCombineTheories();
           }
@@ -569,7 +567,7 @@ void TheoryEngine::check(Theory::Effort effort)
       }
       if (!d_inConflict)
       {
-        if (d_quantEngine != nullptr)
+        if (logicInfo().isQuantified())
         {
           // quantifiers engine must check at last call effort
           d_quantEngine->check(Theory::EFFORT_LAST_CALL);

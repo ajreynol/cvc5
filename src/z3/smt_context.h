@@ -344,10 +344,10 @@ class SmtContext final : protected EnvObj, public QuantifierServices
   void internalizeInstance(TNode body, uint32_t generation) override;
 
   /**
-   * Skolemize the quantifier q, which is assigned false, see
-   * smt_context.cpp.
+   * Assert lem, the skolemization of the quantified formula q, which cvc5
+   * asserted false, as a lemma that holds globally.
    */
-  void skolemize(TNode q);
+  void skolemize(TNode q, TNode lem);
 
   void internalize(TNode n, bool gateCtx);
   void internalize(const Node* exprs, size_t numExprs, bool gateCtx);
@@ -655,8 +655,6 @@ class SmtContext final : protected EnvObj, public QuantifierServices
    * d_cachedGeneration serves, and take their generation from here.
    */
   std::unordered_map<Node, uint32_t> d_hostGeneration;
-  /** The skolemization lemma of each quantifier, see skolemize. */
-  std::unordered_map<Node, Node> d_skolemLemmas;
   /** The generation of n: cached, recorded under cvc5, or the current one. */
   uint32_t generationOf(TNode n);
   std::unordered_set<TNode> d_cacheGenerationVisited;

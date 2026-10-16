@@ -41,7 +41,7 @@ class SharedBackend;
 
 /**
  * Where HostCore sends what it learns: the output channel of the quantifiers
- * slot (TheorySlot).
+ * theory (Z3QuantifiersEngine).
  */
 class HostCoreOutput
 {
@@ -70,18 +70,23 @@ class HostCoreOutput
 class HostCore : protected EnvObj
 {
  public:
-  HostCore(Env& env,
-           SharedBackend& backend,
-           TheoryEngine& te,
-           HostCoreOutput& out);
+  HostCore(Env& env, SharedBackend& backend, HostCoreOutput& out);
   ~HostCore();
-  /** Forget the state of the previous context; see Z3HostedPropEngine. */
-  void reset();
+  /**
+   * Forget the state of the previous context, for the theory engine te; see
+   * Z3HostedPropEngine.
+   */
+  void reset(TheoryEngine* te);
 
   /** cvc5 registered the atom. */
   void preRegister(TNode atom);
   /** cvc5 asserted the literal. */
   void assertFact(TNode literal);
+  /**
+   * cvc5 asserted the quantified formula q false, which lem, its
+   * skolemization, holds for; see Z3QuantifiersEngine.
+   */
+  void skolemize(TNode q, TNode lem);
   /** Propagate, and at full effort run the final check. */
   void check(theory::Theory::Effort effort);
   /** Set up the propositional side, once. */
@@ -171,7 +176,7 @@ class HostCore : protected EnvObj
   /** The ported core. */
   SharedBackend& d_backend;
   /** The engine, for the prop engine's state. */
-  TheoryEngine& d_te;
+  TheoryEngine* d_te;
   /** Where lemmas and propagations go. */
   HostCoreOutput& d_out;
   /** Whether the propositional side was set up (presolve). */

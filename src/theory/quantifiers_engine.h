@@ -65,35 +65,41 @@ class QuantifiersEngine : protected EnvObj
                     quantifiers::TermRegistry& tr,
                     quantifiers::QuantifiersInferenceManager& qim,
                     ProofNodeManager* pnm);
-  ~QuantifiersEngine();
+  virtual ~QuantifiersEngine();
   /** The quantifiers registry */
   quantifiers::QuantifiersRegistry& getQuantifiersRegistry();
   //---------------------- utilities
   /** get the model builder */
-  quantifiers::QModelBuilder* getModelBuilder() const;
+  virtual quantifiers::QModelBuilder* getModelBuilder() const;
   /** get term database sygus */
   quantifiers::TermDbSygus* getTermDatabaseSygus() const;
   //---------------------- end utilities
   /** presolve */
-  void presolve();
+  virtual void presolve();
   /** notify preprocessed assertion */
-  void ppNotifyAssertions(const std::vector<Node>& assertions);
+  virtual void ppNotifyAssertions(const std::vector<Node>& assertions);
   /** check at level */
-  void check(Theory::Effort e);
+  virtual void check(Theory::Effort e);
   /** notify that theories were combined */
-  void notifyCombineTheories();
+  virtual void notifyCombineTheories();
   /** preRegister quantifier
    *
    * This function is called after registerQuantifier for quantified formulas
    * that are pre-registered to the quantifiers theory.
    */
-  void preRegisterQuantifier(Node q);
+  virtual void preRegisterQuantifier(Node q);
+  /**
+   * The fact on atom, with the given polarity, was asserted to the
+   * quantifiers theory: by default, a quantified formula, asserted to this
+   * engine by assertQuantifier.
+   */
+  virtual void assertFact(TNode atom, bool pol, TNode fact);
   /** assert universal quantifier */
   void assertQuantifier(Node q, bool pol);
   /** notification when master equality engine is updated */
-  void eqNotifyNewClass(TNode t);
+  virtual void eqNotifyNewClass(TNode t);
   /** notification when master equality engine merges two classes*/
-  void eqNotifyMerge(TNode t1, TNode t2);
+  virtual void eqNotifyMerge(TNode t1, TNode t2);
   /** mark relevant quantified formula, this will indicate it should be checked
    * before the others */
   void markRelevant(Node q);
@@ -149,7 +155,7 @@ class QuantifiersEngine : protected EnvObj
   /** Get the list of all declared oracle functions */
   std::vector<Node> getOracleFuns() const;
   //----------end user interface for instantiations
- private:
+ protected:
   /**
    * Check at level, setting setModelUnsoundId to an IncompleteId if we are
    * "unknown" instead of "unsat".
@@ -176,7 +182,7 @@ class QuantifiersEngine : protected EnvObj
    * @param te The theory engine
    * @param dm The decision manager of the theory engine
    */
-  void finishInit(TheoryEngine* te);
+  virtual void finishInit(TheoryEngine* te);
   //---------------------- end private initialization
   /** (context-indepentent) register quantifier internal
    *

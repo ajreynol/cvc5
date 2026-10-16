@@ -1378,8 +1378,6 @@ libcvc5_add_sources(
   z3/smt_context.cpp
   z3/smt_context.h
   z3/statistics.h
-  z3/theory_slot.cpp
-  z3/theory_slot.h
   z3/types.cpp
   z3/types.h
   z3/util/approx_set.h
@@ -1394,6 +1392,8 @@ libcvc5_add_sources(
   z3/watch_list.cpp
   z3/watch_list.h
   z3/z3_hosted_prop_engine.cpp
+  z3/z3_quantifiers_engine.cpp
+  z3/z3_quantifiers_engine.h
   z3/z3_hosted_prop_engine.h
 )
 

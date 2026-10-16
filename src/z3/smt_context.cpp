@@ -32,7 +32,6 @@
 #include "theory/smt_engine_subsolver.h"
 #include "theory/theory.h"
 #include "util/resource_manager.h"
-#include "theory/quantifiers/skolemize.h"
 #include "util/statistics_registry.h"
 #include "z3/quantifier_manager.h"
 #include "z3/util/util.h"
@@ -730,11 +729,9 @@ bool SmtContext::propagateAtoms()
       Assert(isQuantifier(boolVar2Expr(v)));
       if (getAssignment(v) == L_TRUE)
       {
+        // a quantifier assigned false is skolemized when cvc5 asserts it,
+        // see Z3QuantifiersEngine
         assignQuantifier(boolVar2Expr(v));
-      }
-      else
-      {
-        skolemize(boolVar2Expr(v));
       }
     }
     if (inconsistent())
@@ -961,30 +958,14 @@ void SmtContext::internalizeLemma(TNode body, uint32_t generation, bool instance
   internalizeAssertion(norm, generation);
 }
 
-void SmtContext::skolemize(TNode q)
+void SmtContext::skolemize(TNode q, TNode lem)
 {
-  // Z3's preprocessing leaves only universal quantifiers, in positive
-  // positions. Without it, a quantifier assigned false is skolemized here, as
-  // cvc5's quantifiers engine does: with the lemma (=> (not q) (not body)),
-  // where body is the body of q over its skolems.
-  if (q.getKind() != Kind::FORALL)
-  {
-    return;
-  }
-  auto it = d_skolemLemmas.find(q);
-  if (it == d_skolemLemmas.end())
-  {
-    std::vector<Node> sks =
-        theory::quantifiers::Skolemize::getSkolemConstants(q);
-    std::vector<Node> vars(q[0].begin(), q[0].end());
-    Node body =
-        q[1].substitute(vars.begin(), vars.end(), sks.begin(), sks.end());
-    Node lem = nodeManager()->mkNode(
-        Kind::IMPLIES, q.notNode(), body.notNode());
-    it = d_skolemLemmas.emplace(q, lem).first;
-  }
+  // The lemma goes through the core, as an instance does, rather than
+  // straight to cvc5: the core and cvc5 must agree on its atoms, which the
+  // core takes in cvc5's preprocessed form, with its quantifiers over the
+  // canonical variables.
   d_stats.d_numSkolemizations++;
-  internalizeLemma(it->second, generationOf(q), false);
+  internalizeLemma(lem, generationOf(q), false);
 }
 
 void SmtContext::initSearchEh() { d_qmanager->initSearchEh(); }

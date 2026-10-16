@@ -29,7 +29,7 @@ class SharedBackend;
 /**
  * The propositional engine used with --z3: cvc5's own PropEngine (CNF
  * conversion, CDCL(T) solver, decision heuristic), over cvc5's TheoryEngine
- * with the ported core in the quantifiers slot.
+ * with the ported core in its quantifiers engine (Z3QuantifiersEngine).
  *
  * It differs from PropEngine only in its input: the preprocessed assertions
  * are first prepared for the core (AssertionPreparation), and the prepared
@@ -65,6 +65,8 @@ class Z3HostedPropEngine : public prop::PropEngine
   bool supports(prop::SearchFeature f) const override;
 
  private:
+  /** The paired theory engine. */
+  TheoryEngine* d_te;
   /** The ported core. */
   SharedBackend& d_backend;
   /** The core under cvc5's prop engine. */

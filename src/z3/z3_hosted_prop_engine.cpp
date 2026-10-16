@@ -30,6 +30,7 @@ Z3HostedPropEngine::Z3HostedPropEngine(Env& env,
     // core derives the values of its gates from those of their leaves, for
     // relevancy, and Boolean variables are leaves.
     : PropEngine(env, te, prop::FormulaLitPolicy::TRACK_AND_NOTIFY_VAR),
+      d_te(te),
       d_backend(backend),
       d_core(core),
       d_prep(env)
@@ -42,7 +43,7 @@ void Z3HostedPropEngine::finishInit()
 {
   PropEngine::finishInit();
   d_backend.resetContext();
-  d_core.reset();
+  d_core.reset(d_te);
 }
 
 void Z3HostedPropEngine::assertInputFormulas(

@@ -135,7 +135,8 @@ class SmtSolver : protected EnvObj
   void finishInitPreprocessor();
   /**
    * Make the propositional engine over the theory engine: with --z3, the
-   * one that prepares the assertions for the ported Z3 core.
+   * one that prepares the assertions for the ported Z3 core, which the
+   * quantifiers engine owns.
    */
   std::unique_ptr<prop::PropEngine> mkPropEngine();
   /** The preprocessor of this SMT solver */

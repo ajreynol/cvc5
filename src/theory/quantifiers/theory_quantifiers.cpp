@@ -13,12 +13,14 @@
 #include "theory/quantifiers/theory_quantifiers.h"
 
 #include "options/quantifiers_options.h"
+#include "options/z3_options.h"
 #include "proof/proof_node_manager.h"
 #include "theory/quantifiers/quantifiers_macros.h"
 #include "theory/quantifiers/quantifiers_modules.h"
 #include "theory/quantifiers/quantifiers_rewriter.h"
 #include "theory/trust_substitutions.h"
 #include "theory/valuation.h"
+#include "z3/z3_quantifiers_engine.h"
 
 using namespace cvc5::internal::kind;
 using namespace cvc5::context;
@@ -39,9 +41,20 @@ TheoryQuantifiers::TheoryQuantifiers(Env& env,
       d_qim(env, *this, d_qstate, d_qreg, d_treg),
       d_qengine(nullptr)
 {
-  // construct the quantifiers engine
-  d_qengine.reset(
-      new QuantifiersEngine(env, d_qstate, d_qreg, d_treg, d_qim, d_pnm));
+  // construct the quantifiers engine: with --z3, the one of the ported Z3
+  // core, which takes every fact and is checked even without new ones
+  if (options().z3.z3)
+  {
+    d_qengine.reset(new z3::Z3QuantifiersEngine(
+        env, out, d_qstate, d_qreg, d_treg, d_qim, d_pnm));
+    d_observeAllFacts = true;
+    d_checkEarlyExit = false;
+  }
+  else
+  {
+    d_qengine.reset(
+        new QuantifiersEngine(env, d_qstate, d_qreg, d_treg, d_qim, d_pnm));
+  }
 
   // indicate we are using the quantifiers theory state object
   d_theoryState = &d_qstate;
@@ -140,6 +153,11 @@ void TheoryQuantifiers::ppNotifyAssertions(const std::vector<Node>& assertions)
 bool TheoryQuantifiers::collectModelValues(
     TheoryModel* m, CVC5_UNUSED const std::set<Node>& termSet)
 {
+  if (d_observeAllFacts)
+  {
+    // the facts are those of every theory (--z3)
+    return true;
+  }
   for (assertions_iterator i = facts_begin(); i != facts_end(); ++i)
   {
     if ((*i).d_assertion.getKind() == Kind::NOT)
@@ -176,15 +194,7 @@ bool TheoryQuantifiers::preNotifyFact(TNode atom,
                                       CVC5_UNUSED bool isPrereg,
                                       CVC5_UNUSED bool isInternal)
 {
-  Kind k = atom.getKind();
-  if (k == Kind::FORALL)
-  {
-    getQuantifiersEngine()->assertQuantifier(atom, polarity);
-  }
-  else
-  {
-    Unhandled() << "Unexpected fact " << fact;
-  }
+  getQuantifiersEngine()->assertFact(atom, polarity, fact);
   // don't use equality engine, always return true
   return true;
 }

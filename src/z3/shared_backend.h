@@ -36,8 +36,8 @@ class SmtContext;
  * PropCore is allocated inside the SmtContext, so that the Boolean queries
  * the theory side makes on its hot paths stay cheap.
  *
- * The slot (TheorySlot) owns this class for as long as the theory engine
- * exists. SmtSolver replaces its PropEngine on reset-assertions, and each new
+ * The quantifiers engine (Z3QuantifiersEngine) owns this class for as long
+ * as the theory engine exists. SmtSolver replaces its PropEngine on reset-assertions, and each new
  * Z3HostedPropEngine replaces the SmtContext when it is initialized.
  */
 class SharedBackend : protected EnvObj

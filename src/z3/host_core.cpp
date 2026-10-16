@@ -41,13 +41,10 @@ constexpr size_t s_maxSilentFinalChecks = 10;
 
 }  // namespace
 
-HostCore::HostCore(Env& env,
-                   SharedBackend& backend,
-                   TheoryEngine& te,
-                   HostCoreOutput& out)
+HostCore::HostCore(Env& env, SharedBackend& backend, HostCoreOutput& out)
     : EnvObj(env),
       d_backend(backend),
-      d_te(te),
+      d_te(nullptr),
       d_out(out),
       d_setup(false),
       d_inConflict(false),
@@ -61,8 +58,9 @@ HostCore::HostCore(Env& env,
 
 HostCore::~HostCore() {}
 
-void HostCore::reset()
+void HostCore::reset(TheoryEngine* te)
 {
+  d_te = te;
   d_setup = false;
   d_inConflict = false;
   d_needCheck = false;
@@ -80,7 +78,7 @@ Node HostCore::preprocessForTheories(TNode n, std::vector<Node>& defs)
   if (!expr::hasClosure(n))
   {
     std::vector<theory::SkolemLemma> sks;
-    TrustNode trn = d_te.getPropEngine()->preprocess(n, sks);
+    TrustNode trn = d_te->getPropEngine()->preprocess(n, sks);
     for (const theory::SkolemLemma& sk : sks)
     {
       defs.push_back(sk.getProven());
@@ -181,6 +179,16 @@ void HostCore::assertFact(TNode literal)
   {
     enterConflict();
   }
+}
+
+void HostCore::skolemize(TNode q, TNode lem)
+{
+  if (d_inConflict)
+  {
+    return;
+  }
+  syncLevel();
+  d_backend.getContext().skolemize(q, lem);
 }
 
 void HostCore::check(theory::Theory::Effort effort)
@@ -399,7 +407,7 @@ Node HostCore::delayUnit(const Node& lem)
   {
     return lem;
   }
-  prop::PropEngine* pe = d_te.getPropEngine();
+  prop::PropEngine* pe = d_te->getPropEngine();
   std::vector<Node> disj;
   if (lem.getKind() == Kind::OR)
   {
@@ -447,7 +455,7 @@ void HostCore::splitNewlyRelevant()
   PropCore& core = d_backend.getPropCore();
   std::vector<Node> rel;
   core.hostTakeRelevant(rel);
-  prop::PropEngine* pe = d_te.getPropEngine();
+  prop::PropEngine* pe = d_te->getPropEngine();
   for (const Node& n : rel)
   {
     // A variable cvc5 knows is decided by its heuristic when an assertion
@@ -468,7 +476,7 @@ void HostCore::splitNewlyRelevant()
 void HostCore::split(BoolVar v)
 {
   PropCore& core = d_backend.getPropCore();
-  prop::PropEngine* pe = d_te.getPropEngine();
+  prop::PropEngine* pe = d_te->getPropEngine();
   TNode atom = core.boolVar2Expr(v);
   if (atom.isNull() || atom.isConst())
   {

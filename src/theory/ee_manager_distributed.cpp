@@ -46,31 +46,15 @@ void EqEngineManagerDistributed::initializeTheories()
   }
 
   const LogicInfo& logicInfo = d_env.getLogicInfo();
-  // The master equality engine serves the quantifiers engine. The theory in
-  // the quantifiers slot may have none (the ported Z3 core's), and then ask
-  // for the master equality engine with a notification class of its own.
-  eq::EqualityEngineNotify* masterNotify = nullptr;
   if (logicInfo.isQuantified())
-  {
-    QuantifiersEngine* qe = d_te.getQuantifiersEngine();
-    Theory* tq = d_te.theoryOf(THEORY_QUANTIFIERS);
-    EeSetupInfo esiq;
-    if (qe != nullptr)
-    {
-      d_masterEENotify.reset(new quantifiers::MasterNotifyClass(qe));
-      masterNotify = d_masterEENotify.get();
-    }
-    else if (tq != nullptr && tq->needsEqualityEngine(esiq) && esiq.d_useMaster)
-    {
-      masterNotify = esiq.d_notify;
-    }
-  }
-  if (masterNotify != nullptr)
   {
     // construct the master equality engine
     Assert(d_masterEqualityEngine == nullptr);
+    QuantifiersEngine* qe = d_te.getQuantifiersEngine();
+    Assert(qe != nullptr);
+    d_masterEENotify.reset(new quantifiers::MasterNotifyClass(qe));
     d_masterEqualityEngine = std::make_unique<eq::EqualityEngine>(
-        d_env, c, *masterNotify, "theory::master", false);
+        d_env, c, *d_masterEENotify.get(), "theory::master", false);
   }
   // allocate equality engines per theory
   for (TheoryId theoryId = theory::THEORY_FIRST;

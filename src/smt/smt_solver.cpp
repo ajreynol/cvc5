@@ -34,7 +34,7 @@
 #include "theory/logic_info.h"
 #include "theory/theory_engine.h"
 #include "theory/theory_traits.h"
-#include "z3/theory_slot.h"
+#include "z3/z3_quantifiers_engine.h"
 #include "z3/z3_hosted_prop_engine.h"
 
 using namespace std;
@@ -60,9 +60,12 @@ std::unique_ptr<prop::PropEngine> SmtSolver::mkPropEngine()
 {
   if (options().z3.z3)
   {
-    z3::TheorySlot& ts = z3::getTheorySlot(*d_theoryEngine);
+    // the quantifiers engine of the quantifiers theory owns the ported core
+    z3::Z3QuantifiersEngine* qe = static_cast<z3::Z3QuantifiersEngine*>(
+        d_theoryEngine->theoryOf(theory::THEORY_QUANTIFIERS)
+            ->getQuantifiersEngine());
     return std::make_unique<z3::Z3HostedPropEngine>(
-        d_env, d_theoryEngine.get(), ts.getBackend(), ts.getCore());
+        d_env, d_theoryEngine.get(), qe->getBackend(), qe->getCore());
   }
   return std::make_unique<prop::PropEngine>(d_env, d_theoryEngine.get());
 }
@@ -73,19 +76,11 @@ void SmtSolver::finishInit()
   // engine later (it is non-essential there)
   d_theoryEngine.reset(new TheoryEngine(d_env));
 
-  // Add the theories: the ported Z3 core in the quantifiers slot with --z3,
-  // then cvc5's own in the other slots
-  if (options().z3.z3)
-  {
-    z3::addTheorySlots(d_env, *d_theoryEngine);
-  }
+  // Add the theories
   for (theory::TheoryId id = theory::THEORY_FIRST; id < theory::THEORY_LAST;
        ++id)
   {
-    if (d_theoryEngine->theoryOf(id) == nullptr)
-    {
-      theory::TheoryConstructor::addTheory(d_theoryEngine.get(), id);
-    }
+    theory::TheoryConstructor::addTheory(d_theoryEngine.get(), id);
   }
   // Add the proof checkers for each theory
   ProofNodeManager* pnm = d_env.getProofNodeManager();

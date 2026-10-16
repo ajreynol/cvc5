@@ -44,11 +44,10 @@ void ModelManager::finishInit(eq::EqualityEngineNotify* notify)
 {
   // construct the model
   // Initialize the model and model builder.
-  // the theory in the quantifiers slot may have no quantifiers engine (the
-  // ported Z3 core's)
-  QuantifiersEngine* qe = d_te.getQuantifiersEngine();
-  if (logicInfo().isQuantified() && qe != nullptr)
+  if (logicInfo().isQuantified())
   {
+    QuantifiersEngine* qe = d_te.getQuantifiersEngine();
+    Assert(qe != nullptr);
     d_modelBuilder = qe->getModelBuilder();
   }
 
