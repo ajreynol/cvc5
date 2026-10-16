@@ -81,24 +81,11 @@ void Z3QuantifiersEngine::preRegisterQuantifier(Node q)
   }
 }
 
-void Z3QuantifiersEngine::assertFact(TNode atom, bool pol, TNode fact)
+void Z3QuantifiersEngine::assertFact(CVC5_UNUSED TNode atom,
+                                     CVC5_UNUSED bool pol,
+                                     TNode fact)
 {
   d_core->assertFact(fact);
-  if (pol || atom.getKind() != Kind::FORALL)
-  {
-    return;
-  }
-  // A quantified formula asserted false is skolemized, as cvc5's quantifiers
-  // engine does. Z3's preparation of the input leaves only universal
-  // quantifiers, in positive positions, but cvc5 may still decide one false.
-  // The lemma is made once per user context, and goes through the core
-  // rather than straight to cvc5 (see SmtContext::skolemize), which asserts
-  // it again each time the formula is asserted false after a backtrack.
-  theory::quantifiers::Skolemize* sk = d_qim.getSkolemize();
-  sk->process(atom);
-  Node lem = sk->getSkolemizationLemma(atom);
-  Assert(!lem.isNull());
-  d_core->skolemize(atom, lem);
 }
 
 void Z3QuantifiersEngine::eqNotifyMerge(TNode t1, TNode t2)
@@ -116,6 +103,17 @@ void Z3QuantifiersEngine::lemma(const Node& lem, theory::LemmaProperty p)
 void Z3QuantifiersEngine::setModelUnsound(theory::IncompleteId id)
 {
   d_out.setModelUnsound(id);
+}
+
+Node Z3QuantifiersEngine::getSkolemization(TNode q)
+{
+  // The lemma is made once per user context, while the core asserts it again
+  // each time q is assigned false after a backtrack.
+  theory::quantifiers::Skolemize* sk = d_qim.getSkolemize();
+  sk->process(q);
+  Node lem = sk->getSkolemizationLemma(q);
+  Assert(!lem.isNull());
+  return lem;
 }
 
 }  // namespace z3

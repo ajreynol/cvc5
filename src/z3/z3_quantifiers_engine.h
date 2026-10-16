@@ -46,9 +46,9 @@ namespace z3 {
  * - the formulas it asserts go through cvc5's preprocessing first.
  *
  * None of the modules of cvc5's quantifiers engine are made. What it keeps of
- * the native engine is skolemization: a quantified formula asserted false is
- * skolemized with the lemma of cvc5's Skolemize utility, which the core
- * asserts as it does an instance.
+ * the native engine is skolemization: a quantified formula the core assigns
+ * false is skolemized with the lemma of cvc5's Skolemize utility, which the
+ * core asserts as it does an instance.
  */
 class Z3QuantifiersEngine : public theory::QuantifiersEngine,
                             public HostCoreOutput
@@ -89,7 +89,7 @@ class Z3QuantifiersEngine : public theory::QuantifiersEngine,
   void check(theory::Theory::Effort e) override;
   void notifyCombineTheories() override {}
   void preRegisterQuantifier(Node q) override;
-  /** Give the fact to the core, and skolemize, see above. */
+  /** Give the fact to the core. */
   void assertFact(TNode atom, bool pol, TNode fact) override;
   void eqNotifyNewClass(CVC5_UNUSED TNode t) override {}
   /** Give the merge to the feed of the shadow. */
@@ -98,6 +98,8 @@ class Z3QuantifiersEngine : public theory::QuantifiersEngine,
   //------------------------------------- HostCoreOutput, through the channel
   void lemma(const Node& lem, theory::LemmaProperty p) override;
   void setModelUnsound(theory::IncompleteId id) override;
+  /** The skolemization of cvc5's Skolemize utility, see above. */
+  Node getSkolemization(TNode q) override;
 
  private:
   /** Nothing to initialize, as no module is made. */

@@ -71,6 +71,8 @@ void HostCore::reset(TheoryEngine* te)
       [this](TNode n, std::vector<Node>& defs) {
         return preprocessForTheories(n, defs);
       });
+  d_backend.getContext().setSkolemizer(
+      [this](TNode q) { return d_out.getSkolemization(q); });
 }
 
 Node HostCore::preprocessForTheories(TNode n, std::vector<Node>& defs)
@@ -179,16 +181,6 @@ void HostCore::assertFact(TNode literal)
   {
     enterConflict();
   }
-}
-
-void HostCore::skolemize(TNode q, TNode lem)
-{
-  if (d_inConflict)
-  {
-    return;
-  }
-  syncLevel();
-  d_backend.getContext().skolemize(q, lem);
 }
 
 void HostCore::check(theory::Theory::Effort effort)

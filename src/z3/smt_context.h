@@ -323,6 +323,13 @@ class SmtContext final : protected EnvObj, public QuantifierServices
   {
     return d_cvc5Preprocessor;
   }
+  /**
+   * The skolemization of cvc5's quantifiers engine: it maps a quantified
+   * formula q to the lemma that skolemizes it, which holds globally and
+   * which the core asserts when q is assigned false (see skolemize).
+   */
+  using Skolemizer = std::function<Node(TNode)>;
+  void setSkolemizer(Skolemizer s) { d_skolemizer = std::move(s); }
 
   /**
    * Merge the classes of a and b, which must be internalized as terms, since
@@ -344,10 +351,10 @@ class SmtContext final : protected EnvObj, public QuantifierServices
   void internalizeInstance(TNode body, uint32_t generation) override;
 
   /**
-   * Assert lem, the skolemization of the quantified formula q, which cvc5
-   * asserted false, as a lemma that holds globally.
+   * Skolemize the quantified formula q, which is assigned false: assert the
+   * lemma of the skolemizer (see setSkolemizer).
    */
-  void skolemize(TNode q, TNode lem);
+  void skolemize(TNode q);
 
   void internalize(TNode n, bool gateCtx);
   void internalize(const Node* exprs, size_t numExprs, bool gateCtx);
@@ -614,6 +621,8 @@ class SmtContext final : protected EnvObj, public QuantifierServices
   Nnf d_nnf;
   /** See setCvc5Preprocessor. */
   Cvc5Preprocessor d_cvc5Preprocessor;
+  /** See setSkolemizer. */
+  Skolemizer d_skolemizer;
   /** The justification of the equalities of cvc5's theories. */
   ExternalEqJustification d_externalJustification;
   std::unique_ptr<QuantifierManager> d_qmanager;

@@ -54,6 +54,11 @@ class HostCoreOutput
   virtual void lemma(const Node& lem, theory::LemmaProperty p) = 0;
   /** Record that a model would be unsound. */
   virtual void setModelUnsound(theory::IncompleteId id) = 0;
+  /**
+   * The lemma that skolemizes the quantified formula q, which the core
+   * asserts when q is assigned false.
+   */
+  virtual Node getSkolemization(TNode q) = 0;
 };
 
 /**
@@ -82,11 +87,6 @@ class HostCore : protected EnvObj
   void preRegister(TNode atom);
   /** cvc5 asserted the literal. */
   void assertFact(TNode literal);
-  /**
-   * cvc5 asserted the quantified formula q false, which lem, its
-   * skolemization, holds for; see Z3QuantifiersEngine.
-   */
-  void skolemize(TNode q, TNode lem);
   /** Propagate, and at full effort run the final check. */
   void check(theory::Theory::Effort effort);
   /** Set up the propositional side, once. */

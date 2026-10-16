@@ -729,9 +729,13 @@ bool SmtContext::propagateAtoms()
       Assert(isQuantifier(boolVar2Expr(v)));
       if (getAssignment(v) == L_TRUE)
       {
-        // a quantifier assigned false is skolemized when cvc5 asserts it,
-        // see Z3QuantifiersEngine
         assignQuantifier(boolVar2Expr(v));
+      }
+      else
+      {
+        // Z3's preparation of the input leaves only universal quantifiers,
+        // in positive positions, but cvc5 may still assign one false
+        skolemize(boolVar2Expr(v));
       }
     }
     if (inconsistent())
@@ -958,8 +962,14 @@ void SmtContext::internalizeLemma(TNode body, uint32_t generation, bool instance
   internalizeAssertion(norm, generation);
 }
 
-void SmtContext::skolemize(TNode q, TNode lem)
+void SmtContext::skolemize(TNode q)
 {
+  if (q.getKind() != Kind::FORALL)
+  {
+    return;
+  }
+  Assert(d_skolemizer);
+  Node lem = d_skolemizer(q);
   // The lemma goes through the core, as an instance does, rather than
   // straight to cvc5: the core and cvc5 must agree on its atoms, which the
   // core takes in cvc5's preprocessed form, with its quantifiers over the
