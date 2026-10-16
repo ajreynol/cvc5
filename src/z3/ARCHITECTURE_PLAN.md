@@ -1929,6 +1929,35 @@ Validation:
 - The development benchmarks either variant solves answer unsat with
   assertions on.
 
+**What the comparison with the plugins teaches** (sample, 10 s, one session):
+
+| | unsat | unknown | Against Stage 4 without plugins (only one, only the other; time on both) |
+|---|---|---|---|
+| Stage 3 | 571 | 2 | 13, 3; 424 s against 356 s |
+| Stage 3, instances preprocessed as in Stage 4 | 555 | 12 | 8, 14; 328 s against 343 s |
+| Stage 4, the port's plugins in the shadow | 557 | 3 | 5, 9; 391 s against 329 s |
+| Stage 4 without plugins | 561 | 4 | |
+
+- **The plugins in the shadow were a net cost.** Without them, Stage 4
+  solves more and is 16% faster. They duplicated cvc5's ground reasoning,
+  and their private derivations disagreed with cvc5's search. On `log.19`,
+  the core sends 395 conflicts with them and 155 without.
+- **The equalities that matching needs can come from cvc5.** cvc5's master
+  equality engine gives the port's E-matching what its own plugins gave.
+- **With the same instances, cvc5's ground engine does better than the
+  port's.** Stage 4 without plugins solves 14 benchmarks that Stage 3 with
+  preprocessed instances does not, against 8. Ten of the latter's 12
+  unknowns are among them: the port's ground reasoning makes its matching
+  saturate where cvc5's does not.
+- **What is left of Stage 3's lead is how instances are represented.**
+  Preprocessing them costs Stage 3 sixteen benchmarks net (18 against 2),
+  more than the 10 it leads Stage 4 without plugins by. The port's own
+  treatment of term if-then-else and Boolean terms in instances is what
+  pays, not its ground solvers. The next step is to keep that
+  representation in the core, while cvc5's theories get the purified form.
+  The core can relate the two through the skolem definitions, merging each
+  skolem with its if-then-else term in its E-graph.
+
 **Code** (coverage on the same runs as before):
 - The plugins no longer run: arithmetic executes 4 of its 6,435 lines,
   datatypes and the bridge none. In all, the configuration executes 10,857
