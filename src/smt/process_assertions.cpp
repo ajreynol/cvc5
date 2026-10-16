@@ -22,6 +22,7 @@
 #include "options/quantifiers_options.h"
 #include "options/sep_options.h"
 #include "options/smt_options.h"
+#include "options/z3_options.h"
 #include "options/strings_options.h"
 #include "preprocessing/assertion_pipeline.h"
 #include "preprocessing/preprocessing_pass_context.h"
@@ -385,6 +386,12 @@ bool ProcessAssertions::apply(AssertionPipeline& ap)
   if (options().bv.bitblastMode == options::BitblastMode::EAGER)
   {
     applyPass("bv-eager-atoms", ap);
+  }
+
+  if (options().z3.z3)
+  {
+    // prepare the assertions for the ported Z3 core, last
+    applyPass("z3-prep", ap);
   }
 
   Trace("smt-proc") << "ProcessAssertions::apply() end" << endl;

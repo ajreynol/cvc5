@@ -63,6 +63,11 @@ class Z3QuantifiersEngine : public theory::QuantifiersEngine,
                       ProofNodeManager* pnm);
   ~Z3QuantifiersEngine();
   /**
+   * The engine of the quantifiers theory of te, which owns the core in every
+   * logic, while te uses it only in quantified logics.
+   */
+  static Z3QuantifiersEngine* get(TheoryEngine* te);
+  /**
    * Make a fresh core, for the theory engine te, after its prop engine was
    * made.
    */

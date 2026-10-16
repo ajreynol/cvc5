@@ -125,6 +125,8 @@ libcvc5_add_sources(
   preprocessing/passes/synth_rew_rules.h
   preprocessing/passes/theory_preprocess.cpp
   preprocessing/passes/theory_preprocess.h
+  preprocessing/passes/z3_assertion_preparation.cpp
+  preprocessing/passes/z3_assertion_preparation.h
   preprocessing/passes/unconstrained_simplifier.cpp
   preprocessing/passes/unconstrained_simplifier.h
   preprocessing/passes/normalize.cpp

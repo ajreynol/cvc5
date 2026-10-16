@@ -57,6 +57,7 @@
 #include "preprocessing/passes/sygus_inference.h"
 #include "preprocessing/passes/synth_rew_rules.h"
 #include "preprocessing/passes/theory_preprocess.h"
+#include "preprocessing/passes/z3_assertion_preparation.h"
 #include "preprocessing/passes/unconstrained_simplifier.h"
 #include "preprocessing/preprocessing_pass.h"
 
@@ -154,6 +155,7 @@ PreprocessingPassRegistry::PreprocessingPassRegistry()
   registerPassInfo("ackermann", callCtor<Ackermann>);
   registerPassInfo("ext-rew-pre", callCtor<ExtRewPre>);
   registerPassInfo("theory-preprocess", callCtor<TheoryPreprocess>);
+  registerPassInfo("z3-prep", callCtor<Z3AssertionPreparation>);
   registerPassInfo("nl-ext-purify", callCtor<NlExtPurify>);
   registerPassInfo("bool-to-bv", callCtor<BoolToBV>);
   registerPassInfo("ho-elim", callCtor<HoElim>);

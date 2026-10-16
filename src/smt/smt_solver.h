@@ -38,10 +38,6 @@ namespace prop {
 class PropEngine;
 }
 
-namespace z3 {
-class Z3QuantifiersEngine;
-}
-
 namespace theory {
 class QuantifiersEngine;
 }
@@ -137,10 +133,6 @@ class SmtSolver : protected EnvObj
   bool trackPreprocessedAssertions() const;
   /** Finish initialization of preprocessor */
   void finishInitPreprocessor();
-  /** The quantifiers engine, which owns the ported Z3 core (--z3). */
-  z3::Z3QuantifiersEngine* getZ3QuantifiersEngine();
-  /** Make a fresh core after the prop engine was made (--z3). */
-  void resetZ3Core();
   /** The preprocessor of this SMT solver */
   Preprocessor d_pp;
   /** Assertions manager */

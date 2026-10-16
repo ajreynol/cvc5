@@ -13,6 +13,8 @@
 #include "z3/z3_quantifiers_engine.h"
 
 #include "theory/output_channel.h"
+#include "theory/quantifiers/theory_quantifiers.h"
+#include "theory/theory_engine.h"
 #include "theory/quantifiers/quantifiers_inference_manager.h"
 #include "theory/quantifiers/quantifiers_state.h"
 #include "theory/quantifiers/skolemize.h"
@@ -52,6 +54,14 @@ void Z3QuantifiersEngine::prepareAssertions(const std::vector<Node>& assertions,
 }
 
 Z3QuantifiersEngine::~Z3QuantifiersEngine() {}
+
+Z3QuantifiersEngine* Z3QuantifiersEngine::get(TheoryEngine* te)
+{
+  return static_cast<Z3QuantifiersEngine*>(
+      static_cast<theory::quantifiers::TheoryQuantifiers*>(
+          te->theoryOf(theory::THEORY_QUANTIFIERS))
+          ->getOwnedQuantifiersEngine());
+}
 
 void Z3QuantifiersEngine::finishInit(TheoryEngine* /*te*/) {}
 
