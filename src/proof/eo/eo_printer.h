@@ -18,7 +18,6 @@
 #define CVC5__PROOF__EO_PROOF_PRINTER_H
 
 #include <iostream>
-#include <map>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -67,15 +66,6 @@ class EoPrinter : protected EnvObj
              std::shared_ptr<ProofNode> pfn,
              ProofScopeMode psm = ProofScopeMode::DEFINITIONS_AND_ASSERTIONS);
   /**
-   * Print a proof incrementally. This assumes declarations have been handled
-   * externally and prints only new assumptions/definitions followed by the
-   * proof body.
-   */
-  void printIncremental(
-      EoPrintChannelOut& out,
-      std::shared_ptr<ProofNode> pfn,
-      ProofScopeMode psm = ProofScopeMode::DEFINITIONS_AND_ASSERTIONS);
-  /**
    * Print the proof, assuming that previous proofs have been printed on this
    * printer that have (partially) given the definition of subterms and
    * subproofs in pfn.
@@ -83,6 +73,28 @@ class EoPrinter : protected EnvObj
    * @param pfn The proof node.
    */
   void printNext(EoPrintChannelOut& out, std::shared_ptr<ProofNode> pfn);
+  /**
+   * Print the proof as part of a proof script, assuming that previous proofs
+   * in the current scope of the script (see pushScriptScope) have been printed
+   * on this printer. This prints only the declarations, definitions,
+   * assumptions and term bindings that have not already been printed in the
+   * current scope of the script, followed by the proof body.
+   * @param out The output stream.
+   * @param pfn The proof node.
+   * @param psm The scope mode.
+   */
+  void printIncremental(
+      EoPrintChannelOut& out,
+      std::shared_ptr<ProofNode> pfn,
+      ProofScopeMode psm = ProofScopeMode::DEFINITIONS_AND_ASSERTIONS);
+  /**
+   * Push a scope of the proof script. Everything printed by printIncremental
+   * after this call is forgotten when the corresponding call to
+   * popScriptScope is made.
+   */
+  void pushScriptScope();
+  /** Pop a scope of the proof script. */
+  void popScriptScope();
 
   /**
    * Print proof rewrite rule name r to output stream out
@@ -96,9 +108,6 @@ class EoPrinter : protected EnvObj
    * class.
    */
   LetBinding* getLetBinding();
-  /** Push/pop an external scope for top-level assumptions. */
-  void pushCurrentContext();
-  void popCurrentContext();
 
   /** Return true if it is possible to trust the topmost application in pfn */
   static bool isHandled(const Options& opts, const ProofNode* pfn);
@@ -204,18 +213,31 @@ class EoPrinter : protected EnvObj
   size_t allocateProofId(const ProofNode* pn, bool& wasAlloc);
   /** Print let list to output stream out */
   void printLetList(std::ostream& out, LetBinding& lbind);
+  /**
+   * Print the proof pfn, where if incremental is true, we print only what has
+   * not already been printed in the current scope of the proof script. This
+   * is the implementation of print and printIncremental.
+   */
+  void printTop(EoPrintChannelOut& aout,
+                std::shared_ptr<ProofNode> pfn,
+                ProofScopeMode psm,
+                bool incremental);
   /** Reference to the term processor */
   BaseEoNodeConverter& d_tproc;
   /** Assume id counter */
   size_t d_pfIdCounter;
   /** Mapping proofs to identifiers */
-  context::Context d_printCtx;
   std::map<const ProofNode*, size_t> d_pletMap;
   /**
    * Context for d_passumeMap, which is pushed and popped when we encounter
    * SCOPE proofs.
    */
   context::Context d_passumeCtx;
+  /**
+   * Context for d_alreadyPrinted, which is pushed and popped when we encounter
+   * SCOPE proofs, and for each call to printIncremental.
+   */
+  context::Context d_printCtx;
   /**
    * The set of proof nodes we have already printed with this class, as
    * used by printProofInternal.
@@ -230,6 +252,13 @@ class EoPrinter : protected EnvObj
   std::unordered_map<const ProofNode*, bool> d_caMap;
   /** Mapping assumed formulas to identifiers */
   context::CDHashMap<Node, size_t> d_passumeMap;
+  /** The declarations printed in the current scope of the proof script */
+  context::CDHashSet<std::string> d_printedDecls;
+  /**
+   * The scope levels of d_lbind at the time of each call to pushScriptScope
+   * that has not yet been popped.
+   */
+  std::vector<uint32_t> d_lbindLevels;
   /** The (dummy) type used for proof terms */
   TypeNode d_pfType;
   /** term prefix */

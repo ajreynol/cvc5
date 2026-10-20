@@ -324,6 +324,8 @@ libcvc5_add_sources(
   smt/logic_exception.h
   smt/illegal_checker.cpp
   smt/illegal_checker.h
+  smt/incremental_proof_printer.cpp
+  smt/incremental_proof_printer.h
   smt/interpolation_solver.cpp
   smt/interpolation_solver.h
   smt/model.cpp

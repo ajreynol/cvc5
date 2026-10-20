@@ -72,6 +72,7 @@ class FindSynthSolver;
 
 struct SolverEngineStatistics;
 class PfManager;
+class IncrementalProofPrinter;
 class UnsatCoreManager;
 class TimeoutCoreManager;
 
@@ -890,6 +891,11 @@ class CVC5_EXPORT SolverEngine
 
   /** Get a pointer to the (new) PfManager owned by this SolverEngine. */
   smt::PfManager* getPfManager() { return d_pfManager.get(); };
+  /**
+   * Get the incremental proof printer, which is non-null if we are printing
+   * the proofs of an incremental run as a proof script.
+   */
+  smt::IncrementalProofPrinter* getIncrementalProofPrinter();
 
   /** Get a pointer to the StatisticsRegistry owned by this SolverEngine. */
   StatisticsRegistry& getStatisticsRegistry();

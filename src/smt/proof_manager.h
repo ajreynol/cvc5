@@ -47,6 +47,7 @@ enum class ProofScopeMode
 namespace smt {
 
 class Assertions;
+class IncrementalProofPrinter;
 class PreprocessProofGenerator;
 class ProofPostprocess;
 
@@ -162,6 +163,12 @@ class PfManager : protected EnvObj
   ProofNodeManager* getProofNodeManager() const;
   /** Get a pointer to the ProofLogger owned by this. */
   ProofLogger* getProofLogger() const;
+  /**
+   * Get a pointer to the incremental proof printer owned by this, which is
+   * non-null if we are printing the proofs of an incremental run as a proof
+   * script.
+   */
+  IncrementalProofPrinter* getIncrementalProofPrinter() const;
   /** Get the rewrite database, containing definitions of rewrites from DSL. */
   rewriter::RewriteDb* getRewriteDatabase() const;
   /** Get the preprocess proof generator */
@@ -188,6 +195,8 @@ class PfManager : protected EnvObj
   std::unique_ptr<ProofNodeManager> d_pnm;
   /** A proof logger, if proofLog is enabled */
   std::unique_ptr<ProofLogger> d_plog;
+  /** The incremental proof printer, if applicable */
+  std::unique_ptr<IncrementalProofPrinter> d_ipp;
   /** The proof post-processor */
   std::unique_ptr<smt::ProofPostprocess> d_pfpp;
   /** The preprocess proof generator. */

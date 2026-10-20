@@ -128,6 +128,8 @@ class LetBinding
   void pushScope();
   /** Pop scope for n, reverts the state change of the above method */
   void popScope();
+  /** Get the number of scopes that have been pushed and not popped */
+  uint32_t getScopeLevel() const;
   /**
    * @return the identifier for node n, or 0 if it does not have one.
    */

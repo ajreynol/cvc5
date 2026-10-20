@@ -48,6 +48,7 @@
 #include "smt/env.h"
 #include "smt/expand_definitions.h"
 #include "smt/find_synth_solver.h"
+#include "smt/incremental_proof_printer.h"
 #include "smt/interpolation_solver.h"
 #include "smt/listeners.h"
 #include "smt/logic_exception.h"
@@ -55,7 +56,6 @@
 #include "smt/model_blocker.h"
 #include "smt/model_core_builder.h"
 #include "smt/preprocessor.h"
-#include "smt/proof_logger.h"
 #include "smt/proof_manager.h"
 #include "smt/quant_elim_solver.h"
 #include "smt/set_defaults.h"
@@ -843,10 +843,17 @@ Result SolverEngine::checkSatInternal(const std::vector<Node>& assumptions)
                << endl;
   // notify our state of the check-sat result
   d_state->notifyCheckSatResult(r);
-  // notify the proof logger of the check-sat result
-  if (ProofLogger* pl = d_env->getProofLogger())
+  // if we are printing the proofs of an incremental run as a proof script,
+  // print the proof of this response
+  smt::IncrementalProofPrinter* ipp = getIncrementalProofPrinter();
+  if (ipp != nullptr)
   {
-    pl->notifyCheckSatResult(r);
+    std::shared_ptr<ProofNode> pfn;
+    if (r.getStatus() == Result::UNSAT)
+    {
+      pfn = getProof(modes::ProofComponent::FULL)[0];
+    }
+    ipp->notifyCheckSatResult(r, pfn);
   }
 
   // Check that SAT results generate a model correctly.
@@ -1658,6 +1665,12 @@ void SolverEngine::printProof(std::ostream& out,
   out << ")" << std::endl;
 }
 
+smt::IncrementalProofPrinter* SolverEngine::getIncrementalProofPrinter()
+{
+  return d_pfManager != nullptr ? d_pfManager->getIncrementalProofPrinter()
+                                : nullptr;
+}
+
 std::vector<Node> SolverEngine::getSubstitutedAssertions()
 {
   std::vector<Node> easserts = getAssertions();
@@ -2319,9 +2332,10 @@ void SolverEngine::push()
   Trace("smt") << "SMT push()" << endl;
   d_smtDriver->refreshAssertions();
   d_ctxManager->userPush();
-  if (ProofLogger* pl = d_env->getProofLogger())
+  smt::IncrementalProofPrinter* ipp = getIncrementalProofPrinter();
+  if (ipp != nullptr)
   {
-    pl->notifyPush();
+    ipp->notifyPush();
   }
 }
 
@@ -2330,9 +2344,10 @@ void SolverEngine::pop()
   beginCall();
   Trace("smt") << "SMT pop()" << endl;
   d_ctxManager->userPop();
-  if (ProofLogger* pl = d_env->getProofLogger())
+  smt::IncrementalProofPrinter* ipp = getIncrementalProofPrinter();
+  if (ipp != nullptr)
   {
-    pl->notifyPop();
+    ipp->notifyPop();
   }
 
   // clear the learned literals from the preprocessor
@@ -2358,6 +2373,11 @@ void SolverEngine::resetAssertions()
   Trace("smt") << "SMT resetAssertions()" << endl;
 
   d_ctxManager->notifyResetAssertions();
+  smt::IncrementalProofPrinter* ipp = getIncrementalProofPrinter();
+  if (ipp != nullptr)
+  {
+    ipp->notifyResetAssertions();
+  }
 
   // reset SmtSolver, which will construct a new prop engine
   d_smtSolver->resetAssertions();

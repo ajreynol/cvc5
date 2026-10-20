@@ -52,6 +52,7 @@ EoPrinter::EoPrinter(Env& env,
       d_pfIdCounter(0),
       d_alreadyPrinted(&d_printCtx),
       d_passumeMap(&d_passumeCtx),
+      d_printedDecls(&d_passumeCtx),
       d_termLetPrefix("@t"),
       d_rdb(rdb),
       // Use a let binding if proofDagGlobal is true. We can traverse binders
@@ -869,11 +870,36 @@ void EoPrinter::print(EoPrintChannelOut& aout,
                       std::shared_ptr<ProofNode> pfn,
                       ProofScopeMode psm)
 {
+  printTop(aout, pfn, psm, false);
+}
+
+void EoPrinter::printIncremental(EoPrintChannelOut& aout,
+                                 std::shared_ptr<ProofNode> pfn,
+                                 ProofScopeMode psm)
+{
+  printTop(aout, pfn, psm, true);
+}
+
+void EoPrinter::printTop(EoPrintChannelOut& aout,
+                         std::shared_ptr<ProofNode> pfn,
+                         ProofScopeMode psm,
+                         bool incremental)
+{
   std::ostream& out = aout.getOStream();
-  d_pfIdCounter = 0;
-  d_pletMap.clear();
-  d_printCtx.push();
-  Assert(d_pletMap.empty());
+  if (incremental)
+  {
+    // The proof nodes may differ from previous calls, so we do not reuse
+    // proofs printed by previous calls. Note that d_pfIdCounter is not reset,
+    // so the identifiers of this proof are distinct from those of previous
+    // proofs in the script.
+    d_pletMap.clear();
+    d_printCtx.push();
+  }
+  else
+  {
+    Assert(d_pletMap.empty());
+    d_pfIdCounter = 0;
+  }
   d_topAssumps.clear();
   d_caMap.clear();
 
@@ -906,6 +932,8 @@ void EoPrinter::print(EoPrintChannelOut& aout,
       ascope != nullptr ? ascope->getArguments() : d_emptyVec;
 
   bool wasAlloc;
+  // If incremental, the assumptions that were not printed by previous calls
+  std::unordered_set<Node> newAssumps;
   for (size_t i = 0; i < 2; i++)
   {
     EoPrintChannel* ao;
@@ -930,9 +958,29 @@ void EoPrinter::print(EoPrintChannelOut& aout,
         std::stringstream outDef;
         options::ioutils::applyPrintArithLitToken(outDef, true);
         pb.printDeclarationsFrom(outDecl, outDef, definitions, assertions);
-        out << outDecl.str();
-        // [2] print the definitions
-        out << outDef.str();
+        if (incremental)
+        {
+          // only print the declarations not already printed in this scope
+          for (const std::string& block : {outDecl.str(), outDef.str()})
+          {
+            std::stringstream ss(block);
+            std::string line;
+            while (std::getline(ss, line))
+            {
+              if (!line.empty() && !d_printedDecls.contains(line))
+              {
+                d_printedDecls.insert(line);
+                out << line << std::endl;
+              }
+            }
+          }
+        }
+        else
+        {
+          out << outDecl.str();
+          // [2] print the definitions
+          out << outDef.str();
+        }
       }
       // [3] print proof-level term bindings
       printLetList(out, d_lbind);
@@ -947,6 +995,18 @@ void EoPrinter::print(EoPrintChannelOut& aout,
         continue;
       }
       size_t id = allocateAssumeId(n, wasAlloc);
+      if (incremental)
+      {
+        // only print assumptions that were not printed by previous calls
+        if (i == 0 && wasAlloc)
+        {
+          newAssumps.insert(n);
+        }
+        else if (newAssumps.find(n) == newAssumps.end())
+        {
+          continue;
+        }
+      }
       Node nc = d_tproc.convert(n);
       ao->printAssume(nc, id, false);
     }
@@ -963,6 +1023,17 @@ void EoPrinter::print(EoPrintChannelOut& aout,
       }
       // define-fun are HO equalities that can be proven by refl
       size_t id = allocateAssumeId(n, wasAlloc);
+      if (incremental)
+      {
+        if (i == 0 && wasAlloc)
+        {
+          newAssumps.insert(n);
+        }
+        else if (newAssumps.find(n) == newAssumps.end())
+        {
+          continue;
+        }
+      }
       Node f = d_tproc.convert(n[0]);
       Node lam = d_tproc.convert(n[1]);
       ao->printStep("refl", f.eqNode(lam), id, {}, {lam});
@@ -977,8 +1048,11 @@ void EoPrinter::print(EoPrintChannelOut& aout,
   {
     printAssumeBodyStep(aout, pnBody);
   }
-  d_printCtx.pop();
-  d_pletMap.clear();
+  if (incremental)
+  {
+    d_printCtx.pop();
+    d_pletMap.clear();
+  }
 }
 
 void EoPrinter::printAssumeBodyStep(EoPrintChannelOut& aout,
@@ -1015,127 +1089,9 @@ void EoPrinter::printAssumeBodyStep(EoPrintChannelOut& aout,
   // but harmless.
 }
 
-void EoPrinter::printIncremental(EoPrintChannelOut& aout,
-                                 std::shared_ptr<ProofNode> pfn,
-                                 ProofScopeMode psm)
-{
-  std::ostream& out = aout.getOStream();
-  d_pletMap.clear();
-  d_printCtx.push();
-  Assert(d_pletMap.empty());
-
-  const ProofNode* ascope = nullptr;
-  const ProofNode* dscope = nullptr;
-  const ProofNode* pnBody = nullptr;
-  if (psm == ProofScopeMode::NONE)
-  {
-    pnBody = pfn.get();
-  }
-  else if (psm == ProofScopeMode::UNIFIED)
-  {
-    ascope = pfn.get();
-    Assert(ascope->getRule() == ProofRule::SCOPE);
-    pnBody = pfn->getChildren()[0].get();
-  }
-  else if (psm == ProofScopeMode::DEFINITIONS_AND_ASSERTIONS)
-  {
-    dscope = pfn.get();
-    Assert(dscope->getRule() == ProofRule::SCOPE);
-    ascope = pfn->getChildren()[0].get();
-    Assert(ascope->getRule() == ProofRule::SCOPE);
-    pnBody = pfn->getChildren()[0]->getChildren()[0].get();
-  }
-
-  const std::vector<Node>& definitions =
-      dscope != nullptr ? dscope->getArguments() : d_emptyVec;
-  const std::vector<Node>& assertions =
-      ascope != nullptr ? ascope->getArguments() : d_emptyVec;
-
-  std::unordered_set<Node> toPrint;
-  std::unordered_set<Node> processed;
-  bool wasAlloc = false;
-  for (const Node& n : assertions)
-  {
-    if (processed.find(n) != processed.end())
-    {
-      continue;
-    }
-    processed.insert(n);
-    if (d_passumeMap.find(n) == d_passumeMap.end())
-    {
-      toPrint.insert(n);
-      allocateAssumeId(n, wasAlloc);
-    }
-  }
-  for (const Node& n : definitions)
-  {
-    if (n.getKind() != Kind::EQUAL || processed.find(n) != processed.end())
-    {
-      continue;
-    }
-    processed.insert(n);
-    if (d_passumeMap.find(n) == d_passumeMap.end())
-    {
-      toPrint.insert(n);
-      allocateAssumeId(n, wasAlloc);
-    }
-  }
-
-  for (size_t i = 0; i < 2; i++)
-  {
-    EoPrintChannel* ao = i == 0 ? static_cast<EoPrintChannel*>(&d_eletify)
-                                 : static_cast<EoPrintChannel*>(&aout);
-    if (i == 1)
-    {
-      printLetList(out, d_lbind);
-    }
-    processed.clear();
-    for (const Node& n : assertions)
-    {
-      if (processed.find(n) != processed.end())
-      {
-        continue;
-      }
-      processed.insert(n);
-      size_t id = allocateAssumeId(n, wasAlloc);
-      if (i == 1 && toPrint.find(n) == toPrint.end())
-      {
-        continue;
-      }
-      Node nc = d_tproc.convert(n);
-      ao->printAssume(nc, id, false);
-    }
-    for (const Node& n : definitions)
-    {
-      if (n.getKind() != Kind::EQUAL)
-      {
-        continue;
-      }
-      if (processed.find(n) != processed.end())
-      {
-        continue;
-      }
-      processed.insert(n);
-      size_t id = allocateAssumeId(n, wasAlloc);
-      if (i == 1 && toPrint.find(n) == toPrint.end())
-      {
-        continue;
-      }
-      Node f = d_tproc.convert(n[0]);
-      Node lam = d_tproc.convert(n[1]);
-      ao->printStep("refl", f.eqNode(lam), id, {}, {lam});
-    }
-    printProofInternal(ao, pnBody, i == 1);
-  }
-  d_printCtx.pop();
-  d_pletMap.clear();
-}
-
 void EoPrinter::printNext(EoPrintChannelOut& aout,
                           std::shared_ptr<ProofNode> pfn)
 {
-  d_pletMap.clear();
-  d_printCtx.push();
   const ProofNode* pnBody = pfn.get();
   // the proof nodes may differ from previous calls
   d_caMap.clear();
@@ -1153,8 +1109,6 @@ void EoPrinter::printNext(EoPrintChannelOut& aout,
   printLetList(out, d_lbind);
   // print the proof
   printProofInternal(&aout, pnBody, true);
-  d_printCtx.pop();
-  d_pletMap.clear();
 }
 
 void EoPrinter::printProofInternal(EoPrintChannel* out,
@@ -1548,9 +1502,24 @@ void EoPrinter::printStepPost(EoPrintChannel* out, const ProofNode* pn)
   }
 }
 
-void EoPrinter::pushCurrentContext() { d_passumeCtx.push(); }
+void EoPrinter::pushScriptScope()
+{
+  d_passumeCtx.push();
+  d_lbindLevels.push_back(d_lbind.getScopeLevel());
+  d_lbind.pushScope();
+}
 
-void EoPrinter::popCurrentContext() { d_passumeCtx.pop(); }
+void EoPrinter::popScriptScope()
+{
+  Assert(!d_lbindLevels.empty());
+  d_passumeCtx.pop();
+  // forget the term bindings printed in this scope
+  while (d_lbind.getScopeLevel() > d_lbindLevels.back())
+  {
+    d_lbind.popScope();
+  }
+  d_lbindLevels.pop_back();
+}
 
 size_t EoPrinter::allocateAssumePushId(const ProofNode* pn, const Node& a)
 {

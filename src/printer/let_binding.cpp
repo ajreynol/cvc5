@@ -70,6 +70,8 @@ void LetBinding::pushScope() { d_context.push(); }
 
 void LetBinding::popScope() { d_context.pop(); }
 
+uint32_t LetBinding::getScopeLevel() const { return d_context.getLevel(); }
+
 uint32_t LetBinding::getId(Node n) const
 {
   NodeIdMap::const_iterator it = d_letMap.find(n);

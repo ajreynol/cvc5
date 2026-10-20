@@ -15,15 +15,10 @@
 #ifndef CVC5__SMT__PROOF_LOGGER_H
 #define CVC5__SMT__PROOF_LOGGER_H
 
-#include <string>
-#include <unordered_set>
-
-#include "context/cdhashset.h"
 #include "proof/eo/eo_node_converter.h"
 #include "proof/eo/eo_printer.h"
 #include "proof/proof_node.h"
 #include "smt/env_obj.h"
-#include "util/result.h"
 
 namespace cvc5::internal {
 
@@ -54,7 +49,7 @@ class ProofLogger : protected EnvObj
  public:
   /** */
   ProofLogger(Env& env) : EnvObj(env) {}
-  virtual ~ProofLogger() {}
+  ~ProofLogger() {}
   /**
    * Called when preprocessing is complete with the list of input clauses,
    * after preprocessing and conversion to CNF.
@@ -106,12 +101,6 @@ class ProofLogger : protected EnvObj
       CVC5_UNUSED std::shared_ptr<ProofNode>& pfn)
   {
   }
-  /** Called when the user issues a push command. */
-  virtual void notifyPush() {}
-  /** Called when the user issues a pop command. */
-  virtual void notifyPop() {}
-  /** Called when a check-sat command returns result r. */
-  virtual void notifyCheckSatResult(CVC5_UNUSED const Result& r) {}
 };
 
 /**
@@ -140,41 +129,8 @@ class ProofLoggerCpc : public ProofLogger
   void logSatRefutation() override;
   /** Log SAT refutation proof */
   void logSatRefutationProof(std::shared_ptr<ProofNode>& pfn) override;
-  /** Notify that the user pushed a context. */
-  void notifyPush() override;
-  /** Notify that the user popped a context. */
-  void notifyPop() override;
-  /**
-   * Notify that a check-sat command returned result r. In incremental mode,
-   * we print a marker (echo "sat"), (echo "unsat") or (echo "unknown"), so
-   * that each check-sat of the input can be matched to the proof script.
-   */
-  void notifyCheckSatResult(const Result& r) override;
 
  private:
-  /** Synchronize the emitted script context with the current user level. */
-  void syncScriptContext();
-  /** Print only declaration/definition lines that have not been printed yet. */
-  void printDeclarationsOnce(const std::vector<Node>& definitions,
-                             const std::vector<Node>& assertions);
-  /** Mark that we emitted proof script output. */
-  void notifyOutput();
-  /** Are we streaming a single incremental dump-proofs CPC script? */
-  bool d_isIncrementalDump;
-  /** Have we already printed an exit command? */
-  bool d_printedExit;
-  /** Has this logger emitted any output? */
-  bool d_hasOutput;
-  /** The current level of the emitted script context. */
-  uint32_t d_scriptLevel;
-  /** Context for tracking which clauses have been emitted in the script. */
-  context::Context d_scriptCtx;
-  /** The set of input clauses already emitted for the current script scope. */
-  context::CDHashSet<Node> d_printedInputs;
-  /** The set of lemma clauses already emitted for the current script scope. */
-  context::CDHashSet<Node> d_printedLemmas;
-  /** Preamble commands that were already emitted. */
-  std::unordered_set<std::string> d_preambleLines;
   /** Pointer to the proof manager, for connecting proofs to inputsw */
   smt::PfManager* d_pm;
   /** Pointer to the proof node manager */

@@ -28,6 +28,7 @@
 #include "smt/assertions.h"
 #include "smt/difficulty_post_processor.h"
 #include "smt/env.h"
+#include "smt/incremental_proof_printer.h"
 #include "smt/preprocess_proof_generator.h"
 #include "smt/proof_logger.h"
 #include "smt/proof_post_processor.h"
@@ -162,6 +163,17 @@ PfManager::PfManager(Env& env)
 
   d_pppg = std::make_unique<PreprocessProofGenerator>(
       d_env, userContext(), "smt::PreprocessProofGenerator");
+
+  // In incremental mode, we print the proofs as a single proof script, unless
+  // proofs-incremental-full is set, in which case the proof of each unsat
+  // response is printed in full via get-proof.
+  if (options().base.incrementalSolving && options().driver.dumpProofs
+      && options().proof.proofFormatMode == options::ProofFormatMode::CPC
+      && !options().proof.proofsIncrementalFull)
+  {
+    d_ipp = std::make_unique<IncrementalProofPrinter>(
+        d_env, options().base.out, d_rewriteDb.get());
+  }
 }
 
 PfManager::~PfManager() {}
@@ -446,6 +458,11 @@ ProofChecker* PfManager::getProofChecker() const { return d_pchecker.get(); }
 ProofNodeManager* PfManager::getProofNodeManager() const { return d_pnm.get(); }
 
 ProofLogger* PfManager::getProofLogger() const { return d_plog.get(); }
+
+IncrementalProofPrinter* PfManager::getIncrementalProofPrinter() const
+{
+  return d_ipp.get();
+}
 
 rewriter::RewriteDb* PfManager::getRewriteDatabase() const
 {
