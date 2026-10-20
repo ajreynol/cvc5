@@ -88,6 +88,20 @@ class EoPrinter : protected EnvObj
       std::shared_ptr<ProofNode> pfn,
       ProofScopeMode psm = ProofScopeMode::DEFINITIONS_AND_ASSERTIONS);
   /**
+   * Print the given definitions and assertions as part of a proof script, as
+   * done by printIncremental for a proof whose outer scopes have definitions
+   * and assertions, and whose body is empty. This prints the declarations,
+   * definitions, assumptions and term bindings for them that have not already
+   * been printed in the current scope of the script.
+   * @param out The output stream.
+   * @param definitions The definitions, which are equalities of the form
+   * (= f (lambda x. t)).
+   * @param assertions The assertions.
+   */
+  void printAssumptions(EoPrintChannelOut& out,
+                        const std::vector<Node>& definitions,
+                        const std::vector<Node>& assertions);
+  /**
    * Push a scope of the proof script. Everything printed by printIncremental
    * after this call is forgotten when the corresponding call to
    * popScriptScope is made.
@@ -214,13 +228,24 @@ class EoPrinter : protected EnvObj
   /** Print let list to output stream out */
   void printLetList(std::ostream& out, LetBinding& lbind);
   /**
-   * Print the proof pfn, where if incremental is true, we print only what has
-   * not already been printed in the current scope of the proof script. This
-   * is the implementation of print and printIncremental.
+   * Print the proof pfn whose scopes are given by psm, where if incremental is
+   * true, we print only what has not already been printed in the current scope
+   * of the proof script. This is the implementation of print and
+   * printIncremental.
+   */
+  void printProofTop(EoPrintChannelOut& aout,
+                     std::shared_ptr<ProofNode> pfn,
+                     ProofScopeMode psm,
+                     bool incremental);
+  /**
+   * Print the declarations, definitions and assertions, followed by the proof
+   * body pnBody, if it is non-null. If incremental is true, we print only what
+   * has not already been printed in the current scope of the proof script.
    */
   void printTop(EoPrintChannelOut& aout,
-                std::shared_ptr<ProofNode> pfn,
-                ProofScopeMode psm,
+                const std::vector<Node>& definitions,
+                const std::vector<Node>& assertions,
+                const ProofNode* pnBody,
                 bool incremental);
   /** Reference to the term processor */
   BaseEoNodeConverter& d_tproc;

@@ -17,18 +17,22 @@
 
 #include <iosfwd>
 #include <memory>
+#include <vector>
 
 #include "proof/eo/eo_node_converter.h"
 #include "proof/eo/eo_print_channel.h"
 #include "proof/eo/eo_printer.h"
 #include "proof/proof_node.h"
 #include "smt/env_obj.h"
-#include "util/result.h"
 
 namespace cvc5::internal {
 
 namespace rewriter {
 class RewriteDb;
+}
+
+namespace smt {
+class Assertions;
 }
 
 namespace proof {
@@ -39,11 +43,16 @@ namespace proof {
  * (push 1) and (pop 1) commands in the script, where the entire script is
  * additionally enclosed in a scope, which is popped on reset-assertions.
  *
+ * Each assertion is printed as an assume command (or as a definition, for
+ * define-fun) in the scope of the script corresponding to the user context in
+ * which it was asserted. These are printed when the user pushes a context or
+ * issues a check-sat, so that assertions popped before then are not printed.
+ *
  * The proof of each unsat response is printed as with get-proof, except that
  * the declarations, definitions, assumptions and term bindings that were
- * printed by a previous proof in the current scope of the script are not
- * printed again. Each check-sat response is additionally marked by
- * (echo "sat"), (echo "unsat") or (echo "unknown").
+ * already printed in the current scope of the script are not printed again.
+ * The assumptions of check-sat-assuming are printed along with the proof, in
+ * a scope of the script that is popped after the proof.
  */
 class IncrementalProofPrinter : protected EnvObj
 {
@@ -52,20 +61,27 @@ class IncrementalProofPrinter : protected EnvObj
                           std::ostream& out,
                           rewriter::RewriteDb* rdb);
   ~IncrementalProofPrinter();
-  /** Notify that the user pushed a context. */
-  void notifyPush();
+  /**
+   * Notify that the user pushed a context, where as are the assertions.
+   */
+  void notifyPush(smt::Assertions& as);
   /** Notify that the user popped a context. */
   void notifyPop();
   /** Notify that the user reset the assertions. */
   void notifyResetAssertions();
   /**
-   * Notify that a check-sat command returned result r. If r is unsat, pfn is
-   * its final proof, with scopes for definitions and assertions. Otherwise,
-   * pfn is null.
+   * Print the proof of an unsat response to a check-sat, where pfn is its
+   * final proof, with scopes for definitions and assertions. The assertions
+   * as include the assumptions of the check-sat.
    */
-  void notifyCheckSatResult(const Result& r, std::shared_ptr<ProofNode> pfn);
+  void printProof(std::shared_ptr<ProofNode> pfn, smt::Assertions& as);
 
  private:
+  /**
+   * Print the assertions of as that have not yet been printed, up to (but
+   * not including) the assertion with index end.
+   */
+  void printNewAssertions(smt::Assertions& as, size_t end);
   /** Ensure the scopes of the script match the user context. */
   void ensureScopes();
   /** Push a scope of the script */
@@ -84,9 +100,14 @@ class IncrementalProofPrinter : protected EnvObj
   uint32_t d_userLevel;
   /**
    * The number of scopes pushed and not popped in the script, which is either
-   * zero if nothing has been printed, or d_userLevel+1.
+   * zero if nothing has been printed, or d_userLevel+1, apart from when
+   * printing the proof of a check-sat with assumptions.
    */
   uint32_t d_scriptLevel;
+  /** The number of assertions that have been printed */
+  size_t d_numAsserts;
+  /** The value of d_numAsserts for each scope of the script */
+  std::vector<size_t> d_numAssertsStack;
 };
 
 }  // namespace proof

@@ -165,11 +165,11 @@ PfManager::PfManager(Env& env)
       d_env, userContext(), "smt::PreprocessProofGenerator");
 
   // In incremental mode, we print the proofs as a single proof script, unless
-  // proofs-incremental-full is set, in which case the proof of each unsat
+  // proof-incremental-full is set, in which case the proof of each unsat
   // response is printed in full via get-proof.
   if (options().base.incrementalSolving && options().driver.dumpProofs
       && options().proof.proofFormatMode == options::ProofFormatMode::CPC
-      && !options().proof.proofsIncrementalFull)
+      && !options().proof.proofIncrementalFull)
   {
     d_ipp = std::make_unique<proof::IncrementalProofPrinter>(
         d_env, options().base.out, d_rewriteDb.get());

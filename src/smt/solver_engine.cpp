@@ -846,14 +846,10 @@ Result SolverEngine::checkSatInternal(const std::vector<Node>& assumptions)
   // if we are printing the proofs of an incremental run as a proof script,
   // print the proof of this response
   proof::IncrementalProofPrinter* ipp = getIncrementalProofPrinter();
-  if (ipp != nullptr)
+  if (ipp != nullptr && r.getStatus() == Result::UNSAT)
   {
-    std::shared_ptr<ProofNode> pfn;
-    if (r.getStatus() == Result::UNSAT)
-    {
-      pfn = getProof(modes::ProofComponent::FULL)[0];
-    }
-    ipp->notifyCheckSatResult(r, pfn);
+    ipp->printProof(getProof(modes::ProofComponent::FULL)[0],
+                    d_smtSolver->getAssertions());
   }
 
   // Check that SAT results generate a model correctly.
@@ -2335,7 +2331,7 @@ void SolverEngine::push()
   proof::IncrementalProofPrinter* ipp = getIncrementalProofPrinter();
   if (ipp != nullptr)
   {
-    ipp->notifyPush();
+    ipp->notifyPush(d_smtSolver->getAssertions());
   }
 }
 

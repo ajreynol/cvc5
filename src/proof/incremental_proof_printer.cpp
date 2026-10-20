@@ -12,7 +12,10 @@
 
 #include "proof/incremental_proof_printer.h"
 
+#include <unordered_set>
+
 #include "options/io_utils.h"
+#include "smt/assertions.h"
 
 namespace cvc5::internal {
 namespace proof {
@@ -26,7 +29,8 @@ IncrementalProofPrinter::IncrementalProofPrinter(Env& env,
       d_eop(env, d_atp, rdb),
       d_eout(out, d_eop.getLetBinding(), "@t", true),
       d_userLevel(0),
-      d_scriptLevel(0)
+      d_scriptLevel(0),
+      d_numAsserts(0)
 {
   // global options on out, as done by EoPrinter::print
   options::ioutils::applyOutputLanguage(out, Language::LANG_SMTLIB_V2_6);
@@ -36,8 +40,10 @@ IncrementalProofPrinter::IncrementalProofPrinter(Env& env,
 
 IncrementalProofPrinter::~IncrementalProofPrinter() {}
 
-void IncrementalProofPrinter::notifyPush()
+void IncrementalProofPrinter::notifyPush(smt::Assertions& as)
 {
+  // print the assertions of the current context before pushing
+  printNewAssertions(as, as.getAssertionList().size());
   d_userLevel++;
   // if we have started printing, mirror the push in the script
   if (d_scriptLevel > 0)
@@ -64,27 +70,61 @@ void IncrementalProofPrinter::notifyResetAssertions()
     popScope();
   }
   d_userLevel = 0;
+  d_numAsserts = 0;
 }
 
-void IncrementalProofPrinter::notifyCheckSatResult(
-    const Result& r, std::shared_ptr<ProofNode> pfn)
+void IncrementalProofPrinter::printProof(std::shared_ptr<ProofNode> pfn,
+                                         smt::Assertions& as)
 {
-  Result::Status s = r.getStatus();
-  if (s != Result::SAT && s != Result::UNSAT && s != Result::UNKNOWN)
+  // The assumptions of the check-sat are the last entries of the assertion
+  // list. We print the assertions before them.
+  size_t nassumps = as.getAssumptions().size();
+  size_t nasserts = as.getAssertionList().size();
+  Assert(nasserts >= nassumps);
+  printNewAssertions(as, nasserts - nassumps);
+  ensureScopes();
+  // the assumptions are only in scope for this proof
+  bool hasAssumps = nassumps > 0;
+  if (hasAssumps)
+  {
+    pushScope();
+  }
+  d_eop.printIncremental(
+      d_eout, pfn, ProofScopeMode::DEFINITIONS_AND_ASSERTIONS);
+  if (hasAssumps)
+  {
+    popScope();
+  }
+}
+
+void IncrementalProofPrinter::printNewAssertions(smt::Assertions& as,
+                                                 size_t end)
+{
+  if (end <= d_numAsserts)
   {
     return;
   }
-  ensureScopes();
-  if (s == Result::UNSAT)
+  // partition into definitions and assertions, as done when constructing the
+  // scopes of the final proof
+  const context::CDList<Node>& al = as.getAssertionList();
+  std::unordered_set<Node> defs = as.getCurrentAssertionListDefitions();
+  std::vector<Node> definitions;
+  std::vector<Node> assertions;
+  for (size_t i = d_numAsserts; i < end; i++)
   {
-    Assert(pfn != nullptr);
-    d_eop.printIncremental(
-        d_eout, pfn, ProofScopeMode::DEFINITIONS_AND_ASSERTIONS);
+    const Node& a = al[i];
+    if (a.getKind() == Kind::EQUAL && defs.find(a) != defs.end())
+    {
+      definitions.push_back(a);
+    }
+    else
+    {
+      assertions.push_back(a);
+    }
   }
-  d_out << "(echo \""
-        << (s == Result::SAT ? "sat"
-                             : (s == Result::UNSAT ? "unsat" : "unknown"))
-        << "\")" << std::endl;
+  ensureScopes();
+  d_eop.printAssumptions(d_eout, definitions, assertions);
+  d_numAsserts = end;
 }
 
 void IncrementalProofPrinter::ensureScopes()
@@ -99,6 +139,7 @@ void IncrementalProofPrinter::pushScope()
 {
   d_out << "(push 1)" << std::endl;
   d_eop.pushScriptScope();
+  d_numAssertsStack.push_back(d_numAsserts);
   d_scriptLevel++;
 }
 
@@ -107,6 +148,9 @@ void IncrementalProofPrinter::popScope()
   Assert(d_scriptLevel > 0);
   d_out << "(pop 1)" << std::endl;
   d_eop.popScriptScope();
+  Assert(!d_numAssertsStack.empty());
+  d_numAsserts = d_numAssertsStack.back();
+  d_numAssertsStack.pop_back();
   d_scriptLevel--;
 }
 

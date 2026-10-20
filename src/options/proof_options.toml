@@ -252,9 +252,9 @@ name   = "Proof"
   help       = "Proof logging mode"
 
 [[option]]
-  name       = "proofsIncrementalFull"
+  name       = "proofIncrementalFull"
   category   = "regular"
-  long       = "proofs-incremental-full"
+  long       = "proof-incremental-full"
   type       = "bool"
   default    = "false"
   help       = "in incremental mode, dump a self-contained proof after every UNSAT response, instead of a single incremental proof script"

@@ -870,39 +870,28 @@ void EoPrinter::print(EoPrintChannelOut& aout,
                       std::shared_ptr<ProofNode> pfn,
                       ProofScopeMode psm)
 {
-  printTop(aout, pfn, psm, false);
+  printProofTop(aout, pfn, psm, false);
 }
 
 void EoPrinter::printIncremental(EoPrintChannelOut& aout,
                                  std::shared_ptr<ProofNode> pfn,
                                  ProofScopeMode psm)
 {
-  printTop(aout, pfn, psm, true);
+  printProofTop(aout, pfn, psm, true);
 }
 
-void EoPrinter::printTop(EoPrintChannelOut& aout,
-                         std::shared_ptr<ProofNode> pfn,
-                         ProofScopeMode psm,
-                         bool incremental)
+void EoPrinter::printAssumptions(EoPrintChannelOut& aout,
+                                 const std::vector<Node>& definitions,
+                                 const std::vector<Node>& assertions)
 {
-  std::ostream& out = aout.getOStream();
-  if (incremental)
-  {
-    // The proof nodes may differ from previous calls, so we do not reuse
-    // proofs printed by previous calls. Note that d_pfIdCounter is not reset,
-    // so the identifiers of this proof are distinct from those of previous
-    // proofs in the script.
-    d_pletMap.clear();
-    d_printCtx.push();
-  }
-  else
-  {
-    Assert(d_pletMap.empty());
-    d_pfIdCounter = 0;
-  }
-  d_topAssumps.clear();
-  d_caMap.clear();
+  printTop(aout, definitions, assertions, nullptr, true);
+}
 
+void EoPrinter::printProofTop(EoPrintChannelOut& aout,
+                              std::shared_ptr<ProofNode> pfn,
+                              ProofScopeMode psm,
+                              bool incremental)
+{
   const ProofNode* ascope = nullptr;
   const ProofNode* dscope = nullptr;
   const ProofNode* pnBody = nullptr;
@@ -925,11 +914,37 @@ void EoPrinter::printTop(EoPrintChannelOut& aout,
     pnBody = pfn->getChildren()[0]->getChildren()[0].get();
   }
 
-  // Get the definitions and assertions and print the declarations from them
+  // Get the definitions and assertions
   const std::vector<Node>& definitions =
       dscope != nullptr ? dscope->getArguments() : d_emptyVec;
   const std::vector<Node>& assertions =
       ascope != nullptr ? ascope->getArguments() : d_emptyVec;
+  printTop(aout, definitions, assertions, pnBody, incremental);
+}
+
+void EoPrinter::printTop(EoPrintChannelOut& aout,
+                         const std::vector<Node>& definitions,
+                         const std::vector<Node>& assertions,
+                         const ProofNode* pnBody,
+                         bool incremental)
+{
+  std::ostream& out = aout.getOStream();
+  if (incremental)
+  {
+    // The proof nodes may differ from previous calls, so we do not reuse
+    // proofs printed by previous calls. Note that d_pfIdCounter is not reset,
+    // so the identifiers of this proof are distinct from those of previous
+    // proofs in the script.
+    d_pletMap.clear();
+    d_printCtx.push();
+  }
+  else
+  {
+    Assert(d_pletMap.empty());
+    d_pfIdCounter = 0;
+  }
+  d_topAssumps.clear();
+  d_caMap.clear();
 
   bool wasAlloc;
   // If incremental, the assumptions that were not printed by previous calls
@@ -1039,12 +1054,15 @@ void EoPrinter::printTop(EoPrintChannelOut& aout,
       ao->printStep("refl", f.eqNode(lam), id, {}, {lam});
     }
     // [5] print proof body
-    printProofInternal(ao, pnBody, i == 1);
+    if (pnBody != nullptr)
+    {
+      printProofInternal(ao, pnBody, i == 1);
+    }
   }
   // [6] If the body of the proof is an assumption, then no step was printed
   // for it above and the proof would end with an assume command. We print a
   // dummy step here so that the proof always ends with a step.
-  if (pnBody->getRule() == ProofRule::ASSUME)
+  if (pnBody != nullptr && pnBody->getRule() == ProofRule::ASSUME)
   {
     printAssumeBodyStep(aout, pnBody);
   }

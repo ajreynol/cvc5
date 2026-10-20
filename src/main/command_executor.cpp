@@ -165,12 +165,12 @@ bool CommandExecutor::doCommandSingleton(Cmd* cmd)
       getterCommands.emplace_back(new GetModelCommand());
     }
     // In incremental mode with CPC proofs, the proof is logged as a single
-    // script during solving, unless proofs-incremental-full is set.
+    // script during solving, unless proof-incremental-full is set.
     bool incrementalDumpProofs =
         d_solver->getOptionInfo("dump-proofs").boolValue()
         && d_solver->getOptionInfo("incremental").boolValue()
         && d_solver->getOption("proof-format-mode") == "cpc"
-        && !d_solver->getOptionInfo("proofs-incremental-full").boolValue();
+        && !d_solver->getOptionInfo("proof-incremental-full").boolValue();
     if (d_solver->getOptionInfo("dump-proofs").boolValue() && isResultUnsat
         && !incrementalDumpProofs)
     {
