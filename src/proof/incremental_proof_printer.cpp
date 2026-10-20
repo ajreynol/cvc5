@@ -10,12 +10,12 @@
  * Utility for printing the proofs of an incremental run as a proof script.
  */
 
-#include "smt/incremental_proof_printer.h"
+#include "proof/incremental_proof_printer.h"
 
 #include "options/io_utils.h"
 
 namespace cvc5::internal {
-namespace smt {
+namespace proof {
 
 IncrementalProofPrinter::IncrementalProofPrinter(Env& env,
                                                  std::ostream& out,
@@ -110,5 +110,5 @@ void IncrementalProofPrinter::popScope()
   d_scriptLevel--;
 }
 
-}  // namespace smt
+}  // namespace proof
 }  // namespace cvc5::internal

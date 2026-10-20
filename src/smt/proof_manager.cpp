@@ -21,6 +21,7 @@
 #include "proof/alethe/alethe_printer.h"
 #include "proof/dot/dot_printer.h"
 #include "proof/eo/eo_printer.h"
+#include "proof/incremental_proof_printer.h"
 #include "proof/proof_checker.h"
 #include "proof/proof_node_algorithm.h"
 #include "proof/proof_node_manager.h"
@@ -28,7 +29,6 @@
 #include "smt/assertions.h"
 #include "smt/difficulty_post_processor.h"
 #include "smt/env.h"
-#include "smt/incremental_proof_printer.h"
 #include "smt/preprocess_proof_generator.h"
 #include "smt/proof_logger.h"
 #include "smt/proof_post_processor.h"
@@ -171,7 +171,7 @@ PfManager::PfManager(Env& env)
       && options().proof.proofFormatMode == options::ProofFormatMode::CPC
       && !options().proof.proofsIncrementalFull)
   {
-    d_ipp = std::make_unique<IncrementalProofPrinter>(
+    d_ipp = std::make_unique<proof::IncrementalProofPrinter>(
         d_env, options().base.out, d_rewriteDb.get());
   }
 }
@@ -459,7 +459,7 @@ ProofNodeManager* PfManager::getProofNodeManager() const { return d_pnm.get(); }
 
 ProofLogger* PfManager::getProofLogger() const { return d_plog.get(); }
 
-IncrementalProofPrinter* PfManager::getIncrementalProofPrinter() const
+proof::IncrementalProofPrinter* PfManager::getIncrementalProofPrinter() const
 {
   return d_ipp.get();
 }

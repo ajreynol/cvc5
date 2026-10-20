@@ -29,6 +29,10 @@ class ProofNodeManager;
 class ProofLogger;
 class SolverEngine;
 
+namespace proof {
+class IncrementalProofPrinter;
+}
+
 namespace rewriter {
 class RewriteDb;
 }
@@ -47,7 +51,6 @@ enum class ProofScopeMode
 namespace smt {
 
 class Assertions;
-class IncrementalProofPrinter;
 class PreprocessProofGenerator;
 class ProofPostprocess;
 
@@ -168,7 +171,7 @@ class PfManager : protected EnvObj
    * non-null if we are printing the proofs of an incremental run as a proof
    * script.
    */
-  IncrementalProofPrinter* getIncrementalProofPrinter() const;
+  proof::IncrementalProofPrinter* getIncrementalProofPrinter() const;
   /** Get the rewrite database, containing definitions of rewrites from DSL. */
   rewriter::RewriteDb* getRewriteDatabase() const;
   /** Get the preprocess proof generator */
@@ -196,7 +199,7 @@ class PfManager : protected EnvObj
   /** A proof logger, if proofLog is enabled */
   std::unique_ptr<ProofLogger> d_plog;
   /** The incremental proof printer, if applicable */
-  std::unique_ptr<IncrementalProofPrinter> d_ipp;
+  std::unique_ptr<proof::IncrementalProofPrinter> d_ipp;
   /** The proof post-processor */
   std::unique_ptr<smt::ProofPostprocess> d_pfpp;
   /** The preprocess proof generator. */

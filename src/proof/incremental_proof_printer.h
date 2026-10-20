@@ -12,8 +12,8 @@
 
 #include "cvc5_private.h"
 
-#ifndef CVC5__SMT__INCREMENTAL_PROOF_PRINTER_H
-#define CVC5__SMT__INCREMENTAL_PROOF_PRINTER_H
+#ifndef CVC5__PROOF__INCREMENTAL_PROOF_PRINTER_H
+#define CVC5__PROOF__INCREMENTAL_PROOF_PRINTER_H
 
 #include <iosfwd>
 #include <memory>
@@ -31,7 +31,7 @@ namespace rewriter {
 class RewriteDb;
 }
 
-namespace smt {
+namespace proof {
 
 /**
  * Prints the final proofs of the unsat responses of an incremental run as a
@@ -75,11 +75,11 @@ class IncrementalProofPrinter : protected EnvObj
   /** The output stream */
   std::ostream& d_out;
   /** The node converter */
-  proof::EoNodeConverter d_atp;
+  EoNodeConverter d_atp;
   /** The printer */
-  proof::EoPrinter d_eop;
+  EoPrinter d_eop;
   /** The print channel */
-  proof::EoPrintChannelOut d_eout;
+  EoPrintChannelOut d_eout;
   /** The number of user contexts pushed and not popped */
   uint32_t d_userLevel;
   /**
@@ -89,7 +89,7 @@ class IncrementalProofPrinter : protected EnvObj
   uint32_t d_scriptLevel;
 };
 
-}  // namespace smt
+}  // namespace proof
 }  // namespace cvc5::internal
 
-#endif /* CVC5__SMT__INCREMENTAL_PROOF_PRINTER_H */
+#endif /* CVC5__PROOF__INCREMENTAL_PROOF_PRINTER_H */

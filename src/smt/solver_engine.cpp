@@ -39,6 +39,7 @@
 #include "options/theory_options.h"
 #include "preprocessing/passes/synth_rew_rules.h"
 #include "printer/printer.h"
+#include "proof/incremental_proof_printer.h"
 #include "proof/unsat_core.h"
 #include "prop/prop_engine.h"
 #include "smt/abduction_solver.h"
@@ -48,7 +49,6 @@
 #include "smt/env.h"
 #include "smt/expand_definitions.h"
 #include "smt/find_synth_solver.h"
-#include "smt/incremental_proof_printer.h"
 #include "smt/interpolation_solver.h"
 #include "smt/listeners.h"
 #include "smt/logic_exception.h"
@@ -845,7 +845,7 @@ Result SolverEngine::checkSatInternal(const std::vector<Node>& assumptions)
   d_state->notifyCheckSatResult(r);
   // if we are printing the proofs of an incremental run as a proof script,
   // print the proof of this response
-  smt::IncrementalProofPrinter* ipp = getIncrementalProofPrinter();
+  proof::IncrementalProofPrinter* ipp = getIncrementalProofPrinter();
   if (ipp != nullptr)
   {
     std::shared_ptr<ProofNode> pfn;
@@ -1665,7 +1665,7 @@ void SolverEngine::printProof(std::ostream& out,
   out << ")" << std::endl;
 }
 
-smt::IncrementalProofPrinter* SolverEngine::getIncrementalProofPrinter()
+proof::IncrementalProofPrinter* SolverEngine::getIncrementalProofPrinter()
 {
   return d_pfManager != nullptr ? d_pfManager->getIncrementalProofPrinter()
                                 : nullptr;
@@ -2332,7 +2332,7 @@ void SolverEngine::push()
   Trace("smt") << "SMT push()" << endl;
   d_smtDriver->refreshAssertions();
   d_ctxManager->userPush();
-  smt::IncrementalProofPrinter* ipp = getIncrementalProofPrinter();
+  proof::IncrementalProofPrinter* ipp = getIncrementalProofPrinter();
   if (ipp != nullptr)
   {
     ipp->notifyPush();
@@ -2344,7 +2344,7 @@ void SolverEngine::pop()
   beginCall();
   Trace("smt") << "SMT pop()" << endl;
   d_ctxManager->userPop();
-  smt::IncrementalProofPrinter* ipp = getIncrementalProofPrinter();
+  proof::IncrementalProofPrinter* ipp = getIncrementalProofPrinter();
   if (ipp != nullptr)
   {
     ipp->notifyPop();
@@ -2373,7 +2373,7 @@ void SolverEngine::resetAssertions()
   Trace("smt") << "SMT resetAssertions()" << endl;
 
   d_ctxManager->notifyResetAssertions();
-  smt::IncrementalProofPrinter* ipp = getIncrementalProofPrinter();
+  proof::IncrementalProofPrinter* ipp = getIncrementalProofPrinter();
   if (ipp != nullptr)
   {
     ipp->notifyResetAssertions();

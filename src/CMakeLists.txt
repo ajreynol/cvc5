@@ -172,6 +172,8 @@ libcvc5_add_sources(
   proof/dot/dot_printer.h
   proof/eager_proof_generator.cpp
   proof/eager_proof_generator.h
+  proof/incremental_proof_printer.cpp
+  proof/incremental_proof_printer.h
   proof/lazy_proof.cpp
   proof/lazy_proof.h
   proof/lazy_proof_chain.cpp
@@ -324,8 +326,6 @@ libcvc5_add_sources(
   smt/logic_exception.h
   smt/illegal_checker.cpp
   smt/illegal_checker.h
-  smt/incremental_proof_printer.cpp
-  smt/incremental_proof_printer.h
   smt/interpolation_solver.cpp
   smt/interpolation_solver.h
   smt/model.cpp
