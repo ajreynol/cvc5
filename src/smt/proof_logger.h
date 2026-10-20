@@ -23,6 +23,7 @@
 #include "proof/eo/eo_printer.h"
 #include "proof/proof_node.h"
 #include "smt/env_obj.h"
+#include "util/result.h"
 
 namespace cvc5::internal {
 
@@ -109,6 +110,8 @@ class ProofLogger : protected EnvObj
   virtual void notifyPush() {}
   /** Called when the user issues a pop command. */
   virtual void notifyPop() {}
+  /** Called when a check-sat command returns result r. */
+  virtual void notifyCheckSatResult(CVC5_UNUSED const Result& r) {}
 };
 
 /**
@@ -141,6 +144,12 @@ class ProofLoggerCpc : public ProofLogger
   void notifyPush() override;
   /** Notify that the user popped a context. */
   void notifyPop() override;
+  /**
+   * Notify that a check-sat command returned result r. If r is not unsat, we
+   * print a marker (echo "sat") or (echo "unknown"), so that each check-sat
+   * of the input can be matched to the proof script.
+   */
+  void notifyCheckSatResult(const Result& r) override;
 
  private:
   /** Synchronize the emitted script context with the current user level. */

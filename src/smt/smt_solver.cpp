@@ -91,7 +91,8 @@ void SmtSolver::finishInit()
 
   bool incrementalDumpProofLog =
       options().base.incrementalSolving && options().driver.dumpProofs
-      && options().proof.proofFormatMode == options::ProofFormatMode::CPC;
+      && options().proof.proofFormatMode == options::ProofFormatMode::CPC
+      && !options().proof.proofsIncrementalFull;
   if (options().proof.proofLog || incrementalDumpProofLog)
   {
     smt::PfManager* pm = d_env.getProofManager();

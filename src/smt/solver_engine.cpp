@@ -843,6 +843,11 @@ Result SolverEngine::checkSatInternal(const std::vector<Node>& assumptions)
                << endl;
   // notify our state of the check-sat result
   d_state->notifyCheckSatResult(r);
+  // notify the proof logger of the check-sat result
+  if (ProofLogger* pl = d_env->getProofLogger())
+  {
+    pl->notifyCheckSatResult(r);
+  }
 
   // Check that SAT results generate a model correctly.
   if (d_env->getOptions().smt.checkModels)
