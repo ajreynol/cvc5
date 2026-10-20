@@ -1146,10 +1146,6 @@ bool SetDefaults::incompatibleWithProofs(Options& opts,
     // this is always set by safe options, ok to silently change
     SET_AND_NOTIFY_IF_NOT_USER_VAL_SYM(
         bv, bvSolver, options::BVSolver::BITBLAST_INTERNAL, "proofs");
-    // pre-skolemization of nested quantified formulas introduces fresh skolem
-    // functions, which does not have proof support
-    SET_AND_NOTIFY_IF_NOT_USER(
-        quantifiers, preSkolemQuantNested, false, "proofs");
   }
   if (options().arith.nlCov)
   {

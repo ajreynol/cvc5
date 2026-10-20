@@ -52,46 +52,23 @@ TrustNode Skolemize::process(Node q)
   {
     return TrustNode::null();
   }
-  Node lem;
+  Node body = getSkolemizedBodyInduction(q);
+  Node qnot = q.notNode();
+  Node lem = nodeManager()->mkNode(Kind::IMPLIES, qnot, body.notNode());
   ProofGenerator* pg = nullptr;
+  // if not using induction, the body is justified by SKOLEMIZE, otherwise the
+  // inductive strengthening does not support proofs
   if (isProofEnabled() && !options().quantifiers.dtStcInduction
       && !options().quantifiers.intWfInduction)
   {
     ProofNodeManager* pnm = d_env.getProofNodeManager();
-    // if using proofs and not using induction, we use the justified
-    // skolemization
-    NodeManager* nm = d_env.getNodeManager();
-    // cache the skolems in d_skolem_constants[q]
-    std::vector<Node>& skolems = d_skolem_constants[q];
-    skolems = getSkolemConstants(q);
-    std::vector<Node> vars(q[0].begin(), q[0].end());
-    Node res = q[1].substitute(
-        vars.begin(), vars.end(), skolems.begin(), skolems.end());
-    Node qnot = q.notNode();
     CDProof cdp(d_env);
-    res = res.notNode();
-    cdp.addStep(res, ProofRule::SKOLEMIZE, {qnot}, {});
-    std::shared_ptr<ProofNode> pf = cdp.getProofFor(res);
-    std::vector<Node> assumps;
-    assumps.push_back(qnot);
+    cdp.addStep(lem[1], ProofRule::SKOLEMIZE, {qnot}, {});
+    std::shared_ptr<ProofNode> pf = cdp.getProofFor(lem[1]);
+    std::vector<Node> assumps{qnot};
     std::shared_ptr<ProofNode> pfs = pnm->mkScope({pf}, assumps);
-    lem = nm->mkNode(Kind::IMPLIES, qnot, res);
     d_epg->setProofFor(lem, pfs);
     pg = d_epg.get();
-    Trace("quantifiers-sk")
-        << "Skolemize (with proofs) : " << d_skolem_constants[q] << " for "
-        << std::endl;
-    Trace("quantifiers-sk") << "   " << q << std::endl;
-    Trace("quantifiers-sk") << "   " << res << std::endl;
-  }
-  else
-  {
-    // otherwise, we use the more general skolemization with inductive
-    // strengthening, which does not support proofs
-    Node body = getSkolemizedBodyInduction(q);
-    NodeBuilder nb(nodeManager(), Kind::OR);
-    nb << q << body.notNode();
-    lem = nb;
   }
   d_skolemized[q] = lem;
   // triggered when skolemizing
