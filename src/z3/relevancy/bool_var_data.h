@@ -18,7 +18,6 @@
 #ifndef CVC5__Z3__RELEVANCY__BOOL_VAR_DATA_H
 #define CVC5__Z3__RELEVANCY__BOOL_VAR_DATA_H
 
-#include "z3/relevancy/b_justification.h"
 #include "z3/util/types.h"
 
 namespace cvc5::internal {
@@ -26,14 +25,6 @@ namespace z3 {
 
 struct BoolVarData
 {
- private:
-  BJustification d_justification;
-
- public:
-  /** the scope level at which the variable was assigned */
-  uint32_t d_scopeLvl : 24;
-  uint32_t d_mark : 1;
-
  private:
   uint32_t d_eq : 1;
   /** has an enode associated with it */
@@ -49,14 +40,6 @@ struct BoolVarData
 
  public:
   uint32_t getInternLevel() const { return d_iscopeLvl; }
-
-  BJustification justification() const { return d_justification; }
-
-  void setAxiom() { d_justification = BJustification::mkAxiom(); }
-
-  void setNullJustification() { d_justification = s_nullBJustification; }
-
-  void setJustification(const BJustification& j) { d_justification = j; }
 
   bool isAtom() const { return d_atom; }
 
@@ -92,9 +75,6 @@ struct BoolVarData
 
   void init(uint32_t iscopeLvl)
   {
-    d_justification = s_nullBJustification;
-    d_scopeLvl = 0;
-    d_mark = false;
     d_iscopeLvl = iscopeLvl;
     d_eq = false;
     d_enode = false;

@@ -24,14 +24,14 @@
 #include "z3/util/ast.h"
 #include "z3/quantifiers/enode.h"
 #include "z3/quantifiers/quantifier_manager.h"
-#include "z3/quantifiers/quantifier_services.h"
+#include "z3/quantifiers/smt_context.h"
 #include "z3/quantifiers/quantifier_stat.h"
 #include "z3/util/statistics.h"
 
 namespace cvc5::internal {
 namespace z3 {
 
-QiQueue::QiQueue(QuantifierManager& qm, QuantifierServices& ctx, Params& params)
+QiQueue::QiQueue(QuantifierManager& qm, SmtContext& ctx, Params& params)
     : d_qm(qm),
       d_context(ctx),
       d_params(params),

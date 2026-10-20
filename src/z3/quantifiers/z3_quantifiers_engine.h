@@ -23,7 +23,6 @@
 #include "z3/quantifiers/host_core.h"
 #include "z3/util/assertion_target.h"
 #include "z3/relevancy/relevancy_tracker.h"
-#include "z3/quantifiers/shared_backend.h"
 
 namespace cvc5::internal {
 
@@ -52,7 +51,6 @@ namespace z3 {
  * core asserts as it does an instance.
  */
 class Z3QuantifiersEngine : public theory::QuantifiersEngine,
-                            public HostCoreOutput,
                             public AssertionTarget
 {
  public:
@@ -69,11 +67,6 @@ class Z3QuantifiersEngine : public theory::QuantifiersEngine,
   QuantifierNormalizer& getNormalizer() override;
   Node preprocessForTheories(TNode n, std::vector<Node>& defs) override;
   void assertPrepared(TNode n) override;
-  /**
-   * The literals the SAT solver asserted in the current context, or null
-   * before finishInit (in quantifier-free logics).
-   */
-  const context::CDList<Node>* getAssertedLiterals() const;
 
   //--------------------------------------------- the quantifiers engine
   /** None: the model builder of TheoryEngine is the default one. */
@@ -94,7 +87,7 @@ class Z3QuantifiersEngine : public theory::QuantifiersEngine,
    * Nothing: the core takes the quantified formulas asserted to this engine
    * with every other literal, from the relevancy tracker.
    */
-  void assertFact(TNode atom, bool pol, TNode fact) override;
+  void assertQuantifier(Node q, bool pol) override;
   void eqNotifyNewClass(CVC5_UNUSED TNode t) override {}
   /** Give the merge to the feed of the shadow. */
   void eqNotifyMerge(TNode t1, TNode t2) override;
@@ -111,13 +104,12 @@ class Z3QuantifiersEngine : public theory::QuantifiersEngine,
   void declarePool(Node p, const std::vector<Node>& initValue) override;
   void declareOracleFun(Node f) override;
 
-  //------------------------------------- HostCoreOutput, through the channel
-  void lemma(const Node& lem, theory::LemmaProperty p) override;
-  void setModelUnsound(theory::IncompleteId id) override;
-  /** The skolemization of cvc5's Skolemize utility, see above. */
-  Node getSkolemization(TNode q) override;
-
  private:
+  /**
+   * The lemma that skolemizes q, of cvc5's Skolemize utility, see above,
+   * which the core asserts when q is assigned false.
+   */
+  Node getSkolemization(TNode q);
   /**
    * Throw a ModalException for what, which the core does not support: the
    * core records no instantiations, and uses no term pools or oracles.
@@ -129,11 +121,7 @@ class Z3QuantifiersEngine : public theory::QuantifiersEngine,
    */
   void finishInit(TheoryEngine* te) override;
 
-  /** The output channel of the quantifiers theory. */
-  theory::OutputChannel& d_out;
-  /** The ported core. */
-  SharedBackend d_backend;
-  /** The core under cvc5's prop engine. */
+  /** The ported core, under cvc5's prop engine. */
   std::unique_ptr<HostCore> d_core;
   /** Gives the core the literals the SAT solver asserts. */
   std::unique_ptr<RelevancyTracker> d_tracker;

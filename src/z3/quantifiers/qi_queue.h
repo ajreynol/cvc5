@@ -42,7 +42,7 @@ namespace cvc5::internal {
 namespace z3 {
 
 class QuantifierManager;
-class QuantifierServices;
+class SmtContext;
 
 struct QiQueueStats
 {
@@ -55,7 +55,7 @@ struct QiQueueStats
 class QiQueue
 {
  public:
-  QiQueue(QuantifierManager& qm, QuantifierServices& ctx, Params& params);
+  QiQueue(QuantifierManager& qm, SmtContext& ctx, Params& params);
 
   void setup();
 
@@ -142,7 +142,7 @@ class QiQueue
   void assertLemma(TNode lemma, uint32_t generation);
 
   QuantifierManager& d_qm;
-  QuantifierServices& d_context;
+  SmtContext& d_context;
   Params& d_params;
   /** The instance checker. */
   Checker d_checker;

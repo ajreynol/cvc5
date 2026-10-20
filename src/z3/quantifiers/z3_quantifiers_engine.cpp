@@ -13,7 +13,6 @@
 #include "z3/quantifiers/z3_quantifiers_engine.h"
 
 #include "base/modal_exception.h"
-#include "theory/output_channel.h"
 #include "theory/theory_engine.h"
 #include "theory/quantifiers/quantifiers_inference_manager.h"
 #include "theory/quantifiers/quantifiers_state.h"
@@ -34,32 +33,30 @@ Z3QuantifiersEngine::Z3QuantifiersEngine(
     theory::quantifiers::QuantifiersInferenceManager& qim,
     ProofNodeManager* pnm)
     : QuantifiersEngine(env, qs, qr, tr, qim, pnm),
-      d_out(out),
-      d_backend(env),
-      d_core(std::make_unique<HostCore>(env, d_backend, *this))
+      d_core(std::make_unique<HostCore>(
+          env, out, [this](TNode q) { return getSkolemization(q); }))
 {
 }
 
 void Z3QuantifiersEngine::resetCore(TheoryEngine* te)
 {
-  d_backend.resetContext();
   d_core->reset(te);
 }
 
 QuantifierNormalizer& Z3QuantifiersEngine::getNormalizer()
 {
-  return d_backend.getContext().getNormalizer();
+  return d_core->getContext().getNormalizer();
 }
 
 Node Z3QuantifiersEngine::preprocessForTheories(TNode n,
                                                 std::vector<Node>& defs)
 {
-  return d_backend.getContext().getCvc5Preprocessor()(n, defs);
+  return d_core->getContext().getCvc5Preprocessor()(n, defs);
 }
 
 void Z3QuantifiersEngine::assertPrepared(TNode n)
 {
-  d_backend.getPropCore().assertFormula(n);
+  d_core->getPropCore().assertFormula(n);
 }
 
 Z3QuantifiersEngine::~Z3QuantifiersEngine() {}
@@ -69,11 +66,6 @@ void Z3QuantifiersEngine::finishInit(TheoryEngine* te)
   d_tracker = std::make_unique<RelevancyTracker>(
       d_env, te, [this](TNode lit) { d_core->assertFact(lit); });
   te->addModule(d_tracker.get());
-}
-
-const context::CDList<Node>* Z3QuantifiersEngine::getAssertedLiterals() const
-{
-  return d_tracker == nullptr ? nullptr : &d_tracker->getFacts();
 }
 
 void Z3QuantifiersEngine::presolve()
@@ -104,27 +96,14 @@ void Z3QuantifiersEngine::preRegisterQuantifier(Node q)
   }
 }
 
-void Z3QuantifiersEngine::assertFact(CVC5_UNUSED TNode atom,
-                                     CVC5_UNUSED bool pol,
-                                     CVC5_UNUSED TNode fact)
+void Z3QuantifiersEngine::assertQuantifier(CVC5_UNUSED Node q,
+                                           CVC5_UNUSED bool pol)
 {
 }
 
 void Z3QuantifiersEngine::eqNotifyMerge(TNode t1, TNode t2)
 {
   d_core->getShadowFeed()->eqNotifyMerge(t1, t2);
-}
-
-void Z3QuantifiersEngine::lemma(const Node& lem, theory::LemmaProperty p)
-{
-  d_out.lemma(lem,
-              theory::InferenceId::UNKNOWN,
-              p | theory::LemmaProperty::UNPROCESSED);
-}
-
-void Z3QuantifiersEngine::setModelUnsound(theory::IncompleteId id)
-{
-  d_out.setModelUnsound(id);
 }
 
 void Z3QuantifiersEngine::unsupported(const char* what)

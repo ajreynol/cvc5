@@ -40,12 +40,12 @@ namespace cvc5::internal {
 namespace z3 {
 
 class Mam;
-class QuantifierServices;
+class SmtContext;
 
 class QuantifierManager
 {
  public:
-  QuantifierManager(QuantifierServices& ctx, Params& p);
+  QuantifierManager(SmtContext& ctx, Params& p);
   ~QuantifierManager();
 
   void add(TNode q, uint32_t generation);
@@ -92,7 +92,7 @@ class QuantifierManager
   /** Push the scopes of the matchers and the queue. */
   void pushCore();
 
-  QuantifierServices& d_context;
+  SmtContext& d_context;
   Params& d_params;
   /** When the instances of the matches found are made. */
   QiQueue d_queue;

@@ -40,8 +40,6 @@ class Clause
 
   void deallocate();
 
-  size_t getNumLiterals() const { return d_numLiterals; }
-
   Literal& getLiteral(size_t idx)
   {
     Assert(idx < d_numLiterals);

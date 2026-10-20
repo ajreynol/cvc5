@@ -23,6 +23,7 @@
 #ifndef CVC5__Z3__QUANTIFIERS__MAM_H
 #define CVC5__Z3__QUANTIFIERS__MAM_H
 
+#include <memory>
 #include <ostream>
 #include <utility>
 #include <vector>
@@ -34,15 +35,15 @@ namespace cvc5::internal {
 namespace z3 {
 
 class QuantifierManager;
-class QuantifierServices;
+class SmtContext;
 
+/**
+ * The interface of the machine, which hides the code trees and the
+ * interpreter in mam.cpp; mkMam makes one.
+ */
 class Mam
 {
  public:
-  Mam(QuantifierServices& ctx, QuantifierManager& qm) : d_context(ctx), d_qm(qm)
-  {
-  }
-
   virtual ~Mam() = default;
 
   /** Compile the multi-pattern mp of quantifier q into the code trees. */
@@ -65,21 +66,9 @@ class Mam
 
   /** Notification that the classes of r1 and r2 merged. */
   virtual void addEqEh(ENode* r1, ENode* r2) = 0;
-
-  /** Report a match to the quantifier manager. */
-  virtual void onMatch(TNode q,
-                       TNode pat,
-                       size_t numBindings,
-                       ENode* const* bindings,
-                       uint32_t maxGeneration) = 0;
-
- protected:
-  QuantifierServices& d_context;
-  /** The quantifier manager, which receives the matches. */
-  QuantifierManager& d_qm;
 };
 
-Mam* mkMam(QuantifierServices& ctx, QuantifierManager& qm);
+std::unique_ptr<Mam> mkMam(SmtContext& ctx, QuantifierManager& qm);
 
 }  // namespace z3
 }  // namespace cvc5::internal

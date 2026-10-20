@@ -17,6 +17,7 @@
 #ifndef CVC5__Z3__QUANTIFIERS__HOST_CORE_H
 #define CVC5__Z3__QUANTIFIERS__HOST_CORE_H
 
+#include <functional>
 #include <memory>
 #include <unordered_map>
 #include <unordered_set>
@@ -29,6 +30,7 @@
 #include "theory/lemma_property.h"
 #include "theory/theory.h"
 #include "z3/util/literal.h"
+#include "z3/util/params.h"
 
 namespace cvc5::internal {
 
@@ -37,29 +39,8 @@ class TheoryEngine;
 namespace z3 {
 
 class ShadowFeed;
-class SharedBackend;
-
-/**
- * Where HostCore sends what it learns: the output channel of the quantifiers
- * theory (Z3QuantifiersEngine).
- */
-class HostCoreOutput
-{
- public:
-  virtual ~HostCoreOutput() = default;
-  /**
-   * Send a lemma, which must not be preprocessed: its atoms are those of the
-   * SAT solver.
-   */
-  virtual void lemma(const Node& lem, theory::LemmaProperty p) = 0;
-  /** Record that a model would be unsound. */
-  virtual void setModelUnsound(theory::IncompleteId id) = 0;
-  /**
-   * The lemma that skolemizes the quantified formula q, which the core
-   * asserts when q is assigned false.
-   */
-  virtual Node getSkolemization(TNode q) = 0;
-};
+class PropCore;
+class SmtContext;
 
 /**
  * The search contract of cvc5's prop engine (preregistration, facts and
@@ -75,13 +56,27 @@ class HostCoreOutput
 class HostCore : protected EnvObj
 {
  public:
-  HostCore(Env& env, SharedBackend& backend, HostCoreOutput& out);
+  /**
+   * The lemma that skolemizes the quantified formula q, which the core
+   * asserts when q is assigned false.
+   */
+  using Skolemizer = std::function<Node(TNode)>;
+  /**
+   * Lemmas go to out, the output channel of the quantifiers theory, and
+   * skolemizations come from skolemizer.
+   */
+  HostCore(Env& env, theory::OutputChannel& out, Skolemizer skolemizer);
   ~HostCore();
   /**
-   * Forget the state of the previous context, for the theory engine te, whose
-   * prop engine was just made; see Z3QuantifiersEngine::resetCore.
+   * Make a fresh core and forget the state of the previous one, for the
+   * theory engine te, whose prop engine was just made; see
+   * Z3QuantifiersEngine::resetCore.
    */
   void reset(TheoryEngine* te);
+  /** The theory side of the core. Requires that reset has been called. */
+  SmtContext& getContext();
+  /** The propositional side of the core. Requires that reset has been called. */
+  PropCore& getPropCore();
 
   /** cvc5 registered the atom. */
   void preRegister(TNode atom);
@@ -110,6 +105,11 @@ class HostCore : protected EnvObj
    private:
     HostCore& d_hc;
   };
+  /**
+   * Send a lemma, which must not be preprocessed: its atoms are those of the
+   * SAT solver.
+   */
+  void lemma(const Node& lem, theory::LemmaProperty p);
   /** Note a pop of the SAT context, which syncLevel follows. */
   void notifyPop();
   /** Push or pop the core's scopes to the level of the SAT context. */
@@ -173,12 +173,16 @@ class HostCore : protected EnvObj
    */
   Node preprocessAroundClosures(TNode n, std::vector<Node>& defs);
 
+  /** The parameters of the core. These must outlive d_ctx. */
+  Params d_params;
   /** The ported core. */
-  SharedBackend& d_backend;
+  std::unique_ptr<SmtContext> d_ctx;
   /** The engine, for the prop engine's state. */
   TheoryEngine* d_te;
-  /** Where lemmas and propagations go. */
-  HostCoreOutput& d_out;
+  /** Where lemmas go. */
+  theory::OutputChannel& d_out;
+  /** See Skolemizer. */
+  Skolemizer d_skolemizer;
   /** Whether the propositional side was set up (presolve). */
   bool d_setup;
   /** Whether the core is in conflict in the current context. */

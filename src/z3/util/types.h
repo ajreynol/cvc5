@@ -59,7 +59,6 @@ using ENodeVector = std::vector<ENode*>;
 using ENodePair = std::pair<ENode*, ENode*>;
 using ENodePairVector = std::vector<ENodePair>;
 
-class Justification;
 class SmtContext;
 
 /** The outcome of a theory's final check. */

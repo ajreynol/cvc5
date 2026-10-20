@@ -28,20 +28,18 @@
 
 #include "expr/node.h"
 #include "smt/env_obj.h"
-#include "z3/util/ast.h"
-#include "z3/relevancy/b_justification.h"
 #include "z3/relevancy/bool_var_data.h"
 #include "z3/relevancy/clause.h"
-#include "z3/relevancy/justification.h"
-#include "z3/util/params.h"
 #include "z3/relevancy/relevancy.h"
 #include "z3/relevancy/theory_side.h"
-#include "z3/util/statistics.h"
-#include "z3/util/types.h"
-#include "z3/util/literal.h"
-#include "z3/util/trail.h"
-#include "z3/util/util.h"
 #include "z3/relevancy/watch_list.h"
+#include "z3/util/ast.h"
+#include "z3/util/literal.h"
+#include "z3/util/params.h"
+#include "z3/util/statistics.h"
+#include "z3/util/trail.h"
+#include "z3/util/types.h"
+#include "z3/util/util.h"
 
 namespace cvc5::internal {
 namespace z3 {
@@ -153,27 +151,10 @@ class PropCore : protected EnvObj
 
   const BoolVarData& getBdata(BoolVar v) const { return d_bdata[v]; }
 
-  /** The scope level at which v was assigned. */
-  uint32_t getAssignLevel(BoolVar v) const { return getBdata(v).d_scopeLvl; }
-
   /** The scope level at which v was internalized. */
   uint32_t getInternLevel(BoolVar v) const
   {
     return getBdata(v).getInternLevel();
-  }
-
-  bool isMarked(BoolVar v) const { return getBdata(v).d_mark; }
-
-  void setMark(BoolVar v)
-  {
-    Assert(!isMarked(v));
-    getBdata(v).d_mark = true;
-  }
-
-  void unsetMark(BoolVar v)
-  {
-    Assert(isMarked(v));
-    getBdata(v).d_mark = false;
   }
 
   // ------------------------------------------------------------- assignment
@@ -191,48 +172,27 @@ class PropCore : protected EnvObj
   /** Like getAssignment, but returns L_UNDEF if n is not internalized. */
   LBool findAssignment(TNode n) const;
 
-  BJustification getJustification(BoolVar v) const
-  {
-    return getBdata(v).justification();
-  }
-
-  void assign(Literal l, const BJustification& j)
+  void assign(Literal l)
   {
     Assert(l != s_falseLiteral);
     Assert(l != s_nullLiteral);
     switch (getAssignment(l))
     {
-      case L_FALSE: setConflict(j, ~l); break;
-      case L_UNDEF: assignCore(l, j); break;
+      case L_FALSE: setConflict(); break;
+      case L_UNDEF: assignCore(l); break;
       case L_TRUE: return;
     }
   }
 
-  void assign(Literal l, Justification* j)
-  {
-    assign(l, j != nullptr ? BJustification(j) : BJustification::mkAxiom());
-  }
-
-  void assignCore(Literal l, BJustification j);
+  void assignCore(Literal l);
 
   /** Boolean constraint propagation; returns false on a conflict. */
   bool bcp();
 
   // -------------------------------------------------------------- conflicts
-  void setConflict(const BJustification& js, Literal notL);
+  void setConflict() { d_conflict = true; }
 
-  void setConflict(const BJustification& js) { setConflict(js, s_nullLiteral); }
-
-  void setConflict(Justification* js)
-  {
-    Assert(js != nullptr);
-    setConflict(BJustification(js));
-  }
-
-  bool inconsistent() const
-  {
-    return d_conflict != s_nullBJustification || d_assertedInconsistent;
-  }
+  bool inconsistent() const { return d_conflict || d_assertedInconsistent; }
 
   // -------------------------------------------------------------- relevancy
   //
@@ -471,13 +431,8 @@ class PropCore : protected EnvObj
   LiteralVector d_assignedLiterals;
   size_t d_qhead;
 
-  /*
-    A conflict is usually a single justification, i.e. a justification for
-    false. If d_notL is not the null literal then d_conflict justifies l, and
-    the conflict is the union of d_notL and d_conflict.
-  */
-  BJustification d_conflict;
-  Literal d_notL;
+  /** True if a conflict was found at the current scope. */
+  bool d_conflict;
   /** True if a formula asserted false. */
   bool d_assertedInconsistent;
   /** Set while the clauses are deleted on flushing. */

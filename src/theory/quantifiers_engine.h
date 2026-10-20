@@ -88,14 +88,8 @@ class QuantifiersEngine : protected EnvObj
    * that are pre-registered to the quantifiers theory.
    */
   virtual void preRegisterQuantifier(Node q);
-  /**
-   * The fact on atom, with the given polarity, was asserted to the
-   * quantifiers theory: by default, a quantified formula, asserted to this
-   * engine by assertQuantifier.
-   */
-  virtual void assertFact(TNode atom, bool pol, TNode fact);
   /** assert universal quantifier */
-  void assertQuantifier(Node q, bool pol);
+  virtual void assertQuantifier(Node q, bool pol);
   /** notification when master equality engine is updated */
   virtual void eqNotifyNewClass(TNode t);
   /** notification when master equality engine merges two classes*/

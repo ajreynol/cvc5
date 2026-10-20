@@ -154,35 +154,9 @@ void TheoryQuantifiers::ppNotifyAssertions(const std::vector<Node>& assertions)
   }
 }
 
-void TheoryQuantifiers::computeRelevantTerms(std::set<Node>& termSet)
-{
-  if (!options().z3.z3)
-  {
-    return;
-  }
-  const context::CDList<Node>* lits =
-      static_cast<z3::Z3QuantifiersEngine*>(d_qengine.get())
-          ->getAssertedLiterals();
-  if (lits == nullptr)
-  {
-    return;
-  }
-  const std::set<Kind>& irrKinds =
-      d_theoryState->getModel()->getIrrelevantKinds();
-  for (const Node& lit : *lits)
-  {
-    collectTerms(lit, termSet, irrKinds);
-  }
-}
-
 bool TheoryQuantifiers::collectModelValues(
     TheoryModel* m, CVC5_UNUSED const std::set<Node>& termSet)
 {
-  if (options().z3.z3)
-  {
-    // the ported core builds no model of the quantified formulas
-    return true;
-  }
   for (assertions_iterator i = facts_begin(); i != facts_end(); ++i)
   {
     if ((*i).d_assertion.getKind() == Kind::NOT)
@@ -219,7 +193,15 @@ bool TheoryQuantifiers::preNotifyFact(TNode atom,
                                       CVC5_UNUSED bool isPrereg,
                                       CVC5_UNUSED bool isInternal)
 {
-  getQuantifiersEngine()->assertFact(atom, polarity, fact);
+  Kind k = atom.getKind();
+  if (k == Kind::FORALL)
+  {
+    getQuantifiersEngine()->assertQuantifier(atom, polarity);
+  }
+  else
+  {
+    Unhandled() << "Unexpected fact " << fact;
+  }
   // don't use equality engine, always return true
   return true;
 }

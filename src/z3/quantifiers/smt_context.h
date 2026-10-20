@@ -42,18 +42,14 @@
 #include "smt/env_obj.h"
 #include "util/statistics_stats.h"
 #include "z3/util/ast.h"
-#include "z3/relevancy/b_justification.h"
 #include "z3/relevancy/bool_var_data.h"
 #include "z3/quantifiers/cg_table.h"
 #include "z3/relevancy/clause.h"
 #include "z3/quantifiers/enode.h"
-#include "z3/quantifiers/eq_justification.h"
-#include "z3/relevancy/justification.h"
 #include "z3/util/params.h"
 #include "z3/relevancy/prop_core.h"
 #include "z3/relevancy/theory_side.h"
 #include "z3/quantifiers/quantifier_manager.h"
-#include "z3/quantifiers/quantifier_services.h"
 #include "z3/relevancy/relevancy.h"
 #include "z3/util/statistics.h"
 #include "z3/util/types.h"
@@ -70,11 +66,8 @@ class QuantifierManager;
 
 /**
  * The theory side of the ported core; PropCore is the propositional side.
- * The quantifier stack reaches it only through QuantifierServices.
  */
-class SmtContext final : protected EnvObj,
-                         public QuantifierServices,
-                         public TheorySide
+class SmtContext final : protected EnvObj, public TheorySide
 {
  public:
   /** The search statistics. Public, as in Z3. */
@@ -143,20 +136,20 @@ class SmtContext final : protected EnvObj,
   /**
    * Pop numScopes scopes of the rest of the theory side, after the Boolean
    * variables are unassigned: the trail, the propagation queues and the
-   * region, where the justifications live.
+   * region.
    */
   void popTheoryScopeEnd(size_t numScopes) override;
 
   void resetCacheGeneration() override;
 
   // ----------------------------------------------------------- accessors
-  Params& getParams() override { return d_params; }
+  Params& getParams() { return d_params; }
 
   Statistics& getStats() override { return d_stats; }
 
   Region& getRegion() override { return d_region; }
 
-  ENode* getENode(TNode n) const override
+  ENode* getENode(TNode n) const
   {
     Assert(eInternalized(n));
     return d_app2ENode[n.getId()];
@@ -221,32 +214,32 @@ class SmtContext final : protected EnvObj,
 
   LBool getAssignment(BoolVar v) const { return d_prop.getAssignment(v); }
 
-  LBool getAssignment(TNode n) const override
+  LBool getAssignment(TNode n) const
   {
     return d_prop.getAssignment(n);
   }
 
   LBool getAssignment(ENode* n) const;
 
-  uint32_t getScopeLevel() const override { return d_prop.getScopeLevel(); }
+  uint32_t getScopeLevel() const { return d_prop.getScopeLevel(); }
 
   TNode boolVar2Expr(BoolVar v) const { return d_prop.boolVar2Expr(v); }
 
   bool isTrue(const ENode* n) const { return n == d_trueENode; }
 
-  size_t getNumENodesOf(TNode decl) const override
+  size_t getNumENodesOf(TNode decl) const
   {
     uint32_t id = getDeclIdOption(decl);
     return id < d_decl2ENodes.size() ? d_decl2ENodes[id].size() : 0;
   }
 
-  const ENodeVector& enodesOf(TNode decl) const override
+  const ENodeVector& enodesOf(TNode decl) const
   {
     uint32_t id = getDeclIdOption(decl);
     return id < d_decl2ENodes.size() ? d_decl2ENodes[id] : d_emptyVector;
   }
 
-  uint32_t getGeneration(ENode* e) const override
+  uint32_t getGeneration(ENode* e) const
   {
     // Patterns with equalities are not supported, so there is no need to
     // track the generation of equality nodes.
@@ -257,7 +250,7 @@ class SmtContext final : protected EnvObj,
     return getCgRoot(e)->d_generation;
   }
 
-  uint32_t getMaxGeneration(size_t numENodes, ENode* const* enodes) override
+  uint32_t getMaxGeneration(size_t numENodes, ENode* const* enodes)
   {
     uint32_t max = 0;
     for (size_t i = 0; i < numENodes; ++i)
@@ -285,17 +278,17 @@ class SmtContext final : protected EnvObj,
 
   void pushTrailPtr(Trail* ptr) override { d_trailStack.pushPtr(ptr); }
 
-  TrailStack& getTrailStack() override { return d_trailStack; }
+  TrailStack& getTrailStack() { return d_trailStack; }
 
   // ------------------------------------------------------ internalization
-  bool bInternalized(TNode n) const override { return d_prop.bInternalized(n); }
+  bool bInternalized(TNode n) const { return d_prop.bInternalized(n); }
 
-  bool litInternalized(TNode n) const override
+  bool litInternalized(TNode n) const
   {
     return d_prop.litInternalized(n);
   }
 
-  bool eInternalized(TNode n) const override
+  bool eInternalized(TNode n) const
   {
     return getx(d_app2ENode, n.getId(), static_cast<ENode*>(nullptr))
            != nullptr;
@@ -340,17 +333,17 @@ class SmtContext final : protected EnvObj,
    */
   void assumeExternalEq(TNode a, TNode b)
   {
-    pushEq(getENode(a), getENode(b), EqJustification(&d_externalJustification));
+    pushEq(getENode(a), getENode(b));
   }
   /** The environment of the enclosing cvc5 solver. */
-  const Env& getEnv() const override { return d_env; }
+  const Env& getEnv() const { return d_env; }
 
   /**
    * Internalize the body of a quantifier instance, in the form cvc5's
    * theories take, after renormalizing its variables. The instance is
    * asserted at the current scope.
    */
-  void internalizeInstance(TNode body, uint32_t generation) override;
+  void internalizeInstance(TNode body, uint32_t generation);
 
   /**
    * Skolemize the quantified formula q, which is assigned false: assert the
@@ -360,11 +353,11 @@ class SmtContext final : protected EnvObj,
 
   void internalize(TNode n, bool gateCtx) override;
   void internalize(const Node* exprs, size_t numExprs, bool gateCtx);
-  void internalize(TNode n, bool gateCtx, uint32_t generation) override;
+  void internalize(TNode n, bool gateCtx, uint32_t generation);
 
   // ---------------------------------------------------- trail callbacks
   /** Undo an addEq; invoked from the trail. */
-  void undoAddEq(ENode* r1, ENode* n1, size_t r2NumParents);
+  void undoAddEq(ENode* r1, size_t r2NumParents);
 
   /** Undo a congruence class generation merge; invoked from the trail. */
   void undoMergeCgcGenerations(ENode* e1,
@@ -375,12 +368,6 @@ class SmtContext final : protected EnvObj,
   BoolVar mkBoolVar(TNode n) { return d_prop.mkBoolVar(n); }
 
   ENode* mkENode(TNode n, bool suppressArgs, bool mergeTf, bool cgcEnabled);
-
-  template <typename JustificationT>
-  Justification* mkJustification(const JustificationT& j)
-  {
-    return new (getRegion()) JustificationT(j);
-  }
 
   /** Hand an assigned atom to the theory side; see propagateAtoms. */
   void enqueueAtom(Literal l) override { d_atomPropagationQueue.push_back(l); }
@@ -405,15 +392,13 @@ class SmtContext final : protected EnvObj,
   void setEnodeFlag(BoolVar v, bool isNewVar);
 
   // ------------------------------------------------------------- engine
-  void assign(Literal l, const BJustification& j) { d_prop.assign(l, j); }
+  void assign(Literal l) { d_prop.assign(l); }
 
-  void assign(Literal l, Justification* j) { d_prop.assign(l, j); }
+  void addEq(ENode* n1, ENode* n2);
 
-  void addEq(ENode* n1, ENode* n2, EqJustification js);
+  void setConflict() { d_prop.setConflict(); }
 
-  void setConflict(Justification* js) { d_prop.setConflict(js); }
-
-  bool inconsistent() const override { return d_prop.inconsistent(); }
+  bool inconsistent() const { return d_prop.inconsistent(); }
 
   static bool isEq(const ENode* n1, const ENode* n2)
   {
@@ -436,15 +421,15 @@ class SmtContext final : protected EnvObj,
     return r != nullptr ? r : n;
   }
 
-  bool isDiseq(ENode* n1, ENode* n2) const override;
+  bool isDiseq(ENode* n1, ENode* n2) const;
 
   /** An enode congruent to decl(args), or null if there is none. */
   ENode* getENodeEqTo(TNode decl,
                       bool commutative,
                       size_t numArgs,
-                      ENode* const* args) override;
+                      ENode* const* args);
 
-  bool canPropagate() const override { return d_prop.canPropagate(); }
+  bool canPropagate() const { return d_prop.canPropagate(); }
 
   // ------------------------------------------------------------ relevancy
   //
@@ -459,23 +444,23 @@ class SmtContext final : protected EnvObj,
 
   bool isRelevantCore(TNode n) const { return d_prop.isRelevantCore(n); }
 
-  bool isRelevant(TNode n) const override { return d_prop.isRelevant(n); }
+  bool isRelevant(TNode n) const { return d_prop.isRelevant(n); }
 
   bool isRelevant(ENode* n) const { return isRelevant(n->getExpr()); }
 
   bool isRelevant(Literal l) const { return d_prop.isRelevant(l); }
 
   /** Whether E-matching considers n. */
-  bool isRelevantForMatching(ENode* n) const override { return isRelevant(n); }
+  bool isRelevantForMatching(ENode* n) const { return isRelevant(n); }
 
   /** Whether the instance checkers consider n. */
-  bool isRelevantForChecking(TNode n) const override { return isRelevant(n); }
+  bool isRelevantForChecking(TNode n) const { return isRelevant(n); }
 
-  bool isRelevantForChecking(ENode* n) const override { return isRelevant(n); }
+  bool isRelevantForChecking(ENode* n) const { return isRelevant(n); }
 
   void markAsRelevant(TNode n) { d_prop.markAsRelevant(n); }
 
-  void markAsRelevant(ENode* n) override { markAsRelevant(n->getExpr()); }
+  void markAsRelevant(ENode* n) { markAsRelevant(n->getExpr()); }
 
   void addRelevancyDependency(TNode source, TNode target)
   {
@@ -486,16 +471,16 @@ class SmtContext final : protected EnvObj,
    * Rewrite a quantifier instance before it is internalized. Z3 applies its
    * th_rewriter here; this port uses cvc5's rewriter.
    */
-  Node rewriteInstance(TNode n) const override { return rewrite(n); }
+  Node rewriteInstance(TNode n) const { return rewrite(n); }
 
   /**
    * A dense id for a declaration, created on demand. This is the counterpart
    * of Z3's func_decl::get_small_id, which the E-matching engine uses to index
    * its tables by function symbol.
    */
-  uint32_t getDeclId(TNode decl) override;
+  uint32_t getDeclId(TNode decl);
   /** The dense id of decl, or UINT32_MAX if it has none yet. */
-  uint32_t getDeclIdOption(TNode decl) const override;
+  uint32_t getDeclIdOption(TNode decl) const;
 
   /**
    * Expose the core's counters through cvc5's --stats, so that the search
@@ -503,7 +488,7 @@ class SmtContext final : protected EnvObj,
    */
   void registerStatistics();
 
-  bool resourceLimitsExceeded() override
+  bool resourceLimitsExceeded()
   {
     return d_prop.resourceLimitsExceeded();
   }
@@ -516,11 +501,7 @@ class SmtContext final : protected EnvObj,
   {
     ENode* d_lhs;
     ENode* d_rhs;
-    EqJustification d_justification;
-    NewEq(ENode* lhs, ENode* rhs, const EqJustification& js)
-        : d_lhs(lhs), d_rhs(rhs), d_justification(js)
-    {
-    }
+    NewEq(ENode* lhs, ENode* rhs) : d_lhs(lhs), d_rhs(rhs) {}
   };
 
   using ExprBoolPair = std::pair<Node, bool>;
@@ -529,7 +510,6 @@ class SmtContext final : protected EnvObj,
   void reinsertParentsIntoCgTable(ENode* r1, ENode* r2);
   void mergeCgcGenerations(ENode* e1, uint32_t e1Generation, ENode* e2);
   void setGenerationSticky(ENode* e, uint32_t generation);
-  void invertTrans(ENode* n);
   void propagateBoolENodeAssignment(ENode* r1, ENode* r2, ENode* n1, ENode* n2);
   void propagateBoolENodeAssignmentCore(ENode* source, ENode* target);
   void applyStickyUpdates(ENode* e1,
@@ -537,18 +517,18 @@ class SmtContext final : protected EnvObj,
                           ENode* e2,
                           uint32_t e2Generation);
 
-  void pushEq(ENode* lhs, ENode* rhs, const EqJustification& js)
+  void pushEq(ENode* lhs, ENode* rhs)
   {
     if (lhs->getRoot() != rhs->getRoot())
     {
-      d_eqPropagationQueue.push_back(NewEq(lhs, rhs, js));
+      d_eqPropagationQueue.push_back(NewEq(lhs, rhs));
     }
   }
 
-  void pushNewCongruence(ENode* n1, ENode* n2, bool usedCommutativity)
+  void pushNewCongruence(ENode* n1, ENode* n2)
   {
     Assert(n1->d_cg == n2);
-    pushEq(n1, n2, EqJustification::mkCg(usedCommutativity));
+    pushEq(n1, n2);
   }
 
   bool addDiseq(ENode* n1, ENode* n2);
@@ -562,12 +542,6 @@ class SmtContext final : protected EnvObj,
    */
   void internalizeLemma(TNode body, uint32_t generation, bool instance);
 
-  void setConflict(const BJustification& js) { d_prop.setConflict(js); }
-
-  void setConflict(const BJustification& js, Literal notL)
-  {
-    d_prop.setConflict(js, notL);
-  }
 
   // ----------------------------------------------------------- the search
   bool propagateEqs();
@@ -622,8 +596,6 @@ class SmtContext final : protected EnvObj,
   Cvc5Preprocessor d_cvc5Preprocessor;
   /** See setSkolemizer. */
   Skolemizer d_skolemizer;
-  /** The justification of the equalities of cvc5's theories. */
-  ExternalEqJustification d_externalJustification;
   std::unique_ptr<QuantifierManager> d_qmanager;
 
   /** The expressions already internalized as enodes. */

@@ -19,7 +19,7 @@
 
 #include "z3/util/ast.h"
 #include "z3/quantifiers/enode.h"
-#include "z3/quantifiers/quantifier_services.h"
+#include "z3/quantifiers/smt_context.h"
 
 namespace cvc5::internal {
 namespace z3 {
@@ -36,7 +36,7 @@ bool isTrueNode(TNode n)
 
 }  // namespace
 
-Checker::Checker(QuantifierServices& c)
+Checker::Checker(SmtContext& c)
     : d_context(c), d_numBindings(0), d_bindings(nullptr)
 {
 }

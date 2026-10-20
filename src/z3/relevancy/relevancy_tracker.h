@@ -65,8 +65,6 @@ class RelevancyTracker : public theory::TheoryEngineModule
    * conflict.
    */
   void flush(const theory::TheoryState& state);
-  /** The literals the SAT solver asserted in the current context. */
-  const context::CDList<Node>& getFacts() const { return d_facts; }
 
  private:
   /** Gives a literal to the core. */

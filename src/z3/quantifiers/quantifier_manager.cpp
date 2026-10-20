@@ -28,14 +28,14 @@
 #include "z3/util/ast.h"
 #include "z3/quantifiers/enode.h"
 #include "z3/quantifiers/mam.h"
-#include "z3/quantifiers/quantifier_services.h"
+#include "z3/quantifiers/smt_context.h"
 #include "z3/util/statistics.h"
 #include "z3/util/trail.h"
 
 namespace cvc5::internal {
 namespace z3 {
 
-QuantifierManager::QuantifierManager(QuantifierServices& ctx, Params& p)
+QuantifierManager::QuantifierManager(SmtContext& ctx, Params& p)
     : d_context(ctx),
       d_params(p),
       d_queue(*this, ctx, p),
@@ -47,8 +47,8 @@ QuantifierManager::QuantifierManager(QuantifierServices& ctx, Params& p)
       d_lazy(true)
 {
   d_queue.setup();
-  d_mam.reset(mkMam(ctx, *this));
-  d_lazyMam.reset(mkMam(ctx, *this));
+  d_mam = mkMam(ctx, *this);
+  d_lazyMam = mkMam(ctx, *this);
 }
 
 QuantifierManager::~QuantifierManager() {}

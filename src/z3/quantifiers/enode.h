@@ -23,7 +23,6 @@
 
 #include "expr/node.h"
 #include "z3/util/ast.h"
-#include "z3/quantifiers/eq_justification.h"
 #include "z3/util/types.h"
 #include "z3/util/approx_set.h"
 #include "z3/util/region.h"
@@ -33,17 +32,6 @@ namespace z3 {
 
 class SmtContext;
 class TrailStack;
-
-/** The justification for the transitivity rule. */
-struct TransJustification
-{
-  ENode* d_target;
-  EqJustification d_justification;
-  TransJustification()
-      : d_target(nullptr), d_justification(s_nullEqJustification)
-  {
-  }
-};
 
 /** Maps the id of a term to its enode. */
 using App2ENode = std::vector<ENode*>;
@@ -126,8 +114,6 @@ class ENode
   */
   /** The parent enodes of this equivalence class. */
   ENodeVector d_parents;
-  /** A justification for this node being equal to its root. */
-  TransJustification d_trans;
   ApproxSet d_lbls;
   ApproxSet d_plbls;
 

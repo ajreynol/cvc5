@@ -603,13 +603,13 @@ void SmtContext::setMergeTf(ENode* n, BoolVar v, bool isNewVar)
     case L_TRUE:
       if (n->getRoot() != d_trueENode->getRoot())
       {
-        pushEq(n, d_trueENode, EqJustification(Literal(v, false)));
+        pushEq(n, d_trueENode);
       }
       break;
     case L_FALSE:
       if (n->getRoot() != d_falseENode->getRoot())
       {
-        pushEq(n, d_falseENode, EqJustification(Literal(v, true)));
+        pushEq(n, d_falseENode);
       }
       break;
   }
@@ -709,11 +709,9 @@ ENode* SmtContext::mkENode(TNode n,
     if (e->isTrueEq())
     {
       BoolVar v = enode2BoolVar(e);
-      assign(Literal(v),
-             mkJustification(
-                 EqPropagationJustification(e->getArg(0), e->getArg(1))));
+      assign(Literal(v));
       e->d_cg = e;
-      pushEq(e, d_trueENode, EqJustification());
+      pushEq(e, d_trueENode);
     }
     else if (cgcEnabled)
     {
@@ -727,7 +725,7 @@ ENode* SmtContext::mkENode(TNode n,
         {
           mergeCgcGenerations(e, generation, r.first);
         }
-        pushNewCongruence(e, r.first, r.second);
+        pushNewCongruence(e, r.first);
       }
       else
       {

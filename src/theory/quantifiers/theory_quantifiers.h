@@ -72,11 +72,6 @@ class TheoryQuantifiers : public Theory
                      bool isPrereg,
                      bool isInternal) override;
   //--------------------------------- end standard check
-  /**
-   * With --z3, the terms of every literal the SAT solver asserted: the model
-   * takes the master equality engine over them.
-   */
-  void computeRelevantTerms(std::set<Node>& termSet) override;
   /** Collect model values in m based on the relevant terms given by termSet */
   bool collectModelValues(TheoryModel* m,
                           const std::set<Node>& termSet) override;

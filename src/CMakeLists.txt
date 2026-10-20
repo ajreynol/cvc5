@@ -1346,7 +1346,6 @@ libcvc5_add_sources(
   z3/quantifiers/cost_function.h
   z3/quantifiers/enode.cpp
   z3/quantifiers/enode.h
-  z3/quantifiers/eq_justification.h
   z3/quantifiers/fingerprints.cpp
   z3/quantifiers/fingerprints.h
   z3/quantifiers/host_core.cpp
@@ -1358,22 +1357,17 @@ libcvc5_add_sources(
   z3/quantifiers/qi_queue.h
   z3/quantifiers/quantifier_manager.cpp
   z3/quantifiers/quantifier_manager.h
-  z3/quantifiers/quantifier_services.h
   z3/quantifiers/quantifier_stat.cpp
   z3/quantifiers/quantifier_stat.h
   z3/quantifiers/shadow_feed.cpp
   z3/quantifiers/shadow_feed.h
-  z3/quantifiers/shared_backend.cpp
-  z3/quantifiers/shared_backend.h
   z3/quantifiers/smt_context.cpp
   z3/quantifiers/smt_context.h
   z3/quantifiers/z3_quantifiers_engine.cpp
   z3/quantifiers/z3_quantifiers_engine.h
-  z3/relevancy/b_justification.h
   z3/relevancy/bool_var_data.h
   z3/relevancy/clause.cpp
   z3/relevancy/clause.h
-  z3/relevancy/justification.h
   z3/relevancy/prop_core.cpp
   z3/relevancy/prop_core.h
   z3/relevancy/relevancy.cpp

@@ -33,12 +33,12 @@
 namespace cvc5::internal {
 namespace z3 {
 
-class QuantifierServices;
+class SmtContext;
 
 class Checker
 {
  public:
-  Checker(QuantifierServices& c);
+  Checker(SmtContext& c);
 
   /** True if the body is already satisfied under the given bindings. */
   bool isSat(TNode n, size_t numBindings = 0, ENode* const* bindings = nullptr);
@@ -56,7 +56,7 @@ class Checker
   ENode* getENodeEqToCore(TNode n);
   ENode* getENodeEqTo(TNode n);
 
-  QuantifierServices& d_context;
+  SmtContext& d_context;
   std::unordered_map<Node, bool> d_isTrueCache[2];
   std::unordered_map<Node, ENode*> d_toENodeCache;
   size_t d_numBindings;

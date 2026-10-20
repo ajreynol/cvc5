@@ -35,7 +35,7 @@ class EqualityEngine;
 
 namespace z3 {
 
-class SharedBackend;
+class HostCore;
 
 /**
  * Feeds the E-graph of the ported core, a shadow of cvc5's own theories,
@@ -49,12 +49,12 @@ class SharedBackend;
  * terms in the core.
  *
  * The master equality engine keeps no reasons, so the core cannot explain
- * these merges (ExternalEqJustification).
+ * these merges, and it does not need to: the core keeps no explanations.
  */
 class ShadowFeed : protected EnvObj, public theory::eq::EqualityEngineNotify
 {
  public:
-  ShadowFeed(Env& env, SharedBackend& backend);
+  ShadowFeed(Env& env, HostCore& core);
   ~ShadowFeed();
   /** Set the master equality engine, which then notifies this. */
   void setMasterEqualityEngine(theory::eq::EqualityEngine* ee)
@@ -86,8 +86,8 @@ class ShadowFeed : protected EnvObj, public theory::eq::EqualityEngineNotify
   /** Merge a and b, both internalized in the core, there. */
   void merge(TNode a, TNode b);
 
-  /** The ported core. */
-  SharedBackend& d_backend;
+  /** The core under cvc5's prop engine, which owns the feed. */
+  HostCore& d_core;
   /** cvc5's master equality engine, or null. */
   theory::eq::EqualityEngine* d_master;
   /**

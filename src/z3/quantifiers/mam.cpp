@@ -49,7 +49,7 @@
 #include "z3/util/ast.h"
 #include "z3/quantifiers/enode.h"
 #include "z3/quantifiers/quantifier_manager.h"
-#include "z3/quantifiers/quantifier_services.h"
+#include "z3/quantifiers/smt_context.h"
 #include "z3/util/statistics.h"
 #include "z3/util/approx_set.h"
 #include "z3/util/hash.h"
@@ -70,7 +70,7 @@ constexpr bool s_isCgrSupport = true;
 bool isGroundPat(TNode n) { return !expr::hasBoundVar(n); }
 
 /** Internalize a ground pattern subterm and return its enode. */
-ENode* mkPatENode(QuantifierServices& ctx,
+ENode* mkPatENode(SmtContext& ctx,
                   QuantifierManager& qm,
                   TNode qa,
                   TNode n)
@@ -90,7 +90,7 @@ ENode* mkPatENode(QuantifierServices& ctx,
 class LabelHasher
 {
  public:
-  LabelHasher(QuantifierServices& ctx) : d_ctx(ctx) {}
+  LabelHasher(SmtContext& ctx) : d_ctx(ctx) {}
 
   uint8_t operator()(TNode lbl)
   {
@@ -117,7 +117,7 @@ class LabelHasher
     d_lbl2Hash[lblId] = static_cast<int8_t>(c & (approxSetCapacity() - 1));
   }
 
-  QuantifierServices& d_ctx;
+  SmtContext& d_ctx;
   /** Cache: declaration id to hash. */
   std::vector<int8_t> d_lbl2Hash;
 };
@@ -632,7 +632,7 @@ class CodeTreeManager
 class Compiler
 {
  public:
-  Compiler(QuantifierServices& ctx,
+  Compiler(SmtContext& ctx,
            QuantifierManager& qm,
            CodeTreeManager& ctMg,
            LabelHasher& h)
@@ -1713,7 +1713,7 @@ class Compiler
     return std::find(d_todo.begin(), d_todo.end(), reg) != d_todo.end();
   }
 
-  QuantifierServices& d_context;
+  SmtContext& d_context;
   QuantifierManager& d_qm;
   CodeTreeManager& d_ctManager;
   LabelHasher& d_lblHasher;
@@ -1792,9 +1792,9 @@ struct BacktrackPoint
 class Interpreter
 {
  public:
-  Interpreter(QuantifierServices& ctx, Mam& ma)
+  Interpreter(SmtContext& ctx, QuantifierManager& qm)
       : d_context(ctx),
-        d_mam(ma),
+        d_qm(qm),
         d_top(0),
         d_pc(nullptr),
         d_maxGeneration(0),
@@ -2056,8 +2056,23 @@ class Interpreter
 
   ENode* initContinue(const Cont* c, uint16_t expectedNumArgs);
 
-  QuantifierServices& d_context;
-  Mam& d_mam;
+  /** Report a match to the quantifier manager. */
+  void onMatch(TNode q,
+               TNode pat,
+               size_t numBindings,
+               ENode* const* bindings,
+               uint32_t maxGeneration)
+  {
+    d_context.getStats().d_numMamMatches++;
+    uint32_t minGen = 0;
+    uint32_t maxGen = 0;
+    getMinMaxTopGeneration(minGen, maxGen);
+    d_qm.addInstance(
+        q, pat, numBindings, bindings, maxGeneration, minGen, maxGen);
+  }
+
+  SmtContext& d_context;
+  QuantifierManager& d_qm;
   ENodeVector d_registers;
   ENodeVector d_bindings;
   ENodeVector d_args;
@@ -2381,7 +2396,7 @@ main_loop:
       {
         return false;
       }
-      d_mam.onMatch(
+      onMatch(
           y->d_qa, y->d_pat, d_numArgs, d_bindings.data(), d_maxGeneration);
       goto backtrack;
     }
@@ -2574,7 +2589,7 @@ backtrack:
 class CodeTreeMap
 {
  public:
-  CodeTreeMap(QuantifierServices& ctx, Compiler& c, TrailStack& s)
+  CodeTreeMap(SmtContext& ctx, Compiler& c, TrailStack& s)
       : d_context(ctx), d_compiler(c), d_trailStack(s)
   {
   }
@@ -2665,7 +2680,7 @@ class CodeTreeMap
     uint32_t d_lblId;
   };
 
-  QuantifierServices& d_context;
+  SmtContext& d_context;
   Compiler& d_compiler;
   /** mapping: label id -> tree */
   std::vector<CodeTree*> d_trees;
@@ -2783,15 +2798,16 @@ bool isFlatAssociative(ENode* n)
 
 // ----------------------------------------- matching abstract machine impl
 
-class MamImpl : public Mam
+class MamImpl final : public Mam
 {
  public:
-  MamImpl(QuantifierServices& ctx, QuantifierManager& qm)
-      : Mam(ctx, qm),
+  MamImpl(SmtContext& ctx, QuantifierManager& qm)
+      : d_context(ctx),
+        d_qm(qm),
         d_lblHasher(ctx),
         d_ctManager(d_lblHasher, d_trailStack),
         d_compiler(ctx, qm, d_ctManager, d_lblHasher),
-        d_interpreter(ctx, *this),
+        d_interpreter(ctx, qm),
         d_trees(ctx, d_compiler, d_trailStack),
         d_region(d_trailStack.getRegion()),
         d_r1(nullptr),
@@ -2904,20 +2920,6 @@ class MamImpl : public Mam
         }
       }
     }
-  }
-
-  void onMatch(TNode q,
-               TNode pat,
-               size_t numBindings,
-               ENode* const* bindings,
-               uint32_t maxGeneration) override
-  {
-    d_context.getStats().d_numMamMatches++;
-    uint32_t minGen = 0;
-    uint32_t maxGen = 0;
-    d_interpreter.getMinMaxTopGeneration(minGen, maxGen);
-    d_qm.addInstance(
-        q, pat, numBindings, bindings, maxGeneration, minGen, maxGen);
   }
 
   /**
@@ -3701,6 +3703,9 @@ class MamImpl : public Mam
     }
   }
 
+  SmtContext& d_context;
+  /** The quantifier manager, which receives the matches. */
+  QuantifierManager& d_qm;
   TrailStack d_trailStack;
   LabelHasher d_lblHasher;
   CodeTreeManager d_ctManager;
@@ -3747,9 +3752,9 @@ class MamImpl : public Mam
 
 }  // namespace
 
-Mam* mkMam(QuantifierServices& ctx, QuantifierManager& qm)
+std::unique_ptr<Mam> mkMam(SmtContext& ctx, QuantifierManager& qm)
 {
-  return new MamImpl(ctx, qm);
+  return std::make_unique<MamImpl>(ctx, qm);
 }
 
 }  // namespace z3

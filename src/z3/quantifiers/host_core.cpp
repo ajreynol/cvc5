@@ -21,11 +21,11 @@
 #include "options/z3_options.h"
 #include "prop/prop_engine.h"
 #include "smt/env.h"
+#include "theory/output_channel.h"
 #include "theory/skolem_lemma.h"
 #include "theory/theory_engine.h"
 #include "z3/relevancy/prop_core.h"
 #include "z3/quantifiers/shadow_feed.h"
-#include "z3/quantifiers/shared_backend.h"
 #include "z3/quantifiers/smt_context.h"
 
 namespace cvc5::internal {
@@ -41,25 +41,30 @@ constexpr size_t s_maxSilentFinalChecks = 10;
 
 }  // namespace
 
-HostCore::HostCore(Env& env, SharedBackend& backend, HostCoreOutput& out)
+HostCore::HostCore(Env& env,
+                   theory::OutputChannel& out,
+                   Skolemizer skolemizer)
     : EnvObj(env),
-      d_backend(backend),
+      d_ctx(nullptr),
       d_te(nullptr),
       d_out(out),
+      d_skolemizer(std::move(skolemizer)),
       d_setup(false),
       d_inConflict(false),
       d_conflictLevel(0),
       d_needCheck(false),
       d_popLevel(UINT32_MAX)
 {
+  d_params.initialize(env.getOptions());
   d_popNotify = std::make_unique<PopNotify>(context(), *this);
-  d_feed = std::make_unique<ShadowFeed>(env, backend);
+  d_feed = std::make_unique<ShadowFeed>(env, *this);
 }
 
 HostCore::~HostCore() {}
 
 void HostCore::reset(TheoryEngine* te)
 {
+  d_ctx.reset(new SmtContext(d_env, d_params));
   d_te = te;
   d_setup = false;
   d_inConflict = false;
@@ -67,12 +72,26 @@ void HostCore::reset(TheoryEngine* te)
   d_popLevel = UINT32_MAX;
   d_preregistered.clear();
   d_lemmasSent.clear();
-  d_backend.getContext().setCvc5Preprocessor(
+  d_ctx->setCvc5Preprocessor(
       [this](TNode n, std::vector<Node>& defs) {
         return preprocessForTheories(n, defs);
       });
-  d_backend.getContext().setSkolemizer(
-      [this](TNode q) { return d_out.getSkolemization(q); });
+  d_ctx->setSkolemizer(d_skolemizer);
+}
+
+SmtContext& HostCore::getContext()
+{
+  Assert(d_ctx != nullptr);
+  return *d_ctx;
+}
+
+PropCore& HostCore::getPropCore() { return getContext().getPropCore(); }
+
+void HostCore::lemma(const Node& lem, theory::LemmaProperty p)
+{
+  d_out.lemma(lem,
+              theory::InferenceId::UNKNOWN,
+              p | theory::LemmaProperty::UNPROCESSED);
 }
 
 Node HostCore::preprocessForTheories(TNode n, std::vector<Node>& defs)
@@ -173,7 +192,7 @@ void HostCore::assertFact(TNode literal)
   {
     return;
   }
-  PropCore& core = d_backend.getPropCore();
+  PropCore& core = getPropCore();
   syncLevel();
   Trace("z3-host") << "assert " << literal << std::endl;
   Literal l = core.hostLiteral(literal);
@@ -186,7 +205,7 @@ void HostCore::assertFact(TNode literal)
 void HostCore::check(theory::Theory::Effort effort)
 {
   d_needCheck = false;
-  Statistics& stats = d_backend.getContext().getStats();
+  Statistics& stats = getContext().getStats();
   stats.d_numHostChecks++;
   if (theory::Theory::fullEffort(effort))
   {
@@ -205,7 +224,7 @@ void HostCore::check(theory::Theory::Effort effort)
     }
     return;
   }
-  PropCore& core = d_backend.getPropCore();
+  PropCore& core = getPropCore();
   syncLevel();
   // the equalities cvc5's theories derived since the last check
   d_feed->apply();
@@ -218,7 +237,7 @@ void HostCore::check(theory::Theory::Effort effort)
     {
       if (d_lemmasSent.insert(du).second)
       {
-        d_out.lemma(du, theory::LemmaProperty::NONE);
+        lemma(du, theory::LemmaProperty::NONE);
         d_needCheck = true;
       }
     }
@@ -256,7 +275,7 @@ void HostCore::check(theory::Theory::Effort effort)
       }
       // The ground part of the model is cvc5's theories'; the quantified
       // formulas are not checked against it.
-      if (d_backend.getContext().hasQuantifiers())
+      if (getContext().hasQuantifiers())
       {
         d_out.setModelUnsound(theory::IncompleteId::QUANTIFIERS);
       }
@@ -280,7 +299,7 @@ void HostCore::presolve()
 {
   if (!d_setup)
   {
-    d_backend.getPropCore().hostInit();
+    getPropCore().hostInit();
     d_setup = true;
   }
 }
@@ -311,7 +330,7 @@ void HostCore::notifyPop()
 
 void HostCore::syncLevel()
 {
-  PropCore& core = d_backend.getPropCore();
+  PropCore& core = getPropCore();
   uint32_t lvl = context()->getLevel();
   // The scopes above the lowest level the SAT context reached since the last
   // call belong to a branch it left, even if it is now as deep again.
@@ -319,7 +338,7 @@ void HostCore::syncLevel()
   d_popLevel = UINT32_MAX;
   if (core.getScopeLevel() > popTo)
   {
-    Statistics& stats = d_backend.getContext().getStats();
+    Statistics& stats = getContext().getStats();
     stats.d_numHostPops++;
     stats.d_numHostScopesPopped += core.getScopeLevel() - popTo;
     if (popTo == 0)
@@ -336,7 +355,7 @@ void HostCore::enterConflict()
   // The conflict follows from the facts cvc5 asserted and the lemmas it was
   // sent, so cvc5's theories find it themselves. Until cvc5 backtracks below
   // the current level, the core does nothing.
-  d_backend.getContext().getStats().d_numShadowConflicts++;
+  getContext().getStats().d_numShadowConflicts++;
   d_inConflict = true;
   d_conflictLevel = context()->getLevel();
 }
@@ -345,7 +364,7 @@ void HostCore::sendLemmas()
 {
   std::vector<Node> lems;
   std::vector<Node> insts;
-  d_backend.getPropCore().hostTakeLemmas(lems, insts);
+  getPropCore().hostTakeLemmas(lems, insts);
   // An instance is local to the SAT context (--z3-host-local-instances, the
   // default), as with cvc5's --inst-local: cvc5 adds its clause once, but its
   // decision heuristic treats it as an assertion only in the context where
@@ -365,7 +384,7 @@ void HostCore::sendLemmas()
 
 void HostCore::sendLemma(const Node& lem, bool local)
 {
-  Statistics& stats = d_backend.getContext().getStats();
+  Statistics& stats = getContext().getStats();
   // cvc5 keeps its lemmas, while the core makes an instance or an axiom
   // again after backtracking, so a lemma is sent once. A lemma weakened by
   // delayUnit holds only under the first decision it was weakened with, so
@@ -388,7 +407,7 @@ void HostCore::sendLemma(const Node& lem, bool local)
       return;
     }
   }
-  d_out.lemma(
+  lemma(
       sent, local ? theory::LemmaProperty::LOCAL : theory::LemmaProperty::NONE);
   d_needCheck = true;
 }
@@ -437,14 +456,14 @@ Node HostCore::delayUnit(const Node& lem)
     return lem;
   }
   disj.push_back(decisions[0].negate());
-  d_backend.getContext().getStats().d_numHostDelayedUnits++;
+  getContext().getStats().d_numHostDelayedUnits++;
   d_delayedUnits.push_back(lem);
   return nodeManager()->mkNode(Kind::OR, disj);
 }
 
 void HostCore::splitNewlyRelevant()
 {
-  PropCore& core = d_backend.getPropCore();
+  PropCore& core = getPropCore();
   std::vector<Node> rel;
   core.hostTakeRelevant(rel);
   prop::PropEngine* pe = d_te->getPropEngine();
@@ -467,7 +486,7 @@ void HostCore::splitNewlyRelevant()
 
 void HostCore::split(BoolVar v)
 {
-  PropCore& core = d_backend.getPropCore();
+  PropCore& core = getPropCore();
   prop::PropEngine* pe = d_te->getPropEngine();
   TNode atom = core.boolVar2Expr(v);
   if (atom.isNull() || atom.isConst())
@@ -495,14 +514,14 @@ void HostCore::split(BoolVar v)
   {
     return;
   }
-  d_out.lemma(lem, theory::LemmaProperty::NONE);
-  d_backend.getContext().getStats().d_numHostSplits++;
+  lemma(lem, theory::LemmaProperty::NONE);
+  getContext().getStats().d_numHostSplits++;
   d_needCheck = true;
 }
 
 void HostCore::splitPendingAtoms()
 {
-  PropCore& core = d_backend.getPropCore();
+  PropCore& core = getPropCore();
   for (size_t i = 0, n = core.getNumBoolVars(); i < n; ++i)
   {
     BoolVar v = static_cast<BoolVar>(i);
@@ -515,7 +534,7 @@ void HostCore::splitPendingAtoms()
 
 bool HostCore::propagateAndReport()
 {
-  PropCore& core = d_backend.getPropCore();
+  PropCore& core = getPropCore();
   bool ok = core.hostPropagate();
   // the instances and axioms made before a conflict hold regardless
   sendLemmas();
@@ -530,7 +549,7 @@ bool HostCore::propagateAndReport()
 
 Node HostCore::literalNode(Literal l)
 {
-  PropCore& core = d_backend.getPropCore();
+  PropCore& core = getPropCore();
   if (l == s_trueLiteral || l == s_falseLiteral)
   {
     return nodeManager()->mkConst(l == s_trueLiteral);

@@ -114,8 +114,8 @@ namespace {
 class AddEqTrail : public Trail
 {
  public:
-  AddEqTrail(SmtContext& ctx, ENode* r1, ENode* n1, size_t r2NumParents)
-      : d_ctx(ctx), d_r1(r1), d_n1(n1), d_r2NumParents(r2NumParents)
+  AddEqTrail(SmtContext& ctx, ENode* r1, size_t r2NumParents)
+      : d_ctx(ctx), d_r1(r1), d_r2NumParents(r2NumParents)
   {
   }
   void undo() override;
@@ -123,13 +123,12 @@ class AddEqTrail : public Trail
  private:
   SmtContext& d_ctx;
   ENode* d_r1;
-  ENode* d_n1;
   size_t d_r2NumParents;
 };
 
 }  // namespace
 
-void SmtContext::addEq(ENode* n1, ENode* n2, EqJustification js)
+void SmtContext::addEq(ENode* n1, ENode* n2)
 {
   Assert(n1->getSort() == n2->getSort());
 
@@ -146,7 +145,7 @@ void SmtContext::addEq(ENode* n1, ENode* n2, EqJustification js)
   if (r1->isInterpreted() && r2->isInterpreted())
   {
     // two distinct values were found equal
-    setConflict(mkJustification(EqConflictJustification(n1, n2, js)));
+    setConflict();
     return;
   }
 
@@ -177,15 +176,6 @@ void SmtContext::addEq(ENode* n1, ENode* n2, EqJustification js)
 
   d_qmanager->addEqEh(r1, r2);
 
-  // The proof forest, before:
-  //   n1 -> ... -> r1
-  //   n2 -> ... -> r2
-  invertTrans(n1);
-  n1->d_trans.d_target = n2;
-  n1->d_trans.d_justification = js;
-  // and after:
-  //   r1 -> ..  -> n1 -> n2 -> ... -> r2
-
   removeParentsFromCgTable(r1);
 
   ENode* curr = r1;
@@ -201,7 +191,7 @@ void SmtContext::addEq(ENode* n1, ENode* n2, EqJustification js)
   // The AddEqTrail is pushed after reinsertParentsIntoCgTable, because the
   // latter may push merge-generation trails and addEq must be undone before
   // those are.
-  pushTrail(AddEqTrail(*this, r1, n1, r2NumParents));
+  pushTrail(AddEqTrail(*this, r1, r2NumParents));
 
   if (n2->isBool())
   {
@@ -217,7 +207,7 @@ void SmtContext::addEq(ENode* n1, ENode* n2, EqJustification js)
 
 namespace {
 
-void AddEqTrail::undo() { d_ctx.undoAddEq(d_r1, d_n1, d_r2NumParents); }
+void AddEqTrail::undo() { d_ctx.undoAddEq(d_r1, d_r2NumParents); }
 
 }  // namespace
 
@@ -290,8 +280,7 @@ void SmtContext::reinsertParentsIntoCgTable(ENode* r1, ENode* r2)
         LBool val = getAssignment(v);
         if (val != L_TRUE)
         {
-          assign(Literal(v),
-                 mkJustification(EqPropagationJustification(lhs, rhs)));
+          assign(Literal(v));
         }
         // There is no need to reinsert the equality into the congruence
         // table: the congruence propagations it could lead to are already
@@ -320,7 +309,6 @@ void SmtContext::reinsertParentsIntoCgTable(ENode* r1, ENode* r2)
 
       ENodeBoolPair r = d_cgTable.insert(parent);
       ENode* parentPrime = r.first;
-      bool usedCommutativity = r.second;
       if (parentPrime == parent)
       {
         Assert(parent->isCgr());
@@ -335,7 +323,7 @@ void SmtContext::reinsertParentsIntoCgTable(ENode* r1, ENode* r2)
 
       if (parentPrime->d_root != parent->d_root)
       {
-        pushNewCongruence(parent, parentPrime, usedCommutativity);
+        pushNewCongruence(parent, parentPrime);
       }
     }
     else
@@ -345,27 +333,6 @@ void SmtContext::reinsertParentsIntoCgTable(ENode* r1, ENode* r2)
     }
   }
   d_r1ParentGenerations.clear();
-}
-
-void SmtContext::invertTrans(ENode* n)
-{
-  // A branch of the transitivity forest is the sequence starting at n and
-  // ending at n->getRoot(); this inverts it.
-  ENode* curr = n->d_trans.d_target;
-  ENode* prev = n;
-  EqJustification js = n->d_trans.d_justification;
-  prev->d_trans.d_target = nullptr;
-  prev->d_trans.d_justification = s_nullEqJustification;
-  while (curr != nullptr)
-  {
-    ENode* newCurr = curr->d_trans.d_target;
-    EqJustification newJs = curr->d_trans.d_justification;
-    curr->d_trans.d_target = prev;
-    curr->d_trans.d_justification = js;
-    prev = curr;
-    js = newJs;
-    curr = newCurr;
-  }
 }
 
 void SmtContext::propagateBoolENodeAssignment(ENode* r1,
@@ -388,7 +355,7 @@ void SmtContext::propagateBoolENodeAssignment(ENode* r1,
       Literal l(v, sign);
       if (getAssignment(l) != L_TRUE)
       {
-        assign(l, mkJustification(EqRootPropagationJustification(curr)));
+        assign(l);
       }
       curr = curr->d_next;
     } while (curr != r1);
@@ -431,14 +398,13 @@ void SmtContext::propagateBoolENodeAssignmentCore(ENode* source, ENode* target)
     LBool val2 = getAssignment(v2);
     if (val2 != val)
     {
-      assign(Literal(v2, sign),
-             mkJustification(MpIffJustification(source, target)));
+      assign(Literal(v2, sign));
     }
     target = target->getNext();
   } while (first != target);
 }
 
-void SmtContext::undoAddEq(ENode* r1, ENode* n1, size_t r2NumParents)
+void SmtContext::undoAddEq(ENode* r1, size_t r2NumParents)
 {
   ENode* r2 = r1->getRoot();
 
@@ -541,14 +507,6 @@ void SmtContext::undoAddEq(ENode* r1, ENode* n1, size_t r2NumParents)
   }
 
   d_r1ParentGenerations.clear();
-
-  // The proof forest, before: r1 -> ..  -> n1 -> n2 -> ... -> r2
-  n1->d_trans.d_target = nullptr;
-  n1->d_trans.d_justification = s_nullEqJustification;
-  invertTrans(r1);
-  // and after:
-  //   n1 -> ... -> r1
-  //   n2 -> ... -> r2
 }
 
 void SmtContext::undoMergeCgcGenerations(ENode* e1,
@@ -663,7 +621,7 @@ bool SmtContext::propagateEqs()
   for (; i < d_eqPropagationQueue.size() && !getCancelFlag(); ++i)
   {
     NewEq& entry = d_eqPropagationQueue[i];
-    addEq(entry.d_lhs, entry.d_rhs, entry.d_justification);
+    addEq(entry.d_lhs, entry.d_rhs);
     if (inconsistent())
     {
       d_eqPropagationQueue.clear();
@@ -705,16 +663,13 @@ bool SmtContext::propagateAtoms()
       }
       else if (val == L_TRUE)
       {
-        addEq(getENode(lhs), getENode(rhs), EqJustification(l));
+        addEq(getENode(lhs), getENode(rhs));
       }
       else
       {
         if (!addDiseq(getENode(lhs), getENode(rhs)) && !inconsistent())
         {
-          Literal nEq = Literal(l.var(), true);
-          setConflict(BJustification(mkJustification(EqPropagationJustification(
-                          getENode(lhs), getENode(rhs)))),
-                      nEq);
+          setConflict();
         }
       }
     }
@@ -757,9 +712,7 @@ void SmtContext::propagateBoolVarENode(BoolVar v)
   bool sign = val == L_FALSE;
   if (n->mergeTf())
   {
-    addEq(n,
-          sign ? d_falseENode : d_trueENode,
-          EqJustification(Literal(v, sign)));
+    addEq(n, sign ? d_falseENode : d_trueENode);
   }
   ENode* r = n->getRoot();
   if (r == d_trueENode || r == d_falseENode)
@@ -778,8 +731,7 @@ void SmtContext::propagateBoolVarENode(BoolVar v)
       BoolVar v2 = enode2BoolVar(n);
       if (getAssignment(v2) != val)
       {
-        assign(Literal(v2, sign),
-               mkJustification(MpIffJustification(first, n)));
+        assign(Literal(v2, sign));
       }
       n = n->getNext();
     }

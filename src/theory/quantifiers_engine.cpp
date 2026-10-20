@@ -772,20 +772,6 @@ void QuantifiersEngine::assertQuantifier(Node f, bool pol)
   d_treg.addQuantifierBody(d_qreg.getInstConstantBody(f));
 }
 
-void QuantifiersEngine::assertFact(TNode atom,
-                                   bool pol,
-                                   CVC5_UNUSED TNode fact)
-{
-  if (atom.getKind() == Kind::FORALL)
-  {
-    assertQuantifier(atom, pol);
-  }
-  else
-  {
-    Unhandled() << "Unexpected fact " << fact;
-  }
-}
-
 void QuantifiersEngine::eqNotifyNewClass(TNode t)
 {
   d_treg.eqNotifyNewClass(t);

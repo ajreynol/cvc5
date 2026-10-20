@@ -17,15 +17,15 @@
 #include <algorithm>
 
 #include "theory/uf/equality_engine.h"
-#include "z3/quantifiers/shared_backend.h"
+#include "z3/quantifiers/host_core.h"
 #include "z3/quantifiers/smt_context.h"
 
 namespace cvc5::internal {
 namespace z3 {
 
-ShadowFeed::ShadowFeed(Env& env, SharedBackend& backend)
+ShadowFeed::ShadowFeed(Env& env, HostCore& core)
     : EnvObj(env),
-      d_backend(backend),
+      d_core(core),
       d_master(nullptr),
       d_coreTerm(context()),
       d_coreIdx(context(), 0)
@@ -73,7 +73,7 @@ Node ShadowFeed::coreTermOf(TNode rep) const
 
 void ShadowFeed::merge(TNode a, TNode b)
 {
-  SmtContext& ctx = d_backend.getContext();
+  SmtContext& ctx = d_core.getContext();
   if (a == b || !ctx.eInternalized(a) || !ctx.eInternalized(b))
   {
     return;
@@ -88,7 +88,7 @@ void ShadowFeed::apply()
   {
     return;
   }
-  SmtContext& ctx = d_backend.getContext();
+  SmtContext& ctx = d_core.getContext();
   if (ctx.inconsistent())
   {
     d_pending.clear();

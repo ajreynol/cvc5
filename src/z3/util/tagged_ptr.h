@@ -13,8 +13,8 @@
  * file src/util/tptr.h, and recast in cvc5 style.
  *
  * The Z3 core packs a small tag into the low bits of a pointer, or boxes a
- * small integer alongside such a tag, so that its pervasive justification
- * objects stay one word wide. Everything allocated here is at least
+ * small integer alongside such a tag, so that the joints of the matching
+ * code stay one word wide. Everything allocated here is at least
  * four-byte aligned, which leaves the low two bits free.
  */
 

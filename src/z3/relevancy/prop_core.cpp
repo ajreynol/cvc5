@@ -56,8 +56,7 @@ PropCore::PropCore(Env& env, TheorySide& ctx, Params& params, Statistics& stats)
       d_stats(stats),
       d_relevancyPropagator(new RelevancyPropagator(*this, ctx)),
       d_qhead(0),
-      d_conflict(s_nullBJustification),
-      d_notL(s_nullLiteral),
+      d_conflict(false),
       d_assertedInconsistent(false),
       d_flushing(false),
       d_assertedFormulasQhead(0),
@@ -79,7 +78,6 @@ void PropCore::initTrue(TNode t)
   Assert(s_trueLiteral.var() == s_trueBoolVar);
   d_assignment[s_trueLiteral.index()] = L_TRUE;
   d_assignment[s_falseLiteral.index()] = L_FALSE;
-  d_bdata[s_trueBoolVar].setAxiom();
 }
 
 void PropCore::flushClauses()
@@ -190,10 +188,7 @@ void PropCore::internalizeAssertions()
   d_internalizingAssertions = true;
   if (d_assertedInconsistent)
   {
-    if (d_conflict == s_nullBJustification)
-    {
-      setConflict(BJustification::mkAxiom());
-    }
+    setConflict();
     d_internalizingAssertions = false;
     return;
   }
@@ -391,7 +386,7 @@ void PropCore::assertDefault(TNode n)
   Literal l = getLiteral(n);
   if (l == s_falseLiteral)
   {
-    setConflict(BJustification::mkAxiom());
+    setConflict();
   }
   else if (l == s_trueLiteral)
   {
@@ -399,7 +394,7 @@ void PropCore::assertDefault(TNode n)
   }
   else
   {
-    assign(l, BJustification::mkAxiom());
+    assign(l);
     markAsRelevant(l);
   }
 }
@@ -616,8 +611,7 @@ void PropCore::popScope(size_t numScopes)
   // clauses and relevancy, which are independent of it.
   cacheGeneration(newLvl);
   Scope& sc = d_scopes[newLvl];
-  d_conflict = s_nullBJustification;
-  d_notL = s_nullLiteral;
+  d_conflict = false;
   delClauses(d_auxClauses, sc.d_auxClausesLim);
   size_t unitsToReassertLim = sc.d_unitsToReassertLim;
   d_relevancyPropagator->pop(numScopes);
@@ -641,14 +635,12 @@ void PropCore::popToBaseLvl()
 
 // ----------------------------------------------------------- the Boolean core
 
-void PropCore::assignCore(Literal l, BJustification j)
+void PropCore::assignCore(Literal l)
 {
   d_assignedLiterals.push_back(l);
   d_assignment[l.index()] = L_TRUE;
   d_assignment[(~l).index()] = L_FALSE;
-  BoolVarData& d = getBdata(l.var());
-  d.setJustification(j);
-  d.d_scopeLvl = d_scopeLvl;
+  const BoolVarData& d = getBdata(l.var());
   d_stats.d_numAssignments++;
   if (d.isAtom() && isRelevantCore(boolVar2Expr(l.var())))
   {
@@ -672,7 +664,6 @@ bool PropCore::bcp()
     Assert(getAssignment(notL) == L_FALSE);
     WatchList& w = d_watches[l.index()];
     // binary clause propagation
-    BJustification js(l);
     Literal* bit = w.beginLiterals();
     Literal* bend = w.endLiterals();
     for (; bit != bend; ++bit)
@@ -682,11 +673,11 @@ bool PropCore::bcp()
       {
         case L_FALSE:
           d_stats.d_numBinPropagations++;
-          setConflict(js, ~l2);
+          setConflict();
           return false;
         case L_UNDEF:
           d_stats.d_numBinPropagations++;
-          assignCore(l2, js);
+          assignCore(l2);
           break;
         case L_TRUE: break;
       }
@@ -748,7 +739,7 @@ bool PropCore::bcp()
         }
         Assert(it2 <= end);
         w.setEndClause(it2);
-        setConflict(BJustification(cls));
+        setConflict();
         return false;
       }
       // PROPAGATION
@@ -758,7 +749,7 @@ bool PropCore::bcp()
       d_stats.d_numPropagations++;
       // It is safe to call assignCore instead of assign, since firstLit is
       // unassigned.
-      assignCore(firstLit, BJustification(cls));
+      assignCore(firstLit);
     }
     Assert(it2 <= end);
     w.setEndClause(it2);
@@ -833,15 +824,6 @@ Literal PropCore::getLiteral(TNode n) const
   }
   Assert(bInternalized(n));
   return Literal(getBoolVar(n), false);
-}
-
-void PropCore::setConflict(const BJustification& js, Literal notL)
-{
-  if (d_conflict == s_nullBJustification)
-  {
-    d_conflict = js;
-    d_notL = notL;
-  }
 }
 
 void PropCore::removeWatchLiteral(Clause* cls, size_t idx)
@@ -920,9 +902,6 @@ void PropCore::unassignVars(size_t oldLim)
     Literal l = d_assignedLiterals[i];
     d_assignment[l.index()] = L_UNDEF;
     d_assignment[(~l).index()] = L_UNDEF;
-    BoolVar v = l.var();
-    BoolVarData& d = getBdata(v);
-    d.setNullJustification();
   }
 
   d_assignedLiterals.resize(oldLim);
@@ -953,7 +932,7 @@ void PropCore::reassertUnits(size_t unitsToReassertLim)
     BoolVar v = getBoolVar(ru.d_unit);
     Assert(v != s_nullBoolVar) << "unit without a variable: " << ru.d_unit;
     Literal l(v, ru.d_sign);
-    assign(l, BJustification::mkAxiom());
+    assign(l);
     if (ru.d_relevant)
     {
       markAsRelevant(l);
@@ -1087,10 +1066,10 @@ Clause* PropCore::mkClause(size_t numLits, Literal* lits)
   switch (numLits)
   {
     case 0:
-      setConflict(BJustification::mkAxiom());
+      setConflict();
       Assert(inconsistent());
       return nullptr;
-    case 1: assign(lits[0], BJustification::mkAxiom()); return nullptr;
+    case 1: assign(lits[0]); return nullptr;
     case 2:
       if (useBinaryClauseOpt(lits[0], lits[1]))
       {
@@ -1100,11 +1079,11 @@ Clause* PropCore::mkClause(size_t numLits, Literal* lits)
         d_watches[(~l2).index()].insertLiteral(l1);
         if (getAssignment(l1) == L_FALSE)
         {
-          assign(l2, BJustification(~l1));
+          assign(l2);
         }
         else if (getAssignment(l2) == L_FALSE)
         {
-          assign(l1, BJustification(~l2));
+          assign(l1);
         }
         d_stats.d_numMkBinClause++;
         return nullptr;
@@ -1119,11 +1098,11 @@ Clause* PropCore::mkClause(size_t numLits, Literal* lits)
       addWatchLiteral(cls, 1);
       if (getAssignment(cls->getLiteral(0)) == L_FALSE)
       {
-        setConflict(BJustification(cls));
+        setConflict();
       }
       else if (getAssignment(cls->getLiteral(1)) == L_FALSE)
       {
-        assign(cls->getLiteral(0), BJustification(cls));
+        assign(cls->getLiteral(0));
       }
       return cls;
     }
@@ -1172,7 +1151,7 @@ bool PropCore::hostAssign(Literal l)
   {
     // this side derived l before the host asserted it
     case L_TRUE: return true;
-    case L_UNDEF: assign(l, BJustification::mkAxiom()); return true;
+    case L_UNDEF: assign(l); return true;
     // this side derived ~l, which the host contradicts
     case L_FALSE: return false;
   }
