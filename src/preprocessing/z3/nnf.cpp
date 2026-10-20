@@ -19,7 +19,7 @@
 #include "expr/node_builder.h"
 #include "expr/node_manager.h"
 #include "expr/skolem_manager.h"
-#include "z3/ast.h"
+#include "z3/util/ast.h"
 
 namespace cvc5::internal {
 namespace z3 {

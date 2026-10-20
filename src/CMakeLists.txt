@@ -1338,67 +1338,68 @@ libcvc5_add_sources(
   theory/uf/type_enumerator.h
   theory/valuation.cpp
   theory/valuation.h
-  z3/ast.cpp
-  z3/ast.h
-  z3/b_justification.h
-  z3/bool_var_data.h
-  z3/cg_table.cpp
-  z3/cg_table.h
-  z3/checker.cpp
-  z3/checker.h
-  z3/clause.cpp
-  z3/clause.h
-  z3/cost_function.cpp
-  z3/cost_function.h
-  z3/enode.cpp
-  z3/enode.h
-  z3/eq_justification.h
-  z3/fingerprints.cpp
-  z3/fingerprints.h
-  z3/host_core.cpp
-  z3/host_core.h
-  z3/internalizer.cpp
-  z3/justification.cpp
-  z3/justification.h
-  z3/mam.cpp
-  z3/mam.h
-  z3/params.cpp
-  z3/params.h
-  z3/prop_core.cpp
-  z3/prop_core.h
-  z3/qi_queue.cpp
-  z3/qi_queue.h
-  z3/quantifier_manager.cpp
-  z3/quantifier_manager.h
-  z3/quantifier_services.h
-  z3/quantifier_stat.cpp
-  z3/quantifier_stat.h
-  z3/relevancy.cpp
-  z3/relevancy.h
-  z3/relevancy_tracker.cpp
-  z3/relevancy_tracker.h
-  z3/shadow_feed.cpp
-  z3/shadow_feed.h
-  z3/shared_backend.cpp
-  z3/shared_backend.h
-  z3/smt_context.cpp
-  z3/smt_context.h
-  z3/statistics.h
-  z3/types.cpp
-  z3/types.h
+  z3/quantifiers/cg_table.cpp
+  z3/quantifiers/cg_table.h
+  z3/quantifiers/checker.cpp
+  z3/quantifiers/checker.h
+  z3/quantifiers/cost_function.cpp
+  z3/quantifiers/cost_function.h
+  z3/quantifiers/enode.cpp
+  z3/quantifiers/enode.h
+  z3/quantifiers/eq_justification.h
+  z3/quantifiers/fingerprints.cpp
+  z3/quantifiers/fingerprints.h
+  z3/quantifiers/host_core.cpp
+  z3/quantifiers/host_core.h
+  z3/quantifiers/internalizer.cpp
+  z3/quantifiers/mam.cpp
+  z3/quantifiers/mam.h
+  z3/quantifiers/qi_queue.cpp
+  z3/quantifiers/qi_queue.h
+  z3/quantifiers/quantifier_manager.cpp
+  z3/quantifiers/quantifier_manager.h
+  z3/quantifiers/quantifier_services.h
+  z3/quantifiers/quantifier_stat.cpp
+  z3/quantifiers/quantifier_stat.h
+  z3/quantifiers/shadow_feed.cpp
+  z3/quantifiers/shadow_feed.h
+  z3/quantifiers/shared_backend.cpp
+  z3/quantifiers/shared_backend.h
+  z3/quantifiers/smt_context.cpp
+  z3/quantifiers/smt_context.h
+  z3/quantifiers/z3_quantifiers_engine.cpp
+  z3/quantifiers/z3_quantifiers_engine.h
+  z3/relevancy/b_justification.h
+  z3/relevancy/bool_var_data.h
+  z3/relevancy/clause.cpp
+  z3/relevancy/clause.h
+  z3/relevancy/justification.h
+  z3/relevancy/prop_core.cpp
+  z3/relevancy/prop_core.h
+  z3/relevancy/relevancy.cpp
+  z3/relevancy/relevancy.h
+  z3/relevancy/relevancy_tracker.cpp
+  z3/relevancy/relevancy_tracker.h
+  z3/relevancy/theory_side.h
+  z3/relevancy/watch_list.cpp
+  z3/relevancy/watch_list.h
   z3/util/approx_set.h
+  z3/util/assertion_target.h
+  z3/util/ast.cpp
+  z3/util/ast.h
   z3/util/hash.h
   z3/util/literal.h
+  z3/util/params.cpp
+  z3/util/params.h
   z3/util/region.cpp
   z3/util/region.h
+  z3/util/statistics.h
   z3/util/tagged_ptr.h
   z3/util/trail.h
+  z3/util/types.cpp
+  z3/util/types.h
   z3/util/uint_set.h
   z3/util/util.h
-  z3/watch_list.cpp
-  z3/watch_list.h
-  z3/z3_quantifiers_engine.cpp
-  z3/z3_quantifiers_engine.h
 )
 
 # suppress deprecated warnings to not error in CI

@@ -20,7 +20,7 @@
 #include "theory/quantifiers/quantifiers_rewriter.h"
 #include "theory/trust_substitutions.h"
 #include "theory/valuation.h"
-#include "z3/z3_quantifiers_engine.h"
+#include "z3/quantifiers/z3_quantifiers_engine.h"
 
 using namespace cvc5::internal::kind;
 using namespace cvc5::context;

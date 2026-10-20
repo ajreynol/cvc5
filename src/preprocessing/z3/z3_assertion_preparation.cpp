@@ -15,14 +15,30 @@
 #include "options/z3_options.h"
 #include "preprocessing/assertion_pipeline.h"
 #include "preprocessing/preprocessing_pass_context.h"
-#include "z3/prop_core.h"
-#include "z3/shared_backend.h"
-#include "z3/smt_context.h"
-#include "z3/z3_quantifiers_engine.h"
+#include "theory/quantifiers/theory_quantifiers.h"
+#include "theory/theory_engine.h"
+#include "z3/util/assertion_target.h"
+#include "z3/util/ast.h"
 
 namespace cvc5::internal {
 namespace preprocessing {
 namespace passes {
+
+namespace {
+
+/** The core, through the quantifiers engine of the quantifiers theory. */
+z3::AssertionTarget* getTarget(TheoryEngine* te)
+{
+  theory::QuantifiersEngine* qe =
+      static_cast<theory::quantifiers::TheoryQuantifiers*>(
+          te->theoryOf(theory::THEORY_QUANTIFIERS))
+          ->getOwnedQuantifiersEngine();
+  z3::AssertionTarget* target = dynamic_cast<z3::AssertionTarget*>(qe);
+  Assert(target != nullptr);
+  return target;
+}
+
+}  // namespace
 
 Z3AssertionPreparation::Z3AssertionPreparation(
     PreprocessingPassContext* preprocContext)
@@ -34,21 +50,17 @@ Z3AssertionPreparation::Z3AssertionPreparation(
   if (options().z3.z3)
   {
     TheoryEngine* te = d_preprocContext->getTheoryEngine();
-    z3::Z3QuantifiersEngine::get(te)->resetCore(te);
+    getTarget(te)->resetCore(te);
   }
 }
 
 PreprocessingPassResult Z3AssertionPreparation::applyInternal(
     AssertionPipeline* assertions)
 {
-  z3::SharedBackend& backend =
-      z3::Z3QuantifiersEngine::get(d_preprocContext->getTheoryEngine())
-          ->getBackend();
-  z3::SmtContext& ctx = backend.getContext();
-  z3::PropCore& core = backend.getPropCore();
+  z3::AssertionTarget* target = getTarget(d_preprocContext->getTheoryEngine());
   // the canonical variables the core and the E-matching engine expect; see
-  // z3/ast.h
-  z3::QuantifierNormalizer& norm = ctx.getNormalizer();
+  // z3/util/ast.h
+  z3::QuantifierNormalizer& norm = target->getNormalizer();
   bool full = options().z3.z3AssertionPreparation;
   std::vector<Node> prepared;
   // The rest of the pipeline, applied to a formula already in negation
@@ -66,13 +78,13 @@ PreprocessingPassResult Z3AssertionPreparation::applyInternal(
     }
     // the form cvc5's theories take, and the skolem definitions it needs
     std::vector<Node> defs;
-    res = ctx.getCvc5Preprocessor()(res, defs);
+    res = target->preprocessForTheories(res, defs);
     for (const Node& d : defs)
     {
-      core.assertFormula(d);
+      target->assertPrepared(d);
       prepared.push_back(d);
     }
-    core.assertFormula(res);
+    target->assertPrepared(res);
     prepared.push_back(res);
   };
   for (const Node& a : assertions->ref())
