@@ -20,8 +20,6 @@
 #define CVC5__PREPROCESSING__Z3__Z3_ASSERTION_PREPARATION_H
 
 #include "preprocessing/preprocessing_pass.h"
-#include "preprocessing/z3/assertion_rewriter.h"
-#include "preprocessing/z3/connective_normalizer.h"
 #include "preprocessing/z3/nnf.h"
 
 namespace cvc5::internal {
@@ -35,13 +33,12 @@ namespace passes {
  * from Z3's own preprocessing (asserted_formulas::reduce()) and that cvc5's
  * preprocessing does not. In order, each assertion is converted to negation
  * normal form, naming the quantifiers below atoms, after which each
- * definition introduced by the naming and then the formula itself is
- * rewritten, normalized, rewritten again, put in the form cvc5's theories
- * take, and asserted to the core. The prepared formulas replace the
+ * definition introduced by the naming and then the formula itself is given
+ * the canonical variables, put in the form cvc5's theories take, and
+ * asserted to the core. The prepared formulas replace the
  * assertions, so that cvc5 converts the formulas the core takes.
  *
- * With --no-z3-assertion-preparation, only what the core cannot do without
- * is kept: the canonical variables, and the form cvc5's theories take.
+ * With --no-z3-assertion-preparation, the negation normal form is skipped.
  */
 class Z3AssertionPreparation : public PreprocessingPass
 {
@@ -63,14 +60,6 @@ class Z3AssertionPreparation : public PreprocessingPass
    * position, as the core relies on.
    */
   z3::Nnf d_nnf;
-  /** The elimination of the connectives the core does not internalize. */
-  z3::ConnectiveNormalizer d_connNormalizer;
-  /**
-   * Z3's asserted_formulas::reduce() rewrites every formula right after NNF
-   * and again after pattern inference; nnf_cnf rewrites each formula it
-   * produces as well.
-   */
-  z3::AssertionRewriter d_assertionRewriter;
 };
 
 }  // namespace passes

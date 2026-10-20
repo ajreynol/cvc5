@@ -14,7 +14,7 @@ only lemmas, it never explains anything, and keeps no justifications.
 | `src/z3/util/` | Data structures and the term interface: literals, regions, trails, hashing, `types.h`, `ast.h` (incl. `QuantifierNormalizer`), `params`, `statistics`, and `AssertionTarget`, the interface the preprocessing pass uses | nothing outside `z3/util/` |
 | `src/z3/relevancy/` | The Boolean side: `PropCore` (assignment, clauses, watch lists, propagation), `RelevancyPropagator`, `RelevancyTracker` (the `TheoryEngineModule` that hands it every asserted literal), and `TheorySide`, the interface through which it reaches the theory side | `z3/util/` only |
 | `src/z3/quantifiers/` | The theory side and the cvc5 integration: `SmtContext` (E-graph, internalizer), `mam` (E-matching), `QiQueue`, the checker, the quantifier manager, `HostCore` (which owns the core), `ShadowFeed`, `Z3QuantifiersEngine` | anything |
-| `src/preprocessing/z3/` | The `z3-prep` pass (`Z3AssertionPreparation`) and what only it uses: `Nnf`, `ConnectiveNormalizer`, `AssertionRewriter` | `z3/util/` only |
+| `src/preprocessing/z3/` | The `z3-prep` pass (`Z3AssertionPreparation`) and what only it uses: `Nnf` | `z3/util/` only |
 
 The rules are kept by two interfaces:
 
@@ -58,8 +58,8 @@ as of this README:
 | `src/z3/util/` | 17 | 1479 | 556 | 352 |
 | `src/z3/relevancy/` | 12 | 2278 | 521 | 374 |
 | `src/z3/quantifiers/` | 27 | 8532 | 1509 | 1059 |
-| `src/preprocessing/z3/` | 8 | 559 | 250 | 82 |
-| **Total** | 64 | **12848** | 2836 | 1867 |
+| `src/preprocessing/z3/` | 4 | 401 | 165 | 48 |
+| **Total** | 60 | **12690** | 2751 | 1833 |
 
 The rest of cvc5 changes by 260 added and 30 deleted lines over 17 C++ files,
 most of them in `smt/set_defaults.cpp` (the capability checks) and

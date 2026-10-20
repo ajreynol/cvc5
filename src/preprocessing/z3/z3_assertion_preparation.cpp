@@ -43,9 +43,7 @@ z3::AssertionTarget* getTarget(TheoryEngine* te)
 Z3AssertionPreparation::Z3AssertionPreparation(
     PreprocessingPassContext* preprocContext)
     : PreprocessingPass(preprocContext, "z3-prep"),
-      d_nnf(nodeManager()),
-      d_connNormalizer(nodeManager()),
-      d_assertionRewriter(d_env)
+      d_nnf(nodeManager())
 {
   if (options().z3.z3)
   {
@@ -66,16 +64,7 @@ PreprocessingPassResult Z3AssertionPreparation::applyInternal(
   // The rest of the pipeline, applied to a formula already in negation
   // normal form.
   auto assertNnf = [&](Node res) {
-    if (full)
-    {
-      res = d_assertionRewriter.rewrite(res);
-      res = norm.normalize(d_connNormalizer.normalize(res));
-      res = d_assertionRewriter.rewrite(res);
-    }
-    else
-    {
-      res = norm.normalize(res);
-    }
+    res = norm.normalize(res);
     // the form cvc5's theories take, and the skolem definitions it needs
     std::vector<Node> defs;
     res = target->preprocessForTheories(res, defs);

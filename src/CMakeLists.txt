@@ -139,10 +139,6 @@ libcvc5_add_sources(
   preprocessing/util/boolean_simplification.h
   preprocessing/util/ite_utilities.cpp
   preprocessing/util/ite_utilities.h
-  preprocessing/z3/assertion_rewriter.cpp
-  preprocessing/z3/assertion_rewriter.h
-  preprocessing/z3/connective_normalizer.cpp
-  preprocessing/z3/connective_normalizer.h
   preprocessing/z3/nnf.cpp
   preprocessing/z3/nnf.h
   preprocessing/z3/z3_assertion_preparation.cpp
