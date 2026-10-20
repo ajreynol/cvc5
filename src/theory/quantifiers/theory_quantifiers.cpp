@@ -42,12 +42,11 @@ TheoryQuantifiers::TheoryQuantifiers(Env& env,
       d_qengine(nullptr)
 {
   // construct the quantifiers engine: with --z3, the one of the ported Z3
-  // core, which takes every fact and is checked even without new ones
+  // core, which is checked even without new facts
   if (options().z3.z3)
   {
     d_qengine.reset(new z3::Z3QuantifiersEngine(
         env, out, d_qstate, d_qreg, d_treg, d_qim, d_pnm));
-    d_observeAllFacts = true;
     d_checkEarlyExit = false;
   }
   else
@@ -115,7 +114,7 @@ void TheoryQuantifiers::presolve()
   {
     getQuantifiersEngine()->presolve();
   }
-  else if (d_observeAllFacts)
+  else if (options().z3.z3)
   {
     // the ported core (--z3) is presolved in every logic
     d_qengine->presolve();
@@ -155,12 +154,33 @@ void TheoryQuantifiers::ppNotifyAssertions(const std::vector<Node>& assertions)
   }
 }
 
+void TheoryQuantifiers::computeRelevantTerms(std::set<Node>& termSet)
+{
+  if (!options().z3.z3)
+  {
+    return;
+  }
+  const context::CDList<Node>* lits =
+      static_cast<z3::Z3QuantifiersEngine*>(d_qengine.get())
+          ->getAssertedLiterals();
+  if (lits == nullptr)
+  {
+    return;
+  }
+  const std::set<Kind>& irrKinds =
+      d_theoryState->getModel()->getIrrelevantKinds();
+  for (const Node& lit : *lits)
+  {
+    collectTerms(lit, termSet, irrKinds);
+  }
+}
+
 bool TheoryQuantifiers::collectModelValues(
     TheoryModel* m, CVC5_UNUSED const std::set<Node>& termSet)
 {
-  if (d_observeAllFacts)
+  if (options().z3.z3)
   {
-    // the facts are those of every theory (--z3)
+    // the ported core builds no model of the quantified formulas
     return true;
   }
   for (assertions_iterator i = facts_begin(); i != facts_end(); ++i)

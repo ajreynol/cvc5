@@ -55,7 +55,16 @@ Z3QuantifiersEngine* Z3QuantifiersEngine::get(TheoryEngine* te)
           ->getOwnedQuantifiersEngine());
 }
 
-void Z3QuantifiersEngine::finishInit(TheoryEngine* /*te*/) {}
+void Z3QuantifiersEngine::finishInit(TheoryEngine* te)
+{
+  d_tracker = std::make_unique<RelevancyTracker>(d_env, te, *d_core);
+  te->addModule(d_tracker.get());
+}
+
+const context::CDList<Node>* Z3QuantifiersEngine::getAssertedLiterals() const
+{
+  return d_tracker == nullptr ? nullptr : &d_tracker->getFacts();
+}
 
 void Z3QuantifiersEngine::presolve()
 {
@@ -69,6 +78,8 @@ void Z3QuantifiersEngine::check(theory::Theory::Effort e)
 {
   if (e != theory::Theory::EFFORT_LAST_CALL)
   {
+    // the literals asserted since the last check, then the core
+    d_tracker->flush(d_qstate);
     d_core->check(e);
   }
 }
@@ -85,9 +96,8 @@ void Z3QuantifiersEngine::preRegisterQuantifier(Node q)
 
 void Z3QuantifiersEngine::assertFact(CVC5_UNUSED TNode atom,
                                      CVC5_UNUSED bool pol,
-                                     TNode fact)
+                                     CVC5_UNUSED TNode fact)
 {
-  d_core->assertFact(fact);
 }
 
 void Z3QuantifiersEngine::eqNotifyMerge(TNode t1, TNode t2)

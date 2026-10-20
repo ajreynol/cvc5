@@ -1375,6 +1375,8 @@ libcvc5_add_sources(
   z3/quantifier_stat.h
   z3/relevancy.cpp
   z3/relevancy.h
+  z3/relevancy_tracker.cpp
+  z3/relevancy_tracker.h
   z3/shadow_feed.cpp
   z3/shadow_feed.h
   z3/shared_backend.cpp

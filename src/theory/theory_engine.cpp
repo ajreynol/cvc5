@@ -112,6 +112,7 @@ std::string getTheoryString(theory::TheoryId id)
 void TheoryEngine::finishInit()
 {
   d_modules.clear();
+  d_factModules.clear();
   Trace("theory") << "Begin TheoryEngine::finishInit" << std::endl;
   // NOTE: This seems to be required since
   // theory::TheoryTraits<THEORY>::isParametric cannot be accessed without
@@ -194,10 +195,6 @@ void TheoryEngine::finishInit()
     {
       d_checkWithoutFacts = true;
     }
-    if (isTheoryEnabled(theoryId) && t->observesAllFacts())
-    {
-      d_factObservers.push_back(t);
-    }
   }
 
   if (options().parallel.computePartitions > 1)
@@ -218,6 +215,15 @@ void TheoryEngine::finishInit()
     d_modules.push_back(d_userPlugins.back().get());
   }
   Trace("theory") << "End TheoryEngine::finishInit" << std::endl;
+}
+
+void TheoryEngine::addModule(TheoryEngineModule* tem)
+{
+  d_modules.push_back(tem);
+  if (tem->needsFacts())
+  {
+    d_factModules.push_back(tem);
+  }
 }
 
 TheoryEngine::TheoryEngine(Env& env)
@@ -1258,14 +1264,10 @@ void TheoryEngine::assertFact(TNode literal)
   bool polarity = literal.getKind() != Kind::NOT;
   TNode atom = polarity ? literal : literal[0];
 
-  // the theories that observe every fact get a copy of those of the others
-  for (Theory* t : d_factObservers)
+  // notify the modules that track every fact
+  for (TheoryEngineModule* tem : d_factModules)
   {
-    if (t->getId() != d_env.theoryOf(atom))
-    {
-      t->assertFact(literal, false);
-      d_factsAsserted = true;
-    }
+    tem->notifyFact(literal);
   }
 
   if (logicInfo().isSharingEnabled())

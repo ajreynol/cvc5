@@ -21,6 +21,7 @@
 
 #include "theory/quantifiers_engine.h"
 #include "z3/host_core.h"
+#include "z3/relevancy_tracker.h"
 #include "z3/shared_backend.h"
 
 namespace cvc5::internal {
@@ -36,10 +37,10 @@ namespace z3 {
  * the ported core. cvc5's own theories do the ground reasoning, with their
  * equality engines and theory combination; the core matches and instantiates
  * over a shadow of the ground state:
- * - it receives a copy of every literal the SAT solver asserts, for its
- *   E-graph and for relevancy (the quantifiers theory observes every fact),
- *   and the equalities cvc5's theories derive, through the master equality
- *   engine, which notifies this engine (ShadowFeed);
+ * - it receives every literal the SAT solver asserts, for its E-graph and
+ *   for relevancy (RelevancyTracker), and the equalities cvc5's theories
+ *   derive, through the master equality engine, which notifies this engine
+ *   (ShadowFeed);
  * - it sends lemmas only (instances, conflicts and splits), which need no
  *   explanation, and reports no propagations;
  * - the formulas it asserts go through cvc5's preprocessing first.
@@ -71,6 +72,11 @@ class Z3QuantifiersEngine : public theory::QuantifiersEngine,
    * made.
    */
   void resetCore(TheoryEngine* te);
+  /**
+   * The literals the SAT solver asserted in the current context, or null
+   * before finishInit (in quantifier-free logics).
+   */
+  const context::CDList<Node>* getAssertedLiterals() const;
   /** The ported core, which Z3AssertionPreparation asserts the input to. */
   SharedBackend& getBackend() { return d_backend; }
 
@@ -89,7 +95,10 @@ class Z3QuantifiersEngine : public theory::QuantifiersEngine,
   void check(theory::Theory::Effort e) override;
   void notifyCombineTheories() override {}
   void preRegisterQuantifier(Node q) override;
-  /** Give the fact to the core. */
+  /**
+   * Nothing: the core takes the quantified formulas asserted to this engine
+   * with every other literal, from the relevancy tracker.
+   */
   void assertFact(TNode atom, bool pol, TNode fact) override;
   void eqNotifyNewClass(CVC5_UNUSED TNode t) override {}
   /** Give the merge to the feed of the shadow. */
@@ -119,7 +128,10 @@ class Z3QuantifiersEngine : public theory::QuantifiersEngine,
    * core records no instantiations, and uses no term pools or oracles.
    */
   [[noreturn]] static void unsupported(const char* what);
-  /** Nothing to initialize, as no module is made. */
+  /**
+   * Make the relevancy tracker, the one module of the theory engine; none of
+   * the modules of cvc5's quantifiers engine are made.
+   */
   void finishInit(TheoryEngine* te) override;
 
   /** The output channel of the quantifiers theory. */
@@ -128,6 +140,8 @@ class Z3QuantifiersEngine : public theory::QuantifiersEngine,
   SharedBackend d_backend;
   /** The core under cvc5's prop engine. */
   std::unique_ptr<HostCore> d_core;
+  /** Gives the core the literals the SAT solver asserts. */
+  std::unique_ptr<RelevancyTracker> d_tracker;
 };
 
 }  // namespace z3

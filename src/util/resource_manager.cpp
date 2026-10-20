@@ -228,6 +228,7 @@ void ResourceManager::spendResource(uint64_t amount)
 void ResourceManager::spendResource(Resource r)
 {
   std::size_t i = static_cast<std::size_t>(r);
+  Trace("limit-kind") << "SPENDKIND " << r << std::endl;
   Assert(d_resourceWeights.size() > i);
   d_statistics->d_resourceSteps << r;
   spendResource(d_resourceWeights[i]);

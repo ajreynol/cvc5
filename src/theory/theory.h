@@ -195,11 +195,6 @@ class Theory : protected EnvObj
    * asserted.
    */
   bool d_checkEarlyExit;
-  /**
-   * Whether this theory also receives the literals the SAT solver asserts to
-   * the other theories; see observesAllFacts.
-   */
-  bool d_observeAllFacts;
 
   /**
    * Are proofs enabled?
@@ -502,14 +497,6 @@ class Theory : protected EnvObj
    * fact was asserted since the last check (d_checkEarlyExit is false).
    */
   bool checksWithoutFacts() const { return !d_checkEarlyExit; }
-  /**
-   * Whether this theory also receives, in its fact queue, every literal the
-   * SAT solver asserts to another theory (d_observeAllFacts is true). Such a
-   * theory must not propagate literals it explains with those facts, since
-   * TheoryEngine explains a propagation from the facts asserted to the
-   * propagating theory.
-   */
-  bool observesAllFacts() const { return d_observeAllFacts; }
   /**
    * Pre-check, called before the fact queue of the theory is processed.
    * If this method returns false, then the theory will process its fact

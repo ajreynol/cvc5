@@ -72,7 +72,6 @@ Theory::Theory(TheoryId id,
       d_pnm(d_env.isTheoryProofProducing() ? d_env.getProofNodeManager()
                                            : nullptr),
       d_checkEarlyExit(true),
-      d_observeAllFacts(false),
       d_id(id),
       d_facts(d_env.getContext()),
       d_factsHead(d_env.getContext(), 0),
