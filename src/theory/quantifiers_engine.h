@@ -115,23 +115,23 @@ class QuantifiersEngine : protected EnvObj
   bool getNameForQuant(Node q, Node& name, bool req = true) const;
   //----------user interface for instantiations (see quantifiers/instantiate.h)
   /** get list of quantified formulas that were instantiated */
-  void getInstantiatedQuantifiedFormulas(std::vector<Node>& qs);
+  virtual void getInstantiatedQuantifiedFormulas(std::vector<Node>& qs);
   /** get instantiation term vectors */
-  void getInstantiationTermVectors(Node q,
+  virtual void getInstantiationTermVectors(Node q,
                                    std::vector<std::vector<Node> >& tvecs);
-  void getInstantiationTermVectors(
+  virtual void getInstantiationTermVectors(
       std::map<Node, std::vector<std::vector<Node> > >& insts);
   /**
    * Get instantiations for quantified formula q. If q is (forall ((x T)) (P
    * x)), this is a list of the form (P t1) ... (P tn) for ground terms ti.
    */
-  void getInstantiations(Node q, std::vector<Node>& insts);
+  virtual void getInstantiations(Node q, std::vector<Node>& insts);
   /**
    * Get skolemization vectors, where for each quantified formula that was
    * skolemized, this is the list of skolems that were used to witness the
    * negation of that quantified formula.
    */
-  void getSkolemTermVectors(std::map<Node, std::vector<Node> >& sks) const;
+  virtual void getSkolemTermVectors(std::map<Node, std::vector<Node> >& sks) const;
 
   /** get synth solutions
    *
@@ -149,9 +149,9 @@ class QuantifiersEngine : protected EnvObj
    */
   bool getSynthSolutions(std::map<Node, std::map<Node, Node> >& sol_map);
   /** Declare pool */
-  void declarePool(Node p, const std::vector<Node>& initValue);
+  virtual void declarePool(Node p, const std::vector<Node>& initValue);
   /** Declare oracle fun */
-  void declareOracleFun(Node f);
+  virtual void declareOracleFun(Node f);
   /** Get the list of all declared oracle functions */
   std::vector<Node> getOracleFuns() const;
   //----------end user interface for instantiations

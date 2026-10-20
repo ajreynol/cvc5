@@ -12,6 +12,7 @@
 
 #include "z3/z3_quantifiers_engine.h"
 
+#include "base/modal_exception.h"
 #include "theory/output_channel.h"
 #include "theory/quantifiers/theory_quantifiers.h"
 #include "theory/theory_engine.h"
@@ -19,7 +20,6 @@
 #include "theory/quantifiers/quantifiers_state.h"
 #include "theory/quantifiers/skolemize.h"
 #include "z3/shadow_feed.h"
-#include "z3/smt_context.h"
 
 namespace cvc5::internal {
 namespace z3 {
@@ -35,8 +35,7 @@ Z3QuantifiersEngine::Z3QuantifiersEngine(
     : QuantifiersEngine(env, qs, qr, tr, qim, pnm),
       d_out(out),
       d_backend(env),
-      d_core(std::make_unique<HostCore>(env, d_backend, *this)),
-      d_prep(env)
+      d_core(std::make_unique<HostCore>(env, d_backend, *this))
 {
 }
 
@@ -44,13 +43,6 @@ void Z3QuantifiersEngine::resetCore(TheoryEngine* te)
 {
   d_backend.resetContext();
   d_core->reset(te);
-}
-
-void Z3QuantifiersEngine::prepareAssertions(const std::vector<Node>& assertions,
-                                            std::vector<Node>& prepared)
-{
-  d_prep.apply(
-      d_backend.getContext(), d_backend.getPropCore(), assertions, prepared);
 }
 
 Z3QuantifiersEngine::~Z3QuantifiersEngine() {}
@@ -113,6 +105,54 @@ void Z3QuantifiersEngine::lemma(const Node& lem, theory::LemmaProperty p)
 void Z3QuantifiersEngine::setModelUnsound(theory::IncompleteId id)
 {
   d_out.setModelUnsound(id);
+}
+
+void Z3QuantifiersEngine::unsupported(const char* what)
+{
+  std::stringstream ss;
+  ss << what << " are not supported with --z3";
+  throw ModalException(ss.str());
+}
+
+void Z3QuantifiersEngine::getInstantiatedQuantifiedFormulas(
+    CVC5_UNUSED std::vector<Node>& qs)
+{
+  unsupported("instantiations");
+}
+
+void Z3QuantifiersEngine::getInstantiationTermVectors(
+    CVC5_UNUSED Node q, CVC5_UNUSED std::vector<std::vector<Node>>& tvecs)
+{
+  unsupported("instantiations");
+}
+
+void Z3QuantifiersEngine::getInstantiationTermVectors(
+    CVC5_UNUSED std::map<Node, std::vector<std::vector<Node>>>& insts)
+{
+  unsupported("instantiations");
+}
+
+void Z3QuantifiersEngine::getInstantiations(CVC5_UNUSED Node q,
+                                            CVC5_UNUSED std::vector<Node>& insts)
+{
+  unsupported("instantiations");
+}
+
+void Z3QuantifiersEngine::getSkolemTermVectors(
+    CVC5_UNUSED std::map<Node, std::vector<Node>>& sks) const
+{
+  unsupported("instantiations");
+}
+
+void Z3QuantifiersEngine::declarePool(
+    CVC5_UNUSED Node p, CVC5_UNUSED const std::vector<Node>& initValue)
+{
+  unsupported("term pools");
+}
+
+void Z3QuantifiersEngine::declareOracleFun(CVC5_UNUSED Node f)
+{
+  unsupported("oracle functions");
 }
 
 Node Z3QuantifiersEngine::getSkolemization(TNode q)

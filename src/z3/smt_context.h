@@ -49,7 +49,6 @@
 #include "z3/enode.h"
 #include "z3/eq_justification.h"
 #include "z3/justification.h"
-#include "z3/nnf.h"
 #include "z3/params.h"
 #include "z3/prop_core.h"
 #include "z3/quantifier_manager.h"
@@ -300,16 +299,10 @@ class SmtContext final : protected EnvObj, public QuantifierServices
   /** The canonicalizer for quantifiers; see z3/ast.h. */
   QuantifierNormalizer& getNormalizer() { return d_normalizer; }
 
-  ConnectiveNormalizer& getConnectiveNormalizer() { return d_connNormalizer; }
-
-  AssertionRewriter& getAssertionRewriter() { return d_assertionRewriter; }
-
-  Nnf& getNnf() { return d_nnf; }
-
   /**
    * The preprocessing of cvc5's own theories: it maps a formula to the form
    * cvc5's theories take, adding to defs the definitions of the skolems
-   * it introduces. The input (AssertionPreparation) and the instances
+   * it introduces. The input (Z3AssertionPreparation) and the instances
    * (internalizeInstance) go through it before the core asserts them and
    * hands them to cvc5, so that both see the same atoms.
    */
@@ -616,9 +609,6 @@ class SmtContext final : protected EnvObj, public QuantifierServices
   PropCore d_prop;
   Region d_region;
   QuantifierNormalizer d_normalizer;
-  ConnectiveNormalizer d_connNormalizer;
-  AssertionRewriter d_assertionRewriter;
-  Nnf d_nnf;
   /** See setCvc5Preprocessor. */
   Cvc5Preprocessor d_cvc5Preprocessor;
   /** See setSkolemizer. */

@@ -10,7 +10,7 @@
  * Negation normal form with skolemization.
  */
 
-#include "z3/nnf.h"
+#include "preprocessing/z3/nnf.h"
 
 #include <algorithm>
 #include <unordered_set>

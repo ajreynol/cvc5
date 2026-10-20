@@ -23,8 +23,8 @@
 
 #include "cvc5_private.h"
 
-#ifndef CVC5__Z3__NNF_H
-#define CVC5__Z3__NNF_H
+#ifndef CVC5__PREPROCESSING__Z3__NNF_H
+#define CVC5__PREPROCESSING__Z3__NNF_H
 
 #include <unordered_map>
 #include <vector>
@@ -89,4 +89,4 @@ class Nnf
 }  // namespace z3
 }  // namespace cvc5::internal
 
-#endif /* CVC5__Z3__NNF_H */
+#endif /* CVC5__PREPROCESSING__Z3__NNF_H */

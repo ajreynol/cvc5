@@ -36,7 +36,6 @@
 #include "options/proof_options.h"
 #include "options/quantifiers_options.h"
 #include "options/smt_options.h"
-#include "options/z3_options.h"
 #include "options/theory_options.h"
 #include "preprocessing/passes/synth_rew_rules.h"
 #include "printer/printer.h"
@@ -787,7 +786,6 @@ std::shared_ptr<ProofNode> SolverEngine::getAvailableSatProof()
 QuantifiersEngine* SolverEngine::getAvailableQuantifiersEngine(
     const char* c) const
 {
-  checkZ3Supports(c);
   QuantifiersEngine* qe = d_smtSolver->getQuantifiersEngine();
   if (qe == nullptr)
   {
@@ -822,10 +820,6 @@ Result SolverEngine::checkSat(const Node& assumption)
 Result SolverEngine::checkSat(const std::vector<Node>& assumptions)
 {
   beginCall(true);
-  if (!assumptions.empty())
-  {
-    checkZ3Supports("check-sat-assuming");
-  }
   Result res = checkSatInternal(assumptions);
   endCall();
   return res;
@@ -2188,7 +2182,6 @@ Node SolverEngine::getQuantifierElimination(Node q, bool doFull)
 {
   Assert(d_state->getStatusSolver() == nullptr);
   beginCall(true);
-  checkZ3Supports("get-qe");
   Node result = d_quantElimSolver->getQuantifierElimination(
       q, doFull, d_isInternalSubsolver);
   endCall();
@@ -2314,25 +2307,9 @@ void SolverEngine::getDifficultyMap(std::map<Node, Node>& dmap)
   d_pfManager->translateDifficultyMap(dmap, d_smtSolver->getAssertions());
 }
 
-void SolverEngine::checkZ3Supports(const char* cmd) const
-{
-  // Options the ported Z3 core does not support are refused when the
-  // defaults are set, but these are commands, which can only be refused here.
-  // The alternative to refusing is a wrong answer, read from state that the
-  // core does not use for its search.
-  if (!options().z3.z3)
-  {
-    return;
-  }
-  std::stringstream ss;
-  ss << cmd << " is not supported by the selected search engine";
-  throw ModalException(ss.str());
-}
-
 void SolverEngine::push()
 {
   beginCall();
-  checkZ3Supports("push");
   Trace("smt") << "SMT push()" << endl;
   d_smtDriver->refreshAssertions();
   d_ctxManager->userPush();
@@ -2341,7 +2318,6 @@ void SolverEngine::push()
 void SolverEngine::pop()
 {
   beginCall();
-  checkZ3Supports("pop");
   Trace("smt") << "SMT pop()" << endl;
   d_ctxManager->userPop();
 

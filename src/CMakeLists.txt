@@ -125,8 +125,6 @@ libcvc5_add_sources(
   preprocessing/passes/synth_rew_rules.h
   preprocessing/passes/theory_preprocess.cpp
   preprocessing/passes/theory_preprocess.h
-  preprocessing/passes/z3_assertion_preparation.cpp
-  preprocessing/passes/z3_assertion_preparation.h
   preprocessing/passes/unconstrained_simplifier.cpp
   preprocessing/passes/unconstrained_simplifier.h
   preprocessing/passes/normalize.cpp
@@ -141,6 +139,14 @@ libcvc5_add_sources(
   preprocessing/util/boolean_simplification.h
   preprocessing/util/ite_utilities.cpp
   preprocessing/util/ite_utilities.h
+  preprocessing/z3/assertion_rewriter.cpp
+  preprocessing/z3/assertion_rewriter.h
+  preprocessing/z3/connective_normalizer.cpp
+  preprocessing/z3/connective_normalizer.h
+  preprocessing/z3/nnf.cpp
+  preprocessing/z3/nnf.h
+  preprocessing/z3/z3_assertion_preparation.cpp
+  preprocessing/z3/z3_assertion_preparation.h
   printer/ast/ast_printer.cpp
   printer/ast/ast_printer.h
   printer/enum_to_string.cpp
@@ -1332,8 +1338,6 @@ libcvc5_add_sources(
   theory/uf/type_enumerator.h
   theory/valuation.cpp
   theory/valuation.h
-  z3/assertion_preparation.cpp
-  z3/assertion_preparation.h
   z3/ast.cpp
   z3/ast.h
   z3/b_justification.h
@@ -1358,8 +1362,6 @@ libcvc5_add_sources(
   z3/justification.h
   z3/mam.cpp
   z3/mam.h
-  z3/nnf.cpp
-  z3/nnf.h
   z3/params.cpp
   z3/params.h
   z3/prop_core.cpp

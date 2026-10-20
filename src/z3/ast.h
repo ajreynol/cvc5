@@ -178,52 +178,6 @@ uint32_t getDepth(TNode n);
  * Rewrites quantifiers into the canonical de Bruijn-level form the core and
  * the E-matching engine expect. See the comment at the top of this file.
  */
-/**
- * Rewrites the Boolean connectives Z3's rewriter eliminates before
- * internalization: (=> a b) becomes (or (not a) b), and (xor a b) becomes
- * (not (= a b)). The internalizer's notion of a "gate" is Z3's, which does
- * not cover these two, so they have to be gone by the time it runs.
- */
-class ConnectiveNormalizer
-{
- public:
-  ConnectiveNormalizer(NodeManager* nm) : d_nm(nm) {}
-
-  Node normalize(TNode n);
-
- private:
-  NodeManager* d_nm;
-  std::unordered_map<Node, Node> d_cache;
-};
-
-/**
- * Runs the rewriter over an assertion, which is Z3's
- * asserted_formulas::m_reduce_asserted_formulas. Z3's reduce() applies it
- * twice -- immediately after NNF and again after pattern inference -- and
- * nnf_cnf applies it to every formula it produces before pushing it. Without
- * it the structure that NNF and skolemization build is never simplified: a
- * disjunct that is itself a disjunction stays nested and costs the core an
- * auxiliary Boolean variable and a gate, a conjunct of a conjunction likewise,
- * and nothing that has become constant is folded away.
- *
- * The ground parts go to cvc5's rewriter. A quantifier is rebuilt from its
- * rewritten body rather than handed to the rewriter whole, because cvc5's
- * quantifiers rewriter restructures quantifiers -- miniscoping, variable
- * elimination, prenexing -- and in Z3 that is the job of separate passes of
- * reduce(), each with its own parameter, not of the rewriter.
- */
-class AssertionRewriter
-{
- public:
-  AssertionRewriter(Env& env) : d_env(env) {}
-
-  Node rewrite(TNode n);
-
- private:
-  Env& d_env;
-  std::unordered_map<Node, Node> d_cache;
-};
-
 class QuantifierNormalizer
 {
  public:

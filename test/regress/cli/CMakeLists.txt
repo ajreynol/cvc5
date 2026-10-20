@@ -2796,6 +2796,7 @@ set(regress_0_tests
   regress0/z3/arith-03.smt2
   regress0/z3/arith-04.smt2
   regress0/z3/bv-01.smt2
+  regress0/z3/check-sat-assuming.smt2
   regress0/z3/datatypes-01.smt2
   regress0/z3/datatypes-02.smt2
   regress0/z3/datatypes-03.smt2
@@ -2817,18 +2818,15 @@ set(regress_0_tests
   regress0/z3/ematch-repeated-var.smt2
   regress0/z3/hosted-dt-split.smt2
   regress0/z3/hosted-quant.smt2
-  regress0/z3/incremental-checks.smt2
+  regress0/z3/qe-returns-input.smt2
   regress0/z3/quant-generation.smt2
   regress0/z3/quant-incomplete-unknown.smt2
-  regress0/z3/reset-assertions.smt2
-  regress0/z3/unsupported-assumptions.smt2
   regress0/z3/unsupported-declare-pool.smt2
   regress0/z3/unsupported-deep-restart.smt2
+  regress0/z3/unsupported-incremental.smt2
   regress0/z3/unsupported-instantiations.smt2
   regress0/z3/unsupported-models.smt2
   regress0/z3/unsupported-proofs.smt2
-  regress0/z3/unsupported-push.smt2
-  regress0/z3/unsupported-qe.smt2
   regress0/z3/unsupported-unsat-cores.smt2
 )
 

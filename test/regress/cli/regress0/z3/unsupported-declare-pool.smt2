@@ -1,5 +1,5 @@
 ; COMMAND-LINE: --z3
-; EXPECT: (error "declareTermPool is not supported by the selected search engine")
+; EXPECT: (error "term pools are not supported with --z3")
 ; EXIT: 1
 ; DISABLE-TESTER: model
 ; DISABLE-TESTER: proof

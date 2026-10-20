@@ -20,7 +20,6 @@
 #include <memory>
 
 #include "theory/quantifiers_engine.h"
-#include "z3/assertion_preparation.h"
 #include "z3/host_core.h"
 #include "z3/shared_backend.h"
 
@@ -72,12 +71,8 @@ class Z3QuantifiersEngine : public theory::QuantifiersEngine,
    * made.
    */
   void resetCore(TheoryEngine* te);
-  /**
-   * Prepare the preprocessed assertions for the core (AssertionPreparation),
-   * and assert them to it. The prepared formulas are those cvc5 converts.
-   */
-  void prepareAssertions(const std::vector<Node>& assertions,
-                         std::vector<Node>& prepared);
+  /** The ported core, which Z3AssertionPreparation asserts the input to. */
+  SharedBackend& getBackend() { return d_backend; }
 
   //--------------------------------------------- the quantifiers engine
   /** None: the model builder of TheoryEngine is the default one. */
@@ -100,6 +95,18 @@ class Z3QuantifiersEngine : public theory::QuantifiersEngine,
   /** Give the merge to the feed of the shadow. */
   void eqNotifyMerge(TNode t1, TNode t2) override;
 
+  //------------------------- the commands, which the core does not support
+  void getInstantiatedQuantifiedFormulas(std::vector<Node>& qs) override;
+  void getInstantiationTermVectors(
+      Node q, std::vector<std::vector<Node>>& tvecs) override;
+  void getInstantiationTermVectors(
+      std::map<Node, std::vector<std::vector<Node>>>& insts) override;
+  void getInstantiations(Node q, std::vector<Node>& insts) override;
+  void getSkolemTermVectors(
+      std::map<Node, std::vector<Node>>& sks) const override;
+  void declarePool(Node p, const std::vector<Node>& initValue) override;
+  void declareOracleFun(Node f) override;
+
   //------------------------------------- HostCoreOutput, through the channel
   void lemma(const Node& lem, theory::LemmaProperty p) override;
   void setModelUnsound(theory::IncompleteId id) override;
@@ -107,6 +114,11 @@ class Z3QuantifiersEngine : public theory::QuantifiersEngine,
   Node getSkolemization(TNode q) override;
 
  private:
+  /**
+   * Throw a ModalException for what, which the core does not support: the
+   * core records no instantiations, and uses no term pools or oracles.
+   */
+  [[noreturn]] static void unsupported(const char* what);
   /** Nothing to initialize, as no module is made. */
   void finishInit(TheoryEngine* te) override;
 
@@ -116,8 +128,6 @@ class Z3QuantifiersEngine : public theory::QuantifiersEngine,
   SharedBackend d_backend;
   /** The core under cvc5's prop engine. */
   std::unique_ptr<HostCore> d_core;
-  /** The preparation of assertions for the core. */
-  AssertionPreparation d_prep;
 };
 
 }  // namespace z3

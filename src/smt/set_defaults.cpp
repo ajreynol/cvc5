@@ -1112,13 +1112,19 @@ bool SetDefaults::usesInputConversion(const Options& opts,
 
 void SetDefaults::checkZ3Capabilities(Options& opts) const
 {
-  // What the ported core does support is one or more check-sat calls with
-  // assertions between them, and reset-assertions. Everything below either
+  // What the ported core does support is a single check-sat, outside of
+  // incremental mode. Everything below either
   // has no implementation in the port or would be answered out of cvc5's
   // quantifiers engine, which the port replaces and which therefore has seen
   // none of the quantified formulas.
   const char* unsupported = nullptr;
-  if (opts.smt.produceModels || opts.smt.checkModels
+  if (opts.base.incrementalSolving)
+  {
+    // The core does not follow user scopes (push, pop, the assumptions of
+    // check-sat-assuming) or answer more than one check-sat.
+    unsupported = "--incremental";
+  }
+  else if (opts.smt.produceModels || opts.smt.checkModels
       || opts.smt.debugCheckModels)
   {
     // The port builds no model of the quantified formulas. debugCheckModels

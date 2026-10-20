@@ -1009,12 +1009,6 @@ class CVC5_EXPORT SolverEngine
   Result checkSatInternal(const std::vector<Node>& assumptions);
 
   /**
-   * Throw a ModalException if the command named by cmd is used with --z3,
-   * whose ported core does not support it.
-   */
-  void checkZ3Supports(const char* cmd) const;
-
-  /**
    * Check that all Expr in formals are of BOUND_VARIABLE kind, where func is
    * the function that the formal argument list is for. This method is used
    * as a helper function when defining (recursive) functions.
