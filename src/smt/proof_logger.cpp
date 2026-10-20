@@ -94,12 +94,15 @@ void ProofLoggerCpc::notifyPop()
 void ProofLoggerCpc::notifyCheckSatResult(const Result& r)
 {
   Result::Status s = r.getStatus();
-  if (s != Result::SAT && s != Result::UNKNOWN)
+  if (!d_isIncrementalDump
+      || (s != Result::SAT && s != Result::UNSAT && s != Result::UNKNOWN))
   {
-    // unsat responses are marked by the refutation in the proof
     return;
   }
-  d_eout.getOStream() << "(echo \"" << (s == Result::SAT ? "sat" : "unknown")
+  d_eout.getOStream() << "(echo \""
+                      << (s == Result::SAT
+                              ? "sat"
+                              : (s == Result::UNSAT ? "unsat" : "unknown"))
                       << "\")" << std::endl;
   notifyOutput();
 }

@@ -145,9 +145,9 @@ class ProofLoggerCpc : public ProofLogger
   /** Notify that the user popped a context. */
   void notifyPop() override;
   /**
-   * Notify that a check-sat command returned result r. If r is not unsat, we
-   * print a marker (echo "sat") or (echo "unknown"), so that each check-sat
-   * of the input can be matched to the proof script.
+   * Notify that a check-sat command returned result r. In incremental mode,
+   * we print a marker (echo "sat"), (echo "unsat") or (echo "unknown"), so
+   * that each check-sat of the input can be matched to the proof script.
    */
   void notifyCheckSatResult(const Result& r) override;
 
