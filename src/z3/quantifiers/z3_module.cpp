@@ -88,9 +88,10 @@ void Z3Module::check(theory::Theory::Effort e, QEffort quant_e)
   {
     return;
   }
-  // -o inst-strategy prints a line per call, as for the other modules,
-  // which count the instances through the inference manager; the core sends
-  // its instances itself, and counts them
+  // -o inst-strategy prints a line per call that made instances, as for the
+  // other modules, which count them through the inference manager; the core
+  // sends its instances itself, and counts them. It is called at every
+  // standard effort check, most of which make none.
   bool printing = isOutputOn(OutputTag::INST_STRATEGY);
   const Statistics& stats = d_core->getContext().getStats();
   uint64_t numInstances = stats.d_numInstances;
@@ -98,16 +99,13 @@ void Z3Module::check(theory::Theory::Effort e, QEffort quant_e)
   // the literals asserted since the last check, then the core
   d_tracker->flush(d_qstate);
   d_core->check(e);
-  if (printing)
+  if (printing && stats.d_numInstances > numInstances)
   {
     double time = static_cast<double>(clock() - start)
                   / static_cast<double>(CLOCKS_PER_SEC);
     std::ostream& out = output(OutputTag::INST_STRATEGY);
     out << "(inst-strategy " << identify();
-    if (stats.d_numInstances > numInstances)
-    {
-      out << " :inst " << (stats.d_numInstances - numInstances);
-    }
+    out << " :inst " << (stats.d_numInstances - numInstances);
     out << " :time " << time;
     if (d_qstate.isInConflict())
     {
