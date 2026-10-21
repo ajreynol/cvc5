@@ -6,8 +6,9 @@
 ; DISABLE-TESTER: unsat-core
 ; DISABLE-TESTER: dump
 ; The supported surface of --z3 is deliberately minimal; see
-; src/z3/README.md. A deep restart restarts from the literals cvc5's SAT
-; solver learned, and with --z3 that solver never searches.
+; src/z3/README.md. A deep restart makes a new prop engine from the literals
+; learned at level zero, while the core keeps the state of the previous
+; search.
 (set-logic UF)
 (declare-fun p () Bool)
 (assert p)

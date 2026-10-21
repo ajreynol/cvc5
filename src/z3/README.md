@@ -52,8 +52,11 @@ Outside the directories above, the port touches:
   atoms its relevancy needs assigned through a decision strategy.
 - `PropEngine` uses `FormulaLitPolicy::TRACK_AND_NOTIFY_VAR` under `--z3`, so
   Boolean variables reach the core.
-- `SetDefaults::checkZ3Capabilities` refuses what the core does not support
-  (`--incremental`, models, unsat cores, and others), and
+- `SetDefaults::checkZ3Capabilities` refuses what the core does not support:
+  `--incremental`, `--deep-restart`, sygus (and so interpolants and abducts),
+  oracles, and `--dump-instantiations` without proofs (the instantiations are
+  read from the proof). Unsat cores default to `--unsat-cores-mode=sat-proof`,
+  since deciding on the input as assumptions first hurts the core's search.
   `setDefaultsQuantifiers` sets `--pre-skolem-quant=agg`: the existentials
   nested in quantified formulas get skolem functions of the enclosing
   variables, as in Z3's negation normal form, which `QuantifiersPreprocess`
@@ -73,7 +76,7 @@ as of this README:
 | `src/z3/quantifiers/` | 29 | 8723 | 1614 | 1072 |
 | **Total** | 57 | **12459** | 2661 | 1787 |
 
-The rest of cvc5 changes by 251 added and 11 deleted lines over 16 C++ files,
+The rest of cvc5 changes by 233 added and 15 deleted lines over 16 C++ files,
 most of them in `smt/set_defaults.cpp` (the capability checks) and
 `theory/quantifiers/quantifiers_preprocess.cpp` (pre-skolemization of
 quantified formulas with patterns).

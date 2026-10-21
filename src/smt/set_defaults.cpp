@@ -134,9 +134,7 @@ void SetDefaults::setDefaultsPre(Options& opts)
 {
   if (opts.z3.z3)
   {
-    // The ported Z3 core has a deliberately minimal supported surface.
-    // Reject what it cannot do rather than answering from cvc5's
-    // quantifiers engine, which it replaces.
+    // Reject what the ported Z3 core cannot do.
     checkZ3Capabilities(opts);
   }
   // safe options
@@ -223,10 +221,22 @@ void SetDefaults::setDefaultsPre(Options& opts)
   {
     if (opts.smt.unsatCoresMode == options::UnsatCoresMode::OFF)
     {
-      SET_AND_NOTIFY(smt,
-                     unsatCoresMode,
-                     options::UnsatCoresMode::ASSUMPTIONS,
-                     "enabling unsat cores");
+      if (opts.z3.z3)
+      {
+        // The ported Z3 core (--z3) proves its lemmas, and its search
+        // depends on the input not being decided on first, as assumptions.
+        SET_AND_NOTIFY(smt,
+                       unsatCoresMode,
+                       options::UnsatCoresMode::SAT_PROOF,
+                       "enabling unsat cores with z3");
+      }
+      else
+      {
+        SET_AND_NOTIFY(smt,
+                       unsatCoresMode,
+                       options::UnsatCoresMode::ASSUMPTIONS,
+                       "enabling unsat cores");
+      }
     }
   }
   if (opts.proof.checkProofSteps)
@@ -1113,30 +1123,14 @@ bool SetDefaults::usesInputConversion(const Options& opts,
 void SetDefaults::checkZ3Capabilities(Options& opts) const
 {
   // What the ported core does support is a single check-sat, outside of
-  // incremental mode. Everything below either
-  // has no implementation in the port or would be answered out of cvc5's
-  // quantifiers engine, which the port replaces and which therefore has seen
-  // none of the quantified formulas.
+  // incremental mode. Everything below has no implementation in the port, or
+  // needs a module of cvc5's quantifiers engine that is not made with --z3.
   const char* unsupported = nullptr;
   if (opts.base.incrementalSolving)
   {
     // The core does not follow user scopes (push, pop, the assumptions of
     // check-sat-assuming) or answer more than one check-sat.
     unsupported = "--incremental";
-  }
-  else if (opts.smt.produceModels || opts.smt.checkModels
-      || opts.smt.debugCheckModels)
-  {
-    // The port builds no model of the quantified formulas. debugCheckModels
-    // is listed because it turns on checkModels further
-    // down in this same method, after this check has run.
-    unsupported = "--produce-models";
-  }
-  else if (opts.smt.produceUnsatCores || opts.smt.checkUnsatCores)
-  {
-    // The core comes back empty, which asserts that the empty set is
-    // unsatisfiable.
-    unsupported = "--produce-unsat-cores";
   }
   else if (opts.smt.produceInterpolants)
   {
@@ -1146,46 +1140,30 @@ void SetDefaults::checkZ3Capabilities(Options& opts) const
   {
     unsupported = "--produce-abducts";
   }
-  else if (opts.smt.produceDifficulty)
-  {
-    unsupported = "--produce-difficulty";
-  }
-  else if (opts.smt.produceAssignments)
-  {
-    unsupported = "--produce-assignments";
-  }
-  else if (opts.smt.produceLearnedLiterals)
-  {
-    unsupported = "--produce-learned-literals";
-  }
   else if (opts.smt.deepRestartMode != options::DeepRestartMode::NONE)
   {
-    // A deep restart restarts from the literals the SAT solver learned at
-    // level zero, and the native SAT solver learns none.
+    // A deep restart makes a new prop engine from the literals learned at
+    // level zero, while the core keeps the state of the previous search.
     unsupported = "--deep-restart";
   }
-  else if (opts.driver.dumpInstantiations
-           || opts.driver.dumpInstantiationsDebug)
+  else if ((opts.driver.dumpInstantiations
+            || opts.driver.dumpInstantiationsDebug)
+           && !opts.smt.produceProofs)
   {
-    // The instantiations are read from cvc5's quantifiers engine, which makes
-    // none: this printed "none" after the port had instantiated.
-    unsupported = "--dump-instantiations";
+    // cvc5's quantifiers engine records none of the core's instantiations:
+    // they are read from the proof, which has them.
+    unsupported = "--dump-instantiations without --produce-proofs";
   }
   else if (opts.quantifiers.oracles)
   {
-    // Oracle functions are interpreted by cvc5's quantifiers engine, and the
-    // port would treat them as uninterpreted.
+    // Oracle functions are interpreted by a module of cvc5's quantifiers
+    // engine, which is not made with --z3; the core would treat them as
+    // uninterpreted.
     unsupported = "--oracles";
   }
   else if (opts.quantifiers.sygus)
   {
     unsupported = "sygus";
-  }
-  else if (opts.theory.eeMode == options::EqEngineMode::CENTRAL)
-  {
-    // The central equality engine builds its master equality engine for
-    // cvc5's quantifiers engine, which the port replaces.
-    unsupported = "--ee-mode=central";
   }
   if (unsupported != nullptr)
   {

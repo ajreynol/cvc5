@@ -1,7 +1,6 @@
 ; COMMAND-LINE: --z3
 ; EXPECT: unsat
 ; DISABLE-TESTER: model
-; DISABLE-TESTER: unsat-core
 ; pattern with ground subterm f(x,a)
 (set-logic UF)
 (declare-sort U 0) (declare-fun f (U U) U) (declare-fun a () U) (declare-fun b () U)
