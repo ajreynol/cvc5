@@ -1616,6 +1616,17 @@ void SetDefaults::setDefaultsQuantifiers(const LogicInfo& logic,
   {
     SET_AND_NOTIFY(quantifiers, enumInst, true, "full-saturate-quant");
   }
+  if (opts.z3.z3)
+  {
+    // Skolemize the existentials nested in quantified formulas eagerly, as
+    // Z3's negation normal form does: the instances of a quantified formula
+    // then share skolem functions of its variables, which congruence closure
+    // identifies when the instantiation terms are equal.
+    SET_AND_NOTIFY_IF_NOT_USER_VAL_SYM(quantifiers,
+                                       preSkolemQuant,
+                                       options::PreSkolemQuantMode::AGG,
+                                       "z3");
+  }
   if (opts.arrays.arraysExp)
   {
     // Allows to answer sat more often by default.

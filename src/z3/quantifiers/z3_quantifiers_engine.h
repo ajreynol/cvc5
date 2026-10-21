@@ -65,7 +65,6 @@ class Z3QuantifiersEngine : public theory::QuantifiersEngine,
   //---------------------- AssertionTarget, for Z3AssertionPreparation
   void resetCore(TheoryEngine* te) override;
   QuantifierNormalizer& getNormalizer() override;
-  Node preprocessForTheories(TNode n, std::vector<Node>& defs) override;
   void assertPrepared(TNode n) override;
 
   //--------------------------------------------- the quantifiers engine

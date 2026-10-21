@@ -313,11 +313,6 @@ class SmtContext final : protected EnvObj, public TheorySide
   {
     d_cvc5Preprocessor = std::move(p);
   }
-  /** The preprocessing of cvc5's theories. */
-  const Cvc5Preprocessor& getCvc5Preprocessor() const
-  {
-    return d_cvc5Preprocessor;
-  }
   /**
    * The skolemization of cvc5's quantifiers engine: it maps a quantified
    * formula q to the lemma that skolemizes it, which holds globally and

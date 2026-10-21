@@ -139,8 +139,6 @@ libcvc5_add_sources(
   preprocessing/util/boolean_simplification.h
   preprocessing/util/ite_utilities.cpp
   preprocessing/util/ite_utilities.h
-  preprocessing/z3/nnf.cpp
-  preprocessing/z3/nnf.h
   preprocessing/z3/z3_assertion_preparation.cpp
   preprocessing/z3/z3_assertion_preparation.h
   printer/ast/ast_printer.cpp

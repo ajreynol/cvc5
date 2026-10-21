@@ -42,8 +42,7 @@ z3::AssertionTarget* getTarget(TheoryEngine* te)
 
 Z3AssertionPreparation::Z3AssertionPreparation(
     PreprocessingPassContext* preprocContext)
-    : PreprocessingPass(preprocContext, "z3-prep"),
-      d_nnf(nodeManager())
+    : PreprocessingPass(preprocContext, "z3-prep")
 {
   if (options().z3.z3)
   {
@@ -59,57 +58,14 @@ PreprocessingPassResult Z3AssertionPreparation::applyInternal(
   // the canonical variables the core and the E-matching engine expect; see
   // z3/util/ast.h
   z3::QuantifierNormalizer& norm = target->getNormalizer();
-  bool full = options().z3.z3AssertionPreparation;
-  std::vector<Node> prepared;
-  // The rest of the pipeline, applied to a formula already in negation
-  // normal form.
-  auto assertNnf = [&](Node res) {
-    res = norm.normalize(res);
-    // the form cvc5's theories take, and the skolem definitions it needs
-    std::vector<Node> defs;
-    res = target->preprocessForTheories(res, defs);
-    for (const Node& d : defs)
-    {
-      target->assertPrepared(d);
-      prepared.push_back(d);
-    }
+  for (size_t i = 0, n = assertions->size(); i < n; ++i)
+  {
+    Node res = norm.normalize((*assertions)[i]);
     target->assertPrepared(res);
-    prepared.push_back(res);
-  };
-  for (const Node& a : assertions->ref())
-  {
-    if (!full)
-    {
-      assertNnf(a);
-      continue;
-    }
-    Node res = d_nnf.convert(a);
-    // Naming a quantifier below an atom introduces definitions, which
-    // nnf_cnf pushes ahead of the formula.
-    for (const Node& def : d_nnf.takeDefinitions())
-    {
-      assertNnf(def);
-    }
-    assertNnf(res);
-  }
-  // Each assertion gives at least one prepared formula, and the prepared
-  // formulas keep the order of the assertions they come from.
-  size_t n = assertions->size();
-  Assert(prepared.size() >= n);
-  for (size_t i = 0, psize = prepared.size(); i < psize; ++i)
-  {
-    if (i < n)
-    {
-      assertions->replace(i, prepared[i], nullptr, TrustId::UNKNOWN_PREPROCESS);
-    }
-    else
-    {
-      assertions->push_back(prepared[i]);
-    }
+    assertions->replace(i, res, nullptr, TrustId::UNKNOWN_PREPROCESS);
   }
   // The skolem definitions are ordinary assertions for the decision
-  // heuristic: the indices of the map refer to the assertions before
-  // preparation.
+  // heuristic, as they are for the core.
   assertions->getIteSkolemMap().clear();
   return assertions->isInConflict() ? PreprocessingPassResult::CONFLICT
                                     : PreprocessingPassResult::NO_CONFLICT;

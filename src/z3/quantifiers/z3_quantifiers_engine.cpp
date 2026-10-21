@@ -48,12 +48,6 @@ QuantifierNormalizer& Z3QuantifiersEngine::getNormalizer()
   return d_core->getContext().getNormalizer();
 }
 
-Node Z3QuantifiersEngine::preprocessForTheories(TNode n,
-                                                std::vector<Node>& defs)
-{
-  return d_core->getContext().getCvc5Preprocessor()(n, defs);
-}
-
 void Z3QuantifiersEngine::assertPrepared(TNode n)
 {
   d_core->getPropCore().assertFormula(n);

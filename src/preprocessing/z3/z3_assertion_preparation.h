@@ -20,7 +20,6 @@
 #define CVC5__PREPROCESSING__Z3__Z3_ASSERTION_PREPARATION_H
 
 #include "preprocessing/preprocessing_pass.h"
-#include "preprocessing/z3/nnf.h"
 
 namespace cvc5::internal {
 namespace preprocessing {
@@ -31,14 +30,16 @@ namespace passes {
  * preprocessing and the ported core, which the quantifiers engine owns
  * (Z3QuantifiersEngine). It establishes the invariants the core inherits
  * from Z3's own preprocessing (asserted_formulas::reduce()) and that cvc5's
- * preprocessing does not. In order, each assertion is converted to negation
- * normal form, naming the quantifiers below atoms, after which each
- * definition introduced by the naming and then the formula itself is given
- * the canonical variables, put in the form cvc5's theories take, and
- * asserted to the core. The prepared formulas replace the
- * assertions, so that cvc5 converts the formulas the core takes.
+ * preprocessing does not: each assertion is given the canonical variables
+ * and asserted to the core, and replaces the assertion, so that cvc5
+ * converts the formulas the core takes. The assertions are already in the
+ * form cvc5's theories take, since the renaming changes only the quantified
+ * formulas, which theory preprocessing leaves as they are.
  *
- * With --no-z3-assertion-preparation, the negation normal form is skipped.
+ * Z3's negation normal form is not needed: the existentials nested in
+ * universal quantifiers are skolemized by cvc5's pre-skolemization, which
+ * --z3 enables (--pre-skolem-quant=agg), and the core has cvc5 skolemize the
+ * quantified formulas it assigns false.
  */
 class Z3AssertionPreparation : public PreprocessingPass
 {
@@ -53,13 +54,6 @@ class Z3AssertionPreparation : public PreprocessingPass
  protected:
   PreprocessingPassResult applyInternal(
       AssertionPipeline* assertionsToPreprocess) override;
-
- private:
-  /**
-   * Z3's nnf pass, which leaves every universal quantifier in a positive
-   * position, as the core relies on.
-   */
-  z3::Nnf d_nnf;
 };
 
 }  // namespace passes

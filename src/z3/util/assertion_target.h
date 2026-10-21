@@ -17,8 +17,6 @@
 #ifndef CVC5__Z3__UTIL__ASSERTION_TARGET_H
 #define CVC5__Z3__UTIL__ASSERTION_TARGET_H
 
-#include <vector>
-
 #include "expr/node.h"
 
 namespace cvc5::internal {
@@ -47,11 +45,6 @@ class AssertionTarget
    * the instances; see z3/util/ast.h.
    */
   virtual QuantifierNormalizer& getNormalizer() = 0;
-  /**
-   * Map n to the form cvc5's theories take, adding to defs the definitions
-   * of the skolems introduced.
-   */
-  virtual Node preprocessForTheories(TNode n, std::vector<Node>& defs) = 0;
   /** Assert the prepared formula n to the core. */
   virtual void assertPrepared(TNode n) = 0;
 };
