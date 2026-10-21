@@ -400,6 +400,9 @@ void SetDefaults::setDefaultsPre(Options& opts)
                            deepRestartMode,
                            options::DeepRestartMode::NONE,
                            "internal subsolver");
+    // only the main solver dumps proofs, which is relevant in incremental
+    // mode, where proofs are printed by the solver as a single script.
+    SET_AND_NOTIFY(driver, dumpProofs, false, "internal subsolver");
   }
 }
 

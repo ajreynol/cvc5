@@ -57,11 +57,15 @@ class PrintBenchmark
    * @param outDef The output stream to print the definitions on.
    * @param def The definitions to print.
    * @param term The terms to print declarations and definitions from.
+   * @param declTypes If provided, the types whose declarations were already
+   * printed, which we do not print again. This set is updated with the types
+   * processed by this call.
    */
   void printDeclarationsFrom(std::ostream& outDecl,
                              std::ostream& outDef,
                              const std::vector<Node>& defs,
-                             const std::vector<Node>& terms);
+                             const std::vector<Node>& terms,
+                             std::unordered_set<TypeNode>* declTypes = nullptr);
   /**
    * Print assertions. This prints a parsable set of commands on the output
    * stream out that defines (recursive) functions in defs, and asserts

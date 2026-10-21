@@ -53,6 +53,8 @@ EoPrinter::EoPrinter(Env& env,
       d_alreadyPrinted(&d_printCtx),
       d_passumeMap(&d_passumeCtx),
       d_printedDecls(&d_passumeCtx),
+      d_printedDefs(&d_passumeCtx),
+      d_printedTypes(&d_passumeCtx),
       d_termLetPrefix("@t"),
       d_rdb(rdb),
       // Use a let binding if proofDagGlobal is true. We can traverse binders
@@ -972,9 +974,30 @@ void EoPrinter::printTop(EoPrintChannelOut& aout,
         std::stringstream outDecl;
         std::stringstream outDef;
         options::ioutils::applyPrintArithLitToken(outDef, true);
-        pb.printDeclarationsFrom(outDecl, outDef, definitions, assertions);
         if (incremental)
         {
+          // include the definitions printed in this scope, so that we do not
+          // print declarations for the symbols they define
+          std::vector<Node> defs(d_printedDefs.begin(), d_printedDefs.end());
+          std::unordered_set<Node> defSet(defs.begin(), defs.end());
+          for (const Node& d : definitions)
+          {
+            if (defSet.insert(d).second)
+            {
+              defs.push_back(d);
+              d_printedDefs.push_back(d);
+            }
+          }
+          // do not print the types that were already declared in this scope,
+          // which may have been grouped differently
+          std::unordered_set<TypeNode> declTypes(d_printedTypes.begin(),
+                                                 d_printedTypes.end());
+          pb.printDeclarationsFrom(
+              outDecl, outDef, defs, assertions, &declTypes);
+          for (const TypeNode& tn : declTypes)
+          {
+            d_printedTypes.insert(tn);
+          }
           // only print the declarations not already printed in this scope
           for (const std::string& block : {outDecl.str(), outDef.str()})
           {
@@ -992,6 +1015,7 @@ void EoPrinter::printTop(EoPrintChannelOut& aout,
         }
         else
         {
+          pb.printDeclarationsFrom(outDecl, outDef, definitions, assertions);
           out << outDecl.str();
           // [2] print the definitions
           out << outDef.str();

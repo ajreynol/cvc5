@@ -23,6 +23,7 @@
 
 #include "context/cdhashmap.h"
 #include "context/cdhashset.h"
+#include "context/cdlist.h"
 #include "expr/node_algorithm.h"
 #include "proof/eo/eo_list_node_converter.h"
 #include "proof/eo/eo_node_converter.h"
@@ -279,6 +280,13 @@ class EoPrinter : protected EnvObj
   context::CDHashMap<Node, size_t> d_passumeMap;
   /** The declarations printed in the current scope of the proof script */
   context::CDHashSet<std::string> d_printedDecls;
+  /**
+   * The definitions printed in the current scope of the proof script, which
+   * ensures we do not print declarations for the symbols they define.
+   */
+  context::CDList<Node> d_printedDefs;
+  /** The types whose declarations were printed in the current scope */
+  context::CDHashSet<TypeNode> d_printedTypes;
   /**
    * The scope levels of d_lbind at the time of each call to pushScriptScope
    * that has not yet been popped.

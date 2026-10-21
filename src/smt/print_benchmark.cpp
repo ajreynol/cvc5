@@ -37,7 +37,8 @@ using BenchmarkNoPrintAttribute =
 void PrintBenchmark::printDeclarationsFrom(std::ostream& outDecl,
                                            std::ostream& outDef,
                                            const std::vector<Node>& defs,
-                                           const std::vector<Node>& terms)
+                                           const std::vector<Node>& terms,
+                                           std::unordered_set<TypeNode>* declTypes)
 {
   std::unordered_set<TypeNode> unorderedTypes;
   std::unordered_set<TNode> typeVisited;
@@ -60,7 +61,9 @@ void PrintBenchmark::printDeclarationsFrom(std::ostream& outDecl,
     std::sort(types.begin(), types.end());
   }
   // print the declared types first
-  std::unordered_set<TypeNode> alreadyPrintedDeclSorts;
+  std::unordered_set<TypeNode> localDeclTypes;
+  std::unordered_set<TypeNode>& alreadyPrintedDeclSorts =
+      declTypes != nullptr ? *declTypes : localDeclTypes;
   for (const TypeNode& st : types)
   {
     // note that we must get all "component types" of a type, so that

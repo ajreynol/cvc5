@@ -276,30 +276,23 @@ class CpcTesterBase(Tester):
     to their proof checker."""
 
     def applies(self, benchmark_info):
-        expected_output_lines = benchmark_info.expected_output.split()
         return (
             benchmark_info.benchmark_ext != ".sy"
-            and expected_output_lines
-            and all(line == "unsat" for line in expected_output_lines)
+            and benchmark_info.expected_output.strip() == "unsat"
+            and not self.is_incremental_proof(benchmark_info)
         )
 
-    def strip_proof_body(self, output):
-        """Overrides Tester.strip_proof_body with a more lenient parse. An
-        incrementally logged proof is not wrapped in a single `unsat ( ... )`
-        block, so fall back to dropping the `unsat` status lines and keeping
-        the remainder. Scoped to the CPC testers; the LFSC and Alethe testers
-        keep the strict parse."""
-        if output.startswith("unsat\n(\n".encode()) and output.endswith(
-            "\n)\n".encode()
-        ):
-            return output[8:-2], EXIT_OK
-        lines = output.decode().splitlines()
-        lines = [line for line in lines if line.strip() != "unsat"]
-        body = "\n".join(lines).strip()
-        if not body:
-            print_error("Failed to parse result for proof")
-            return output, EXIT_FAILURE
-        return (body + "\n").encode(), EXIT_OK
+    def is_incremental_proof(self, benchmark_info):
+        """Returns true if cvc5 prints a single incremental proof script for
+        the given benchmark instead of a proof per unsat response. This is the
+        case in incremental mode, unless --proof-incremental-full is given."""
+        args = benchmark_info.command_line_args
+        if "--proof-incremental-full" in args or "--no-incremental" in args:
+            return False
+        return "--incremental" in args or re.search(
+            r"\(set-option\s+:incremental\s+true\)",
+            benchmark_info.benchmark_content,
+        ) is not None
 
     def gen_proof(self, benchmark_info, cvc5_args):
         """Runs cvc5 to generate a CPC proof for the given benchmark. Returns
@@ -326,21 +319,72 @@ class CpcTesterBase(Tester):
             return output, EXIT_FAILURE
         return output, EXIT_OK
 
+    def gen_incremental_proof(self, benchmark_info, cvc5_args):
+        """Runs cvc5 to generate an incremental CPC proof script for the given
+        benchmark. The script mirrors the push and pop commands of the
+        benchmark, and has the proof of each unsat response in its own scope.
+        The check-sat responses are interleaved with the script, each is
+        replaced by an echo command. Returns a pair as for gen_proof."""
+        output, error, exit_status = run_process(
+            [benchmark_info.cvc5_binary]
+            + cvc5_args
+            + [benchmark_info.benchmark_basename],
+            benchmark_info.benchmark_dir,
+            benchmark_info.timeout,
+        )
+        exit_code = self.check_exit_status(EXIT_OK, exit_status, output,
+                                           error, cvc5_args)
+        if exit_code != EXIT_OK:
+            return output, exit_code
+        lines = [
+            '(echo "{}")'.format(line)
+            if line in ("sat", "unsat", "unknown") else line
+            for line in output.decode().splitlines()
+        ]
+        output = ("\n".join(lines) + "\n").encode()
+        if (b"step" not in output) and (b"assume" not in output):
+            print_error("Empty proof")
+            return output, EXIT_FAILURE
+        return output, EXIT_OK
+
 
 class CpcTester(CpcTesterBase):
 
     def __init__(self):
         super().__init__("cpc")
 
+    def applies(self, benchmark_info):
+        if not self.is_incremental_proof(benchmark_info):
+            return super().applies(benchmark_info)
+        # The incremental proof script is checked as a whole, hence the
+        # benchmark may also have sat or unknown responses, as long as it has
+        # at least one unsat response and no other output. A scrubber may hide
+        # other output.
+        results = benchmark_info.expected_output.split()
+        return (
+            benchmark_info.benchmark_ext != ".sy"
+            and benchmark_info.scrubber is None
+            and "unsat" in results
+            and all(r in ("sat", "unsat", "unknown") for r in results)
+        )
+
     def run_internal(self, benchmark_info):
-        with tempfile.NamedTemporaryFile() as tmpf:
-            cvc5_args = [
-                "--dump-proofs",
-                "--proof-print-conclusion",
-            ] + benchmark_info.command_line_args
+        cvc5_args = [
+            "--dump-proofs",
+            "--proof-print-conclusion",
+        ] + benchmark_info.command_line_args
+        if self.is_incremental_proof(benchmark_info):
+            proof, exit_code = self.gen_incremental_proof(benchmark_info,
+                                                          cvc5_args)
+            # The script has a proof of false for each unsat response, in its
+            # own scope, so we do not require a proof of false at the end.
+            ethos_args = []
+        else:
             proof, exit_code = self.gen_proof(benchmark_info, cvc5_args)
-            if exit_code != EXIT_OK:
-                return exit_code
+            ethos_args = ["--require-proof-of-false"]
+        if exit_code != EXIT_OK:
+            return exit_code
+        with tempfile.NamedTemporaryFile() as tmpf:
             cpc_sig_dir = os.path.abspath(g_args.cpc_sig_dir)
             tmpf.write(("(include \"" + cpc_sig_dir + "/cpc/Cpc.eo\")").encode())
             # note this line is not necessary if in a safe build
@@ -348,11 +392,11 @@ class CpcTester(CpcTesterBase):
                 tmpf.write(("(include \"" + cpc_sig_dir + "/cpc/expert/CpcExpert.eo\")").encode())
             tmpf.write(proof)
             tmpf.flush()
-            # Require a step concluding false, in addition to the non-empty
-            # proof check in gen_proof.
+            # For a single proof, ethos_args requires a step concluding false,
+            # in addition to the non-empty proof check in gen_proof.
             output, error, exit_status = run_process(
                 [benchmark_info.ethos_binary] +
-                ["--require-proof-of-false"] +
+                ethos_args +
                 [tmpf.name],
                 benchmark_info.benchmark_dir,
                 timeout=benchmark_info.timeout,
@@ -373,7 +417,13 @@ class CpcTester(CpcTesterBase):
             # are expected to be complete.
             valid = ["correct"] if benchmark_info.safe_mode \
                 else ["correct", "incomplete"]
-            if not any(v in output for v in valid):
+            verdict = output
+            if self.is_incremental_proof(benchmark_info):
+                # The output starts with the echoed responses, the verdict is
+                # the last line.
+                lines = output.strip().splitlines()
+                verdict = lines[-1] if lines else ""
+            if not any(v in verdict for v in valid):
                 print_error("Incomplete proof" if "incomplete" in output
                             else "Invalid proof")
                 print()
