@@ -65,35 +65,35 @@ class QuantifiersEngine : protected EnvObj
                     quantifiers::TermRegistry& tr,
                     quantifiers::QuantifiersInferenceManager& qim,
                     ProofNodeManager* pnm);
-  virtual ~QuantifiersEngine();
+  ~QuantifiersEngine();
   /** The quantifiers registry */
   quantifiers::QuantifiersRegistry& getQuantifiersRegistry();
   //---------------------- utilities
   /** get the model builder */
-  virtual quantifiers::QModelBuilder* getModelBuilder() const;
+  quantifiers::QModelBuilder* getModelBuilder() const;
   /** get term database sygus */
   quantifiers::TermDbSygus* getTermDatabaseSygus() const;
   //---------------------- end utilities
   /** presolve */
-  virtual void presolve();
+  void presolve();
   /** notify preprocessed assertion */
-  virtual void ppNotifyAssertions(const std::vector<Node>& assertions);
+  void ppNotifyAssertions(const std::vector<Node>& assertions);
   /** check at level */
-  virtual void check(Theory::Effort e);
+  void check(Theory::Effort e);
   /** notify that theories were combined */
-  virtual void notifyCombineTheories();
+  void notifyCombineTheories();
   /** preRegister quantifier
    *
    * This function is called after registerQuantifier for quantified formulas
    * that are pre-registered to the quantifiers theory.
    */
-  virtual void preRegisterQuantifier(Node q);
+  void preRegisterQuantifier(Node q);
   /** assert universal quantifier */
-  virtual void assertQuantifier(Node q, bool pol);
+  void assertQuantifier(Node q, bool pol);
   /** notification when master equality engine is updated */
-  virtual void eqNotifyNewClass(TNode t);
+  void eqNotifyNewClass(TNode t);
   /** notification when master equality engine merges two classes*/
-  virtual void eqNotifyMerge(TNode t1, TNode t2);
+  void eqNotifyMerge(TNode t1, TNode t2);
   /** mark relevant quantified formula, this will indicate it should be checked
    * before the others */
   void markRelevant(Node q);
@@ -109,23 +109,23 @@ class QuantifiersEngine : protected EnvObj
   bool getNameForQuant(Node q, Node& name, bool req = true) const;
   //----------user interface for instantiations (see quantifiers/instantiate.h)
   /** get list of quantified formulas that were instantiated */
-  virtual void getInstantiatedQuantifiedFormulas(std::vector<Node>& qs);
+  void getInstantiatedQuantifiedFormulas(std::vector<Node>& qs);
   /** get instantiation term vectors */
-  virtual void getInstantiationTermVectors(Node q,
+  void getInstantiationTermVectors(Node q,
                                    std::vector<std::vector<Node> >& tvecs);
-  virtual void getInstantiationTermVectors(
+  void getInstantiationTermVectors(
       std::map<Node, std::vector<std::vector<Node> > >& insts);
   /**
    * Get instantiations for quantified formula q. If q is (forall ((x T)) (P
    * x)), this is a list of the form (P t1) ... (P tn) for ground terms ti.
    */
-  virtual void getInstantiations(Node q, std::vector<Node>& insts);
+  void getInstantiations(Node q, std::vector<Node>& insts);
   /**
    * Get skolemization vectors, where for each quantified formula that was
    * skolemized, this is the list of skolems that were used to witness the
    * negation of that quantified formula.
    */
-  virtual void getSkolemTermVectors(std::map<Node, std::vector<Node> >& sks) const;
+  void getSkolemTermVectors(std::map<Node, std::vector<Node> >& sks) const;
 
   /** get synth solutions
    *
@@ -143,13 +143,13 @@ class QuantifiersEngine : protected EnvObj
    */
   bool getSynthSolutions(std::map<Node, std::map<Node, Node> >& sol_map);
   /** Declare pool */
-  virtual void declarePool(Node p, const std::vector<Node>& initValue);
+  void declarePool(Node p, const std::vector<Node>& initValue);
   /** Declare oracle fun */
-  virtual void declareOracleFun(Node f);
+  void declareOracleFun(Node f);
   /** Get the list of all declared oracle functions */
   std::vector<Node> getOracleFuns() const;
   //----------end user interface for instantiations
- protected:
+ private:
   /**
    * Check at level, setting setModelUnsoundId to an IncompleteId if we are
    * "unknown" instead of "unsat".
@@ -176,7 +176,7 @@ class QuantifiersEngine : protected EnvObj
    * @param te The theory engine
    * @param dm The decision manager of the theory engine
    */
-  virtual void finishInit(TheoryEngine* te);
+  void finishInit(TheoryEngine* te);
   //---------------------- end private initialization
   /** (context-indepentent) register quantifier internal
    *

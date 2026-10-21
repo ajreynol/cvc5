@@ -82,6 +82,7 @@ class DecisionManager
 
     //----- decision strategies that are optimizations
     STRAT_ARRAYS,
+    STRAT_QUANT_Z3_SPLIT,
 
     STRAT_LAST
   };

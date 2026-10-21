@@ -99,7 +99,7 @@ void Z3Module::preRegisterQuantifier(Node q)
   }
 }
 
-void Z3Module::eqNotifyMerge(TNode t1, TNode t2)
+void Z3Module::notifyMasterMerge(TNode t1, TNode t2)
 {
   d_core->getShadowFeed()->eqNotifyMerge(t1, t2);
 }

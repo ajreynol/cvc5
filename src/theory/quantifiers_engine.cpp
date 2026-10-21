@@ -786,7 +786,7 @@ void QuantifiersEngine::eqNotifyMerge(TNode t1, TNode t2)
   d_treg.eqNotifyMerge(t1, t2);
   for (QuantifiersModule*& mdl : d_modules)
   {
-    mdl->eqNotifyMerge(t1, t2);
+    mdl->notifyMasterMerge(t1, t2);
   }
 }
 

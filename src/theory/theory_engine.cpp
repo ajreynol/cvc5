@@ -191,10 +191,6 @@ void TheoryEngine::finishInit()
     t->setDecisionManager(d_decManager.get());
     // finish initializing the theory
     t->finishInit();
-    if (isTheoryEnabled(theoryId) && t->checksWithoutFacts())
-    {
-      d_checkWithoutFacts = true;
-    }
   }
 
   if (options().parallel.computePartitions > 1)
@@ -258,7 +254,6 @@ TheoryEngine::TheoryEngine(Env& env)
       d_interrupted(false),
       d_inPreregister(false),
       d_factsAsserted(context(), false),
-      d_checkWithoutFacts(false),
       d_cp(nullptr)
 {
   for (TheoryId theoryId = theory::THEORY_FIRST;
@@ -446,11 +441,6 @@ void TheoryEngine::check(Theory::Effort effort)
       spendResource(Resource::TheoryFullCheckStep);
       d_factsAsserted = true;
       d_tc->resetRound();
-    }
-    else if (d_checkWithoutFacts)
-    {
-      // likewise for the theories that are checked without new facts
-      d_factsAsserted = true;
     }
 
     // check with the theory modules

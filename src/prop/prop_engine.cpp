@@ -189,16 +189,8 @@ void PropEngine::assertLemma(theory::InferenceId id,
   bool local = isLemmaPropertyLocal(p);
   bool inprocess = isLemmaPropertyInprocess(p);
 
-  // call preprocessor, unless the lemma is to be converted as it is, for a
-  // theory whose lemmas must refer to the same atoms as the SAT solver's,
-  // such as the ported Z3 core (--z3), which applies cvc5's preprocessing
-  // itself before it makes them
+  // call preprocessor
   std::vector<theory::SkolemLemma> ppLemmas;
-  if (isLemmaPropertyUnprocessed(p))
-  {
-    assertLemmasInternal(id, tlemma, ppLemmas, removable, inprocess, local);
-    return;
-  }
   TrustNode tplemma = d_theoryProxy->preprocessLemma(tlemma, ppLemmas);
 
   // do final checks on the lemmas we are about to send

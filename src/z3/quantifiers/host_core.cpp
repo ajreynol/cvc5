@@ -21,6 +21,7 @@
 #include "options/z3_options.h"
 #include "prop/prop_engine.h"
 #include "smt/env.h"
+#include "theory/decision_manager.h"
 #include "theory/output_channel.h"
 #include "theory/skolem_lemma.h"
 #include "theory/theory_engine.h"
@@ -58,6 +59,7 @@ HostCore::HostCore(Env& env,
   d_params.initialize(env.getOptions());
   d_popNotify = std::make_unique<PopNotify>(context(), *this);
   d_feed = std::make_unique<ShadowFeed>(env, *this);
+  d_splitStrategy = std::make_unique<SplitStrategy>(env, d_te);
 }
 
 HostCore::~HostCore() {}
@@ -73,6 +75,8 @@ void HostCore::reset(TheoryEngine* te)
   d_preregistered.clear();
   d_lemmasSent.clear();
   d_hostAtom.clear();
+  d_splitAtoms.clear();
+  d_splitStrategy->clear();
   d_ctx->setCvc5Preprocessor(
       [this](TNode n, std::vector<Node>& defs) {
         return preprocessForTheories(n, defs);
@@ -92,90 +96,22 @@ PropCore& HostCore::getPropCore() { return getContext().getPropCore(); }
 
 void HostCore::lemma(const Node& lem, theory::LemmaProperty p)
 {
-  d_out.lemma(lem,
-              theory::InferenceId::UNKNOWN,
-              p | theory::LemmaProperty::UNPROCESSED);
+  d_out.lemma(lem, theory::InferenceId::UNKNOWN, p);
 }
 
 Node HostCore::preprocessForTheories(TNode n, std::vector<Node>& defs)
 {
-  if (!expr::hasClosure(n))
+  // cvc5 preprocesses the lemmas the core sends as it does any other, so the
+  // core takes them in the same form: cvc5's preprocessing of their form for
+  // cvc5, renamed back to the core's.
+  std::vector<theory::SkolemLemma> sks;
+  Node h = toHost(n);
+  TrustNode trn = d_te->getPropEngine()->preprocess(h, sks);
+  for (const theory::SkolemLemma& sk : sks)
   {
-    std::vector<theory::SkolemLemma> sks;
-    TrustNode trn = d_te->getPropEngine()->preprocess(n, sks);
-    for (const theory::SkolemLemma& sk : sks)
-    {
-      defs.push_back(sk.getProven());
-    }
-    return trn.isNull() ? Node(n) : trn.getNode();
+    defs.push_back(toCore(sk.getProven()));
   }
-  // cvc5's rewriter would restructure a quantifier, which the core and cvc5
-  // know as one atom, so only the parts outside the quantifiers are
-  // preprocessed: the Boolean structure above them is followed, a quantifier
-  // is left as it is, and so are the closures in an atom.
-  if (n.isClosure())
-  {
-    return n;
-  }
-  if (!expr::isBooleanConnective(n))
-  {
-    return preprocessAroundClosures(n, defs);
-  }
-  NodeBuilder nb(nodeManager(), n.getKind());
-  for (const Node& c : n)
-  {
-    nb << preprocessForTheories(c, defs);
-  }
-  return nb.constructNode();
-}
-
-Node HostCore::preprocessAroundClosures(TNode n, std::vector<Node>& defs)
-{
-  // Each closure is held by a placeholder constant while the atom is
-  // preprocessed. The rest of the atom must be preprocessed all the same:
-  // a Boolean term in an argument, for instance, is otherwise not purified,
-  // and would reach cvc5's theories as a term (Verus emits such atoms for
-  // its lambdas).
-  std::vector<Node> closures;
-  std::unordered_set<TNode> visited;
-  std::vector<TNode> todo{n};
-  while (!todo.empty())
-  {
-    TNode cur = todo.back();
-    todo.pop_back();
-    if (!visited.insert(cur).second || !expr::hasClosure(cur))
-    {
-      continue;
-    }
-    if (cur.isClosure())
-    {
-      closures.push_back(cur);
-      continue;
-    }
-    todo.insert(todo.end(), cur.begin(), cur.end());
-  }
-  std::vector<Node> holders;
-  for (const Node& c : closures)
-  {
-    auto it = d_closureHolders.find(c);
-    if (it == d_closureHolders.end())
-    {
-      Node h = NodeManager::mkDummySkolem("z3hold", c.getType());
-      it = d_closureHolders.emplace(c, h).first;
-    }
-    holders.push_back(it->second);
-  }
-  Node m = n.substitute(
-      closures.begin(), closures.end(), holders.begin(), holders.end());
-  std::vector<Node> mdefs;
-  Node r = preprocessForTheories(m, mdefs);
-  for (const Node& d : mdefs)
-  {
-    defs.push_back(d.substitute(
-        holders.begin(), holders.end(), closures.begin(), closures.end()));
-  }
-  return r.substitute(
-      holders.begin(), holders.end(), closures.begin(), closures.end());
+  return toCore(trn.isNull() ? h : trn.getNode());
 }
 
 void HostCore::assertInput(const std::vector<Node>& assertions)
@@ -315,6 +251,9 @@ void HostCore::presolve()
     getPropCore().hostInit();
     d_setup = true;
   }
+  // The strategies of the decision manager are cleared after each check-sat.
+  d_te->getDecisionManager()->registerStrategy(
+      theory::DecisionManager::STRAT_QUANT_Z3_SPLIT, d_splitStrategy.get());
 }
 
 void HostCore::notifyPop()
@@ -507,8 +446,8 @@ void HostCore::split(BoolVar v)
   {
     return;
   }
-  // The core has variables for the not-gates nested in terms; cvc5 splits
-  // on their argument, since lemmas are not rewritten (see literalNode).
+  // The core has variables for the not-gates nested in terms; cvc5 decides
+  // their argument.
   bool pol = atom.getKind() != Kind::NOT;
   Node a = toHost(pol ? atom : atom[0]);
   if (expr::hasFreeVar(a))
@@ -523,14 +462,29 @@ void HostCore::split(BoolVar v)
     // instead
     return;
   }
-  Node lem = nodeManager()->mkNode(Kind::OR, a, a.notNode());
-  if (!d_lemmasSent.insert(lem).second)
+  if (!d_splitAtoms.insert(a).second)
   {
     return;
   }
-  lemma(lem, theory::LemmaProperty::NONE);
+  d_splitStrategy->add(a);
   getContext().getStats().d_numHostSplits++;
+  // cvc5 must search on, for the decision, even after a full check
+  d_out.markUsed();
   d_needCheck = true;
+}
+
+Node HostCore::SplitStrategy::getNextDecisionRequest()
+{
+  prop::PropEngine* pe = d_te->getPropEngine();
+  for (const Node& a : d_atoms)
+  {
+    bool value;
+    if (!pe->hasValue(a, value))
+    {
+      return a;
+    }
+  }
+  return Node::null();
 }
 
 void HostCore::splitPendingAtoms()

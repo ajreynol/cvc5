@@ -26,6 +26,7 @@
 #include "context/context.h"
 #include "expr/node.h"
 #include "smt/env_obj.h"
+#include "theory/decision_strategy.h"
 #include "theory/incomplete_id.h"
 #include "theory/lemma_property.h"
 #include "theory/theory.h"
@@ -95,6 +96,31 @@ class HostCore : protected EnvObj
   ShadowFeed* getShadowFeed() { return d_feed.get(); }
 
  private:
+  /**
+   * The decisions the core asks cvc5 for: each atom it splits on, whenever
+   * it is unassigned. cvc5 asks its decision strategies before it decides
+   * on its own.
+   */
+  class SplitStrategy : public theory::DecisionStrategy
+  {
+   public:
+    SplitStrategy(Env& env, TheoryEngine*& te)
+        : theory::DecisionStrategy(env), d_te(te)
+    {
+    }
+    void initialize() override {}
+    Node getNextDecisionRequest() override;
+    std::string identify() const override { return "z3-split"; }
+    /** Ask for a decision on the atom a. */
+    void add(const Node& a) { d_atoms.push_back(a); }
+    void clear() { d_atoms.clear(); }
+
+   private:
+    /** The engine of the core, for its prop engine. */
+    TheoryEngine*& d_te;
+    /** The atoms to decide. */
+    std::vector<Node> d_atoms;
+  };
   /** Pops the propositional side when the SAT context pops. */
   class PopNotify : public context::ContextNotifyObj
   {
@@ -147,10 +173,9 @@ class HostCore : protected EnvObj
   Node delayUnit(const Node& lem);
   /**
    * Make the relevant, unassigned variables of the core into decisions for
-   * cvc5, with a splitting lemma (or v (not v)) that cvc5's decision heuristic
-   * must justify, unless one was sent before. These are the gates that
-   * relevancy needs assigned, which cvc5 may leave unassigned when it stops
-   * on a partial assignment.
+   * cvc5 (see SplitStrategy). These are the gates that relevancy needs
+   * assigned, which cvc5 may leave unassigned when it stops on a partial
+   * assignment.
    */
   void splitPendingAtoms();
   /**
@@ -159,7 +184,7 @@ class HostCore : protected EnvObj
    * queue would decide them.
    */
   void splitNewlyRelevant();
-  /** Send the splitting lemma for v, unless it was sent before. */
+  /** Have cvc5 decide v, unless it was asked before. */
   void split(BoolVar v);
   /** Propagate, and report what follows; returns false on a conflict. */
   bool propagateAndReport();
@@ -183,12 +208,6 @@ class HostCore : protected EnvObj
    * SmtContext::setCvc5Preprocessor.
    */
   Node preprocessForTheories(TNode n, std::vector<Node>& defs);
-  /**
-   * The form of n, an atom with closures below it, that cvc5's theories
-   * take: its parts outside the closures preprocessed, the closures as they
-   * are.
-   */
-  Node preprocessAroundClosures(TNode n, std::vector<Node>& defs);
 
   /** The parameters of the core. These must outlive d_ctx. */
   Params d_params;
@@ -226,8 +245,10 @@ class HostCore : protected EnvObj
    * the quantifier names (qid) and patterns.
    */
   std::unordered_map<Node, Node> d_hostAtom;
-  /** The placeholder of each closure, see preprocessAroundClosures. */
-  std::unordered_map<Node, Node> d_closureHolders;
+  /** The atoms split on, see split. */
+  std::unordered_set<Node> d_splitAtoms;
+  /** See SplitStrategy. */
+  std::unique_ptr<SplitStrategy> d_splitStrategy;
   /** Follows the pops of the SAT context. */
   std::unique_ptr<PopNotify> d_popNotify;
   /** See getShadowFeed. */

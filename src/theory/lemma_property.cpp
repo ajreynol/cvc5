@@ -57,10 +57,6 @@ bool isLemmaPropertyLocal(LemmaProperty p)
 {
   return (p & LemmaProperty::LOCAL) == LemmaProperty::LOCAL;
 }
-bool isLemmaPropertyUnprocessed(LemmaProperty p)
-{
-  return (p & LemmaProperty::UNPROCESSED) == LemmaProperty::UNPROCESSED;
-}
 
 std::ostream& operator<<(std::ostream& out, LemmaProperty p)
 {
@@ -90,10 +86,6 @@ std::ostream& operator<<(std::ostream& out, LemmaProperty p)
     if (isLemmaPropertyLocal(p))
     {
       out << " LOCAL";
-    }
-    if (isLemmaPropertyUnprocessed(p))
-    {
-      out << " UNPROCESSED";
     }
     out << " }";
   }

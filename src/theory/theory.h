@@ -493,11 +493,6 @@ class Theory : protected EnvObj
    */
   void check(Effort level = EFFORT_FULL);
   /**
-   * Whether this theory is to be checked at standard effort even when no
-   * fact was asserted since the last check (d_checkEarlyExit is false).
-   */
-  bool checksWithoutFacts() const { return !d_checkEarlyExit; }
-  /**
    * Pre-check, called before the fact queue of the theory is processed.
    * If this method returns false, then the theory will process its fact
    * queue. If this method returns true, then the theory has indicated

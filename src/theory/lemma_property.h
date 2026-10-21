@@ -34,10 +34,7 @@ enum class LemmaProperty : uint32_t
   // the lemma can be inprocessed
   INPROCESS = 8,
   // the lemma is local to the SAT context
-  LOCAL = 16,
-  // the lemma is not preprocessed: its atoms are already those of the SAT
-  // solver
-  UNPROCESSED = 32
+  LOCAL = 16
 };
 /** Define operator lhs | rhs */
 LemmaProperty operator|(LemmaProperty lhs, LemmaProperty rhs);
@@ -57,8 +54,6 @@ bool isLemmaPropertyNeedsJustify(LemmaProperty p);
 bool isLemmaPropertyInprocess(LemmaProperty p);
 /** is the local bit set on p? */
 bool isLemmaPropertyLocal(LemmaProperty p);
-/** is the unprocessed bit set */
-bool isLemmaPropertyUnprocessed(LemmaProperty p);
 
 /**
  * Writes an lemma property name to a stream.

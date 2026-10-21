@@ -66,7 +66,7 @@ class Z3Module : public theory::quantifiers::QuantifiersModule
   void check(theory::Theory::Effort e, QEffort quant_e) override;
   void preRegisterQuantifier(Node q) override;
   /** Give the merge to the feed of the shadow. */
-  void eqNotifyMerge(TNode t1, TNode t2) override;
+  void notifyMasterMerge(TNode t1, TNode t2) override;
   std::string identify() const override { return "z3"; }
 
  private:

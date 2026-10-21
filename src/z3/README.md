@@ -34,19 +34,17 @@ All of the port's classes are in the namespace `cvc5::internal::z3`.
 Outside the directories above, the port touches:
 
 - `QuantifiersModules` makes `Z3Module`, and no other module, under `--z3`.
-  `QuantifiersModule::finishInit` and `eqNotifyMerge` give it the theory
+  `QuantifiersModule::finishInit` and `notifyMasterMerge` give it the theory
   engine and the merges of the master equality engine.
-- `QuantifiersEngine` still has virtual methods, from the subclass that the
-  module replaced.
 - `TheoryEngineModule::notifyFact` / `needsFacts` and
   `TheoryEngine::addModule` are used by `RelevancyTracker`.
-- `Theory::checksWithoutFacts`: the quantifiers theory is checked even without
-  new facts.
+- `DecisionManager::STRAT_QUANT_Z3_SPLIT`: the core asks cvc5 to decide the
+  atoms its relevancy needs assigned through a decision strategy.
 - `Skolemize::getSkolemizationLemma` gives the core the lemma with which the
   quantifiers engine skolemized a formula.
 - `PropEngine` uses `FormulaLitPolicy::TRACK_AND_NOTIFY_VAR` under `--z3`, so
-  Boolean variables reach the core. The `UNPROCESSED` lemma property keeps
-  cvc5 from preprocessing lemmas the core has already preprocessed.
+  Boolean variables reach the core. The core's lemmas are preprocessed by
+  cvc5 as any other; the core takes them in that form.
 - `SetDefaults::checkZ3Capabilities` refuses what the core does not support
   (`--incremental`, models, proofs, unsat cores, and others), and
   `setDefaultsQuantifiers` sets `--pre-skolem-quant=agg`: the existentials
@@ -63,12 +61,12 @@ as of this README:
 
 | Directory | Files | Code | Comment | Blank |
 |---|---:|---:|---:|---:|
-| `src/z3/util/` | 16 | 1457 | 525 | 341 |
+| `src/z3/util/` | 16 | 1458 | 526 | 341 |
 | `src/z3/relevancy/` | 12 | 2278 | 521 | 374 |
-| `src/z3/quantifiers/` | 27 | 8446 | 1489 | 1042 |
-| **Total** | 55 | **12181** | 2535 | 1757 |
+| `src/z3/quantifiers/` | 27 | 8498 | 1532 | 1046 |
+| **Total** | 55 | **12234** | 2579 | 1761 |
 
-The rest of cvc5 changes by 295 added and 32 deleted lines over 17 C++ files,
+The rest of cvc5 changes by 294 added and 13 deleted lines over 18 C++ files,
 most of them in `smt/set_defaults.cpp` (the capability checks) and
 `theory/quantifiers/quantifiers_preprocess.cpp` (pre-skolemization of
 quantified formulas with patterns).

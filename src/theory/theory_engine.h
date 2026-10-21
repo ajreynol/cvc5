@@ -687,11 +687,6 @@ class TheoryEngine : protected EnvObj
    */
   context::CDO<bool> d_factsAsserted;
   /**
-   * Whether some theory is to be checked at standard effort even when no fact
-   * was asserted, see Theory::checksWithoutFacts.
-   */
-  bool d_checkWithoutFacts;
-  /**
    * The modules that are notified of every literal asserted from the SAT
    * solver, see TheoryEngineModule::needsFacts.
    */
