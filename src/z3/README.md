@@ -11,19 +11,19 @@ only lemmas, it never explains anything, and keeps no justifications.
 
 | Directory | Contents | May include (from the port) |
 |---|---|---|
-| `src/z3/util/` | Data structures and the term interface: literals, regions, trails, hashing, `types.h`, `ast.h` (incl. `QuantifierNormalizer`), `params`, `statistics`, and `AssertionTarget`, the interface the preprocessing pass uses | nothing outside `z3/util/` |
+| `src/z3/util/` | Data structures and the term interface: literals, regions, trails, hashing, `types.h`, `ast.h` (incl. `QuantifierNormalizer`), and `params`, `statistics` | nothing outside `z3/util/` |
 | `src/z3/relevancy/` | The Boolean side: `PropCore` (assignment, clauses, watch lists, propagation), `RelevancyPropagator`, `RelevancyTracker` (the `TheoryEngineModule` that hands it every asserted literal), and `TheorySide`, the interface through which it reaches the theory side | `z3/util/` only |
 | `src/z3/quantifiers/` | The theory side and the cvc5 integration: `SmtContext` (E-graph, internalizer), `mam` (E-matching), `QiQueue`, the checker, the quantifier manager, `HostCore` (which owns the core), `ShadowFeed`, `Z3QuantifiersEngine` | anything |
-| `src/preprocessing/z3/` | The `z3-prep` pass (`Z3AssertionPreparation`), which renames the quantified variables of the assertions to the core's canonical ones and asserts them to the core | `z3/util/` only |
 
-The rules are kept by two interfaces:
+The rules are kept by an interface, `TheorySide`
+(`relevancy/theory_side.h`): what `PropCore` and `RelevancyPropagator` need
+from the theory side. `SmtContext` implements it.
 
-- `TheorySide` (`relevancy/theory_side.h`): what `PropCore` and
-  `RelevancyPropagator` need from the theory side. `SmtContext` implements it.
-- `AssertionTarget` (`util/assertion_target.h`): what the preprocessing pass
-  needs from the core (reset it, its quantifier normalizer, asserting a
-  prepared formula). `Z3QuantifiersEngine`
-  implements it, and the pass finds it through the quantifiers theory.
+The core takes the input as cvc5's preprocessing leaves it, from
+`ppNotifyAssertions`. It renames the quantified variables to the canonical
+ones it expects (`QuantifierNormalizer`) at its boundary: `HostCore` renames
+the formulas, atoms and literals that come from cvc5 (`toCore`), and gives
+cvc5 its own atoms back in the lemmas and queries it sends (`toHost`).
 
 All of the port's classes are in the namespace `cvc5::internal::z3`.
 
@@ -50,7 +50,6 @@ Outside the directories above, the port touches:
   nested in quantified formulas get skolem functions of the enclosing
   variables, as in Z3's negation normal form, which `QuantifiersPreprocess`
   now also applies to quantified formulas with patterns.
-- `ProcessAssertions` runs `z3-prep` last.
 
 ## Size
 
@@ -59,12 +58,11 @@ as of this README:
 
 | Directory | Files | Code | Comment | Blank |
 |---|---:|---:|---:|---:|
-| `src/z3/util/` | 17 | 1477 | 552 | 351 |
+| `src/z3/util/` | 16 | 1458 | 526 | 341 |
 | `src/z3/relevancy/` | 12 | 2278 | 521 | 374 |
-| `src/z3/quantifiers/` | 27 | 8523 | 1513 | 1058 |
-| `src/preprocessing/z3/` | 2 | 70 | 52 | 17 |
-| **Total** | 58 | **12348** | 2638 | 1800 |
+| `src/z3/quantifiers/` | 27 | 8562 | 1532 | 1059 |
+| **Total** | 55 | **12298** | 2579 | 1774 |
 
-The rest of cvc5 changes by 308 added and 35 deleted lines over 18 C++ files,
+The rest of cvc5 changes by 288 added and 35 deleted lines over 15 C++ files,
 most of them in `smt/set_defaults.cpp` (the capability checks) and
 `theory/quantifiers/theory_quantifiers.cpp`.

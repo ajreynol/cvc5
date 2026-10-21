@@ -72,6 +72,7 @@ void HostCore::reset(TheoryEngine* te)
   d_popLevel = UINT32_MAX;
   d_preregistered.clear();
   d_lemmasSent.clear();
+  d_hostAtom.clear();
   d_ctx->setCvc5Preprocessor(
       [this](TNode n, std::vector<Node>& defs) {
         return preprocessForTheories(n, defs);
@@ -175,14 +176,24 @@ Node HostCore::preprocessAroundClosures(TNode n, std::vector<Node>& defs)
       holders.begin(), holders.end(), closures.begin(), closures.end());
 }
 
+void HostCore::assertInput(const std::vector<Node>& assertions)
+{
+  PropCore& core = getPropCore();
+  for (const Node& a : assertions)
+  {
+    core.assertFormula(toCore(a));
+  }
+}
+
 void HostCore::preRegister(TNode atom)
 {
   // The atoms of the input are internalized with the asserted formulas when
   // the search starts; the others are internalized at the next check.
   Trace("z3-host") << "preregister " << atom << std::endl;
+  Node a = toCore(atom);
   if (d_setup)
   {
-    d_preregistered.push_back(atom);
+    d_preregistered.push_back(a);
   }
 }
 
@@ -195,7 +206,7 @@ void HostCore::assertFact(TNode literal)
   PropCore& core = getPropCore();
   syncLevel();
   Trace("z3-host") << "assert " << literal << std::endl;
-  Literal l = core.hostLiteral(literal);
+  Literal l = core.hostLiteral(toCore(literal));
   if (!core.hostAssign(l))
   {
     enterConflict();
@@ -382,9 +393,10 @@ void HostCore::sendLemmas()
   }
 }
 
-void HostCore::sendLemma(const Node& lem, bool local)
+void HostCore::sendLemma(const Node& coreLem, bool local)
 {
   Statistics& stats = getContext().getStats();
+  Node lem = toHost(coreLem);
   // cvc5 keeps its lemmas, while the core makes an instance or an axiom
   // again after backtracking, so a lemma is sent once. A lemma weakened by
   // delayUnit holds only under the first decision it was weakened with, so
@@ -472,7 +484,7 @@ void HostCore::splitNewlyRelevant()
     // A variable cvc5 knows is decided by its heuristic when an assertion
     // needs it; the core's own variables (the conditions of term ITEs, for
     // instance) are decided only through a split.
-    if (!core.bInternalized(n) || pe->isSatLiteral(n))
+    if (!core.bInternalized(n) || pe->isSatLiteral(toHost(n)))
     {
       continue;
     }
@@ -496,7 +508,7 @@ void HostCore::split(BoolVar v)
   // The core has variables for the not-gates nested in terms; cvc5 splits
   // on their argument, since lemmas are not rewritten (see literalNode).
   bool pol = atom.getKind() != Kind::NOT;
-  TNode a = pol ? atom : atom[0];
+  Node a = toHost(pol ? atom : atom[0]);
   if (expr::hasFreeVar(a))
   {
     // not an atom of the search: the core has variables for the atoms in
@@ -547,17 +559,57 @@ bool HostCore::propagateAndReport()
   return true;
 }
 
-Node HostCore::literalNode(Literal l)
+Node HostCore::toCore(TNode n)
 {
-  PropCore& core = getPropCore();
-  if (l == s_trueLiteral || l == s_falseLiteral)
+  Node nc = getContext().getNormalizer().normalize(n);
+  if (nc != n)
   {
-    return nodeManager()->mkConst(l == s_trueLiteral);
+    recordRenamedAtoms(n, nc);
   }
-  // The core has variables for the not-gates nested in terms, whose negative
-  // literal is cvc5's atom rather than a double negation.
-  Node atom = core.boolVar2Expr(l.var());
-  return l.sign() ? atom.negate() : atom;
+  return nc;
+}
+
+void HostCore::recordRenamedAtoms(TNode n, TNode nc)
+{
+  // The renaming changes only the quantified formulas, so n and nc have the
+  // same Boolean structure above their atoms.
+  if (n == nc)
+  {
+    return;
+  }
+  if (expr::isBooleanConnective(n) && nc.getKind() == n.getKind()
+      && nc.getNumChildren() == n.getNumChildren())
+  {
+    for (size_t i = 0, nchild = n.getNumChildren(); i < nchild; ++i)
+    {
+      recordRenamedAtoms(n[i], nc[i]);
+    }
+    return;
+  }
+  d_hostAtom.emplace(nc, n);
+}
+
+Node HostCore::toHost(TNode n)
+{
+  if (d_hostAtom.empty() || !expr::hasClosure(n))
+  {
+    return n;
+  }
+  auto it = d_hostAtom.find(n);
+  if (it != d_hostAtom.end())
+  {
+    return it->second;
+  }
+  if (!expr::isBooleanConnective(n))
+  {
+    return n;
+  }
+  NodeBuilder nb(nodeManager(), n.getKind());
+  for (const Node& c : n)
+  {
+    nb << toHost(c);
+  }
+  return nb.constructNode();
 }
 
 }  // namespace z3

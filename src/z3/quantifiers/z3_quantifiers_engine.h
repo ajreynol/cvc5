@@ -21,7 +21,6 @@
 
 #include "theory/quantifiers_engine.h"
 #include "z3/quantifiers/host_core.h"
-#include "z3/util/assertion_target.h"
 #include "z3/relevancy/relevancy_tracker.h"
 
 namespace cvc5::internal {
@@ -50,8 +49,7 @@ namespace z3 {
  * false is skolemized with the lemma of cvc5's Skolemize utility, which the
  * core asserts as it does an instance.
  */
-class Z3QuantifiersEngine : public theory::QuantifiersEngine,
-                            public AssertionTarget
+class Z3QuantifiersEngine : public theory::QuantifiersEngine
 {
  public:
   Z3QuantifiersEngine(Env& env,
@@ -62,10 +60,6 @@ class Z3QuantifiersEngine : public theory::QuantifiersEngine,
                       theory::quantifiers::QuantifiersInferenceManager& qim,
                       ProofNodeManager* pnm);
   ~Z3QuantifiersEngine();
-  //---------------------- AssertionTarget, for Z3AssertionPreparation
-  void resetCore(TheoryEngine* te) override;
-  QuantifierNormalizer& getNormalizer() override;
-  void assertPrepared(TNode n) override;
 
   //--------------------------------------------- the quantifiers engine
   /** None: the model builder of TheoryEngine is the default one. */
@@ -74,10 +68,8 @@ class Z3QuantifiersEngine : public theory::QuantifiersEngine,
     return nullptr;
   }
   void presolve() override;
-  void ppNotifyAssertions(
-      CVC5_UNUSED const std::vector<Node>& assertions) override
-  {
-  }
+  /** Assert the preprocessed assertions to the core. */
+  void ppNotifyAssertions(const std::vector<Node>& assertions) override;
   /** Run the core, at standard and full effort. */
   void check(theory::Theory::Effort e) override;
   void notifyCombineTheories() override {}
@@ -115,8 +107,8 @@ class Z3QuantifiersEngine : public theory::QuantifiersEngine,
    */
   [[noreturn]] static void unsupported(const char* what);
   /**
-   * Make the relevancy tracker, the one module of the theory engine; none of
-   * the modules of cvc5's quantifiers engine are made.
+   * Make the core, and the relevancy tracker, the one module of the theory
+   * engine; none of the modules of cvc5's quantifiers engine are made.
    */
   void finishInit(TheoryEngine* te) override;
 

@@ -38,25 +38,11 @@ Z3QuantifiersEngine::Z3QuantifiersEngine(
 {
 }
 
-void Z3QuantifiersEngine::resetCore(TheoryEngine* te)
-{
-  d_core->reset(te);
-}
-
-QuantifierNormalizer& Z3QuantifiersEngine::getNormalizer()
-{
-  return d_core->getContext().getNormalizer();
-}
-
-void Z3QuantifiersEngine::assertPrepared(TNode n)
-{
-  d_core->getPropCore().assertFormula(n);
-}
-
 Z3QuantifiersEngine::~Z3QuantifiersEngine() {}
 
 void Z3QuantifiersEngine::finishInit(TheoryEngine* te)
 {
+  d_core->reset(te);
   d_tracker = std::make_unique<RelevancyTracker>(
       d_env, te, [this](TNode lit) { d_core->assertFact(lit); });
   te->addModule(d_tracker.get());
@@ -68,6 +54,12 @@ void Z3QuantifiersEngine::presolve()
   d_core->getShadowFeed()->setMasterEqualityEngine(
       d_qstate.getEqualityEngine());
   d_core->presolve();
+}
+
+void Z3QuantifiersEngine::ppNotifyAssertions(
+    const std::vector<Node>& assertions)
+{
+  d_core->assertInput(assertions);
 }
 
 void Z3QuantifiersEngine::check(theory::Theory::Effort e)

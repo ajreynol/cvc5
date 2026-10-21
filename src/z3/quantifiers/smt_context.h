@@ -304,9 +304,9 @@ class SmtContext final : protected EnvObj, public TheorySide
   /**
    * The preprocessing of cvc5's own theories: it maps a formula to the form
    * cvc5's theories take, adding to defs the definitions of the skolems
-   * it introduces. The input (Z3AssertionPreparation) and the instances
-   * (internalizeInstance) go through it before the core asserts them and
-   * hands them to cvc5, so that both see the same atoms.
+   * it introduces. The instances (internalizeInstance) go through it before
+   * the core asserts them and hands them to cvc5, so that both see the same
+   * atoms.
    */
   using Cvc5Preprocessor = std::function<Node(TNode, std::vector<Node>&)>;
   void setCvc5Preprocessor(Cvc5Preprocessor p)

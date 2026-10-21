@@ -139,8 +139,6 @@ libcvc5_add_sources(
   preprocessing/util/boolean_simplification.h
   preprocessing/util/ite_utilities.cpp
   preprocessing/util/ite_utilities.h
-  preprocessing/z3/z3_assertion_preparation.cpp
-  preprocessing/z3/z3_assertion_preparation.h
   printer/ast/ast_printer.cpp
   printer/ast/ast_printer.h
   printer/enum_to_string.cpp
@@ -1372,7 +1370,6 @@ libcvc5_add_sources(
   z3/relevancy/watch_list.cpp
   z3/relevancy/watch_list.h
   z3/util/approx_set.h
-  z3/util/assertion_target.h
   z3/util/ast.cpp
   z3/util/ast.h
   z3/util/hash.h

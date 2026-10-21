@@ -69,8 +69,7 @@ class HostCore : protected EnvObj
   ~HostCore();
   /**
    * Make a fresh core and forget the state of the previous one, for the
-   * theory engine te, whose prop engine was just made; see
-   * Z3QuantifiersEngine::resetCore.
+   * theory engine te.
    */
   void reset(TheoryEngine* te);
   /** The theory side of the core. Requires that reset has been called. */
@@ -78,6 +77,11 @@ class HostCore : protected EnvObj
   /** The propositional side of the core. Requires that reset has been called. */
   PropCore& getPropCore();
 
+  /**
+   * Assert the input formulas, cvc5's preprocessed assertions, to the core,
+   * before cvc5 converts them.
+   */
+  void assertInput(const std::vector<Node>& assertions);
   /** cvc5 registered the atom. */
   void preRegister(TNode atom);
   /** cvc5 asserted the literal. */
@@ -158,8 +162,20 @@ class HostCore : protected EnvObj
   void split(BoolVar v);
   /** Propagate, and report what follows; returns false on a conflict. */
   bool propagateAndReport();
-  /** The node of the literal l, as cvc5 knows it. */
-  Node literalNode(Literal l);
+  /**
+   * The core's form of n, a formula of cvc5: its quantified formulas over
+   * the canonical variables the core expects (see z3/util/ast.h). The atoms
+   * of n that change are recorded, for toHost.
+   */
+  Node toCore(TNode n);
+  /** Record the atoms of n that its core's form nc renames, for toHost. */
+  void recordRenamedAtoms(TNode n, TNode nc);
+  /**
+   * cvc5's form of n, a formula of the core: the atoms the core renamed are
+   * cvc5's again. The other atoms, the new quantified formulas of the
+   * instances for example, are the same for both.
+   */
+  Node toHost(TNode n);
   /**
    * The form of n that cvc5's theories take, by cvc5's lemma preprocessing,
    * adding to defs the definitions of the skolems it introduces; see
@@ -202,6 +218,13 @@ class HostCore : protected EnvObj
   std::unordered_set<Node> d_lemmasSent;
   /** The lemmas weakened by delayUnit, to send as they are, see check. */
   std::vector<Node> d_delayedUnits;
+  /**
+   * For each atom of cvc5 that toCore renamed, the core's form and cvc5's.
+   * Alpha-equivalent atoms of cvc5 would have the same core's form, which
+   * does not happen with the inputs the core takes: the core's forms keep
+   * the quantifier names (qid) and patterns.
+   */
+  std::unordered_map<Node, Node> d_hostAtom;
   /** The placeholder of each closure, see preprocessAroundClosures. */
   std::unordered_map<Node, Node> d_closureHolders;
   /** Follows the pops of the SAT context. */
