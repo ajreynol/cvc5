@@ -157,8 +157,6 @@ class HostCore : protected EnvObj
    * find; see enterConflict in host_core.cpp.
    */
   void enterConflict();
-  /** Send the formulas recorded by the propositional side as lemmas. */
-  void sendLemmas();
   /**
    * Send the lemma lem, unless it was sent before, or send it again as a
    * lemma local to the SAT context if local is true.

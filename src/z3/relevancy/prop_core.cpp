@@ -1170,16 +1170,6 @@ bool PropCore::hostAssign(Literal l)
   return true;
 }
 
-void PropCore::hostTakeLemmas(std::vector<Node>& lemmas,
-                              std::vector<Node>& instances)
-{
-  lemmas.insert(lemmas.end(), d_hostLemmas.begin(), d_hostLemmas.end());
-  d_hostLemmas.clear();
-  instances.insert(
-      instances.end(), d_hostInstances.begin(), d_hostInstances.end());
-  d_hostInstances.clear();
-}
-
 FinalCheckStatus PropCore::hostFinalCheck() { return d_ctx.finalCheck(); }
 
 }  // namespace z3

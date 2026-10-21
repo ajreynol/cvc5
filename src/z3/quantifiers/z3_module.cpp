@@ -40,7 +40,7 @@ void Z3Module::finishInit(TheoryEngine* te)
 {
   // The core sends its lemmas through the inference manager, with their
   // inferences; the instances it sends again are local to the SAT context,
-  // which the inference manager does not cache (see HostCore::sendLemmas).
+  // which the inference manager does not cache (see HostCore::reset).
   d_core = std::make_unique<HostCore>(
       d_env, d_qim, [this](TNode q) { return getSkolemization(q); });
   d_core->reset(te);

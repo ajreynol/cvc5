@@ -317,6 +317,15 @@ class SmtContext final : protected EnvObj, public TheorySide
    */
   using Skolemizer = std::function<Node(TNode, std::vector<Node>&)>;
   void setSkolemizer(Skolemizer s) { d_skolemizer = std::move(s); }
+  /**
+   * Sends cvc5 a formula the core internalizes, in the form cvc5's theories
+   * take: an instance, which holds where it was made, if the flag is true,
+   * and otherwise a lemma that holds globally. The core sends a formula
+   * before it internalizes it, so that cvc5 has registered its terms when the
+   * core takes them.
+   */
+  using LemmaSender = std::function<void(TNode, bool)>;
+  void setLemmaSender(LemmaSender s) { d_lemmaSender = std::move(s); }
 
   /**
    * Merge the classes of a and b, which must be internalized as terms, since
@@ -531,7 +540,7 @@ class SmtContext final : protected EnvObj, public TheorySide
   void assignQuantifier(TNode q);
   /**
    * Internalize the formula norm, in the form cvc5's theories take, with the
-   * definitions defs of the skolems in it, and record them for cvc5: norm as
+   * definitions defs of the skolems in it, after sending them to cvc5: norm as
    * an instance if instance is true, and otherwise as a lemma that holds
    * globally.
    */
@@ -582,6 +591,8 @@ class SmtContext final : protected EnvObj, public TheorySide
   InstanceMaker d_instanceMaker;
   /** See setSkolemizer. */
   Skolemizer d_skolemizer;
+  /** See setLemmaSender. */
+  LemmaSender d_lemmaSender;
   std::unique_ptr<QuantifierManager> d_qmanager;
 
   /** The expressions already internalized as enodes. */

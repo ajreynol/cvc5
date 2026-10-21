@@ -877,9 +877,10 @@ void SmtContext::internalizePreprocessed(TNode norm,
   // A skolem definition holds globally, and cvc5's preprocessing gives it
   // only once, so it is a root that is asserted again after each backtrack,
   // as a delayed unit is, until it is asserted at the base level.
+  Assert(d_lemmaSender);
   for (const Node& d : defs)
   {
-    d_prop.hostRecordLemma(d);
+    d_lemmaSender(d, false);
     if (d.isConst())
     {
       continue;
@@ -895,14 +896,7 @@ void SmtContext::internalizePreprocessed(TNode norm,
   }
   // the formula is also a lemma for cvc5's prop engine: an instance, which
   // holds where it was made, or a lemma that holds globally
-  if (instance)
-  {
-    d_prop.hostRecordInstance(norm);
-  }
-  else
-  {
-    d_prop.hostRecordLemma(norm);
-  }
+  d_lemmaSender(norm, instance);
   internalizeAssertion(norm, generation);
 }
 

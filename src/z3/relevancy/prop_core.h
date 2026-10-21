@@ -52,9 +52,8 @@ namespace z3 {
  * It runs in host mode: cvc5's prop engine searches, and this class mirrors,
  * for the theory side, the assignment of the atoms that cvc5 asserts. It
  * never decides or resolves a conflict itself, and its scopes follow cvc5's
- * SAT context (see HostCore). Its clauses stay private: what it hands to
- * cvc5 is what the theory side records (hostRecordInstance and
- * hostRecordLemma).
+ * SAT context (see HostCore). Its clauses stay private: the theory side
+ * sends cvc5 its instances and lemmas (SmtContext::setLemmaSender).
  *
  * The theory side, SmtContext, owns this object. This side calls it, through
  * the TheorySide interface,
@@ -276,15 +275,6 @@ class PropCore : protected EnvObj
    * conflict.
    */
   bool hostAssign(Literal l);
-  /** Record the formula n, an instance, to be asserted by the host. */
-  void hostRecordInstance(TNode n) { d_hostInstances.push_back(n); }
-  /** Record the formula n, which holds globally, to be asserted by the host. */
-  void hostRecordLemma(TNode n) { d_hostLemmas.push_back(n); }
-  /**
-   * Move to lemmas the formulas recorded for the host since the last call,
-   * and to instances the instances.
-   */
-  void hostTakeLemmas(std::vector<Node>& lemmas, std::vector<Node>& instances);
   /** Propagate to a fixpoint; returns false on a conflict. */
   bool hostPropagate() { return propagate(); }
   /**
@@ -401,9 +391,6 @@ class PropCore : protected EnvObj
   bool useBinaryClauseOpt(Literal l1, Literal l2) const;
   void addWatchLiteral(Clause* cls, size_t idx);
 
-  /** The formulas recorded for the host; see hostTakeLemmas. */
-  std::vector<Node> d_hostLemmas;
-  std::vector<Node> d_hostInstances;
   /** The unassigned variables that became relevant; see hostTakeRelevant. */
   std::vector<Node> d_hostRelevant;
 

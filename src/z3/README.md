@@ -71,10 +71,10 @@ as of this README:
 
 | Directory | Files | Code | Comment | Blank |
 |---|---:|---:|---:|---:|
-| `src/z3/util/` | 14 | 1347 | 460 | 316 |
-| `src/z3/relevancy/` | 12 | 2275 | 521 | 374 |
-| `src/z3/quantifiers/` | 27 | 8002 | 1582 | 1025 |
-| **Total** | 53 | **11624** | 2563 | 1715 |
+| `src/z3/util/` | 14 | 1349 | 460 | 316 |
+| `src/z3/relevancy/` | 12 | 2274 | 513 | 373 |
+| `src/z3/quantifiers/` | 27 | 7985 | 1588 | 1024 |
+| **Total** | 53 | **11608** | 2561 | 1713 |
 
 The rest of cvc5 changes by 236 added and 15 deleted lines over 18 C++ files,
 most of them in `smt/set_defaults.cpp` (the capability checks) and

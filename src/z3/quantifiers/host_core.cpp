@@ -87,6 +87,15 @@ void HostCore::reset(TheoryEngine* te)
   d_ctx->setSkolemizer([this](TNode q, std::vector<Node>& defs) {
     return mkSkolemization(q, defs);
   });
+  // An instance is local to the SAT context (--z3-host-local-instances, the
+  // default), as with cvc5's --inst-local: cvc5 adds its clause once, but its
+  // decision heuristic treats it as an assertion only in the context where
+  // it was last made. The core makes it again when matching finds it again
+  // after backtracking, as Z3 does, and it is then sent again, which makes it
+  // an assertion there again. Otherwise an instance is sent once.
+  d_ctx->setLemmaSender([this](TNode lem, bool instance) {
+    sendLemma(lem, instance && options().z3.z3HostLocalInstances);
+  });
 }
 
 SmtContext& HostCore::getContext()
@@ -390,28 +399,6 @@ void HostCore::enterConflict()
   d_conflictLevel = context()->getLevel();
 }
 
-void HostCore::sendLemmas()
-{
-  std::vector<Node> lems;
-  std::vector<Node> insts;
-  getPropCore().hostTakeLemmas(lems, insts);
-  // An instance is local to the SAT context (--z3-host-local-instances, the
-  // default), as with cvc5's --inst-local: cvc5 adds its clause once, but its
-  // decision heuristic treats it as an assertion only in the context where
-  // it was last made. The core makes it again when matching finds it again
-  // after backtracking, as Z3 does, and it is then sent again, which makes it
-  // an assertion there again. Otherwise an instance is sent once.
-  bool local = options().z3.z3HostLocalInstances;
-  for (const Node& inst : insts)
-  {
-    sendLemma(inst, local);
-  }
-  for (const Node& lem : lems)
-  {
-    sendLemma(lem, false);
-  }
-}
-
 void HostCore::sendLemma(const Node& coreLem, bool local)
 {
   Statistics& stats = getContext().getStats();
@@ -592,8 +579,6 @@ bool HostCore::propagateAndReport()
 {
   PropCore& core = getPropCore();
   bool ok = core.hostPropagate();
-  // the instances and axioms made before a conflict hold regardless
-  sendLemmas();
   if (!ok)
   {
     enterConflict();
