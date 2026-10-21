@@ -22,7 +22,6 @@
 #include "z3/quantifiers/quantifier_manager.h"
 
 #include <algorithm>
-#include <sstream>
 
 #include "base/output.h"
 #include "options/z3_options.h"
@@ -144,24 +143,6 @@ void QuantifierManager::initSearchEh()
 void QuantifierManager::assignEh(TNode q)
 {
   d_active = true;
-  if (TraceIsOn("z3-qpat"))
-  {
-    size_t numPats = 0;
-    std::stringstream arities;
-    if (q.getNumChildren() == 3)
-    {
-      for (const Node& a : q[2])
-      {
-        if (a.getKind() == Kind::INST_PATTERN)
-        {
-          numPats++;
-          arities << " " << a.getNumChildren();
-        }
-      }
-    }
-    Trace("z3-qpat") << "[assign-quant] q" << q.getId() << " pats=" << numPats
-                     << " arity" << arities.str() << " " << q << std::endl;
-  }
   // A multi-pattern is only matched eagerly up to a bound, since matching
   // one is much more expensive than matching a unary pattern. The bound is
   // raised by one when the quantifier has no unary pattern at all, so that

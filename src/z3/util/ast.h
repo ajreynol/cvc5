@@ -107,13 +107,6 @@ inline bool isEq(TNode n) { return n.getKind() == Kind::EQUAL; }
 TNode getDecl(TNode n);
 
 /**
- * The theory that owns n's operator, playing the role of Z3's
- * func_decl::get_family_id(). Uninterpreted functions and sorts are owned by
- * THEORY_UF, whose congruence reasoning the core performs itself.
- */
-TheoryId familyIdOf(TNode n);
-
-/**
  * True if n is a binary application of a commutative operator, in which case
  * the congruence table normalizes the argument order.
  */
@@ -140,39 +133,15 @@ inline TNode getQuantBody(TNode q)
 void getPatterns(TNode q, std::vector<std::vector<Node>>& patterns);
 
 /**
- * The instantiation weight of q, from its ":weight" annotation, defaulting to
- * zero as in Z3. The weight is a term of the quantifier instantiation cost
- * function.
+ * The instantiation weight of q, a term of the quantifier instantiation cost
+ * function. cvc5's parser does not retain ":weight", so every quantifier has
+ * Z3's default weight, which is 1 and not 0: with weight 0 the cost of an
+ * instance is its generation, the generation of the enodes an instance
+ * creates is its cost, and so every instance has cost 0 and matching loops
+ * are never broken. See the long comment on the "weight 0" performance bug in
+ * Z3's qi_params.h.
  */
-/** Z3's default quantifier weight. */
-constexpr uint32_t s_defaultWeight = 1;
-
-uint32_t getWeight(TNode q);
-
-/**
- * Set the weight of q, as Z3's pattern inference does for the quantifiers
- * whose only usable pattern contains arithmetic.
- */
-void setWeight(TNode q, uint32_t w);
-
-/** Attribute holding one plus the weight of a quantifier. */
-struct QuantWeightTag
-{
-};
-using QuantWeightAttr = expr::Attribute<QuantWeightTag, uint64_t>;
-
-/**
- * Attribute caching the term depth, so that the internalizer's check for
- * "deep" terms is constant time as it is in Z3. Zero means not computed yet;
- * a leaf has depth one.
- */
-struct TermDepthTag
-{
-};
-using TermDepthAttr = expr::Attribute<TermDepthTag, uint64_t>;
-
-/** The depth of n: one for a leaf, and one more than its deepest child. */
-uint32_t getDepth(TNode n);
+inline uint32_t getWeight(TNode) { return 1; }
 
 /**
  * Rewrites quantifiers into the canonical de Bruijn-level form the core and

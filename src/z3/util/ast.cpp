@@ -38,12 +38,6 @@ TNode getDecl(TNode n)
   return n;
 }
 
-TheoryId familyIdOf(TNode n)
-{
-  return theory::Theory::theoryOf(
-      n, options::TheoryOfMode::THEORY_OF_TYPE_BASED, theory::THEORY_UF);
-}
-
 bool isCommutative(TNode n)
 {
   // Z3 consults func_decl::is_commutative(), which the congruence table uses
@@ -90,68 +84,6 @@ void getPatterns(TNode q, std::vector<std::vector<Node>>& patterns)
       patterns.emplace_back(p.begin(), p.end());
     }
   }
-}
-
-uint32_t getWeight(TNode q)
-{
-  Assert(isQuantifier(q));
-  // cvc5's parser does not retain ":weight", so the only weights seen here
-  // are the ones pattern inference assigns. The default is Z3's, which is 1
-  // and not 0: with weight 0 the cost of an instance is its generation, the
-  // generation of the enodes an instance creates is its cost, and so every
-  // instance has cost 0 and matching loops are never broken. See the long
-  // comment on the "weight 0" performance bug in Z3's qi_params.h.
-  uint64_t cached = q.getAttribute(QuantWeightAttr());
-  return cached == 0 ? s_defaultWeight : static_cast<uint32_t>(cached - 1);
-}
-
-void setWeight(TNode q, uint32_t w)
-{
-  Assert(isQuantifier(q));
-  q.setAttribute(QuantWeightAttr(), static_cast<uint64_t>(w) + 1);
-}
-
-uint32_t getDepth(TNode n)
-{
-  uint64_t cached = n.getAttribute(TermDepthAttr());
-  if (cached != 0)
-  {
-    return static_cast<uint32_t>(cached);
-  }
-  // An explicit stack, since the terms this is asked about may be deep enough
-  // to overflow the call stack -- which is the reason it is asked at all.
-  std::vector<TNode> visit{n};
-  while (!visit.empty())
-  {
-    TNode cur = visit.back();
-    if (cur.getAttribute(TermDepthAttr()) != 0)
-    {
-      visit.pop_back();
-      continue;
-    }
-    uint64_t maxChild = 0;
-    bool incomplete = false;
-    for (const Node& c : cur)
-    {
-      uint64_t d = c.getAttribute(TermDepthAttr());
-      if (d == 0)
-      {
-        visit.push_back(c);
-        incomplete = true;
-      }
-      else if (d > maxChild)
-      {
-        maxChild = d;
-      }
-    }
-    if (incomplete)
-    {
-      continue;
-    }
-    visit.pop_back();
-    cur.setAttribute(TermDepthAttr(), maxChild + 1);
-  }
-  return static_cast<uint32_t>(n.getAttribute(TermDepthAttr()));
 }
 
 QuantifierNormalizer::QuantifierNormalizer(NodeManager* nm) : d_nm(nm) {}

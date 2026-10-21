@@ -46,40 +46,6 @@ bool isFalseNode(TNode n)
   return n.getKind() == Kind::CONST_BOOLEAN && !n.getConst<bool>();
 }
 
-constexpr char s_white = 0;
-constexpr char s_grey = 1;
-constexpr char s_black = 2;
-
-char getColor(std::vector<char>& tcolors,
-              std::vector<char>& fcolors,
-              TNode n,
-              bool gateCtx)
-{
-  std::vector<char>& colors = gateCtx ? tcolors : fcolors;
-  if (colors.size() > n.getId())
-  {
-    return colors[n.getId()];
-  }
-  return s_white;
-}
-
-void setColor(std::vector<char>& tcolors,
-              std::vector<char>& fcolors,
-              TNode n,
-              bool gateCtx,
-              char color)
-{
-  std::vector<char>& colors = gateCtx ? tcolors : fcolors;
-  if (colors.size() <= n.getId())
-  {
-    colors.resize(n.getId() + 1, s_white);
-  }
-  colors[n.getId()] = color;
-}
-
-/** The threshold above which internalization switches to a topological sort. */
-constexpr uint32_t s_deepExprThreshold = 1024;
-
 }  // namespace
 
 void SmtContext::updateGeneration(ENode* e)
@@ -159,142 +125,12 @@ void SmtContext::mergeCgcGenerations(ENode* e1,
   e2->d_generation = e1Generation;
 }
 
-void SmtContext::tsVisitChild(TNode n,
-                              bool gateCtx,
-                              std::vector<ExprBoolPair>& todo,
-                              bool& visited)
-{
-  if (getColor(d_tcolors, d_fcolors, n, gateCtx) == s_white)
-  {
-    todo.push_back(ExprBoolPair(n, gateCtx));
-    visited = false;
-  }
-}
-
-bool SmtContext::tsVisitChildren(TNode n,
-                                 bool /*gateCtx*/,
-                                 std::vector<ExprBoolPair>& todo)
-{
-  if (isQuantifier(n))
-  {
-    return true;
-  }
-  if (!shouldInternalizeRec(n))
-  {
-    return true;
-  }
-  Assert(isApp(n));
-  if (n.getType().isBoolean())
-  {
-    if (bInternalized(n))
-    {
-      updateGeneration(n);
-      return true;
-    }
-  }
-  else
-  {
-    updateGeneration(n);
-    if (eInternalized(n))
-    {
-      return true;
-    }
-  }
-
-  bool visited = true;
-  bool newGateCtx =
-      n.getType().isBoolean() && (isGate(n) || n.getKind() == Kind::NOT);
-  size_t j = n.getNumChildren();
-  while (j > 0)
-  {
-    --j;
-    tsVisitChild(n[j], newGateCtx, todo, visited);
-  }
-  return visited;
-}
-
-void SmtContext::topSortExpr(const Node* exprs,
-                             size_t numExprs,
-                             std::vector<ExprBoolPair>& sortedExprs)
-{
-  d_tcolors.clear();
-  d_fcolors.clear();
-  while (!d_tsTodo.empty())
-  {
-    ExprBoolPair& p = d_tsTodo.back();
-    Node curr = p.first;
-    bool gateCtx = p.second;
-    switch (getColor(d_tcolors, d_fcolors, curr, gateCtx))
-    {
-      case s_white:
-        setColor(d_tcolors, d_fcolors, curr, gateCtx, s_grey);
-        tsVisitChildren(curr, gateCtx, d_tsTodo);
-        break;
-      case s_grey:
-      {
-        setColor(d_tcolors, d_fcolors, curr, gateCtx, s_black);
-        const Node* end = exprs + numExprs;
-        if (std::find(exprs, end, curr) == end && curr.getKind() != Kind::NOT
-            && shouldInternalizeRec(curr))
-        {
-          sortedExprs.push_back(ExprBoolPair(curr, gateCtx));
-        }
-        break;
-      }
-      case s_black: d_tsTodo.pop_back(); break;
-      default: Unreachable();
-    }
-  }
-}
-
-bool SmtContext::shouldInternalizeRec(TNode e) const
-{
-  if (!isApp(e) || !e.getType().isBoolean())
-  {
-    return true;
-  }
-  TheoryId fid = familyIdOf(e);
-  return fid == theory::THEORY_UF || fid == theory::THEORY_BOOL
-         || fid == theory::THEORY_BUILTIN;
-}
-
-void SmtContext::internalizeDeep(const Node* exprs, size_t numExprs)
-{
-  d_tsTodo.clear();
-  for (size_t i = 0; i < numExprs; ++i)
-  {
-    TNode n = exprs[i];
-    if (!eInternalized(n) && getDepth(n) > s_deepExprThreshold
-        && shouldInternalizeRec(n))
-    {
-      // A deep expression is internalized through a topological sort, to
-      // avoid overflowing the stack.
-      d_tsTodo.push_back(ExprBoolPair(n, true));
-    }
-  }
-
-  std::vector<ExprBoolPair> sortedExprs;
-  topSortExpr(exprs, numExprs, sortedExprs);
-  for (const ExprBoolPair& eb : sortedExprs)
-  {
-    Assert(shouldInternalizeRec(eb.first));
-    internalizeRec(eb.first, eb.second);
-  }
-}
-
-void SmtContext::internalizeDeep(TNode n)
-{
-  Node v[1] = {n};
-  internalizeDeep(v, 1);
-}
-
 void SmtContext::internalizeAssertion(TNode n, uint32_t generation)
 {
   uint32_t oldGeneration = d_generation;
   d_generation = generation;
   d_stats.d_maxGeneration =
       std::max<uint64_t>(generation, d_stats.d_maxGeneration);
-  internalizeDeep(n);
   Assert(n.getType().isBoolean());
   d_prop.assertRoot(n);
   d_generation = oldGeneration;
@@ -312,7 +148,6 @@ void SmtContext::internalize(TNode n, bool gateCtx, uint32_t generation)
 
 void SmtContext::internalize(TNode n, bool gateCtx)
 {
-  internalizeDeep(n);
   internalizeRec(n, gateCtx);
 }
 

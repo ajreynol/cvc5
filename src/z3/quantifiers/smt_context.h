@@ -500,8 +500,6 @@ class SmtContext final : protected EnvObj, public TheorySide
     NewEq(ENode* lhs, ENode* rhs) : d_lhs(lhs), d_rhs(rhs) {}
   };
 
-  using ExprBoolPair = std::pair<Node, bool>;
-
   void removeParentsFromCgTable(ENode* r1);
   void reinsertParentsIntoCgTable(ENode* r1, ENode* r2);
   void mergeCgcGenerations(ENode* e1, uint32_t e1Generation, ENode* e2);
@@ -559,17 +557,6 @@ class SmtContext final : protected EnvObj, public TheorySide
       updateGeneration(getENode(e));
     }
   }
-  void tsVisitChild(TNode n,
-                    bool gateCtx,
-                    std::vector<ExprBoolPair>& todo,
-                    bool& visited);
-  bool tsVisitChildren(TNode n, bool gateCtx, std::vector<ExprBoolPair>& todo);
-  bool shouldInternalizeRec(TNode e) const;
-  void topSortExpr(const Node* exprs,
-                   size_t numExprs,
-                   std::vector<ExprBoolPair>& sortedExprs);
-  void internalizeDeep(TNode n);
-  void internalizeDeep(const Node* exprs, size_t numExprs);
   void internalizeFormula(TNode n, bool gateCtx);
   void internalizeEq(TNode n, bool gateCtx);
   void internalizeDistinct(TNode n, bool gateCtx);
@@ -644,10 +631,6 @@ class SmtContext final : protected EnvObj, public TheorySide
   /** A temporary variable used during internalization. */
   uint32_t d_generation;
 
-  /** Scratch space for the topological sort used by internalizeDeep. */
-  std::vector<ExprBoolPair> d_tsTodo;
-  std::vector<char> d_tcolors;
-  std::vector<char> d_fcolors;
 
   /** The trail object that undoes mkENode. */
   class MkENodeTrail : public Trail
