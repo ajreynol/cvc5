@@ -68,3 +68,11 @@ name   = "Z3 Core"
   type       = "bool"
   default    = "true"
   help       = "skip an instance whose body the current assignment already satisfies"
+
+[[option]]
+  name       = "z3NativeModules"
+  category   = "expert"
+  long       = "z3-native-modules"
+  type       = "bool"
+  default    = "false"
+  help       = "with --z3, also make the modules of cvc5's quantifiers engine, as their own options select them (for instance conflict-based instantiation, --cbqi), which then run alongside the ported core"

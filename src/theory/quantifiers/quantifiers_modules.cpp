@@ -53,7 +53,10 @@ void QuantifiersModules::initialize(Env& env,
   {
     d_z3.reset(new z3::Z3Module(env, qs, qim, qr, tr));
     modules.push_back(d_z3.get());
-    return;
+    if (!options.z3.z3NativeModules)
+    {
+      return;
+    }
   }
   if (options.quantifiers.conflictBasedInst)
   {
