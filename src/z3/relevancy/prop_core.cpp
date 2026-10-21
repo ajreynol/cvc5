@@ -49,10 +49,9 @@ bool isLiteralNode(TNode n)
 
 }  // namespace
 
-PropCore::PropCore(Env& env, TheorySide& ctx, Params& params, Statistics& stats)
+PropCore::PropCore(Env& env, TheorySide& ctx, Statistics& stats)
     : EnvObj(env),
       d_ctx(ctx),
-      d_params(params),
       d_stats(stats),
       d_relevancyPropagator(new RelevancyPropagator(*this, ctx)),
       d_qhead(0),

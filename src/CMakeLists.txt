@@ -1334,8 +1334,6 @@ libcvc5_add_sources(
   z3/quantifiers/cg_table.h
   z3/quantifiers/checker.cpp
   z3/quantifiers/checker.h
-  z3/quantifiers/cost_function.cpp
-  z3/quantifiers/cost_function.h
   z3/quantifiers/enode.cpp
   z3/quantifiers/enode.h
   z3/quantifiers/fingerprints.cpp
@@ -1376,8 +1374,6 @@ libcvc5_add_sources(
   z3/util/ast.h
   z3/util/hash.h
   z3/util/literal.h
-  z3/util/params.cpp
-  z3/util/params.h
   z3/util/region.cpp
   z3/util/region.h
   z3/util/statistics.h

@@ -25,6 +25,8 @@
 #include <sstream>
 
 #include "base/output.h"
+#include "options/z3_options.h"
+#include "smt/env.h"
 #include "z3/util/ast.h"
 #include "z3/quantifiers/enode.h"
 #include "z3/quantifiers/mam.h"
@@ -35,10 +37,19 @@
 namespace cvc5::internal {
 namespace z3 {
 
-QuantifierManager::QuantifierManager(SmtContext& ctx, Params& p)
+namespace {
+
+/**
+ * How many times the final check rematches the multi-patterns that are not
+ * matched eagerly (Z3's qi.max_lazy_multipattern_matching).
+ */
+constexpr size_t s_maxLazyMultipatternMatching = 2;
+
+}  // namespace
+
+QuantifierManager::QuantifierManager(SmtContext& ctx)
     : d_context(ctx),
-      d_params(p),
-      d_queue(*this, ctx, p),
+      d_queue(*this, ctx),
       d_fingerprints(ctx.getRegion()),
       d_qstatGen(ctx.getRegion()),
       d_lazyMatchingIdx(0),
@@ -97,12 +108,9 @@ uint32_t QuantifierManager::getGeneration(TNode q) const
 }
 
 bool QuantifierManager::addInstance(TNode q,
-                                    TNode pat,
                                     size_t numBindings,
                                     ENode* const* bindings,
-                                    uint32_t maxGeneration,
-                                    uint32_t minTopGeneration,
-                                    uint32_t maxTopGeneration)
+                                    uint32_t maxGeneration)
 {
   if (d_quantifierStat.count(q) == 0)
   {
@@ -114,7 +122,7 @@ bool QuantifierManager::addInstance(TNode q,
       q.getId(), static_cast<uint32_t>(q.getId()), numBindings, bindings);
   if (f != nullptr)
   {
-    d_queue.insert(f, pat, maxGeneration, minTopGeneration, maxTopGeneration);
+    d_queue.insert(f, maxGeneration);
   }
   else
   {
@@ -169,7 +177,8 @@ void QuantifierManager::assignEh(TNode q)
       break;
     }
   }
-  uint32_t numEagerMultiPatterns = d_params.d_qiMaxEagerMultipatterns;
+  uint32_t numEagerMultiPatterns = static_cast<uint32_t>(
+      d_context.getEnv().getOptions().z3.z3QiMaxMultiPatterns);
   if (!hasUnaryPattern)
   {
     numEagerMultiPatterns++;
@@ -225,7 +234,7 @@ FinalCheckStatus QuantifierManager::finalCheckEh(bool full)
     return FC_DONE;
   }
   FinalCheckStatus result = d_queue.finalCheckEh() ? FC_DONE : FC_CONTINUE;
-  if (!empty() && d_lazyMatchingIdx < d_params.d_qiMaxLazyMultipatternMatching)
+  if (!empty() && d_lazyMatchingIdx < s_maxLazyMultipatternMatching)
   {
     d_lazyMam->rematch();
     d_context.pushTrail(ValueTrail<size_t>(d_lazyMatchingIdx));

@@ -31,97 +31,38 @@
 namespace cvc5::internal {
 namespace z3 {
 
-QiQueue::QiQueue(QuantifierManager& qm, SmtContext& ctx, Params& params)
-    : d_qm(qm),
-      d_context(ctx),
-      d_params(params),
-      d_checker(ctx),
-      d_eagerCostThreshold(0)
+QiQueue::QiQueue(QuantifierManager& qm, SmtContext& ctx)
+    : d_qm(qm), d_context(ctx), d_checker(ctx), d_eagerCostThreshold(0)
 {
-  d_vals.resize(CV_NUM_VARS, 0.0f);
 }
 
 void QiQueue::setup()
 {
-  if (!d_costFunction.parse(d_params.d_qiCost))
-  {
-    Warning() << "z3: invalid cost function '" << d_params.d_qiCost
-              << "', switching to the default one" << std::endl;
-    bool ok = d_costFunction.parse("(+ weight generation)");
-    AlwaysAssert(ok);
-  }
-  if (!d_newGenFunction.parse(d_params.d_qiNewGen))
-  {
-    Warning() << "z3: invalid new-generation function '" << d_params.d_qiNewGen
-              << "', switching to the default one" << std::endl;
-    bool ok = d_newGenFunction.parse("cost");
-    AlwaysAssert(ok);
-  }
-  d_eagerCostThreshold = d_params.d_qiEagerThreshold;
+  d_eagerCostThreshold = d_context.getEnv().getOptions().z3.z3QiEagerThreshold;
 }
 
-QuantifierStat* QiQueue::setValues(TNode q,
-                                   TNode pat,
-                                   uint32_t generation,
-                                   uint32_t minTopGeneration,
-                                   uint32_t maxTopGeneration,
-                                   float cost)
+float QiQueue::getCost(TNode q, uint32_t generation)
 {
-  QuantifierStat* stat = d_qm.getStat(q);
-  d_vals[CV_COST] = cost;
-  d_vals[CV_MIN_TOP_GENERATION] = static_cast<float>(minTopGeneration);
-  d_vals[CV_MAX_TOP_GENERATION] = static_cast<float>(maxTopGeneration);
-  d_vals[CV_INSTANCES] = static_cast<float>(stat->getNumInstancesCurrBranch());
-  d_vals[CV_SIZE] = static_cast<float>(stat->getSize());
-  d_vals[CV_DEPTH] = static_cast<float>(stat->getDepth());
-  d_vals[CV_GENERATION] = static_cast<float>(generation);
-  d_vals[CV_QUANT_GENERATION] = static_cast<float>(stat->getGeneration());
-  d_vals[CV_WEIGHT] = static_cast<float>(getWeight(q));
-  d_vals[CV_VARS] = static_cast<float>(getNumDecls(q));
-  d_vals[CV_PATTERN_WIDTH] =
-      pat.isNull() ? 1.0f : static_cast<float>(pat.getNumChildren());
-  d_vals[CV_TOTAL_INSTANCES] =
-      static_cast<float>(stat->getNumInstancesCurrSearch());
-  d_vals[CV_SCOPE] = static_cast<float>(d_context.getScopeLevel());
-  d_vals[CV_NESTED_QUANTIFIERS] =
-      static_cast<float>(stat->getNumNestedQuantifiers());
-  d_vals[CV_CS_FACTOR] = static_cast<float>(stat->getCaseSplitFactor());
-  return stat;
-}
-
-float QiQueue::getCost(TNode q,
-                       TNode pat,
-                       uint32_t generation,
-                       uint32_t minTopGeneration,
-                       uint32_t maxTopGeneration)
-{
-  QuantifierStat* stat =
-      setValues(q, pat, generation, minTopGeneration, maxTopGeneration, 0);
-  float r = d_costFunction(d_vals);
-  stat->updateMaxCost(r);
+  // Z3's default cost function, qi.cost = (+ weight generation)
+  float r = static_cast<float>(getWeight(q)) + static_cast<float>(generation);
+  d_qm.getStat(q)->updateMaxCost(r);
   return r;
 }
 
 uint32_t QiQueue::getNewGen(TNode q, uint32_t generation, float cost)
 {
-  // The top generations are not available when the new generation is computed.
-  setValues(q, TNode::null(), generation, 0, 0, cost);
-  float r = d_newGenFunction(d_vals);
-  if (getWeight(q) > 0 || r > 0)
+  // Z3's default, qi.new_gen = cost
+  if (getWeight(q) > 0 || cost > 0)
   {
-    return static_cast<uint32_t>(r);
+    return static_cast<uint32_t>(cost);
   }
-  return std::max(generation + 1, static_cast<uint32_t>(r));
+  return std::max(generation + 1, static_cast<uint32_t>(cost));
 }
 
-void QiQueue::insert(Fingerprint* f,
-                     TNode pat,
-                     uint32_t generation,
-                     uint32_t minTopGeneration,
-                     uint32_t maxTopGeneration)
+void QiQueue::insert(Fingerprint* f, uint32_t generation)
 {
   TNode q = getQuantifier(f);
-  float cost = getCost(q, pat, generation, minTopGeneration, maxTopGeneration);
+  float cost = getCost(q, generation);
   d_newEntries.push_back(Entry(f, cost, generation));
 }
 
@@ -134,7 +75,7 @@ void QiQueue::instantiate()
     {
       break;
     }
-    if (d_stats.d_numInstances > d_params.d_qiMaxInstances)
+    if (d_stats.d_numInstances > d_context.getEnv().getOptions().z3.z3QiMaxInstances)
     {
       // the maximum number of quantifier instances was reached
       break;
@@ -146,8 +87,7 @@ void QiQueue::instantiate()
     {
       instantiate(curr);
     }
-    else if (d_params.d_qiPromoteUnsat
-             && d_checker.isUnsat(
+    else if (d_checker.isUnsat(
                  getQuantBody(qa), f->getNumArgs(), f->getArgs()))
     {
       // do not delay an instance that produces a conflict
@@ -244,7 +184,7 @@ bool QiQueue::finalCheckEh()
   for (size_t i = 0; i < d_delayedEntries.size(); ++i)
   {
     Entry& e = d_delayedEntries[i];
-    if (!e.d_instantiated && e.d_cost <= d_params.d_qiLazyThreshold)
+    if (!e.d_instantiated && e.d_cost <= d_context.getEnv().getOptions().z3.z3QiLazyThreshold)
     {
       result = false;
       d_instantiatedTrail.push_back(i);

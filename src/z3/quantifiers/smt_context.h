@@ -46,7 +46,6 @@
 #include "z3/quantifiers/cg_table.h"
 #include "z3/relevancy/clause.h"
 #include "z3/quantifiers/enode.h"
-#include "z3/util/params.h"
 #include "z3/relevancy/prop_core.h"
 #include "z3/relevancy/theory_side.h"
 #include "z3/quantifiers/quantifier_manager.h"
@@ -79,7 +78,7 @@ class SmtContext final : protected EnvObj, public TheorySide
    */
   std::deque<ReferenceStat<uint64_t>> d_regStats;
 
-  SmtContext(Env& env, Params& p);
+  SmtContext(Env& env);
   virtual ~SmtContext();
 
   SmtContext(const SmtContext&) = delete;
@@ -143,7 +142,6 @@ class SmtContext final : protected EnvObj, public TheorySide
   void resetCacheGeneration() override;
 
   // ----------------------------------------------------------- accessors
-  Params& getParams() { return d_params; }
 
   Statistics& getStats() override { return d_stats; }
 
@@ -586,10 +584,9 @@ class SmtContext final : protected EnvObj, public TheorySide
   void flush();
 
   // ------------------------------------------------------------- the fields
-  Params& d_params;
   /**
-   * The propositional side: the Boolean search state. It refers to d_params
-   * and d_stats, so it is declared after them.
+   * The propositional side: the Boolean search state. It refers to d_stats,
+   * so it is declared after it.
    */
   PropCore d_prop;
   Region d_region;

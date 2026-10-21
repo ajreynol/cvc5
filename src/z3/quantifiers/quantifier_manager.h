@@ -31,7 +31,6 @@
 
 #include "expr/node.h"
 #include "z3/quantifiers/fingerprints.h"
-#include "z3/util/params.h"
 #include "z3/quantifiers/qi_queue.h"
 #include "z3/quantifiers/quantifier_stat.h"
 #include "z3/util/types.h"
@@ -45,7 +44,7 @@ class SmtContext;
 class QuantifierManager
 {
  public:
-  QuantifierManager(SmtContext& ctx, Params& p);
+  QuantifierManager(SmtContext& ctx);
   ~QuantifierManager();
 
   void add(TNode q, uint32_t generation);
@@ -62,16 +61,14 @@ class QuantifierManager
   uint32_t getGeneration(TNode q) const;
 
   /**
-   * Record and enqueue an instantiation of q found by matching pat against
-   * the bindings. Returns true if the instance is new.
+   * Record and enqueue an instantiation of q found by matching, with the
+   * bindings, the maximum generation of whose enodes is maxGeneration.
+   * Returns true if the instance is new.
    */
   bool addInstance(TNode q,
-                   TNode pat,
                    size_t numBindings,
                    ENode* const* bindings,
-                   uint32_t maxGeneration,
-                   uint32_t minTopGeneration,
-                   uint32_t maxTopGeneration);
+                   uint32_t maxGeneration);
 
   void initSearchEh();
   /** Invoked whenever q is assigned to true. */
@@ -93,7 +90,6 @@ class QuantifierManager
   void pushCore();
 
   SmtContext& d_context;
-  Params& d_params;
   /** When the instances of the matches found are made. */
   QiQueue d_queue;
   /** The fingerprints of the instances made in the current scopes. */

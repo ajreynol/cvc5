@@ -43,10 +43,9 @@ namespace {
 
 }  // namespace
 
-SmtContext::SmtContext(Env& env, Params& p)
+SmtContext::SmtContext(Env& env)
     : EnvObj(env),
-      d_params(p),
-      d_prop(env, *this, p, d_stats),
+      d_prop(env, *this, d_stats),
       d_normalizer(env.getNodeManager()),
       d_qmanager(nullptr),
       d_trueENode(nullptr),
@@ -55,7 +54,7 @@ SmtContext::SmtContext(Env& env, Params& p)
       d_generation(0),
       d_mkENodeTrail(*this)
 {
-  d_qmanager.reset(new QuantifierManager(*this, p));
+  d_qmanager.reset(new QuantifierManager(*this));
   registerStatistics();
   init();
 }

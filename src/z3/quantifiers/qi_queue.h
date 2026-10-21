@@ -32,9 +32,7 @@
 
 #include "expr/node.h"
 #include "z3/quantifiers/checker.h"
-#include "z3/quantifiers/cost_function.h"
 #include "z3/quantifiers/fingerprints.h"
-#include "z3/util/params.h"
 #include "z3/quantifiers/quantifier_stat.h"
 #include "z3/util/types.h"
 
@@ -55,7 +53,7 @@ struct QiQueueStats
 class QiQueue
 {
  public:
-  QiQueue(QuantifierManager& qm, SmtContext& ctx, Params& params);
+  QiQueue(QuantifierManager& qm, SmtContext& ctx);
 
   void setup();
 
@@ -63,11 +61,7 @@ class QiQueue
    * Enqueue a new instance. The fingerprint holds the quantifier and the
    * bindings.
    */
-  void insert(Fingerprint* f,
-              TNode pat,
-              uint32_t generation,
-              uint32_t minTopGeneration,
-              uint32_t maxTopGeneration);
+  void insert(Fingerprint* f, uint32_t generation);
 
   void instantiate();
 
@@ -106,17 +100,15 @@ class QiQueue
     size_t d_instantiatedTrailLim;
   };
 
-  QuantifierStat* setValues(TNode q,
-                            TNode pat,
-                            uint32_t generation,
-                            uint32_t minTopGeneration,
-                            uint32_t maxTopGeneration,
-                            float cost);
-  float getCost(TNode q,
-                TNode pat,
-                uint32_t generation,
-                uint32_t minTopGeneration,
-                uint32_t maxTopGeneration);
+  /**
+   * The cost of an instance of q whose bindings have the maximum generation
+   * generation, by Z3's default cost function (+ weight generation).
+   */
+  float getCost(TNode q, uint32_t generation);
+  /**
+   * The generation of the enodes an instance of q with cost cost creates, by
+   * Z3's default (the cost).
+   */
   uint32_t getNewGen(TNode q, uint32_t generation, float cost);
   void instantiate(Entry& ent);
   /** The quantifier of the fingerprint f. */
@@ -141,14 +133,10 @@ class QiQueue
 
   QuantifierManager& d_qm;
   SmtContext& d_context;
-  Params& d_params;
   /** The instance checker. */
   Checker d_checker;
 
   QiQueueStats d_stats;
-  CostFunction d_costFunction;
-  CostFunction d_newGenFunction;
-  std::vector<float> d_vals;
   double d_eagerCostThreshold;
 
   std::vector<Entry> d_newEntries;

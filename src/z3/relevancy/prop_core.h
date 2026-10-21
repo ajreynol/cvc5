@@ -35,7 +35,6 @@
 #include "z3/relevancy/watch_list.h"
 #include "z3/util/ast.h"
 #include "z3/util/literal.h"
-#include "z3/util/params.h"
 #include "z3/util/statistics.h"
 #include "z3/util/trail.h"
 #include "z3/util/types.h"
@@ -76,7 +75,7 @@ class PropCore : protected EnvObj
     bool d_relevant;
   };
 
-  PropCore(Env& env, TheorySide& ctx, Params& params, Statistics& stats);
+  PropCore(Env& env, TheorySide& ctx, Statistics& stats);
   ~PropCore();
 
   PropCore(const PropCore&) = delete;
@@ -410,7 +409,6 @@ class PropCore : protected EnvObj
 
   /** The theory side. */
   TheorySide& d_ctx;
-  Params& d_params;
   Statistics& d_stats;
 
   std::unique_ptr<RelevancyPropagator> d_relevancyPropagator;

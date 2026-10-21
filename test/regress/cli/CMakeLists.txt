@@ -2791,16 +2791,9 @@ set(regress_0_tests
   regress0/wiki.19.cvc.smt2
   regress0/wiki.20.cvc.smt2
   regress0/wiki.21.cvc.smt2
-  regress0/z3/arith-01.smt2
-  regress0/z3/arith-02.smt2
   regress0/z3/arith-03.smt2
-  regress0/z3/arith-04.smt2
-  regress0/z3/bv-01.smt2
   regress0/z3/check-sat-assuming.smt2
-  regress0/z3/datatypes-01.smt2
-  regress0/z3/datatypes-02.smt2
   regress0/z3/datatypes-03.smt2
-  regress0/z3/datatypes-04.smt2
   regress0/z3/ematch-04.smt2
   regress0/z3/ematch-05.smt2
   regress0/z3/ematch-06.smt2
@@ -2816,7 +2809,6 @@ set(regress_0_tests
   regress0/z3/ematch-nested-pattern.smt2
   regress0/z3/ematch-nested-quantifier-levels.smt2
   regress0/z3/ematch-repeated-var.smt2
-  regress0/z3/hosted-dt-split.smt2
   regress0/z3/hosted-quant.smt2
   regress0/z3/qe-returns-input.smt2
   regress0/z3/quant-generation.smt2

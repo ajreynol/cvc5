@@ -32,7 +32,6 @@
 #include "theory/lemma_property.h"
 #include "theory/theory.h"
 #include "z3/util/literal.h"
-#include "z3/util/params.h"
 
 namespace cvc5::internal {
 
@@ -242,8 +241,6 @@ class HostCore : protected EnvObj
                        std::vector<Node>& defs,
                        theory::InferenceId id);
 
-  /** The parameters of the core. These must outlive d_ctx. */
-  Params d_params;
   /** The ported core. */
   std::unique_ptr<SmtContext> d_ctx;
   /** The engine, for the prop engine's state. */

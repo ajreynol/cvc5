@@ -1858,32 +1858,6 @@ class Interpreter
   /** init(t) must be invoked before executeCore. */
   bool executeCore(CodeTree* t, ENode* n);
 
-  /** The min and max generation of the enodes in d_patternInstances. */
-  void getMinMaxTopGeneration(uint32_t& min, uint32_t& max)
-  {
-    Assert(!d_patternInstances.empty());
-    if (d_minTopGeneration.empty())
-    {
-      min = max = d_context.getGeneration(d_patternInstances[0]);
-      d_minTopGeneration.push_back(min);
-      d_maxTopGeneration.push_back(max);
-    }
-    else
-    {
-      min = d_minTopGeneration.back();
-      max = d_maxTopGeneration.back();
-    }
-    for (size_t i = d_minTopGeneration.size(); i < d_patternInstances.size();
-         ++i)
-    {
-      uint32_t curr = d_context.getGeneration(d_patternInstances[i]);
-      min = std::min(min, curr);
-      d_minTopGeneration.push_back(min);
-      max = std::max(max, curr);
-      d_maxTopGeneration.push_back(max);
-    }
-  }
-
  private:
   static constexpr size_t s_initArgsSize = 16;
 
@@ -2058,17 +2032,12 @@ class Interpreter
 
   /** Report a match to the quantifier manager. */
   void onMatch(TNode q,
-               TNode pat,
                size_t numBindings,
                ENode* const* bindings,
                uint32_t maxGeneration)
   {
     d_context.getStats().d_numMamMatches++;
-    uint32_t minGen = 0;
-    uint32_t maxGen = 0;
-    getMinMaxTopGeneration(minGen, maxGen);
-    d_qm.addInstance(
-        q, pat, numBindings, bindings, maxGeneration, minGen, maxGen);
+    d_qm.addInstance(q, numBindings, bindings, maxGeneration);
   }
 
   SmtContext& d_context;
@@ -2090,11 +2059,6 @@ class Interpreter
   ENode* d_n2;
   ENode* d_app;
   const Bind* d_b;
-
-  /** used to compute the min and max top generation */
-  ENodeVector d_patternInstances;
-  std::vector<uint32_t> d_minTopGeneration;
-  std::vector<uint32_t> d_maxTopGeneration;
 
   ENodeVectorPool d_pool;
 };
@@ -2220,10 +2184,6 @@ bool Interpreter::executeCore(CodeTree* t, ENode* n)
 
   // It makes no sense to process an irrelevant enode.
   Assert(d_context.isRelevantForMatching(n));
-  d_patternInstances.clear();
-  d_minTopGeneration.clear();
-  d_maxTopGeneration.clear();
-  d_patternInstances.push_back(n);
 
   d_maxGeneration = d_context.getGeneration(n);
 
@@ -2396,8 +2356,7 @@ main_loop:
       {
         return false;
       }
-      onMatch(
-          y->d_qa, y->d_pat, d_numArgs, d_bindings.data(), d_maxGeneration);
+      onMatch(y->d_qa, d_numArgs, d_bindings.data(), d_maxGeneration);
       goto backtrack;
     }
 
@@ -2460,7 +2419,6 @@ main_loop:
       {
         goto backtrack;
       }
-      d_patternInstances.push_back(d_app);
       for (uint16_t i = 0; i < d_numArgs; ++i)
       {
         d_registers[d_oreg + i] = d_app->getArg(i);
@@ -2546,15 +2504,6 @@ backtrack:
           if (d_app->getNumArgs() == c->d_numArgs
               && d_context.isRelevantForMatching(d_app))
           {
-            // update the pattern instance
-            Assert(!d_patternInstances.empty());
-            if (d_patternInstances.size() == d_maxTopGeneration.size())
-            {
-              d_maxTopGeneration.pop_back();
-              d_minTopGeneration.pop_back();
-            }
-            d_patternInstances.pop_back();
-            d_patternInstances.push_back(d_app);
             updateMaxGeneration(d_app);
             d_numArgs = c->d_numArgs;
             d_oreg = c->d_oreg;

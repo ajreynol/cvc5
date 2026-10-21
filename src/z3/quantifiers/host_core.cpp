@@ -57,7 +57,6 @@ HostCore::HostCore(Env& env,
       d_needCheck(false),
       d_popLevel(UINT32_MAX)
 {
-  d_params.initialize(env.getOptions());
   d_popNotify = std::make_unique<PopNotify>(context(), *this);
   d_feed = std::make_unique<ShadowFeed>(env, *this);
   d_splitStrategy = std::make_unique<SplitStrategy>(env, d_te);
@@ -68,7 +67,7 @@ HostCore::~HostCore() {}
 
 void HostCore::reset(TheoryEngine* te)
 {
-  d_ctx.reset(new SmtContext(d_env, d_params));
+  d_ctx.reset(new SmtContext(d_env));
   d_te = te;
   d_setup = false;
   d_inConflict = false;

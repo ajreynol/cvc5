@@ -28,38 +28,13 @@ name   = "Z3 Core"
   help       = "with --z3, send quantifier instances as lemmas local to the SAT context (as cvc5's --inst-local), so that cvc5's decision heuristic considers an instance only where it was last made"
 
 [[option]]
-  name       = "z3Relevancy"
-  category   = "expert"
-  long       = "z3-relevancy=N"
-  type       = "uint64_t"
-  default    = "2"
-  maximum    = "2"
-  help       = "relevancy propagation level of the ported Z3 core (0 disables it)"
-
-[[option]]
-  name       = "z3QiCost"
-  category   = "expert"
-  long       = "z3-qi-cost=STR"
-  type       = "std::string"
-  default    = '"(+ weight generation)"'
-  help       = "the cost function used to delay quantifier instantiations"
-
-[[option]]
-  name       = "z3QiNewGen"
-  category   = "expert"
-  long       = "z3-qi-new-gen=STR"
-  type       = "std::string"
-  default    = '"cost"'
-  help       = "how the generation of terms created by an instantiation is set"
-
-[[option]]
   name       = "z3QiEagerThreshold"
   category   = "expert"
   long       = "z3-qi-eager-threshold=F"
   type       = "double"
   default    = "100.0"
   minimum    = "0.0"
-  help       = "instantiations whose cost exceeds this are delayed"
+  help       = "instantiations whose cost (weight plus generation, as Z3's default qi.cost) exceeds this are delayed; the default is the value Verus passes to Z3 (smt.qi.eager_threshold=100)"
 
 [[option]]
   name       = "z3QiLazyThreshold"
