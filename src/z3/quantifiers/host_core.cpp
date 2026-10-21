@@ -77,7 +77,9 @@ void HostCore::reset(TheoryEngine* te)
       [this](TNode n, std::vector<Node>& defs) {
         return preprocessForTheories(n, defs);
       });
-  d_ctx->setSkolemizer(d_skolemizer);
+  // the core's quantified formula in cvc5's form
+  d_ctx->setSkolemizer(
+      [this](TNode q) { return d_skolemizer(toHost(q)); });
 }
 
 SmtContext& HostCore::getContext()

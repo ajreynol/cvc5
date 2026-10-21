@@ -20,7 +20,6 @@
 #include "theory/quantifiers/quantifiers_rewriter.h"
 #include "theory/trust_substitutions.h"
 #include "theory/valuation.h"
-#include "z3/quantifiers/z3_quantifiers_engine.h"
 
 using namespace cvc5::internal::kind;
 using namespace cvc5::context;
@@ -41,18 +40,13 @@ TheoryQuantifiers::TheoryQuantifiers(Env& env,
       d_qim(env, *this, d_qstate, d_qreg, d_treg),
       d_qengine(nullptr)
 {
-  // construct the quantifiers engine: with --z3, the one of the ported Z3
-  // core, which is checked even without new facts
+  // construct the quantifiers engine
+  d_qengine.reset(
+      new QuantifiersEngine(env, d_qstate, d_qreg, d_treg, d_qim, d_pnm));
   if (options().z3.z3)
   {
-    d_qengine.reset(new z3::Z3QuantifiersEngine(
-        env, out, d_qstate, d_qreg, d_treg, d_qim, d_pnm));
+    // the module of the ported Z3 core is checked even without new facts
     d_checkEarlyExit = false;
-  }
-  else
-  {
-    d_qengine.reset(
-        new QuantifiersEngine(env, d_qstate, d_qreg, d_treg, d_qim, d_pnm));
   }
 
   // indicate we are using the quantifiers theory state object

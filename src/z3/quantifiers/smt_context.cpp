@@ -685,8 +685,8 @@ bool SmtContext::propagateAtoms()
       }
       else
       {
-        // Z3's preparation of the input leaves only universal quantifiers,
-        // in positive positions, but cvc5 may still assign one false
+        // cvc5's quantifiers engine skolemized it when cvc5 asserted it
+        // false; the core takes that lemma when it is relevant
         skolemize(boolVar2Expr(v));
       }
     }
@@ -921,10 +921,12 @@ void SmtContext::skolemize(TNode q)
   }
   Assert(d_skolemizer);
   Node lem = d_skolemizer(q);
-  // The lemma goes through the core, as an instance does, rather than
-  // straight to cvc5: the core and cvc5 must agree on its atoms, which the
-  // core takes in cvc5's preprocessed form, with its quantifiers over the
-  // canonical variables.
+  // The core internalizes the lemma, as it does an instance, so that its
+  // witnesses are relevant as the core's own formulas make them: through q,
+  // which is relevant here. The core also sends it to cvc5 as it took it,
+  // since the core and cvc5 must agree on its atoms: the core takes them in
+  // cvc5's preprocessed form, with its quantifiers left as they are, while
+  // cvc5's preprocessing of the lemma it sent itself also rewrites those.
   d_stats.d_numSkolemizations++;
   internalizeLemma(lem, generationOf(q), false);
 }

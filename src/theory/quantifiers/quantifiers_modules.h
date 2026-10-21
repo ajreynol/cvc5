@@ -32,6 +32,7 @@
 #include "theory/quantifiers/quant_split.h"
 #include "theory/quantifiers/sygus/synth_engine.h"
 #include "theory/quantifiers/sygus_inst.h"
+#include "z3/quantifiers/z3_module.h"
 
 namespace cvc5::internal {
 namespace theory {
@@ -101,6 +102,8 @@ class QuantifiersModules
   std::unique_ptr<InstStrategyMbqi> d_mbqi;
   /** Oracle engine */
   std::unique_ptr<OracleEngine> d_oracleEngine;
+  /** The module of the ported Z3 core, the only one with --z3. */
+  std::unique_ptr<z3::Z3Module> d_z3;
 };
 
 }  // namespace quantifiers

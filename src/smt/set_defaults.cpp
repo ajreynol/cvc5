@@ -1626,6 +1626,11 @@ void SetDefaults::setDefaultsQuantifiers(const LogicInfo& logic,
                                        preSkolemQuant,
                                        options::PreSkolemQuantMode::AGG,
                                        "z3");
+    // The module of the ported core does not use the term database of the
+    // quantifiers engine, whose relevance tracking would otherwise walk every
+    // asserted fact at each check.
+    SET_AND_NOTIFY_IF_NOT_USER_VAL_SYM(
+        quantifiers, termDbMode, options::TermDbMode::ALL, "z3");
   }
   if (opts.arrays.arraysExp)
   {

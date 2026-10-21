@@ -1355,8 +1355,8 @@ libcvc5_add_sources(
   z3/quantifiers/shadow_feed.h
   z3/quantifiers/smt_context.cpp
   z3/quantifiers/smt_context.h
-  z3/quantifiers/z3_quantifiers_engine.cpp
-  z3/quantifiers/z3_quantifiers_engine.h
+  z3/quantifiers/z3_module.cpp
+  z3/quantifiers/z3_module.h
   z3/relevancy/bool_var_data.h
   z3/relevancy/clause.cpp
   z3/relevancy/clause.h

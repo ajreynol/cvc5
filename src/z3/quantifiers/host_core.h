@@ -57,8 +57,9 @@ class HostCore : protected EnvObj
 {
  public:
   /**
-   * The lemma that skolemizes the quantified formula q, which the core
-   * asserts when q is assigned false.
+   * The lemma of cvc5's quantifiers engine that skolemizes the quantified
+   * formula q, in cvc5's form, which the core takes when q is assigned false
+   * and relevant.
    */
   using Skolemizer = std::function<Node(TNode)>;
   /**

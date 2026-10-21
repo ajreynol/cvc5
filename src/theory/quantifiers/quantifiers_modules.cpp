@@ -14,6 +14,7 @@
 
 #include "options/quantifiers_options.h"
 #include "options/strings_options.h"
+#include "options/z3_options.h"
 #include "theory/quantifiers/relevant_domain.h"
 #include "theory/quantifiers/term_registry.h"
 
@@ -48,6 +49,12 @@ void QuantifiersModules::initialize(Env& env,
 {
   // add quantifiers modules
   const Options& options = env.getOptions();
+  if (options.z3.z3)
+  {
+    d_z3.reset(new z3::Z3Module(env, qs, qim, qr, tr));
+    modules.push_back(d_z3.get());
+    return;
+  }
   if (options.quantifiers.conflictBasedInst)
   {
     d_qcf.reset(new QuantConflictFind(env, qs, qim, qr, tr));

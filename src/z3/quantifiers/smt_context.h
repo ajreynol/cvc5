@@ -315,8 +315,9 @@ class SmtContext final : protected EnvObj, public TheorySide
   }
   /**
    * The skolemization of cvc5's quantifiers engine: it maps a quantified
-   * formula q to the lemma that skolemizes it, which holds globally and
-   * which the core asserts when q is assigned false (see skolemize).
+   * formula q to the lemma that skolemizes it, which that engine made when q
+   * was asserted false, and which the core takes when q is relevant (see
+   * skolemize).
    */
   using Skolemizer = std::function<Node(TNode)>;
   void setSkolemizer(Skolemizer s) { d_skolemizer = std::move(s); }
@@ -341,8 +342,9 @@ class SmtContext final : protected EnvObj, public TheorySide
   void internalizeInstance(TNode body, uint32_t generation);
 
   /**
-   * Skolemize the quantified formula q, which is assigned false: assert the
-   * lemma of the skolemizer (see setSkolemizer).
+   * Take the skolemization of the quantified formula q, which is assigned
+   * false and relevant: assert the lemma of the skolemizer (see
+   * setSkolemizer).
    */
   void skolemize(TNode q);
 
