@@ -76,8 +76,12 @@ CgTable::Table CgTable::mkTableFor(ENode* n)
   Assert(n->getNumArgs() >= 1);
   // Applications of n-ary operators (e.g. +) may have many arguments, so they
   // always go to the general table even when this particular application is
-  // unary or binary. This is Z3's is_flat_associative() test.
-  if (NodeManager::isNAryKind(n->getExpr().getKind()))
+  // unary or binary. This is Z3's is_flat_associative() test. It is a
+  // property of the declaration: the enode may be the temporary one of a
+  // lookup (SmtContext::getENodeEqTo), which has no expression.
+  TNode f = n->getDecl();
+  if (f.getKind() == Kind::BUILTIN
+      && NodeManager::isNAryKind(NodeManager::operatorToKind(f)))
   {
     return Table{NARY, new NaryTable()};
   }

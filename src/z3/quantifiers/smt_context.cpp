@@ -877,6 +877,9 @@ void SmtContext::internalizeLemma(TNode body, uint32_t generation, bool instance
   // variable level (the pattern compiler, the inverted path index, the
   // checker) would read the wrong slot. Renormalizing the instance restores
   // the invariant, and is idempotent on the parts that are already canonical.
+  // It comes before cvc5's preprocessing, which may move a nested quantifier
+  // into a skolem definition: one in a Boolean argument of a function, as in
+  // the lambda axioms of Verus, is purified.
   //
   // cvc5's theories take the instance in preprocessed form. A skolem
   // definition holds globally, and cvc5's preprocessing gives it only once, so
@@ -884,7 +887,7 @@ void SmtContext::internalizeLemma(TNode body, uint32_t generation, bool instance
   // unit is, until it is asserted at the base level.
   Assert(d_cvc5Preprocessor);
   std::vector<Node> defs;
-  Node norm = d_cvc5Preprocessor(body, defs);
+  Node norm = d_cvc5Preprocessor(d_normalizer.normalize(body), defs);
   for (const Node& d : defs)
   {
     d_prop.hostRecordLemma(d);
@@ -897,7 +900,6 @@ void SmtContext::internalizeLemma(TNode body, uint32_t generation, bool instance
     bool neg = d.getKind() == Kind::NOT;
     d_prop.addUnitToReassert(neg ? d[0] : d, neg, true);
   }
-  norm = d_normalizer.normalize(norm);
   // the formula is also a lemma for cvc5's prop engine: an instance, which
   // holds where it was made, or a lemma that holds globally
   if (instance)
