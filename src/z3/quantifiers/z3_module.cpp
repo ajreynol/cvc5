@@ -12,11 +12,15 @@
 
 #include "z3/quantifiers/z3_module.h"
 
+#include <ctime>
+
+#include "options/base_options.h"
 #include "theory/quantifiers/quantifiers_inference_manager.h"
 #include "theory/quantifiers/quantifiers_state.h"
 #include "theory/quantifiers/skolemize.h"
 #include "theory/theory_engine.h"
 #include "z3/quantifiers/shadow_feed.h"
+#include "z3/quantifiers/smt_context.h"
 
 namespace cvc5::internal {
 namespace z3 {
@@ -84,9 +88,33 @@ void Z3Module::check(theory::Theory::Effort e, QEffort quant_e)
   {
     return;
   }
+  // -o inst-strategy prints a line per call, as for the other modules,
+  // which count the instances through the inference manager; the core sends
+  // its instances itself, and counts them
+  bool printing = isOutputOn(OutputTag::INST_STRATEGY);
+  const Statistics& stats = d_core->getContext().getStats();
+  uint64_t numInstances = stats.d_numInstances;
+  clock_t start = printing ? clock() : 0;
   // the literals asserted since the last check, then the core
   d_tracker->flush(d_qstate);
   d_core->check(e);
+  if (printing)
+  {
+    double time = static_cast<double>(clock() - start)
+                  / static_cast<double>(CLOCKS_PER_SEC);
+    std::ostream& out = output(OutputTag::INST_STRATEGY);
+    out << "(inst-strategy " << identify();
+    if (stats.d_numInstances > numInstances)
+    {
+      out << " :inst " << (stats.d_numInstances - numInstances);
+    }
+    out << " :time " << time;
+    if (d_qstate.isInConflict())
+    {
+      out << " :conflict";
+    }
+    out << ")" << std::endl;
+  }
 }
 
 void Z3Module::preRegisterQuantifier(Node q)
