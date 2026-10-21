@@ -856,38 +856,28 @@ void SmtContext::resetCacheGeneration()
   d_cachedGeneration.clear();
 }
 
-void SmtContext::internalizeInstance(TNode body, uint32_t generation)
-{
-  internalizeLemma(body, generation, true);
-}
-
-void SmtContext::internalizeLemma(TNode body, uint32_t generation, bool instance)
+void SmtContext::internalizeInstance(TNode q,
+                                     const std::vector<Node>& terms,
+                                     uint32_t generation)
 {
   if (inconsistent())
   {
     return;
   }
-  // The quantified variables are numbered by de Bruijn *level* (see
-  // z3/ast.h), which Z3's relative de Bruijn indices make unnecessary there:
-  // when Z3 instantiates a quantifier whose body holds another one, the inner
-  // variables shift down on their own. Here they do not, so a nested
-  // quantifier would arrive at the core with its variables still numbered
-  // from the enclosing scope, while being a top-level quantifier with fewer
-  // declarations -- and everything that indexes per-quantifier state by
-  // variable level (the pattern compiler, the inverted path index, the
-  // checker) would read the wrong slot. Renormalizing the instance restores
-  // the invariant, and is idempotent on the parts that are already canonical.
-  // It comes before cvc5's preprocessing, which may move a nested quantifier
-  // into a skolem definition: one in a Boolean argument of a function, as in
-  // the lambda axioms of Verus, is purified.
-  //
-  // cvc5's theories take the instance in preprocessed form. A skolem
-  // definition holds globally, and cvc5's preprocessing gives it only once, so
-  // it is a root that is asserted again after each backtrack, as a delayed
-  // unit is, until it is asserted at the base level.
-  Assert(d_cvc5Preprocessor);
+  Assert(d_instanceMaker);
   std::vector<Node> defs;
-  Node norm = d_cvc5Preprocessor(d_normalizer.normalize(body), defs);
+  Node norm = d_instanceMaker(q, terms, defs);
+  internalizePreprocessed(norm, defs, generation, true);
+}
+
+void SmtContext::internalizePreprocessed(TNode norm,
+                                         const std::vector<Node>& defs,
+                                         uint32_t generation,
+                                         bool instance)
+{
+  // A skolem definition holds globally, and cvc5's preprocessing gives it
+  // only once, so it is a root that is asserted again after each backtrack,
+  // as a delayed unit is, until it is asserted at the base level.
   for (const Node& d : defs)
   {
     d_prop.hostRecordLemma(d);
@@ -899,6 +889,10 @@ void SmtContext::internalizeLemma(TNode body, uint32_t generation, bool instance
     // a unit is reasserted as an atom and a sign
     bool neg = d.getKind() == Kind::NOT;
     d_prop.addUnitToReassert(neg ? d[0] : d, neg, true);
+  }
+  if (norm.isConst() && norm.getConst<bool>())
+  {
+    return;
   }
   // the formula is also a lemma for cvc5's prop engine: an instance, which
   // holds where it was made, or a lemma that holds globally
@@ -919,16 +913,19 @@ void SmtContext::skolemize(TNode q)
   {
     return;
   }
-  Assert(d_skolemizer);
-  Node lem = d_skolemizer(q);
+  if (inconsistent())
+  {
+    return;
+  }
   // The core internalizes the lemma, as it does an instance, so that its
   // witnesses are relevant as the core's own formulas make them: through q,
-  // which is relevant here. The core also sends it to cvc5 as it took it,
-  // since the core and cvc5 must agree on its atoms: the core takes them in
-  // cvc5's preprocessed form, with its quantifiers left as they are, while
-  // cvc5's preprocessing of the lemma it sent itself also rewrites those.
+  // which is relevant here. It also sends it, although cvc5's quantifiers
+  // engine did, since cvc5's decisions then treat it as the core's lemma.
+  Assert(d_skolemizer);
+  std::vector<Node> defs;
+  Node norm = d_skolemizer(q, defs);
   d_stats.d_numSkolemizations++;
-  internalizeLemma(lem, generationOf(q), false);
+  internalizePreprocessed(norm, defs, generationOf(q), false);
 }
 
 void SmtContext::initSearchEh() { d_qmanager->initSearchEh(); }

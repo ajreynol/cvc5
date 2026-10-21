@@ -1,7 +1,6 @@
 ; COMMAND-LINE: --z3
 ; EXPECT: unsat
 ; DISABLE-TESTER: model
-; DISABLE-TESTER: proof
 ; DISABLE-TESTER: unsat-core
 ; ground arg plus a nested function in the pattern
 (set-logic UF)

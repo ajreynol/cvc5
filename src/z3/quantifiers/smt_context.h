@@ -302,24 +302,22 @@ class SmtContext final : protected EnvObj, public TheorySide
   QuantifierNormalizer& getNormalizer() { return d_normalizer; }
 
   /**
-   * The preprocessing of cvc5's own theories: it maps a formula to the form
-   * cvc5's theories take, adding to defs the definitions of the skolems
-   * it introduces. The instances (internalizeInstance) go through it before
-   * the core asserts them and hands them to cvc5, so that both see the same
-   * atoms.
+   * The instances for cvc5: it maps a quantified formula q and the terms for
+   * its variables to the instance, in the form cvc5's theories take, adding
+   * to defs the definitions of the skolems it introduces. The instance is
+   * cvc5's instantiation lemma of q, which cvc5 preprocesses into that form.
    */
-  using Cvc5Preprocessor = std::function<Node(TNode, std::vector<Node>&)>;
-  void setCvc5Preprocessor(Cvc5Preprocessor p)
-  {
-    d_cvc5Preprocessor = std::move(p);
-  }
+  using InstanceMaker = std::function<Node(
+      TNode, const std::vector<Node>&, std::vector<Node>&)>;
+  void setInstanceMaker(InstanceMaker m) { d_instanceMaker = std::move(m); }
   /**
    * The skolemization of cvc5's quantifiers engine: it maps a quantified
    * formula q to the lemma that skolemizes it, which that engine made when q
    * was asserted false, and which the core takes when q is relevant (see
-   * skolemize).
+   * skolemize), in the form cvc5's theories take, adding to defs the
+   * definitions of the skolems it introduces.
    */
-  using Skolemizer = std::function<Node(TNode)>;
+  using Skolemizer = std::function<Node(TNode, std::vector<Node>&)>;
   void setSkolemizer(Skolemizer s) { d_skolemizer = std::move(s); }
 
   /**
@@ -335,11 +333,14 @@ class SmtContext final : protected EnvObj, public TheorySide
   const Env& getEnv() const { return d_env; }
 
   /**
-   * Internalize the body of a quantifier instance, in the form cvc5's
-   * theories take, after renormalizing its variables. The instance is
-   * asserted at the current scope.
+   * Internalize the instance of the quantified formula q for terms, the
+   * terms for its variables, in the form cvc5's theories take (see
+   * setInstanceMaker), and record it for cvc5. The instance is asserted at
+   * the current scope.
    */
-  void internalizeInstance(TNode body, uint32_t generation);
+  void internalizeInstance(TNode q,
+                           const std::vector<Node>& terms,
+                           uint32_t generation);
 
   /**
    * Take the skolemization of the quantified formula q, which is assigned
@@ -533,11 +534,15 @@ class SmtContext final : protected EnvObj, public TheorySide
 
   void assignQuantifier(TNode q);
   /**
-   * Internalize body as internalizeInstance does, and record it for cvc5 as
+   * Internalize the formula norm, in the form cvc5's theories take, with the
+   * definitions defs of the skolems in it, and record them for cvc5: norm as
    * an instance if instance is true, and otherwise as a lemma that holds
    * globally.
    */
-  void internalizeLemma(TNode body, uint32_t generation, bool instance);
+  void internalizePreprocessed(TNode norm,
+                               const std::vector<Node>& defs,
+                               uint32_t generation,
+                               bool instance);
 
 
   // ----------------------------------------------------------- the search
@@ -589,8 +594,8 @@ class SmtContext final : protected EnvObj, public TheorySide
   PropCore d_prop;
   Region d_region;
   QuantifierNormalizer d_normalizer;
-  /** See setCvc5Preprocessor. */
-  Cvc5Preprocessor d_cvc5Preprocessor;
+  /** See setInstanceMaker. */
+  InstanceMaker d_instanceMaker;
   /** See setSkolemizer. */
   Skolemizer d_skolemizer;
   std::unique_ptr<QuantifierManager> d_qmanager;

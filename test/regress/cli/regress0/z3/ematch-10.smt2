@@ -1,7 +1,6 @@
 ; COMMAND-LINE: --z3
 ; EXPECT: unsat
 ; DISABLE-TESTER: model
-; DISABLE-TESTER: proof
 ; DISABLE-TESTER: unsat-core
 ; same, but the ground arg matches only modulo equality
 (set-logic UF)

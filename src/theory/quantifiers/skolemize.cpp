@@ -166,10 +166,14 @@ void Skolemize::getSelfSel(const DType& dt,
   }
 }
 
-Node Skolemize::getSkolemizationLemma(const Node& q) const
+TrustNode Skolemize::getSkolemizationLemma(const Node& q) const
 {
   NodeNodeMap::const_iterator it = d_skolemized.find(q);
-  return it == d_skolemized.end() ? Node::null() : Node((*it).second);
+  if (it == d_skolemized.end())
+  {
+    return TrustNode::null();
+  }
+  return TrustNode::mkTrustLemma((*it).second, d_epg.get());
 }
 
 bool Skolemize::getSkolemConstantsInduction(Node q, std::vector<Node>& skolems)

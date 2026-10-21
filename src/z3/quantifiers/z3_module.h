@@ -74,7 +74,7 @@ class Z3Module : public theory::quantifiers::QuantifiersModule
    * The lemma of cvc5's Skolemize utility that skolemizes q, which the
    * quantifiers engine sent when q was asserted false.
    */
-  Node getSkolemization(TNode q);
+  TrustNode getSkolemization(TNode q);
   /** The ported core, under cvc5's prop engine. */
   std::unique_ptr<HostCore> d_core;
   /** Gives the core the literals the SAT solver asserts. */

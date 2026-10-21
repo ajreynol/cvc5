@@ -1,7 +1,6 @@
 ; COMMAND-LINE: --z3
 ; EXPECT: unsat
 ; DISABLE-TESTER: model
-; DISABLE-TESTER: proof
 ; DISABLE-TESTER: unsat-core
 ; Outside of incremental mode, the assumptions of check-sat-assuming are
 ; preprocessed and prepared with the assertions.

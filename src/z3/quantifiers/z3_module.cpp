@@ -47,7 +47,7 @@ void Z3Module::finishInit(TheoryEngine* te)
   te->addModule(d_tracker.get());
 }
 
-Node Z3Module::getSkolemization(TNode q)
+TrustNode Z3Module::getSkolemization(TNode q)
 {
   // The lemma is made once per user context, by the quantifiers engine when
   // q is asserted false (or here, for a quantified formula it reduced), while
@@ -55,7 +55,7 @@ Node Z3Module::getSkolemization(TNode q)
   // backtrack.
   theory::quantifiers::Skolemize* sk = d_qim.getSkolemize();
   sk->process(q);
-  Node lem = sk->getSkolemizationLemma(q);
+  TrustNode lem = sk->getSkolemizationLemma(q);
   Assert(!lem.isNull());
   return lem;
 }

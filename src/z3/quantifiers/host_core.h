@@ -40,6 +40,7 @@ class TheoryEngine;
 namespace z3 {
 
 class ShadowFeed;
+class LemmaProofGenerator;
 class PropCore;
 class SmtContext;
 
@@ -62,7 +63,7 @@ class HostCore : protected EnvObj
    * formula q, in cvc5's form, which the core takes when q is assigned false
    * and relevant.
    */
-  using Skolemizer = std::function<Node(TNode)>;
+  using Skolemizer = std::function<TrustNode(TNode)>;
   /**
    * Lemmas go to out, the output channel of the quantifiers theory, and
    * skolemizations come from skolemizer.
@@ -203,11 +204,33 @@ class HostCore : protected EnvObj
    */
   Node toHost(TNode n);
   /**
-   * The form of n that cvc5's theories take, by cvc5's lemma preprocessing,
-   * adding to defs the definitions of the skolems it introduces; see
-   * SmtContext::setCvc5Preprocessor.
+   * The core's form of n, a formula of cvc5, in the form cvc5's theories
+   * take, by cvc5's lemma preprocessing, adding to defs the definitions of
+   * the skolems it introduces, and setting pp to the rewrite of n by the
+   * preprocessing.
    */
-  Node preprocessForTheories(TNode n, std::vector<Node>& defs);
+  Node preprocessForTheories(TNode n,
+                             std::vector<Node>& defs,
+                             TrustNode& pp);
+  /**
+   * The instance of the core's quantified formula q for terms, in the form
+   * cvc5's theories take, see SmtContext::setInstanceMaker. The lemma sent
+   * for it is cvc5's instantiation lemma, proven by d_pg.
+   */
+  Node mkInstance(TNode q,
+                  const std::vector<Node>& terms,
+                  std::vector<Node>& defs);
+  /**
+   * The skolemization of the core's quantified formula q, in the form cvc5's
+   * theories take, see SmtContext::setSkolemizer. The lemma sent for it is
+   * the one of cvc5's quantifiers engine, with its proof.
+   */
+  Node mkSkolemization(TNode q, std::vector<Node>& defs);
+  /**
+   * Preprocess the lemma trn proves, which the core sends, into the form
+   * cvc5's theories take, as mkInstance and mkSkolemization do.
+   */
+  Node preprocessLemma(const TrustNode& trn, std::vector<Node>& defs);
 
   /** The parameters of the core. These must outlive d_ctx. */
   Params d_params;
@@ -247,6 +270,11 @@ class HostCore : protected EnvObj
   std::unordered_map<Node, Node> d_hostAtom;
   /** The atoms split on, see split. */
   std::unordered_set<Node> d_splitAtoms;
+  /**
+   * Proves the lemmas the core sends, and gives, for an instance or the
+   * definition of a skolem, the lemma cvc5 is sent for it.
+   */
+  std::unique_ptr<LemmaProofGenerator> d_pg;
   /** See SplitStrategy. */
   std::unique_ptr<SplitStrategy> d_splitStrategy;
   /** Follows the pops of the SAT context. */

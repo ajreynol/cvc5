@@ -1,7 +1,6 @@
 ; COMMAND-LINE: --z3
 ; EXPECT: unsat
 ; DISABLE-TESTER: model
-; DISABLE-TESTER: proof
 ; DISABLE-TESTER: unsat-core
 ; repeated variable pattern f(x,x)
 (set-logic UF)

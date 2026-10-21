@@ -2825,7 +2825,6 @@ set(regress_0_tests
   regress0/z3/unsupported-incremental.smt2
   regress0/z3/unsupported-instantiations.smt2
   regress0/z3/unsupported-models.smt2
-  regress0/z3/unsupported-proofs.smt2
   regress0/z3/unsupported-unsat-cores.smt2
 )
 

@@ -202,7 +202,13 @@ void QiQueue::instantiate(Entry& ent)
   Trace("z3-qi") << "[instance] q" << q.getId() << " nargs " << numBindings
                  << " gen " << generation << " cost " << ent.d_cost
                  << " newgen " << gen << std::endl;
-  assertLemma(lemma, gen);
+  Trace("z3-qi-lemma") << "  lemma: " << lemma << std::endl;
+  std::vector<Node> terms;
+  for (size_t i = 0; i < numBindings; ++i)
+  {
+    terms.push_back(bindings[i]->getExpr());
+  }
+  d_context.internalizeInstance(q, terms, gen);
 }
 
 void QiQueue::pushScope()
@@ -338,11 +344,6 @@ Node QiQueue::mkLemma(TNode q,
   return lemma;
 }
 
-void QiQueue::assertLemma(TNode lemma, uint32_t generation)
-{
-  Trace("z3-qi-lemma") << "  lemma: " << lemma << std::endl;
-  d_context.internalizeInstance(lemma, generation);
-}
 
 }  // namespace z3
 }  // namespace cvc5::internal

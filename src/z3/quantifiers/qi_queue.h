@@ -138,8 +138,6 @@ class QiQueue
                QuantifierStat* stat,
                size_t numBindings,
                ENode* const* bindings);
-  /** Assert the lemma of an instance, with the generation of its terms. */
-  void assertLemma(TNode lemma, uint32_t generation);
 
   QuantifierManager& d_qm;
   SmtContext& d_context;

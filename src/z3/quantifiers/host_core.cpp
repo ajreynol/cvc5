@@ -26,6 +26,7 @@
 #include "theory/skolem_lemma.h"
 #include "theory/theory_engine.h"
 #include "z3/relevancy/prop_core.h"
+#include "z3/quantifiers/lemma_proof_generator.h"
 #include "z3/quantifiers/shadow_feed.h"
 #include "z3/quantifiers/smt_context.h"
 
@@ -60,6 +61,7 @@ HostCore::HostCore(Env& env,
   d_popNotify = std::make_unique<PopNotify>(context(), *this);
   d_feed = std::make_unique<ShadowFeed>(env, *this);
   d_splitStrategy = std::make_unique<SplitStrategy>(env, d_te);
+  d_pg = std::make_unique<LemmaProofGenerator>(env);
 }
 
 HostCore::~HostCore() {}
@@ -75,15 +77,16 @@ void HostCore::reset(TheoryEngine* te)
   d_preregistered.clear();
   d_lemmasSent.clear();
   d_hostAtom.clear();
+  d_pg = std::make_unique<LemmaProofGenerator>(d_env);
   d_splitAtoms.clear();
   d_splitStrategy->clear();
-  d_ctx->setCvc5Preprocessor(
-      [this](TNode n, std::vector<Node>& defs) {
-        return preprocessForTheories(n, defs);
+  d_ctx->setInstanceMaker(
+      [this](TNode q, const std::vector<Node>& terms, std::vector<Node>& defs) {
+        return mkInstance(q, terms, defs);
       });
-  // the core's quantified formula in cvc5's form
-  d_ctx->setSkolemizer(
-      [this](TNode q) { return d_skolemizer(toHost(q)); });
+  d_ctx->setSkolemizer([this](TNode q, std::vector<Node>& defs) {
+    return mkSkolemization(q, defs);
+  });
 }
 
 SmtContext& HostCore::getContext()
@@ -96,22 +99,79 @@ PropCore& HostCore::getPropCore() { return getContext().getPropCore(); }
 
 void HostCore::lemma(const Node& lem, theory::LemmaProperty p)
 {
+  // an instance, sent as cvc5's instantiation lemma, or the definition of a
+  // skolem, with their proofs
+  TrustNode trn = d_pg->getLemmaFor(lem);
+  if (!trn.isNull())
+  {
+    d_out.trustedLemma(trn, theory::InferenceId::UNKNOWN, p);
+    return;
+  }
+  if (d_pg->hasProofFor(lem))
+  {
+    // a lemma weakened by delayUnit
+    d_out.trustedLemma(TrustNode::mkTrustLemma(lem, d_pg.get()),
+                       theory::InferenceId::UNKNOWN,
+                       p);
+    return;
+  }
   d_out.lemma(lem, theory::InferenceId::UNKNOWN, p);
 }
 
-Node HostCore::preprocessForTheories(TNode n, std::vector<Node>& defs)
+Node HostCore::preprocessForTheories(TNode n,
+                                     std::vector<Node>& defs,
+                                     TrustNode& pp)
 {
   // cvc5 preprocesses the lemmas the core sends as it does any other, so the
   // core takes them in the same form: cvc5's preprocessing of their form for
-  // cvc5, renamed back to the core's.
+  // cvc5, renamed back to the core's. cvc5 gives the definition of a skolem
+  // only when it introduces it, here, so the core sends the definitions,
+  // with their proofs.
   std::vector<theory::SkolemLemma> sks;
   Node h = toHost(n);
   TrustNode trn = d_te->getPropEngine()->preprocess(h, sks);
   for (const theory::SkolemLemma& sk : sks)
   {
-    defs.push_back(toCore(sk.getProven()));
+    Node d = toCore(sk.getProven());
+    if (toHost(d) == sk.getProven())
+    {
+      d_pg->notifyPreprocessed(sk.getProven(), sk.d_lemma, TrustNode::null());
+    }
+    defs.push_back(d);
   }
+  pp = trn;
   return toCore(trn.isNull() ? h : trn.getNode());
+}
+
+Node HostCore::mkInstance(TNode q,
+                          const std::vector<Node>& terms,
+                          std::vector<Node>& defs)
+{
+  // cvc5's instantiation lemma of q, in cvc5's form, which the core sends,
+  // and which cvc5 preprocesses into the form the core takes
+  Node lem = d_pg->mkInstance(toHost(q), terms);
+  bool proofs = d_env.isTheoryProofProducing();
+  return preprocessLemma(
+      TrustNode::mkTrustLemma(lem, proofs ? d_pg.get() : nullptr), defs);
+}
+
+Node HostCore::mkSkolemization(TNode q, std::vector<Node>& defs)
+{
+  return preprocessLemma(d_skolemizer(toHost(q)), defs);
+}
+
+Node HostCore::preprocessLemma(const TrustNode& trn, std::vector<Node>& defs)
+{
+  Node lem = trn.getProven();
+  TrustNode pp;
+  Node norm = preprocessForTheories(lem, defs, pp);
+  Node form = pp.isNull() ? lem : pp.getNode();
+  // the core sends norm as form, and cvc5 is sent lem for it
+  if (toHost(norm) == form)
+  {
+    d_pg->notifyPreprocessed(form, trn, pp);
+  }
+  return norm;
 }
 
 void HostCore::assertInput(const std::vector<Node>& assertions)
@@ -408,10 +468,15 @@ Node HostCore::delayUnit(const Node& lem)
   {
     return lem;
   }
-  disj.push_back(decisions[0].negate());
+  // null when proofs are produced and lem has none
+  Node weakened = d_pg->mkWeakened(lem, decisions[0]);
+  if (weakened.isNull())
+  {
+    return lem;
+  }
   getContext().getStats().d_numHostDelayedUnits++;
   d_delayedUnits.push_back(lem);
-  return nodeManager()->mkNode(Kind::OR, disj);
+  return weakened;
 }
 
 void HostCore::splitNewlyRelevant()

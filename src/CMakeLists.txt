@@ -1341,6 +1341,8 @@ libcvc5_add_sources(
   z3/quantifiers/fingerprints.cpp
   z3/quantifiers/fingerprints.h
   z3/quantifiers/host_core.cpp
+  z3/quantifiers/lemma_proof_generator.cpp
+  z3/quantifiers/lemma_proof_generator.h
   z3/quantifiers/host_core.h
   z3/quantifiers/internalizer.cpp
   z3/quantifiers/mam.cpp

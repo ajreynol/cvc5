@@ -1132,11 +1132,6 @@ void SetDefaults::checkZ3Capabilities(Options& opts) const
     // down in this same method, after this check has run.
     unsupported = "--produce-models";
   }
-  else if (opts.smt.produceProofs || opts.smt.checkProofs
-           || opts.smt.proofMode != options::ProofMode::OFF)
-  {
-    unsupported = "--produce-proofs";
-  }
   else if (opts.smt.produceUnsatCores || opts.smt.checkUnsatCores)
   {
     // The core comes back empty, which asserts that the empty set is
