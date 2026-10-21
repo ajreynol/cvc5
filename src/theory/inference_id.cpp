@@ -242,6 +242,7 @@ const char* toString(InferenceId i)
       return "QUANTIFIERS_INST_E_MATCHING_VAR_GEN";
     case InferenceId::QUANTIFIERS_INST_E_MATCHING_RELATIONAL:
       return "QUANTIFIERS_INST_E_MATCHING_RELATIONAL";
+    case InferenceId::QUANTIFIERS_INST_Z3: return "QUANTIFIERS_INST_Z3";
     case InferenceId::QUANTIFIERS_INST_CBQI_CONFLICT:
       return "QUANTIFIERS_INST_CBQI_CONFLICT";
     case InferenceId::QUANTIFIERS_INST_CBQI_PROP:

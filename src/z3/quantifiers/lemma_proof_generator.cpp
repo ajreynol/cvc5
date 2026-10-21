@@ -168,7 +168,7 @@ std::shared_ptr<ProofNode> LemmaProofGenerator::getInstanceProof(
   std::vector<Node> args{
       nm->mkNode(Kind::SEXPR, it->second),
       theory::mkInferenceIdNode(
-          nm, theory::InferenceId::QUANTIFIERS_INST_E_MATCHING)};
+          nm, theory::InferenceId::QUANTIFIERS_INST_Z3)};
   CDProof cdp(d_env);
   cdp.addStep(body, ProofRule::INSTANTIATE, {q}, args);
   std::vector<Node> assumps{q};

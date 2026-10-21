@@ -38,13 +38,11 @@ Z3Module::~Z3Module() {}
 
 void Z3Module::finishInit(TheoryEngine* te)
 {
-  // The core sends its lemmas on the output channel of the quantifiers
-  // theory, as they are: the inference manager would drop the instances it
-  // sends again (see HostCore::sendLemmas).
+  // The core sends its lemmas through the inference manager, with their
+  // inferences; the instances it sends again are local to the SAT context,
+  // which the inference manager does not cache (see HostCore::sendLemmas).
   d_core = std::make_unique<HostCore>(
-      d_env,
-      te->theoryOf(theory::THEORY_QUANTIFIERS)->getOutputChannel(),
-      [this](TNode q) { return getSkolemization(q); });
+      d_env, d_qim, [this](TNode q) { return getSkolemization(q); });
   d_core->reset(te);
   d_tracker = std::make_unique<RelevancyTracker>(
       d_env, te, [this](TNode lit) { d_core->assertFact(lit); });

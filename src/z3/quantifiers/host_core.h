@@ -28,6 +28,7 @@
 #include "smt/env_obj.h"
 #include "theory/decision_strategy.h"
 #include "theory/incomplete_id.h"
+#include "theory/inference_id.h"
 #include "theory/lemma_property.h"
 #include "theory/theory.h"
 #include "z3/util/literal.h"
@@ -36,6 +37,10 @@
 namespace cvc5::internal {
 
 class TheoryEngine;
+
+namespace theory::quantifiers {
+class QuantifiersInferenceManager;
+}
 
 namespace z3 {
 
@@ -65,10 +70,12 @@ class HostCore : protected EnvObj
    */
   using Skolemizer = std::function<TrustNode(TNode)>;
   /**
-   * Lemmas go to out, the output channel of the quantifiers theory, and
-   * skolemizations come from skolemizer.
+   * Lemmas go through qim, the inference manager of the quantifiers theory,
+   * and skolemizations come from skolemizer.
    */
-  HostCore(Env& env, theory::OutputChannel& out, Skolemizer skolemizer);
+  HostCore(Env& env,
+           theory::quantifiers::QuantifiersInferenceManager& qim,
+           Skolemizer skolemizer);
   ~HostCore();
   /**
    * Make a fresh core and forget the state of the previous one, for the
@@ -211,7 +218,8 @@ class HostCore : protected EnvObj
    */
   Node preprocessForTheories(TNode n,
                              std::vector<Node>& defs,
-                             TrustNode& pp);
+                             TrustNode& pp,
+                             theory::InferenceId id);
   /**
    * The instance of the core's quantified formula q for terms, in the form
    * cvc5's theories take, see SmtContext::setInstanceMaker. The lemma sent
@@ -230,7 +238,9 @@ class HostCore : protected EnvObj
    * Preprocess the lemma trn proves, which the core sends, into the form
    * cvc5's theories take, as mkInstance and mkSkolemization do.
    */
-  Node preprocessLemma(const TrustNode& trn, std::vector<Node>& defs);
+  Node preprocessLemma(const TrustNode& trn,
+                       std::vector<Node>& defs,
+                       theory::InferenceId id);
 
   /** The parameters of the core. These must outlive d_ctx. */
   Params d_params;
@@ -239,7 +249,7 @@ class HostCore : protected EnvObj
   /** The engine, for the prop engine's state. */
   TheoryEngine* d_te;
   /** Where lemmas go. */
-  theory::OutputChannel& d_out;
+  theory::quantifiers::QuantifiersInferenceManager& d_qim;
   /** See Skolemizer. */
   Skolemizer d_skolemizer;
   /** Whether the propositional side was set up (presolve). */
@@ -275,6 +285,13 @@ class HostCore : protected EnvObj
    * definition of a skolem, the lemma cvc5 is sent for it.
    */
   std::unique_ptr<LemmaProofGenerator> d_pg;
+  /**
+   * The inference of each lemma the core sends, in cvc5's form: an instance,
+   * a skolemization, or the definition of a skolem in one of these, which
+   * has the inference of that lemma. A weakened lemma has the inference of
+   * the lemma it weakens.
+   */
+  std::unordered_map<Node, theory::InferenceId> d_lemmaIds;
   /** See SplitStrategy. */
   std::unique_ptr<SplitStrategy> d_splitStrategy;
   /** Follows the pops of the SAT context. */

@@ -352,6 +352,8 @@ enum class InferenceId
   QUANTIFIERS_INST_E_MATCHING_VAR_GEN,
   // E-matching based on relational triggers
   QUANTIFIERS_INST_E_MATCHING_RELATIONAL,
+  // instantiation from E-matching by the ported Z3 core (--z3)
+  QUANTIFIERS_INST_Z3,
   // conflicting instantiation from conflict-based instantiation
   QUANTIFIERS_INST_CBQI_CONFLICT,
   // propagating instantiation from conflict-based instantiation

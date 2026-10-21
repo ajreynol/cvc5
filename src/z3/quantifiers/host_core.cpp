@@ -22,7 +22,7 @@
 #include "prop/prop_engine.h"
 #include "smt/env.h"
 #include "theory/decision_manager.h"
-#include "theory/output_channel.h"
+#include "theory/quantifiers/quantifiers_inference_manager.h"
 #include "theory/skolem_lemma.h"
 #include "theory/theory_engine.h"
 #include "z3/relevancy/prop_core.h"
@@ -44,12 +44,12 @@ constexpr size_t s_maxSilentFinalChecks = 10;
 }  // namespace
 
 HostCore::HostCore(Env& env,
-                   theory::OutputChannel& out,
+                   theory::quantifiers::QuantifiersInferenceManager& qim,
                    Skolemizer skolemizer)
     : EnvObj(env),
       d_ctx(nullptr),
       d_te(nullptr),
-      d_out(out),
+      d_qim(qim),
       d_skolemizer(std::move(skolemizer)),
       d_setup(false),
       d_inConflict(false),
@@ -78,6 +78,7 @@ void HostCore::reset(TheoryEngine* te)
   d_lemmasSent.clear();
   d_hostAtom.clear();
   d_pg = std::make_unique<LemmaProofGenerator>(d_env);
+  d_lemmaIds.clear();
   d_splitAtoms.clear();
   d_splitStrategy->clear();
   d_ctx->setInstanceMaker(
@@ -99,28 +100,36 @@ PropCore& HostCore::getPropCore() { return getContext().getPropCore(); }
 
 void HostCore::lemma(const Node& lem, theory::LemmaProperty p)
 {
+  if (lem.isConst())
+  {
+    return;
+  }
+  auto it = d_lemmaIds.find(lem);
+  Assert(it != d_lemmaIds.end());
+  theory::InferenceId id = it == d_lemmaIds.end()
+                               ? theory::InferenceId::QUANTIFIERS_INST_Z3
+                               : it->second;
   // an instance, sent as cvc5's instantiation lemma, or the definition of a
   // skolem, with their proofs
   TrustNode trn = d_pg->getLemmaFor(lem);
   if (!trn.isNull())
   {
-    d_out.trustedLemma(trn, theory::InferenceId::UNKNOWN, p);
+    d_qim.trustedLemma(trn, id, p);
     return;
   }
   if (d_pg->hasProofFor(lem))
   {
     // a lemma weakened by delayUnit
-    d_out.trustedLemma(TrustNode::mkTrustLemma(lem, d_pg.get()),
-                       theory::InferenceId::UNKNOWN,
-                       p);
+    d_qim.trustedLemma(TrustNode::mkTrustLemma(lem, d_pg.get()), id, p);
     return;
   }
-  d_out.lemma(lem, theory::InferenceId::UNKNOWN, p);
+  d_qim.lemma(lem, id, p);
 }
 
 Node HostCore::preprocessForTheories(TNode n,
                                      std::vector<Node>& defs,
-                                     TrustNode& pp)
+                                     TrustNode& pp,
+                                     theory::InferenceId id)
 {
   // cvc5 preprocesses the lemmas the core sends as it does any other, so the
   // core takes them in the same form: cvc5's preprocessing of their form for
@@ -133,10 +142,12 @@ Node HostCore::preprocessForTheories(TNode n,
   for (const theory::SkolemLemma& sk : sks)
   {
     Node d = toCore(sk.getProven());
-    if (toHost(d) == sk.getProven())
+    Node hd = toHost(d);
+    if (hd == sk.getProven())
     {
       d_pg->notifyPreprocessed(sk.getProven(), sk.d_lemma, TrustNode::null());
     }
+    d_lemmaIds.emplace(hd, id);
     defs.push_back(d);
   }
   pp = trn;
@@ -152,25 +163,33 @@ Node HostCore::mkInstance(TNode q,
   Node lem = d_pg->mkInstance(toHost(q), terms);
   bool proofs = d_env.isTheoryProofProducing();
   return preprocessLemma(
-      TrustNode::mkTrustLemma(lem, proofs ? d_pg.get() : nullptr), defs);
+      TrustNode::mkTrustLemma(lem, proofs ? d_pg.get() : nullptr),
+      defs,
+      theory::InferenceId::QUANTIFIERS_INST_Z3);
 }
 
 Node HostCore::mkSkolemization(TNode q, std::vector<Node>& defs)
 {
-  return preprocessLemma(d_skolemizer(toHost(q)), defs);
+  return preprocessLemma(d_skolemizer(toHost(q)),
+                         defs,
+                         theory::InferenceId::QUANTIFIERS_SKOLEMIZE);
 }
 
-Node HostCore::preprocessLemma(const TrustNode& trn, std::vector<Node>& defs)
+Node HostCore::preprocessLemma(const TrustNode& trn,
+                               std::vector<Node>& defs,
+                               theory::InferenceId id)
 {
   Node lem = trn.getProven();
   TrustNode pp;
-  Node norm = preprocessForTheories(lem, defs, pp);
+  Node norm = preprocessForTheories(lem, defs, pp, id);
   Node form = pp.isNull() ? lem : pp.getNode();
+  Node hnorm = toHost(norm);
   // the core sends norm as form, and cvc5 is sent lem for it
-  if (toHost(norm) == form)
+  if (hnorm == form)
   {
     d_pg->notifyPreprocessed(form, trn, pp);
   }
+  d_lemmaIds.emplace(hnorm, id);
   return norm;
 }
 
@@ -229,7 +248,7 @@ void HostCore::check(theory::Theory::Effort effort)
     // yet. A full check must then not let the model through.
     if (theory::Theory::fullEffort(effort))
     {
-      d_out.setModelUnsound(theory::IncompleteId::UNKNOWN);
+      d_qim.setModelUnsound(theory::IncompleteId::UNKNOWN);
     }
     return;
   }
@@ -286,7 +305,7 @@ void HostCore::check(theory::Theory::Effort effort)
       // formulas are not checked against it.
       if (getContext().hasQuantifiers())
       {
-        d_out.setModelUnsound(theory::IncompleteId::QUANTIFIERS);
+        d_qim.setModelUnsound(theory::IncompleteId::QUANTIFIERS);
       }
       return;
     }
@@ -301,7 +320,7 @@ void HostCore::check(theory::Theory::Effort effort)
       return;
     }
   }
-  d_out.setModelUnsound(theory::IncompleteId::UNKNOWN);
+  d_qim.setModelUnsound(theory::IncompleteId::UNKNOWN);
 }
 
 void HostCore::presolve()
@@ -474,6 +493,11 @@ Node HostCore::delayUnit(const Node& lem)
   {
     return lem;
   }
+  auto it = d_lemmaIds.find(lem);
+  if (it != d_lemmaIds.end())
+  {
+    d_lemmaIds.emplace(weakened, it->second);
+  }
   getContext().getStats().d_numHostDelayedUnits++;
   d_delayedUnits.push_back(lem);
   return weakened;
@@ -534,7 +558,7 @@ void HostCore::split(BoolVar v)
   d_splitStrategy->add(a);
   getContext().getStats().d_numHostSplits++;
   // cvc5 must search on, for the decision, even after a full check
-  d_out.markUsed();
+  d_qim.markUsed();
   d_needCheck = true;
 }
 
