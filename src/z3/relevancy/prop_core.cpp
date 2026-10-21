@@ -298,7 +298,16 @@ void PropCore::assertRoot(TNode n)
         addOrRelWatches(n);
         break;
       }
+      case Kind::IMPLIES:
+      {
+        d_ctx.internalizeRec(n[0], true);
+        d_ctx.internalizeRec(n[1], true);
+        mkRootClause(~getLiteral(n[0]), getLiteral(n[1]));
+        addImpliesRelWatches(n);
+        break;
+      }
       case Kind::EQUAL:
+      case Kind::XOR:
       {
         TNode lhs = n[0];
         TNode rhs = n[1];
@@ -306,6 +315,10 @@ void PropCore::assertRoot(TNode n)
         d_ctx.internalizeRec(rhs, true);
         Literal l1 = getLiteral(lhs);
         Literal l2 = getLiteral(rhs);
+        if (n.getKind() == Kind::XOR)
+        {
+          l2 = ~l2;
+        }
         mkRootClause(l1, ~l2);
         mkRootClause(~l1, l2);
         break;

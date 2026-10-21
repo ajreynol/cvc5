@@ -75,6 +75,8 @@ inline bool isGate(TNode n)
   {
     case Kind::AND:
     case Kind::OR:
+    case Kind::IMPLIES:
+    case Kind::XOR:
     case Kind::ITE: return true;
     case Kind::EQUAL: return n[0].getType().isBoolean();
     default: return false;
