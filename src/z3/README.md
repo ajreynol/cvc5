@@ -41,7 +41,10 @@ All of the port's classes are in the namespace `cvc5::internal::z3`.
 
 Outside the directories above, the port touches:
 
-- `QuantifiersModules` makes `Z3Module`, and no other module, under `--z3`.
+- `QuantifiersModules` makes `Z3Module` under `--z3`, and no other module
+  unless `--z3-native-modules` is given: cvc5's own modules, as their options
+  select them, then run alongside the core (conflict-based instantiation finds
+  instances the core's E-matching misses).
   `QuantifiersModule::finishInit` and `notifyMasterMerge` give it the theory
   engine and the merges of the master equality engine.
 - `TheoryEngineModule::notifyFact` / `needsFacts` and
