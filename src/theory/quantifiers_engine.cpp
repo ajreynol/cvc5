@@ -304,15 +304,6 @@ void QuantifiersEngine::checkInternal(Theory::Effort e,
     // proceed with the check.
     DebugUnhandled();
   }
-  if (e == Theory::EFFORT_LAST_CALL && d_qstate.getValuation().needCheck())
-  {
-    // A theory has made progress in this round, so the model is not
-    // complete.
-    Trace("quant-engine-debug")
-        << "Theory engine not finished at last call, return." << std::endl;
-    d_qim.doPending();
-    return;
-  }
   bool needsCheck = d_qim.hasPendingLemma();
   QuantifiersModule::QEffort needsModelE = QuantifiersModule::QEFFORT_NONE;
   std::vector<QuantifiersModule*> qm;

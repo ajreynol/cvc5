@@ -1604,6 +1604,12 @@ void SetDefaults::setDefaultsQuantifiers(const LogicInfo& logic,
     // asserted fact at each check.
     SET_AND_NOTIFY_IF_NOT_USER_VAL_SYM(
         quantifiers, termDbMode, options::TermDbMode::ALL, "z3");
+    // The other modules instantiate only once the core and every theory are
+    // done, on a complete model.
+    SET_AND_NOTIFY_IF_NOT_USER_VAL_SYM(quantifiers,
+                                       instWhenMode,
+                                       options::InstWhenMode::LAST_CALL_DELAY,
+                                       "z3");
   }
   if (opts.arrays.arraysExp)
   {
