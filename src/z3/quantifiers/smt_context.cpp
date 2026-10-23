@@ -660,10 +660,6 @@ bool SmtContext::propagateAtoms()
       {
         // no-op: Boolean equality is handled by the gate clauses
       }
-      else if (options().z3.z3Mirror == options::Z3MirrorMode::EQUALITIES)
-      {
-        // the merge comes from cvc5's master equality engine, see ShadowFeed
-      }
       else if (val == L_TRUE)
       {
         addEq(getENode(lhs), getENode(rhs));
@@ -939,29 +935,6 @@ FinalCheckStatus SmtContext::finalCheck()
   d_stats.d_numFinalChecks++;
   Trace("z3-events") << "FINALCHECK " << d_stats.d_numFinalChecks << std::endl;
 
-  // TEMPORARY diagnostic: equalities assigned true whose sides the E-graph
-  // has not merged
-  if (TraceIsOn("z3-unmerged"))
-  {
-    for (BoolVar v = 0, n = d_prop.getNumBoolVars(); v < n; ++v)
-    {
-      if (!getBdata(v).isEq() || getAssignment(v) != L_TRUE)
-      {
-        continue;
-      }
-      TNode e = boolVar2Expr(v);
-      if (e[0].getType().isBoolean() || !eInternalized(e[0])
-          || !eInternalized(e[1]))
-      {
-        continue;
-      }
-      if (getENode(e[0])->getRoot() != getENode(e[1])->getRoot())
-      {
-        Trace("z3-unmerged") << "unmerged " << e[0].getType() << " "
-                             << isRelevant(e) << " " << e << std::endl;
-      }
-    }
-  }
   FinalCheckStatus result = d_qmanager->finalCheckEh(false);
   if (result != FC_DONE)
   {

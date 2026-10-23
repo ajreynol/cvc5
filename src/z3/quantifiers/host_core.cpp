@@ -263,10 +263,6 @@ void HostCore::check(theory::Theory::Effort effort)
   PropCore& core = getPropCore();
   syncLevel();
   // the equalities cvc5's theories derived since the last check
-  if (theory::Theory::fullEffort(effort))
-  {
-    d_feed->debugCheck();
-  }
   d_feed->apply();
   if (context()->getLevel() <= 1 && !d_delayedUnits.empty())
   {
@@ -358,7 +354,7 @@ void HostCore::notifyPop()
   {
     d_popLevel = lvl;
   }
-  d_feed->notifyPop(lvl);
+  d_feed->notifyPop();
   if (!d_setup)
   {
     return;

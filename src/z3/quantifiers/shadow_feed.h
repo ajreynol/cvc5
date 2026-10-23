@@ -66,14 +66,8 @@ class ShadowFeed : protected EnvObj, public theory::eq::EqualityEngineNotify
    * the terms the core internalized since then, for its next propagation.
    */
   void apply();
-  /**
-   * The SAT context popped to lvl: the merges notified above lvl and not
-   * applied are void. With --z3-mirror=equalities, the core's equalities come
-   * only from the master equality engine, whose merges at or below lvl may
-   * have been applied to the core above it, where the core undoes them: the
-   * next apply then applies them again (see d_applied).
-   */
-  void notifyPop(uint32_t lvl);
+  /** The SAT context popped: the merges notified and not applied are void. */
+  void notifyPop() { d_pending.clear(); }
 
   //---------------------------------------------- EqualityEngineNotify
   bool eqNotifyTriggerPredicate(TNode predicate, bool value) override;
@@ -88,22 +82,9 @@ class ShadowFeed : protected EnvObj, public theory::eq::EqualityEngineNotify
 
  private:
   /** The term of the core recorded for the representative rep, or null. */
-  Node coreTermOf(TNode rep);
+  Node coreTermOf(TNode rep) const;
   /** Merge a and b, both internalized in the core, there. */
   void merge(TNode a, TNode b);
-  /**
-   * Record the term c of the core for the representative rep (if isMap) or
-   * merge the terms rep and c of the core, for a merge the master equality
-   * engine made at level lvl.
-   */
-  void applyMerge(TNode rep, TNode c, bool isMap, uint32_t lvl);
-
- public:
-  /** TEMPORARY diagnostic */
-  void debugCheck();
-  void debugCheckCore();
-
- private:
 
   /** The core under cvc5's prop engine, which owns the feed. */
   HostCore& d_core;
@@ -123,34 +104,7 @@ class ShadowFeed : protected EnvObj, public theory::eq::EqualityEngineNotify
    * The merges notified since the last apply, as the representative that
    * survived and the one that was merged into it.
    */
-  struct Pending
-  {
-    Node d_r1;
-    Node d_r2;
-    /** the level of the SAT context of the merge */
-    uint32_t d_lvl;
-  };
-  std::vector<Pending> d_pending;
-  /** A change applyMerge made, see there. */
-  struct Applied
-  {
-    Node d_a;
-    Node d_b;
-    bool d_isMap;
-    /** the level of the merge in the master equality engine */
-    uint32_t d_lvl;
-    /** the level of the SAT context when it was applied */
-    uint32_t d_appliedLvl;
-  };
-  /**
-   * With --z3-mirror=equalities, the changes applied, by increasing level
-   * applied, and those a pop undid while the master equality engine keeps
-   * them, to apply again.
-   */
-  std::vector<Applied> d_applied;
-  std::vector<Applied> d_reapply;
-  /** Whether d_applied is kept, see there. */
-  bool d_replay;
+  std::vector<std::pair<Node, Node>> d_pending;
 };
 
 }  // namespace z3

@@ -397,17 +397,7 @@ class SmtContext final : protected EnvObj, public TheorySide
   void setEnodeFlag(BoolVar v, bool isNewVar);
 
   // ------------------------------------------------------------- engine
-  /**
-   * Assign l, which the E-graph propagates, unless the atoms take their
-   * values only from cvc5 (--z3-mirror).
-   */
-  void assign(Literal l)
-  {
-    if (!d_prop.mirrorsAtoms())
-    {
-      d_prop.assign(l);
-    }
-  }
+  void assign(Literal l) { d_prop.assign(l); }
 
   void addEq(ENode* n1, ENode* n2);
 

@@ -21,7 +21,6 @@
 #include "base/output.h"
 #include "expr/node_algorithm.h"
 #include "expr/node_manager.h"
-#include "options/z3_options.h"
 #include "smt/env.h"
 #include "util/resource_manager.h"
 #include "z3/util/uint_set.h"
@@ -67,7 +66,6 @@ PropCore::PropCore(Env& env, TheorySide& ctx, Statistics& stats)
       d_scopeLvl(0),
       d_mkBoolVarTrail(*this)
 {
-  d_mirrorAtoms = options().z3.z3Mirror != options::Z3MirrorMode::NONE;
 }
 
 PropCore::~PropCore() {}
@@ -690,11 +688,6 @@ bool PropCore::bcp()
           setConflict();
           return false;
         case L_UNDEF:
-          // an atom is left for cvc5 to assign, see mirrorsAtoms
-          if (d_mirrorAtoms && getBdata(l2.var()).isAtom())
-          {
-            break;
-          }
           d_stats.d_numBinPropagations++;
           assignCore(l2);
           break;
@@ -765,10 +758,6 @@ bool PropCore::bcp()
       Assert(firstLitVal == L_UNDEF);
       *it2 = *it;
       it2++;  // keep the clause
-      if (d_mirrorAtoms && getBdata(firstLit.var()).isAtom())
-      {
-        continue;
-      }
       d_stats.d_numPropagations++;
       // It is safe to call assignCore instead of assign, since firstLit is
       // unassigned.
