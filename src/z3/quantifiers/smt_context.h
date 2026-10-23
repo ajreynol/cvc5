@@ -641,6 +641,7 @@ class SmtContext final : protected EnvObj, public TheorySide
   std::unordered_set<TNode> d_cacheGenerationVisited;
 
   // ------------------------------------------------------------ backtracking
+  Region d_trailRegion;
   TrailStack d_trailStack;
 
   /** A temporary variable used during internalization. */

@@ -48,6 +48,8 @@ Outside the directories above, the port touches:
   conflict-based instantiation (`--cbqi`).
   `QuantifiersModule::finishInit` and `notifyMasterMerge` give it the theory
   engine and the merges of the master equality engine.
+- `TermDb` and `InstEvaluatorManager` do not reset at standard effort, where
+  only the core checks, at every check.
 - `TheoryEngineModule::notifyFact` / `needsFacts` and
   `TheoryEngine::addModule` are used by `RelevancyTracker`.
 - `Skolemize::getSkolemizationLemma` gives the core the lemma with which the
@@ -65,8 +67,7 @@ Outside the directories above, the port touches:
   nested in quantified formulas get skolem functions of the enclosing
   variables, as in Z3's negation normal form, which `QuantifiersPreprocess`
   now also applies to quantified formulas with patterns. It also sets
-  `--term-db-mode=all`: the core does not use cvc5's term database, which in
-  the default mode walks every asserted fact at each check.
+  `--inst-when=last-call-delay` and turns off `--cbqi`, as above.
 
 ## Size
 
@@ -75,12 +76,12 @@ as of this README:
 
 | Directory | Files | Code | Comment | Blank |
 |---|---:|---:|---:|---:|
-| `src/z3/util/` | 14 | 1349 | 460 | 316 |
-| `src/z3/relevancy/` | 12 | 2274 | 513 | 373 |
-| `src/z3/quantifiers/` | 27 | 7985 | 1588 | 1024 |
-| **Total** | 53 | **11608** | 2561 | 1713 |
+| `src/z3/util/` | 11 | 897 | 378 | 211 |
+| `src/z3/relevancy/` | 12 | 2273 | 513 | 373 |
+| `src/z3/quantifiers/` | 27 | 8014 | 1609 | 1025 |
+| **Total** | 50 | **11184** | 2500 | 1609 |
 
-The rest of cvc5 changes by 236 added and 15 deleted lines over 18 C++ files,
+The rest of cvc5 changes by 257 added and 18 deleted lines over 21 C++ files,
 most of them in `smt/set_defaults.cpp` (the capability checks) and
 `theory/quantifiers/quantifiers_preprocess.cpp` (pre-skolemization of
 quantified formulas with patterns).
