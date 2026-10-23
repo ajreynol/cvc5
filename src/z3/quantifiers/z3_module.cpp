@@ -81,8 +81,9 @@ bool Z3Module::needsCheck(theory::Theory::Effort e)
 
 void Z3Module::check(theory::Theory::Effort e, QEffort quant_e)
 {
-  // once per check of the quantifiers engine
-  if (quant_e != QEFFORT_STANDARD)
+  // once per check of the quantifiers engine, at its first effort, so that
+  // the other modules run only in a round where the core sent no lemma
+  if (quant_e != QEFFORT_CONFLICT)
   {
     return;
   }
