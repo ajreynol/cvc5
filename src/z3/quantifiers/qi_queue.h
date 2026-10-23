@@ -142,6 +142,12 @@ class QiQueue
   std::vector<Entry> d_newEntries;
   std::vector<Entry> d_delayedEntries;
   std::vector<Node> d_instances;
+  /**
+   * The lemmas of the instances made so far, by (SEXPR q t1 ... tn), null for
+   * an instance that rewrites to true. The core makes an instance again after
+   * backtracking, and its lemma is the same.
+   */
+  std::unordered_map<Node, Node> d_lemmas;
   std::vector<size_t> d_instantiatedTrail;
   std::vector<Scope> d_scopes;
 };

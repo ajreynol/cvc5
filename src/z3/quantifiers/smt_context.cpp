@@ -868,9 +868,16 @@ void SmtContext::internalizeInstance(TNode q,
     return;
   }
   Assert(d_instanceMaker);
+  std::vector<Node> key{q};
+  key.insert(key.end(), terms.begin(), terms.end());
+  auto it = d_instanceForms.emplace(
+      q.getNodeManager()->mkNode(Kind::SEXPR, key), Node());
   std::vector<Node> defs;
-  Node norm = d_instanceMaker(q, terms, defs);
-  internalizePreprocessed(norm, defs, generation, true);
+  if (it.second)
+  {
+    it.first->second = d_instanceMaker(q, terms, defs);
+  }
+  internalizePreprocessed(it.first->second, defs, generation, true);
 }
 
 void SmtContext::internalizePreprocessed(TNode norm,

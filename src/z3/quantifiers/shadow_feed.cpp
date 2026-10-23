@@ -119,30 +119,44 @@ Node ShadowFeed::coreTermOf(TNode rep)
   }
   // With --z3-mirror=equalities, the record may be stale: the pops of the
   // SAT context undo records the core still holds, and the core may have
-  // internalized a term before cvc5 registered it. A term of the core in the
-  // class is then looked for in the master equality engine.
+  // internalized a term before cvc5 registered it. A record of rep is a term
+  // of its class when it was recorded, and rep may have been merged since,
+  // so the record holds while the term is in the class of rep now.
   SmtContext& ctx = d_core.getContext();
-  if (it != d_coreTerm.end() && ctx.eInternalized(it->second)
-      && d_master->hasTerm(it->second)
-      && d_master->getRepresentative(it->second) == rep)
-  {
-    return it->second;
-  }
   if (!d_master->hasTerm(rep))
   {
     return Node::null();
   }
-  theory::eq::EqClassIterator eqc(rep, d_master);
+  Node cur = d_master->getRepresentative(rep);
+  if (it != d_coreTerm.end() && ctx.eInternalized(it->second)
+      && d_master->hasTerm(it->second)
+      && d_master->getRepresentative(it->second) == cur)
+  {
+    return it->second;
+  }
+  // Otherwise the terms of the core in the class of rep now are looked for
+  // in the master equality engine. Which of them were in the class of rep is
+  // not known, so they are all merged in the core, as they are in cvc5.
+  Node first;
+  theory::eq::EqClassIterator eqc(cur, d_master);
   for (; !eqc.isFinished(); ++eqc)
   {
     Node t = *eqc;
-    if (ctx.eInternalized(t))
+    if (!ctx.eInternalized(t))
     {
+      continue;
+    }
+    if (first.isNull())
+    {
+      first = t;
       d_coreTerm.insert(rep, t);
-      return t;
+    }
+    else
+    {
+      applyMerge(first, t, false, context()->getLevel());
     }
   }
-  return Node::null();
+  return first;
 }
 
 void ShadowFeed::merge(TNode a, TNode b)

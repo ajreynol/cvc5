@@ -131,7 +131,33 @@ void QiQueue::instantiate(Entry& ent)
   {
     return;
   }
-  Node lemma = mkLemma(q, stat, numBindings, bindings);
+  std::vector<Node> key{q};
+  for (size_t i = 0; i < numBindings; ++i)
+  {
+    key.push_back(bindings[i]->getExpr());
+  }
+  Node lemma;
+  auto it = d_lemmas.emplace(q.getNodeManager()->mkNode(Kind::SEXPR, key), Node());
+  if (it.second)
+  {
+    lemma = mkLemma(q, stat, numBindings, bindings);
+    it.first->second = lemma;
+  }
+  else
+  {
+    // made before: counted as mkLemma counts it
+    lemma = it.first->second;
+    if (lemma.isNull())
+    {
+      stat->incNumInstancesSimplifyTrue();
+      d_context.getStats().d_numInstancesSimplifyTrue++;
+    }
+    else
+    {
+      stat->incNumInstances();
+      d_context.getStats().d_numInstances++;
+    }
+  }
   if (lemma.isNull())
   {
     return;
@@ -143,11 +169,7 @@ void QiQueue::instantiate(Entry& ent)
                  << " gen " << generation << " cost " << ent.d_cost
                  << " newgen " << gen << std::endl;
   Trace("z3-qi-lemma") << "  lemma: " << lemma << std::endl;
-  std::vector<Node> terms;
-  for (size_t i = 0; i < numBindings; ++i)
-  {
-    terms.push_back(bindings[i]->getExpr());
-  }
+  std::vector<Node> terms(key.begin() + 1, key.end());
   d_context.internalizeInstance(q, terms, gen);
 }
 

@@ -599,6 +599,12 @@ class SmtContext final : protected EnvObj, public TheorySide
   QuantifierNormalizer d_normalizer;
   /** See setInstanceMaker. */
   InstanceMaker d_instanceMaker;
+  /**
+   * The forms of the instances made so far, by (SEXPR q t1 ... tn). The core
+   * makes an instance again after backtracking, and the instance maker gives
+   * the same form then, without the skolem definitions it gave the first time.
+   */
+  std::unordered_map<Node, Node> d_instanceForms;
   /** See setSkolemizer. */
   Skolemizer d_skolemizer;
   /** See setLemmaSender. */
