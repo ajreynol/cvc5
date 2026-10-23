@@ -54,8 +54,6 @@
 #include "z3/util/types.h"
 #include "z3/util/literal.h"
 #include "z3/util/trail.h"
-#include "z3/util/uint_set.h"
-#include "z3/util/util.h"
 #include "z3/relevancy/watch_list.h"
 
 namespace cvc5::internal {

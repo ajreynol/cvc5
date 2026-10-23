@@ -20,136 +20,40 @@
 #define CVC5__Z3__UTIL__APPROX_SET_H
 
 #include <cstdint>
-#include <ostream>
 
 namespace cvc5::internal {
 namespace z3 {
 
-template <typename R>
-class ApproxSetTraits;
-
-template <>
-class ApproxSetTraits<uint64_t>
-{
- public:
-  static constexpr uint32_t s_capacity = 64;
-  static constexpr uint64_t s_zero = UINT64_C(0);
-  static constexpr uint64_t s_one = UINT64_C(1);
-};
-
-template <>
-class ApproxSetTraits<uint32_t>
-{
- public:
-  static constexpr uint32_t s_capacity = 32;
-  static constexpr uint32_t s_zero = 0;
-  static constexpr uint32_t s_one = 1;
-};
+/** The number of distinct bits available in an ApproxSet. */
+constexpr uint32_t approxSetCapacity() { return 64; }
 
 /**
- * A set of elements of type T, approximated by an R-bit mask. Each element is
- * mapped to an unsigned by ToUnsigned and then to the bit at that index modulo
- * the width of R.
+ * A set of unsigned indices, approximated by a 64-bit mask: each index is
+ * mapped to the bit at that index modulo 64.
  *
  * Membership is one-sided: mayContain() can return a false positive, but
- * mustNotContain() is exact. The same holds for the subset and equality tests,
- * which is where the cheap filtering comes from.
+ * a negative answer is exact. The same holds for the intersection test, which
+ * is where the cheap filtering comes from. This is the variant used for enode
+ * label sets, with an iterator over the bits that are set.
  */
-template <typename T, typename ToUnsigned, typename R = uint64_t>
-class ApproxSetTpl : private ToUnsigned
-{
- protected:
-  R d_set = ApproxSetTraits<R>::s_zero;
-
-  uint32_t elemToUnsigned(const T& e) const
-  {
-    return ToUnsigned::operator()(e);
-  }
-
-  R unsignedToSet(uint32_t u) const
-  {
-    return ApproxSetTraits<R>::s_one
-           << (u & (ApproxSetTraits<R>::s_capacity - 1));
-  }
-
-  R elemToSet(const T& e) const { return unsignedToSet(elemToUnsigned(e)); }
-
-  static ApproxSetTpl rawToSet(const R& s)
-  {
-    ApproxSetTpl r;
-    r.d_set = s;
-    return r;
-  }
-
- public:
-  ApproxSetTpl() = default;
-
-  explicit ApproxSetTpl(const T& e) : d_set(elemToSet(e)) {}
-
-  ApproxSetTpl(size_t sz, const T* es)
-  {
-    for (size_t i = 0; i < sz; ++i)
-    {
-      insert(es[i]);
-    }
-  }
-
-  void set(R s) { d_set = s; }
-
-  R get() const { return d_set; }
-
-  void insert(const T& e) { d_set |= elemToSet(e); }
-
-  bool mayContain(const T& e) const
-  {
-    return (d_set & elemToSet(e)) != ApproxSetTraits<R>::s_zero;
-  }
-
-  friend ApproxSetTpl mkIntersection(const ApproxSetTpl& s1,
-                                     const ApproxSetTpl& s2)
-  {
-    return rawToSet(s1.d_set & s2.d_set);
-  }
-
-  void operator|=(const ApproxSetTpl& other) { d_set |= other.d_set; }
-
-  void operator&=(const ApproxSetTpl& other) { d_set &= other.d_set; }
-
-  void operator-=(const ApproxSetTpl& other) { d_set &= ~(other.d_set); }
-
-  bool empty() const { return d_set == ApproxSetTraits<R>::s_zero; }
-
-  void reset() { d_set = ApproxSetTraits<R>::s_zero; }
-
-  bool emptyIntersection(const ApproxSetTpl& other) const
-  {
-    return mkIntersection(*this, other).empty();
-  }
-};
-
-/** Identity map from unsigned to unsigned, for approximated sets of indices. */
-struct UnsignedToUnsigned
-{
-  uint32_t operator()(uint32_t u) const { return u; }
-};
-
-using UApproxSet = ApproxSetTpl<uint32_t, UnsignedToUnsigned>;
-
-/** The number of distinct bits available in an ApproxSet. */
-constexpr uint32_t approxSetCapacity()
-{
-  return ApproxSetTraits<uint64_t>::s_capacity;
-}
-
-/**
- * The 64-bit approximated set of unsigned indices, extended with an iterator
- * over the bits that are set. This is the variant used for enode label sets.
- */
-class ApproxSet : public UApproxSet
+class ApproxSet
 {
  public:
   ApproxSet() = default;
-  ApproxSet(uint32_t e) : UApproxSet(e) {}
+  ApproxSet(uint32_t e) : d_set(toSet(e)) {}
+
+  void insert(uint32_t e) { d_set |= toSet(e); }
+
+  bool mayContain(uint32_t e) const { return (d_set & toSet(e)) != 0; }
+
+  void operator|=(const ApproxSet& other) { d_set |= other.d_set; }
+
+  bool empty() const { return d_set == 0; }
+
+  bool emptyIntersection(const ApproxSet& other) const
+  {
+    return (d_set & other.d_set) == 0;
+  }
 
   class iterator
   {
@@ -180,13 +84,6 @@ class ApproxSet : public UApproxSet
       return *this;
     }
 
-    iterator operator++(int)
-    {
-      iterator tmp = *this;
-      ++*this;
-      return tmp;
-    }
-
     bool operator!=(const iterator& it) const { return d_set != it.d_set; }
   };
 
@@ -199,6 +96,14 @@ class ApproxSet : public UApproxSet
   {
     return static_cast<uint32_t>(__builtin_popcountll(d_set));
   }
+
+ private:
+  static uint64_t toSet(uint32_t u)
+  {
+    return UINT64_C(1) << (u & (approxSetCapacity() - 1));
+  }
+
+  uint64_t d_set = 0;
 };
 
 }  // namespace z3

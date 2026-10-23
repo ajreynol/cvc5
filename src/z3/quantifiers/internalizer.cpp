@@ -29,7 +29,7 @@
 #include "theory/theory.h"
 #include "z3/quantifiers/quantifier_manager.h"
 #include "z3/quantifiers/smt_context.h"
-#include "z3/util/util.h"
+#include "z3/util/types.h"
 
 namespace cvc5::internal {
 namespace z3 {

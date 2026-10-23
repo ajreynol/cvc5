@@ -1377,12 +1377,10 @@ libcvc5_add_sources(
   z3/util/region.cpp
   z3/util/region.h
   z3/util/statistics.h
-  z3/util/tagged_ptr.h
   z3/util/trail.h
   z3/util/types.cpp
   z3/util/types.h
   z3/util/uint_set.h
-  z3/util/util.h
 )
 
 # suppress deprecated warnings to not error in CI

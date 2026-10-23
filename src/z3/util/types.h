@@ -72,6 +72,37 @@ enum FinalCheckStatus
 
 std::ostream& operator<<(std::ostream& out, FinalCheckStatus st);
 
+/**
+ * Store val at index i, growing v with def as needed. This is Z3's
+ * vector::setx.
+ */
+template <typename T>
+void setx(std::vector<T>& v, size_t i, const T& val, const T& def)
+{
+  if (i >= v.size())
+  {
+    v.resize(i + 1, def);
+  }
+  v[i] = val;
+}
+
+/** Read index i, or def if i is out of range. This is Z3's vector::get. */
+template <typename T>
+const T& getx(const std::vector<T>& v, size_t i, const T& def)
+{
+  return i < v.size() ? v[i] : def;
+}
+
+/** Grow v to at least size sz, filling with def. */
+template <typename T>
+void reservex(std::vector<T>& v, size_t sz, const T& def)
+{
+  if (v.size() < sz)
+  {
+    v.resize(sz, def);
+  }
+}
+
 }  // namespace z3
 }  // namespace cvc5::internal
 

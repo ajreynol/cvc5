@@ -25,7 +25,6 @@
 #include <vector>
 
 #include "base/check.h"
-#include "z3/util/approx_set.h"
 
 namespace cvc5::internal {
 namespace z3 {
@@ -126,12 +125,6 @@ inline std::ostream& operator<<(std::ostream& out, Literal l)
 }
 
 using LiteralVector = std::vector<Literal>;
-
-/** Maps a literal to its dense index, for approximated literal sets. */
-struct LiteralToUnsigned
-{
-  uint32_t operator()(Literal l) const { return l.toUint(); }
-};
 
 }  // namespace z3
 }  // namespace cvc5::internal

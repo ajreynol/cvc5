@@ -27,8 +27,8 @@
 #include <unordered_map>
 #include <unordered_set>
 
+#include "util/hash.h"
 #include "z3/quantifiers/enode.h"
-#include "z3/util/hash.h"
 
 namespace cvc5::internal {
 namespace z3 {
@@ -73,9 +73,8 @@ class CgTable
     size_t operator()(ENode* n) const
     {
       Assert(n->getNumArgs() == 2);
-      return combineHash(
-          static_cast<uint32_t>(n->getArg(0)->getRoot()->hash()),
-          static_cast<uint32_t>(n->getArg(1)->getRoot()->hash()));
+      return fnv1a::fnv1a_64(n->getArg(1)->getRoot()->hash(),
+                             fnv1a::fnv1a_64(n->getArg(0)->getRoot()->hash()));
     }
   };
 
@@ -98,13 +97,13 @@ class CgTable
     size_t operator()(ENode* n) const
     {
       Assert(n->getNumArgs() == 2);
-      uint32_t h1 = static_cast<uint32_t>(n->getArg(0)->getRoot()->hash());
-      uint32_t h2 = static_cast<uint32_t>(n->getArg(1)->getRoot()->hash());
+      size_t h1 = n->getArg(0)->getRoot()->hash();
+      size_t h2 = n->getArg(1)->getRoot()->hash();
       if (h1 > h2)
       {
         std::swap(h1, h2);
       }
-      return hashU((h1 << 16) | (h2 & 0xFFFF));
+      return fnv1a::fnv1a_64(h2, fnv1a::fnv1a_64(h1));
     }
   };
 

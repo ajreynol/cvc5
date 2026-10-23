@@ -53,15 +53,66 @@
 #include "z3/util/statistics.h"
 #include "z3/util/approx_set.h"
 #include "z3/util/hash.h"
-#include "z3/util/tagged_ptr.h"
 #include "z3/util/trail.h"
 #include "z3/util/uint_set.h"
-#include "z3/util/util.h"
+#include "z3/util/types.h"
 
 namespace cvc5::internal {
 namespace z3 {
 
 namespace {
+
+/**
+ * A pointer with a tag in its low bits, or a small integer boxed with a tag,
+ * so that the joints of the matching code stay one word wide (Z3's tptr.h).
+ * Everything allocated here is at least four-byte aligned, which leaves the
+ * low two bits free.
+ */
+class TaggedPtr
+{
+  static constexpr uintptr_t s_tagBits = 2;
+  static constexpr uintptr_t s_tagMask = (uintptr_t(1) << s_tagBits) - 1;
+
+ public:
+  TaggedPtr() : d_data(0) {}
+
+  /** Tag a pointer. */
+  template <typename T>
+  static TaggedPtr tag(T* p, uintptr_t t)
+  {
+    Assert(t <= s_tagMask);
+    Assert((reinterpret_cast<uintptr_t>(p) & s_tagMask) == 0)
+        << "tagged pointer is not sufficiently aligned";
+    TaggedPtr r;
+    r.d_data = reinterpret_cast<uintptr_t>(p) | t;
+    return r;
+  }
+
+  /** Box a small integer with a tag. */
+  static TaggedPtr boxInt(uint32_t val, uintptr_t t)
+  {
+    Assert(t <= s_tagMask);
+    TaggedPtr r;
+    r.d_data = (static_cast<uintptr_t>(val) << s_tagBits) | t;
+    return r;
+  }
+
+  uintptr_t getTag() const { return d_data & s_tagMask; }
+
+  template <typename T>
+  T* untag() const
+  {
+    return reinterpret_cast<T*>(d_data & ~s_tagMask);
+  }
+
+  uint32_t unboxInt() const
+  {
+    return static_cast<uint32_t>(d_data >> s_tagBits);
+  }
+
+ private:
+  uintptr_t d_data;
+};
 
 /** Z3 uses IS_CGR in place of BIND when every argument is already bound. */
 constexpr bool s_isCgrSupport = true;

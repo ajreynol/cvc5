@@ -38,7 +38,6 @@
 #include "z3/util/statistics.h"
 #include "z3/util/trail.h"
 #include "z3/util/types.h"
-#include "z3/util/util.h"
 
 namespace cvc5::internal {
 namespace z3 {
