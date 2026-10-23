@@ -184,6 +184,12 @@ class PropCore : protected EnvObj
 
   void assignCore(Literal l);
 
+  /**
+   * Whether the atoms take their values only from cvc5 (--z3-mirror): the
+   * core's own propagation then assigns only gates.
+   */
+  bool mirrorsAtoms() const { return d_mirrorAtoms; }
+
   /** Boolean constraint propagation; returns false on a conflict. */
   bool bcp();
 
@@ -414,6 +420,8 @@ class PropCore : protected EnvObj
   ClauseVector d_auxClauses;
   std::vector<ReplayUnit> d_unitsToReassert;
   LiteralVector d_assignedLiterals;
+  /** see mirrorsAtoms */
+  bool d_mirrorAtoms;
   size_t d_qhead;
 
   /** True if a conflict was found at the current scope. */

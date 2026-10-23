@@ -17,6 +17,24 @@ name   = "Z3 Core"
   default    = "true"
   help       = "with --z3, weaken a lemma that is a unit at the base level of the SAT solver with the negation of the first decision, so that the SAT solver assigns its literal at the first decision level rather than restarting (as Z3's delay_units)"
 
+[[option]]
+  name       = "z3Mirror"
+  category   = "expert"
+  long       = "z3-mirror=MODE"
+  type       = "Z3MirrorMode"
+  default    = "NONE"
+  help       = "with --z3, how much of the ground reasoning the core leaves to cvc5"
+  help_mode  = "Modes for how much of the ground reasoning the core leaves to cvc5."
+[[option.mode.NONE]]
+  name = "none"
+  help = "The core propagates as Z3 does: unit propagation over its clauses and its E-graph assign atoms, and asserted equalities are merged in its E-graph."
+[[option.mode.ATOMS]]
+  name = "atoms"
+  help = "The atoms take their values only from cvc5: neither unit propagation over the core's clauses nor its E-graph assigns them (gates are still propagated)."
+[[option.mode.EQUALITIES]]
+  name = "equalities"
+  help = "As atoms, and the equalities of the core's E-graph come only from cvc5's master equality engine and congruence: an asserted equality is not merged by the core, nor is a disequality checked."
+
 # ---------------------------------------------------------------- core search
 
 [[option]]
