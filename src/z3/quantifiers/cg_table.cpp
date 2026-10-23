@@ -22,31 +22,12 @@ namespace z3 {
 
 size_t CgTable::CgHash::operator()(ENode* n) const
 {
-  uint32_t a, b, c;
-  a = b = 0x9e3779b9;
-  c = 11;
-
-  uint32_t i = n->getNumArgs();
-  while (i >= 3)
+  uint64_t h = fnv1a::offsetBasis;
+  for (uint32_t i = 0, num = n->getNumArgs(); i < num; ++i)
   {
-    i--;
-    a += static_cast<uint32_t>(n->getArg(i)->getRoot()->hash());
-    i--;
-    b += static_cast<uint32_t>(n->getArg(i)->getRoot()->hash());
-    i--;
-    c += static_cast<uint32_t>(n->getArg(i)->getRoot()->hash());
-    hashMix(a, b, c);
+    h = fnv1a::fnv1a_64(n->getArg(i)->getRoot()->hash(), h);
   }
-
-  switch (i)
-  {
-    case 2:
-      b += static_cast<uint32_t>(n->getArg(1)->getRoot()->hash());
-      CVC5_FALLTHROUGH;
-    case 1: c += static_cast<uint32_t>(n->getArg(0)->getRoot()->hash());
-  }
-  hashMix(a, b, c);
-  return c;
+  return h;
 }
 
 bool CgTable::CgEq::operator()(ENode* n1, ENode* n2) const

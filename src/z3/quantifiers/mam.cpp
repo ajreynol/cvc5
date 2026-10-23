@@ -52,7 +52,7 @@
 #include "z3/quantifiers/smt_context.h"
 #include "z3/util/statistics.h"
 #include "z3/util/approx_set.h"
-#include "z3/util/hash.h"
+#include "util/hash.h"
 #include "z3/util/trail.h"
 #include "z3/util/uint_set.h"
 #include "z3/util/types.h"
@@ -161,11 +161,8 @@ class LabelHasher
  private:
   void mkLblHash(uint32_t lblId)
   {
-    uint32_t a = 17;
-    uint32_t b = 3;
-    uint32_t c = lblId;
-    hashMix(a, b, c);
-    d_lbl2Hash[lblId] = static_cast<int8_t>(c & (approxSetCapacity() - 1));
+    uint64_t h = fnv1a::fnv1a_64(lblId);
+    d_lbl2Hash[lblId] = static_cast<int8_t>(h & (approxSetCapacity() - 1));
   }
 
   SmtContext& d_ctx;
@@ -2804,6 +2801,7 @@ class MamImpl final : public Mam
   MamImpl(SmtContext& ctx, QuantifierManager& qm)
       : d_context(ctx),
         d_qm(qm),
+        d_trailStack(d_trailRegion),
         d_lblHasher(ctx),
         d_ctManager(d_lblHasher, d_trailStack),
         d_compiler(ctx, qm, d_ctManager, d_lblHasher),
@@ -3706,6 +3704,8 @@ class MamImpl final : public Mam
   SmtContext& d_context;
   /** The quantifier manager, which receives the matches. */
   QuantifierManager& d_qm;
+  /** The memory of the code trees and of the trail objects. */
+  Region d_trailRegion;
   TrailStack d_trailStack;
   LabelHasher d_lblHasher;
   CodeTreeManager d_ctManager;

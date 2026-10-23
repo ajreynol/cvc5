@@ -19,7 +19,7 @@
 #include <new>
 
 #include "z3/quantifiers/smt_context.h"
-#include "z3/util/hash.h"
+#include "util/hash.h"
 #include "z3/util/trail.h"
 
 namespace cvc5::internal {
@@ -131,7 +131,7 @@ void ENode::setLblHash(TrailStack& trail)
   // d_lblHash is different from -1 if and only if there is a pattern that
   // contains this enode, so a trail restores it to -1.
   trail.push(ValueTrail<int8_t>(d_lblHash));
-  uint32_t h = hashU(getOwnerId());
+  uint64_t h = fnv1a::fnv1a_64(getOwnerId());
   d_lblHash = static_cast<int8_t>(h & (approxSetCapacity() - 1));
   // propagate the modification to the root's label set
   ApproxSet& rLbls = d_root->d_lbls;

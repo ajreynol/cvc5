@@ -17,7 +17,7 @@
 
 #include <cstring>
 
-#include "z3/util/hash.h"
+#include "util/hash.h"
 
 namespace cvc5::internal {
 namespace z3 {
@@ -66,36 +66,17 @@ Fingerprint* FingerprintSet::mkDummy(uint64_t data,
   return &d_dummy;
 }
 
-namespace {
-
-struct ArgData
-{
-  uint32_t d_dataHash;
-  ENode* const* d_args;
-};
-
-struct KHash
-{
-  uint32_t operator()(const ArgData& d) const { return d.d_dataHash; }
-};
-
-struct ArgHash
-{
-  uint32_t operator()(const ArgData& d, size_t i) const
-  {
-    return static_cast<uint32_t>(d.d_args[i]->hash());
-  }
-};
-
-}  // namespace
-
 Fingerprint* FingerprintSet::insert(uint64_t data,
                                     uint32_t dataHash,
                                     size_t numArgs,
                                     ENode* const* args)
 {
-  ArgData argData{dataHash, args};
-  dataHash = getCompositeHash(argData, numArgs, KHash(), ArgHash());
+  uint64_t h = fnv1a::fnv1a_64(dataHash);
+  for (size_t i = 0; i < numArgs; ++i)
+  {
+    h = fnv1a::fnv1a_64(args[i]->hash(), h);
+  }
+  dataHash = static_cast<uint32_t>(h);
 
   Fingerprint* d = mkDummy(data, dataHash, numArgs, args);
   if (d_set.count(d) != 0)

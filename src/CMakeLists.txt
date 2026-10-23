@@ -1372,7 +1372,6 @@ libcvc5_add_sources(
   z3/util/approx_set.h
   z3/util/ast.cpp
   z3/util/ast.h
-  z3/util/hash.h
   z3/util/literal.h
   z3/util/region.cpp
   z3/util/region.h
