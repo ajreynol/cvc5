@@ -399,26 +399,23 @@ void QuantifiersEngine::checkInternal(Theory::Effort e,
       d_te->printAssertions("quant-engine-assert");
     }
 
-    // reset utilities, which are not used at standard effort
-    if (e != Theory::EFFORT_STANDARD)
+    // reset utilities
+    Trace("quant-engine-debug") << "Resetting all utilities..." << std::endl;
+    for (QuantifiersUtil*& util : d_util)
     {
-      Trace("quant-engine-debug") << "Resetting all utilities..." << std::endl;
-      for (QuantifiersUtil*& util : d_util)
+      Trace("quant-engine-debug2")
+          << "Reset " << util->identify().c_str() << "..." << std::endl;
+      if (!util->reset(e))
       {
-        Trace("quant-engine-debug2")
-            << "Reset " << util->identify().c_str() << "..." << std::endl;
-        if (!util->reset(e))
+        d_qim.doPending();
+        if (d_qim.hasSentLemma())
         {
-          d_qim.doPending();
-          if (d_qim.hasSentLemma())
-          {
-            return;
-          }
-          else
-          {
-            // should only fail reset if added a lemma
-            DebugUnhandled();
-          }
+          return;
+        }
+        else
+        {
+          // should only fail reset if added a lemma
+          DebugUnhandled();
         }
       }
     }

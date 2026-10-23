@@ -1599,17 +1599,15 @@ void SetDefaults::setDefaultsQuantifiers(const LogicInfo& logic,
                                        preSkolemQuant,
                                        options::PreSkolemQuantMode::AGG,
                                        "z3");
-    // The module of the ported core does not use the term database of the
-    // quantifiers engine, whose relevance tracking would otherwise walk every
-    // asserted fact at each check.
-    SET_AND_NOTIFY_IF_NOT_USER_VAL_SYM(
-        quantifiers, termDbMode, options::TermDbMode::ALL, "z3");
-    // The other modules instantiate only once the core and every theory are
-    // done, on a complete model.
+    // The other modules of the quantifiers engine instantiate only once the
+    // core and every theory are done, on a complete model.
     SET_AND_NOTIFY_IF_NOT_USER_VAL_SYM(quantifiers,
                                        instWhenMode,
                                        options::InstWhenMode::LAST_CALL_DELAY,
                                        "z3");
+    // Conflict-based instantiation at full effort duplicates the core's
+    // search for conflicting instances.
+    SET_AND_NOTIFY_IF_NOT_USER(quantifiers, conflictBasedInst, false, "z3");
   }
   if (opts.arrays.arraysExp)
   {
