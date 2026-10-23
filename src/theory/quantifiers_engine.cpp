@@ -304,6 +304,15 @@ void QuantifiersEngine::checkInternal(Theory::Effort e,
     // proceed with the check.
     DebugUnhandled();
   }
+  if (e == Theory::EFFORT_LAST_CALL && d_qstate.getValuation().needCheck())
+  {
+    // A theory has made progress in this round, so the model is not
+    // complete.
+    Trace("quant-engine-debug")
+        << "Theory engine not finished at last call, return." << std::endl;
+    d_qim.doPending();
+    return;
+  }
   bool needsCheck = d_qim.hasPendingLemma();
   QuantifiersModule::QEffort needsModelE = QuantifiersModule::QEFFORT_NONE;
   std::vector<QuantifiersModule*> qm;
@@ -399,23 +408,26 @@ void QuantifiersEngine::checkInternal(Theory::Effort e,
       d_te->printAssertions("quant-engine-assert");
     }
 
-    // reset utilities
-    Trace("quant-engine-debug") << "Resetting all utilities..." << std::endl;
-    for (QuantifiersUtil*& util : d_util)
+    // reset utilities, which are not used at standard effort
+    if (e != Theory::EFFORT_STANDARD)
     {
-      Trace("quant-engine-debug2")
-          << "Reset " << util->identify().c_str() << "..." << std::endl;
-      if (!util->reset(e))
+      Trace("quant-engine-debug") << "Resetting all utilities..." << std::endl;
+      for (QuantifiersUtil*& util : d_util)
       {
-        d_qim.doPending();
-        if (d_qim.hasSentLemma())
+        Trace("quant-engine-debug2")
+            << "Reset " << util->identify().c_str() << "..." << std::endl;
+        if (!util->reset(e))
         {
-          return;
-        }
-        else
-        {
-          // should only fail reset if added a lemma
-          DebugUnhandled();
+          d_qim.doPending();
+          if (d_qim.hasSentLemma())
+          {
+            return;
+          }
+          else
+          {
+            // should only fail reset if added a lemma
+            DebugUnhandled();
+          }
         }
       }
     }
