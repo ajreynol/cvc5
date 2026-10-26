@@ -72,11 +72,6 @@ class Literal
     return l;
   }
 
-  uint32_t toUint() const { return d_val; }
-
-  uint32_t hash() const { return toUint(); }
-
-  friend Literal toLiteral(uint32_t x);
   friend bool operator<(const Literal& l1, const Literal& l2);
   friend bool operator==(const Literal& l1, const Literal& l2);
   friend bool operator!=(const Literal& l1, const Literal& l2);
@@ -91,13 +86,6 @@ inline const Literal s_trueLiteral(s_trueBoolVar, false);
 
 /** The literal that is always false. */
 inline const Literal s_falseLiteral(s_trueBoolVar, true);
-
-inline Literal toLiteral(uint32_t x)
-{
-  Literal l;
-  l.d_val = x;
-  return l;
-}
 
 inline bool operator<(const Literal& l1, const Literal& l2)
 {

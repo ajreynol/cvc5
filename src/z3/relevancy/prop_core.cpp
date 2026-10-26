@@ -23,7 +23,6 @@
 #include "expr/node_manager.h"
 #include "smt/env.h"
 #include "util/resource_manager.h"
-#include "z3/util/uint_set.h"
 
 namespace cvc5::internal {
 namespace z3 {
@@ -866,7 +865,7 @@ void PropCore::delClauses(ClauseVector& v, size_t oldSize)
   {
     // For a large batch it is cheaper to mark everything deleted first and
     // then sweep the affected watch lists once.
-    UIntSet watches;
+    std::vector<bool> watches(d_watches.size(), false);
     for (size_t i = v.size(); i != oldSize;)
     {
       --i;
@@ -875,12 +874,12 @@ void PropCore::delClauses(ClauseVector& v, size_t oldSize)
       {
         c->markAsDeleted();
       }
-      watches.insert((~c->getLiteral(0)).index());
-      watches.insert((~c->getLiteral(1)).index());
+      watches[(~c->getLiteral(0)).index()] = true;
+      watches[(~c->getLiteral(1)).index()] = true;
     }
     for (size_t w = 0, sz = d_watches.size(); w < sz; ++w)
     {
-      if (watches.contains(w))
+      if (watches[w])
       {
         d_watches[w].removeDeleted();
       }

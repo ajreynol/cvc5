@@ -550,17 +550,17 @@ ENode* SmtContext::mkENode(TNode n,
     }
     else if (cgcEnabled)
     {
-      ENodeBoolPair r = d_cgTable.insert(e);
-      if (e != r.first)
+      ENode* r = d_cgTable.insert(e);
+      if (e != r)
       {
-        e->d_cg = r.first;
+        e->d_cg = r;
         // Patterns with equalities are not supported, so equality
         // generations are not tracked.
         if (!e->isEq())
         {
-          mergeCgcGenerations(e, generation, r.first);
+          mergeCgcGenerations(e, generation, r);
         }
-        pushNewCongruence(e, r.first);
+        pushNewCongruence(e, r);
       }
       else
       {

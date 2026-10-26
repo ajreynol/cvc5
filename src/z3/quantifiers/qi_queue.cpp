@@ -43,20 +43,10 @@ void QiQueue::setup()
 
 float QiQueue::getCost(TNode q, uint32_t generation)
 {
-  // Z3's default cost function, qi.cost = (+ weight generation)
-  float r = static_cast<float>(getWeight(q)) + static_cast<float>(generation);
+  // Z3's default cost function, qi.cost = (+ weight generation), weight 1
+  float r = 1.0f + static_cast<float>(generation);
   d_qm.getStat(q)->updateMaxCost(r);
   return r;
-}
-
-uint32_t QiQueue::getNewGen(TNode q, uint32_t generation, float cost)
-{
-  // Z3's default, qi.new_gen = cost
-  if (getWeight(q) > 0 || cost > 0)
-  {
-    return static_cast<uint32_t>(cost);
-  }
-  return std::max(generation + 1, static_cast<uint32_t>(cost));
 }
 
 void QiQueue::insert(Fingerprint* f, uint32_t generation)
@@ -164,7 +154,7 @@ void QiQueue::instantiate(Entry& ent)
   }
   d_instances.push_back(lemma);
   d_stats.d_numInstances++;
-  uint32_t gen = getNewGen(q, generation, ent.d_cost);
+  uint32_t gen = static_cast<uint32_t>(ent.d_cost);
   Trace("z3-qi") << "[instance] q" << q.getId() << " nargs " << numBindings
                  << " gen " << generation << " cost " << ent.d_cost
                  << " newgen " << gen << std::endl;

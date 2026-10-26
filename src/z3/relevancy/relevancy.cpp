@@ -171,7 +171,8 @@ RelevancyPropagator::RelevancyEhs* RelevancyPropagator::getWatches(
     TNode n, bool val) const
 {
   size_t idx = val ? 1 : 0;
-  if (!d_isWatched[idx].contains(n.getId()))
+  size_t id = n.getId();
+  if (id >= d_isWatched[idx].size() || !d_isWatched[idx][id])
   {
     return nullptr;
   }
@@ -189,7 +190,7 @@ void RelevancyPropagator::setWatches(TNode n, bool val, RelevancyEhs* ehs)
   else
   {
     d_watches[idx][n] = ehs;
-    d_isWatched[idx].insert(n.getId());
+    setx(d_isWatched[idx], n.getId(), true, false);
   }
 }
 
@@ -251,7 +252,7 @@ void RelevancyPropagator::unmarkRelevantExprs(size_t oldLim)
   while (i != oldLim)
   {
     --i;
-    d_isRelevant.remove(d_relevantExprs[i].getId());
+    d_isRelevant[d_relevantExprs[i].getId()] = false;
   }
   d_relevantExprs.resize(oldLim);
   d_qhead = d_relevantExprs.size();
@@ -292,7 +293,7 @@ void RelevancyPropagator::undoTrail(size_t oldLim)
 void RelevancyPropagator::setRelevant(TNode n)
 {
   d_theory.getStats().d_numSetRelevant++;
-  d_isRelevant.insert(n.getId());
+  setx(d_isRelevant, n.getId(), true, false);
   d_relevantExprs.push_back(n);
   d_core.relevantEh(n);
 }

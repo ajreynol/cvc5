@@ -102,14 +102,18 @@ class QiQueue
 
   /**
    * The cost of an instance of q whose bindings have the maximum generation
-   * generation, by Z3's default cost function (+ weight generation).
+   * generation, by Z3's default cost function (+ weight generation). The
+   * enodes the instance creates get the cost as their generation, Z3's
+   * default (qi.new_gen = cost).
+   *
+   * cvc5's parser does not retain ":weight", so every quantifier has Z3's
+   * default weight, which is 1 and not 0: with weight 0 the cost of an
+   * instance is its generation, the generation of the enodes an instance
+   * creates is its cost, and so every instance has cost 0 and matching loops
+   * are never broken. See the long comment on the "weight 0" performance bug
+   * in Z3's qi_params.h.
    */
   float getCost(TNode q, uint32_t generation);
-  /**
-   * The generation of the enodes an instance of q with cost cost creates, by
-   * Z3's default (the cost).
-   */
-  uint32_t getNewGen(TNode q, uint32_t generation, float cost);
   void instantiate(Entry& ent);
   /** The quantifier of the fingerprint f. */
   TNode getQuantifier(Fingerprint* f) const;

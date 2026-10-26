@@ -307,8 +307,7 @@ void SmtContext::reinsertParentsIntoCgTable(ENode* r1, ENode* r2)
         }
       }
 
-      ENodeBoolPair r = d_cgTable.insert(parent);
-      ENode* parentPrime = r.first;
+      ENode* parentPrime = d_cgTable.insert(parent);
       if (parentPrime == parent)
       {
         Assert(parent->isCgr());
@@ -497,9 +496,8 @@ void SmtContext::undoAddEq(ENode* r1, size_t r2NumParents)
       gen = 100000;
     }
 
-    ENodeBoolPair r = d_cgTable.insert(parent);
-    parent->d_cg = r.first;
-    if (r.first == parent)
+    parent->d_cg = d_cgTable.insert(parent);
+    if (parent->d_cg == parent)
     {
       // parent is a congruence root again: restore its generation
       parent->d_generation = gen;

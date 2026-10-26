@@ -97,9 +97,6 @@ inline bool isQuantifier(TNode n)
  */
 inline bool isApp(TNode n) { return !isQuantifier(n) && !isVar(n); }
 
-/** True if n is an equality. */
-inline bool isEq(TNode n) { return n.getKind() == Kind::EQUAL; }
-
 /**
  * The congruence key of n: the node that stands in for Z3's func_decl*. For
  * parameterized kinds this is the operator, for kinds with a built-in operator
@@ -133,17 +130,6 @@ inline TNode getQuantBody(TNode q)
  * multi-) pattern. Empty if q has no pattern annotation.
  */
 void getPatterns(TNode q, std::vector<std::vector<Node>>& patterns);
-
-/**
- * The instantiation weight of q, a term of the quantifier instantiation cost
- * function. cvc5's parser does not retain ":weight", so every quantifier has
- * Z3's default weight, which is 1 and not 0: with weight 0 the cost of an
- * instance is its generation, the generation of the enodes an instance
- * creates is its cost, and so every instance has cost 0 and matching loops
- * are never broken. See the long comment on the "weight 0" performance bug in
- * Z3's qi_params.h.
- */
-inline uint32_t getWeight(TNode) { return 1; }
 
 /**
  * Rewrites quantifiers into the canonical de Bruijn-level form the core and

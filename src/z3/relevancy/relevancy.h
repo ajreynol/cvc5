@@ -34,7 +34,6 @@
 #include "z3/relevancy/theory_side.h"
 #include "z3/util/types.h"
 #include "z3/util/region.h"
-#include "z3/util/uint_set.h"
 
 namespace cvc5::internal {
 namespace z3 {
@@ -114,7 +113,8 @@ class RelevancyPropagator
   bool isRelevantCore(TNode n) const
   {
     Assert(!n.isNull());
-    return d_isRelevant.contains(n.getId());
+    size_t id = n.getId();
+    return id < d_isRelevant.size() && d_isRelevant[id];
   }
 
   /**
@@ -214,7 +214,8 @@ class RelevancyPropagator
   TheorySide& d_theory;
   size_t d_qhead;
   std::vector<Node> d_relevantExprs;
-  UIntSet d_isRelevant;
+  /** Indexed by node id, true if the node is in d_relevantExprs. */
+  std::vector<bool> d_isRelevant;
   std::unordered_map<TNode, RelevancyEhs*> d_relevantEhs;
   std::unordered_map<TNode, RelevancyEhs*> d_watches[2];
   /**
@@ -224,7 +225,7 @@ class RelevancyPropagator
    * positives. This lets getWatches skip the hash probe for the common
    * unwatched-literal case at the assignEh hotspot.
    */
-  UIntSet d_isWatched[2];
+  std::vector<bool> d_isWatched[2];
   std::vector<EhTrail> d_trail;
   std::vector<Scope> d_scopes;
   bool d_propagating;

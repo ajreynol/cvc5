@@ -46,11 +46,6 @@ class ValueTrail : public Trail
  public:
   ValueTrail(T& value) : d_value(value), d_oldValue(value) {}
 
-  ValueTrail(T& value, const T& newValue) : d_value(value), d_oldValue(value)
-  {
-    d_value = newValue;
-  }
-
   void undo() override { d_value = d_oldValue; }
 
  private:

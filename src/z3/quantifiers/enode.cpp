@@ -45,7 +45,6 @@ ENode* ENode::init(void* mem,
   n->d_cg = nullptr;
   n->d_classSize = 1;
   n->d_generation = generation;
-  n->d_funcDeclId = UINT32_MAX;
   n->d_numArgs = (suppressArgs || !isApplication)
                      ? 0
                      : static_cast<uint32_t>(owner.getNumChildren());
@@ -142,10 +141,9 @@ void ENode::setLblHash(TrailStack& trail)
   }
 }
 
-bool congruent(ENode* n1, ENode* n2, bool& comm)
+bool congruentApps(ENode* n1, ENode* n2)
 {
-  comm = false;
-  if (!n1->isApp() || n1->getDecl() != n2->getDecl())
+  if (n1->getDecl() != n2->getDecl())
   {
     return false;
   }
@@ -164,12 +162,7 @@ bool congruent(ENode* n1, ENode* n2, bool& comm)
     {
       return true;
     }
-    if (c11 == c22 && c12 == c21)
-    {
-      comm = true;
-      return true;
-    }
-    return false;
+    return c11 == c22 && c12 == c21;
   }
   for (uint32_t i = 0; i < numArgs; ++i)
   {
@@ -229,7 +222,6 @@ void TmpENode::setCapacity(size_t newCapacity)
   n->d_next = n;
   n->d_classSize = 1;
   n->d_cgcEnabled = true;
-  n->d_funcDeclId = UINT32_MAX;
   n->d_lblHash = -1;
   n->d_decl = decl;
   n->d_commutative = commutative;
@@ -248,7 +240,6 @@ ENode* TmpENode::set(TNode decl,
   if (r->d_decl != decl)
   {
     // the congruence table id is per declaration
-    r->d_funcDeclId = UINT32_MAX;
     r->d_decl = decl;
   }
   r->d_numArgs = static_cast<uint32_t>(numArgs);

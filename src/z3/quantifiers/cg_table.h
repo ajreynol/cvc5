@@ -7,16 +7,11 @@
  * directory for licensing information.
  * ****************************************************************************
  *
- * The congruence table: one hash table per function symbol, keyed on the
- * equivalence class roots of the arguments.
+ * The congruence table, keyed on the declaration and the equivalence class
+ * roots of the arguments.
  *
  * Ported from Z3 (MIT License, Copyright (c) Microsoft Corporation),
  * file src/smt/smt_cg_table.h, and recast in cvc5 style.
- *
- * Note Z3 backs these tables with its own open-addressing chashtable, while
- * this port uses std::unordered_set, which chains and allocates a node per
- * element. The table is hot in E-matching-heavy problems, so this is a place
- * to revisit if profiling shows it matters.
  */
 
 #include "cvc5_private.h"
@@ -24,193 +19,63 @@
 #ifndef CVC5__Z3__QUANTIFIERS__CG_TABLE_H
 #define CVC5__Z3__QUANTIFIERS__CG_TABLE_H
 
-#include <unordered_map>
 #include <unordered_set>
 
-#include "util/hash.h"
 #include "z3/quantifiers/enode.h"
 
 namespace cvc5::internal {
 namespace z3 {
 
-using ENodeBoolPair = std::pair<ENode*, bool>;
-
 /**
- * The congruence table.
+ * The congruence table: a set of enodes, one per congruence class, in which
+ * two enodes are equal if they are congruent (see congruentApps).
  *
- * Congruence is keyed on the declaration and the equivalence class roots of
- * the arguments. Since the declaration fixes the arity, the table is split per
- * declaration and specialized by arity, which is what makes the common unary
- * and binary cases cheap. The binary commutative case treats the two arguments
- * as unordered and reports back whether a match used commutativity.
+ * Z3 splits the table per declaration and specializes it by arity; this port
+ * uses a single std::unordered_set.
  */
 class CgTable
 {
-  struct CgUnaryHash
-  {
-    size_t operator()(ENode* n) const
-    {
-      Assert(n->getNumArgs() == 1);
-      return n->getArg(0)->getRoot()->hash();
-    }
-  };
-
-  struct CgUnaryEq
-  {
-    bool operator()(ENode* n1, ENode* n2) const
-    {
-      Assert(n1->getNumArgs() == 1);
-      Assert(n2->getNumArgs() == 1);
-      Assert(n1->getDecl() == n2->getDecl());
-      return n1->getArg(0)->getRoot() == n2->getArg(0)->getRoot();
-    }
-  };
-
-  using UnaryTable = std::unordered_set<ENode*, CgUnaryHash, CgUnaryEq>;
-
-  struct CgBinaryHash
-  {
-    size_t operator()(ENode* n) const
-    {
-      Assert(n->getNumArgs() == 2);
-      return fnv1a::fnv1a_64(n->getArg(1)->getRoot()->hash(),
-                             fnv1a::fnv1a_64(n->getArg(0)->getRoot()->hash()));
-    }
-  };
-
-  struct CgBinaryEq
-  {
-    bool operator()(ENode* n1, ENode* n2) const
-    {
-      Assert(n1->getNumArgs() == 2);
-      Assert(n2->getNumArgs() == 2);
-      Assert(n1->getDecl() == n2->getDecl());
-      return n1->getArg(0)->getRoot() == n2->getArg(0)->getRoot()
-             && n1->getArg(1)->getRoot() == n2->getArg(1)->getRoot();
-    }
-  };
-
-  using BinaryTable = std::unordered_set<ENode*, CgBinaryHash, CgBinaryEq>;
-
-  struct CgCommHash
-  {
-    size_t operator()(ENode* n) const
-    {
-      Assert(n->getNumArgs() == 2);
-      size_t h1 = n->getArg(0)->getRoot()->hash();
-      size_t h2 = n->getArg(1)->getRoot()->hash();
-      if (h1 > h2)
-      {
-        std::swap(h1, h2);
-      }
-      return fnv1a::fnv1a_64(h2, fnv1a::fnv1a_64(h1));
-    }
-  };
-
-  struct CgCommEq
-  {
-    bool* d_commutativity;
-    CgCommEq(bool* c) : d_commutativity(c) {}
-    bool operator()(ENode* n1, ENode* n2) const
-    {
-      Assert(n1->getNumArgs() == 2);
-      Assert(n2->getNumArgs() == 2);
-      Assert(n1->getDecl() == n2->getDecl());
-      ENode* c11 = n1->getArg(0)->getRoot();
-      ENode* c12 = n1->getArg(1)->getRoot();
-      ENode* c21 = n2->getArg(0)->getRoot();
-      ENode* c22 = n2->getArg(1)->getRoot();
-      if (c11 == c21 && c12 == c22)
-      {
-        return true;
-      }
-      if (c11 == c22 && c12 == c21)
-      {
-        *d_commutativity = true;
-        return true;
-      }
-      return false;
-    }
-  };
-
-  using CommTable = std::unordered_set<ENode*, CgCommHash, CgCommEq>;
-
-  struct CgHash
+  struct Hash
   {
     size_t operator()(ENode* n) const;
   };
 
-  struct CgEq
+  struct Eq
   {
-    bool operator()(ENode* n1, ENode* n2) const;
-  };
-
-  using NaryTable = std::unordered_set<ENode*, CgHash, CgEq>;
-
-  enum TableKind
-  {
-    UNARY,
-    BINARY,
-    BINARY_COMM,
-    NARY
-  };
-
-  /** One of the four table specializations, tagged by its kind. */
-  struct Table
-  {
-    TableKind d_kind;
-    void* d_table;
+    bool operator()(ENode* n1, ENode* n2) const
+    {
+      return congruentApps(n1, n2);
+    }
   };
 
  public:
-  CgTable();
-  ~CgTable();
-
-  CgTable(const CgTable&) = delete;
-  CgTable& operator=(const CgTable&) = delete;
-
   /**
-   * Try to insert n. If the table already contains an element n' congruent to
-   * n then nothing is inserted and (n', c) is returned, where c says whether n
-   * and n' are congruent only modulo commutativity. Otherwise n is inserted
-   * and (n, false) is returned.
+   * Try to insert n. If the table already contains an element congruent to
+   * n, then nothing is inserted and that element is returned. Otherwise n is
+   * inserted and returned.
    */
-  ENodeBoolPair insert(ENode* n);
+  ENode* insert(ENode* n)
+  {
+    Assert(n->getNumArgs() > 0);
+    return *d_table.insert(n).first;
+  }
 
-  void erase(ENode* n);
+  void erase(ENode* n) { d_table.erase(n); }
 
   /** The element congruent to n, or null. */
-  ENode* find(ENode* n) const;
+  ENode* find(ENode* n) const
+  {
+    auto it = d_table.find(n);
+    return it == d_table.end() ? nullptr : *it;
+  }
 
   /** True if n itself is the element of the table congruent to n. */
-  bool containsPtr(ENode* n) const;
+  bool containsPtr(ENode* n) const { return find(n) == n; }
 
-  void reset();
+  void reset() { d_table.clear(); }
 
  private:
-  Table mkTableFor(ENode* n);
-  uint32_t setFuncDeclId(ENode* n);
-
-  Table getTable(ENode* n)
-  {
-    uint32_t tid = n->getFuncDeclId();
-    if (tid == UINT32_MAX)
-    {
-      tid = setFuncDeclId(n);
-    }
-    Assert(tid < d_tables.size());
-    return d_tables[tid];
-  }
-
-  Table getTable(ENode* n) const
-  {
-    return const_cast<CgTable*>(this)->getTable(n);
-  }
-
-  /** True if the last found congruence used commutativity. */
-  bool d_commutativity;
-  std::vector<Table> d_tables;
-  std::unordered_map<TNode, uint32_t> d_funcDecl2Id;
+  std::unordered_set<ENode*, Hash, Eq> d_table;
 };
 
 }  // namespace z3

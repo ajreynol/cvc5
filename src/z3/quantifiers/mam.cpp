@@ -54,7 +54,6 @@
 #include "z3/util/approx_set.h"
 #include "util/hash.h"
 #include "z3/util/trail.h"
-#include "z3/util/uint_set.h"
 #include "z3/util/types.h"
 
 namespace cvc5::internal {
@@ -414,16 +413,14 @@ class CodeTree
     {
       return;
     }
-    UIntSet seen;
+    std::unordered_set<ENode*> seen;
     size_t j = 0;
     for (ENode* n : d_candidates)
     {
-      size_t id = n->getExprId();
-      if (!seen.contains(id))
+      if (seen.insert(n).second)
       {
         d_candidates[j++] = n;
       }
-      seen.insert(id);
     }
     d_candidates.resize(j);
     if (2 * d_candidates.size() > d_candidateGcThreshold)

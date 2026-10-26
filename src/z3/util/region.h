@@ -123,16 +123,7 @@ inline void* operator new(size_t s, cvc5::internal::z3::Region& r)
   return r.allocate(s);
 }
 
-/** Placement new[] that allocates from a region. */
-inline void* operator new[](size_t s, cvc5::internal::z3::Region& r)
-{
-  return r.allocate(s);
-}
-
 /** Matching delete for region placement new; regions free in bulk. */
 inline void operator delete(void*, cvc5::internal::z3::Region&) {}
-
-/** Matching delete[] for region placement new[]; regions free in bulk. */
-inline void operator delete[](void*, cvc5::internal::z3::Region&) {}
 
 #endif /* CVC5__Z3__UTIL__REGION_H */

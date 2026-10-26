@@ -20,10 +20,7 @@
 
 #include <cstdint>
 #include <ostream>
-#include <utility>
 #include <vector>
-
-#include "theory/theory_id.h"
 
 namespace cvc5::internal {
 namespace z3 {
@@ -46,18 +43,9 @@ inline LBool operator~(LBool lb)
 
 std::ostream& operator<<(std::ostream& out, LBool b);
 
-/**
- * A theory identifier. We reuse cvc5's TheoryId, which plays the role of
- * Z3's family_id: it is the key that maps an operator to the theory that
- * owns it.
- */
-using TheoryId = theory::TheoryId;
-
 class ENode;
 
 using ENodeVector = std::vector<ENode*>;
-using ENodePair = std::pair<ENode*, ENode*>;
-using ENodePairVector = std::vector<ENodePair>;
 
 class SmtContext;
 

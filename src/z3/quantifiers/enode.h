@@ -69,8 +69,6 @@ class ENode
    * true-equality nodes), in which case it holds the enode's own generation.
    */
   uint32_t d_generation;
-  /** An id assigned by the congruence table, for fast table lookup. */
-  uint32_t d_funcDeclId;
   /** The number of arguments stored inline after this object. */
   uint32_t d_numArgs;
   /** Multi-purpose auxiliary mark. */
@@ -185,10 +183,6 @@ class ENode
 
   /** Release this node, running its destructor. */
   void delEh(bool updateChildrenParent = true);
-
-  uint32_t getFuncDeclId() const { return d_funcDeclId; }
-
-  void setFuncDeclId(uint32_t id) { d_funcDeclId = id; }
 
   void markAsInterpreted()
   {
@@ -382,15 +376,17 @@ class ENode
 };
 
 /**
- * True if n1 and n2 are congruent. Sets comm to true if they are congruent
- * modulo commutativity.
+ * True if n1 and n2 have the same declaration and arguments in the same
+ * equivalence classes, in either order if n1 is commutative. This is the
+ * equality of the congruence table, where n1 or n2 may be a temporary enode
+ * with no owner.
  */
-bool congruent(ENode* n1, ENode* n2, bool& comm);
+bool congruentApps(ENode* n1, ENode* n2);
 
+/** True if n1 and n2 are congruent applications. */
 inline bool congruent(ENode* n1, ENode* n2)
 {
-  bool aux;
-  return congruent(n1, n2, aux);
+  return n1->isApp() && congruentApps(n1, n2);
 }
 
 void unmarkENodes(size_t numENodes, ENode* const* enodes);

@@ -15,189 +15,30 @@
 
 #include "z3/quantifiers/cg_table.h"
 
-#include "expr/node_manager.h"
+#include "util/hash.h"
 
 namespace cvc5::internal {
 namespace z3 {
 
-size_t CgTable::CgHash::operator()(ENode* n) const
+size_t CgTable::Hash::operator()(ENode* n) const
 {
-  uint64_t h = fnv1a::offsetBasis;
+  uint64_t h = fnv1a::fnv1a_64(std::hash<TNode>()(n->getDecl()));
+  if (n->isCommutative())
+  {
+    // the argument order does not matter
+    size_t h1 = n->getArg(0)->getRoot()->hash();
+    size_t h2 = n->getArg(1)->getRoot()->hash();
+    if (h1 > h2)
+    {
+      std::swap(h1, h2);
+    }
+    return fnv1a::fnv1a_64(h2, fnv1a::fnv1a_64(h1, h));
+  }
   for (uint32_t i = 0, num = n->getNumArgs(); i < num; ++i)
   {
     h = fnv1a::fnv1a_64(n->getArg(i)->getRoot()->hash(), h);
   }
   return h;
-}
-
-bool CgTable::CgEq::operator()(ENode* n1, ENode* n2) const
-{
-  Assert(n1->getDecl() == n2->getDecl());
-  uint32_t num = n1->getNumArgs();
-  if (num != n2->getNumArgs())
-  {
-    return false;
-  }
-  for (uint32_t i = 0; i < num; ++i)
-  {
-    if (n1->getArg(i)->getRoot() != n2->getArg(i)->getRoot())
-    {
-      return false;
-    }
-  }
-  return true;
-}
-
-CgTable::CgTable() : d_commutativity(false) {}
-
-CgTable::~CgTable() { reset(); }
-
-CgTable::Table CgTable::mkTableFor(ENode* n)
-{
-  Assert(n->getNumArgs() >= 1);
-  // Applications of n-ary operators (e.g. +) may have many arguments, so they
-  // always go to the general table even when this particular application is
-  // unary or binary. This is Z3's is_flat_associative() test. It is a
-  // property of the declaration: the enode may be the temporary one of a
-  // lookup (SmtContext::getENodeEqTo), which has no expression.
-  TNode f = n->getDecl();
-  if (f.getKind() == Kind::BUILTIN
-      && NodeManager::isNAryKind(NodeManager::operatorToKind(f)))
-  {
-    return Table{NARY, new NaryTable()};
-  }
-  switch (n->getNumArgs())
-  {
-    case 1: return Table{UNARY, new UnaryTable()};
-    case 2:
-      if (n->isCommutative())
-      {
-        return Table{
-            BINARY_COMM,
-            new CommTable(0, CgCommHash(), CgCommEq(&d_commutativity))};
-      }
-      return Table{BINARY, new BinaryTable()};
-    default: return Table{NARY, new NaryTable()};
-  }
-}
-
-uint32_t CgTable::setFuncDeclId(ENode* n)
-{
-  TNode f = n->getDecl();
-  uint32_t tid;
-  auto it = d_funcDecl2Id.find(f);
-  if (it == d_funcDecl2Id.end())
-  {
-    tid = static_cast<uint32_t>(d_tables.size());
-    d_funcDecl2Id[f] = tid;
-    d_tables.push_back(mkTableFor(n));
-  }
-  else
-  {
-    tid = it->second;
-  }
-  Assert(tid < d_tables.size());
-  n->setFuncDeclId(tid);
-  return tid;
-}
-
-void CgTable::reset()
-{
-  for (const Table& t : d_tables)
-  {
-    switch (t.d_kind)
-    {
-      case UNARY: delete static_cast<UnaryTable*>(t.d_table); break;
-      case BINARY: delete static_cast<BinaryTable*>(t.d_table); break;
-      case BINARY_COMM: delete static_cast<CommTable*>(t.d_table); break;
-      case NARY: delete static_cast<NaryTable*>(t.d_table); break;
-    }
-  }
-  d_tables.clear();
-  d_funcDecl2Id.clear();
-}
-
-ENodeBoolPair CgTable::insert(ENode* n)
-{
-  // it does not make sense to insert a constant
-  Assert(n->getNumArgs() > 0);
-  Table t = getTable(n);
-  switch (t.d_kind)
-  {
-    case UNARY:
-    {
-      auto r = static_cast<UnaryTable*>(t.d_table)->insert(n);
-      return ENodeBoolPair(*r.first, false);
-    }
-    case BINARY:
-    {
-      auto r = static_cast<BinaryTable*>(t.d_table)->insert(n);
-      return ENodeBoolPair(*r.first, false);
-    }
-    case BINARY_COMM:
-    {
-      d_commutativity = false;
-      auto r = static_cast<CommTable*>(t.d_table)->insert(n);
-      return ENodeBoolPair(*r.first, d_commutativity);
-    }
-    default:
-    {
-      auto r = static_cast<NaryTable*>(t.d_table)->insert(n);
-      return ENodeBoolPair(*r.first, false);
-    }
-  }
-}
-
-void CgTable::erase(ENode* n)
-{
-  Assert(n->getNumArgs() > 0);
-  Table t = getTable(n);
-  switch (t.d_kind)
-  {
-    case UNARY: static_cast<UnaryTable*>(t.d_table)->erase(n); break;
-    case BINARY: static_cast<BinaryTable*>(t.d_table)->erase(n); break;
-    case BINARY_COMM: static_cast<CommTable*>(t.d_table)->erase(n); break;
-    default: static_cast<NaryTable*>(t.d_table)->erase(n); break;
-  }
-}
-
-ENode* CgTable::find(ENode* n) const
-{
-  Assert(n->getNumArgs() > 0);
-  Table t = getTable(n);
-  switch (t.d_kind)
-  {
-    case UNARY:
-    {
-      const UnaryTable* tb = static_cast<const UnaryTable*>(t.d_table);
-      auto it = tb->find(n);
-      return it == tb->end() ? nullptr : *it;
-    }
-    case BINARY:
-    {
-      const BinaryTable* tb = static_cast<const BinaryTable*>(t.d_table);
-      auto it = tb->find(n);
-      return it == tb->end() ? nullptr : *it;
-    }
-    case BINARY_COMM:
-    {
-      const CommTable* tb = static_cast<const CommTable*>(t.d_table);
-      auto it = tb->find(n);
-      return it == tb->end() ? nullptr : *it;
-    }
-    default:
-    {
-      const NaryTable* tb = static_cast<const NaryTable*>(t.d_table);
-      auto it = tb->find(n);
-      return it == tb->end() ? nullptr : *it;
-    }
-  }
-}
-
-bool CgTable::containsPtr(ENode* n) const
-{
-  ENode* r = find(n);
-  return r == n;
 }
 
 }  // namespace z3
