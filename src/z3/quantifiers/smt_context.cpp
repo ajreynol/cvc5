@@ -51,7 +51,7 @@ SmtContext::SmtContext(Env& env)
       d_trueENode(nullptr),
       d_falseENode(nullptr),
       d_isDiseqTmp(nullptr),
-      d_trailStack(d_trailRegion),
+      d_trailStack(d_region),
       d_generation(0),
       d_mkENodeTrail(*this)
 {
@@ -789,7 +789,6 @@ void SmtContext::notifyBoolVarDeleted(TNode n)
 
 void SmtContext::pushTheoryScope()
 {
-  d_region.pushScope();
   getTrailStack().pushScope();
 
   d_qmanager->push();
@@ -804,7 +803,6 @@ void SmtContext::popTheoryScopeEnd(size_t numScopes)
 {
   d_trailStack.popScope(numScopes);
   d_eqPropagationQueue.clear();
-  d_region.popScope(numScopes);
   d_atomPropagationQueue.clear();
 }
 
