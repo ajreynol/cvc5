@@ -24,7 +24,7 @@
 #include "expr/node.h"
 #include "z3/util/approx_set.h"
 #include "z3/util/ast.h"
-#include "z3/util/region.h"
+#include "z3/util/trail.h"
 #include "z3/util/types.h"
 
 namespace cvc5::internal {
@@ -42,9 +42,9 @@ class TmpENode;
  * A node of the E-graph: the data structure implementing congruence closure,
  * equality propagation, and the central bus of equalities between theories.
  *
- * Enodes are allocated in a region, with their argument array stored inline
- * directly after the fixed fields, and are released in bulk when the scope
- * they were created in is popped.
+ * Enodes are allocated in the trail stack, with their argument array stored
+ * inline directly after the fixed fields, and are released in bulk when the
+ * scope they were created in is popped.
  */
 class ENode
 {
@@ -161,8 +161,8 @@ class ENode
     return sizeof(ENode) + numArgs * sizeof(ENode*);
   }
 
-  /** Allocate an enode for owner in region r. */
-  static ENode* mk(Region& r,
+  /** Allocate an enode for owner in the memory of trail stack r. */
+  static ENode* mk(TrailStack& r,
                    const App2ENode& app2enode,
                    TNode owner,
                    uint32_t generation,
@@ -172,7 +172,7 @@ class ENode
                    bool cgcEnabled,
                    bool updateChildrenParent);
 
-  /** Allocate an enode outside any region, for temporary use. */
+  /** Allocate an enode on the heap, for temporary use. */
   static ENode* mkDummy(const App2ENode& app2enode, TNode owner);
 
   static void delDummy(ENode* n)

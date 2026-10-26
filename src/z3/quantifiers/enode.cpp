@@ -73,7 +73,7 @@ ENode* ENode::init(void* mem,
   return n;
 }
 
-ENode* ENode::mk(Region& r,
+ENode* ENode::mk(TrailStack& r,
                  const App2ENode& app2enode,
                  TNode owner,
                  uint32_t generation,

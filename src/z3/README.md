@@ -19,7 +19,7 @@ weakening; cvc5's preprocessing proves the form the core takes them in.
 
 | Directory | Contents | May include (from the port) |
 |---|---|---|
-| `src/z3/util/` | Data structures and the term interface: literals, regions, trails, hashing, `types.h`, `ast.h` (incl. `QuantifierNormalizer`), and `statistics` | nothing outside `z3/util/` |
+| `src/z3/util/` | Data structures and the term interface: literals, the trail stack (on a `context::Context` of its own), approximate sets, `types.h`, `ast.h` (incl. `QuantifierNormalizer`), and `statistics` | nothing outside `z3/util/` |
 | `src/z3/relevancy/` | The Boolean side: `PropCore` (assignment, clauses, watch lists, propagation), `RelevancyPropagator`, `RelevancyTracker` (the `TheoryEngineModule` that hands it every asserted literal), and `TheorySide`, the interface through which it reaches the theory side | `z3/util/` only |
 | `src/z3/quantifiers/` | The theory side and the cvc5 integration: `SmtContext` (E-graph, internalizer), `mam` (E-matching), `QiQueue`, the checker, the quantifier manager, `HostCore` (which owns the core), `LemmaProofGenerator`, `ShadowFeed`, `Z3Module` | anything |
 
@@ -76,10 +76,10 @@ as of this README:
 
 | Directory | Files | Code | Comment | Blank |
 |---|---:|---:|---:|---:|
-| `src/z3/util/` | 10 | 832 | 342 | 190 |
-| `src/z3/relevancy/` | 12 | 2273 | 514 | 373 |
-| `src/z3/quantifiers/` | 27 | 7736 | 1600 | 994 |
-| **Total** | 49 | **10841** | 2456 | 1557 |
+| `src/z3/util/` | 8 | 651 | 287 | 157 |
+| `src/z3/relevancy/` | 12 | 2274 | 514 | 373 |
+| `src/z3/quantifiers/` | 27 | 7714 | 1606 | 990 |
+| **Total** | 47 | **10639** | 2407 | 1520 |
 
 The rest of cvc5 changes by 257 added and 18 deleted lines over 21 C++ files,
 most of them in `smt/set_defaults.cpp` (the capability checks) and

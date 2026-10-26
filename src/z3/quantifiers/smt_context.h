@@ -132,8 +132,8 @@ class SmtContext final : protected EnvObj, public TheorySide
 
   /**
    * Pop numScopes scopes of the rest of the theory side, after the Boolean
-   * variables are unassigned: the trail, the propagation queues and the
-   * region.
+   * variables are unassigned: the trail (and its memory) and the propagation
+   * queues.
    */
   void popTheoryScopeEnd(size_t numScopes) override;
 
@@ -142,8 +142,6 @@ class SmtContext final : protected EnvObj, public TheorySide
   // ----------------------------------------------------------- accessors
 
   Statistics& getStats() override { return d_stats; }
-
-  Region& getRegion() override { return d_region; }
 
   ENode* getENode(TNode n) const
   {
@@ -271,7 +269,7 @@ class SmtContext final : protected EnvObj, public TheorySide
 
   void pushTrailPtr(Trail* ptr) override { d_trailStack.pushPtr(ptr); }
 
-  TrailStack& getTrailStack() { return d_trailStack; }
+  TrailStack& getTrailStack() override { return d_trailStack; }
 
   // ------------------------------------------------------ internalization
   bool bInternalized(TNode n) const { return d_prop.bInternalized(n); }
@@ -570,7 +568,11 @@ class SmtContext final : protected EnvObj, public TheorySide
    * so it is declared after it.
    */
   PropCore d_prop;
-  Region d_region;
+  /**
+   * The trail of the theory side, and the memory of the enodes, relevancy
+   * handlers, fingerprints and quantifier statistics.
+   */
+  TrailStack d_trailStack;
   QuantifierNormalizer d_normalizer;
   /** See setInstanceMaker. */
   InstanceMaker d_instanceMaker;
@@ -628,7 +630,6 @@ class SmtContext final : protected EnvObj, public TheorySide
   std::unordered_set<TNode> d_cacheGenerationVisited;
 
   // ------------------------------------------------------------ backtracking
-  TrailStack d_trailStack;
 
   /** A temporary variable used during internalization. */
   uint32_t d_generation;

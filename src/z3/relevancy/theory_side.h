@@ -27,7 +27,7 @@
 namespace cvc5::internal {
 namespace z3 {
 
-class Region;
+class TrailStack;
 struct Statistics;
 class Trail;
 
@@ -90,8 +90,8 @@ class TheorySide
   virtual TNode getNextInEClass(TNode n) const = 0;
   /** Push an undo object on the trail of the theory side. */
   virtual void pushTrailPtr(Trail* ptr) = 0;
-  /** The region, where the relevancy handlers live. */
-  virtual Region& getRegion() = 0;
+  /** The trail stack, where the relevancy handlers live. */
+  virtual TrailStack& getTrailStack() = 0;
   /** The statistics of the core. */
   virtual Statistics& getStats() = 0;
 };

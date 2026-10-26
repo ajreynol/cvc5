@@ -12,9 +12,8 @@
  * Ported from Z3 (MIT License, Copyright (c) Microsoft Corporation),
  * file src/util/trail.h, and recast in cvc5 style.
  *
- * Note this is deliberately *not* cvc5's context::Context. The Z3 core
- * manages its own scopes (one per decision level, plus base-level scopes for
- * user push/pop) and the ported code is written against this interface.
+ * The trail objects are Z3's: undo actions, pushed when the state changes. The
+ * stack is a context-dependent list of them, on a context of the core's own.
  */
 
 #include "cvc5_private.h"
@@ -22,11 +21,13 @@
 #ifndef CVC5__Z3__UTIL__TRAIL_H
 #define CVC5__Z3__UTIL__TRAIL_H
 
+#include <cstddef>
 #include <cstdint>
-#include <vector>
+#include <new>
 
 #include "base/check.h"
-#include "z3/util/region.h"
+#include "context/cdlist.h"
+#include "context/context.h"
 
 namespace cvc5::internal {
 namespace z3 {
@@ -109,91 +110,118 @@ class PtrTrail : public Trail
   Trail* d_trail;
 };
 
-/**
- * Undo trail objects down to oldSize, destroying them as it goes. The objects
- * themselves live in a region, so only their destructors run here; the memory
- * is reclaimed when the region scope is popped.
- */
-inline void undoTrailStack(std::vector<Trail*>& s, size_t oldSize)
+/** Undoes and destroys a trail object popped from a TrailStack. */
+struct TrailCleanup
 {
-  Assert(oldSize <= s.size());
-  size_t i = s.size();
-  while (i != oldSize)
+  void operator()(Trail* t)
   {
-    --i;
-    s[i]->undo();
-    s[i]->~Trail();
+    t->undo();
+    t->~Trail();
   }
-  s.resize(oldSize);
-}
+};
 
 /**
- * A stack of scopes, each holding the trail objects to undo when it is popped.
+ * A stack of scopes, each holding the trail objects to undo when it is popped,
+ * and the memory to release then.
  *
- * Trail objects are allocated in a region, owned by the owner of the stack,
- * whose scopes are kept in lockstep with this stack, so pushing a trail object
- * costs a pointer bump.
+ * It is backed by a context of its own, which the core pushes and pops at its
+ * own pace (see HostCore::syncLevel), and not by the SAT context: the trail
+ * objects are a context-dependent list, which undoes them when it shrinks, and
+ * they and the objects of allocate() live in the context's memory manager, so
+ * that pushing one costs a pointer bump.
  */
 class TrailStack
 {
+  /** Frees a heap allocation of allocate(). */
+  class FreeTrail : public Trail
+  {
+   public:
+    FreeTrail(void* mem) : d_mem(mem) {}
+
+    void undo() override { ::operator delete(d_mem); }
+
+   private:
+    void* d_mem;
+  };
+
  public:
-  TrailStack(Region& region) : d_region(region) {}
-  ~TrailStack() { reset(); }
+  /** The alignment of allocate(), which is enough for the core's objects. */
+  static constexpr size_t s_align = alignof(uint64_t);
 
-  Region& getRegion() { return d_region; }
+  TrailStack() : d_trail(&d_context, true, TrailCleanup()) { d_context.push(); }
 
+  /**
+   * Undo every trail object and release all memory. The objects pushed before
+   * the first pushScope are at the base scope of the context, so that this
+   * can pop them too.
+   */
   void reset()
   {
-    popScope(d_scopes.size());
-    // Undo the trail objects at level 0 as well, so that e.g. NewObjTrail
-    // does not leak.
-    undoTrailStack(d_trailStack, 0);
+    d_context.popto(0);
+    d_context.push();
+  }
+
+  /**
+   * Allocate size bytes, aligned to s_align, which are released when the
+   * current scope is popped. Destructors are not run, so only objects whose
+   * destruction is a no-op (or is arranged for by a trail object) may be
+   * allocated here.
+   */
+  void* allocate(size_t size)
+  {
+    // The memory manager does not align, but everything allocated from it is
+    // a multiple of s_align: these objects, and the context's scopes and the
+    // saved sizes of d_trail, which hold pointers.
+    size = (size + s_align - 1) & ~(s_align - 1);
+    if (size > context::ContextMemoryManager::getMaxAllocationSize())
+    {
+      void* mem = ::operator new(size);
+      push(FreeTrail(mem));
+      return mem;
+    }
+    void* mem = d_context.getCMM()->newData(size);
+    Assert(reinterpret_cast<uintptr_t>(mem) % s_align == 0);
+    return mem;
   }
 
   /**
    * Push a trail object that is not owned by the stack, such as a member of
    * its owner, which is undone but not destroyed: it is pushed through a
-   * forwarder in the region, which undoTrailStack destroys instead.
+   * forwarder, which is destroyed instead.
    */
   void pushPtr(Trail* t) { push(PtrTrail(t)); }
 
-  /** Copy obj into the region and push it. */
+  /** Copy obj into the stack's memory and push it. */
   template <typename TrailObject>
   void push(const TrailObject& obj)
   {
-    d_trailStack.push_back(new (d_region) TrailObject(obj));
+    static_assert(alignof(TrailObject) <= s_align);
+    d_trail.push_back(new (allocate(sizeof(TrailObject))) TrailObject(obj));
   }
 
-  void pushScope()
-  {
-    d_region.pushScope();
-    d_scopes.push_back(d_trailStack.size());
-  }
+  void pushScope() { d_context.push(); }
 
   void popScope(size_t numScopes)
   {
-    if (numScopes == 0)
-    {
-      return;
-    }
-    size_t lvl = d_scopes.size();
-    Assert(numScopes <= lvl);
-    size_t newLvl = lvl - numScopes;
-    size_t oldSize = d_scopes[newLvl];
-    undoTrailStack(d_trailStack, oldSize);
-    d_scopes.resize(newLvl);
-    d_region.popScope(numScopes);
+    Assert(numScopes < d_context.getLevel());
+    d_context.popto(d_context.getLevel() - static_cast<uint32_t>(numScopes));
   }
 
-  size_t size() const { return d_trailStack.size(); }
-
  private:
-  std::vector<Trail*> d_trailStack;
-  std::vector<size_t> d_scopes;
-  Region& d_region;
+  context::Context d_context;
+  context::CDList<Trail*, TrailCleanup> d_trail;
 };
 
 }  // namespace z3
 }  // namespace cvc5::internal
+
+/** Placement new that allocates from a trail stack. */
+inline void* operator new(size_t s, cvc5::internal::z3::TrailStack& t)
+{
+  return t.allocate(s);
+}
+
+/** Matching delete for trail stack placement new; memory is freed in bulk. */
+inline void operator delete(void*, cvc5::internal::z3::TrailStack&) {}
 
 #endif /* CVC5__Z3__UTIL__TRAIL_H */

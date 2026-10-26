@@ -110,7 +110,10 @@ RelevancyPropagator::RelevancyPropagator(PropCore& core, TheorySide& theory)
 
 RelevancyPropagator::~RelevancyPropagator() {}
 
-Region& RelevancyPropagator::getRegion() const { return d_theory.getRegion(); }
+TrailStack& RelevancyPropagator::getTrailStack() const
+{
+  return d_theory.getTrailStack();
+}
 
 void RelevancyPropagator::addDependency(TNode src, TNode target)
 {
@@ -205,7 +208,7 @@ void RelevancyPropagator::addHandler(TNode source, RelevancyEh* eh)
     Assert(eh != nullptr);
     d_trail.push_back(EhTrail(source));
     setHandlers(source,
-                new (getRegion()) RelevancyEhs(eh, getHandlers(source)));
+                new (getTrailStack()) RelevancyEhs(eh, getHandlers(source)));
   }
 }
 
@@ -222,7 +225,7 @@ void RelevancyPropagator::addWatch(TNode n, bool val, RelevancyEh* eh)
     case L_UNDEF:
       Assert(eh != nullptr);
       setWatches(
-          n, val, new (getRegion()) RelevancyEhs(eh, getWatches(n, val)));
+          n, val, new (getTrailStack()) RelevancyEhs(eh, getWatches(n, val)));
       d_trail.push_back(EhTrail(n, val));
       break;
     case L_TRUE: eh->operator()(*this, n, val); break;

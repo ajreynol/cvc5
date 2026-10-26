@@ -23,7 +23,7 @@ namespace cvc5::internal {
 namespace z3 {
 
 Fingerprint::Fingerprint(
-    Region& r, uint64_t d, uint32_t dH, size_t n, ENode* const* args)
+    TrailStack& r, uint64_t d, uint32_t dH, size_t n, ENode* const* args)
     : d_data(d), d_dataHash(dH), d_numArgs(n), d_args(nullptr)
 {
   d_args = static_cast<ENode**>(r.allocate(sizeof(ENode*) * n));
@@ -92,8 +92,8 @@ Fingerprint* FingerprintSet::insert(uint64_t data,
   {
     return nullptr;
   }
-  Fingerprint* f =
-      new (d_region) Fingerprint(d_region, data, dataHash, numArgs, d->d_args);
+  Fingerprint* f = new (d_trailStack)
+      Fingerprint(d_trailStack, data, dataHash, numArgs, d->d_args);
   d_fingerprints.push_back(f);
   d_set.insert(f);
   return f;

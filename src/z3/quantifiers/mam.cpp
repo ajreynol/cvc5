@@ -37,6 +37,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <deque>
 #include <ostream>
 #include <unordered_map>
 #include <unordered_set>
@@ -453,7 +454,7 @@ class CodeTreeManager
 {
  public:
   CodeTreeManager(LabelHasher& h, TrailStack& s)
-      : d_lblHasher(h), d_trailStack(s), d_region(s.getRegion())
+      : d_lblHasher(h), d_trailStack(s)
   {
   }
 
@@ -466,7 +467,7 @@ class CodeTreeManager
 
   Joint2* mkJoint2(TNode f, uint32_t pos, uint32_t reg)
   {
-    Joint2* r = static_cast<Joint2*>(d_region.allocate(sizeof(Joint2)));
+    Joint2* r = static_cast<Joint2*>(d_trailStack.allocate(sizeof(Joint2)));
     new (r) Joint2{f, pos, reg};
     return r;
   }
@@ -639,7 +640,7 @@ class CodeTreeManager
   template <typename OP>
   OP* mkInstr(Opcode op, size_t size)
   {
-    void* mem = d_region.allocate(size);
+    void* mem = d_trailStack.allocate(size);
     OP* r = new (mem) OP;
     r->d_opcode = op;
     r->d_next = nullptr;
@@ -661,7 +662,6 @@ class CodeTreeManager
 
   LabelHasher& d_lblHasher;
   TrailStack& d_trailStack;
-  Region& d_region;
 };
 
 // ----------------------------------------------------------------- compiler
@@ -2795,13 +2795,11 @@ class MamImpl final : public Mam
   MamImpl(SmtContext& ctx, QuantifierManager& qm)
       : d_context(ctx),
         d_qm(qm),
-        d_trailStack(d_trailRegion),
         d_lblHasher(ctx),
         d_ctManager(d_lblHasher, d_trailStack),
         d_compiler(ctx, qm, d_ctManager, d_lblHasher),
         d_interpreter(ctx, qm),
         d_trees(ctx, d_compiler, d_trailStack),
-        d_region(d_trailStack.getRegion()),
         d_r1(nullptr),
         d_r2(nullptr)
   {
@@ -3154,7 +3152,7 @@ class MamImpl final : public Mam
     PathTree* prev = nullptr;
     while (p != nullptr)
     {
-      curr = new (d_region) PathTree(p, d_lblHasher);
+      curr = new (d_trailStack) PathTree(p, d_lblHasher);
       if (prev != nullptr)
       {
         prev->d_firstChild = curr;
@@ -3340,7 +3338,7 @@ class MamImpl final : public Mam
     for (uint16_t i = 0; i < numArgs; ++i)
     {
       TNode child = pat[i];
-      Path* newPath = new (d_tmpRegion) Path(
+      Path* newPath = &d_tmpPaths.emplace_back(
           plbl, i, static_cast<uint16_t>(groundArgPos), groundArg, patIdx, p);
 
       if (isVar(child))
@@ -3381,7 +3379,7 @@ class MamImpl final : public Mam
     {
       p.clear();
     }
-    d_tmpRegion.reset();
+    d_tmpPaths.clear();
     // Given a multi-pattern (p_1, ..., p_n) the filters have to be updated
     // using the patterns
     //   (p_1, p_2, ..., p_n)
@@ -3698,8 +3696,7 @@ class MamImpl final : public Mam
   SmtContext& d_context;
   /** The quantifier manager, which receives the matches. */
   QuantifierManager& d_qm;
-  /** The memory of the code trees and of the trail objects. */
-  Region d_trailRegion;
+  /** The trail, and the memory of the code trees. */
   TrailStack d_trailStack;
   LabelHasher d_lblHasher;
   CodeTreeManager d_ctManager;
@@ -3724,8 +3721,8 @@ class MamImpl final : public Mam
    */
   std::vector<bool> d_isClbl;
 
-  Region& d_region;
-  Region d_tmpRegion;
+  /** The paths of updateFilters, which are dropped at each call. */
+  std::deque<Path> d_tmpPaths;
   PathTreePair d_pp[approxSetCapacity()][approxSetCapacity()];
   PathTree* d_pc[approxSetCapacity()][approxSetCapacity()];
   ENodeVectorPool d_pool;

@@ -29,7 +29,7 @@
 #include <vector>
 
 #include "z3/quantifiers/enode.h"
-#include "z3/util/region.h"
+#include "z3/util/trail.h"
 
 namespace cvc5::internal {
 namespace z3 {
@@ -40,7 +40,7 @@ class Fingerprint
 {
  public:
   Fingerprint(
-      Region& r, uint64_t d, uint32_t dHash, size_t n, ENode* const* args);
+      TrailStack& r, uint64_t d, uint32_t dHash, size_t n, ENode* const* args);
 
   uint64_t getData() const { return d_data; }
   uint32_t getDataHash() const { return d_dataHash; }
@@ -80,7 +80,7 @@ class FingerprintSet
       std::unordered_set<Fingerprint*, FingerprintHashProc, FingerprintEqProc>;
 
  public:
-  FingerprintSet(Region& r) : d_region(r) {}
+  FingerprintSet(TrailStack& t) : d_trailStack(t) {}
 
   /**
    * Record the fingerprint if it is new, returning it; return null if an
@@ -102,7 +102,7 @@ class FingerprintSet
                        size_t numArgs,
                        ENode* const* args);
 
-  Region& d_region;
+  TrailStack& d_trailStack;
   Set d_set;
   std::vector<Fingerprint*> d_fingerprints;
   std::vector<size_t> d_scopes;

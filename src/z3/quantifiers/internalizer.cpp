@@ -522,7 +522,7 @@ ENode* SmtContext::mkENode(TNode n,
   Assert(!eInternalized(n));
   size_t id = n.getId();
   uint32_t generation = generationOf(n);
-  ENode* e = ENode::mk(getRegion(),
+  ENode* e = ENode::mk(d_trailStack,
                        d_app2ENode,
                        n,
                        generation,

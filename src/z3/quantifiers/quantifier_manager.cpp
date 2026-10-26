@@ -49,8 +49,8 @@ constexpr size_t s_maxLazyMultipatternMatching = 2;
 QuantifierManager::QuantifierManager(SmtContext& ctx)
     : d_context(ctx),
       d_queue(*this, ctx),
-      d_fingerprints(ctx.getRegion()),
-      d_qstatGen(ctx.getRegion()),
+      d_fingerprints(ctx.getTrailStack()),
+      d_qstatGen(ctx.getTrailStack()),
       d_lazyMatchingIdx(0),
       d_active(false),
       d_lazyScopes(0),

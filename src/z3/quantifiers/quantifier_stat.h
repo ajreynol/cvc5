@@ -24,7 +24,7 @@
 #include <vector>
 
 #include "expr/node.h"
-#include "z3/util/region.h"
+#include "z3/util/trail.h"
 
 namespace cvc5::internal {
 namespace z3 {
@@ -102,7 +102,7 @@ class QuantifierStat
 class QuantifierStatGen
 {
  public:
-  QuantifierStatGen(Region& r);
+  QuantifierStatGen(TrailStack& r);
 
   QuantifierStat* operator()(TNode q, uint32_t generation);
 
@@ -122,7 +122,7 @@ class QuantifierStatGen
 
   void reset();
 
-  Region& d_region;
+  TrailStack& d_trailStack;
   /** Maps an expression to the maximum depth at which it was reached. */
   std::unordered_map<Node, uint32_t> d_alreadyFound;
   std::vector<Entry> d_todo;

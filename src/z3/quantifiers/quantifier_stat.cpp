@@ -57,8 +57,8 @@ QuantifierStat::QuantifierStat(uint32_t generation)
 {
 }
 
-QuantifierStatGen::QuantifierStatGen(Region& r)
-    : d_region(r), d_caseSplitFactor(1)
+QuantifierStatGen::QuantifierStatGen(TrailStack& r)
+    : d_trailStack(r), d_caseSplitFactor(1)
 {
 }
 
@@ -72,7 +72,7 @@ void QuantifierStatGen::reset()
 QuantifierStat* QuantifierStatGen::operator()(TNode q, uint32_t generation)
 {
   reset();
-  QuantifierStat* r = new (d_region) QuantifierStat(generation);
+  QuantifierStat* r = new (d_trailStack) QuantifierStat(generation);
   d_todo.push_back(Entry(getQuantBody(q)));
   while (!d_todo.empty())
   {

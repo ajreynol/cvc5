@@ -51,7 +51,6 @@ SmtContext::SmtContext(Env& env)
       d_trueENode(nullptr),
       d_falseENode(nullptr),
       d_isDiseqTmp(nullptr),
-      d_trailStack(d_region),
       d_generation(0),
       d_mkENodeTrail(*this)
 {

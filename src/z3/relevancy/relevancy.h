@@ -32,7 +32,7 @@
 
 #include "expr/node.h"
 #include "z3/relevancy/theory_side.h"
-#include "z3/util/region.h"
+#include "z3/util/trail.h"
 #include "z3/util/types.h"
 
 namespace cvc5::internal {
@@ -132,13 +132,13 @@ class RelevancyPropagator
   /** Backtrack. */
   void pop(size_t numScopes);
 
-  /** The region allocator of the owning SmtContext. */
-  Region& getRegion() const;
+  /** The trail stack of the theory side, where the handlers live. */
+  TrailStack& getTrailStack() const;
 
   template <typename Eh>
   RelevancyEh* mkRelevancyEh(const Eh& eh)
   {
-    return new (getRegion()) Eh(eh);
+    return new (getTrailStack()) Eh(eh);
   }
 
   /** Mark target relevant whenever src is marked relevant. */
@@ -161,7 +161,7 @@ class RelevancyPropagator
   void propagateRelevantIte(TNode n);
 
  private:
-  /** An immutable list of handlers, allocated in the region. */
+  /** An immutable list of handlers, allocated in the trail stack. */
   struct RelevancyEhs
   {
     RelevancyEh* d_head;
@@ -210,7 +210,7 @@ class RelevancyPropagator
 
   /** The propositional side, which owns this object. */
   PropCore& d_core;
-  /** The theory side, for equivalence classes, the region and statistics. */
+  /** The theory side: equivalence classes, trail stack and statistics. */
   TheorySide& d_theory;
   size_t d_qhead;
   std::vector<Node> d_relevantExprs;
