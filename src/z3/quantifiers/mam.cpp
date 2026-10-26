@@ -46,13 +46,13 @@
 #include "base/output.h"
 #include "expr/node_algorithm.h"
 #include "expr/node_manager.h"
-#include "z3/util/ast.h"
+#include "util/hash.h"
 #include "z3/quantifiers/enode.h"
 #include "z3/quantifiers/quantifier_manager.h"
 #include "z3/quantifiers/smt_context.h"
-#include "z3/util/statistics.h"
 #include "z3/util/approx_set.h"
-#include "util/hash.h"
+#include "z3/util/ast.h"
+#include "z3/util/statistics.h"
 #include "z3/util/trail.h"
 #include "z3/util/types.h"
 
@@ -120,10 +120,7 @@ constexpr bool s_isCgrSupport = true;
 bool isGroundPat(TNode n) { return !expr::hasBoundVar(n); }
 
 /** Internalize a ground pattern subterm and return its enode. */
-ENode* mkPatENode(SmtContext& ctx,
-                  QuantifierManager& qm,
-                  TNode qa,
-                  TNode n)
+ENode* mkPatENode(SmtContext& ctx, QuantifierManager& qm, TNode qa, TNode n)
 {
   ctx.internalize(n, false, qm.getGeneration(qa));
   ENode* e = ctx.getENode(n);

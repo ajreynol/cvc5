@@ -152,8 +152,7 @@ std::shared_ptr<ProofNode> LemmaProofGenerator::getFormProof(const Node& form)
   return lcp.getProofFor(form);
 }
 
-std::shared_ptr<ProofNode> LemmaProofGenerator::getInstanceProof(
-    const Node& f)
+std::shared_ptr<ProofNode> LemmaProofGenerator::getInstanceProof(const Node& f)
 {
   auto it = d_terms.find(f);
   Assert(it != d_terms.end());
@@ -167,8 +166,7 @@ std::shared_ptr<ProofNode> LemmaProofGenerator::getInstanceProof(
   NodeManager* nm = nodeManager();
   std::vector<Node> args{
       nm->mkNode(Kind::SEXPR, it->second),
-      theory::mkInferenceIdNode(
-          nm, theory::InferenceId::QUANTIFIERS_INST_Z3)};
+      theory::mkInferenceIdNode(nm, theory::InferenceId::QUANTIFIERS_INST_Z3)};
   CDProof cdp(d_env);
   cdp.addStep(body, ProofRule::INSTANTIATE, {q}, args);
   std::vector<Node> assumps{q};

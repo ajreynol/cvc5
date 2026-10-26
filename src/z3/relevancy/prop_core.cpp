@@ -1014,9 +1014,7 @@ bool PropCore::simplifyAuxClauseLiterals(size_t& numLits, Literal* lits)
     Literal curr = lits[i];
     switch (getAssignment(curr))
     {
-      case L_FALSE:
-        prev = curr;
-        break;  // ignore the literal
+      case L_FALSE: prev = curr; break;  // ignore the literal
       case L_UNDEF:
         if (curr == ~prev)
         {

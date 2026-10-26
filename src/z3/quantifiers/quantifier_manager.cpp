@@ -26,10 +26,10 @@
 #include "base/output.h"
 #include "options/z3_options.h"
 #include "smt/env.h"
-#include "z3/util/ast.h"
 #include "z3/quantifiers/enode.h"
 #include "z3/quantifiers/mam.h"
 #include "z3/quantifiers/smt_context.h"
+#include "z3/util/ast.h"
 #include "z3/util/statistics.h"
 #include "z3/util/trail.h"
 

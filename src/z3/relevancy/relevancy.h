@@ -32,8 +32,8 @@
 
 #include "expr/node.h"
 #include "z3/relevancy/theory_side.h"
-#include "z3/util/types.h"
 #include "z3/util/region.h"
+#include "z3/util/types.h"
 
 namespace cvc5::internal {
 namespace z3 {

@@ -41,20 +41,20 @@
 #include "expr/node.h"
 #include "smt/env_obj.h"
 #include "util/statistics_stats.h"
-#include "z3/util/ast.h"
-#include "z3/relevancy/bool_var_data.h"
 #include "z3/quantifiers/cg_table.h"
-#include "z3/relevancy/clause.h"
 #include "z3/quantifiers/enode.h"
-#include "z3/relevancy/prop_core.h"
-#include "z3/relevancy/theory_side.h"
 #include "z3/quantifiers/quantifier_manager.h"
+#include "z3/relevancy/bool_var_data.h"
+#include "z3/relevancy/clause.h"
+#include "z3/relevancy/prop_core.h"
 #include "z3/relevancy/relevancy.h"
-#include "z3/util/statistics.h"
-#include "z3/util/types.h"
-#include "z3/util/literal.h"
-#include "z3/util/trail.h"
+#include "z3/relevancy/theory_side.h"
 #include "z3/relevancy/watch_list.h"
+#include "z3/util/ast.h"
+#include "z3/util/literal.h"
+#include "z3/util/statistics.h"
+#include "z3/util/trail.h"
+#include "z3/util/types.h"
 
 namespace cvc5::internal {
 namespace z3 {
@@ -210,10 +210,7 @@ class SmtContext final : protected EnvObj, public TheorySide
 
   LBool getAssignment(BoolVar v) const { return d_prop.getAssignment(v); }
 
-  LBool getAssignment(TNode n) const
-  {
-    return d_prop.getAssignment(n);
-  }
+  LBool getAssignment(TNode n) const { return d_prop.getAssignment(n); }
 
   LBool getAssignment(ENode* n) const;
 
@@ -279,10 +276,7 @@ class SmtContext final : protected EnvObj, public TheorySide
   // ------------------------------------------------------ internalization
   bool bInternalized(TNode n) const { return d_prop.bInternalized(n); }
 
-  bool litInternalized(TNode n) const
-  {
-    return d_prop.litInternalized(n);
-  }
+  bool litInternalized(TNode n) const { return d_prop.litInternalized(n); }
 
   bool eInternalized(TNode n) const
   {
@@ -303,8 +297,8 @@ class SmtContext final : protected EnvObj, public TheorySide
    * to defs the definitions of the skolems it introduces. The instance is
    * cvc5's instantiation lemma of q, which cvc5 preprocesses into that form.
    */
-  using InstanceMaker = std::function<Node(
-      TNode, const std::vector<Node>&, std::vector<Node>&)>;
+  using InstanceMaker =
+      std::function<Node(TNode, const std::vector<Node>&, std::vector<Node>&)>;
   void setInstanceMaker(InstanceMaker m) { d_instanceMaker = std::move(m); }
   /**
    * The skolemization of cvc5's quantifiers engine: it maps a quantified
@@ -330,10 +324,7 @@ class SmtContext final : protected EnvObj, public TheorySide
    * cvc5's theories made them equal. The merge is queued for the next
    * propagation.
    */
-  void assumeExternalEq(TNode a, TNode b)
-  {
-    pushEq(getENode(a), getENode(b));
-  }
+  void assumeExternalEq(TNode a, TNode b) { pushEq(getENode(a), getENode(b)); }
   /** The environment of the enclosing cvc5 solver. */
   const Env& getEnv() const { return d_env; }
 
@@ -491,10 +482,7 @@ class SmtContext final : protected EnvObj, public TheorySide
    */
   void registerStatistics();
 
-  bool resourceLimitsExceeded()
-  {
-    return d_prop.resourceLimitsExceeded();
-  }
+  bool resourceLimitsExceeded() { return d_prop.resourceLimitsExceeded(); }
 
   bool getCancelFlag() override { return d_prop.getCancelFlag(); }
 
@@ -546,7 +534,6 @@ class SmtContext final : protected EnvObj, public TheorySide
                                const std::vector<Node>& defs,
                                uint32_t generation,
                                bool instance);
-
 
   // ----------------------------------------------------------- the search
   bool propagateEqs();
@@ -645,7 +632,6 @@ class SmtContext final : protected EnvObj, public TheorySide
 
   /** A temporary variable used during internalization. */
   uint32_t d_generation;
-
 
   /** The trail object that undoes mkENode. */
   class MkENodeTrail : public Trail

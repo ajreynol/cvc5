@@ -25,10 +25,10 @@
 #include "theory/quantifiers/quantifiers_inference_manager.h"
 #include "theory/skolem_lemma.h"
 #include "theory/theory_engine.h"
-#include "z3/relevancy/prop_core.h"
 #include "z3/quantifiers/lemma_proof_generator.h"
 #include "z3/quantifiers/shadow_feed.h"
 #include "z3/quantifiers/smt_context.h"
+#include "z3/relevancy/prop_core.h"
 
 namespace cvc5::internal {
 namespace z3 {
@@ -248,8 +248,8 @@ void HostCore::check(theory::Theory::Effort effort)
     stats.d_numHostFullChecks++;
   }
   Trace("z3-host") << "check " << effort << " at level "
-                   << context()->getLevel() << " inConflict "
-                   << d_inConflict << std::endl;
+                   << context()->getLevel() << " inConflict " << d_inConflict
+                   << std::endl;
   if (d_inConflict)
   {
     // The core's conflict is for cvc5's theories to find, and they have not
@@ -425,8 +425,8 @@ void HostCore::sendLemma(const Node& coreLem, bool local)
       return;
     }
   }
-  lemma(
-      sent, local ? theory::LemmaProperty::LOCAL : theory::LemmaProperty::NONE);
+  lemma(sent,
+        local ? theory::LemmaProperty::LOCAL : theory::LemmaProperty::NONE);
   d_needCheck = true;
 }
 

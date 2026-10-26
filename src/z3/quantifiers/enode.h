@@ -22,10 +22,10 @@
 #include <vector>
 
 #include "expr/node.h"
-#include "z3/util/ast.h"
-#include "z3/util/types.h"
 #include "z3/util/approx_set.h"
+#include "z3/util/ast.h"
 #include "z3/util/region.h"
+#include "z3/util/types.h"
 
 namespace cvc5::internal {
 namespace z3 {

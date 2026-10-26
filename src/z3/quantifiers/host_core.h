@@ -83,7 +83,8 @@ class HostCore : protected EnvObj
   void reset(TheoryEngine* te);
   /** The theory side of the core. Requires that reset has been called. */
   SmtContext& getContext();
-  /** The propositional side of the core. Requires that reset has been called. */
+  /** The propositional side of the core. Requires that reset has been called.
+   */
   PropCore& getPropCore();
 
   /**

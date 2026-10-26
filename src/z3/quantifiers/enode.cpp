@@ -18,8 +18,8 @@
 #include <cstring>
 #include <new>
 
-#include "z3/quantifiers/smt_context.h"
 #include "util/hash.h"
+#include "z3/quantifiers/smt_context.h"
 #include "z3/util/trail.h"
 
 namespace cvc5::internal {

@@ -87,10 +87,11 @@ PropEngine::PropEngine(Env& env, TheoryEngine* te)
   // With --z3, Boolean variables are asserted to the theory engine like
   // atoms: the ported core derives the values of its gates from those of
   // their leaves, for relevancy, and Boolean variables are leaves.
-  FormulaLitPolicy flp = options().z3.z3 ? FormulaLitPolicy::TRACK_AND_NOTIFY_VAR
-                                         : FormulaLitPolicy::TRACK;
-  d_cnfStream = new CnfStream(
-      env, d_satSolver, d_theoryProxy, userContext, flp, "prop");
+  FormulaLitPolicy flp = options().z3.z3
+                             ? FormulaLitPolicy::TRACK_AND_NOTIFY_VAR
+                             : FormulaLitPolicy::TRACK;
+  d_cnfStream =
+      new CnfStream(env, d_satSolver, d_theoryProxy, userContext, flp, "prop");
 
   // connect theory proxy
   d_theoryProxy->finishInit(d_satSolver, d_cnfStream);

@@ -21,11 +21,11 @@
 #include "base/output.h"
 #include "options/z3_options.h"
 #include "smt/env.h"
-#include "z3/util/ast.h"
 #include "z3/quantifiers/enode.h"
 #include "z3/quantifiers/quantifier_manager.h"
-#include "z3/quantifiers/smt_context.h"
 #include "z3/quantifiers/quantifier_stat.h"
+#include "z3/quantifiers/smt_context.h"
+#include "z3/util/ast.h"
 #include "z3/util/statistics.h"
 
 namespace cvc5::internal {
@@ -65,7 +65,8 @@ void QiQueue::instantiate()
     {
       break;
     }
-    if (d_stats.d_numInstances > d_context.getEnv().getOptions().z3.z3QiMaxInstances)
+    if (d_stats.d_numInstances
+        > d_context.getEnv().getOptions().z3.z3QiMaxInstances)
     {
       // the maximum number of quantifier instances was reached
       break;
@@ -77,8 +78,7 @@ void QiQueue::instantiate()
     {
       instantiate(curr);
     }
-    else if (d_checker.isUnsat(
-                 getQuantBody(qa), f->getNumArgs(), f->getArgs()))
+    else if (d_checker.isUnsat(getQuantBody(qa), f->getNumArgs(), f->getArgs()))
     {
       // do not delay an instance that produces a conflict
       instantiate(curr);
@@ -127,7 +127,8 @@ void QiQueue::instantiate(Entry& ent)
     key.push_back(bindings[i]->getExpr());
   }
   Node lemma;
-  auto it = d_lemmas.emplace(q.getNodeManager()->mkNode(Kind::SEXPR, key), Node());
+  auto it =
+      d_lemmas.emplace(q.getNodeManager()->mkNode(Kind::SEXPR, key), Node());
   if (it.second)
   {
     lemma = mkLemma(q, stat, numBindings, bindings);
@@ -196,7 +197,8 @@ bool QiQueue::finalCheckEh()
   for (size_t i = 0; i < d_delayedEntries.size(); ++i)
   {
     Entry& e = d_delayedEntries[i];
-    if (!e.d_instantiated && e.d_cost <= d_context.getEnv().getOptions().z3.z3QiLazyThreshold)
+    if (!e.d_instantiated
+        && e.d_cost <= d_context.getEnv().getOptions().z3.z3QiLazyThreshold)
     {
       result = false;
       d_instantiatedTrail.push_back(i);
@@ -295,7 +297,6 @@ Node QiQueue::mkLemma(TNode q,
   d_context.getStats().d_numInstances++;
   return lemma;
 }
-
 
 }  // namespace z3
 }  // namespace cvc5::internal

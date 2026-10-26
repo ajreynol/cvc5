@@ -1595,10 +1595,8 @@ void SetDefaults::setDefaultsQuantifiers(const LogicInfo& logic,
     // Z3's negation normal form does: the instances of a quantified formula
     // then share skolem functions of its variables, which congruence closure
     // identifies when the instantiation terms are equal.
-    SET_AND_NOTIFY_IF_NOT_USER_VAL_SYM(quantifiers,
-                                       preSkolemQuant,
-                                       options::PreSkolemQuantMode::AGG,
-                                       "z3");
+    SET_AND_NOTIFY_IF_NOT_USER_VAL_SYM(
+        quantifiers, preSkolemQuant, options::PreSkolemQuantMode::AGG, "z3");
     // The other modules of the quantifiers engine instantiate only once the
     // core and every theory are done, on a complete model.
     SET_AND_NOTIFY_IF_NOT_USER_VAL_SYM(quantifiers,
