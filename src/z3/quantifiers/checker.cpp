@@ -74,8 +74,8 @@ bool Checker::checkCore(TNode n, size_t depth, bool isTrue)
   Assert(n.getType().isBoolean());
   if (d_context.bInternalized(n) && d_context.isRelevantForChecking(n))
   {
-    LBool val = d_context.getAssignment(n);
-    return val != L_UNDEF && isTrue == (val == L_TRUE);
+    SatValue val = d_context.getAssignment(n);
+    return val != SAT_VALUE_UNKNOWN && isTrue == (val == SAT_VALUE_TRUE);
   }
   if (!isApp(n))
   {
@@ -140,9 +140,9 @@ bool Checker::checkCore(TNode n, size_t depth, bool isTrue)
       {
         switch (d_context.getAssignment(n[0]))
         {
-          case L_FALSE: return check(n[2], depth + 1, isTrue);
-          case L_UNDEF: return false;
-          case L_TRUE: return check(n[1], depth + 1, isTrue);
+          case SAT_VALUE_FALSE: return check(n[2], depth + 1, isTrue);
+          case SAT_VALUE_UNKNOWN: return false;
+          case SAT_VALUE_TRUE: return check(n[1], depth + 1, isTrue);
         }
       }
       return check(n[1], depth + 1, isTrue) && check(n[2], depth + 1, isTrue);
@@ -152,8 +152,8 @@ bool Checker::checkCore(TNode n, size_t depth, bool isTrue)
   ENode* e = getENodeEqTo(n);
   if (e != nullptr && e->isBool() && d_context.isRelevantForChecking(e))
   {
-    LBool val = d_context.getAssignment(e->getExpr());
-    return val != L_UNDEF && isTrue == (val == L_TRUE);
+    SatValue val = d_context.getAssignment(e->getExpr());
+    return val != SAT_VALUE_UNKNOWN && isTrue == (val == SAT_VALUE_TRUE);
   }
   return false;
 }

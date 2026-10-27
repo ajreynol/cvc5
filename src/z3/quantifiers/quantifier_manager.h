@@ -77,7 +77,11 @@ class QuantifierManager
   void notifyMerge(ENode* n1, ENode* n2);
   /** Invoked whenever n is marked as relevant. */
   void notifyRelevant(ENode* n);
-  FinalCheckStatus finalCheck(bool full);
+  /**
+   * Instantiate the delayed instances and match the lazy multi-patterns.
+   * Returns true if this made no progress.
+   */
+  bool finalCheck();
 
   bool canPropagate() const;
   void propagate();

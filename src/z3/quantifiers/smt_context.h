@@ -110,8 +110,12 @@ class SmtContext final : protected EnvObj, public TheorySide
   /** Called at the start of a search. */
   void initSearch() override;
 
-  /** The final check, when every relevant Boolean variable is assigned. */
-  FinalCheckStatus finalCheck() override;
+  /**
+   * The final check, when every relevant Boolean variable is assigned.
+   * Returns true if it is done, and false if it made progress and the search
+   * is to continue.
+   */
+  bool finalCheck() override;
 
   /** Push a scope of the theory side, after the propositional side's. */
   void pushTheoryScope() override;
@@ -144,7 +148,8 @@ class SmtContext final : protected EnvObj, public TheorySide
   /** Like getENode, but returns null if n is not internalized. */
   ENode* findENode(TNode n) const
   {
-    return getx(d_app2ENode, n.getId(), static_cast<ENode*>(nullptr));
+    size_t id = n.getId();
+    return id < d_app2ENode.size() ? d_app2ENode[id] : nullptr;
   }
 
   TNode getNextInEClass(TNode n) const override
@@ -196,13 +201,13 @@ class SmtContext final : protected EnvObj, public TheorySide
 
   bool hasENode(BoolVar v) const { return getBdata(v).isENode(); }
 
-  LBool getAssignment(Literal l) const { return d_prop.getAssignment(l); }
+  SatValue getAssignment(Literal l) const { return d_prop.getAssignment(l); }
 
-  LBool getAssignment(BoolVar v) const { return d_prop.getAssignment(v); }
+  SatValue getAssignment(BoolVar v) const { return d_prop.getAssignment(v); }
 
-  LBool getAssignment(TNode n) const { return d_prop.getAssignment(n); }
+  SatValue getAssignment(TNode n) const { return d_prop.getAssignment(n); }
 
-  LBool getAssignment(ENode* n) const;
+  SatValue getAssignment(ENode* n) const;
 
   uint32_t getScopeLevel() const { return d_prop.getScopeLevel(); }
 
@@ -268,11 +273,7 @@ class SmtContext final : protected EnvObj, public TheorySide
 
   bool litInternalized(TNode n) const { return d_prop.litInternalized(n); }
 
-  bool eInternalized(TNode n) const
-  {
-    return getx(d_app2ENode, n.getId(), static_cast<ENode*>(nullptr))
-           != nullptr;
-  }
+  bool eInternalized(TNode n) const { return findENode(n) != nullptr; }
 
   size_t getNumEInternalized() const { return d_eInternalizedStack.size(); }
 

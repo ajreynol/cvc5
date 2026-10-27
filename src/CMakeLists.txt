@@ -1375,7 +1375,6 @@ libcvc5_add_sources(
   z3/util/literal.h
   z3/util/statistics.h
   z3/util/trail.h
-  z3/util/types.cpp
   z3/util/types.h
 )
 

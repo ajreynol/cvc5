@@ -275,8 +275,8 @@ void SmtContext::reinsertParentsIntoCgTable(ENode* r1, ENode* r2)
         Assert(parent->isTrueEq());
         size_t exprId = parent->getOwnerId();
         BoolVar v = getBoolVarOfId(exprId);
-        LBool val = getAssignment(v);
-        if (val != L_TRUE)
+        SatValue val = getAssignment(v);
+        if (val != SAT_VALUE_TRUE)
         {
           assign(Literal(v));
         }
@@ -350,7 +350,7 @@ void SmtContext::propagateBoolENodeAssignment(ENode* r1,
       Assert(curr != d_falseENode);
       BoolVar v = enode2BoolVar(curr);
       Literal l(v, sign);
-      if (getAssignment(l) != L_TRUE)
+      if (getAssignment(l) != SAT_VALUE_TRUE)
       {
         assign(l);
       }
@@ -361,11 +361,11 @@ void SmtContext::propagateBoolENodeAssignment(ENode* r1,
   {
     BoolVar v1 = enode2BoolVar(n1);
     BoolVar v2 = enode2BoolVar(n2);
-    LBool val1 = getAssignment(v1);
-    LBool val2 = getAssignment(v2);
+    SatValue val1 = getAssignment(v1);
+    SatValue val2 = getAssignment(v2);
     if (val1 != val2)
     {
-      if (val2 == L_UNDEF)
+      if (val2 == SAT_VALUE_UNKNOWN)
       {
         propagateBoolENodeAssignmentCore(n1, n2);
       }
@@ -385,14 +385,14 @@ void SmtContext::propagateBoolENodeAssignmentCore(ENode* source, ENode* target)
   Assert(target->isBool());
   Assert(source->getRoot() == target->getRoot());
   BoolVar vSource = enode2BoolVar(source);
-  LBool val = getAssignment(vSource);
-  Assert(val != L_UNDEF);
-  bool sign = val == L_FALSE;
+  SatValue val = getAssignment(vSource);
+  Assert(val != SAT_VALUE_UNKNOWN);
+  bool sign = val == SAT_VALUE_FALSE;
   ENode* first = target;
   do
   {
     BoolVar v2 = enode2BoolVar(target);
-    LBool val2 = getAssignment(v2);
+    SatValue val2 = getAssignment(v2);
     if (val2 != val)
     {
       assign(Literal(v2, sign));
@@ -584,7 +584,7 @@ bool SmtContext::isDiseqCore(ENode* n1,
     Literal l = enode2Literal(r->getRoot());
     return l != s_trueLiteral
            && (l == s_falseLiteral
-               || (isRelevant(l) && getAssignment(l) == L_FALSE));
+               || (isRelevant(l) && getAssignment(l) == SAT_VALUE_FALSE));
   }
   return false;
 }
@@ -636,8 +636,8 @@ bool SmtContext::propagateAtoms()
     Assert(!inconsistent());
     Literal l = d_atomPropagationQueue[i];
     BoolVar v = l.var();
-    LBool val = getAssignment(v);
-    Assert(val != L_UNDEF);
+    SatValue val = getAssignment(v);
+    Assert(val != SAT_VALUE_UNKNOWN);
     if (getBdata(v).isENode())
     {
       propagateBoolVarENode(v);
@@ -657,7 +657,7 @@ bool SmtContext::propagateAtoms()
       {
         // no-op: Boolean equality is handled by the gate clauses
       }
-      else if (val == L_TRUE)
+      else if (val == SAT_VALUE_TRUE)
       {
         addEq(getENode(lhs), getENode(rhs));
       }
@@ -675,7 +675,7 @@ bool SmtContext::propagateAtoms()
       // false and marked relevant, which happens when a quantifier is part
       // of a conflict clause that becomes unit.
       Assert(isQuantifier(boolVar2Expr(v)));
-      if (getAssignment(v) == L_TRUE)
+      if (getAssignment(v) == SAT_VALUE_TRUE)
       {
         assignQuantifier(boolVar2Expr(v));
       }
@@ -699,13 +699,13 @@ void SmtContext::propagateBoolVarENode(BoolVar v)
 {
   // Propagate the truth value of v to the enode n associated with it: n is
   // merged with the true (false) enode when v is assigned true (false).
-  Assert(getAssignment(v) != L_UNDEF);
+  Assert(getAssignment(v) != SAT_VALUE_UNKNOWN);
   Assert(getBdata(v).isENode());
-  LBool val = getAssignment(v);
+  SatValue val = getAssignment(v);
   Assert(v < d_prop.getNumBoolVars());
   ENode* n = boolVar2ENode(v);
 
-  bool sign = val == L_FALSE;
+  bool sign = val == SAT_VALUE_FALSE;
   if (n->mergeTf())
   {
     addEq(n, sign ? d_falseENode : d_trueENode);
@@ -920,23 +920,13 @@ void SmtContext::skolemize(TNode q)
 
 void SmtContext::initSearch() { d_qmanager->initSearch(); }
 
-FinalCheckStatus SmtContext::finalCheck()
+bool SmtContext::finalCheck()
 {
   d_stats.d_numFinalChecks++;
   Trace("z3-events") << "FINALCHECK " << d_stats.d_numFinalChecks.get()
                      << std::endl;
 
-  FinalCheckStatus result = d_qmanager->finalCheck(false);
-  if (result != FC_DONE)
-  {
-    return result;
-  }
-  result = d_qmanager->finalCheck(true);
-  if (result != FC_CONTINUE && canPropagate())
-  {
-    return FC_CONTINUE;
-  }
-  return result;
+  return d_qmanager->finalCheck() && !canPropagate();
 }
 
 }  // namespace z3

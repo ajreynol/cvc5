@@ -51,8 +51,12 @@ class TheorySide
   virtual bool hasPendingTheoryWork() const = 0;
   /** Called at the start of a search. */
   virtual void initSearch() = 0;
-  /** The final check, when every relevant Boolean variable is assigned. */
-  virtual FinalCheckStatus finalCheck() = 0;
+  /**
+   * The final check, when every relevant Boolean variable is assigned.
+   * Returns true if it is done, and false if it made progress and the search
+   * is to continue.
+   */
+  virtual bool finalCheck() = 0;
   /**
    * Push a scope of the theory side, after the Boolean side's: the scope of
    * the trail stack, whose context the relevancy propagator uses as well.

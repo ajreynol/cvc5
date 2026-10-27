@@ -295,10 +295,10 @@ void HostCore::check(theory::Theory::Effort effort)
   }
   for (size_t i = 0; i < s_maxSilentFinalChecks; ++i)
   {
-    FinalCheckStatus st = core.hostFinalCheck();
-    Trace("z3-host") << "final check " << st << " at level "
-                     << context()->getLevel() << std::endl;
-    if (st == FC_DONE)
+    bool done = core.hostFinalCheck();
+    Trace("z3-host") << "final check " << (done ? "done" : "continue")
+                     << " at level " << context()->getLevel() << std::endl;
+    if (done)
     {
       // The core's own search reaches a final check only once every relevant
       // variable is assigned, while cvc5 may stop on a partial assignment.
@@ -317,7 +317,7 @@ void HostCore::check(theory::Theory::Effort effort)
       }
       return;
     }
-    // FC_CONTINUE: the theory side made progress
+    // not done: the theory side made progress
     if (!propagateAndReport())
     {
       return;
@@ -505,7 +505,7 @@ void HostCore::splitNewlyRelevant()
       continue;
     }
     BoolVar v = core.getBoolVar(n);
-    if (core.getAssignment(v) == L_UNDEF && core.isRelevant(v))
+    if (core.getAssignment(v) == SAT_VALUE_UNKNOWN && core.isRelevant(v))
     {
       split(v);
     }
@@ -568,7 +568,7 @@ void HostCore::splitPendingAtoms()
   for (size_t i = 0, n = core.getNumBoolVars(); i < n; ++i)
   {
     BoolVar v = static_cast<BoolVar>(i);
-    if (core.getAssignment(v) == L_UNDEF && core.isRelevant(v))
+    if (core.getAssignment(v) == SAT_VALUE_UNKNOWN && core.isRelevant(v))
     {
       split(v);
     }

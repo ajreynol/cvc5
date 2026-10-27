@@ -202,7 +202,7 @@ void SmtContext::internalizeFormula(TNode n, bool gateCtx)
                 true, /* merge with true/false, since this is not a gate */
                 false /* congruence closure is not enabled */);
         setEnodeFlag(v, false);
-        if (getAssignment(v) != L_UNDEF)
+        if (getAssignment(v) != SAT_VALUE_UNKNOWN)
         {
           propagateBoolVarENode(v);
         }
@@ -223,7 +223,7 @@ void SmtContext::internalizeFormula(TNode n, bool gateCtx)
                 true, /* merge with true/false, since this is not a gate */
                 false /* congruence closure is not enabled */);
         setEnodeFlag(v, false);
-        if (getAssignment(v) != L_UNDEF)
+        if (getAssignment(v) != SAT_VALUE_UNKNOWN)
         {
           propagateBoolVarENode(v);
         }
@@ -293,7 +293,7 @@ void SmtContext::internalizeDistinct(TNode n, bool gateCtx)
     setEnodeFlag(v, true);
     // v may have been assigned by the definition clauses before the enode
     // was created.
-    if (getAssignment(v) != L_UNDEF)
+    if (getAssignment(v) != SAT_VALUE_UNKNOWN)
     {
       propagateBoolVarENode(v);
     }
@@ -432,14 +432,14 @@ void SmtContext::setMergeTf(ENode* n, BoolVar v, bool isNewVar)
   n->d_mergeTf = true;
   switch (getAssignment(v))
   {
-    case L_UNDEF: break;
-    case L_TRUE:
+    case SAT_VALUE_UNKNOWN: break;
+    case SAT_VALUE_TRUE:
       if (n->getRoot() != d_trueENode->getRoot())
       {
         pushEq(n, d_trueENode);
       }
       break;
-    case L_FALSE:
+    case SAT_VALUE_FALSE:
       if (n->getRoot() != d_falseENode->getRoot())
       {
         pushEq(n, d_falseENode);
@@ -533,7 +533,11 @@ ENode* SmtContext::mkENode(TNode n,
   {
     e->markAsInterpreted();
   }
-  setx(d_app2ENode, id, e, static_cast<ENode*>(nullptr));
+  if (id >= d_app2ENode.size())
+  {
+    d_app2ENode.resize(id + 1, static_cast<ENode*>(nullptr));
+  }
+  d_app2ENode[id] = e;
   d_eInternalizedStack.push_back(n);
   d_trailStack.pushPtr(&d_mkENodeTrail);
   d_enodes.push_back(e);

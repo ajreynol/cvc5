@@ -200,7 +200,11 @@ void RelevancyPropagator::setWatches(TNode n, bool val, RelevancyHandlers* ehs)
   else
   {
     d_watches[idx][n] = ehs;
-    setx(d_isWatched[idx], n.getId(), true, false);
+    if (n.getId() >= d_isWatched[idx].size())
+    {
+      d_isWatched[idx].resize(n.getId() + 1, false);
+    }
+    d_isWatched[idx][n.getId()] = true;
   }
 }
 
@@ -222,15 +226,15 @@ void RelevancyPropagator::addHandler(TNode source, RelevancyHandler* eh)
 
 void RelevancyPropagator::addWatch(TNode n, bool val, RelevancyHandler* eh)
 {
-  LBool lval = d_core.findAssignment(n);
+  SatValue lval = d_core.findAssignment(n);
   if (!val)
   {
     lval = ~lval;
   }
   switch (lval)
   {
-    case L_FALSE: return;
-    case L_UNDEF:
+    case SAT_VALUE_FALSE: return;
+    case SAT_VALUE_UNKNOWN:
       Assert(eh != nullptr);
       setWatches(n,
                  val,
@@ -238,7 +242,7 @@ void RelevancyPropagator::addWatch(TNode n, bool val, RelevancyHandler* eh)
                      RelevancyHandlers(eh, getWatches(n, val)));
       d_trail.push_back(HandlerTrail(n, val));
       break;
-    case L_TRUE: eh->operator()(*this, n, val); break;
+    case SAT_VALUE_TRUE: eh->operator()(*this, n, val); break;
   }
 }
 
@@ -269,7 +273,11 @@ void RelevancyPropagator::undoHandler(const HandlerTrail& t)
 void RelevancyPropagator::setRelevant(TNode n)
 {
   d_theory.getStats().d_numSetRelevant++;
-  setx(d_isRelevant, n.getId(), true, false);
+  if (n.getId() >= d_isRelevant.size())
+  {
+    d_isRelevant.resize(n.getId() + 1, false);
+  }
+  d_isRelevant[n.getId()] = true;
   if (d_qhead > d_relevantExprs.size())
   {
     // the expressions past the end were popped
@@ -318,22 +326,22 @@ void RelevancyPropagator::propagateRelevantApp(TNode n)
 void RelevancyPropagator::propagateRelevantImplies(TNode n)
 {
   Assert(n.getKind() == Kind::IMPLIES);
-  LBool val = d_core.findAssignment(n);
-  // If val is L_UNDEF then the expression is a root and no Boolean variable
-  // was created for it.
-  if (val == L_UNDEF)
+  SatValue val = d_core.findAssignment(n);
+  // If val is SAT_VALUE_UNKNOWN then the expression is a root and no Boolean
+  // variable was created for it.
+  if (val == SAT_VALUE_UNKNOWN)
   {
-    val = L_TRUE;
+    val = SAT_VALUE_TRUE;
   }
   switch (val)
   {
-    case L_FALSE: propagateRelevantApp(n); break;
-    case L_UNDEF: break;
-    case L_TRUE:
+    case SAT_VALUE_FALSE: propagateRelevantApp(n); break;
+    case SAT_VALUE_UNKNOWN: break;
+    case SAT_VALUE_TRUE:
     {
       TNode arg0 = n[0];
       TNode arg1 = n[1];
-      if (d_core.findAssignment(arg0) == L_FALSE)
+      if (d_core.findAssignment(arg0) == SAT_VALUE_FALSE)
       {
         if (!isRelevantCore(arg0))
         {
@@ -341,7 +349,7 @@ void RelevancyPropagator::propagateRelevantImplies(TNode n)
         }
         return;
       }
-      if (d_core.findAssignment(arg1) == L_TRUE)
+      if (d_core.findAssignment(arg1) == SAT_VALUE_TRUE)
       {
         if (!isRelevantCore(arg1))
         {
@@ -357,24 +365,24 @@ void RelevancyPropagator::propagateRelevantImplies(TNode n)
 void RelevancyPropagator::propagateRelevantOr(TNode n)
 {
   Assert(n.getKind() == Kind::OR);
-  LBool val = d_core.findAssignment(n);
-  // If val is L_UNDEF then the expression is a root and no Boolean variable
-  // was created for it.
-  if (val == L_UNDEF)
+  SatValue val = d_core.findAssignment(n);
+  // If val is SAT_VALUE_UNKNOWN then the expression is a root and no Boolean
+  // variable was created for it.
+  if (val == SAT_VALUE_UNKNOWN)
   {
-    val = L_TRUE;
+    val = SAT_VALUE_TRUE;
   }
   switch (val)
   {
-    case L_FALSE: propagateRelevantApp(n); break;
-    case L_UNDEF: break;
-    case L_TRUE:
+    case SAT_VALUE_FALSE: propagateRelevantApp(n); break;
+    case SAT_VALUE_UNKNOWN: break;
+    case SAT_VALUE_TRUE:
     {
       // only one true argument has to be relevant to justify the disjunction
       TNode trueArg;
       for (const Node& arg : n)
       {
-        if (d_core.findAssignment(arg) == L_TRUE)
+        if (d_core.findAssignment(arg) == SAT_VALUE_TRUE)
         {
           if (isRelevantCore(arg))
           {
@@ -397,16 +405,16 @@ void RelevancyPropagator::propagateRelevantOr(TNode n)
 
 void RelevancyPropagator::propagateRelevantAnd(TNode n)
 {
-  LBool val = d_core.findAssignment(n);
+  SatValue val = d_core.findAssignment(n);
   switch (val)
   {
-    case L_FALSE:
+    case SAT_VALUE_FALSE:
     {
       // only one false argument has to be relevant to refute the conjunction
       TNode falseArg;
       for (const Node& arg : n)
       {
-        if (d_core.findAssignment(arg) == L_FALSE)
+        if (d_core.findAssignment(arg) == SAT_VALUE_FALSE)
         {
           if (isRelevantCore(arg))
           {
@@ -424,8 +432,8 @@ void RelevancyPropagator::propagateRelevantAnd(TNode n)
       }
       break;
     }
-    case L_UNDEF: break;
-    case L_TRUE: propagateRelevantApp(n); break;
+    case SAT_VALUE_UNKNOWN: break;
+    case SAT_VALUE_TRUE: propagateRelevantApp(n); break;
   }
 }
 
@@ -434,9 +442,9 @@ void RelevancyPropagator::propagateRelevantIte(TNode n)
   markAsRelevant(n[0]);
   switch (d_core.findAssignment(n[0]))
   {
-    case L_FALSE: markAsRelevant(n[2]); break;
-    case L_UNDEF: break;
-    case L_TRUE: markAsRelevant(n[1]); break;
+    case SAT_VALUE_FALSE: markAsRelevant(n[2]); break;
+    case SAT_VALUE_UNKNOWN: break;
+    case SAT_VALUE_TRUE: markAsRelevant(n[1]); break;
   }
 }
 

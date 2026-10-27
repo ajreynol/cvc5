@@ -74,8 +74,8 @@ void PropCore::initTrue(TNode t)
   mkBoolVar(t);
   Assert(getBoolVar(t) == s_trueBoolVar);
   Assert(s_trueLiteral.var() == s_trueBoolVar);
-  d_assignment[s_trueLiteral.index()] = L_TRUE;
-  d_assignment[s_falseLiteral.index()] = L_FALSE;
+  d_assignment[s_trueLiteral.index()] = SAT_VALUE_TRUE;
+  d_assignment[s_falseLiteral.index()] = SAT_VALUE_FALSE;
 }
 
 void PropCore::flushClauses()
@@ -568,13 +568,13 @@ void PropCore::notifyRelevant(TNode n)
     // An assigned atom reaches the theory side once it is relevant.
     if (d.isAtom())
     {
-      LBool val = getAssignment(v);
-      if (val != L_UNDEF)
+      SatValue val = getAssignment(v);
+      if (val != SAT_VALUE_UNKNOWN)
       {
-        d_ctx.enqueueAtom(Literal(v, val == L_FALSE));
+        d_ctx.enqueueAtom(Literal(v, val == SAT_VALUE_FALSE));
       }
     }
-    if (getAssignment(v) == L_UNDEF)
+    if (getAssignment(v) == SAT_VALUE_UNKNOWN)
     {
       d_hostRelevant.push_back(n);
     }
@@ -588,7 +588,7 @@ void PropCore::propagateRelevancy(size_t qhead)
   while (qhead < sz)
   {
     Literal l = d_assignedLiterals[qhead];
-    Assert(getAssignment(l) == L_TRUE);
+    Assert(getAssignment(l) == SAT_VALUE_TRUE);
     qhead++;
     BoolVar var = l.var();
     TNode n = boolVar2Expr(var);
@@ -647,8 +647,8 @@ void PropCore::popToBaseLvl()
 void PropCore::assignCore(Literal l)
 {
   d_assignedLiterals.push_back(l);
-  d_assignment[l.index()] = L_TRUE;
-  d_assignment[(~l).index()] = L_FALSE;
+  d_assignment[l.index()] = SAT_VALUE_TRUE;
+  d_assignment[(~l).index()] = SAT_VALUE_FALSE;
   const BoolVarData& d = getBdata(l.var());
   d_stats.d_numAssignments++;
   if (d.isAtom() && isRelevantCore(boolVar2Expr(l.var())))
@@ -667,10 +667,10 @@ bool PropCore::bcp()
       return true;
     }
     Literal l = d_assignedLiterals[d_qhead];
-    Assert(getAssignment(l) == L_TRUE);
+    Assert(getAssignment(l) == SAT_VALUE_TRUE);
     d_qhead++;
     Literal notL = ~l;
-    Assert(getAssignment(notL) == L_FALSE);
+    Assert(getAssignment(notL) == SAT_VALUE_FALSE);
     WatchList& w = d_watches[l.index()];
     // binary clause propagation
     Literal* bit = w.beginLiterals();
@@ -680,15 +680,15 @@ bool PropCore::bcp()
       Literal l2 = *bit;
       switch (getAssignment(l2))
       {
-        case L_FALSE:
+        case SAT_VALUE_FALSE:
           d_stats.d_numBinPropagations++;
           setConflict();
           return false;
-        case L_UNDEF:
+        case SAT_VALUE_UNKNOWN:
           d_stats.d_numBinPropagations++;
           assignCore(l2);
           break;
-        case L_TRUE: break;
+        case SAT_VALUE_TRUE: break;
       }
     }
 
@@ -708,9 +708,9 @@ bool PropCore::bcp()
       Assert(cls->getLiteral(1) == notL);
 
       Literal firstLit = cls->getLiteral(0);
-      LBool firstLitVal = getAssignment(firstLit);
+      SatValue firstLitVal = getAssignment(firstLit);
 
-      if (firstLitVal == L_TRUE)
+      if (firstLitVal == SAT_VALUE_TRUE)
       {
         *it2 = *it;  // the clause is already satisfied, keep it
         it2++;
@@ -721,7 +721,7 @@ bool PropCore::bcp()
       bool foundWatch = false;
       for (; it3 != end3; ++it3)
       {
-        if (getAssignment(*it3) != L_FALSE)
+        if (getAssignment(*it3) != SAT_VALUE_FALSE)
         {
           // Swap *it3 with the literal at position 1; the negation of *it3
           // will watch cls from now on.
@@ -737,7 +737,7 @@ bool PropCore::bcp()
         continue;
       }
       // did not find a watch
-      if (firstLitVal == L_FALSE)
+      if (firstLitVal == SAT_VALUE_FALSE)
       {
         // CONFLICT: copy the remaining watches
         while (it < end)
@@ -752,7 +752,7 @@ bool PropCore::bcp()
         return false;
       }
       // PROPAGATION
-      Assert(firstLitVal == L_UNDEF);
+      Assert(firstLitVal == SAT_VALUE_UNKNOWN);
       *it2 = *it;
       it2++;  // keep the clause
       d_stats.d_numPropagations++;
@@ -766,11 +766,11 @@ bool PropCore::bcp()
   return true;
 }
 
-LBool PropCore::getAssignment(TNode n) const
+SatValue PropCore::getAssignment(TNode n) const
 {
   if (isFalseNode(n))
   {
-    return L_FALSE;
+    return SAT_VALUE_FALSE;
   }
   if (n.getKind() == Kind::NOT)
   {
@@ -783,7 +783,7 @@ LBool PropCore::getAssignment(TNode n) const
   return getAssignment(var);
 }
 
-LBool PropCore::findAssignment(TNode n) const
+SatValue PropCore::findAssignment(TNode n) const
 {
   if (n.getKind() == Kind::NOT)
   {
@@ -794,13 +794,13 @@ LBool PropCore::findAssignment(TNode n) const
     }
     if (isFalseNode(arg))
     {
-      return L_TRUE;
+      return SAT_VALUE_TRUE;
     }
     if (isTrueNode(arg))
     {
-      return L_FALSE;
+      return SAT_VALUE_FALSE;
     }
-    return L_UNDEF;
+    return SAT_VALUE_UNKNOWN;
   }
   if (bInternalized(n))
   {
@@ -808,13 +808,13 @@ LBool PropCore::findAssignment(TNode n) const
   }
   if (isFalseNode(n))
   {
-    return L_FALSE;
+    return SAT_VALUE_FALSE;
   }
   if (isTrueNode(n))
   {
-    return L_TRUE;
+    return SAT_VALUE_TRUE;
   }
-  return L_UNDEF;
+  return SAT_VALUE_UNKNOWN;
 }
 
 Literal PropCore::getLiteral(TNode n) const
@@ -909,8 +909,8 @@ void PropCore::unassignVars(size_t oldLim)
   {
     --i;
     Literal l = d_assignedLiterals[i];
-    d_assignment[l.index()] = L_UNDEF;
-    d_assignment[(~l).index()] = L_UNDEF;
+    d_assignment[l.index()] = SAT_VALUE_UNKNOWN;
+    d_assignment[(~l).index()] = SAT_VALUE_UNKNOWN;
   }
 
   d_assignedLiterals.resize(oldLim);
@@ -959,16 +959,25 @@ BoolVar PropCore::mkBoolVar(TNode n)
   size_t id = n.getId();
   BoolVar v = static_cast<BoolVar>(d_bInternalizedStack.size());
   setBoolVar(id, v);
-  reservex(d_bdata, v + 1, BoolVarData());
-  reservex(d_boolVar2Expr, v + 1, Node::null());
+  if (d_bdata.size() < v + 1)
+  {
+    d_bdata.resize(v + 1, BoolVarData());
+  }
+  if (d_boolVar2Expr.size() < v + 1)
+  {
+    d_boolVar2Expr.resize(v + 1, Node::null());
+  }
   d_boolVar2Expr[v] = n;
 
   Literal l(v, false);
   Literal notL(v, true);
   size_t aux = std::max(l.index(), notL.index()) + 1;
-  reservex(d_assignment, aux, static_cast<int8_t>(L_UNDEF));
-  d_assignment[l.index()] = L_UNDEF;
-  d_assignment[notL.index()] = L_UNDEF;
+  if (d_assignment.size() < aux)
+  {
+    d_assignment.resize(aux, SAT_VALUE_UNKNOWN);
+  }
+  d_assignment[l.index()] = SAT_VALUE_UNKNOWN;
+  d_assignment[notL.index()] = SAT_VALUE_UNKNOWN;
   if (d_watches.size() < aux)
   {
     d_watches.resize(aux);
@@ -1012,8 +1021,8 @@ bool PropCore::simplifyAuxClauseLiterals(size_t& numLits, Literal* lits)
     Literal curr = lits[i];
     switch (getAssignment(curr))
     {
-      case L_FALSE: prev = curr; break;  // ignore the literal
-      case L_UNDEF:
+      case SAT_VALUE_FALSE: prev = curr; break;  // ignore the literal
+      case SAT_VALUE_UNKNOWN:
         if (curr == ~prev)
         {
           return false;  // the clause is equivalent to true
@@ -1028,7 +1037,7 @@ bool PropCore::simplifyAuxClauseLiterals(size_t& numLits, Literal* lits)
           j++;
         }
         break;
-      case L_TRUE: return false;  // the clause is equivalent to true
+      case SAT_VALUE_TRUE: return false;  // the clause is equivalent to true
     }
   }
   numLits = j;
@@ -1084,11 +1093,11 @@ Clause* PropCore::mkClause(size_t numLits, Literal* lits)
         Literal l2 = lits[1];
         d_watches[(~l1).index()].insertLiteral(l2);
         d_watches[(~l2).index()].insertLiteral(l1);
-        if (getAssignment(l1) == L_FALSE)
+        if (getAssignment(l1) == SAT_VALUE_FALSE)
         {
           assign(l2);
         }
-        else if (getAssignment(l2) == L_FALSE)
+        else if (getAssignment(l2) == SAT_VALUE_FALSE)
         {
           assign(l1);
         }
@@ -1103,11 +1112,11 @@ Clause* PropCore::mkClause(size_t numLits, Literal* lits)
       d_auxClauses.push_back(cls);
       addWatchLiteral(cls, 0);
       addWatchLiteral(cls, 1);
-      if (getAssignment(cls->getLiteral(0)) == L_FALSE)
+      if (getAssignment(cls->getLiteral(0)) == SAT_VALUE_FALSE)
       {
         setConflict();
       }
-      else if (getAssignment(cls->getLiteral(1)) == L_FALSE)
+      else if (getAssignment(cls->getLiteral(1)) == SAT_VALUE_FALSE)
       {
         assign(cls->getLiteral(0));
       }
@@ -1158,15 +1167,15 @@ bool PropCore::hostAssign(Literal l)
   switch (getAssignment(l))
   {
     // this side derived l before the host asserted it
-    case L_TRUE: return true;
-    case L_UNDEF: assign(l); return true;
+    case SAT_VALUE_TRUE: return true;
+    case SAT_VALUE_UNKNOWN: assign(l); return true;
     // this side derived ~l, which the host contradicts
-    case L_FALSE: return false;
+    case SAT_VALUE_FALSE: return false;
   }
   return true;
 }
 
-FinalCheckStatus PropCore::hostFinalCheck() { return d_ctx.finalCheck(); }
+bool PropCore::hostFinalCheck() { return d_ctx.finalCheck(); }
 
 }  // namespace z3
 }  // namespace cvc5::internal

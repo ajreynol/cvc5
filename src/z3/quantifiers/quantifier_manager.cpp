@@ -197,24 +197,16 @@ void QuantifierManager::notifyRelevant(ENode* n)
   }
 }
 
-FinalCheckStatus QuantifierManager::finalCheck(bool full)
+bool QuantifierManager::finalCheck()
 {
-  if (!full)
-  {
-    return FC_DONE;
-  }
-  FinalCheckStatus result = d_queue.finalCheck() ? FC_DONE : FC_CONTINUE;
+  bool result = d_queue.finalCheck();
   if (!empty() && d_lazyMatchingIdx < s_maxLazyMultipatternMatching)
   {
     d_lazyMam->rematch();
     d_context.pushTrail(ValueTrail<size_t>(d_lazyMatchingIdx));
     d_lazyMatchingIdx++;
   }
-  if (d_context.canPropagate())
-  {
-    result = FC_CONTINUE;
-  }
-  return result;
+  return result && !d_context.canPropagate();
 }
 
 bool QuantifierManager::canPropagate() const

@@ -746,7 +746,11 @@ class Compiler
 
   void setRegister(uint32_t reg, TNode p)
   {
-    setx(d_registers, static_cast<size_t>(reg), Node(p), Node::null());
+    if (reg >= d_registers.size())
+    {
+      d_registers.resize(reg + 1, Node::null());
+    }
+    d_registers[reg] = Node(p);
   }
 
   TNode getRegister(uint32_t reg) const
@@ -761,7 +765,11 @@ class Compiler
 
   void setCheckMark(uint32_t reg, CheckMark cm)
   {
-    setx(d_mark, static_cast<size_t>(reg), cm, NOT_CHECKED);
+    if (reg >= d_mark.size())
+    {
+      d_mark.resize(reg + 1, NOT_CHECKED);
+    }
+    d_mark[reg] = cm;
   }
 
   void init(CodeTree* t, TNode qa, TNode mp, size_t firstIdx)
@@ -1853,8 +1861,14 @@ class Interpreter
 
   void init(CodeTree* t)
   {
-    reservex(d_registers, t->getNumRegs(), static_cast<ENode*>(nullptr));
-    reservex(d_bindings, t->getNumRegs(), static_cast<ENode*>(nullptr));
+    if (d_registers.size() < t->getNumRegs())
+    {
+      d_registers.resize(t->getNumRegs(), static_cast<ENode*>(nullptr));
+    }
+    if (d_bindings.size() < t->getNumRegs())
+    {
+      d_bindings.resize(t->getNumRegs(), static_cast<ENode*>(nullptr));
+    }
     if (d_backtrackStack.size() < t->getNumChoices())
     {
       d_backtrackStack.resize(t->getNumChoices());
@@ -2606,7 +2620,10 @@ class CodeTreeMap
       return;
     }
     uint32_t lblId = d_context.getDeclId(getDecl(p));
-    reservex(d_trees, lblId + 1, static_cast<CodeTree*>(nullptr));
+    if (d_trees.size() < lblId + 1)
+    {
+      d_trees.resize(lblId + 1, static_cast<CodeTree*>(nullptr));
+    }
     if (d_trees[lblId] == nullptr)
     {
       d_trees[lblId] = d_compiler.mkTree(q, mp, firstIdx, false);
@@ -3065,7 +3082,10 @@ class MamImpl final : public Mam
   void updateClbls(TNode lbl)
   {
     uint32_t lblId = d_context.getDeclId(lbl);
-    reservex(d_isClbl, lblId + 1, false);
+    if (d_isClbl.size() < lblId + 1)
+    {
+      d_isClbl.resize(lblId + 1, false);
+    }
     if (d_isClbl[lblId])
     {
       return;
@@ -3100,7 +3120,10 @@ class MamImpl final : public Mam
   void updatePlbls(TNode lbl)
   {
     uint32_t lblId = d_context.getDeclId(lbl);
-    reservex(d_isPlbl, lblId + 1, false);
+    if (d_isPlbl.size() < lblId + 1)
+    {
+      d_isPlbl.resize(lblId + 1, false);
+    }
     if (d_isPlbl[lblId])
     {
       return;
@@ -3613,7 +3636,10 @@ class MamImpl final : public Mam
       if (d_context.getNumENodesOf(lbl) > 0)
       {
         uint32_t lblId = d_context.getDeclId(lbl);
-        reservex(d_tmpTrees, lblId + 1, static_cast<CodeTree*>(nullptr));
+        if (d_tmpTrees.size() < lblId + 1)
+        {
+          d_tmpTrees.resize(lblId + 1, static_cast<CodeTree*>(nullptr));
+        }
         if (d_tmpTrees[lblId] == nullptr)
         {
           d_tmpTrees[lblId] = d_compiler.mkTree(q, mp, 0, false);

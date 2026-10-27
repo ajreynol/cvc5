@@ -116,12 +116,16 @@ class PropCore : protected EnvObj
 
   BoolVar getBoolVarOfIdOption(size_t id) const
   {
-    return getx(d_expr2BoolVar, id, s_nullBoolVar);
+    return id < d_expr2BoolVar.size() ? d_expr2BoolVar[id] : s_nullBoolVar;
   }
 
   void setBoolVar(size_t id, BoolVar v)
   {
-    setx(d_expr2BoolVar, id, v, s_nullBoolVar);
+    if (id >= d_expr2BoolVar.size())
+    {
+      d_expr2BoolVar.resize(id + 1, s_nullBoolVar);
+    }
+    d_expr2BoolVar[id] = v;
   }
 
   TNode boolVar2Expr(BoolVar v) const { return d_boolVar2Expr[v]; }
@@ -155,19 +159,23 @@ class PropCore : protected EnvObj
   }
 
   // ------------------------------------------------------------- assignment
-  LBool getLitAssignment(size_t litIdx) const
+  SatValue getLitAssignment(size_t litIdx) const
   {
-    return static_cast<LBool>(d_assignment[litIdx]);
+    return d_assignment[litIdx];
   }
 
-  LBool getAssignment(Literal l) const { return getLitAssignment(l.index()); }
+  SatValue getAssignment(Literal l) const
+  {
+    return getLitAssignment(l.index());
+  }
 
-  LBool getAssignment(BoolVar v) const { return getAssignment(Literal(v)); }
+  SatValue getAssignment(BoolVar v) const { return getAssignment(Literal(v)); }
 
-  LBool getAssignment(TNode n) const;
+  SatValue getAssignment(TNode n) const;
 
-  /** Like getAssignment, but returns L_UNDEF if n is not internalized. */
-  LBool findAssignment(TNode n) const;
+  /** Like getAssignment, but returns SAT_VALUE_UNKNOWN if n is not
+   * internalized. */
+  SatValue findAssignment(TNode n) const;
 
   void assign(Literal l)
   {
@@ -175,9 +183,9 @@ class PropCore : protected EnvObj
     Assert(l != s_nullLiteral);
     switch (getAssignment(l))
     {
-      case L_FALSE: setConflict(); break;
-      case L_UNDEF: assignCore(l); break;
-      case L_TRUE: return;
+      case SAT_VALUE_FALSE: setConflict(); break;
+      case SAT_VALUE_UNKNOWN: assignCore(l); break;
+      case SAT_VALUE_TRUE: return;
     }
   }
 
@@ -286,7 +294,7 @@ class PropCore : protected EnvObj
     d_hostRelevant.clear();
   }
   /** Run the theory side's final check. */
-  FinalCheckStatus hostFinalCheck();
+  bool hostFinalCheck();
 
   /**
    * Add the clauses that define the Boolean variable of the gate n in terms
@@ -406,7 +414,7 @@ class PropCore : protected EnvObj
   /** The Boolean expressions already internalized. */
   std::vector<Node> d_bInternalizedStack;
   /** Maps a literal index to its assignment. */
-  std::vector<int8_t> d_assignment;
+  std::vector<SatValue> d_assignment;
   /** The watch list of each literal. */
   std::vector<WatchList> d_watches;
   std::vector<BoolVarData> d_bdata;
