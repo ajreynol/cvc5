@@ -35,9 +35,8 @@ QiQueue::QiQueue(QuantifierManager& qm, SmtContext& ctx)
     : d_qm(qm),
       d_context(ctx),
       d_checker(ctx),
-      d_eagerCostThreshold(0),
-      d_delayedEntries(ctx.getTrailStack().getContext()),
-      d_instantiated(ctx.getTrailStack().getContext())
+      d_numInstances(0),
+      d_eagerCostThreshold(0)
 {
 }
 
@@ -70,8 +69,7 @@ void QiQueue::instantiate()
     {
       break;
     }
-    if (d_stats.d_numInstances
-        > d_context.getEnv().getOptions().z3.z3QiMaxInstances)
+    if (d_numInstances > d_context.getEnv().getOptions().z3.z3QiMaxInstances)
     {
       // the maximum number of quantifier instances was reached
       break;
@@ -85,13 +83,12 @@ void QiQueue::instantiate()
     }
     else if (d_checker.isUnsat(qa[1], f->getNumArgs(), f->getArgs()))
     {
-      // do not delay an instance that produces a conflict
+      // do not drop an instance that produces a conflict
       instantiate(curr);
     }
-    else
-    {
-      d_delayedEntries.push_back(curr);
-    }
+    // Otherwise the instance is dropped. Z3 delays it to the final check,
+    // where it makes it if its cost is within qi.lazy_threshold, 20 by
+    // default; with Verus's eager threshold of 100, none ever is.
 
     // periodically check that we did not run out of time or memory
     if (sinceLastCheck++ > 100)
@@ -156,7 +153,7 @@ void QiQueue::instantiate(const Entry& ent)
   {
     return;
   }
-  d_stats.d_numInstances++;
+  d_numInstances++;
   uint32_t gen = static_cast<uint32_t>(ent.d_cost);
   Trace("z3-qi") << "[instance] q" << q.getId() << " nargs " << numBindings
                  << " gen " << generation << " cost " << ent.d_cost
@@ -167,25 +164,6 @@ void QiQueue::instantiate(const Entry& ent)
 }
 
 void QiQueue::initSearch() { d_newEntries.clear(); }
-
-bool QiQueue::finalCheck()
-{
-  bool result = true;
-  for (size_t i = 0; i < d_delayedEntries.size(); ++i)
-  {
-    const Entry& e = d_delayedEntries[i];
-    if (!d_instantiated.contains(i)
-        && e.d_cost <= d_context.getEnv().getOptions().z3.z3QiLazyThreshold)
-    {
-      result = false;
-      d_instantiated.insert(i);
-      d_stats.d_numLazyInstances++;
-      d_context.getStats().d_numLazyInstances++;
-      instantiate(e);
-    }
-  }
-  return result;
-}
 
 namespace {
 

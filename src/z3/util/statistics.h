@@ -49,8 +49,6 @@ struct Statistics
   IntStat d_numSkolemizations;
   /** quantifier instantiations produced by E-matching */
   IntStat d_numInstances;
-  /** instantiations dropped because their cost exceeded the lazy threshold */
-  IntStat d_numLazyInstances;
   /** instances the checker found already satisfied */
   IntStat d_numInstancesCheckerSat;
   /** instances whose body simplified to true */
@@ -114,7 +112,6 @@ inline Statistics::Statistics(StatisticsRegistry& sr)
       d_numAssertedFormulas(sr.registerInt("z3::assertedFormulas", false)),
       d_numSkolemizations(sr.registerInt("z3::skolemizations", false)),
       d_numInstances(sr.registerInt("z3::instances", false)),
-      d_numLazyInstances(sr.registerInt("z3::lazyInstances", false)),
       d_numInstancesCheckerSat(
           sr.registerInt("z3::instancesCheckerSat", false)),
       d_numInstancesSimplifyTrue(

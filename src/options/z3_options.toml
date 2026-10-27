@@ -34,16 +34,7 @@ name   = "Z3 Core"
   type       = "double"
   default    = "100.0"
   minimum    = "0.0"
-  help       = "instantiations whose cost (weight plus generation, as Z3's default qi.cost) exceeds this are delayed; the default is the value Verus passes to Z3 (smt.qi.eager_threshold=100)"
-
-[[option]]
-  name       = "z3QiLazyThreshold"
-  category   = "expert"
-  long       = "z3-qi-lazy-threshold=F"
-  type       = "double"
-  default    = "20.0"
-  minimum    = "0.0"
-  help       = "instantiations whose cost exceeds this are dropped"
+  help       = "instantiations whose cost (weight plus generation, as Z3's default qi.cost) exceeds this are dropped, unless their body is false; the default is the value Verus passes to Z3 (smt.qi.eager_threshold=100)"
 
 [[option]]
   name       = "z3QiMaxMultiPatterns"

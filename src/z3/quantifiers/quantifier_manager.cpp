@@ -200,14 +200,13 @@ void QuantifierManager::notifyRelevant(ENode* n)
 
 bool QuantifierManager::finalCheck()
 {
-  bool result = d_queue.finalCheck();
   if (!empty() && d_lazyMatchingIdx < s_maxLazyMultipatternMatching)
   {
     d_lazyMam->rematch();
     d_context.getTrailStack().push(ValueTrail<size_t>(d_lazyMatchingIdx));
     d_lazyMatchingIdx++;
   }
-  return result && !d_context.canPropagate();
+  return !d_context.canPropagate();
 }
 
 bool QuantifierManager::canPropagate() const

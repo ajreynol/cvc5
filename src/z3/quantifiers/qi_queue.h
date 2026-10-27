@@ -14,10 +14,9 @@
  *
  * E-matching hands every match it finds to this queue, which costs it and
  * then either instantiates it right away (cost at or below the eager
- * threshold), promotes it because it already produces a conflict, or delays
- * it. Delayed instances are reconsidered at final check and dropped entirely
- * if their cost exceeds the lazy threshold. This triage, not the matching
- * itself, is what keeps the number of instances bounded.
+ * threshold), promotes it because it already produces a conflict, or drops
+ * it. This triage, not the matching itself, is what keeps the number of
+ * instances bounded.
  */
 
 #include "cvc5_private.h"
@@ -25,13 +24,10 @@
 #ifndef CVC5__Z3__QUANTIFIERS__QI_QUEUE_H
 #define CVC5__Z3__QUANTIFIERS__QI_QUEUE_H
 
-#include <cstring>
 #include <ostream>
 #include <unordered_map>
 #include <vector>
 
-#include "context/cdhashset.h"
-#include "context/cdlist.h"
 #include "expr/node.h"
 #include "z3/quantifiers/checker.h"
 #include "z3/quantifiers/fingerprints.h"
@@ -43,14 +39,6 @@ namespace z3 {
 class QuantifierManager;
 class ENode;
 class SmtContext;
-
-struct QiQueueStats
-{
-  uint64_t d_numInstances;
-  uint64_t d_numLazyInstances;
-  void reset() { std::memset(this, 0, sizeof(QiQueueStats)); }
-  QiQueueStats() { reset(); }
-};
 
 class QiQueue
 {
@@ -71,16 +59,9 @@ class QiQueue
 
   void initSearch();
 
-  /**
-   * Instantiate the delayed entries whose cost is within the lazy threshold.
-   * Returns true if nothing was instantiated, i.e. the final check succeeds.
-   */
-  bool finalCheck();
-
   /** Discard the new entries, before the scopes are popped. */
   void notifyPop() { d_newEntries.clear(); }
 
-  const QiQueueStats& getStats() const { return d_stats; }
 
  private:
   struct Entry
@@ -134,16 +115,11 @@ class QiQueue
   /** The instance checker. */
   Checker d_checker;
 
-  QiQueueStats d_stats;
+  /** The instances made, for --z3-qi-max-instances. */
+  uint64_t d_numInstances;
   double d_eagerCostThreshold;
 
   std::vector<Entry> d_newEntries;
-  /**
-   * The entries delayed for the final check, and the indices of those that
-   * the final check instantiated, in the context of the trail stack.
-   */
-  context::CDList<Entry> d_delayedEntries;
-  context::CDHashSet<size_t> d_instantiated;
   /**
    * The lemmas of the instances made so far, by (SEXPR q t1 ... tn), null for
    * an instance that rewrites to true. The core makes an instance again after
