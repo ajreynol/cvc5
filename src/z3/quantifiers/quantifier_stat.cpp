@@ -15,7 +15,7 @@
 
 #include "z3/quantifiers/quantifier_stat.h"
 
-#include "z3/util/ast.h"
+#include "z3/quantifiers/quantifier_normalizer.h"
 
 namespace cvc5::internal {
 namespace z3 {

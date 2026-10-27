@@ -18,7 +18,6 @@
 #ifndef CVC5__Z3__RELEVANCY__BOOL_VAR_DATA_H
 #define CVC5__Z3__RELEVANCY__BOOL_VAR_DATA_H
 
-
 namespace cvc5::internal {
 namespace z3 {
 

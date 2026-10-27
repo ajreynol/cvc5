@@ -194,8 +194,9 @@ class Z3Module : public theory::quantifiers::QuantifiersModule
   bool propagateAndReport();
   /**
    * The core's form of n, a formula of cvc5: its quantified formulas over
-   * the canonical variables the core expects (see z3/util/ast.h). The atoms
-   * of n that change are recorded, for toHost.
+   * the canonical variables the core expects (see
+   * z3/quantifiers/quantifier_normalizer.h). The atoms of n that change are
+   * recorded, for toHost.
    */
   Node toCore(TNode n);
   /** Record the atoms of n that its core's form nc renames, for toHost. */

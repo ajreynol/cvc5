@@ -62,7 +62,6 @@ class QiQueue
   /** Discard the new entries, before the scopes are popped. */
   void notifyPop() { d_newEntries.clear(); }
 
-
  private:
   struct Entry
   {

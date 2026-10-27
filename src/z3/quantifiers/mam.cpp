@@ -51,11 +51,10 @@
 #include "util/hash.h"
 #include "z3/quantifiers/enode.h"
 #include "z3/quantifiers/quantifier_manager.h"
+#include "z3/quantifiers/quantifier_normalizer.h"
 #include "z3/quantifiers/smt_context.h"
-#include "z3/util/approx_set.h"
-#include "z3/util/ast.h"
-#include "z3/util/statistics.h"
-#include "z3/util/trail.h"
+#include "z3/quantifiers/statistics.h"
+#include "z3/quantifiers/trail.h"
 
 namespace cvc5::internal {
 namespace z3 {
@@ -2820,7 +2819,6 @@ class MamImpl final : public Mam
   {
     resetPpPc();
   }
-
 
   void addPattern(TNode q, TNode mp) override
   {

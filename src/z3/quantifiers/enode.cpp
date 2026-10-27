@@ -18,12 +18,37 @@
 #include <cstring>
 #include <new>
 
+#include "expr/node_manager.h"
+#include "theory/quantifiers/term_util.h"
 #include "util/hash.h"
 #include "z3/quantifiers/smt_context.h"
-#include "z3/util/trail.h"
+#include "z3/quantifiers/trail.h"
 
 namespace cvc5::internal {
 namespace z3 {
+
+TNode getDecl(TNode n)
+{
+  if (n.getMetaKind() == kind::metakind::PARAMETERIZED)
+  {
+    return n.getOperator();
+  }
+  if (NodeManager::hasOperator(n.getKind()))
+  {
+    return n.getNodeManager()->operatorOf(n.getKind());
+  }
+  // A leaf is its own declaration: it is congruent to nothing but itself.
+  return n;
+}
+
+bool isCommutative(TNode n)
+{
+  // Z3 consults func_decl::is_commutative(), which the congruence table uses
+  // to normalize the argument order of binary applications. Only the binary
+  // case matters, since that is the only one the table treats as unordered.
+  return n.getNumChildren() == 2
+         && theory::quantifiers::TermUtil::isComm(n.getKind());
+}
 
 ENode* ENode::init(void* mem,
                    const App2ENode& app2enode,

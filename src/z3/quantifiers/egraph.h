@@ -29,8 +29,8 @@
 #include "smt/env_obj.h"
 #include "z3/quantifiers/cg_table.h"
 #include "z3/quantifiers/enode.h"
-#include "z3/util/statistics.h"
-#include "z3/util/trail.h"
+#include "z3/quantifiers/statistics.h"
+#include "z3/quantifiers/trail.h"
 
 namespace cvc5::internal {
 

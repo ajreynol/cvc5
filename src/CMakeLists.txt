@@ -1352,10 +1352,14 @@ libcvc5_add_sources(
   z3/quantifiers/qi_queue.h
   z3/quantifiers/quantifier_manager.cpp
   z3/quantifiers/quantifier_manager.h
+  z3/quantifiers/quantifier_normalizer.cpp
+  z3/quantifiers/quantifier_normalizer.h
   z3/quantifiers/quantifier_stat.cpp
   z3/quantifiers/quantifier_stat.h
   z3/quantifiers/smt_context.cpp
   z3/quantifiers/smt_context.h
+  z3/quantifiers/statistics.h
+  z3/quantifiers/trail.h
   z3/quantifiers/z3_module.cpp
   z3/quantifiers/z3_module.h
   z3/relevancy/bool_var_data.h
@@ -1368,11 +1372,6 @@ libcvc5_add_sources(
   z3/relevancy/relevancy_tracker.h
   z3/relevancy/watch_list.cpp
   z3/relevancy/watch_list.h
-  z3/util/approx_set.h
-  z3/util/ast.cpp
-  z3/util/ast.h
-  z3/util/statistics.h
-  z3/util/trail.h
 )
 
 # suppress deprecated warnings to not error in CI

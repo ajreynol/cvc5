@@ -19,12 +19,12 @@
 #define CVC5__Z3__QUANTIFIERS__ENODE_H
 
 #include <climits>
+#include <cstdint>
 #include <vector>
 
 #include "expr/node.h"
-#include "z3/util/approx_set.h"
-#include "z3/util/ast.h"
-#include "z3/util/trail.h"
+#include "z3/quantifiers/quantifier_normalizer.h"
+#include "z3/quantifiers/trail.h"
 
 namespace cvc5::internal {
 namespace z3 {
@@ -37,6 +37,104 @@ using ENodeVector = std::vector<ENode*>;
 
 /** Maps the id of a term to its enode. */
 using App2ENode = std::vector<ENode*>;
+
+/**
+ * The congruence key of n: the node that stands in for Z3's func_decl*. For
+ * parameterized kinds this is the operator, for kinds with a built-in operator
+ * it is that operator, and for leaves it is n itself (a leaf is congruent to
+ * nothing but itself).
+ */
+TNode getDecl(TNode n);
+
+/**
+ * True if n is a binary application of a commutative operator, in which case
+ * the congruence table normalizes the argument order.
+ */
+bool isCommutative(TNode n);
+
+// The label sets of the enodes, ported from Z3's src/util/approx_set.h.
+
+/** The number of distinct bits available in an ApproxSet. */
+constexpr uint32_t approxSetCapacity() { return 64; }
+
+/**
+ * A set of unsigned indices, approximated by a 64-bit mask: each index is
+ * mapped to the bit at that index modulo 64.
+ *
+ * Membership is one-sided: mayContain() can return a false positive, but
+ * a negative answer is exact. The same holds for the intersection test, which
+ * is where the cheap filtering comes from. This is the variant used for enode
+ * label sets, with an iterator over the bits that are set.
+ */
+class ApproxSet
+{
+ public:
+  ApproxSet() = default;
+  ApproxSet(uint32_t e) : d_set(toSet(e)) {}
+
+  void insert(uint32_t e) { d_set |= toSet(e); }
+
+  bool mayContain(uint32_t e) const { return (d_set & toSet(e)) != 0; }
+
+  void operator|=(const ApproxSet& other) { d_set |= other.d_set; }
+
+  bool empty() const { return d_set == 0; }
+
+  bool emptyIntersection(const ApproxSet& other) const
+  {
+    return (d_set & other.d_set) == 0;
+  }
+
+  class iterator
+  {
+    uint64_t d_set;
+    uint32_t d_val;
+
+    void moveToNext()
+    {
+      if (d_set > 0)
+      {
+        // after the shift the least significant bit is set
+        uint32_t tz = static_cast<uint32_t>(__builtin_ctzll(d_set));
+        d_val += tz;
+        d_set >>= tz;
+      }
+    }
+
+   public:
+    iterator(uint64_t s) : d_set(s), d_val(0) { moveToNext(); }
+
+    uint32_t operator*() const { return d_val; }
+
+    iterator& operator++()
+    {
+      d_val++;
+      d_set >>= 1;
+      moveToNext();
+      return *this;
+    }
+
+    bool operator!=(const iterator& it) const { return d_set != it.d_set; }
+  };
+
+  iterator begin() const { return iterator(d_set); }
+
+  static iterator end() { return iterator(0); }
+
+  /** The number of bits set. */
+  uint32_t size() const
+  {
+    return static_cast<uint32_t>(__builtin_popcountll(d_set));
+  }
+
+ private:
+  static uint64_t toSet(uint32_t u)
+  {
+    return UINT64_C(1) << (u & (approxSetCapacity() - 1));
+  }
+
+  uint64_t d_set = 0;
+};
 
 class TmpENode;
 

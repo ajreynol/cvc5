@@ -15,8 +15,8 @@
 
 #include "cvc5_private.h"
 
-#ifndef CVC5__Z3__UTIL__STATISTICS_H
-#define CVC5__Z3__UTIL__STATISTICS_H
+#ifndef CVC5__Z3__QUANTIFIERS__STATISTICS_H
+#define CVC5__Z3__QUANTIFIERS__STATISTICS_H
 
 #include "util/statistics_registry.h"
 #include "util/statistics_stats.h"
@@ -144,4 +144,4 @@ inline Statistics::Statistics(StatisticsRegistry& sr)
 }  // namespace z3
 }  // namespace cvc5::internal
 
-#endif /* CVC5__Z3__UTIL__STATISTICS_H */
+#endif /* CVC5__Z3__QUANTIFIERS__STATISTICS_H */

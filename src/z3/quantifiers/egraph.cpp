@@ -455,9 +455,9 @@ void EGraph::undoAddEq(ENode* r1, size_t r2NumParents)
 }
 
 void EGraph::undoMergeCgcGenerations(ENode* e1,
-                                         uint32_t e1Generation,
-                                         ENode* e2,
-                                         uint32_t e2Generation)
+                                     uint32_t e1Generation,
+                                     ENode* e2,
+                                     uint32_t e2Generation)
 {
   setGeneration(e1, e1Generation);
   setGeneration(e2, e2Generation);
@@ -465,9 +465,9 @@ void EGraph::undoMergeCgcGenerations(ENode* e1,
 }
 
 void EGraph::applyStickyUpdates(ENode* e1,
-                                    uint32_t e1Generation,
-                                    ENode* e2,
-                                    uint32_t e2Generation)
+                                uint32_t e1Generation,
+                                ENode* e2,
+                                uint32_t e2Generation)
 {
   Assert(e1->usesCgTable());
   Assert(e2->usesCgTable());
@@ -485,9 +485,9 @@ void EGraph::applyStickyUpdates(ENode* e1,
 }
 
 ENode* EGraph::getENodeEqTo(TNode decl,
-                                bool commutative,
-                                size_t numArgs,
-                                ENode* const* args)
+                            bool commutative,
+                            size_t numArgs,
+                            ENode* const* args)
 {
   ENode* tmp = d_tmpENode.set(decl, commutative, numArgs, args);
   return d_cgTable.find(tmp);
@@ -557,9 +557,7 @@ class MergeCgcGenerationsTrail : public Trail
 
 }  // namespace
 
-void EGraph::mergeCgcGenerations(ENode* e1,
-                                     uint32_t e1Generation,
-                                     ENode* e2)
+void EGraph::mergeCgcGenerations(ENode* e1, uint32_t e1Generation, ENode* e2)
 {
   Assert(e2->isCgr());
   Assert(!d_cgTable.containsPtr(e1));

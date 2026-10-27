@@ -72,9 +72,7 @@ Fingerprint* FingerprintSet::mkDummy(TNode q,
   return &d_dummy;
 }
 
-Fingerprint* FingerprintSet::insert(TNode q,
-                                    size_t numArgs,
-                                    ENode* const* args)
+Fingerprint* FingerprintSet::insert(TNode q, size_t numArgs, ENode* const* args)
 {
   uint64_t h = fnv1a::fnv1a_64(static_cast<uint32_t>(q.getId()));
   for (size_t i = 0; i < numArgs; ++i)

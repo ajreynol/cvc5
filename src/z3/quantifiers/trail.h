@@ -18,8 +18,8 @@
 
 #include "cvc5_private.h"
 
-#ifndef CVC5__Z3__UTIL__TRAIL_H
-#define CVC5__Z3__UTIL__TRAIL_H
+#ifndef CVC5__Z3__QUANTIFIERS__TRAIL_H
+#define CVC5__Z3__QUANTIFIERS__TRAIL_H
 
 #include <cstddef>
 #include <cstdint>
@@ -230,4 +230,4 @@ inline void* operator new(size_t s, cvc5::internal::z3::TrailStack& t)
 /** Matching delete for trail stack placement new; memory is freed in bulk. */
 inline void operator delete(void*, cvc5::internal::z3::TrailStack&) {}
 
-#endif /* CVC5__Z3__UTIL__TRAIL_H */
+#endif /* CVC5__Z3__QUANTIFIERS__TRAIL_H */

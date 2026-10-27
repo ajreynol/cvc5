@@ -23,10 +23,10 @@
 #include "smt/env.h"
 #include "z3/quantifiers/enode.h"
 #include "z3/quantifiers/quantifier_manager.h"
+#include "z3/quantifiers/quantifier_normalizer.h"
 #include "z3/quantifiers/quantifier_stat.h"
 #include "z3/quantifiers/smt_context.h"
-#include "z3/util/ast.h"
-#include "z3/util/statistics.h"
+#include "z3/quantifiers/statistics.h"
 
 namespace cvc5::internal {
 namespace z3 {

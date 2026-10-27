@@ -15,9 +15,9 @@
 
 #include "z3/relevancy/relevancy.h"
 
+#include "z3/quantifiers/quantifier_normalizer.h"
 #include "z3/quantifiers/smt_context.h"
 #include "z3/relevancy/prop_core.h"
-#include "z3/util/ast.h"
 
 namespace cvc5::internal {
 namespace z3 {

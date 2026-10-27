@@ -65,10 +65,7 @@ void PropCore::initTrue(TNode t)
   d_assignment[s_falseLiteral.toInt()] = SAT_VALUE_FALSE;
 }
 
-void PropCore::flushClauses()
-{
-  delClauses(d_auxClauses, 0);
-}
+void PropCore::flushClauses() { delClauses(d_auxClauses, 0); }
 
 // ---------------------------------------------------- input and entry points
 

@@ -463,7 +463,8 @@ void SmtContext::reassertUnits(size_t unitsToReassertLim)
     ReplayUnit& ru = d_unitsToReassert[i];
     internalize(ru.d_unit, true);
     SatVariable v = d_prop.getBoolVar(ru.d_unit);
-    Assert(v != prop::undefSatVariable) << "unit without a variable: " << ru.d_unit;
+    Assert(v != prop::undefSatVariable)
+        << "unit without a variable: " << ru.d_unit;
     SatLiteral l(v, ru.d_sign);
     d_prop.assign(l);
     if (ru.d_relevant)

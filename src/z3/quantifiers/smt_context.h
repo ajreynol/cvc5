@@ -42,14 +42,14 @@
 #include "z3/quantifiers/egraph.h"
 #include "z3/quantifiers/enode.h"
 #include "z3/quantifiers/quantifier_manager.h"
+#include "z3/quantifiers/quantifier_normalizer.h"
+#include "z3/quantifiers/statistics.h"
+#include "z3/quantifiers/trail.h"
 #include "z3/relevancy/bool_var_data.h"
 #include "z3/relevancy/clause.h"
 #include "z3/relevancy/prop_core.h"
 #include "z3/relevancy/relevancy.h"
 #include "z3/relevancy/watch_list.h"
-#include "z3/util/ast.h"
-#include "z3/util/statistics.h"
-#include "z3/util/trail.h"
 
 namespace cvc5::internal {
 

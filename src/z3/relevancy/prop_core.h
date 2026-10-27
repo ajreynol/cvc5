@@ -29,13 +29,13 @@
 #include "expr/node.h"
 #include "prop/sat_solver_types.h"
 #include "smt/env_obj.h"
+#include "z3/quantifiers/quantifier_normalizer.h"
+#include "z3/quantifiers/statistics.h"
+#include "z3/quantifiers/trail.h"
 #include "z3/relevancy/bool_var_data.h"
 #include "z3/relevancy/clause.h"
 #include "z3/relevancy/relevancy.h"
 #include "z3/relevancy/watch_list.h"
-#include "z3/util/ast.h"
-#include "z3/util/statistics.h"
-#include "z3/util/trail.h"
 
 namespace cvc5::internal {
 namespace z3 {
@@ -89,7 +89,8 @@ class PropCore : protected EnvObj
 
   SatVariable getBoolVarOfIdOption(size_t id) const
   {
-    return id < d_expr2BoolVar.size() ? d_expr2BoolVar[id] : prop::undefSatVariable;
+    return id < d_expr2BoolVar.size() ? d_expr2BoolVar[id]
+                                      : prop::undefSatVariable;
   }
 
   void setBoolVar(size_t id, SatVariable v)
@@ -142,7 +143,10 @@ class PropCore : protected EnvObj
     return getLitAssignment(l.toInt());
   }
 
-  SatValue getAssignment(SatVariable v) const { return getAssignment(SatLiteral(v)); }
+  SatValue getAssignment(SatVariable v) const
+  {
+    return getAssignment(SatLiteral(v));
+  }
 
   SatValue getAssignment(TNode n) const;
 
@@ -224,7 +228,8 @@ class PropCore : protected EnvObj
 
   void addRelWatch(SatLiteral l, RelevancyHandler* eh)
   {
-    d_relevancyPropagator->addWatch(boolVar2Expr(l.getSatVariable()), !l.isNegated(), eh);
+    d_relevancyPropagator->addWatch(
+        boolVar2Expr(l.getSatVariable()), !l.isNegated(), eh);
   }
 
   /**

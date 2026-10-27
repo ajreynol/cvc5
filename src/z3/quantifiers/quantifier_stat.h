@@ -24,7 +24,7 @@
 #include <vector>
 
 #include "expr/node.h"
-#include "z3/util/trail.h"
+#include "z3/quantifiers/trail.h"
 
 namespace cvc5::internal {
 namespace z3 {

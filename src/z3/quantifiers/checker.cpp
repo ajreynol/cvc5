@@ -18,8 +18,8 @@
 #include <vector>
 
 #include "z3/quantifiers/enode.h"
+#include "z3/quantifiers/quantifier_normalizer.h"
 #include "z3/quantifiers/smt_context.h"
-#include "z3/util/ast.h"
 
 namespace cvc5::internal {
 namespace z3 {

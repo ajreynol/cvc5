@@ -7,31 +7,25 @@
  * directory for licensing information.
  * ****************************************************************************
  *
- * The bridge between cvc5's Node and the term interface the ported Z3 core is
- * written against.
+ * The quantified variables of the ported Z3 core.
  *
  * The ported core uses cvc5's Node as its AST; there is no port of Z3's
- * ast_manager. Only two aspects of Z3's term representation have no direct
- * cvc5 counterpart, and they are handled here:
+ * ast_manager. Z3 quantifier bodies use de Bruijn variables, and mam.cpp
+ * binds pattern variables by index. cvc5 uses named bound variables, so two
+ * quantifiers whose patterns are identical up to renaming would compile to
+ * distinct E-matching code trees and lose all sharing. QuantifierNormalizer
+ * rewrites quantifiers over a canonical pool of placeholder variables indexed
+ * by de Bruijn *level*, which is both alpha-invariant (restoring Z3's sharing)
+ * and capture-free.
  *
- * (1) Congruence keys. Z3 keys congruence closure on func_decl*. cvc5 splits
- *     that information between the Kind and, for parameterized kinds, an
- *     operator node. getDecl() recovers a single node that plays the role of
- *     Z3's func_decl*.
- *
- * (2) Quantified variables. Z3 quantifier bodies use de Bruijn variables, and
- *     mam.cpp binds pattern variables by index. cvc5 uses named bound
- *     variables, so two quantifiers whose patterns are identical up to
- *     renaming would compile to distinct E-matching code trees and lose all
- *     sharing. QuantifierNormalizer rewrites quantifiers over a canonical
- *     pool of placeholder variables indexed by de Bruijn *level*, which is
- *     both alpha-invariant (restoring Z3's sharing) and capture-free.
+ * The other part of Z3's term representation without a direct cvc5
+ * counterpart, its congruence keys, is getDecl in enode.h.
  */
 
 #include "cvc5_private.h"
 
-#ifndef CVC5__Z3__UTIL__AST_H
-#define CVC5__Z3__UTIL__AST_H
+#ifndef CVC5__Z3__QUANTIFIERS__QUANTIFIER_NORMALIZER_H
+#define CVC5__Z3__QUANTIFIERS__QUANTIFIER_NORMALIZER_H
 
 #include <unordered_map>
 #include <vector>
@@ -40,8 +34,6 @@
 #include "expr/node.h"
 
 namespace cvc5::internal {
-
-class Env;
 namespace z3 {
 
 /**
@@ -80,20 +72,6 @@ inline bool isQuantifier(TNode n)
  * count as nullary applications.
  */
 inline bool isApp(TNode n) { return !isQuantifier(n) && !isVar(n); }
-
-/**
- * The congruence key of n: the node that stands in for Z3's func_decl*. For
- * parameterized kinds this is the operator, for kinds with a built-in operator
- * it is that operator, and for leaves it is n itself (a leaf is congruent to
- * nothing but itself).
- */
-TNode getDecl(TNode n);
-
-/**
- * True if n is a binary application of a commutative operator, in which case
- * the congruence table normalizes the argument order.
- */
-bool isCommutative(TNode n);
 
 /**
  * Rewrites quantifiers into the canonical de Bruijn-level form the core and
@@ -137,4 +115,4 @@ class QuantifierNormalizer
 }  // namespace z3
 }  // namespace cvc5::internal
 
-#endif /* CVC5__Z3__UTIL__AST_H */
+#endif /* CVC5__Z3__QUANTIFIERS__QUANTIFIER_NORMALIZER_H */

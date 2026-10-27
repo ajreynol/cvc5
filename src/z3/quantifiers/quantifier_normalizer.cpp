@@ -7,47 +7,17 @@
  * directory for licensing information.
  * ****************************************************************************
  *
- * The bridge between cvc5's Node and the term interface the ported Z3 core is
- * written against.
+ * The quantified variables of the ported Z3 core.
  */
 
-#include "z3/util/ast.h"
+#include "z3/quantifiers/quantifier_normalizer.h"
 
 #include "expr/bound_var_manager.h"
 #include "expr/node_algorithm.h"
 #include "expr/node_manager.h"
-#include "smt/env.h"
-#include "theory/quantifiers/quantifiers_attributes.h"
-#include "theory/quantifiers/term_util.h"
-#include "theory/rewriter.h"
-#include "theory/theory.h"
-#include "util/string.h"
 
 namespace cvc5::internal {
 namespace z3 {
-
-TNode getDecl(TNode n)
-{
-  if (n.getMetaKind() == kind::metakind::PARAMETERIZED)
-  {
-    return n.getOperator();
-  }
-  if (NodeManager::hasOperator(n.getKind()))
-  {
-    return n.getNodeManager()->operatorOf(n.getKind());
-  }
-  // A leaf is its own declaration: it is congruent to nothing but itself.
-  return n;
-}
-
-bool isCommutative(TNode n)
-{
-  // Z3 consults func_decl::is_commutative(), which the congruence table uses
-  // to normalize the argument order of binary applications. Only the binary
-  // case matters, since that is the only one the table treats as unordered.
-  return n.getNumChildren() == 2
-         && theory::quantifiers::TermUtil::isComm(n.getKind());
-}
 
 QuantifierNormalizer::QuantifierNormalizer(NodeManager* nm) : d_nm(nm) {}
 

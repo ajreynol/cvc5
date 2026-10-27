@@ -19,9 +19,8 @@ weakening; cvc5's preprocessing proves the form the core takes them in.
 
 | Directory | Contents | May include (from the port) |
 |---|---|---|
-| `src/z3/util/` | Data structures and the term interface: the trail stack (on a `context::Context` of its own), approximate sets, `ast.h` (incl. `QuantifierNormalizer`), and `statistics` | nothing outside `z3/util/` |
-| `src/z3/relevancy/` | The Boolean side, over cvc5's `prop::SatLiteral`: `PropCore` (variables, assignment, clauses, watch lists, Boolean propagation), `RelevancyPropagator`, and `RelevancyTracker` (the `TheoryEngineModule` that hands it every asserted literal) | `z3/util/`, and `SmtContext` |
-| `src/z3/quantifiers/` | The coordinator and the cvc5 integration: `Z3Module` (the boundary with cvc5), `SmtContext` (internalizer, propagation and scopes), `EGraph`, `mam` (E-matching), `QiQueue`, the checker, the quantifier manager, `LemmaProofGenerator` | anything |
+| `src/z3/relevancy/` | The Boolean side, over cvc5's `prop::SatLiteral`: `PropCore` (variables, assignment, clauses, watch lists, Boolean propagation), `RelevancyPropagator`, and `RelevancyTracker` (the `TheoryEngineModule` that hands it every asserted literal) | `z3/quantifiers/` (`SmtContext`, the trail stack, the statistics) |
+| `src/z3/quantifiers/` | The coordinator and the cvc5 integration: `Z3Module` (the boundary with cvc5), `SmtContext` (internalizer, propagation and scopes), `EGraph`, `mam` (E-matching), `QiQueue`, the checker, the quantifier manager, `LemmaProofGenerator`, and the shared pieces: the trail stack (on a `context::Context` of its own), the statistics, and `QuantifierNormalizer` | anything |
 
 `PropCore` and `RelevancyPropagator` reach the theory side, `SmtContext`,
 directly, so the two directories depend on each other.
@@ -124,10 +123,9 @@ as of this README:
 
 | Directory | Files | Code | Comment | Blank |
 |---|---:|---:|---:|---:|
-| `src/z3/util/` | 5 | 485 | 217 | 104 |
-| `src/z3/relevancy/` | 10 | 1659 | 389 | 298 |
-| `src/z3/quantifiers/` | 24 | 7647 | 1633 | 918 |
-| **Total** | 39 | **9791** | 2239 | 1320 |
+| `src/z3/relevancy/` | 10 | 1661 | 389 | 297 |
+| `src/z3/quantifiers/` | 28 | 8114 | 1830 | 1014 |
+| **Total** | 38 | **9775** | 2219 | 1311 |
 
 The rest of cvc5 changes by 260 added and 18 deleted lines over 23 C++ files,
 most of them in `smt/set_defaults.cpp` (the capability checks) and
