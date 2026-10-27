@@ -665,14 +665,7 @@ void SmtContext::updateGeneration(ENode* e)
 
   if (0 < d_generation && d_generation < d_egraph.getGeneration(e))
   {
-    if (e->usesCgTable())
-    {
-      d_egraph.setGenerationSticky(e, d_generation);
-    }
-    else
-    {
-      d_egraph.setGeneration(e, d_generation);
-    }
+    d_egraph.setGeneration(e, d_generation);
   }
 }
 

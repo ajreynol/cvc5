@@ -45,7 +45,6 @@ Z3Module::Z3Module(Env& env,
       d_needCheck(false),
       d_popLevel(UINT32_MAX),
       d_pg(std::make_unique<LemmaProofGenerator>(env)),
-      d_splitStrategy(std::make_unique<SplitStrategy>(env, d_te)),
       d_popNotify(std::make_unique<PopNotify>(context(), *this))
 {
 }
@@ -68,9 +67,6 @@ void Z3Module::presolve()
     d_core->setupSearch();
     d_setup = true;
   }
-  // The strategies of the decision manager are cleared after each check-sat.
-  d_te->getDecisionManager()->registerStrategy(
-      theory::DecisionManager::STRAT_QUANT_Z3_SPLIT, d_splitStrategy.get());
 }
 
 void Z3Module::ppNotifyAssertions(const std::vector<Node>& assertions)
@@ -333,11 +329,6 @@ void Z3Module::checkCore(theory::Theory::Effort effort)
                      << " at level " << context()->getLevel() << std::endl;
     if (done)
     {
-      // The core's own search reaches a final check only once every relevant
-      // variable is assigned, while cvc5 may stop on a partial assignment.
-      // The relevant variables left are decided first, through splitting
-      // lemmas that cvc5's decision heuristic must justify.
-      splitPendingAtoms();
       if (d_needCheck)
       {
         return;
@@ -355,7 +346,6 @@ void Z3Module::checkCore(theory::Theory::Effort effort)
     {
       return;
     }
-    splitPendingAtoms();
     if (d_needCheck)
     {
       return;
@@ -523,91 +513,6 @@ Node Z3Module::delayUnit(const Node& lem)
   return weakened;
 }
 
-void Z3Module::splitNewlyRelevant()
-{
-  std::vector<Node> rel;
-  d_core->getPropCore().hostTakeRelevant(rel);
-  prop::PropEngine* pe = d_te->getPropEngine();
-  for (const Node& n : rel)
-  {
-    // A variable cvc5 knows is decided by its heuristic when an assertion
-    // needs it; the core's own variables (the conditions of term ITEs, for
-    // instance) are decided only through a split.
-    if (!d_core->getPropCore().bInternalized(n) || pe->isSatLiteral(toHost(n)))
-    {
-      continue;
-    }
-    SatVariable v = d_core->getPropCore().getBoolVar(n);
-    if (d_core->getPropCore().getAssignment(v) == SAT_VALUE_UNKNOWN
-        && d_core->getPropCore().isRelevant(v))
-    {
-      split(v);
-    }
-  }
-}
-
-void Z3Module::split(SatVariable v)
-{
-  prop::PropEngine* pe = d_te->getPropEngine();
-  TNode atom = d_core->getPropCore().boolVar2Expr(v);
-  if (atom.isNull() || atom.isConst())
-  {
-    return;
-  }
-  // The core has variables for the not-gates nested in terms; cvc5 decides
-  // their argument.
-  bool pol = atom.getKind() != Kind::NOT;
-  Node a = toHost(pol ? atom : atom[0]);
-  if (expr::hasFreeVar(a))
-  {
-    // not an atom of the search: the core has variables for the atoms in
-    // the patterns and bodies of quantifiers
-    return;
-  }
-  if (!pe->isSatLiteral(a))
-  {
-    // an atom of the core's own ground reasoning, which cvc5's theories do
-    // instead
-    return;
-  }
-  if (!d_splitAtoms.insert(a).second)
-  {
-    return;
-  }
-  d_splitStrategy->add(a);
-  d_core->getStats().d_numHostSplits++;
-  // cvc5 must search on, for the decision, even after a full check
-  d_qim.markUsed();
-  d_needCheck = true;
-}
-
-Node Z3Module::SplitStrategy::getNextDecisionRequest()
-{
-  prop::PropEngine* pe = d_te->getPropEngine();
-  for (const Node& a : d_atoms)
-  {
-    bool value;
-    if (!pe->hasValue(a, value))
-    {
-      return a;
-    }
-  }
-  return Node::null();
-}
-
-void Z3Module::splitPendingAtoms()
-{
-  for (size_t i = 0, n = d_core->getPropCore().getNumBoolVars(); i < n; ++i)
-  {
-    SatVariable v = static_cast<SatVariable>(i);
-    if (d_core->getPropCore().getAssignment(v) == SAT_VALUE_UNKNOWN
-        && d_core->getPropCore().isRelevant(v))
-    {
-      split(v);
-    }
-  }
-}
-
 bool Z3Module::propagateAndReport()
 {
   bool ok = d_core->propagate();
@@ -616,7 +521,6 @@ bool Z3Module::propagateAndReport()
     enterConflict();
     return false;
   }
-  splitNewlyRelevant();
   return true;
 }
 

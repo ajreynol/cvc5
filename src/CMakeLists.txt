@@ -1354,8 +1354,6 @@ libcvc5_add_sources(
   z3/quantifiers/quantifier_manager.h
   z3/quantifiers/quantifier_normalizer.cpp
   z3/quantifiers/quantifier_normalizer.h
-  z3/quantifiers/quantifier_stat.cpp
-  z3/quantifiers/quantifier_stat.h
   z3/quantifiers/smt_context.cpp
   z3/quantifiers/smt_context.h
   z3/quantifiers/statistics.h

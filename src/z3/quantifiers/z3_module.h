@@ -20,7 +20,6 @@
 #include <memory>
 
 #include "context/context.h"
-#include "theory/decision_strategy.h"
 #include "theory/incomplete_id.h"
 #include "theory/inference_id.h"
 #include "theory/lemma_property.h"
@@ -37,7 +36,7 @@ class LemmaProofGenerator;
  * The module of cvc5's quantifiers engine with --z3, which owns the ported
  * core (SmtContext) and is its boundary with cvc5: it follows the SAT context,
  * gives the core cvc5's facts and checks, and sends cvc5 the core's lemmas,
- * with their proofs, and the splits of its relevancy. cvc5's own theories do
+ * with their proofs. cvc5's own theories do
  * the ground reasoning, with their
  * equality engines and theory combination; the core matches and instantiates
  * over a shadow of the ground state:
@@ -45,7 +44,7 @@ class LemmaProofGenerator;
  *   for relevancy (RelevancyTracker), and the equalities cvc5's theories
  *   derive, through the master equality engine, of whose merges the
  *   quantifiers engine notifies this module (notifyMasterMerge);
- * - it sends lemmas only (instances, conflicts and splits), which need no
+ * - it sends lemmas only (instances and conflicts), which need no
  *   explanation, and reports no propagations;
  * - the formulas it asserts go through cvc5's preprocessing first.
  *
@@ -107,31 +106,6 @@ class Z3Module : public theory::quantifiers::QuantifiersModule
    * propagate, and at full effort run the final check.
    */
   void checkCore(theory::Theory::Effort effort);
-  /**
-   * The decisions the core asks cvc5 for: each atom it splits on, whenever
-   * it is unassigned. cvc5 asks its decision strategies before it decides
-   * on its own.
-   */
-  class SplitStrategy : public theory::DecisionStrategy
-  {
-   public:
-    SplitStrategy(Env& env, TheoryEngine*& te)
-        : theory::DecisionStrategy(env), d_te(te)
-    {
-    }
-    void initialize() override {}
-    Node getNextDecisionRequest() override;
-    std::string identify() const override { return "z3-split"; }
-    /** Ask for a decision on the atom a. */
-    void add(const Node& a) { d_atoms.push_back(a); }
-    void clear() { d_atoms.clear(); }
-
-   private:
-    /** The engine of the core, for its prop engine. */
-    TheoryEngine*& d_te;
-    /** The atoms to decide. */
-    std::vector<Node> d_atoms;
-  };
   /** Pops the propositional side when the SAT context pops. */
   class PopNotify : public context::ContextNotifyObj
   {
@@ -175,22 +149,7 @@ class Z3Module : public theory::quantifiers::QuantifiersModule
    * lemma itself is sent at the next check near the base level.
    */
   Node delayUnit(const Node& lem);
-  /**
-   * Make the relevant, unassigned variables of the core into decisions for
-   * cvc5 (see SplitStrategy). These are the gates that relevancy needs
-   * assigned, which cvc5 may leave unassigned when it stops on a partial
-   * assignment.
-   */
-  void splitPendingAtoms();
-  /**
-   * Split on the variables that became relevant since the last call, which
-   * cvc5 does not know and are still unassigned, as the core's relevancy
-   * queue would decide them.
-   */
-  void splitNewlyRelevant();
-  /** Have cvc5 decide v, unless it was asked before. */
-  void split(SatVariable v);
-  /** Propagate, and report what follows; returns false on a conflict. */
+  /** Propagate; returns false on a conflict, which it enters. */
   bool propagateAndReport();
   /**
    * The core's form of n, a formula of cvc5: its quantified formulas over
@@ -258,8 +217,6 @@ class Z3Module : public theory::quantifiers::QuantifiersModule
    * the quantifier names (qid) and patterns.
    */
   std::unordered_map<Node, Node> d_hostAtom;
-  /** The atoms split on, see split. */
-  std::unordered_set<Node> d_splitAtoms;
   /**
    * Proves the lemmas the core sends, and gives, for an instance or the
    * definition of a skolem, the lemma cvc5 is sent for it.
@@ -272,8 +229,6 @@ class Z3Module : public theory::quantifiers::QuantifiersModule
    * the lemma it weakens.
    */
   std::unordered_map<Node, theory::InferenceId> d_lemmaIds;
-  /** See SplitStrategy. */
-  std::unique_ptr<SplitStrategy> d_splitStrategy;
   /** Follows the pops of the SAT context. */
   std::unique_ptr<PopNotify> d_popNotify;
   /** Gives the core the literals the SAT solver asserts. */

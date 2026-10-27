@@ -153,12 +153,6 @@ class EGraph : protected EnvObj
   }
 
   void setGeneration(ENode* e, uint32_t generation);
-  /**
-   * Lower the generation of e, which uses the congruence table, to
-   * generation, for good: it is applied again when the congruence class is
-   * split and remade.
-   */
-  void setGenerationSticky(ENode* e, uint32_t generation);
   /** Undo a congruence class generation merge; invoked from the trail. */
   void undoMergeCgcGenerations(ENode* e1,
                                uint32_t e1Generation,
@@ -253,10 +247,6 @@ class EGraph : protected EnvObj
   void removeParentsFromCgTable(ENode* r1);
   void reinsertParentsIntoCgTable(ENode* r1, ENode* r2);
   void mergeCgcGenerations(ENode* e1, uint32_t e1Generation, ENode* e2);
-  void applyStickyUpdates(ENode* e1,
-                          uint32_t e1Generation,
-                          ENode* e2,
-                          uint32_t e2Generation);
 
   void pushNewCongruence(ENode* n1, ENode* n2)
   {
@@ -286,7 +276,6 @@ class EGraph : protected EnvObj
   std::unordered_map<TNode, uint32_t> d_declIds;
   ENodeVector d_emptyVector;
   CgTable d_cgTable;
-  std::unordered_map<ENode*, uint32_t> d_stickyGenerationUpdates;
   /**
    * A temporary cache of parent generations, held between
    * removeParentsFromCgTable and reinsertParentsIntoCgTable.

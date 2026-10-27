@@ -64,8 +64,6 @@ struct Statistics
   /** lemmas sent, and lemmas not sent again */
   IntStat d_numHostLemmas;
   IntStat d_numHostDuplicateLemmas;
-  /** splitting lemmas for relevant, unassigned variables */
-  IntStat d_numHostSplits;
   /** merges of the shadow from cvc5's theories */
   IntStat d_numShadowMerges;
   /** conflicts of the shadow, left to cvc5's theories */
@@ -124,7 +122,6 @@ inline Statistics::Statistics(StatisticsRegistry& sr)
       d_numHostLemmas(sr.registerInt("z3::hostLemmas", false)),
       d_numHostDuplicateLemmas(
           sr.registerInt("z3::hostDuplicateLemmas", false)),
-      d_numHostSplits(sr.registerInt("z3::hostSplits", false)),
       d_numShadowMerges(sr.registerInt("z3::shadowMerges", false)),
       d_numShadowConflicts(sr.registerInt("z3::shadowConflicts", false)),
       d_numHostDelayedUnits(sr.registerInt("z3::hostDelayedUnits", false)),

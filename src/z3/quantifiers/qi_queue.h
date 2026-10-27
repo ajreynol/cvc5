@@ -31,7 +31,6 @@
 #include "expr/node.h"
 #include "z3/quantifiers/checker.h"
 #include "z3/quantifiers/fingerprints.h"
-#include "z3/quantifiers/quantifier_stat.h"
 
 namespace cvc5::internal {
 namespace z3 {
@@ -75,7 +74,7 @@ class QiQueue
   };
 
   /**
-   * The cost of an instance of q whose bindings have the maximum generation
+   * The cost of an instance whose bindings have the maximum generation
    * generation, by Z3's default cost function (+ weight generation). The
    * enodes the instance creates get the cost as their generation, Z3's
    * default (qi.new_gen = cost).
@@ -87,25 +86,19 @@ class QiQueue
    * are never broken. See the long comment on the "weight 0" performance bug
    * in Z3's qi_params.h.
    */
-  float getCost(TNode q, uint32_t generation);
+  static float getCost(uint32_t generation);
   void instantiate(const Entry& ent);
   /**
    * Whether the checker finds the instance of q with these bindings already
    * satisfied (--z3-qi-checker), in which case it is counted, as in Z3, but
    * not made.
    */
-  bool skipSatisfied(TNode q,
-                     QuantifierStat* stat,
-                     size_t numBindings,
-                     ENode* const* bindings);
+  bool skipSatisfied(TNode q, size_t numBindings, ENode* const* bindings);
   /**
    * The lemma (or (not q) instance) for the instance of q with these
    * bindings, counted as made; or null if the instance rewrites to true.
    */
-  Node mkLemma(TNode q,
-               QuantifierStat* stat,
-               size_t numBindings,
-               ENode* const* bindings);
+  Node mkLemma(TNode q, size_t numBindings, ENode* const* bindings);
 
   QuantifierManager& d_qm;
   SmtContext& d_context;

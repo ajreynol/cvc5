@@ -50,7 +50,6 @@ QuantifierManager::QuantifierManager(SmtContext& ctx)
     : d_context(ctx),
       d_queue(*this, ctx),
       d_fingerprints(ctx.getTrailStack()),
-      d_qstatGen(ctx.getTrailStack()),
       d_lazyMatchingIdx(0),
       d_active(false)
 {
@@ -63,28 +62,20 @@ QuantifierManager::~QuantifierManager() {}
 
 void QuantifierManager::add(TNode q, uint32_t generation)
 {
-  QuantifierStat* stat = d_qstatGen(q, generation);
-  d_quantifierStat[q] = stat;
+  d_generations[q] = generation;
   d_quantifiers.push_back(q);
 }
 
 void QuantifierManager::del(TNode q)
 {
   d_quantifiers.pop_back();
-  d_quantifierStat.erase(q);
-}
-
-QuantifierStat* QuantifierManager::getStat(TNode q) const
-{
-  auto it = d_quantifierStat.find(q);
-  Assert(it != d_quantifierStat.end());
-  return it->second;
+  d_generations.erase(q);
 }
 
 uint32_t QuantifierManager::getGeneration(TNode q) const
 {
-  auto it = d_quantifierStat.find(q);
-  return it == d_quantifierStat.end() ? 0 : it->second->getGeneration();
+  auto it = d_generations.find(q);
+  return it == d_generations.end() ? 0 : it->second;
 }
 
 bool QuantifierManager::addInstance(TNode q,
@@ -92,12 +83,11 @@ bool QuantifierManager::addInstance(TNode q,
                                     ENode* const* bindings,
                                     uint32_t maxGeneration)
 {
-  if (d_quantifierStat.count(q) == 0)
+  if (d_generations.count(q) == 0)
   {
     return false;
   }
   maxGeneration = std::max(maxGeneration, getGeneration(q));
-  getStat(q)->updateMaxGeneration(maxGeneration);
   Fingerprint* f = d_fingerprints.insert(q, numBindings, bindings);
   if (f != nullptr)
   {
@@ -112,10 +102,6 @@ bool QuantifierManager::addInstance(TNode q,
 
 void QuantifierManager::initSearch()
 {
-  for (const Node& q : d_quantifiers)
-  {
-    getStat(q)->resetNumInstancesCurrSearch();
-  }
   d_queue.initSearch();
   d_lazyMatchingIdx = 0;
 }

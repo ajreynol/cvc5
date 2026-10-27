@@ -24,7 +24,6 @@
 #include "z3/quantifiers/enode.h"
 #include "z3/quantifiers/quantifier_manager.h"
 #include "z3/quantifiers/quantifier_normalizer.h"
-#include "z3/quantifiers/quantifier_stat.h"
 #include "z3/quantifiers/smt_context.h"
 #include "z3/quantifiers/statistics.h"
 
@@ -45,19 +44,15 @@ void QiQueue::setup()
   d_eagerCostThreshold = d_context.getEnv().getOptions().z3.z3QiEagerThreshold;
 }
 
-float QiQueue::getCost(TNode q, uint32_t generation)
+float QiQueue::getCost(uint32_t generation)
 {
   // Z3's default cost function, qi.cost = (+ weight generation), weight 1
-  float r = 1.0f + static_cast<float>(generation);
-  d_qm.getStat(q)->updateMaxCost(r);
-  return r;
+  return 1.0f + static_cast<float>(generation);
 }
 
 void QiQueue::insert(Fingerprint* f, uint32_t generation)
 {
-  TNode q = f->getQuantifier();
-  float cost = getCost(q, generation);
-  d_newEntries.push_back(Entry(f, cost, generation));
+  d_newEntries.push_back(Entry(f, getCost(generation), generation));
 }
 
 void QiQueue::instantiate()
@@ -116,8 +111,7 @@ void QiQueue::instantiate(const Entry& ent)
   size_t numBindings = f->getNumArgs();
   ENode* const* bindings = f->getArgs();
 
-  QuantifierStat* stat = d_qm.getStat(q);
-  if (skipSatisfied(q, stat, numBindings, bindings))
+  if (skipSatisfied(q, numBindings, bindings))
   {
     return;
   }
@@ -131,7 +125,7 @@ void QiQueue::instantiate(const Entry& ent)
       d_lemmas.emplace(q.getNodeManager()->mkNode(Kind::SEXPR, key), Node());
   if (it.second)
   {
-    lemma = mkLemma(q, stat, numBindings, bindings);
+    lemma = mkLemma(q, numBindings, bindings);
     it.first->second = lemma;
   }
   else
@@ -140,12 +134,10 @@ void QiQueue::instantiate(const Entry& ent)
     lemma = it.first->second;
     if (lemma.isNull())
     {
-      stat->incNumInstancesSimplifyTrue();
       d_context.getStats().d_numInstancesSimplifyTrue++;
     }
     else
     {
-      stat->incNumInstances();
       d_context.getStats().d_numInstances++;
     }
   }
@@ -165,27 +157,20 @@ void QiQueue::instantiate(const Entry& ent)
 
 void QiQueue::initSearch() { d_newEntries.clear(); }
 
-bool QiQueue::skipSatisfied(TNode q,
-                            QuantifierStat* stat,
-                            size_t numBindings,
-                            ENode* const* bindings)
+bool QiQueue::skipSatisfied(TNode q, size_t numBindings, ENode* const* bindings)
 {
   if (d_context.getEnv().getOptions().z3.z3QiChecker
       && d_checker.isSat(q[1], numBindings, bindings))
   {
     // The instance is already satisfied, so creating it would be wasted
     // work. It still counts as an instantiation, as it does in Z3.
-    stat->incNumInstancesCheckerSat();
     d_context.getStats().d_numInstancesCheckerSat++;
     return true;
   }
   return false;
 }
 
-Node QiQueue::mkLemma(TNode q,
-                      QuantifierStat* stat,
-                      size_t numBindings,
-                      ENode* const* bindings)
+Node QiQueue::mkLemma(TNode q, size_t numBindings, ENode* const* bindings)
 {
   // Substitute the bindings for the canonical quantified variables. Note
   // bindings[i] is the binding of the i-th variable of the bound variable
@@ -208,7 +193,6 @@ Node QiQueue::mkLemma(TNode q,
 
   if (sInstance.getKind() == Kind::CONST_BOOLEAN && sInstance.getConst<bool>())
   {
-    stat->incNumInstancesSimplifyTrue();
     d_context.getStats().d_numInstancesSimplifyTrue++;
     return Node::null();
   }
@@ -232,7 +216,6 @@ Node QiQueue::mkLemma(TNode q,
   {
     lemma = nm->mkNode(Kind::OR, notQ, sInstance);
   }
-  stat->incNumInstances();
   d_context.getStats().d_numInstances++;
   return lemma;
 }

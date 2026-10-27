@@ -254,18 +254,6 @@ void EGraph::removeParentsFromCgTable(ENode* r1)
   }
 }
 
-void EGraph::setGenerationSticky(ENode* n, uint32_t generation)
-{
-  Assert(n->usesCgTable());
-  Assert(!n->isEq());
-  // The caller is responsible for this; sticky updates are too expensive to
-  // spend on no-ops.
-  Assert(generation < getGeneration(n));
-
-  setGeneration(n, generation);
-  d_stickyGenerationUpdates[n] = generation;
-}
-
 void EGraph::reinsertParentsIntoCgTable(ENode* r1, ENode* r2)
 {
   // Reinsert the parents of r1 that removeParentsFromCgTable took out. Some
@@ -461,27 +449,6 @@ void EGraph::undoMergeCgcGenerations(ENode* e1,
 {
   setGeneration(e1, e1Generation);
   setGeneration(e2, e2Generation);
-  applyStickyUpdates(e1, e1Generation, e2, e2Generation);
-}
-
-void EGraph::applyStickyUpdates(ENode* e1,
-                                uint32_t e1Generation,
-                                ENode* e2,
-                                uint32_t e2Generation)
-{
-  Assert(e1->usesCgTable());
-  Assert(e2->usesCgTable());
-  for (const std::pair<ENode* const, uint32_t>& tg : d_stickyGenerationUpdates)
-  {
-    if (tg.second < e1Generation && congruent(tg.first, e1))
-    {
-      setGeneration(e1, tg.second);
-    }
-    else if (tg.second < e2Generation && congruent(tg.first, e2))
-    {
-      setGeneration(e2, tg.second);
-    }
-  }
 }
 
 ENode* EGraph::getENodeEqTo(TNode decl,
@@ -600,7 +567,6 @@ void EGraph::undoMkENode()
   Assert(d_eInternalizedStack.size() == d_enodes.size());
   d_enodes.pop_back();
   d_eInternalizedStack.pop_back();
-  d_stickyGenerationUpdates.erase(e);
 }
 
 Node EGraph::masterTermOf(TNode rep) const

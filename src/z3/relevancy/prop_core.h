@@ -264,15 +264,6 @@ class PropCore : protected EnvObj
    */
   bool hostAssign(SatLiteral l);
   /**
-   * Move to out the expressions of the variables that became relevant while
-   * unassigned since the last call.
-   */
-  void hostTakeRelevant(std::vector<Node>& out)
-  {
-    out.insert(out.end(), d_hostRelevant.begin(), d_hostRelevant.end());
-    d_hostRelevant.clear();
-  }
-  /**
    * Add the clauses that define the Boolean variable of the gate n in terms
    * of its arguments, and the relevancy watches of n. Called once, when the
    * variable of n is made.
@@ -340,9 +331,6 @@ class PropCore : protected EnvObj
   bool simplifyAuxClauseLiterals(size_t& numLits, SatLiteral* lits);
   bool useBinaryClauseOpt(SatLiteral l1, SatLiteral l2) const;
   void addWatchLiteral(Clause* cls, size_t idx);
-
-  /** The unassigned variables that became relevant; see hostTakeRelevant. */
-  std::vector<Node> d_hostRelevant;
 
   /** The theory side. */
   SmtContext& d_ctx;

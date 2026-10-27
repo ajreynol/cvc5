@@ -272,10 +272,6 @@ void PropCore::notifyRelevant(TNode n)
         d_ctx.enqueueAtom(SatLiteral(v, val == SAT_VALUE_FALSE));
       }
     }
-    if (getAssignment(v) == SAT_VALUE_UNKNOWN)
-    {
-      d_hostRelevant.push_back(n);
-    }
   }
   d_ctx.notifyRelevant(n);
 }

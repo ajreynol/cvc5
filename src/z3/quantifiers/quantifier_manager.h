@@ -14,7 +14,7 @@
  * cvc5 style.
  *
  * The manager owns the E-matching engines (Mam), the queue of delayed
- * instantiations (QiQueue) and the per-quantifier statistics. Of Z3's
+ * instantiations (QiQueue) and the generations of the quantifiers. Of Z3's
  * plugins, only E-matching is ported. The core calls
  * into it when a quantifier is asserted, when equivalence classes merge, when
  * a term becomes relevant, and at final check.
@@ -32,7 +32,6 @@
 #include "expr/node.h"
 #include "z3/quantifiers/fingerprints.h"
 #include "z3/quantifiers/qi_queue.h"
-#include "z3/quantifiers/quantifier_stat.h"
 
 namespace cvc5::internal {
 namespace z3 {
@@ -50,8 +49,6 @@ class QuantifierManager
   void add(TNode q, uint32_t generation);
   void del(TNode q);
   bool empty() const { return d_quantifiers.empty(); }
-
-  QuantifierStat* getStat(TNode q) const;
 
   uint32_t getGeneration(TNode q) const;
 
@@ -91,8 +88,8 @@ class QuantifierManager
   QiQueue d_queue;
   /** The fingerprints of the instances made in the current scopes. */
   FingerprintSet d_fingerprints;
-  std::unordered_map<Node, QuantifierStat*> d_quantifierStat;
-  QuantifierStatGen d_qstatGen;
+  /** The generation of each quantifier, as Z3's quantifier_stat keeps it. */
+  std::unordered_map<Node, uint32_t> d_generations;
   std::vector<Node> d_quantifiers;
   /** The E-matching engine for the patterns matched eagerly. */
   std::unique_ptr<Mam> d_mam;
