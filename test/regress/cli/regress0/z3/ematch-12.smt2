@@ -1,8 +1,9 @@
 ; COMMAND-LINE: --z3
 ; EXPECT: unsat
-; DISABLE-TESTER: model
-; DISABLE-TESTER: unsat-core
 ; ground arg that is itself an application
+; DISABLE-TESTER: unsat-core
+; The unsat core drops the assertions that provide the trigger terms, so
+; E-matching answers unknown on the core alone.
 (set-logic UFLIA)
 (declare-sort U 0) (declare-sort T 0)
 (declare-fun ht (U T) Bool) (declare-fun uint (Int) T)

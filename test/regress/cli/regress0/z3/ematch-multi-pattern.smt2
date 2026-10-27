@@ -1,6 +1,5 @@
 ; COMMAND-LINE: --z3
 ; EXPECT: unsat
-; DISABLE-TESTER: model
 ; multi-pattern
 (set-logic UF)
 (declare-sort U 0) (declare-fun f (U) U) (declare-fun g (U) U)

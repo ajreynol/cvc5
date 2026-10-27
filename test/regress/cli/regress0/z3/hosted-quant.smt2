@@ -1,6 +1,5 @@
 ; COMMAND-LINE: --z3
 ; EXPECT: unsat
-; DISABLE-TESTER: model
 ; cvc5's prop engine over the ported Z3 theory engine: instances made during
 ; the theory side's propagation reach cvc5 as lemmas, and the chain of two
 ; instances refutes the ground assertions

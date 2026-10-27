@@ -1,6 +1,5 @@
 ; COMMAND-LINE: --z3
 ; EXPECT: unsat
-; DISABLE-TESTER: model
 ; repeated variable pattern f(x,x)
 (set-logic UF)
 (declare-sort U 0) (declare-fun f (U U) U) (declare-fun a () U) (declare-fun p (U) Bool)

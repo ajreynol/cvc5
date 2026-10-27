@@ -1,6 +1,5 @@
 ; COMMAND-LINE: --z3
 ; EXPECT: unsat
-; DISABLE-TESTER: model
 (set-logic UFDTLIA)
 (declare-datatype Lst ((nil) (cons (hd Int) (tl Lst))))
 (declare-fun f (Lst) Int)

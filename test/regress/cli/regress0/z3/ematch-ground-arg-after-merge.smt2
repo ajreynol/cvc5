@@ -1,8 +1,9 @@
 ; COMMAND-LINE: --z3
 ; EXPECT: unsat
-; DISABLE-TESTER: model
-; DISABLE-TESTER: unsat-core
 ; pattern with a ground FIRST argument, matched only after a later merge
+; DISABLE-TESTER: unsat-core
+; The unsat core drops the assertions that provide the trigger terms, so
+; E-matching answers unknown on the core alone.
 (set-logic UF)
 (declare-sort U 0)
 (declare-fun ap (U U) U) (declare-fun g (U) U)

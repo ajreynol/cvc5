@@ -1,6 +1,5 @@
 ; COMMAND-LINE: --z3
 ; EXPECT: unsat
-; DISABLE-TESTER: model
 ; Outside of incremental mode, the assumptions of check-sat-assuming are
 ; preprocessed and prepared with the assertions.
 (set-logic UF)
