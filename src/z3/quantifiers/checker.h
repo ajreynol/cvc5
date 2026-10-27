@@ -32,6 +32,7 @@
 namespace cvc5::internal {
 namespace z3 {
 
+class EGraph;
 class ENode;
 class SmtContext;
 
@@ -57,6 +58,7 @@ class Checker
   ENode* getENodeEqTo(TNode n);
 
   SmtContext& d_context;
+  EGraph& d_egraph;
   std::unordered_map<Node, bool> d_isTrueCache[2];
   std::unordered_map<Node, ENode*> d_toENodeCache;
   size_t d_numBindings;

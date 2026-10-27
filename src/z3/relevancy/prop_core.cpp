@@ -40,13 +40,6 @@ bool isFalseNode(TNode n)
   return n.getKind() == Kind::CONST_BOOLEAN && !n.getConst<bool>();
 }
 
-/** True if n is an atom or the negation of one, as Z3's is_literal is. */
-bool isLiteralNode(TNode n)
-{
-  TNode a = n.getKind() == Kind::NOT ? n[0] : n;
-  return !isApp(a) || a.getNumChildren() == 0;
-}
-
 }  // namespace
 
 PropCore::PropCore(Env& env, SmtContext& ctx, Statistics& stats)
@@ -57,13 +50,6 @@ PropCore::PropCore(Env& env, SmtContext& ctx, Statistics& stats)
       d_qhead(0),
       d_conflict(false),
       d_assertedInconsistent(false),
-      d_flushing(false),
-      d_assertedFormulasQhead(0),
-      d_hasQuantifiers(false),
-      d_internalizingAssertions(false),
-      d_searching(false),
-      d_resourceOut(false),
-      d_scopeLvl(0),
       d_mkBoolVarTrail(*this)
 {
 }
@@ -81,281 +67,14 @@ void PropCore::initTrue(TNode t)
 
 void PropCore::flushClauses()
 {
-  d_flushing = true;
   delClauses(d_auxClauses, 0);
-  d_flushing = false;
 }
 
 // ---------------------------------------------------- input and entry points
 
-void PropCore::assertFormula(TNode e)
-{
-  if (getCancelFlag())
-  {
-    return;
-  }
-  if (!d_searching)
-  {
-    popToBaseLvl();
-  }
-  pushAssertion(e);
-}
-
-void PropCore::pushAssertion(TNode e)
-{
-  // Z3 splits a conjunction, and a negated disjunction, into separate
-  // assertions while they are being collected (see
-  // asserted_formulas::push_assertion). This matters beyond saving a Boolean
-  // variable: an assertion is marked relevant when it is asserted, while the
-  // conjuncts of a top-level conjunction never are -- the and-gate only
-  // propagates relevancy to its arguments once the conjunction itself is
-  // assigned, which never happens for a root. cvc5's preprocessor leaves
-  // such conjunctions in place, so the split is done here.
-  if (isTrueNode(e))
-  {
-    return;
-  }
-  if (isFalseNode(e))
-  {
-    d_assertedInconsistent = true;
-    d_assertedFormulas.push_back(e);
-    return;
-  }
-  if (e.getKind() == Kind::AND)
-  {
-    for (const Node& arg : e)
-    {
-      pushAssertion(arg);
-    }
-    return;
-  }
-  if (e.getKind() == Kind::NOT && e[0].getKind() == Kind::OR)
-  {
-    for (const Node& arg : e[0])
-    {
-      pushAssertion(arg.negate());
-    }
-    return;
-  }
-  // What Z3 does next is asserted_formulas::flatten_clauses, whose point is
-  // that its core gets flat clauses rather than a tree of gates: every nested
-  // gate costs a Boolean variable, two clauses and a link in the chain
-  // relevancy has to walk before it reaches the atoms. A top-level
-  // if-then-else is two clauses, and a top-level disjunction over a
-  // conjunction distributes.
-  if (e.getKind() == Kind::ITE)
-  {
-    pushAssertion(nodeManager()->mkNode(Kind::OR, e[0].negate(), e[1]));
-    pushAssertion(nodeManager()->mkNode(Kind::OR, Node(e[0]), e[2]));
-    return;
-  }
-  if (e.getKind() == Kind::OR && e.getNumChildren() == 2)
-  {
-    for (size_t i = 0; i < 2; ++i)
-    {
-      TNode conj = e[i];
-      TNode rest = e[1 - i];
-      // Z3 also distributes over a shared conjunction when the other side is
-      // not a literal, using a reference count to tell that the conjunction
-      // occurs nowhere else. There is no equally cheap test here, so only the
-      // case that cannot grow the formula is taken: duplicating a literal
-      // across the conjuncts costs one literal per conjunct.
-      if (conj.getKind() == Kind::AND && isLiteralNode(rest))
-      {
-        for (const Node& arg : conj)
-        {
-          pushAssertion(nodeManager()->mkNode(Kind::OR, Node(rest), arg));
-        }
-        return;
-      }
-    }
-  }
-  if (!d_hasQuantifiers && expr::hasClosure(Node(e)))
-  {
-    d_hasQuantifiers = true;
-  }
-  Trace("z3-assert") << "ASSERT " << e << std::endl;
-  d_assertedFormulas.push_back(e);
-}
-
-void PropCore::internalizeAssertions()
-{
-  if (getCancelFlag() || d_internalizingAssertions)
-  {
-    return;
-  }
-  d_internalizingAssertions = true;
-  if (d_assertedInconsistent)
-  {
-    setConflict();
-    d_internalizingAssertions = false;
-    return;
-  }
-  while (d_assertedFormulasQhead < d_assertedFormulas.size())
-  {
-    if (getCancelFlag())
-    {
-      d_internalizingAssertions = false;
-      return;
-    }
-    TNode f = d_assertedFormulas[d_assertedFormulasQhead];
-    ++d_assertedFormulasQhead;
-    d_ctx.internalizeAssertion(f, 0);
-  }
-  d_internalizingAssertions = false;
-}
-
 // ----------------------------------------------------------- the fixpoint
 
-bool PropCore::getCancelFlag()
-{
-  if (!resourceManager()->out())
-  {
-    return false;
-  }
-  d_resourceOut = true;
-  return true;
-}
-
-bool PropCore::resourceLimitsExceeded()
-{
-  if (d_searching && d_resourceOut)
-  {
-    return true;
-  }
-  return getCancelFlag();
-}
-
-bool PropCore::canPropagate() const
-{
-  return d_qhead != d_assignedLiterals.size()
-         || d_relevancyPropagator->canPropagate()
-         || d_ctx.hasPendingTheoryWork();
-}
-
-bool PropCore::propagate()
-{
-  while (true)
-  {
-    if (inconsistent())
-    {
-      return false;
-    }
-    size_t qhead = d_qhead;
-    if (!bcp())
-    {
-      return false;
-    }
-    Assert(!inconsistent());
-    propagateRelevancy(qhead);
-    if (inconsistent())
-    {
-      return false;
-    }
-    if (!d_ctx.theoryPropagate())
-    {
-      return false;
-    }
-    if (resourceLimitsExceeded())
-    {
-      d_qhead = qhead;
-      return true;
-    }
-    if (!canPropagate())
-    {
-      return true;
-    }
-  }
-}
-
 // ------------------------------------------------- the Boolean structure
-
-void PropCore::assertRoot(TNode n)
-{
-  if (expr::isBooleanConnective(n) && n.getKind() != Kind::NOT)
-  {
-    switch (n.getKind())
-    {
-      case Kind::AND:
-      {
-        for (const Node& arg : n)
-        {
-          d_ctx.internalizeRec(arg, true);
-          Literal lit = getLiteral(arg);
-          mkRootClause(1, &lit);
-        }
-        break;
-      }
-      case Kind::OR:
-      {
-        LiteralVector lits;
-        for (const Node& arg : n)
-        {
-          d_ctx.internalizeRec(arg, true);
-          lits.push_back(getLiteral(arg));
-        }
-        mkRootClause(lits.size(), lits.data());
-        addOrRelWatches(n);
-        break;
-      }
-      case Kind::IMPLIES:
-      {
-        d_ctx.internalizeRec(n[0], true);
-        d_ctx.internalizeRec(n[1], true);
-        mkRootClause(~getLiteral(n[0]), getLiteral(n[1]));
-        addImpliesRelWatches(n);
-        break;
-      }
-      case Kind::EQUAL:
-      case Kind::XOR:
-      {
-        TNode lhs = n[0];
-        TNode rhs = n[1];
-        d_ctx.internalizeRec(lhs, true);
-        d_ctx.internalizeRec(rhs, true);
-        Literal l1 = getLiteral(lhs);
-        Literal l2 = getLiteral(rhs);
-        if (n.getKind() == Kind::XOR)
-        {
-          l2 = ~l2;
-        }
-        mkRootClause(l1, ~l2);
-        mkRootClause(~l1, l2);
-        break;
-      }
-      case Kind::ITE:
-      {
-        TNode c = n[0];
-        TNode t = n[1];
-        TNode e = n[2];
-        d_ctx.internalizeRec(c, true);
-        d_ctx.internalizeRec(t, true);
-        d_ctx.internalizeRec(e, true);
-        Literal cl = getLiteral(c);
-        Literal tl = getLiteral(t);
-        Literal el = getLiteral(e);
-        mkRootClause(~cl, tl);
-        mkRootClause(cl, el);
-        addIteRelWatches(n);
-        break;
-      }
-      default: Unreachable();
-    }
-    markAsRelevant(n);
-  }
-  else if (n.getKind() == Kind::DISTINCT)
-  {
-    // Z3 encodes a very large distinct with auxiliary values over a fresh
-    // sort. cvc5's rewriter expands distinct during preprocessing, so the
-    // core is not expected to meet one at all; the plain encoding is used.
-    assertDefault(n);
-    markAsRelevant(n);
-  }
-  else
-  {
-    assertDefault(n);
-  }
-}
 
 void PropCore::mkGateConstraints(TNode n)
 {
@@ -389,25 +108,6 @@ void PropCore::mkGateConstraints(TNode n)
     case Kind::DISTINCT:
       Unreachable() << "z3: formula has not been simplified: " << n;
     default: break;
-  }
-}
-
-void PropCore::assertDefault(TNode n)
-{
-  d_ctx.internalize(n, true);
-  Literal l = getLiteral(n);
-  if (l == s_falseLiteral)
-  {
-    setConflict();
-  }
-  else if (l == s_trueLiteral)
-  {
-    return;
-  }
-  else
-  {
-    assign(l);
-    markAsRelevant(l);
   }
 }
 
@@ -602,45 +302,25 @@ void PropCore::propagateRelevancy(size_t qhead)
 
 void PropCore::pushScope()
 {
-  d_scopeLvl++;
-  d_scopes.push_back(Scope{d_assignedLiterals.size(),
-                           d_auxClauses.size(),
-                           d_unitsToReassert.size()});
-  d_ctx.pushTheoryScope();
+  d_scopes.push_back(Scope{d_assignedLiterals.size(), d_auxClauses.size()});
 }
 
 void PropCore::popScope(size_t numScopes)
 {
   Assert(numScopes > 0);
-  Assert(numScopes <= d_scopeLvl);
-  Assert(d_scopes.size() == d_scopeLvl);
-
-  uint32_t newLvl = d_scopeLvl - static_cast<uint32_t>(numScopes);
-
-  // The order is that of Z3's pop_scope_core, except that the theory side's
-  // state other than the trail is popped in one step, after this side's
-  // clauses and relevancy, which are independent of it.
-  cacheGeneration(newLvl);
+  Assert(numScopes <= d_scopes.size());
+  size_t newLvl = d_scopes.size() - numScopes;
   Scope& sc = d_scopes[newLvl];
   d_conflict = false;
   delClauses(d_auxClauses, sc.d_auxClausesLim);
-  size_t unitsToReassertLim = sc.d_unitsToReassertLim;
-  d_ctx.popTheoryScopeBegin();
-  unassignVars(d_scopes[newLvl].d_assignedLiteralsLim);
-  d_ctx.popTheoryScopeEnd(numScopes);
+  unassignVars(sc.d_assignedLiteralsLim);
   d_scopes.resize(newLvl);
-  d_scopeLvl = newLvl;
-
-  reassertUnits(unitsToReassertLim);
-  d_ctx.resetCacheGeneration();
 }
 
-void PropCore::popToBaseLvl()
+bool PropCore::hasPendingPropagation() const
 {
-  if (!atBaseLevel())
-  {
-    popScope(d_scopeLvl);
-  }
+  return d_qhead != d_assignedLiterals.size()
+         || d_relevancyPropagator->canPropagate();
 }
 
 // ----------------------------------------------------------- the Boolean core
@@ -663,8 +343,9 @@ bool PropCore::bcp()
   Assert(!inconsistent());
   while (d_qhead < d_assignedLiterals.size())
   {
-    if (d_ctx.getCancelFlag())
+    if (resourceManager()->out())
     {
+      // the search is out of resources, see SmtContext::getCancelFlag
       return true;
     }
     Literal l = d_assignedLiterals[d_qhead];
@@ -917,42 +598,6 @@ void PropCore::unassignVars(size_t oldLim)
   d_qhead = oldLim;
 }
 
-void PropCore::cacheGeneration(uint32_t newScopeLvl)
-{
-  // When a unit is reasserted its enodes and literals may have to be
-  // recreated. The generation number of a recreated enode must be the one it
-  // had before, otherwise it would reset to 0 and defeat the matching-loop
-  // heuristics that control quantifier instantiation.
-  Scope& s = d_scopes[newScopeLvl];
-  for (size_t i = s.d_unitsToReassertLim, sz = d_unitsToReassert.size(); i < sz;
-       ++i)
-  {
-    d_ctx.cacheGeneration(d_unitsToReassert[i].d_unit, newScopeLvl);
-  }
-}
-
-void PropCore::reassertUnits(size_t unitsToReassertLim)
-{
-  for (size_t i = unitsToReassertLim, sz = d_unitsToReassert.size(); i < sz;
-       ++i)
-  {
-    ReplayUnit& ru = d_unitsToReassert[i];
-    d_ctx.internalize(ru.d_unit, true);
-    BoolVar v = getBoolVar(ru.d_unit);
-    Assert(v != s_nullBoolVar) << "unit without a variable: " << ru.d_unit;
-    Literal l(v, ru.d_sign);
-    assign(l);
-    if (ru.d_relevant)
-    {
-      markAsRelevant(l);
-    }
-  }
-  if (atBaseLevel())
-  {
-    d_unitsToReassert.clear();
-  }
-}
-
 BoolVar PropCore::mkBoolVar(TNode n)
 {
   Assert(!bInternalized(n));
@@ -986,7 +631,7 @@ BoolVar PropCore::mkBoolVar(TNode n)
   d_watches[l.index()].reset();
   d_watches[notL.index()].reset();
   // record the level at which the variable was internalized
-  d_bdata[v].init(d_scopeLvl);
+  d_bdata[v].init(getScopeLevel());
   d_bInternalizedStack.push_back(n);
   d_ctx.pushTrailPtr(&d_mkBoolVarTrail);
   d_stats.d_numMkBoolVar++;
@@ -1049,7 +694,7 @@ bool PropCore::useBinaryClauseOpt(Literal l1, Literal l2) const
   // A binary clause is kept only in the watch lists, which backtracking does
   // not undo, so only one made at the base level over variables of the base
   // level can be.
-  if (d_scopeLvl > 0)
+  if (getScopeLevel() > 0)
   {
     return false;
   }
@@ -1127,41 +772,6 @@ Clause* PropCore::mkClause(size_t numLits, Literal* lits)
 
 // ------------------------------------------------------------------ host mode
 
-void PropCore::hostInit()
-{
-  d_stats.d_numAssertedFormulas =
-      static_cast<int64_t>(d_assertedFormulas.size());
-  popToBaseLvl();
-  internalizeAssertions();
-  d_ctx.initSearch();
-  d_resourceOut = false;
-  d_searching = true;
-}
-
-void PropCore::hostSyncLevel(uint32_t lvl)
-{
-  while (d_scopeLvl < lvl)
-  {
-    pushScope();
-  }
-  if (d_scopeLvl > lvl)
-  {
-    popScope(d_scopeLvl - lvl);
-  }
-}
-
-Literal PropCore::hostLiteral(TNode n)
-{
-  bool neg = n.getKind() == Kind::NOT;
-  TNode atom = neg ? n[0] : n;
-  if (!bInternalized(atom))
-  {
-    d_ctx.internalize(atom, true);
-  }
-  Literal l = getLiteral(atom);
-  return neg ? ~l : l;
-}
-
 bool PropCore::hostAssign(Literal l)
 {
   switch (getAssignment(l))
@@ -1174,8 +784,6 @@ bool PropCore::hostAssign(Literal l)
   }
   return true;
 }
-
-bool PropCore::hostFinalCheck() { return d_ctx.finalCheck(); }
 
 }  // namespace z3
 }  // namespace cvc5::internal

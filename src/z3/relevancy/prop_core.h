@@ -52,33 +52,21 @@ using prop::SatValue;
 /**
  * The Boolean side of the core: the Boolean variables and their assignment,
  * the watch lists and the clauses of the Boolean structure, Boolean
- * constraint propagation, relevancy, the scope levels, and the propagation
- * fixpoint.
+ * constraint propagation and relevancy, by scope.
  *
- * It runs in host mode: cvc5's prop engine searches, and this class mirrors,
- * for the theory side, the assignment of the atoms that cvc5 asserts. It
- * never decides or resolves a conflict itself, and its scopes follow cvc5's
- * SAT context (see SmtContext::syncLevel). Its clauses stay private: the theory
- * side sends cvc5 its instances and lemmas (SmtContext::setLemmaSender).
+ * It mirrors, for the theory side, the assignment of the atoms that cvc5
+ * asserts: it never decides or resolves a conflict itself. Its clauses stay
+ * private: the theory side sends cvc5 its instances and lemmas.
  *
- * The theory side, SmtContext, owns this object. This side calls it:
- * theoryPropagate and hasPendingTheoryWork for the propagation fixpoint,
- * finalCheck, initSearch, and pushTheoryScope, popTheoryScopeBegin and
- * popTheoryScopeEnd when scopes are pushed and popped; besides that, it
- * hands it the assigned atoms (enqueueAtom), notifies it of relevant terms
- * (notifyRelevant), and has it internalize the asserted formulas.
+ * SmtContext owns this object and drives it: the input, the propagation
+ * fixpoint and the scopes are SmtContext's, which pushes and pops this
+ * side's scopes with its own. This side notifies it of the assigned atoms
+ * (enqueueAtom), the relevant terms (notifyRelevant) and the deleted
+ * variables (notifyBoolVarDeleted).
  */
 class PropCore : protected EnvObj
 {
  public:
-  /** A unit literal that is reasserted after every backtrack. */
-  struct ReplayUnit
-  {
-    Node d_unit;
-    bool d_sign;
-    bool d_relevant;
-  };
-
   PropCore(Env& env, SmtContext& ctx, Statistics& stats);
   ~PropCore();
 
@@ -89,26 +77,6 @@ class PropCore : protected EnvObj
   void initTrue(TNode t);
   /** Delete all clauses, when the context is flushed. */
   void flushClauses();
-
-  // ------------------------------------------------------------------- input
-  /** Assert a (prepared) formula. */
-  void assertFormula(TNode e);
-
-  /** Add e to the asserted formulas, splitting a top-level conjunction. */
-  void pushAssertion(TNode e);
-
-  /**
-   * Internalize the asserted formulas that have not been internalized yet,
-   * through the theory side's SmtContext::internalizeAssertion.
-   */
-  void internalizeAssertions();
-
-  size_t getNumAssertedFormulas() const { return d_assertedFormulas.size(); }
-
-  TNode getAssertedFormula(size_t idx) const { return d_assertedFormulas[idx]; }
-
-  /** True if the input contains quantifiers. */
-  bool hasQuantifiers() const { return d_hasQuantifiers; }
 
   // ------------------------------------------------------ Boolean variables
   BoolVar mkBoolVar(TNode n);
@@ -200,10 +168,27 @@ class PropCore : protected EnvObj
   /** Boolean constraint propagation; returns false on a conflict. */
   bool bcp();
 
+  /** The next assigned literal for bcp to propagate. */
+  size_t getQhead() const { return d_qhead; }
+
+  /** Have bcp propagate the assigned literals from qhead on again. */
+  void setQhead(size_t qhead) { d_qhead = qhead; }
+
+  /**
+   * Propagate relevancy, for the literals assigned from qhead on, which bcp
+   * propagated.
+   */
+  void propagateRelevancy(size_t qhead);
+
   // -------------------------------------------------------------- conflicts
   void setConflict() { d_conflict = true; }
 
   bool inconsistent() const { return d_conflict || d_assertedInconsistent; }
+
+  /** An asserted formula is false, which no backtracking undoes. */
+  void setAssertedInconsistent() { d_assertedInconsistent = true; }
+
+  bool isAssertedInconsistent() const { return d_assertedInconsistent; }
 
   // -------------------------------------------------------------- relevancy
   //
@@ -261,35 +246,21 @@ class PropCore : protected EnvObj
   // CnfStream does. The theory side's internalizer walks the input and calls
   // these where a gate or a root assertion occurs.
 
-  /**
-   * Assert the root formula n, after the theory side has internalized its
-   * subterms (SmtContext::internalizeAssertion): the clauses of a root gate
-   * over the literals of its arguments, which the theory side internalizes
-   * here in turn, or the unit literal of anything else.
-   */
-  void assertRoot(TNode n);
+  /** Make a clause of a root assertion. */
+  void mkRootClause(size_t numLits, Literal* lits);
+  void mkRootClause(Literal l1, Literal l2);
+  /** The relevancy watches of the gate n, asserted as a root. */
+  void addAndRelWatches(TNode n);
+  void addOrRelWatches(TNode n);
+  void addImpliesRelWatches(TNode n);
+  void addIteRelWatches(TNode n);
 
   // ------------------------------------------------------------ host mode
-  /**
-   * Prepare the search: configure the theory side, internalize the asserted
-   * formulas and start the search.
-   */
-  void hostInit();
-  /** Push or pop scopes until the scope level is lvl. */
-  void hostSyncLevel(uint32_t lvl);
-  /**
-   * The literal of n, an atom or a negated atom, internalizing the atom if
-   * it is not internalized, for instance because it was deleted on
-   * backtracking.
-   */
-  Literal hostLiteral(TNode n);
   /**
    * Assign l, which the host asserted. Returns false if l is false here, a
    * conflict.
    */
   bool hostAssign(Literal l);
-  /** Propagate to a fixpoint; returns false on a conflict. */
-  bool hostPropagate() { return propagate(); }
   /**
    * Move to out the expressions of the variables that became relevant while
    * unassigned since the last call.
@@ -299,9 +270,6 @@ class PropCore : protected EnvObj
     out.insert(out.end(), d_hostRelevant.begin(), d_hostRelevant.end());
     d_hostRelevant.clear();
   }
-  /** Run the theory side's final check. */
-  bool hostFinalCheck();
-
   /**
    * Add the clauses that define the Boolean variable of the gate n in terms
    * of its arguments, and the relevancy watches of n. Called once, when the
@@ -317,46 +285,29 @@ class PropCore : protected EnvObj
   /** Make an auxiliary clause, which is deleted on backtracking. */
   Clause* mkClause(size_t numLits, Literal* lits);
 
-  void addUnitToReassert(TNode unit, bool sign, bool relevant)
+  // ----------------------------------------------------------------- scopes
+  uint32_t getScopeLevel() const
   {
-    d_unitsToReassert.push_back(ReplayUnit{unit, sign, relevant});
+    return static_cast<uint32_t>(d_scopes.size());
   }
 
-  // ----------------------------------------------------------------- scopes
-  uint32_t getScopeLevel() const { return d_scopeLvl; }
-
-  bool atBaseLevel() const { return d_scopeLvl == 0; }
-
-  /** Open a new scope, on both sides. */
+  /** Open a new scope. */
   void pushScope();
 
-  /** Backtrack numScopes scopes, on both sides. */
+  /**
+   * Backtrack numScopes scopes: delete the clauses and unassign the
+   * variables of the scopes popped.
+   */
   void popScope(size_t numScopes);
 
-  /** Backtrack to the base level. */
-  void popToBaseLvl();
-
-  /** Propagate to a fixpoint; returns false on a conflict. */
-  bool propagate();
-
-  /** Whether either side has propagation work pending. */
-  bool canPropagate() const;
-
-  /** True if the resource limits were exceeded. */
-  bool getCancelFlag();
-
-  /**
-   * True if the resource limits were exceeded during this search, which
-   * then stays out of resources.
-   */
-  bool resourceLimitsExceeded();
+  /** Whether this side has propagation work pending. */
+  bool hasPendingPropagation() const;
 
  private:
   struct Scope
   {
     size_t d_assignedLiteralsLim;
     size_t d_auxClausesLim;
-    size_t d_unitsToReassertLim;
   };
 
   /** The trail object that undoes mkBoolVar. */
@@ -373,28 +324,12 @@ class PropCore : protected EnvObj
   void unassignVars(size_t oldLim);
 
   // the Boolean structure
-  void assertDefault(TNode n);
-  void mkRootClause(size_t numLits, Literal* lits);
-  void mkRootClause(Literal l1, Literal l2);
-  void addAndRelWatches(TNode n);
-  void addOrRelWatches(TNode n);
-  void addImpliesRelWatches(TNode n);
-  void addIteRelWatches(TNode n);
   void mkNotCnstr(TNode n);
   void mkAndCnstr(TNode n);
   void mkOrCnstr(TNode n);
   void mkImpliesCnstr(TNode n);
   void mkIffCnstr(TNode n, bool sign);
   void mkIteCnstr(TNode n);
-
-  void propagateRelevancy(size_t qhead);
-
-  /**
-   * Cache the generations of the atoms of the units that will be reasserted
-   * when backtracking to newScopeLvl.
-   */
-  void cacheGeneration(uint32_t newScopeLvl);
-  void reassertUnits(size_t unitsToReassertLim);
 
   // clause management
   void removeWatchLiteral(Clause* cls, size_t idx);
@@ -425,7 +360,6 @@ class PropCore : protected EnvObj
   std::vector<WatchList> d_watches;
   std::vector<BoolVarData> d_bdata;
   ClauseVector d_auxClauses;
-  std::vector<ReplayUnit> d_unitsToReassert;
   LiteralVector d_assignedLiterals;
   size_t d_qhead;
 
@@ -433,21 +367,7 @@ class PropCore : protected EnvObj
   bool d_conflict;
   /** True if a formula asserted false. */
   bool d_assertedInconsistent;
-  /** Set while the clauses are deleted on flushing. */
-  bool d_flushing;
 
-  /** The formulas asserted to the core, and how far they are internalized. */
-  std::vector<Node> d_assertedFormulas;
-  size_t d_assertedFormulasQhead;
-  bool d_hasQuantifiers;
-  bool d_internalizingAssertions;
-
-  /** Whether the search started (hostInit). */
-  bool d_searching;
-  /** Whether the resource limits were exceeded during this search. */
-  bool d_resourceOut;
-
-  uint32_t d_scopeLvl;
   std::vector<Scope> d_scopes;
 
   MkBoolVarTrail d_mkBoolVarTrail;

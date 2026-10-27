@@ -117,6 +117,7 @@ class ENode
   ApproxSet d_lbls;
   ApproxSet d_plbls;
 
+  friend class EGraph;
   friend class SmtContext;
   friend class QuantifierManager;
   friend class Mam;

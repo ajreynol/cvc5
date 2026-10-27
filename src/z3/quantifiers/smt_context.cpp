@@ -7,7 +7,7 @@
  * directory for licensing information.
  * ****************************************************************************
  *
- * The logical context: the ported Z3 SMT core.
+ * The logical context: the ported Z3 SMT d_prop.
  *
  * Ported from Z3 (MIT License, Copyright (c) Microsoft Corporation), files
  * src/smt/smt_context.cpp and src/smt/smt_internalizer.cpp, and recast in
@@ -64,17 +64,19 @@ SmtContext::SmtContext(Env& env,
       d_pg(std::make_unique<LemmaProofGenerator>(env)),
       d_splitStrategy(std::make_unique<SplitStrategy>(env, d_te)),
       d_popNotify(std::make_unique<PopNotify>(context(), *this)),
-      d_masterEe(nullptr),
-      d_masterTerm(context()),
-      d_masterIdx(context(), 0),
       d_tracker(std::make_unique<RelevancyTracker>(env, te, *this)),
       d_prop(env, *this, d_stats),
+      d_egraph(env, *this, d_trailStack, d_stats),
       d_normalizer(env.getNodeManager()),
       d_qmanager(*this),
       d_trueENode(nullptr),
       d_falseENode(nullptr),
-      d_generation(0),
-      d_mkENodeTrail(*this)
+      d_assertedFormulasQhead(0),
+      d_hasQuantifiers(false),
+      d_internalizingAssertions(false),
+      d_searching(false),
+      d_resourceOut(false),
+      d_generation(0)
 {
   te->addModule(d_tracker.get());
   init();
@@ -98,82 +100,8 @@ void SmtContext::flush()
   d_trailStack.reset();
 }
 
-uint32_t SmtContext::getDeclId(TNode decl)
+void SmtContext::notifyMerge(ENode* r1, ENode* r2)
 {
-  Assert(!decl.isNull());
-  auto it = d_declIds.find(decl);
-  if (it != d_declIds.end())
-  {
-    return it->second;
-  }
-  uint32_t id = static_cast<uint32_t>(d_declIds.size());
-  d_declIds[decl] = id;
-  return id;
-}
-
-uint32_t SmtContext::getDeclIdOption(TNode decl) const
-{
-  if (decl.isNull())
-  {
-    return UINT32_MAX;
-  }
-  auto it = d_declIds.find(decl);
-  return it == d_declIds.end() ? UINT32_MAX : it->second;
-}
-
-namespace {
-
-/** Undoes an addEq. */
-class AddEqTrail : public Trail
-{
- public:
-  AddEqTrail(SmtContext& ctx, ENode* r1, size_t r2NumParents)
-      : d_ctx(ctx), d_r1(r1), d_r2NumParents(r2NumParents)
-  {
-  }
-  void undo() override;
-
- private:
-  SmtContext& d_ctx;
-  ENode* d_r1;
-  size_t d_r2NumParents;
-};
-
-}  // namespace
-
-void SmtContext::addEq(ENode* n1, ENode* n2)
-{
-  Assert(n1->getSort() == n2->getSort());
-
-  d_stats.d_numAddEq++;
-  ENode* r1 = n1->getRoot();
-  ENode* r2 = n2->getRoot();
-
-  if (r1 == r2)
-  {
-    // a redundant constraint
-    return;
-  }
-
-  if (r1->isInterpreted() && r2->isInterpreted())
-  {
-    // two distinct values were found equal
-    setConflict();
-    return;
-  }
-
-  // Swap r1 and r2 if the class of r1 is bigger than the class of r2, or if
-  // r1 is interpreted but r2 is not. The second condition maintains the
-  // invariant that if a class contains an interpreted enode then its root is
-  // interpreted too.
-  if ((r1->getClassSize() > r2->getClassSize() && !r2->isInterpreted())
-      || r1->isInterpreted())
-  {
-    Assert(!r2->isInterpreted());
-    std::swap(n1, n2);
-    std::swap(r1, r2);
-  }
-
   // Relevancy must be propagated to the rest of the equivalence class, to
   // maintain the invariant on the parent lists of enodes.
   if (isRelevant(r1))
@@ -184,167 +112,7 @@ void SmtContext::addEq(ENode* n1, ENode* n2)
   {
     markAsRelevant(r1);
   }
-
-  size_t r2NumParents = r2->getNumParents();
-
   d_qmanager.notifyMerge(r1, r2);
-
-  removeParentsFromCgTable(r1);
-
-  ENode* curr = r1;
-  do
-  {
-    curr->d_root = r2;
-    curr = curr->d_next;
-  } while (curr != r1);
-
-  Assert(r1->getRoot() == r2);
-  reinsertParentsIntoCgTable(r1, r2);
-
-  // The AddEqTrail is pushed after reinsertParentsIntoCgTable, because the
-  // latter may push merge-generation trails and addEq must be undone before
-  // those are.
-  pushTrail(AddEqTrail(*this, r1, r2NumParents));
-
-  if (n2->isBool())
-  {
-    propagateBoolENodeAssignment(r1, r2, n1, n2);
-  }
-
-  // merge the equivalence classes
-  std::swap(r1->d_next, r2->d_next);
-
-  // update the class size
-  r2->d_classSize += r1->d_classSize;
-}
-
-namespace {
-
-void AddEqTrail::undo() { d_ctx.undoAddEq(d_r1, d_r2NumParents); }
-
-}  // namespace
-
-void SmtContext::removeParentsFromCgTable(ENode* r1)
-{
-  // When two equivalence classes merge, the parents of the smaller one that
-  // are congruence roots must leave the congruence table, since their hash
-  // codes are about to change.
-  Assert(d_r1ParentGenerations.empty());
-
-  for (ENode* parent : r1->getParents())
-  {
-    if (!parent->isMarked() && parent->isCgr() && !parent->isTrueEq())
-    {
-      Assert(!parent->isCgcEnabled() || d_cgTable.containsPtr(parent));
-      parent->setMark();
-      if (parent->isCgcEnabled())
-      {
-        if (!parent->isEq())
-        {
-          // generations of equalities are not tracked
-          d_r1ParentGenerations.emplace_back(parent, getGeneration(parent));
-        }
-        d_cgTable.erase(parent);
-        Assert(!d_cgTable.containsPtr(parent));
-      }
-    }
-  }
-}
-
-void SmtContext::setGenerationSticky(ENode* n, uint32_t generation)
-{
-  Assert(n->usesCgTable());
-  Assert(!n->isEq());
-  // The caller is responsible for this; sticky updates are too expensive to
-  // spend on no-ops.
-  Assert(generation < getGeneration(n));
-
-  setGeneration(n, generation);
-  d_stickyGenerationUpdates[n] = generation;
-}
-
-void SmtContext::reinsertParentsIntoCgTable(ENode* r1, ENode* r2)
-{
-  // Reinsert the parents of r1 that removeParentsFromCgTable took out. Some
-  // of them become congruent to other enodes, which propagates a new
-  // equality. The ones that remain congruence roots move to r2's parent list.
-  ENodeVector& r2Parents = r2->d_parents;
-  ENodeVector& r1Parents = r1->d_parents;
-  size_t numR1Parents = r1Parents.size();
-  size_t generationCacheIdx = 0;
-  for (size_t i = 0; i < numR1Parents; ++i)
-  {
-    ENode* parent = r1Parents[i];
-    if (!parent->isMarked())
-    {
-      continue;
-    }
-    parent->unsetMark();
-    if (parent->isEq())
-    {
-      Assert(parent->getNumArgs() == 2);
-      ENode* lhs = parent->getArg(0);
-      ENode* rhs = parent->getArg(1);
-      if (lhs->getRoot() == rhs->getRoot())
-      {
-        Assert(parent->isTrueEq());
-        size_t exprId = parent->getOwnerId();
-        BoolVar v = getBoolVarOfId(exprId);
-        SatValue val = getAssignment(v);
-        if (val != SAT_VALUE_TRUE)
-        {
-          assign(Literal(v));
-        }
-        // There is no need to reinsert the equality into the congruence
-        // table: the congruence propagations it could lead to are already
-        // handled by the assign above.
-        continue;
-      }
-    }
-    if (parent->isCgcEnabled())
-    {
-      // look up the generation cache
-      uint32_t parentGeneration = 0;  // equalities just use generation 0
-      if (!parent->isEq())
-      {
-        if (generationCacheIdx < d_r1ParentGenerations.size())
-        {
-          std::pair<ENode*, uint32_t>& pg =
-              d_r1ParentGenerations[generationCacheIdx++];
-          Assert(pg.first == parent);
-          parentGeneration = pg.second;
-        }
-        else
-        {
-          parentGeneration = getGeneration(parent);
-        }
-      }
-
-      ENode* parentPrime = d_cgTable.insert(parent);
-      if (parentPrime == parent)
-      {
-        Assert(parent->isCgr());
-        Assert(d_cgTable.containsPtr(parent));
-        parent->d_generation = parentGeneration;
-        r2Parents.push_back(parent);
-        continue;
-      }
-
-      parent->d_cg = parentPrime;
-      mergeCgcGenerations(parent, parentGeneration, parentPrime);
-
-      if (parentPrime->d_root != parent->d_root)
-      {
-        pushNewCongruence(parent, parentPrime);
-      }
-    }
-    else
-    {
-      // congruence closure is disabled for parent, so just copy it over
-      r2Parents.push_back(parent);
-    }
-  }
-  d_r1ParentGenerations.clear();
 }
 
 void SmtContext::propagateBoolENodeAssignment(ENode* r1,
@@ -416,140 +184,6 @@ void SmtContext::propagateBoolENodeAssignmentCore(ENode* source, ENode* target)
   } while (first != target);
 }
 
-void SmtContext::undoAddEq(ENode* r1, size_t r2NumParents)
-{
-  ENode* r2 = r1->getRoot();
-
-  // restore r2's class size
-  r2->d_classSize -= r1->d_classSize;
-
-  // unmerge the equivalence classes
-  std::swap(r1->d_next, r2->d_next);
-
-  Assert(d_r1ParentGenerations.empty());
-
-  // remove the parents of r1 that remained congruence roots
-  ENodeVector::iterator it = r2->beginParents();
-  ENodeVector::iterator end = r2->endParents();
-  it += r2NumParents;
-  for (; it != end; ++it)
-  {
-    ENode* parent = *it;
-    if (parent->isCgcEnabled())
-    {
-      Assert(parent->isCgr())
-          << "parent " << parent->getExpr() << " of " << r1->getExpr()
-          << " merged into " << r2->getExpr() << " is not a congruence root";
-      Assert(d_cgTable.containsPtr(parent));
-      if (!parent->isEq())
-      {
-        d_r1ParentGenerations.emplace_back(parent, getGeneration(parent));
-      }
-      d_cgTable.erase(parent);
-    }
-  }
-
-  ENode* curr = r1;
-  do
-  {
-    curr->d_root = r1;
-    curr = curr->d_next;
-  } while (curr != r1);
-
-  // restore the parents of r2
-  r2->d_parents.resize(r2NumParents);
-
-  size_t generationCacheIdx = 0;
-
-  // try to reinsert the parents of r1 that are not congruence roots
-  for (ENode* parent : r1->getParents())
-  {
-    if (!parent->isCgcEnabled())
-    {
-      continue;
-    }
-    ENode* cg = parent->d_cg;
-    if (parent->isTrueEq()
-        || !(parent == cg                 // root of its class before and after
-             || !congruent(parent, cg)))  // root before but not after
-    {
-      continue;
-    }
-
-    uint32_t gen;
-    if (parent->isEq())
-    {
-      gen = 0;
-    }
-    else if (parent == cg)
-    {
-      ENode* p = nullptr;
-      uint32_t parentGeneration = 0;
-      if (generationCacheIdx < d_r1ParentGenerations.size())
-      {
-        p = d_r1ParentGenerations[generationCacheIdx].first;
-        parentGeneration = d_r1ParentGenerations[generationCacheIdx].second;
-      }
-      if (p == parent)
-      {
-        generationCacheIdx++;
-        gen = parentGeneration;
-      }
-      else
-      {
-        Assert(d_cgTable.containsPtr(parent));
-        continue;
-      }
-    }
-    else
-    {
-      // Insert at a dummy generation; an undoMergeCgcGenerations immediately
-      // follows and sets the real one. Deliberately not UINT32_MAX, so that
-      // an overflow here would not be invisible.
-      gen = 100000;
-    }
-
-    parent->d_cg = d_cgTable.insert(parent);
-    if (parent->d_cg == parent)
-    {
-      // parent is a congruence root again: restore its generation
-      parent->d_generation = gen;
-    }
-  }
-
-  d_r1ParentGenerations.clear();
-}
-
-void SmtContext::undoMergeCgcGenerations(ENode* e1,
-                                         uint32_t e1Generation,
-                                         ENode* e2,
-                                         uint32_t e2Generation)
-{
-  setGeneration(e1, e1Generation);
-  setGeneration(e2, e2Generation);
-  applyStickyUpdates(e1, e1Generation, e2, e2Generation);
-}
-
-void SmtContext::applyStickyUpdates(ENode* e1,
-                                    uint32_t e1Generation,
-                                    ENode* e2,
-                                    uint32_t e2Generation)
-{
-  Assert(e1->usesCgTable());
-  Assert(e2->usesCgTable());
-  for (const std::pair<ENode* const, uint32_t>& tg : d_stickyGenerationUpdates)
-  {
-    if (tg.second < e1Generation && congruent(tg.first, e1))
-    {
-      setGeneration(e1, tg.second);
-    }
-    else if (tg.second < e2Generation && congruent(tg.first, e2))
-    {
-      setGeneration(e2, tg.second);
-    }
-  }
-}
-
 bool SmtContext::addDiseq(ENode* n1, ENode* n2)
 {
   // There is no theory plugin to tell of the disequality.
@@ -578,7 +212,7 @@ bool SmtContext::isDiseqCore(ENode* n1,
   // the equality of n1 and n2, if the E-graph has one
   Assert(NodeManager::hasOperator(Kind::EQUAL));
   ENode* args[2] = {n1, n2};
-  ENode* r = const_cast<SmtContext*>(this)->getENodeEqTo(
+  ENode* r = const_cast<EGraph&>(d_egraph).getENodeEqTo(
       nodeManager()->operatorOf(Kind::EQUAL), true, 2, args);
   if (r != nullptr)
   {
@@ -589,45 +223,6 @@ bool SmtContext::isDiseqCore(ENode* n1,
                || (isRelevant(l) && getAssignment(l) == SAT_VALUE_FALSE));
   }
   return false;
-}
-
-ENode* SmtContext::getENodeEqTo(TNode decl,
-                                bool commutative,
-                                size_t numArgs,
-                                ENode* const* args)
-{
-  ENode* tmp = d_tmpENode.set(decl, commutative, numArgs, args);
-  return d_cgTable.find(tmp);
-}
-
-void SmtContext::setGeneration(ENode* e, uint32_t generation)
-{
-  // Patterns with equalities are not supported, so equality generations are
-  // not tracked.
-  if (e->isEq())
-  {
-    return;
-  }
-  // The class generation lives in the congruence root's generation field.
-  ENode* cgr = getCgRoot(e);
-  cgr->d_generation = generation;
-}
-
-bool SmtContext::propagateEqs()
-{
-  size_t i = 0;
-  for (; i < d_eqPropagationQueue.size() && !getCancelFlag(); ++i)
-  {
-    NewEq& entry = d_eqPropagationQueue[i];
-    addEq(entry.d_lhs, entry.d_rhs);
-    if (inconsistent())
-    {
-      d_eqPropagationQueue.clear();
-      return false;
-    }
-  }
-  d_eqPropagationQueue.clear();
-  return true;
 }
 
 bool SmtContext::propagateAtoms()
@@ -661,11 +256,12 @@ bool SmtContext::propagateAtoms()
       }
       else if (val == SAT_VALUE_TRUE)
       {
-        addEq(getENode(lhs), getENode(rhs));
+        d_egraph.addEq(d_egraph.getENode(lhs), d_egraph.getENode(rhs));
       }
       else
       {
-        if (!addDiseq(getENode(lhs), getENode(rhs)) && !inconsistent())
+        if (!addDiseq(d_egraph.getENode(lhs), d_egraph.getENode(rhs))
+            && !inconsistent())
         {
           setConflict();
         }
@@ -710,7 +306,7 @@ void SmtContext::propagateBoolVarENode(BoolVar v)
   bool sign = val == SAT_VALUE_FALSE;
   if (n->mergeTf())
   {
-    addEq(n, sign ? d_falseENode : d_trueENode);
+    d_egraph.addEq(n, sign ? d_falseENode : d_trueENode);
   }
   ENode* r = n->getRoot();
   if (r == d_trueENode || r == d_falseENode)
@@ -742,16 +338,16 @@ void SmtContext::notifyRelevant(TNode n)
   {
     return;
   }
-  if (eInternalized(n))
+  if (d_egraph.eInternalized(n))
   {
-    d_qmanager.notifyRelevant(getENode(n));
+    d_qmanager.notifyRelevant(d_egraph.getENode(n));
   }
 }
 
 bool SmtContext::hasPendingTheoryWork() const
 {
   return !d_atomPropagationQueue.empty() || d_qmanager.canPropagate()
-         || !d_eqPropagationQueue.empty();
+         || d_egraph.hasPendingEqs();
 }
 
 bool SmtContext::theoryPropagate()
@@ -760,7 +356,7 @@ bool SmtContext::theoryPropagate()
   {
     return false;
   }
-  if (!propagateEqs())
+  if (!d_egraph.propagateEqs())
   {
     return false;
   }
@@ -775,6 +371,137 @@ bool SmtContext::theoryPropagate()
   return true;
 }
 
+bool SmtContext::canPropagate() const
+{
+  return d_prop.hasPendingPropagation() || hasPendingTheoryWork();
+}
+
+bool SmtContext::propagate()
+{
+  while (true)
+  {
+    if (inconsistent())
+    {
+      return false;
+    }
+    size_t qhead = d_prop.getQhead();
+    if (!d_prop.bcp())
+    {
+      return false;
+    }
+    Assert(!inconsistent());
+    d_prop.propagateRelevancy(qhead);
+    if (inconsistent())
+    {
+      return false;
+    }
+    if (!theoryPropagate())
+    {
+      return false;
+    }
+    if (resourceLimitsExceeded())
+    {
+      d_prop.setQhead(qhead);
+      return true;
+    }
+    if (!canPropagate())
+    {
+      return true;
+    }
+  }
+}
+
+bool SmtContext::getCancelFlag()
+{
+  if (!resourceManager()->out())
+  {
+    return false;
+  }
+  d_resourceOut = true;
+  return true;
+}
+
+bool SmtContext::resourceLimitsExceeded()
+{
+  if (d_searching && d_resourceOut)
+  {
+    return true;
+  }
+  return getCancelFlag();
+}
+
+void SmtContext::pushScope()
+{
+  d_prop.pushScope();
+  d_unitsToReassertLims.push_back(d_unitsToReassert.size());
+  d_trailStack.pushScope();
+}
+
+void SmtContext::popScope(size_t numScopes)
+{
+  Assert(numScopes > 0);
+  Assert(numScopes <= getScopeLevel());
+  uint32_t newLvl = getScopeLevel() - static_cast<uint32_t>(numScopes);
+  // The order is that of Z3's pop_scope_core, except that the theory side's
+  // state other than the trail is popped in one step, before the Boolean
+  // side's clauses and assignment, which are independent of it.
+  cacheUnitGenerations(newLvl);
+  size_t unitsToReassertLim = d_unitsToReassertLims[newLvl];
+  d_qmanager.notifyPop();
+  d_prop.popScope(numScopes);
+  d_trailStack.popScope(numScopes);
+  d_egraph.clearPendingEqs();
+  d_atomPropagationQueue.clear();
+  d_unitsToReassertLims.resize(newLvl);
+  reassertUnits(unitsToReassertLim);
+  resetCacheGeneration();
+}
+
+void SmtContext::popToBaseLvl()
+{
+  if (getScopeLevel() > 0)
+  {
+    popScope(getScopeLevel());
+  }
+}
+
+void SmtContext::cacheUnitGenerations(uint32_t newScopeLvl)
+{
+  // When a unit is reasserted its enodes and literals may have to be
+  // recreated. The generation number of a recreated enode must be the one it
+  // had before, otherwise it would reset to 0 and defeat the matching-loop
+  // heuristics that control quantifier instantiation.
+  for (size_t i = d_unitsToReassertLims[newScopeLvl],
+              sz = d_unitsToReassert.size();
+       i < sz;
+       ++i)
+  {
+    cacheGeneration(d_unitsToReassert[i].d_unit, newScopeLvl);
+  }
+}
+
+void SmtContext::reassertUnits(size_t unitsToReassertLim)
+{
+  for (size_t i = unitsToReassertLim, sz = d_unitsToReassert.size(); i < sz;
+       ++i)
+  {
+    ReplayUnit& ru = d_unitsToReassert[i];
+    internalize(ru.d_unit, true);
+    BoolVar v = getBoolVar(ru.d_unit);
+    Assert(v != s_nullBoolVar) << "unit without a variable: " << ru.d_unit;
+    Literal l(v, ru.d_sign);
+    assign(l);
+    if (ru.d_relevant)
+    {
+      d_prop.markAsRelevant(l);
+    }
+  }
+  if (getScopeLevel() == 0)
+  {
+    d_unitsToReassert.clear();
+  }
+}
+
 void SmtContext::assignQuantifier(TNode q) { d_qmanager.notifyAssigned(q); }
 
 void SmtContext::notifyBoolVarDeleted(TNode n)
@@ -783,20 +510,6 @@ void SmtContext::notifyBoolVarDeleted(TNode n)
   {
     d_qmanager.del(n);
   }
-}
-
-void SmtContext::pushTheoryScope()
-{
-  getTrailStack().pushScope();
-}
-
-void SmtContext::popTheoryScopeBegin() { d_qmanager.notifyPop(); }
-
-void SmtContext::popTheoryScopeEnd(size_t numScopes)
-{
-  d_trailStack.popScope(numScopes);
-  d_eqPropagationQueue.clear();
-  d_atomPropagationQueue.clear();
 }
 
 void SmtContext::cacheGeneration(TNode n, uint32_t newScopeLvl)
@@ -814,16 +527,16 @@ void SmtContext::cacheGeneration(TNode n, uint32_t newScopeLvl)
     d_cacheGenerationVisited.insert(curr);
     if (isApp(curr))
     {
-      if (eInternalized(curr))
+      if (d_egraph.eInternalized(curr))
       {
-        ENode* e = getENode(curr);
+        ENode* e = d_egraph.getENode(curr);
         uint32_t ilvl = e->getIscopeLvl();
         if (ilvl <= newScopeLvl)
         {
           // neither the node nor its children will be recreated
           continue;
         }
-        d_cachedGeneration[curr] = getGeneration(e);
+        d_cachedGeneration[curr] = d_egraph.getGeneration(e);
       }
       for (const Node& arg : curr)
       {
@@ -885,7 +598,7 @@ void SmtContext::internalizePreprocessed(TNode norm,
     internalizeAssertion(d, generation);
     // a unit is reasserted as an atom and a sign
     bool neg = d.getKind() == Kind::NOT;
-    d_prop.addUnitToReassert(neg ? d[0] : d, neg, true);
+    d_unitsToReassert.push_back(ReplayUnit{neg ? d[0] : d, neg, true});
   }
   if (norm.isConst() && norm.getConst<bool>())
   {
@@ -956,6 +669,13 @@ bool isFalseNode(TNode n)
   return n.getKind() == Kind::CONST_BOOLEAN && !n.getConst<bool>();
 }
 
+/** True if n is an atom or the negation of one, as Z3's is_literal is. */
+bool isLiteralNode(TNode n)
+{
+  TNode a = n.getKind() == Kind::NOT ? n[0] : n;
+  return !isApp(a) || a.getNumChildren() == 0;
+}
+
 }  // namespace
 
 void SmtContext::updateGeneration(ENode* e)
@@ -967,72 +687,17 @@ void SmtContext::updateGeneration(ENode* e)
     return;
   }
 
-  if (0 < d_generation && d_generation < getGeneration(e))
+  if (0 < d_generation && d_generation < d_egraph.getGeneration(e))
   {
     if (e->usesCgTable())
     {
-      setGenerationSticky(e, d_generation);
+      d_egraph.setGenerationSticky(e, d_generation);
     }
     else
     {
-      setGeneration(e, d_generation);
+      d_egraph.setGeneration(e, d_generation);
     }
   }
-}
-
-namespace {
-
-/** Undoes a congruence class generation merge. */
-class MergeCgcGenerationsTrail : public Trail
-{
- public:
-  MergeCgcGenerationsTrail(SmtContext& ctx,
-                           ENode* e1,
-                           uint32_t e1Generation,
-                           ENode* e2,
-                           uint32_t e2Generation)
-      : d_ctx(ctx),
-        d_e1(e1),
-        d_e1Generation(e1Generation),
-        d_e2(e2),
-        d_e2Generation(e2Generation)
-  {
-  }
-
-  void undo() override
-  {
-    d_ctx.undoMergeCgcGenerations(d_e1, d_e1Generation, d_e2, d_e2Generation);
-  }
-
- private:
-  SmtContext& d_ctx;
-  ENode* d_e1;
-  uint32_t d_e1Generation;
-  ENode* d_e2;
-  uint32_t d_e2Generation;
-};
-
-}  // namespace
-
-void SmtContext::mergeCgcGenerations(ENode* e1,
-                                     uint32_t e1Generation,
-                                     ENode* e2)
-{
-  Assert(e2->isCgr());
-  Assert(!d_cgTable.containsPtr(e1));
-  Assert(d_cgTable.containsPtr(e2));
-
-  // Push the trail even for a no-op, otherwise e1's generation could not be
-  // restored when the merge is undone.
-  pushTrail(
-      MergeCgcGenerationsTrail(*this, e1, e1Generation, e2, e2->d_generation));
-
-  if (e1Generation >= e2->d_generation)
-  {
-    return;  // a no-op
-  }
-
-  e2->d_generation = e1Generation;
 }
 
 void SmtContext::internalizeAssertion(TNode n, uint32_t generation)
@@ -1041,7 +706,7 @@ void SmtContext::internalizeAssertion(TNode n, uint32_t generation)
   d_generation = generation;
   d_stats.d_maxGeneration.maxAssign(generation);
   Assert(n.getType().isBoolean());
-  d_prop.assertRoot(n);
+  assertRoot(n);
   d_generation = oldGeneration;
 }
 
@@ -1105,7 +770,7 @@ void SmtContext::internalizeFormula(TNode n, bool gateCtx)
     // does not, so the enode has to be built rather than assumed away.
     if (!gateCtx && isQuantifier(n))
     {
-      if (!eInternalized(n))
+      if (!d_egraph.eInternalized(n))
       {
         mkENode(n,
                 true, /* suppress the arguments */
@@ -1121,9 +786,9 @@ void SmtContext::internalizeFormula(TNode n, bool gateCtx)
     }
     if (!gateCtx && isApp(n))
     {
-      if (eInternalized(n))
+      if (d_egraph.eInternalized(n))
       {
-        ENode* e = getENode(n);
+        ENode* e = d_egraph.getENode(n);
         setMergeTf(e, v, false);
       }
       else
@@ -1244,7 +909,7 @@ void SmtContext::internalizeFormulaCore(TNode n, bool gateCtx)
 {
   // Internalize gates, and the (uninterpreted and equality) predicates.
   Assert(!bInternalized(n));
-  Assert(!eInternalized(n));
+  Assert(!d_egraph.eInternalized(n));
 
   bool isGateN = expr::isBooleanConnective(n);
   // process the arguments
@@ -1271,7 +936,8 @@ void SmtContext::internalizeFormulaCore(TNode n, bool gateCtx)
   // A formula needs an enode when it is not in a gate context, or when it has
   // arguments and is not a gate (i.e. an uninterpreted predicate or an
   // equality).
-  if (!eInternalized(n) && (!gateCtx || (!isGateN && n.getNumChildren() > 0)))
+  if (!d_egraph.eInternalized(n)
+      && (!gateCtx || (!isGateN && n.getNumChildren() > 0)))
   {
     bool suppressArgs = isGateN || n.getKind() == Kind::NOT;
     bool mergeTf = !gateCtx;
@@ -1279,12 +945,12 @@ void SmtContext::internalizeFormulaCore(TNode n, bool gateCtx)
     setEnodeFlag(v, isNewVar);
     Assert(hasENode(v));
   }
-  else if (!gateCtx && eInternalized(n))
+  else if (!gateCtx && d_egraph.eInternalized(n))
   {
     // n was internalized in a gate context while its children were being
     // internalized (ite-term axioms, for example), but it now occurs outside
     // a gate and must be merged with true/false.
-    setMergeTf(getENode(n), v, isNewVar);
+    setMergeTf(d_egraph.getENode(n), v, isNewVar);
   }
 
   // The constraints of n must be asserted after its Boolean variable and
@@ -1346,13 +1012,13 @@ void SmtContext::setMergeTf(ENode* n, BoolVar v, bool isNewVar)
     case SAT_VALUE_TRUE:
       if (n->getRoot() != d_trueENode->getRoot())
       {
-        pushEq(n, d_trueENode);
+        d_egraph.pushEq(n, d_trueENode);
       }
       break;
     case SAT_VALUE_FALSE:
       if (n->getRoot() != d_falseENode->getRoot())
       {
-        pushEq(n, d_falseENode);
+        d_egraph.pushEq(n, d_falseENode);
       }
       break;
   }
@@ -1360,7 +1026,7 @@ void SmtContext::setMergeTf(ENode* n, BoolVar v, bool isNewVar)
 
 void SmtContext::setEnodeFlag(BoolVar v, bool isNewVar)
 {
-  Assert(eInternalized(boolVar2Expr(v)));
+  Assert(d_egraph.eInternalized(boolVar2Expr(v)));
   BoolVarData& data = getBdata(v);
   if (!data.isENode())
   {
@@ -1374,27 +1040,27 @@ void SmtContext::setEnodeFlag(BoolVar v, bool isNewVar)
 
 void SmtContext::internalizeTerm(TNode n)
 {
-  if (eInternalized(n))
+  if (d_egraph.eInternalized(n))
   {
-    updateGeneration(getENode(n));
+    updateGeneration(d_egraph.getENode(n));
     return;
   }
   // A term if-then-else does not occur here: the formulas the core
   // internalizes are in the form cvc5's theories take, without them.
   internalizeUninterpreted(n);
-  Assert(eInternalized(n));
+  Assert(d_egraph.eInternalized(n));
 }
 
 void SmtContext::internalizeUninterpreted(TNode n)
 {
-  Assert(!eInternalized(n));
+  Assert(!d_egraph.eInternalized(n));
   // process the arguments
   for (const Node& arg : n)
   {
     internalizeRec(arg, false);
-    Assert(eInternalized(arg));
+    Assert(d_egraph.eInternalized(arg));
   }
-  if (eInternalized(n))
+  if (d_egraph.eInternalized(n))
   {
     return;
   }
@@ -1427,102 +1093,238 @@ ENode* SmtContext::mkENode(TNode n,
                            bool mergeTf,
                            bool cgcEnabled)
 {
-  Assert(!eInternalized(n));
-  size_t id = n.getId();
-  uint32_t generation = generationOf(n);
-  ENode* e = ENode::mk(d_trailStack,
-                       d_app2ENode,
-                       n,
-                       generation,
-                       suppressArgs,
-                       mergeTf,
-                       getScopeLevel(),
-                       cgcEnabled);
-  if (n.isConst())
+  ENode* e = d_egraph.mkENode(
+      n, generationOf(n), suppressArgs, mergeTf, cgcEnabled, getScopeLevel());
+  if (e->getNumArgs() > 0 && e->isTrueEq())
   {
-    e->markAsInterpreted();
+    // the equality holds already
+    assign(Literal(enode2BoolVar(e)));
+    d_egraph.pushEq(e, d_trueENode);
   }
-  if (id >= d_app2ENode.size())
-  {
-    d_app2ENode.resize(id + 1, static_cast<ENode*>(nullptr));
-  }
-  d_app2ENode[id] = e;
-  d_eInternalizedStack.push_back(n);
-  d_trailStack.pushPtr(&d_mkENodeTrail);
-  d_enodes.push_back(e);
-  if (e->getNumArgs() > 0)
-  {
-    if (e->isTrueEq())
-    {
-      BoolVar v = enode2BoolVar(e);
-      assign(Literal(v));
-      e->d_cg = e;
-      pushEq(e, d_trueENode);
-    }
-    else if (cgcEnabled)
-    {
-      ENode* r = d_cgTable.insert(e);
-      if (e != r)
-      {
-        e->d_cg = r;
-        // Patterns with equalities are not supported, so equality
-        // generations are not tracked.
-        if (!e->isEq())
-        {
-          mergeCgcGenerations(e, generation, r);
-        }
-        pushNewCongruence(e, r);
-      }
-      else
-      {
-        e->d_cg = e;
-      }
-    }
-    else
-    {
-      e->d_cg = e;
-    }
-    if (!e->isEq())
-    {
-      uint32_t declId = getDeclId(e->getDecl());
-      if (declId >= d_decl2ENodes.size())
-      {
-        d_decl2ENodes.resize(declId + 1);
-      }
-      d_decl2ENodes[declId].push_back(e);
-    }
-  }
-
-  Assert(eInternalized(n));
-  d_stats.d_numMkENode++;
   return e;
 }
 
-void SmtContext::undoMkENode()
+void SmtContext::assertFormula(TNode e)
 {
-  Assert(!d_eInternalizedStack.empty());
-  d_stats.d_numDelENode++;
-  Node n = d_eInternalizedStack.back();
-  size_t nId = n.getId();
-  ENode* e = d_app2ENode[nId];
-  d_app2ENode[nId] = nullptr;
-  if (e->isCgr() && e->usesCgTable())
+  if (getCancelFlag())
   {
-    Assert(d_cgTable.containsPtr(e));
-    d_cgTable.erase(e);
+    return;
   }
-  if (e->getNumArgs() > 0 && !e->isEq())
+  if (!d_searching)
   {
-    uint32_t declId = getDeclId(e->getDecl());
-    Assert(declId < d_decl2ENodes.size());
-    Assert(d_decl2ENodes[declId].back() == e);
-    d_decl2ENodes[declId].pop_back();
+    popToBaseLvl();
   }
-  e->destroy();
-  Assert(d_eInternalizedStack.size() == d_enodes.size());
-  d_enodes.pop_back();
-  d_eInternalizedStack.pop_back();
-  d_stickyGenerationUpdates.erase(e);
+  pushAssertion(e);
+}
+
+void SmtContext::pushAssertion(TNode e)
+{
+  // Z3 splits a conjunction, and a negated disjunction, into separate
+  // assertions while they are being collected (see
+  // asserted_formulas::push_assertion). This matters beyond saving a Boolean
+  // variable: an assertion is marked relevant when it is asserted, while the
+  // conjuncts of a top-level conjunction never are -- the and-gate only
+  // propagates relevancy to its arguments once the conjunction itself is
+  // assigned, which never happens for a root. cvc5's preprocessor leaves
+  // such conjunctions in place, so the split is done here.
+  if (isTrueNode(e))
+  {
+    return;
+  }
+  if (isFalseNode(e))
+  {
+    d_prop.setAssertedInconsistent();
+    d_assertedFormulas.push_back(e);
+    return;
+  }
+  if (e.getKind() == Kind::AND)
+  {
+    for (const Node& arg : e)
+    {
+      pushAssertion(arg);
+    }
+    return;
+  }
+  if (e.getKind() == Kind::NOT && e[0].getKind() == Kind::OR)
+  {
+    for (const Node& arg : e[0])
+    {
+      pushAssertion(arg.negate());
+    }
+    return;
+  }
+  // What Z3 does next is asserted_formulas::flatten_clauses, whose point is
+  // that its core gets flat clauses rather than a tree of gates: every nested
+  // gate costs a Boolean variable, two clauses and a link in the chain
+  // relevancy has to walk before it reaches the atoms. A top-level
+  // if-then-else is two clauses, and a top-level disjunction over a
+  // conjunction distributes.
+  if (e.getKind() == Kind::ITE)
+  {
+    pushAssertion(nodeManager()->mkNode(Kind::OR, e[0].negate(), e[1]));
+    pushAssertion(nodeManager()->mkNode(Kind::OR, Node(e[0]), e[2]));
+    return;
+  }
+  if (e.getKind() == Kind::OR && e.getNumChildren() == 2)
+  {
+    for (size_t i = 0; i < 2; ++i)
+    {
+      TNode conj = e[i];
+      TNode rest = e[1 - i];
+      // Z3 also distributes over a shared conjunction when the other side is
+      // not a literal, using a reference count to tell that the conjunction
+      // occurs nowhere else. There is no equally cheap test here, so only the
+      // case that cannot grow the formula is taken: duplicating a literal
+      // across the conjuncts costs one literal per conjunct.
+      if (conj.getKind() == Kind::AND && isLiteralNode(rest))
+      {
+        for (const Node& arg : conj)
+        {
+          pushAssertion(nodeManager()->mkNode(Kind::OR, Node(rest), arg));
+        }
+        return;
+      }
+    }
+  }
+  if (!d_hasQuantifiers && expr::hasClosure(Node(e)))
+  {
+    d_hasQuantifiers = true;
+  }
+  Trace("z3-assert") << "ASSERT " << e << std::endl;
+  d_assertedFormulas.push_back(e);
+}
+
+void SmtContext::internalizeAssertions()
+{
+  if (getCancelFlag() || d_internalizingAssertions)
+  {
+    return;
+  }
+  d_internalizingAssertions = true;
+  if (d_prop.isAssertedInconsistent())
+  {
+    setConflict();
+    d_internalizingAssertions = false;
+    return;
+  }
+  while (d_assertedFormulasQhead < d_assertedFormulas.size())
+  {
+    if (getCancelFlag())
+    {
+      d_internalizingAssertions = false;
+      return;
+    }
+    TNode f = d_assertedFormulas[d_assertedFormulasQhead];
+    ++d_assertedFormulasQhead;
+    internalizeAssertion(f, 0);
+  }
+  d_internalizingAssertions = false;
+}
+
+void SmtContext::assertRoot(TNode n)
+{
+  if (expr::isBooleanConnective(n) && n.getKind() != Kind::NOT)
+  {
+    switch (n.getKind())
+    {
+      case Kind::AND:
+      {
+        for (const Node& arg : n)
+        {
+          internalizeRec(arg, true);
+          Literal lit = getLiteral(arg);
+          d_prop.mkRootClause(1, &lit);
+        }
+        break;
+      }
+      case Kind::OR:
+      {
+        LiteralVector lits;
+        for (const Node& arg : n)
+        {
+          internalizeRec(arg, true);
+          lits.push_back(getLiteral(arg));
+        }
+        d_prop.mkRootClause(lits.size(), lits.data());
+        d_prop.addOrRelWatches(n);
+        break;
+      }
+      case Kind::IMPLIES:
+      {
+        internalizeRec(n[0], true);
+        internalizeRec(n[1], true);
+        d_prop.mkRootClause(~getLiteral(n[0]), getLiteral(n[1]));
+        d_prop.addImpliesRelWatches(n);
+        break;
+      }
+      case Kind::EQUAL:
+      case Kind::XOR:
+      {
+        TNode lhs = n[0];
+        TNode rhs = n[1];
+        internalizeRec(lhs, true);
+        internalizeRec(rhs, true);
+        Literal l1 = getLiteral(lhs);
+        Literal l2 = getLiteral(rhs);
+        if (n.getKind() == Kind::XOR)
+        {
+          l2 = ~l2;
+        }
+        d_prop.mkRootClause(l1, ~l2);
+        d_prop.mkRootClause(~l1, l2);
+        break;
+      }
+      case Kind::ITE:
+      {
+        TNode c = n[0];
+        TNode t = n[1];
+        TNode e = n[2];
+        internalizeRec(c, true);
+        internalizeRec(t, true);
+        internalizeRec(e, true);
+        Literal cl = getLiteral(c);
+        Literal tl = getLiteral(t);
+        Literal el = getLiteral(e);
+        d_prop.mkRootClause(~cl, tl);
+        d_prop.mkRootClause(cl, el);
+        d_prop.addIteRelWatches(n);
+        break;
+      }
+      default: Unreachable();
+    }
+    markAsRelevant(n);
+  }
+  else if (n.getKind() == Kind::DISTINCT)
+  {
+    // Z3 encodes a very large distinct with auxiliary values over a fresh
+    // sort. cvc5's rewriter expands distinct during preprocessing, so the
+    // core is not expected to meet one at all; the plain encoding is used.
+    assertDefault(n);
+    markAsRelevant(n);
+  }
+  else
+  {
+    assertDefault(n);
+  }
+}
+
+void SmtContext::assertDefault(TNode n)
+{
+  internalize(n, true);
+  Literal l = getLiteral(n);
+  if (l == s_falseLiteral)
+  {
+    setConflict();
+  }
+  else if (l == s_trueLiteral)
+  {
+    return;
+  }
+  else
+  {
+    assign(l);
+    d_prop.markAsRelevant(l);
+  }
 }
 
 // ------------------------------------------------- the boundary with cvc5
@@ -1637,10 +1439,9 @@ Node SmtContext::preprocessLemma(const TrustNode& trn,
 
 void SmtContext::assertInput(const std::vector<Node>& assertions)
 {
-  PropCore& core = d_prop;
   for (const Node& a : assertions)
   {
-    core.assertFormula(toCore(a));
+    assertFormula(toCore(a));
   }
 }
 
@@ -1662,11 +1463,10 @@ void SmtContext::assertFact(TNode literal)
   {
     return;
   }
-  PropCore& core = d_prop;
   syncLevel();
   Trace("z3-host") << "assert " << literal << std::endl;
-  Literal l = core.hostLiteral(toCore(literal));
-  if (!core.hostAssign(l))
+  Literal l = literalOf(toCore(literal));
+  if (!d_prop.hostAssign(l))
   {
     enterConflict();
   }
@@ -1697,10 +1497,9 @@ void SmtContext::check(theory::Theory::Effort effort,
     }
     return;
   }
-  PropCore& core = d_prop;
   syncLevel();
   // the equalities cvc5's theories derived since the last check
-  applyMasterMerges();
+  d_egraph.applyMasterMerges();
   if (context()->getLevel() <= 1 && !d_delayedUnits.empty())
   {
     // As Z3 asserts its delayed units after a restart, the lemmas weakened
@@ -1718,7 +1517,7 @@ void SmtContext::check(theory::Theory::Effort effort,
   }
   for (const Node& atom : d_preregistered)
   {
-    core.hostLiteral(atom);
+    literalOf(atom);
   }
   d_preregistered.clear();
   if (!propagateAndReport())
@@ -1732,7 +1531,7 @@ void SmtContext::check(theory::Theory::Effort effort,
   }
   for (size_t i = 0; i < s_maxSilentFinalChecks; ++i)
   {
-    bool done = core.hostFinalCheck();
+    bool done = finalCheck();
     Trace("z3-host") << "final check " << (done ? "done" : "continue")
                      << " at level " << context()->getLevel() << std::endl;
     if (done)
@@ -1770,15 +1569,50 @@ void SmtContext::check(theory::Theory::Effort effort,
 
 void SmtContext::presolve(theory::eq::EqualityEngine* master)
 {
-  d_masterEe = master;
+  d_egraph.setMasterEqualityEngine(master);
   if (!d_setup)
   {
-    d_prop.hostInit();
+    setupSearch();
     d_setup = true;
   }
   // The strategies of the decision manager are cleared after each check-sat.
   d_te->getDecisionManager()->registerStrategy(
       theory::DecisionManager::STRAT_QUANT_Z3_SPLIT, d_splitStrategy.get());
+}
+
+void SmtContext::setupSearch()
+{
+  d_stats.d_numAssertedFormulas =
+      static_cast<int64_t>(d_assertedFormulas.size());
+  popToBaseLvl();
+  internalizeAssertions();
+  initSearch();
+  d_resourceOut = false;
+  d_searching = true;
+}
+
+void SmtContext::setScopeLevel(uint32_t lvl)
+{
+  while (getScopeLevel() < lvl)
+  {
+    pushScope();
+  }
+  if (getScopeLevel() > lvl)
+  {
+    popScope(getScopeLevel() - lvl);
+  }
+}
+
+Literal SmtContext::literalOf(TNode n)
+{
+  bool neg = n.getKind() == Kind::NOT;
+  TNode atom = neg ? n[0] : n;
+  if (!bInternalized(atom))
+  {
+    internalize(atom, true);
+  }
+  Literal l = getLiteral(atom);
+  return neg ? ~l : l;
 }
 
 TrustNode SmtContext::getSkolemization(TNode q)
@@ -1796,88 +1630,7 @@ TrustNode SmtContext::getSkolemization(TNode q)
 
 void SmtContext::notifyMasterMerge(TNode t1, TNode t2)
 {
-  // The Boolean classes are those of the atoms, whose values reach the core
-  // as facts.
-  if (!t1.getType().isBoolean())
-  {
-    d_pendingMerges.emplace_back(t1, t2);
-  }
-}
-
-Node SmtContext::masterTermOf(TNode rep) const
-{
-  auto it = d_masterTerm.find(rep);
-  return it == d_masterTerm.end() ? Node::null() : it->second;
-}
-
-void SmtContext::mergeMasterTerms(TNode a, TNode b)
-{
-  if (a == b || !eInternalized(a) || !eInternalized(b))
-  {
-    return;
-  }
-  pushEq(getENode(a), getENode(b));
-  d_stats.d_numShadowMerges++;
-}
-
-void SmtContext::applyMasterMerges()
-{
-  if (d_masterEe == nullptr)
-  {
-    return;
-  }
-  if (inconsistent())
-  {
-    d_pendingMerges.clear();
-    return;
-  }
-  // The merges notified, in order: each is keyed by the representatives of
-  // the time, as d_masterTerm is.
-  for (const std::pair<Node, Node>& p : d_pendingMerges)
-  {
-    const Node& r1 = p.first;
-    const Node& r2 = p.second;
-    Node c1 = masterTermOf(r1);
-    Node c2 = masterTermOf(r2);
-    if (c1.isNull() && c2.isNull())
-    {
-      continue;
-    }
-    if (c1.isNull())
-    {
-      // r1 represents the merged class, which now holds c2
-      d_masterTerm.insert(r1, c2);
-      continue;
-    }
-    if (c2.isNull())
-    {
-      continue;
-    }
-    mergeMasterTerms(c1, c2);
-  }
-  d_pendingMerges.clear();
-  // The terms the core internalized since the last call, which may have
-  // been merged in the master equality engine before.
-  size_t n = getNumEInternalized();
-  for (size_t i = std::min(d_masterIdx.get(), n); i < n; ++i)
-  {
-    TNode t = getEInternalized(i);
-    if (t.getType().isBoolean() || !d_masterEe->hasTerm(t))
-    {
-      continue;
-    }
-    Node r = d_masterEe->getRepresentative(t);
-    Node c = masterTermOf(r);
-    if (c.isNull())
-    {
-      d_masterTerm.insert(r, t);
-    }
-    else
-    {
-      mergeMasterTerms(t, c);
-    }
-  }
-  d_masterIdx = n;
+  d_egraph.notifyMasterMerge(t1, t2);
 }
 
 void SmtContext::notifyPop()
@@ -1892,7 +1645,7 @@ void SmtContext::notifyPop()
     d_popLevel = lvl;
   }
   // the merges notified and not applied are void
-  d_pendingMerges.clear();
+  d_egraph.clearPendingMasterMerges();
   if (!d_setup)
   {
     return;
@@ -1907,24 +1660,23 @@ void SmtContext::notifyPop()
 
 void SmtContext::syncLevel()
 {
-  PropCore& core = d_prop;
   uint32_t lvl = context()->getLevel();
   // The scopes above the lowest level the SAT context reached since the last
   // call belong to a branch it left, even if it is now as deep again.
   uint32_t popTo = std::min(lvl, d_popLevel);
   d_popLevel = UINT32_MAX;
-  if (core.getScopeLevel() > popTo)
+  if (getScopeLevel() > popTo)
   {
     Statistics& stats = d_stats;
     stats.d_numHostPops++;
-    stats.d_numHostScopesPopped += core.getScopeLevel() - popTo;
+    stats.d_numHostScopesPopped += getScopeLevel() - popTo;
     if (popTo == 0)
     {
       stats.d_numHostRestarts++;
     }
-    core.hostSyncLevel(popTo);
+    setScopeLevel(popTo);
   }
-  core.hostSyncLevel(lvl);
+  setScopeLevel(lvl);
 }
 
 void SmtContext::enterConflict()
@@ -2029,21 +1781,20 @@ Node SmtContext::delayUnit(const Node& lem)
 
 void SmtContext::splitNewlyRelevant()
 {
-  PropCore& core = d_prop;
   std::vector<Node> rel;
-  core.hostTakeRelevant(rel);
+  d_prop.hostTakeRelevant(rel);
   prop::PropEngine* pe = d_te->getPropEngine();
   for (const Node& n : rel)
   {
     // A variable cvc5 knows is decided by its heuristic when an assertion
     // needs it; the core's own variables (the conditions of term ITEs, for
     // instance) are decided only through a split.
-    if (!core.bInternalized(n) || pe->isSatLiteral(toHost(n)))
+    if (!d_prop.bInternalized(n) || pe->isSatLiteral(toHost(n)))
     {
       continue;
     }
-    BoolVar v = core.getBoolVar(n);
-    if (core.getAssignment(v) == SAT_VALUE_UNKNOWN && core.isRelevant(v))
+    BoolVar v = d_prop.getBoolVar(n);
+    if (d_prop.getAssignment(v) == SAT_VALUE_UNKNOWN && d_prop.isRelevant(v))
     {
       split(v);
     }
@@ -2052,9 +1803,8 @@ void SmtContext::splitNewlyRelevant()
 
 void SmtContext::split(BoolVar v)
 {
-  PropCore& core = d_prop;
   prop::PropEngine* pe = d_te->getPropEngine();
-  TNode atom = core.boolVar2Expr(v);
+  TNode atom = d_prop.boolVar2Expr(v);
   if (atom.isNull() || atom.isConst())
   {
     return;
@@ -2102,11 +1852,10 @@ Node SmtContext::SplitStrategy::getNextDecisionRequest()
 
 void SmtContext::splitPendingAtoms()
 {
-  PropCore& core = d_prop;
-  for (size_t i = 0, n = core.getNumBoolVars(); i < n; ++i)
+  for (size_t i = 0, n = d_prop.getNumBoolVars(); i < n; ++i)
   {
     BoolVar v = static_cast<BoolVar>(i);
-    if (core.getAssignment(v) == SAT_VALUE_UNKNOWN && core.isRelevant(v))
+    if (d_prop.getAssignment(v) == SAT_VALUE_UNKNOWN && d_prop.isRelevant(v))
     {
       split(v);
     }
@@ -2115,8 +1864,7 @@ void SmtContext::splitPendingAtoms()
 
 bool SmtContext::propagateAndReport()
 {
-  PropCore& core = d_prop;
-  bool ok = core.hostPropagate();
+  bool ok = propagate();
   if (!ok)
   {
     enterConflict();

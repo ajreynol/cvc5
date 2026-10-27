@@ -292,7 +292,7 @@ void RelevancyPropagator::markAsRelevant(TNode n)
 {
   if (!isRelevantCore(n))
   {
-    TNode next = d_theory.getNextInEClass(n);
+    TNode next = d_theory.getEGraph().getNextInEClass(n);
     if (!next.isNull())
     {
       // relevancy is shared by an entire equivalence class
@@ -303,7 +303,7 @@ void RelevancyPropagator::markAsRelevant(TNode n)
         {
           setRelevant(curr);
         }
-        curr = d_theory.getNextInEClass(curr);
+        curr = d_theory.getEGraph().getNextInEClass(curr);
       } while (curr != n);
     }
     else

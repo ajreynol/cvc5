@@ -37,7 +37,10 @@ bool isTrueNode(TNode n)
 }  // namespace
 
 Checker::Checker(SmtContext& c)
-    : d_context(c), d_numBindings(0), d_bindings(nullptr)
+    : d_context(c),
+      d_egraph(c.getEGraph()),
+      d_numBindings(0),
+      d_bindings(nullptr)
 {
 }
 
@@ -185,7 +188,7 @@ ENode* Checker::getENodeEqToCore(TNode n)
     buffer.push_back(arg);
   }
   ENode* e =
-      d_context.getENodeEqTo(getDecl(n), isCommutative(n), num, buffer.data());
+      d_egraph.getENodeEqTo(getDecl(n), isCommutative(n), num, buffer.data());
   if (e == nullptr)
   {
     return nullptr;
@@ -204,9 +207,9 @@ ENode* Checker::getENodeEqTo(TNode n)
     }
     return d_bindings[idx];
   }
-  if (d_context.eInternalized(n) && d_context.isRelevantForChecking(n))
+  if (d_egraph.eInternalized(n) && d_context.isRelevantForChecking(n))
   {
-    return d_context.getENode(n);
+    return d_egraph.getENode(n);
   }
   if (!isApp(n) || n.getNumChildren() == 0)
   {

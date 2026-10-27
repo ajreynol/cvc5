@@ -84,7 +84,7 @@ class SimpleRelevancyHandler : public RelevancyHandler
  * Propagation constraints are declared with addHandler and addWatch; this
  * class also provides helpers for the constraints the internalizer needs.
  *
- * It uses the equivalence classes of the theory side (SmtContext), notifies it
+ * It uses the equivalence classes of the E-graph, notifies SmtContext
  * that an expression became relevant through notifyRelevant, and is told about
  * new assignments through notifyAssigned.
  */

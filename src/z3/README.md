@@ -20,8 +20,8 @@ weakening; cvc5's preprocessing proves the form the core takes them in.
 | Directory | Contents | May include (from the port) |
 |---|---|---|
 | `src/z3/util/` | Data structures and the term interface: literals, the trail stack (on a `context::Context` of its own), approximate sets, `ast.h` (incl. `QuantifierNormalizer`), and `statistics` | nothing outside `z3/util/` |
-| `src/z3/relevancy/` | The Boolean side: `PropCore` (assignment, clauses, watch lists, propagation), `RelevancyPropagator`, and `RelevancyTracker` (the `TheoryEngineModule` that hands it every asserted literal) | `z3/util/`, and `SmtContext` |
-| `src/z3/quantifiers/` | The theory side and the cvc5 integration: `SmtContext` (E-graph, internalizer, and the boundary with cvc5), `mam` (E-matching), `QiQueue`, the checker, the quantifier manager, `LemmaProofGenerator`, `Z3Module` | anything |
+| `src/z3/relevancy/` | The Boolean side: `PropCore` (variables, assignment, clauses, watch lists, Boolean propagation), `RelevancyPropagator`, and `RelevancyTracker` (the `TheoryEngineModule` that hands it every asserted literal) | `z3/util/`, and `SmtContext` |
+| `src/z3/quantifiers/` | The coordinator and the cvc5 integration: `SmtContext` (internalizer, propagation and scopes, and the boundary with cvc5), `EGraph`, `mam` (E-matching), `QiQueue`, the checker, the quantifier manager, `LemmaProofGenerator`, `Z3Module` | anything |
 
 `PropCore` and `RelevancyPropagator` reach the theory side, `SmtContext`,
 directly, so the two directories depend on each other.
@@ -39,31 +39,37 @@ All of the port's classes are in the namespace `cvc5::internal::z3`.
 ## Ownership
 
 Each class owns the ones below it; `(-> X)` is a reference it keeps to X.
+`SmtContext` drives the others; their references to it are for
+notifications (`PropCore`: an atom assigned, a term relevant, a variable
+deleted; `EGraph`: a merge, of Boolean classes, a conflict) and for what it
+coordinates (the trail stack, relevancy, the statistics).
 
 ```
 QuantifiersEngine (cvc5)
 └── Z3Module                      the module of cvc5's quantifiers engine
-    └── SmtContext                the core, and its boundary with cvc5
-        │                         (lemmas, splits, following the SAT
-        │                         context, and the merges of the master
-        │                         equality engine)
+    └── SmtContext                the core: internalization, propagation and
+        │                         scopes, and the boundary with cvc5 (lemmas,
+        │                         splits, following the SAT context)
         ├── Statistics
         ├── TrailStack            its own context::Context, and the memory of
         │                         the enodes, relevancy handlers, fingerprints
         │                         and code trees
-        ├── PropCore                                    (-> SmtContext)
+        ├── PropCore              the Boolean side     (-> SmtContext)
         │   └── RelevancyPropagator                     (-> PropCore, SmtContext)
+        ├── EGraph                the enodes, congruence closure, generations,
+        │   │                     and the merges of the master equality engine
+        │   │                                           (-> SmtContext)
+        │   └── CgTable, TmpENode
         ├── QuantifierNormalizer
-        ├── CgTable, TmpENode
         ├── QuantifierManager                           (-> SmtContext)
         │   ├── QiQueue                                 (-> QuantifierManager,
         │   │   │                                           SmtContext)
-        │   │   └── Checker                             (-> SmtContext)
+        │   │   └── Checker                             (-> SmtContext, EGraph)
         │   ├── FingerprintSet                          (-> TrailStack)
         │   ├── QuantifierStatGen                       (-> TrailStack)
         │   └── Mam x2, eager and lazy (MamImpl: LabelHasher,
         │       CodeTreeManager, Compiler, Interpreter, CodeTreeMap)
-        │                                               (-> SmtContext,
+        │                                               (-> SmtContext, EGraph,
         │                                                   QuantifierManager,
         │                                                   TrailStack)
         ├── LemmaProofGenerator
@@ -114,12 +120,12 @@ as of this README:
 
 | Directory | Files | Code | Comment | Blank |
 |---|---:|---:|---:|---:|
-| `src/z3/util/` | 8 | 651 | 287 | 157 |
-| `src/z3/relevancy/` | 12 | 2274 | 514 | 373 |
-| `src/z3/quantifiers/` | 27 | 7714 | 1606 | 990 |
-| **Total** | 47 | **10639** | 2407 | 1520 |
+| `src/z3/util/` | 6 | 553 | 245 | 131 |
+| `src/z3/relevancy/` | 11 | 1683 | 402 | 308 |
+| `src/z3/quantifiers/` | 24 | 7799 | 1660 | 972 |
+| **Total** | 41 | **10035** | 2307 | 1411 |
 
-The rest of cvc5 changes by 257 added and 18 deleted lines over 21 C++ files,
+The rest of cvc5 changes by 260 added and 18 deleted lines over 23 C++ files,
 most of them in `smt/set_defaults.cpp` (the capability checks) and
 `theory/quantifiers/quantifiers_preprocess.cpp` (pre-skolemization of
 quantified formulas with patterns).

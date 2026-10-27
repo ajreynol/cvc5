@@ -123,7 +123,7 @@ bool isGroundPat(TNode n) { return !expr::hasBoundVar(n); }
 ENode* mkPatENode(SmtContext& ctx, QuantifierManager& qm, TNode qa, TNode n)
 {
   ctx.internalize(n, false, qm.getGeneration(qa));
-  ENode* e = ctx.getENode(n);
+  ENode* e = ctx.getEGraph().getENode(n);
   Assert(e != nullptr);
   return e;
 }
@@ -137,11 +137,11 @@ ENode* mkPatENode(SmtContext& ctx, QuantifierManager& qm, TNode qa, TNode n)
 class LabelHasher
 {
  public:
-  LabelHasher(SmtContext& ctx) : d_ctx(ctx) {}
+  LabelHasher(EGraph& eg) : d_egraph(eg) {}
 
   uint8_t operator()(TNode lbl)
   {
-    uint32_t lblId = d_ctx.getDeclId(lbl);
+    uint32_t lblId = d_egraph.getDeclId(lbl);
     if (lblId >= d_lbl2Hash.size())
     {
       d_lbl2Hash.resize(lblId + 1, -1);
@@ -161,7 +161,7 @@ class LabelHasher
     d_lbl2Hash[lblId] = static_cast<int8_t>(h & (approxSetCapacity() - 1));
   }
 
-  SmtContext& d_ctx;
+  EGraph& d_egraph;
   /** Cache: declaration id to hash. */
   std::vector<int8_t> d_lbl2Hash;
 };
@@ -1843,6 +1843,7 @@ class Interpreter
  public:
   Interpreter(SmtContext& ctx, QuantifierManager& qm)
       : d_context(ctx),
+        d_egraph(ctx.getEGraph()),
         d_qm(qm),
         d_top(0),
         d_pc(nullptr),
@@ -1938,7 +1939,7 @@ class Interpreter
 
   void updateMaxGeneration(ENode* n)
   {
-    d_maxGeneration = std::max(d_maxGeneration, d_context.getGeneration(n));
+    d_maxGeneration = std::max(d_maxGeneration, d_egraph.getGeneration(n));
   }
 
   /**
@@ -2096,6 +2097,7 @@ class Interpreter
   }
 
   SmtContext& d_context;
+  EGraph& d_egraph;
   QuantifierManager& d_qm;
   ENodeVector d_registers;
   ENodeVector d_bindings;
@@ -2121,7 +2123,7 @@ class Interpreter
 ENode* Interpreter::initContinue(const Cont* c, uint16_t expectedNumArgs)
 {
   TNode lbl = c->d_label;
-  size_t minSz = d_context.getNumENodesOf(lbl);
+  size_t minSz = d_egraph.getNumENodesOf(lbl);
   uint16_t numArgs = c->d_numArgs;
   const TaggedPtr* joints = c->jointsPtr();
   // A quick filter: give up if any joint has no parents at all.
@@ -2197,7 +2199,7 @@ ENode* Interpreter::initContinue(const Cont* c, uint16_t expectedNumArgs)
   ContState& bpRest = bp.d_rest;
   if (bestV == nullptr)
   {
-    const ENodeVector& all = d_context.enodesOf(lbl);
+    const ENodeVector& all = d_egraph.enodesOf(lbl);
     bpRest.d_toRecycle = nullptr;
     bpRest.d_it = all.data();
     bpRest.d_end = all.data() + all.size();
@@ -2240,7 +2242,7 @@ bool Interpreter::executeCore(CodeTree* t, ENode* n)
   // It makes no sense to process an irrelevant enode.
   Assert(d_context.isRelevantForMatching(n));
 
-  d_maxGeneration = d_context.getGeneration(n);
+  d_maxGeneration = d_egraph.getGeneration(n);
 
   d_pc = t->getRoot();
   d_registers[0] = n;
@@ -2406,7 +2408,7 @@ main_loop:
       }
       d_maxGeneration =
           std::max(d_maxGeneration,
-                   d_context.getMaxGeneration(d_numArgs, d_bindings.data()));
+                   d_egraph.getMaxGeneration(d_numArgs, d_bindings.data()));
       if (d_context.getCancelFlag())
       {
         return false;
@@ -2444,7 +2446,7 @@ main_loop:
           goto backtrack;
         }
       }
-      d_n1 = d_context.getENodeEqTo(
+      d_n1 = d_egraph.getENodeEqTo(
           c->d_label, c->d_commutative, d_numArgs, d_args.data());
       if (d_n1 == nullptr || !d_context.isRelevantForMatching(d_n1))
       {
@@ -2594,7 +2596,10 @@ class CodeTreeMap
 {
  public:
   CodeTreeMap(SmtContext& ctx, Compiler& c, TrailStack& s)
-      : d_context(ctx), d_compiler(c), d_trailStack(s)
+      : d_context(ctx),
+        d_egraph(ctx.getEGraph()),
+        d_compiler(c),
+        d_trailStack(s)
   {
   }
 
@@ -2618,7 +2623,7 @@ class CodeTreeMap
     {
       return;
     }
-    uint32_t lblId = d_context.getDeclId(getDecl(p));
+    uint32_t lblId = d_egraph.getDeclId(getDecl(p));
     if (d_trees.size() < lblId + 1)
     {
       d_trees.resize(lblId + 1, static_cast<CodeTree*>(nullptr));
@@ -2660,7 +2665,7 @@ class CodeTreeMap
 
   CodeTree* getCodeTreeFor(TNode lbl) const
   {
-    uint32_t lblId = d_context.getDeclIdOption(lbl);
+    uint32_t lblId = d_egraph.getDeclIdOption(lbl);
     return lblId < d_trees.size() ? d_trees[lblId] : nullptr;
   }
 
@@ -2688,6 +2693,7 @@ class CodeTreeMap
   };
 
   SmtContext& d_context;
+  EGraph& d_egraph;
   Compiler& d_compiler;
   /** mapping: label id -> tree */
   std::vector<CodeTree*> d_trees;
@@ -2810,9 +2816,10 @@ class MamImpl final : public Mam
  public:
   MamImpl(SmtContext& ctx, QuantifierManager& qm)
       : d_context(ctx),
+        d_egraph(ctx.getEGraph()),
         d_qm(qm),
         d_trailStack(ctx.getTrailStack()),
-        d_lblHasher(ctx),
+        d_lblHasher(ctx.getEGraph()),
         d_ctManager(d_lblHasher, d_trailStack),
         d_compiler(ctx, qm, d_ctManager, d_lblHasher),
         d_interpreter(ctx, qm),
@@ -2914,9 +2921,9 @@ class MamImpl final : public Mam
       // executeCore may internalize new applications of lbl, which can grow
       // and reallocate the context's enode vector for lbl, so the vector
       // itself (not just its size) is re-fetched on every iteration.
-      for (size_t i = 0; i < d_context.enodesOf(lbl).size(); ++i)
+      for (size_t i = 0; i < d_egraph.enodesOf(lbl).size(); ++i)
       {
-        ENode* curr = d_context.enodesOf(lbl)[i];
+        ENode* curr = d_egraph.enodesOf(lbl)[i];
         if (d_context.isRelevantForMatching(curr))
         {
           d_interpreter.executeCore(t, curr);
@@ -3058,13 +3065,13 @@ class MamImpl final : public Mam
 
   bool isPlbl(TNode lbl) const
   {
-    uint32_t lblId = d_context.getDeclIdOption(lbl);
+    uint32_t lblId = d_egraph.getDeclIdOption(lbl);
     return lblId < d_isPlbl.size() && d_isPlbl[lblId];
   }
 
   bool isClbl(TNode lbl) const
   {
-    uint32_t lblId = d_context.getDeclIdOption(lbl);
+    uint32_t lblId = d_egraph.getDeclIdOption(lbl);
     return lblId < d_isClbl.size() && d_isClbl[lblId];
   }
 
@@ -3080,7 +3087,7 @@ class MamImpl final : public Mam
 
   void updateClbls(TNode lbl)
   {
-    uint32_t lblId = d_context.getDeclId(lbl);
+    uint32_t lblId = d_egraph.getDeclId(lbl);
     if (d_isClbl.size() < lblId + 1)
     {
       d_isClbl.resize(lblId + 1, false);
@@ -3092,7 +3099,7 @@ class MamImpl final : public Mam
     d_trailStack.push(SetBitvectorTrail<std::vector<bool>>(d_isClbl, lblId));
     Assert(d_isClbl[lblId]);
     uint8_t h = d_lblHasher(lbl);
-    for (ENode* app : d_context.enodesOf(lbl))
+    for (ENode* app : d_egraph.enodesOf(lbl))
     {
       if (d_context.isRelevantForMatching(app))
       {
@@ -3118,7 +3125,7 @@ class MamImpl final : public Mam
 
   void updatePlbls(TNode lbl)
   {
-    uint32_t lblId = d_context.getDeclId(lbl);
+    uint32_t lblId = d_egraph.getDeclId(lbl);
     if (d_isPlbl.size() < lblId + 1)
     {
       d_isPlbl.resize(lblId + 1, false);
@@ -3130,7 +3137,7 @@ class MamImpl final : public Mam
     d_trailStack.push(SetBitvectorTrail<std::vector<bool>>(d_isPlbl, lblId));
     Assert(d_isPlbl[lblId]);
     uint8_t h = d_lblHasher(lbl);
-    for (ENode* app : d_context.enodesOf(lbl))
+    for (ENode* app : d_egraph.enodesOf(lbl))
     {
       if (d_context.isRelevantForMatching(app))
       {
@@ -3632,9 +3639,9 @@ class MamImpl final : public Mam
       TNode mp = kv.second;
       TNode p = mp[0];
       TNode lbl = getDecl(p);
-      if (d_context.getNumENodesOf(lbl) > 0)
+      if (d_egraph.getNumENodesOf(lbl) > 0)
       {
-        uint32_t lblId = d_context.getDeclId(lbl);
+        uint32_t lblId = d_egraph.getDeclId(lbl);
         if (d_tmpTrees.size() < lblId + 1)
         {
           d_tmpTrees.resize(lblId + 1, static_cast<CodeTree*>(nullptr));
@@ -3653,16 +3660,16 @@ class MamImpl final : public Mam
 
     for (TNode lbl : d_tmpTreesToDelete)
     {
-      uint32_t lblId = d_context.getDeclId(lbl);
+      uint32_t lblId = d_egraph.getDeclId(lbl);
       CodeTree* tmpTree = d_tmpTrees[lblId];
       Assert(tmpTree != nullptr);
       Trace("z3-mam-newpat")
           << "  running tree for " << lbl << " over "
-          << d_context.enodesOf(lbl).size() << " enodes" << std::endl;
+          << d_egraph.enodesOf(lbl).size() << " enodes" << std::endl;
       d_interpreter.init(tmpTree);
-      for (size_t i = 0; i < d_context.enodesOf(lbl).size(); ++i)
+      for (size_t i = 0; i < d_egraph.enodesOf(lbl).size(); ++i)
       {
-        ENode* app = d_context.enodesOf(lbl)[i];
+        ENode* app = d_egraph.enodesOf(lbl)[i];
         if (d_context.isRelevantForMatching(app))
         {
           d_interpreter.executeCore(tmpTree, app);
@@ -3716,6 +3723,7 @@ class MamImpl final : public Mam
   }
 
   SmtContext& d_context;
+  EGraph& d_egraph;
   /** The quantifier manager, which receives the matches. */
   QuantifierManager& d_qm;
   /** The trail of the context, and the memory of the code trees. */

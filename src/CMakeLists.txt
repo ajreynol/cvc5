@@ -1334,6 +1334,8 @@ libcvc5_add_sources(
   z3/quantifiers/cg_table.h
   z3/quantifiers/checker.cpp
   z3/quantifiers/checker.h
+  z3/quantifiers/egraph.cpp
+  z3/quantifiers/egraph.h
   z3/quantifiers/enode.cpp
   z3/quantifiers/enode.h
   z3/quantifiers/fingerprints.cpp

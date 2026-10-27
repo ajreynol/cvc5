@@ -12,9 +12,10 @@
  * Ported from Z3 (MIT License, Copyright (c) Microsoft Corporation),
  * file src/smt/smt_context.h, and recast in cvc5 style.
  *
- * The theory side of the core: the E-graph (congruence closure over
- * enodes), the internalizer, and the quantifier manager. Its propositional
- * side, PropCore, mirrors cvc5's assignment (see syncLevel); the ground
+ * The coordinator of the core: it owns and drives the Boolean side (PropCore),
+ * the E-graph (EGraph) and the quantifiers (QuantifierManager), internalizes
+ * the input and the instances into the first two, runs the propagation
+ * fixpoint and the scopes, and is the boundary with cvc5. The ground
  * reasoning is cvc5's theories', whose equalities reach the E-graph through
  * the master equality engine (notifyMasterMerge).
  *
@@ -46,7 +47,7 @@
 #include "theory/inference_id.h"
 #include "theory/lemma_property.h"
 #include "theory/theory.h"
-#include "z3/quantifiers/cg_table.h"
+#include "z3/quantifiers/egraph.h"
 #include "z3/quantifiers/enode.h"
 #include "z3/quantifiers/quantifier_manager.h"
 #include "z3/relevancy/bool_var_data.h"
@@ -80,12 +81,13 @@ class QuantifierManager;
 class RelevancyTracker;
 
 /**
- * The ported core: the theory side, whose propositional side is PropCore, and
- * the boundary with cvc5.
+ * The ported core: the coordinator of the Boolean side (PropCore), the E-graph
+ * (EGraph) and the quantifiers (QuantifierManager), and the boundary with
+ * cvc5.
  *
  * It implements the search contract of cvc5's prop engine (preregistration,
- * facts and checks) over PropCore, which mirrors the assignment for the theory
- * side (see PropCore::hostInit). Its scopes follow the SAT context.
+ * facts and checks) over PropCore, which mirrors the assignment of the atoms
+ * (see setupSearch). Its scopes follow the SAT context (syncLevel).
  *
  * The core is a shadow of the ground state of cvc5's theories, made from a
  * copy of every fact: it sends instances, conflicts and splits as lemmas,
@@ -135,28 +137,23 @@ class SmtContext final : protected EnvObj
   void notifyMasterMerge(TNode t1, TNode t2);
 
   // ---------------------------------------------------------- assertions
-  //
-  // The asserted formulas and the checks are driven by the propositional
-  // side, PropCore. The methods below forward to it for the theory side.
+  size_t getNumAssertedFormulas() const { return d_assertedFormulas.size(); }
 
-  size_t getNumAssertedFormulas() const
-  {
-    return d_prop.getNumAssertedFormulas();
-  }
-
-  TNode getAssertedFormula(size_t idx) const
-  {
-    return d_prop.getAssertedFormula(idx);
-  }
+  TNode getAssertedFormula(size_t idx) const { return d_assertedFormulas[idx]; }
 
   /**
    * Internalize the asserted formula n, of the given generation: its subterms,
-   * then its Boolean structure through PropCore::assertRoot.
+   * then its Boolean structure (assertRoot).
    */
   void internalizeAssertion(TNode n, uint32_t generation);
 
-  // ------------------------------------- the scheduling and backtracking
-  //                                       contract, called by PropCore
+  // ----------------------------------------- propagation and backtracking
+  /** Propagate both sides to a fixpoint; returns false on a conflict. */
+  bool propagate();
+
+  /** Whether either side has propagation work pending. */
+  bool canPropagate() const;
+
   /**
    * Propagate on the theory side, after Boolean propagation and relevancy
    * have saturated: the assigned atoms, the equalities, the theories and the
@@ -177,21 +174,23 @@ class SmtContext final : protected EnvObj
    */
   bool finalCheck();
 
-  /** Push a scope of the theory side, after the propositional side's. */
-  void pushTheoryScope();
+  /**
+   * Open a new scope: the Boolean side's, and the trail stack's, whose
+   * context holds the scoped data of the relevancy propagator, the queue and
+   * the fingerprints.
+   */
+  void pushScope();
 
   /**
-   * Discard the pending work of the quantifier manager, before the Boolean
-   * variables are unassigned.
+   * Backtrack numScopes scopes: discard the pending work of the quantifier
+   * manager, pop the Boolean side, then the trail stack (and its memory and
+   * context) and the propagation queues, and reassert the units of the
+   * scopes popped.
    */
-  void popTheoryScopeBegin();
+  void popScope(size_t numScopes);
 
-  /**
-   * Pop numScopes scopes of the theory side, after the Boolean variables are
-   * unassigned: the trail stack, which pops the trail (and its memory) and
-   * the data in its context, and the propagation queues.
-   */
-  void popTheoryScopeEnd(size_t numScopes);
+  /** Backtrack to the base level. */
+  void popToBaseLvl();
 
   void resetCacheGeneration();
 
@@ -199,24 +198,10 @@ class SmtContext final : protected EnvObj
 
   Statistics& getStats() { return d_stats; }
 
-  ENode* getENode(TNode n) const
-  {
-    Assert(eInternalized(n));
-    return d_app2ENode[n.getId()];
-  }
+  /** The E-graph. */
+  EGraph& getEGraph() { return d_egraph; }
 
-  /** Like getENode, but returns null if n is not internalized. */
-  ENode* findENode(TNode n) const
-  {
-    size_t id = n.getId();
-    return id < d_app2ENode.size() ? d_app2ENode[id] : nullptr;
-  }
-
-  TNode getNextInEClass(TNode n) const
-  {
-    ENode* e = findENode(n);
-    return e == nullptr ? TNode::null() : TNode(e->getNext()->getExpr());
-  }
+  const EGraph& getEGraph() const { return d_egraph; }
 
   // ------------------------------------- the Boolean search, see PropCore
   //
@@ -239,7 +224,7 @@ class SmtContext final : protected EnvObj
   ENode* boolVar2ENode(BoolVar v) const
   {
     Assert(getBdata(v).isENode());
-    return d_app2ENode[boolVar2Expr(v).getId()];
+    return d_egraph.getENode(boolVar2Expr(v));
   }
 
   BoolVar enode2BoolVar(const ENode* n) const
@@ -275,47 +260,8 @@ class SmtContext final : protected EnvObj
 
   bool isTrue(const ENode* n) const { return n == d_trueENode; }
 
-  size_t getNumENodesOf(TNode decl) const
-  {
-    uint32_t id = getDeclIdOption(decl);
-    return id < d_decl2ENodes.size() ? d_decl2ENodes[id].size() : 0;
-  }
-
-  const ENodeVector& enodesOf(TNode decl) const
-  {
-    uint32_t id = getDeclIdOption(decl);
-    return id < d_decl2ENodes.size() ? d_decl2ENodes[id] : d_emptyVector;
-  }
-
-  uint32_t getGeneration(ENode* e) const
-  {
-    // Patterns with equalities are not supported, so there is no need to
-    // track the generation of equality nodes.
-    if (e->isEq())
-    {
-      return 0;
-    }
-    return getCgRoot(e)->d_generation;
-  }
-
-  uint32_t getMaxGeneration(size_t numENodes, ENode* const* enodes)
-  {
-    uint32_t max = 0;
-    for (size_t i = 0; i < numENodes; ++i)
-    {
-      uint32_t curr = getGeneration(enodes[i]);
-      if (curr > max)
-      {
-        max = curr;
-      }
-    }
-    return max;
-  }
-
-  void setGeneration(ENode* e, uint32_t generation);
-
   /** True if the input contains universal quantifiers. */
-  bool hasQuantifiers() const { return d_prop.hasQuantifiers(); }
+  bool hasQuantifiers() const { return d_hasQuantifiers; }
 
   // ----------------------------------------------- backtracking support
   template <typename TrailObject>
@@ -332,12 +278,6 @@ class SmtContext final : protected EnvObj
   bool bInternalized(TNode n) const { return d_prop.bInternalized(n); }
 
   bool litInternalized(TNode n) const { return d_prop.litInternalized(n); }
-
-  bool eInternalized(TNode n) const { return findENode(n) != nullptr; }
-
-  size_t getNumEInternalized() const { return d_eInternalizedStack.size(); }
-
-  TNode getEInternalized(size_t idx) const { return d_eInternalizedStack[idx]; }
 
   /** The canonicalizer for quantifiers; see z3/ast.h. */
   QuantifierNormalizer& getNormalizer() { return d_normalizer; }
@@ -366,16 +306,6 @@ class SmtContext final : protected EnvObj
   void internalize(const Node* exprs, size_t numExprs, bool gateCtx);
   void internalize(TNode n, bool gateCtx, uint32_t generation);
 
-  // ---------------------------------------------------- trail callbacks
-  /** Undo an addEq; invoked from the trail. */
-  void undoAddEq(ENode* r1, size_t r2NumParents);
-
-  /** Undo a congruence class generation merge; invoked from the trail. */
-  void undoMergeCgcGenerations(ENode* e1,
-                               uint32_t e1Generation,
-                               ENode* e2,
-                               uint32_t e2Generation);
-
   BoolVar mkBoolVar(TNode n) { return d_prop.mkBoolVar(n); }
 
   ENode* mkENode(TNode n, bool suppressArgs, bool mergeTf, bool cgcEnabled);
@@ -400,47 +330,42 @@ class SmtContext final : protected EnvObj
    */
   void internalizeRec(TNode n, bool gateCtx);
 
+  // ------------------------------------------------------------ the input
+  /** Assert a (prepared) formula. */
+  void assertFormula(TNode e);
+  /** Add e to the asserted formulas, splitting a top-level conjunction. */
+  void pushAssertion(TNode e);
+  /** Internalize the asserted formulas not internalized yet. */
+  void internalizeAssertions();
+  /**
+   * Assert the root formula n: the clauses of a root gate over the literals
+   * of its arguments, which are internalized here in turn, or the unit
+   * literal of anything else.
+   */
+  void assertRoot(TNode n);
+  void assertDefault(TNode n);
+
   void setEnodeFlag(BoolVar v, bool isNewVar);
 
   // ------------------------------------------------------------- engine
   void assign(Literal l) { d_prop.assign(l); }
 
-  void addEq(ENode* n1, ENode* n2);
-
   void setConflict() { d_prop.setConflict(); }
 
   bool inconsistent() const { return d_prop.inconsistent(); }
 
-  static bool isEq(const ENode* n1, const ENode* n2)
-  {
-    return n1->getRoot() == n2->getRoot();
-  }
-
-  ENode* getCgRoot(ENode* n) const
-  {
-    if (!n->usesCgTable())
-    {
-      return n;
-    }
-    // Fast path: if n is already the congruence root, avoid the table lookup.
-    // This matters because getCgRoot is on every generation lookup.
-    if (n->isCgr())
-    {
-      return n;
-    }
-    ENode* r = d_cgTable.find(n);
-    return r != nullptr ? r : n;
-  }
-
   bool isDiseq(ENode* n1, ENode* n2) const;
 
-  /** An enode congruent to decl(args), or null if there is none. */
-  ENode* getENodeEqTo(TNode decl,
-                      bool commutative,
-                      size_t numArgs,
-                      ENode* const* args);
-
-  bool canPropagate() const { return d_prop.canPropagate(); }
+  /**
+   * The classes of r1 and r2 are about to merge: relevancy spreads to the
+   * class, and the quantifier manager is notified. Called by the E-graph.
+   */
+  void notifyMerge(ENode* r1, ENode* r2);
+  /**
+   * The Boolean classes of r1 and r2 merged, through n1 and n2: the value of
+   * either is copied to the class. Called by the E-graph.
+   */
+  void propagateBoolENodeAssignment(ENode* r1, ENode* r2, ENode* n1, ENode* n2);
 
   // ------------------------------------------------------------ relevancy
   //
@@ -485,20 +410,36 @@ class SmtContext final : protected EnvObj
   Node rewriteInstance(TNode n) const { return rewrite(n); }
 
   /**
-   * A dense id for a declaration, created on demand. This is the counterpart
-   * of Z3's func_decl::get_small_id, which the E-matching engine uses to index
-   * its tables by function symbol.
+   * True if the resource limits were exceeded during this search, which
+   * then stays out of resources.
    */
-  uint32_t getDeclId(TNode decl);
-  /** The dense id of decl, or UINT32_MAX if it has none yet. */
-  uint32_t getDeclIdOption(TNode decl) const;
+  bool resourceLimitsExceeded();
 
-  bool resourceLimitsExceeded() { return d_prop.resourceLimitsExceeded(); }
-
-  bool getCancelFlag() { return d_prop.getCancelFlag(); }
+  /** True if the resource limits were exceeded. */
+  bool getCancelFlag();
 
  private:
   // -------------------------------------------- the boundary with cvc5
+  /**
+   * Prepare the search: internalize the asserted formulas and start the
+   * search.
+   */
+  void setupSearch();
+  /** Push or pop scopes until the scope level is lvl. */
+  void setScopeLevel(uint32_t lvl);
+  /**
+   * The literal of n, an atom or a negated atom, internalizing the atom if
+   * it is not internalized, for instance because it was deleted on
+   * backtracking.
+   */
+  Literal literalOf(TNode n);
+  /**
+   * Cache the generations of the atoms of the units that will be reasserted
+   * when backtracking to newScopeLvl.
+   */
+  void cacheUnitGenerations(uint32_t newScopeLvl);
+  /** Reassert the units from unitsToReassertLim on, after a backtrack. */
+  void reassertUnits(size_t unitsToReassertLim);
   /**
    * The decisions the core asks cvc5 for: each atom it splits on, whenever
    * it is unassigned. cvc5 asks its decision strategies before it decides
@@ -633,17 +574,6 @@ class SmtContext final : protected EnvObj
    */
   TrustNode getSkolemization(TNode q);
   /**
-   * Queue in the E-graph the merges of the master equality engine notified
-   * since the last call, and those of the terms the core internalized since
-   * then, for its next propagation.
-   */
-  void applyMasterMerges();
-  /** The term of the core recorded for the representative rep, or null. */
-  Node masterTermOf(TNode rep) const;
-  /** Merge a and b, which the master equality engine made equal, if both
-   * are internalized. */
-  void mergeMasterTerms(TNode a, TNode b);
-  /**
    * Preprocess the lemma trn proves, which the core sends, into the form
    * cvc5's theories take, as mkInstance and mkSkolemization do.
    */
@@ -699,69 +629,12 @@ class SmtContext final : protected EnvObj
   std::unique_ptr<SplitStrategy> d_splitStrategy;
   /** Follows the pops of the SAT context. */
   std::unique_ptr<PopNotify> d_popNotify;
-  /**
-   * The master equality engine, which collects the terms and merges of the
-   * equality engines of cvc5's theories, or null. Its merges are the
-   * E-graph's, besides the congruences they imply: they are queued as they
-   * are notified (notifyMasterMerge), and applied at the next check
-   * (applyMasterMerges). The master equality engine keeps no reasons, so the
-   * core cannot explain these merges, and it does not need to: the core
-   * keeps no explanations.
-   */
-  theory::eq::EqualityEngine* d_masterEe;
-  /**
-   * For a representative of the master equality engine, a term of the core
-   * in its class, in the SAT context.
-   */
-  context::CDHashMap<Node, Node> d_masterTerm;
-  /**
-   * How many of the terms the core internalized were looked up in the
-   * master equality engine. In the SAT context, as the core's scopes are.
-   */
-  context::CDO<size_t> d_masterIdx;
-  /**
-   * The merges notified since the last check, as the representative that
-   * survived and the one that was merged into it. The SAT context popping
-   * voids them.
-   */
-  std::vector<std::pair<Node, Node>> d_pendingMerges;
   /** Gives the core the literals the SAT solver asserts. */
   std::unique_ptr<RelevancyTracker> d_tracker;
 
  protected:
   // --------------------------------------------- equality and congruence
-  struct NewEq
-  {
-    ENode* d_lhs;
-    ENode* d_rhs;
-    NewEq(ENode* lhs, ENode* rhs) : d_lhs(lhs), d_rhs(rhs) {}
-  };
-
-  void removeParentsFromCgTable(ENode* r1);
-  void reinsertParentsIntoCgTable(ENode* r1, ENode* r2);
-  void mergeCgcGenerations(ENode* e1, uint32_t e1Generation, ENode* e2);
-  void setGenerationSticky(ENode* e, uint32_t generation);
-  void propagateBoolENodeAssignment(ENode* r1, ENode* r2, ENode* n1, ENode* n2);
   void propagateBoolENodeAssignmentCore(ENode* source, ENode* target);
-  void applyStickyUpdates(ENode* e1,
-                          uint32_t e1Generation,
-                          ENode* e2,
-                          uint32_t e2Generation);
-
-  void pushEq(ENode* lhs, ENode* rhs)
-  {
-    if (lhs->getRoot() != rhs->getRoot())
-    {
-      d_eqPropagationQueue.push_back(NewEq(lhs, rhs));
-    }
-  }
-
-  void pushNewCongruence(ENode* n1, ENode* n2)
-  {
-    Assert(n1->d_cg == n2);
-    pushEq(n1, n2);
-  }
-
   bool addDiseq(ENode* n1, ENode* n2);
   bool isDiseqCore(ENode* n1, ENode* n2, bool checkDistinctRootValues) const;
 
@@ -778,7 +651,6 @@ class SmtContext final : protected EnvObj
                                bool instance);
 
   // ----------------------------------------------------------- the search
-  bool propagateEqs();
   bool propagateAtoms();
   void propagateBoolVarENode(BoolVar v);
 
@@ -788,9 +660,9 @@ class SmtContext final : protected EnvObj
   void updateGeneration(ENode* n);
   void updateGeneration(TNode e)
   {
-    if (isApp(e) && eInternalized(e))
+    if (isApp(e) && d_egraph.eInternalized(e))
     {
-      updateGeneration(getENode(e));
+      updateGeneration(d_egraph.getENode(e));
     }
   }
   void internalizeFormula(TNode n, bool gateCtx);
@@ -801,7 +673,6 @@ class SmtContext final : protected EnvObj
   void setMergeTf(ENode* n, BoolVar v, bool isNewVar);
   void internalizeTerm(TNode n);
   void internalizeUninterpreted(TNode n);
-  void undoMkENode();
 
   void init();
   void flush();
@@ -819,6 +690,8 @@ class SmtContext final : protected EnvObj
    * and d_trailStack, so it is declared after them.
    */
   PropCore d_prop;
+  /** The E-graph. */
+  EGraph d_egraph;
   QuantifierNormalizer d_normalizer;
   /**
    * The forms of the instances made so far, by (SEXPR q t1 ... tn). The core
@@ -829,28 +702,9 @@ class SmtContext final : protected EnvObj
   /** The quantifiers: E-matching and instantiation. */
   QuantifierManager d_qmanager;
 
-  /** The expressions already internalized as enodes. */
-  std::vector<Node> d_eInternalizedStack;
-
-  // ------------------------------------- equality and uninterpreted functions
+  /** The enodes of the constants true and false. */
   ENode* d_trueENode;
   ENode* d_falseENode;
-  /** Maps the id of a term to its enode. */
-  App2ENode d_app2ENode;
-  ENodeVector d_enodes;
-  /** Maps a declaration id to the enodes with that declaration. */
-  std::vector<ENodeVector> d_decl2ENodes;
-  std::unordered_map<TNode, uint32_t> d_declIds;
-  ENodeVector d_emptyVector;
-  CgTable d_cgTable;
-  std::unordered_map<ENode*, uint32_t> d_stickyGenerationUpdates;
-  /**
-   * A temporary cache of parent generations, held between
-   * removeParentsFromCgTable and reinsertParentsIntoCgTable.
-   */
-  std::vector<std::pair<ENode*, uint32_t>> d_r1ParentGenerations;
-  std::vector<NewEq> d_eqPropagationQueue;
-  TmpENode d_tmpENode;
 
   LiteralVector d_atomPropagationQueue;
 
@@ -867,22 +721,31 @@ class SmtContext final : protected EnvObj
   uint32_t generationOf(TNode n);
   std::unordered_set<TNode> d_cacheGenerationVisited;
 
+  // ------------------------------------------------------ input and scopes
+  /** The formulas asserted to the core, and how far they are internalized. */
+  std::vector<Node> d_assertedFormulas;
+  size_t d_assertedFormulasQhead;
+  bool d_hasQuantifiers;
+  bool d_internalizingAssertions;
+  /** Whether the search started (setupSearch). */
+  bool d_searching;
+  /** Whether the resource limits were exceeded during this search. */
+  bool d_resourceOut;
+  /** A unit literal that is reasserted after every backtrack. */
+  struct ReplayUnit
+  {
+    Node d_unit;
+    bool d_sign;
+    bool d_relevant;
+  };
+  std::vector<ReplayUnit> d_unitsToReassert;
+  /** For each scope, the size of d_unitsToReassert when it was pushed. */
+  std::vector<size_t> d_unitsToReassertLims;
+
   // ------------------------------------------------------------ backtracking
 
   /** A temporary variable used during internalization. */
   uint32_t d_generation;
-
-  /** The trail object that undoes mkENode. */
-  class MkENodeTrail : public Trail
-  {
-   public:
-    MkENodeTrail(SmtContext& ctx) : d_ctx(ctx) {}
-    void undo() override { d_ctx.undoMkENode(); }
-
-   private:
-    SmtContext& d_ctx;
-  };
-  MkENodeTrail d_mkENodeTrail;
 };
 
 }  // namespace z3
