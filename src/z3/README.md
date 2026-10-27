@@ -21,20 +21,61 @@ weakening; cvc5's preprocessing proves the form the core takes them in.
 |---|---|---|
 | `src/z3/util/` | Data structures and the term interface: literals, the trail stack (on a `context::Context` of its own), approximate sets, `ast.h` (incl. `QuantifierNormalizer`), and `statistics` | nothing outside `z3/util/` |
 | `src/z3/relevancy/` | The Boolean side: `PropCore` (assignment, clauses, watch lists, propagation), `RelevancyPropagator`, and `RelevancyTracker` (the `TheoryEngineModule` that hands it every asserted literal) | `z3/util/`, and `SmtContext` |
-| `src/z3/quantifiers/` | The theory side and the cvc5 integration: `SmtContext` (E-graph, internalizer), `mam` (E-matching), `QiQueue`, the checker, the quantifier manager, `HostCore` (which owns the core), `LemmaProofGenerator`, `ShadowFeed`, `Z3Module` | anything |
+| `src/z3/quantifiers/` | The theory side and the cvc5 integration: `SmtContext` (E-graph, internalizer, and the boundary with cvc5 in `host.cpp`), `mam` (E-matching), `QiQueue`, the checker, the quantifier manager, `LemmaProofGenerator`, `ShadowFeed`, `Z3Module` | anything |
 
 `PropCore` and `RelevancyPropagator` reach the theory side, `SmtContext`,
 directly, so the two directories depend on each other.
 
 The core takes the input as cvc5's preprocessing leaves it, from
 `ppNotifyAssertions`. It renames the quantified variables to the canonical
-ones it expects (`QuantifierNormalizer`) at its boundary: `HostCore` renames
+ones it expects (`QuantifierNormalizer`) at its boundary: `SmtContext` renames
 the formulas, atoms and literals that come from cvc5 (`toCore`), and gives
 cvc5 its own atoms back in the lemmas and queries it sends (`toHost`). cvc5
 preprocesses the core's lemmas as any other, and the core takes them in that
 form.
 
 All of the port's classes are in the namespace `cvc5::internal::z3`.
+
+## Ownership
+
+Each class owns the ones below it; `(-> X)` is a reference it keeps to X.
+
+```
+QuantifiersEngine (cvc5)
+└── Z3Module                      the module of cvc5's quantifiers engine
+    └── SmtContext                the core, and its boundary with cvc5
+        │                         (host.cpp): lemmas, splits, and following
+        │                         the SAT context (syncLevel)
+        ├── Statistics
+        ├── TrailStack            its own context::Context, and the memory of
+        │                         the enodes, relevancy handlers, fingerprints
+        │                         and code trees
+        ├── PropCore                                    (-> SmtContext)
+        │   └── RelevancyPropagator                     (-> PropCore, SmtContext)
+        ├── QuantifierNormalizer
+        ├── CgTable, TmpENode
+        ├── QuantifierManager                           (-> SmtContext)
+        │   ├── QiQueue                                 (-> QuantifierManager,
+        │   │   │                                           SmtContext)
+        │   │   └── Checker                             (-> SmtContext)
+        │   ├── FingerprintSet                          (-> TrailStack)
+        │   ├── QuantifierStatGen                       (-> TrailStack)
+        │   └── Mam x2, eager and lazy (MamImpl: LabelHasher,
+        │       CodeTreeManager, Compiler, Interpreter, CodeTreeMap)
+        │                                               (-> SmtContext,
+        │                                                   QuantifierManager,
+        │                                                   TrailStack)
+        ├── LemmaProofGenerator
+        ├── SplitStrategy         registered with cvc5's DecisionManager
+        ├── PopNotify             a ContextNotifyObj on the SAT context
+        │                                               (-> SmtContext)
+        ├── RelevancyTracker      registered with TheoryEngine::addModule:
+        │                         the literals the SAT solver asserts
+        │                                               (-> SmtContext)
+        └── ShadowFeed            the merges of the master equality engine,
+                                  which Z3Module forwards (notifyMasterMerge)
+                                                        (-> SmtContext)
+```
 
 ## Hooks in cvc5
 

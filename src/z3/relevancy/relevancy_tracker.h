@@ -18,8 +18,6 @@
 #ifndef CVC5__Z3__RELEVANCY__RELEVANCY_TRACKER_H
 #define CVC5__Z3__RELEVANCY__RELEVANCY_TRACKER_H
 
-#include <functional>
-
 #include "context/cdlist.h"
 #include "context/cdo.h"
 #include "theory/theory_engine_module.h"
@@ -31,6 +29,8 @@ class TheoryState;
 }
 
 namespace z3 {
+
+class SmtContext;
 
 /**
  * Like cvc5's RelevanceManager, a module of the theory engine that tracks
@@ -49,12 +49,10 @@ class RelevancyTracker : public theory::TheoryEngineModule
 {
  public:
   /**
-   * @param assertFact Gives a literal to the core, which then assigns it on
-   * its Boolean side (PropCore).
+   * The literals are given to core, which assigns them on its Boolean side
+   * (PropCore).
    */
-  RelevancyTracker(Env& env,
-                   TheoryEngine* engine,
-                   std::function<void(TNode)> assertFact);
+  RelevancyTracker(Env& env, TheoryEngine* engine, SmtContext& core);
 
   bool needsFacts() override { return true; }
   /** Queue the literal. */
@@ -67,8 +65,8 @@ class RelevancyTracker : public theory::TheoryEngineModule
   void flush(const theory::TheoryState& state);
 
  private:
-  /** Gives a literal to the core. */
-  std::function<void(TNode)> d_assertFact;
+  /** The core, which owns this module. */
+  SmtContext& d_core;
   /** The literals the SAT solver asserted, in order. */
   context::CDList<Node> d_facts;
   /** The index in d_facts of the first literal not given to the core. */

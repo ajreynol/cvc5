@@ -7,10 +7,9 @@
  * directory for licensing information.
  * ****************************************************************************
  *
- * The ported core under cvc5's propositional engine.
+ * The boundary of the core with cvc5: its search under cvc5's propositional
+ * engine, and the lemmas it sends cvc5.
  */
-
-#include "z3/quantifiers/host_core.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -23,12 +22,14 @@
 #include "smt/env.h"
 #include "theory/decision_manager.h"
 #include "theory/quantifiers/quantifiers_inference_manager.h"
+#include "theory/quantifiers/skolemize.h"
 #include "theory/skolem_lemma.h"
 #include "theory/theory_engine.h"
 #include "z3/quantifiers/lemma_proof_generator.h"
 #include "z3/quantifiers/shadow_feed.h"
 #include "z3/quantifiers/smt_context.h"
 #include "z3/relevancy/prop_core.h"
+#include "z3/relevancy/relevancy_tracker.h"
 
 namespace cvc5::internal {
 namespace z3 {
@@ -43,70 +44,7 @@ constexpr size_t s_maxSilentFinalChecks = 10;
 
 }  // namespace
 
-HostCore::HostCore(Env& env,
-                   theory::quantifiers::QuantifiersInferenceManager& qim,
-                   Skolemizer skolemizer)
-    : EnvObj(env),
-      d_ctx(nullptr),
-      d_te(nullptr),
-      d_qim(qim),
-      d_skolemizer(std::move(skolemizer)),
-      d_setup(false),
-      d_inConflict(false),
-      d_conflictLevel(0),
-      d_needCheck(false),
-      d_popLevel(UINT32_MAX)
-{
-  d_popNotify = std::make_unique<PopNotify>(context(), *this);
-  d_feed = std::make_unique<ShadowFeed>(env, *this);
-  d_splitStrategy = std::make_unique<SplitStrategy>(env, d_te);
-  d_pg = std::make_unique<LemmaProofGenerator>(env);
-}
-
-HostCore::~HostCore() {}
-
-void HostCore::reset(TheoryEngine* te)
-{
-  d_ctx.reset(new SmtContext(d_env));
-  d_te = te;
-  d_setup = false;
-  d_inConflict = false;
-  d_needCheck = false;
-  d_popLevel = UINT32_MAX;
-  d_preregistered.clear();
-  d_lemmasSent.clear();
-  d_hostAtom.clear();
-  d_pg = std::make_unique<LemmaProofGenerator>(d_env);
-  d_lemmaIds.clear();
-  d_splitAtoms.clear();
-  d_splitStrategy->clear();
-  d_ctx->setInstanceMaker(
-      [this](TNode q, const std::vector<Node>& terms, std::vector<Node>& defs) {
-        return mkInstance(q, terms, defs);
-      });
-  d_ctx->setSkolemizer([this](TNode q, std::vector<Node>& defs) {
-    return mkSkolemization(q, defs);
-  });
-  // An instance is local to the SAT context (--z3-host-local-instances, the
-  // default), as with cvc5's --inst-local: cvc5 adds its clause once, but its
-  // decision heuristic treats it as an assertion only in the context where
-  // it was last made. The core makes it again when matching finds it again
-  // after backtracking, as Z3 does, and it is then sent again, which makes it
-  // an assertion there again. Otherwise an instance is sent once.
-  d_ctx->setLemmaSender([this](TNode lem, bool instance) {
-    sendLemma(lem, instance && options().z3.z3HostLocalInstances);
-  });
-}
-
-SmtContext& HostCore::getContext()
-{
-  Assert(d_ctx != nullptr);
-  return *d_ctx;
-}
-
-PropCore& HostCore::getPropCore() { return getContext().getPropCore(); }
-
-void HostCore::lemma(const Node& lem, theory::LemmaProperty p)
+void SmtContext::lemma(const Node& lem, theory::LemmaProperty p)
 {
   if (lem.isConst())
   {
@@ -134,10 +72,10 @@ void HostCore::lemma(const Node& lem, theory::LemmaProperty p)
   d_qim.lemma(lem, id, p);
 }
 
-Node HostCore::preprocessForTheories(TNode n,
-                                     std::vector<Node>& defs,
-                                     TrustNode& pp,
-                                     theory::InferenceId id)
+Node SmtContext::preprocessForTheories(TNode n,
+                                       std::vector<Node>& defs,
+                                       TrustNode& pp,
+                                       theory::InferenceId id)
 {
   // cvc5 preprocesses the lemmas the core sends as it does any other, so the
   // core takes them in the same form: cvc5's preprocessing of their form for
@@ -162,9 +100,9 @@ Node HostCore::preprocessForTheories(TNode n,
   return toCore(trn.isNull() ? h : trn.getNode());
 }
 
-Node HostCore::mkInstance(TNode q,
-                          const std::vector<Node>& terms,
-                          std::vector<Node>& defs)
+Node SmtContext::mkInstance(TNode q,
+                            const std::vector<Node>& terms,
+                            std::vector<Node>& defs)
 {
   // cvc5's instantiation lemma of q, in cvc5's form, which the core sends,
   // and which cvc5 preprocesses into the form the core takes
@@ -176,16 +114,16 @@ Node HostCore::mkInstance(TNode q,
       theory::InferenceId::QUANTIFIERS_INST_Z3);
 }
 
-Node HostCore::mkSkolemization(TNode q, std::vector<Node>& defs)
+Node SmtContext::mkSkolemization(TNode q, std::vector<Node>& defs)
 {
-  return preprocessLemma(d_skolemizer(toHost(q)),
+  return preprocessLemma(getSkolemization(toHost(q)),
                          defs,
                          theory::InferenceId::QUANTIFIERS_SKOLEMIZE);
 }
 
-Node HostCore::preprocessLemma(const TrustNode& trn,
-                               std::vector<Node>& defs,
-                               theory::InferenceId id)
+Node SmtContext::preprocessLemma(const TrustNode& trn,
+                                 std::vector<Node>& defs,
+                                 theory::InferenceId id)
 {
   Node lem = trn.getProven();
   TrustNode pp;
@@ -201,16 +139,16 @@ Node HostCore::preprocessLemma(const TrustNode& trn,
   return norm;
 }
 
-void HostCore::assertInput(const std::vector<Node>& assertions)
+void SmtContext::assertInput(const std::vector<Node>& assertions)
 {
-  PropCore& core = getPropCore();
+  PropCore& core = d_prop;
   for (const Node& a : assertions)
   {
     core.assertFormula(toCore(a));
   }
 }
 
-void HostCore::preRegister(TNode atom)
+void SmtContext::preRegister(TNode atom)
 {
   // The atoms of the input are internalized with the asserted formulas when
   // the search starts; the others are internalized at the next check.
@@ -222,13 +160,13 @@ void HostCore::preRegister(TNode atom)
   }
 }
 
-void HostCore::assertFact(TNode literal)
+void SmtContext::assertFact(TNode literal)
 {
   if (d_inConflict)
   {
     return;
   }
-  PropCore& core = getPropCore();
+  PropCore& core = d_prop;
   syncLevel();
   Trace("z3-host") << "assert " << literal << std::endl;
   Literal l = core.hostLiteral(toCore(literal));
@@ -238,10 +176,13 @@ void HostCore::assertFact(TNode literal)
   }
 }
 
-void HostCore::check(theory::Theory::Effort effort)
+void SmtContext::check(theory::Theory::Effort effort,
+                       const theory::TheoryState& state)
 {
+  // the literals asserted since the last check
+  d_tracker->flush(state);
   d_needCheck = false;
-  Statistics& stats = getContext().getStats();
+  Statistics& stats = d_stats;
   stats.d_numHostChecks++;
   if (theory::Theory::fullEffort(effort))
   {
@@ -260,7 +201,7 @@ void HostCore::check(theory::Theory::Effort effort)
     }
     return;
   }
-  PropCore& core = getPropCore();
+  PropCore& core = d_prop;
   syncLevel();
   // the equalities cvc5's theories derived since the last check
   d_feed->apply();
@@ -311,7 +252,7 @@ void HostCore::check(theory::Theory::Effort effort)
       }
       // The ground part of the model is cvc5's theories'; the quantified
       // formulas are not checked against it.
-      if (getContext().hasQuantifiers())
+      if (hasQuantifiers())
       {
         d_qim.setModelUnsound(theory::IncompleteId::QUANTIFIERS);
       }
@@ -331,11 +272,12 @@ void HostCore::check(theory::Theory::Effort effort)
   d_qim.setModelUnsound(theory::IncompleteId::UNKNOWN);
 }
 
-void HostCore::presolve()
+void SmtContext::presolve(theory::eq::EqualityEngine* master)
 {
+  d_feed->setMasterEqualityEngine(master);
   if (!d_setup)
   {
-    getPropCore().hostInit();
+    d_prop.hostInit();
     d_setup = true;
   }
   // The strategies of the decision manager are cleared after each check-sat.
@@ -343,7 +285,25 @@ void HostCore::presolve()
       theory::DecisionManager::STRAT_QUANT_Z3_SPLIT, d_splitStrategy.get());
 }
 
-void HostCore::notifyPop()
+TrustNode SmtContext::getSkolemization(TNode q)
+{
+  // The lemma is made once per user context, by the quantifiers engine when
+  // q is asserted false (or here, for a quantified formula it reduced), while
+  // the core asserts it again each time q is assigned false after a
+  // backtrack.
+  theory::quantifiers::Skolemize* sk = d_qim.getSkolemize();
+  sk->process(q);
+  TrustNode lem = sk->getSkolemizationLemma(q);
+  Assert(!lem.isNull());
+  return lem;
+}
+
+void SmtContext::notifyMasterMerge(TNode t1, TNode t2)
+{
+  d_feed->eqNotifyMerge(t1, t2);
+}
+
+void SmtContext::notifyPop()
 {
   // The core follows when it is next asked something (syncLevel): a
   // backjump pops the SAT context one level at a time, and the core pops
@@ -367,9 +327,9 @@ void HostCore::notifyPop()
   }
 }
 
-void HostCore::syncLevel()
+void SmtContext::syncLevel()
 {
-  PropCore& core = getPropCore();
+  PropCore& core = d_prop;
   uint32_t lvl = context()->getLevel();
   // The scopes above the lowest level the SAT context reached since the last
   // call belong to a branch it left, even if it is now as deep again.
@@ -377,7 +337,7 @@ void HostCore::syncLevel()
   d_popLevel = UINT32_MAX;
   if (core.getScopeLevel() > popTo)
   {
-    Statistics& stats = getContext().getStats();
+    Statistics& stats = d_stats;
     stats.d_numHostPops++;
     stats.d_numHostScopesPopped += core.getScopeLevel() - popTo;
     if (popTo == 0)
@@ -389,19 +349,19 @@ void HostCore::syncLevel()
   core.hostSyncLevel(lvl);
 }
 
-void HostCore::enterConflict()
+void SmtContext::enterConflict()
 {
   // The conflict follows from the facts cvc5 asserted and the lemmas it was
   // sent, so cvc5's theories find it themselves. Until cvc5 backtracks below
   // the current level, the core does nothing.
-  getContext().getStats().d_numShadowConflicts++;
+  d_stats.d_numShadowConflicts++;
   d_inConflict = true;
   d_conflictLevel = context()->getLevel();
 }
 
-void HostCore::sendLemma(const Node& coreLem, bool local)
+void SmtContext::sendLemma(const Node& coreLem, bool local)
 {
-  Statistics& stats = getContext().getStats();
+  Statistics& stats = d_stats;
   Node lem = toHost(coreLem);
   // cvc5 keeps its lemmas, while the core makes an instance or an axiom
   // again after backtracking, so a lemma is sent once. A lemma weakened by
@@ -430,7 +390,7 @@ void HostCore::sendLemma(const Node& coreLem, bool local)
   d_needCheck = true;
 }
 
-Node HostCore::delayUnit(const Node& lem)
+Node SmtContext::delayUnit(const Node& lem)
 {
   if (!options().z3.z3HostDelayUnits || context()->getLevel() < 2)
   {
@@ -484,14 +444,14 @@ Node HostCore::delayUnit(const Node& lem)
   {
     d_lemmaIds.emplace(weakened, it->second);
   }
-  getContext().getStats().d_numHostDelayedUnits++;
+  d_stats.d_numHostDelayedUnits++;
   d_delayedUnits.push_back(lem);
   return weakened;
 }
 
-void HostCore::splitNewlyRelevant()
+void SmtContext::splitNewlyRelevant()
 {
-  PropCore& core = getPropCore();
+  PropCore& core = d_prop;
   std::vector<Node> rel;
   core.hostTakeRelevant(rel);
   prop::PropEngine* pe = d_te->getPropEngine();
@@ -512,9 +472,9 @@ void HostCore::splitNewlyRelevant()
   }
 }
 
-void HostCore::split(BoolVar v)
+void SmtContext::split(BoolVar v)
 {
-  PropCore& core = getPropCore();
+  PropCore& core = d_prop;
   prop::PropEngine* pe = d_te->getPropEngine();
   TNode atom = core.boolVar2Expr(v);
   if (atom.isNull() || atom.isConst())
@@ -542,13 +502,13 @@ void HostCore::split(BoolVar v)
     return;
   }
   d_splitStrategy->add(a);
-  getContext().getStats().d_numHostSplits++;
+  d_stats.d_numHostSplits++;
   // cvc5 must search on, for the decision, even after a full check
   d_qim.markUsed();
   d_needCheck = true;
 }
 
-Node HostCore::SplitStrategy::getNextDecisionRequest()
+Node SmtContext::SplitStrategy::getNextDecisionRequest()
 {
   prop::PropEngine* pe = d_te->getPropEngine();
   for (const Node& a : d_atoms)
@@ -562,9 +522,9 @@ Node HostCore::SplitStrategy::getNextDecisionRequest()
   return Node::null();
 }
 
-void HostCore::splitPendingAtoms()
+void SmtContext::splitPendingAtoms()
 {
-  PropCore& core = getPropCore();
+  PropCore& core = d_prop;
   for (size_t i = 0, n = core.getNumBoolVars(); i < n; ++i)
   {
     BoolVar v = static_cast<BoolVar>(i);
@@ -575,9 +535,9 @@ void HostCore::splitPendingAtoms()
   }
 }
 
-bool HostCore::propagateAndReport()
+bool SmtContext::propagateAndReport()
 {
-  PropCore& core = getPropCore();
+  PropCore& core = d_prop;
   bool ok = core.hostPropagate();
   if (!ok)
   {
@@ -588,9 +548,9 @@ bool HostCore::propagateAndReport()
   return true;
 }
 
-Node HostCore::toCore(TNode n)
+Node SmtContext::toCore(TNode n)
 {
-  Node nc = getContext().getNormalizer().normalize(n);
+  Node nc = d_normalizer.normalize(n);
   if (nc != n)
   {
     recordRenamedAtoms(n, nc);
@@ -598,7 +558,7 @@ Node HostCore::toCore(TNode n)
   return nc;
 }
 
-void HostCore::recordRenamedAtoms(TNode n, TNode nc)
+void SmtContext::recordRenamedAtoms(TNode n, TNode nc)
 {
   // The renaming changes only the quantified formulas, so n and nc have the
   // same Boolean structure above their atoms.
@@ -618,7 +578,7 @@ void HostCore::recordRenamedAtoms(TNode n, TNode nc)
   d_hostAtom.emplace(nc, n);
 }
 
-Node HostCore::toHost(TNode n)
+Node SmtContext::toHost(TNode n)
 {
   if (d_hostAtom.empty() || !expr::hasClosure(n))
   {

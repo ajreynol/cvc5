@@ -19,7 +19,6 @@
 #include "theory/quantifiers/quantifiers_state.h"
 #include "theory/quantifiers/skolemize.h"
 #include "theory/theory_engine.h"
-#include "z3/quantifiers/shadow_feed.h"
 #include "z3/quantifiers/smt_context.h"
 
 namespace cvc5::internal {
@@ -40,34 +39,11 @@ void Z3Module::finishInit(TheoryEngine* te)
 {
   // The core sends its lemmas through the inference manager, with their
   // inferences; the instances it sends again are local to the SAT context,
-  // which the inference manager does not cache (see HostCore::reset).
-  d_core = std::make_unique<HostCore>(
-      d_env, d_qim, [this](TNode q) { return getSkolemization(q); });
-  d_core->reset(te);
-  d_tracker = std::make_unique<RelevancyTracker>(
-      d_env, te, [this](TNode lit) { d_core->assertFact(lit); });
-  te->addModule(d_tracker.get());
+  // which the inference manager does not cache.
+  d_core = std::make_unique<SmtContext>(d_env, d_qim, te);
 }
 
-TrustNode Z3Module::getSkolemization(TNode q)
-{
-  // The lemma is made once per user context, by the quantifiers engine when
-  // q is asserted false (or here, for a quantified formula it reduced), while
-  // the core asserts it again each time q is assigned false after a
-  // backtrack.
-  theory::quantifiers::Skolemize* sk = d_qim.getSkolemize();
-  sk->process(q);
-  TrustNode lem = sk->getSkolemizationLemma(q);
-  Assert(!lem.isNull());
-  return lem;
-}
-
-void Z3Module::presolve()
-{
-  d_core->getShadowFeed()->setMasterEqualityEngine(
-      d_qstate.getEqualityEngine());
-  d_core->presolve();
-}
+void Z3Module::presolve() { d_core->presolve(d_qstate.getEqualityEngine()); }
 
 void Z3Module::ppNotifyAssertions(const std::vector<Node>& assertions)
 {
@@ -94,9 +70,7 @@ void Z3Module::check(theory::Theory::Effort e, QEffort quant_e)
   bool printing = isOutputOn(OutputTag::INST_STRATEGY);
   uint32_t numLemmas = d_qim.numSentLemmas();
   clock_t start = printing ? clock() : 0;
-  // the literals asserted since the last check, then the core
-  d_tracker->flush(d_qstate);
-  d_core->check(e);
+  d_core->check(e, d_qstate);
   if (printing && d_qim.numSentLemmas() > numLemmas)
   {
     double time = static_cast<double>(clock() - start)
@@ -125,7 +99,7 @@ void Z3Module::preRegisterQuantifier(Node q)
 
 void Z3Module::notifyMasterMerge(TNode t1, TNode t2)
 {
-  d_core->getShadowFeed()->eqNotifyMerge(t1, t2);
+  d_core->notifyMasterMerge(t1, t2);
 }
 
 }  // namespace z3

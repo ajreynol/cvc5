@@ -72,7 +72,7 @@ struct Statistics
   IntStat d_numShadowMerges;
   /** conflicts of the shadow, left to cvc5's theories */
   IntStat d_numShadowConflicts;
-  /** lemmas sent weakened, see HostCore::delayUnit */
+  /** lemmas sent weakened, see SmtContext::delayUnit */
   IntStat d_numHostDelayedUnits;
   /** matches that were already instantiated (Z3's missed instantiations) */
   IntStat d_numMissedInstances;

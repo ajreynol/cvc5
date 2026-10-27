@@ -20,8 +20,7 @@
 #include <memory>
 
 #include "theory/quantifiers/quant_module.h"
-#include "z3/quantifiers/host_core.h"
-#include "z3/relevancy/relevancy_tracker.h"
+#include "z3/quantifiers/smt_context.h"
 
 namespace cvc5::internal {
 namespace z3 {
@@ -53,10 +52,7 @@ class Z3Module : public theory::quantifiers::QuantifiersModule
            theory::quantifiers::QuantifiersRegistry& qr,
            theory::quantifiers::TermRegistry& tr);
   ~Z3Module();
-  /**
-   * Make the core, and the relevancy tracker, a module of the theory engine
-   * te.
-   */
+  /** Make the core, for the theory engine te. */
   void finishInit(TheoryEngine* te) override;
   void presolve() override;
   /** Assert the preprocessed assertions to the core. */
@@ -65,20 +61,13 @@ class Z3Module : public theory::quantifiers::QuantifiersModule
   bool needsCheck(theory::Theory::Effort e) override;
   void check(theory::Theory::Effort e, QEffort quant_e) override;
   void preRegisterQuantifier(Node q) override;
-  /** Give the merge to the feed of the shadow. */
+  /** Give the merge to the core. */
   void notifyMasterMerge(TNode t1, TNode t2) override;
   std::string identify() const override { return "z3"; }
 
  private:
-  /**
-   * The lemma of cvc5's Skolemize utility that skolemizes q, which the
-   * quantifiers engine sent when q was asserted false.
-   */
-  TrustNode getSkolemization(TNode q);
   /** The ported core, under cvc5's prop engine. */
-  std::unique_ptr<HostCore> d_core;
-  /** Gives the core the literals the SAT solver asserts. */
-  std::unique_ptr<RelevancyTracker> d_tracker;
+  std::unique_ptr<SmtContext> d_core;
 };
 
 }  // namespace z3

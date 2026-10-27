@@ -14,7 +14,7 @@
  *
  * The theory side of the core: the E-graph (congruence closure over
  * enodes), the internalizer, and the quantifier manager. Its propositional
- * side, PropCore, mirrors cvc5's assignment (see HostCore); the ground
+ * side, PropCore, mirrors cvc5's assignment (see host.cpp); the ground
  * reasoning is cvc5's theories', whose equalities reach the E-graph through
  * the ShadowFeed.
  *
@@ -30,15 +30,20 @@
 #ifndef CVC5__Z3__QUANTIFIERS__SMT_CONTEXT_H
 #define CVC5__Z3__QUANTIFIERS__SMT_CONTEXT_H
 
-#include <functional>
 #include <memory>
 #include <set>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
+#include "context/context.h"
 #include "expr/node.h"
 #include "smt/env_obj.h"
+#include "theory/decision_strategy.h"
+#include "theory/incomplete_id.h"
+#include "theory/inference_id.h"
+#include "theory/lemma_property.h"
+#include "theory/theory.h"
 #include "z3/quantifiers/cg_table.h"
 #include "z3/quantifiers/enode.h"
 #include "z3/quantifiers/quantifier_manager.h"
@@ -53,12 +58,38 @@
 #include "z3/util/trail.h"
 
 namespace cvc5::internal {
+
+class TheoryEngine;
+
+namespace theory {
+class TheoryState;
+namespace eq {
+class EqualityEngine;
+}
+namespace quantifiers {
+class QuantifiersInferenceManager;
+}
+}  // namespace theory
+
 namespace z3 {
 
+class LemmaProofGenerator;
 class QuantifierManager;
+class RelevancyTracker;
+class ShadowFeed;
 
 /**
- * The theory side of the ported core; PropCore is the propositional side.
+ * The ported core: the theory side, whose propositional side is PropCore, and
+ * the boundary with cvc5 (host.cpp).
+ *
+ * It implements the search contract of cvc5's prop engine (preregistration,
+ * facts and checks) over PropCore, which mirrors the assignment for the theory
+ * side (see PropCore::hostInit). Its scopes follow the SAT context.
+ *
+ * The core is a shadow of the ground state of cvc5's theories, made from a
+ * copy of every fact: it sends instances, conflicts and splits as lemmas,
+ * which need no explanation, and reports no propagations, and the formulas
+ * it asserts go through cvc5's preprocessing first.
  */
 class SmtContext final : protected EnvObj
 {
@@ -66,11 +97,43 @@ class SmtContext final : protected EnvObj
   /** The search statistics. Public, as in Z3. */
   Statistics d_stats;
 
-  SmtContext(Env& env);
-  virtual ~SmtContext();
+  /**
+   * Lemmas go through qim, the inference manager of the quantifiers theory,
+   * and the core follows the prop engine of te.
+   */
+  SmtContext(Env& env,
+             theory::quantifiers::QuantifiersInferenceManager& qim,
+             TheoryEngine* te);
+  ~SmtContext();
 
   SmtContext(const SmtContext&) = delete;
   SmtContext& operator=(const SmtContext&) = delete;
+
+  // -------------------------------------------- the boundary with cvc5
+  //
+  // See host.cpp.
+
+  /**
+   * Assert the input formulas, cvc5's preprocessed assertions, to the core,
+   * before cvc5 converts them.
+   */
+  void assertInput(const std::vector<Node>& assertions);
+  /** cvc5 registered the atom. */
+  void preRegister(TNode atom);
+  /** cvc5 asserted the literal; see RelevancyTracker. */
+  void assertFact(TNode literal);
+  /**
+   * Give the core the literals asserted since the last check, while state is
+   * not in conflict, then propagate, and at full effort run the final check.
+   */
+  void check(theory::Theory::Effort effort, const theory::TheoryState& state);
+  /**
+   * Set up the propositional side, once, and take the merges of the master
+   * equality engine.
+   */
+  void presolve(theory::eq::EqualityEngine* master);
+  /** The master equality engine merged the classes of t1 and t2. */
+  void notifyMasterMerge(TNode t1, TNode t2);
 
   // ---------------------------------------------------------- assertions
   //
@@ -281,34 +344,6 @@ class SmtContext final : protected EnvObj
   QuantifierNormalizer& getNormalizer() { return d_normalizer; }
 
   /**
-   * The instances for cvc5: it maps a quantified formula q and the terms for
-   * its variables to the instance, in the form cvc5's theories take, adding
-   * to defs the definitions of the skolems it introduces. The instance is
-   * cvc5's instantiation lemma of q, which cvc5 preprocesses into that form.
-   */
-  using InstanceMaker =
-      std::function<Node(TNode, const std::vector<Node>&, std::vector<Node>&)>;
-  void setInstanceMaker(InstanceMaker m) { d_instanceMaker = std::move(m); }
-  /**
-   * The skolemization of cvc5's quantifiers engine: it maps a quantified
-   * formula q to the lemma that skolemizes it, which that engine made when q
-   * was asserted false, and which the core takes when q is relevant (see
-   * skolemize), in the form cvc5's theories take, adding to defs the
-   * definitions of the skolems it introduces.
-   */
-  using Skolemizer = std::function<Node(TNode, std::vector<Node>&)>;
-  void setSkolemizer(Skolemizer s) { d_skolemizer = std::move(s); }
-  /**
-   * Sends cvc5 a formula the core internalizes, in the form cvc5's theories
-   * take: an instance, which holds where it was made, if the flag is true,
-   * and otherwise a lemma that holds globally. The core sends a formula
-   * before it internalizes it, so that cvc5 has registered its terms when the
-   * core takes them.
-   */
-  using LemmaSender = std::function<void(TNode, bool)>;
-  void setLemmaSender(LemmaSender s) { d_lemmaSender = std::move(s); }
-
-  /**
    * Merge the classes of a and b, which must be internalized as terms, since
    * cvc5's theories made them equal. The merge is queued for the next
    * propagation.
@@ -320,8 +355,8 @@ class SmtContext final : protected EnvObj
   /**
    * Internalize the instance of the quantified formula q for terms, the
    * terms for its variables, in the form cvc5's theories take (see
-   * setInstanceMaker), and record it for cvc5. The instance is asserted at
-   * the current scope.
+   * mkInstance), and send it to cvc5. The instance is asserted at the
+   * current scope.
    */
   void internalizeInstance(TNode q,
                            const std::vector<Node>& terms,
@@ -329,8 +364,8 @@ class SmtContext final : protected EnvObj
 
   /**
    * Take the skolemization of the quantified formula q, which is assigned
-   * false and relevant: assert the lemma of the skolemizer (see
-   * setSkolemizer).
+   * false and relevant: assert the lemma of cvc5's quantifiers engine (see
+   * mkSkolemization).
    */
   void skolemize(TNode q);
 
@@ -469,6 +504,202 @@ class SmtContext final : protected EnvObj
 
   bool getCancelFlag() { return d_prop.getCancelFlag(); }
 
+ private:
+  // -------------------------------------------- the boundary with cvc5
+  /**
+   * The decisions the core asks cvc5 for: each atom it splits on, whenever
+   * it is unassigned. cvc5 asks its decision strategies before it decides
+   * on its own.
+   */
+  class SplitStrategy : public theory::DecisionStrategy
+  {
+   public:
+    SplitStrategy(Env& env, TheoryEngine*& te)
+        : theory::DecisionStrategy(env), d_te(te)
+    {
+    }
+    void initialize() override {}
+    Node getNextDecisionRequest() override;
+    std::string identify() const override { return "z3-split"; }
+    /** Ask for a decision on the atom a. */
+    void add(const Node& a) { d_atoms.push_back(a); }
+    void clear() { d_atoms.clear(); }
+
+   private:
+    /** The engine of the core, for its prop engine. */
+    TheoryEngine*& d_te;
+    /** The atoms to decide. */
+    std::vector<Node> d_atoms;
+  };
+  /** Pops the propositional side when the SAT context pops. */
+  class PopNotify : public context::ContextNotifyObj
+  {
+   public:
+    PopNotify(context::Context* c, SmtContext& hc)
+        : context::ContextNotifyObj(c), d_hc(hc)
+    {
+    }
+
+   protected:
+    void contextNotifyPop() override { d_hc.notifyPop(); }
+
+   private:
+    SmtContext& d_hc;
+  };
+  /**
+   * Send a lemma, which must not be preprocessed: its atoms are those of the
+   * SAT solver.
+   */
+  void lemma(const Node& lem, theory::LemmaProperty p);
+  /** Note a pop of the SAT context, which syncLevel follows. */
+  void notifyPop();
+  /** Push or pop the core's scopes to the level of the SAT context. */
+  void syncLevel();
+  /**
+   * Note that the core is in conflict, which it leaves to cvc5's theories to
+   * find; see enterConflict in host.cpp.
+   */
+  void enterConflict();
+  /**
+   * Send the lemma lem, unless it was sent before, or send it again as a
+   * lemma local to the SAT context if local is true.
+   */
+  void sendLemma(const Node& lem, bool local);
+  /**
+   * The lemma to send for lem. CaDiCaL restarts on a clause that is a unit
+   * once the literals false at its base level are removed, to assign that
+   * literal at the base level. Most conflicts and many instances are such
+   * units here (the conflict that refutes a decision, the instance of an
+   * asserted quantifier whose guards are asserted), and the restart undoes
+   * every instance made since. Z3's search delays such units instead (its
+   * delay_units). Below the second decision level, this
+   * weakens such a lemma with the negation of the first decision, so that
+   * CaDiCaL assigns its literal out of order at the first decision level
+   * and backtracks at most one level (chronological backtracking). The
+   * lemma itself is sent at the next check near the base level.
+   */
+  Node delayUnit(const Node& lem);
+  /**
+   * Make the relevant, unassigned variables of the core into decisions for
+   * cvc5 (see SplitStrategy). These are the gates that relevancy needs
+   * assigned, which cvc5 may leave unassigned when it stops on a partial
+   * assignment.
+   */
+  void splitPendingAtoms();
+  /**
+   * Split on the variables that became relevant since the last call, which
+   * cvc5 does not know and are still unassigned, as the core's relevancy
+   * queue would decide them.
+   */
+  void splitNewlyRelevant();
+  /** Have cvc5 decide v, unless it was asked before. */
+  void split(BoolVar v);
+  /** Propagate, and report what follows; returns false on a conflict. */
+  bool propagateAndReport();
+  /**
+   * The core's form of n, a formula of cvc5: its quantified formulas over
+   * the canonical variables the core expects (see z3/util/ast.h). The atoms
+   * of n that change are recorded, for toHost.
+   */
+  Node toCore(TNode n);
+  /** Record the atoms of n that its core's form nc renames, for toHost. */
+  void recordRenamedAtoms(TNode n, TNode nc);
+  /**
+   * cvc5's form of n, a formula of the core: the atoms the core renamed are
+   * cvc5's again. The other atoms, the new quantified formulas of the
+   * instances for example, are the same for both.
+   */
+  Node toHost(TNode n);
+  /**
+   * The core's form of n, a formula of cvc5, in the form cvc5's theories
+   * take, by cvc5's lemma preprocessing, adding to defs the definitions of
+   * the skolems it introduces, and setting pp to the rewrite of n by the
+   * preprocessing.
+   */
+  Node preprocessForTheories(TNode n,
+                             std::vector<Node>& defs,
+                             TrustNode& pp,
+                             theory::InferenceId id);
+  /**
+   * The instance of the core's quantified formula q for terms, in the form
+   * cvc5's theories take, see internalizeInstance. The lemma sent
+   * for it is cvc5's instantiation lemma, proven by d_pg.
+   */
+  Node mkInstance(TNode q,
+                  const std::vector<Node>& terms,
+                  std::vector<Node>& defs);
+  /**
+   * The skolemization of the core's quantified formula q, in the form cvc5's
+   * theories take, see skolemize. The lemma sent for it is
+   * the one of cvc5's quantifiers engine, with its proof.
+   */
+  Node mkSkolemization(TNode q, std::vector<Node>& defs);
+  /**
+   * The lemma of cvc5's Skolemize utility that skolemizes q, which the
+   * quantifiers engine sent when q was asserted false.
+   */
+  TrustNode getSkolemization(TNode q);
+  /**
+   * Preprocess the lemma trn proves, which the core sends, into the form
+   * cvc5's theories take, as mkInstance and mkSkolemization do.
+   */
+  Node preprocessLemma(const TrustNode& trn,
+                       std::vector<Node>& defs,
+                       theory::InferenceId id);
+
+  /** The engine, for the prop engine's state. */
+  TheoryEngine* d_te;
+  /** Where lemmas go. */
+  theory::quantifiers::QuantifiersInferenceManager& d_qim;
+  /** Whether the propositional side was set up (presolve). */
+  bool d_setup;
+  /** Whether the core is in conflict in the current context. */
+  bool d_inConflict;
+  /** The level of the SAT context at which the conflict was found. */
+  uint32_t d_conflictLevel;
+  /** Whether cvc5 must call check again. */
+  bool d_needCheck;
+  /**
+   * The lowest level the SAT context popped to since the last syncLevel, or
+   * UINT32_MAX if it did not pop.
+   */
+  uint32_t d_popLevel;
+  /** The atoms registered by cvc5 before the next check. */
+  std::vector<Node> d_preregistered;
+  /** The lemmas sent, which are permanent in cvc5. */
+  std::unordered_set<Node> d_lemmasSent;
+  /** The lemmas weakened by delayUnit, to send as they are, see check. */
+  std::vector<Node> d_delayedUnits;
+  /**
+   * For each atom of cvc5 that toCore renamed, the core's form and cvc5's.
+   * Alpha-equivalent atoms of cvc5 would have the same core's form, which
+   * does not happen with the inputs the core takes: the core's forms keep
+   * the quantifier names (qid) and patterns.
+   */
+  std::unordered_map<Node, Node> d_hostAtom;
+  /** The atoms split on, see split. */
+  std::unordered_set<Node> d_splitAtoms;
+  /**
+   * Proves the lemmas the core sends, and gives, for an instance or the
+   * definition of a skolem, the lemma cvc5 is sent for it.
+   */
+  std::unique_ptr<LemmaProofGenerator> d_pg;
+  /**
+   * The inference of each lemma the core sends, in cvc5's form: an instance,
+   * a skolemization, or the definition of a skolem in one of these, which
+   * has the inference of that lemma. A weakened lemma has the inference of
+   * the lemma it weakens.
+   */
+  std::unordered_map<Node, theory::InferenceId> d_lemmaIds;
+  /** See SplitStrategy. */
+  std::unique_ptr<SplitStrategy> d_splitStrategy;
+  /** Follows the pops of the SAT context. */
+  std::unique_ptr<PopNotify> d_popNotify;
+  /** Gives the core the merges of the master equality engine. */
+  std::unique_ptr<ShadowFeed> d_feed;
+  /** Gives the core the literals the SAT solver asserts. */
+  std::unique_ptr<RelevancyTracker> d_tracker;
+
  protected:
   // --------------------------------------------- equality and congruence
   struct NewEq
@@ -561,18 +792,12 @@ class SmtContext final : protected EnvObj
    */
   PropCore d_prop;
   QuantifierNormalizer d_normalizer;
-  /** See setInstanceMaker. */
-  InstanceMaker d_instanceMaker;
   /**
    * The forms of the instances made so far, by (SEXPR q t1 ... tn). The core
-   * makes an instance again after backtracking, and the instance maker gives
+   * makes an instance again after backtracking, and mkInstance gives
    * the same form then, without the skolem definitions it gave the first time.
    */
   std::unordered_map<Node, Node> d_instanceForms;
-  /** See setSkolemizer. */
-  Skolemizer d_skolemizer;
-  /** See setLemmaSender. */
-  LemmaSender d_lemmaSender;
   std::unique_ptr<QuantifierManager> d_qmanager;
 
   /** The expressions already internalized as enodes. */

@@ -14,15 +14,16 @@
 #include "z3/relevancy/relevancy_tracker.h"
 
 #include "theory/theory_state.h"
+#include "z3/quantifiers/smt_context.h"
 
 namespace cvc5::internal {
 namespace z3 {
 
 RelevancyTracker::RelevancyTracker(Env& env,
                                    TheoryEngine* engine,
-                                   std::function<void(TNode)> assertFact)
+                                   SmtContext& core)
     : TheoryEngineModule(env, engine, "z3::RelevancyTracker"),
-      d_assertFact(std::move(assertFact)),
+      d_core(core),
       d_facts(context()),
       d_factsHead(context(), 0)
 {
@@ -36,7 +37,7 @@ void RelevancyTracker::flush(const theory::TheoryState& state)
   {
     size_t i = d_factsHead;
     d_factsHead = i + 1;
-    d_assertFact(d_facts[i]);
+    d_core.assertFact(d_facts[i]);
   }
 }
 

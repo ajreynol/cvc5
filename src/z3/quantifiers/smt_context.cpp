@@ -31,8 +31,12 @@
 #include "smt/solver_engine.h"
 #include "theory/smt_engine_subsolver.h"
 #include "theory/theory.h"
+#include "theory/theory_engine.h"
 #include "util/resource_manager.h"
+#include "z3/quantifiers/lemma_proof_generator.h"
 #include "z3/quantifiers/quantifier_manager.h"
+#include "z3/quantifiers/shadow_feed.h"
+#include "z3/relevancy/relevancy_tracker.h"
 
 namespace cvc5::internal {
 namespace z3 {
@@ -41,9 +45,23 @@ namespace {
 
 }  // namespace
 
-SmtContext::SmtContext(Env& env)
+SmtContext::SmtContext(Env& env,
+                       theory::quantifiers::QuantifiersInferenceManager& qim,
+                       TheoryEngine* te)
     : EnvObj(env),
       d_stats(statisticsRegistry()),
+      d_te(te),
+      d_qim(qim),
+      d_setup(false),
+      d_inConflict(false),
+      d_conflictLevel(0),
+      d_needCheck(false),
+      d_popLevel(UINT32_MAX),
+      d_pg(std::make_unique<LemmaProofGenerator>(env)),
+      d_splitStrategy(std::make_unique<SplitStrategy>(env, d_te)),
+      d_popNotify(std::make_unique<PopNotify>(context(), *this)),
+      d_feed(std::make_unique<ShadowFeed>(env, *this)),
+      d_tracker(std::make_unique<RelevancyTracker>(env, te, *this)),
       d_prop(env, *this, d_stats),
       d_normalizer(env.getNodeManager()),
       d_qmanager(nullptr),
@@ -53,6 +71,7 @@ SmtContext::SmtContext(Env& env)
       d_generation(0),
       d_mkENodeTrail(*this)
 {
+  te->addModule(d_tracker.get());
   d_qmanager.reset(new QuantifierManager(*this));
   init();
 }
@@ -852,7 +871,6 @@ void SmtContext::internalizeInstance(TNode q,
   {
     return;
   }
-  Assert(d_instanceMaker);
   std::vector<Node> key{q};
   key.insert(key.end(), terms.begin(), terms.end());
   auto it = d_instanceForms.emplace(
@@ -860,7 +878,7 @@ void SmtContext::internalizeInstance(TNode q,
   std::vector<Node> defs;
   if (it.second)
   {
-    it.first->second = d_instanceMaker(q, terms, defs);
+    it.first->second = mkInstance(q, terms, defs);
   }
   internalizePreprocessed(it.first->second, defs, generation, true);
 }
@@ -873,10 +891,9 @@ void SmtContext::internalizePreprocessed(TNode norm,
   // A skolem definition holds globally, and cvc5's preprocessing gives it
   // only once, so it is a root that is asserted again after each backtrack,
   // as a delayed unit is, until it is asserted at the base level.
-  Assert(d_lemmaSender);
   for (const Node& d : defs)
   {
-    d_lemmaSender(d, false);
+    sendLemma(d, false);
     if (d.isConst())
     {
       continue;
@@ -892,7 +909,13 @@ void SmtContext::internalizePreprocessed(TNode norm,
   }
   // the formula is also a lemma for cvc5's prop engine: an instance, which
   // holds where it was made, or a lemma that holds globally
-  d_lemmaSender(norm, instance);
+  // An instance is local to the SAT context (--z3-host-local-instances, the
+  // default), as with cvc5's --inst-local: cvc5 adds its clause once, but its
+  // decision heuristic treats it as an assertion only in the context where
+  // it was last made. The core makes it again when matching finds it again
+  // after backtracking, as Z3 does, and it is then sent again, which makes it
+  // an assertion there again. Otherwise an instance is sent once.
+  sendLemma(norm, instance && options().z3.z3HostLocalInstances);
   internalizeAssertion(norm, generation);
 }
 
@@ -910,9 +933,8 @@ void SmtContext::skolemize(TNode q)
   // witnesses are relevant as the core's own formulas make them: through q,
   // which is relevant here. It also sends it, although cvc5's quantifiers
   // engine did, since cvc5's decisions then treat it as the core's lemma.
-  Assert(d_skolemizer);
   std::vector<Node> defs;
-  Node norm = d_skolemizer(q, defs);
+  Node norm = mkSkolemization(q, defs);
   d_stats.d_numSkolemizations++;
   internalizePreprocessed(norm, defs, generationOf(q), false);
 }

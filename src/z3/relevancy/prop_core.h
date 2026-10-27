@@ -58,8 +58,8 @@ using prop::SatValue;
  * It runs in host mode: cvc5's prop engine searches, and this class mirrors,
  * for the theory side, the assignment of the atoms that cvc5 asserts. It
  * never decides or resolves a conflict itself, and its scopes follow cvc5's
- * SAT context (see HostCore). Its clauses stay private: the theory side
- * sends cvc5 its instances and lemmas (SmtContext::setLemmaSender).
+ * SAT context (see SmtContext::syncLevel). Its clauses stay private: the theory
+ * side sends cvc5 its instances and lemmas (SmtContext::setLemmaSender).
  *
  * The theory side, SmtContext, owns this object. This side calls it:
  * theoryPropagate and hasPendingTheoryWork for the propagation fixpoint,

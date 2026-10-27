@@ -35,7 +35,7 @@ class EqualityEngine;
 
 namespace z3 {
 
-class HostCore;
+class SmtContext;
 
 /**
  * Feeds the E-graph of the ported core, a shadow of cvc5's own theories,
@@ -54,7 +54,7 @@ class HostCore;
 class ShadowFeed : protected EnvObj, public theory::eq::EqualityEngineNotify
 {
  public:
-  ShadowFeed(Env& env, HostCore& core);
+  ShadowFeed(Env& env, SmtContext& core);
   ~ShadowFeed();
   /** Set the master equality engine, which then notifies this. */
   void setMasterEqualityEngine(theory::eq::EqualityEngine* ee)
@@ -87,7 +87,7 @@ class ShadowFeed : protected EnvObj, public theory::eq::EqualityEngineNotify
   void merge(TNode a, TNode b);
 
   /** The core under cvc5's prop engine, which owns the feed. */
-  HostCore& d_core;
+  SmtContext& d_core;
   /** cvc5's master equality engine, or null. */
   theory::eq::EqualityEngine* d_master;
   /**

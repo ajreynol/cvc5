@@ -35,7 +35,7 @@ namespace z3 {
  *   variables of q, by the instantiation, under the assumption q, and its
  *   scope, as for cvc5's own instantiations;
  * - a lemma weakened by the negation of a decision d (a delayed unit, see
- *   HostCore::delayUnit), (or l1 ... ln (not d)), from the proof of the
+ *   SmtContext::delayUnit), (or l1 ... ln (not d)), from the proof of the
  *   lemma (or l1 ... ln), in the form cvc5's preprocessing gives it.
  */
 class LemmaProofGenerator : protected EnvObj, public ProofGenerator
