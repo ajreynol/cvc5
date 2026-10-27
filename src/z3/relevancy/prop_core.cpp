@@ -687,6 +687,11 @@ bool PropCore::bcp()
           setConflict();
           return false;
         case L_UNDEF:
+          // an atom is cvc5's to assign
+          if (getBdata(l2.var()).isAtom())
+          {
+            break;
+          }
           d_stats.d_numBinPropagations++;
           assignCore(l2);
           break;
@@ -757,6 +762,11 @@ bool PropCore::bcp()
       Assert(firstLitVal == L_UNDEF);
       *it2 = *it;
       it2++;  // keep the clause
+      if (getBdata(firstLit.var()).isAtom())
+      {
+        // an atom is cvc5's to assign
+        continue;
+      }
       d_stats.d_numPropagations++;
       // It is safe to call assignCore instead of assign, since firstLit is
       // unassigned.

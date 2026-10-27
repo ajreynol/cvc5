@@ -543,10 +543,8 @@ ENode* SmtContext::mkENode(TNode n,
   {
     if (e->isTrueEq())
     {
-      BoolVar v = enode2BoolVar(e);
-      assign(Literal(v));
+      // cvc5 propagates that the equality is true
       e->d_cg = e;
-      pushEq(e, d_trueENode);
     }
     else if (cgcEnabled)
     {

@@ -30,11 +30,11 @@ namespace z3 {
  * The module of cvc5's quantifiers engine with --z3, the only one, which owns
  * the ported core. cvc5's own theories do the ground reasoning, with their
  * equality engines and theory combination; the core matches and instantiates
- * over a shadow of the ground state:
- * - it receives every literal the SAT solver asserts, for its E-graph and
- *   for relevancy (RelevancyTracker), and the equalities cvc5's theories
- *   derive, through the master equality engine, of whose merges the
- *   quantifiers engine notifies this module (ShadowFeed);
+ * over the ground state of cvc5:
+ * - it receives every literal the SAT solver asserts, for relevancy
+ *   (RelevancyTracker), and the merges of the master equality engine, of
+ *   which the quantifiers engine notifies this module (ShadowFeed), for its
+ *   E-graph;
  * - it sends lemmas only (instances, conflicts and splits), which need no
  *   explanation, and reports no propagations;
  * - the formulas it asserts go through cvc5's preprocessing first.

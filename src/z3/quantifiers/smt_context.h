@@ -12,11 +12,13 @@
  * Ported from Z3 (MIT License, Copyright (c) Microsoft Corporation),
  * file src/smt/smt_context.h, and recast in cvc5 style.
  *
- * The theory side of the core: the E-graph (congruence closure over
- * enodes), the internalizer, and the quantifier manager. Its propositional
- * side, PropCore, mirrors cvc5's assignment (see HostCore); the ground
- * reasoning is cvc5's theories', whose equalities reach the E-graph through
- * the ShadowFeed.
+ * The theory side of the core: the E-graph, the internalizer, and the
+ * quantifier manager. Its propositional side, PropCore, mirrors cvc5's
+ * assignment (see HostCore). The ground reasoning is cvc5's theories': the
+ * merges of the E-graph are those of cvc5's master equality engine, which
+ * reach it through the ShadowFeed, and the congruences they imply, and the
+ * E-graph keeps what E-matching needs over them (the parents, the congruence
+ * table, the label sets and the generations).
  *
  * Of Z3's context, only what E-matching and quantifier instantiation need
  * is ported: not its search (decisions, conflict resolution, restarts, lemma
@@ -497,8 +499,6 @@ class SmtContext final : protected EnvObj, public TheorySide
   void reinsertParentsIntoCgTable(ENode* r1, ENode* r2);
   void mergeCgcGenerations(ENode* e1, uint32_t e1Generation, ENode* e2);
   void setGenerationSticky(ENode* e, uint32_t generation);
-  void propagateBoolENodeAssignment(ENode* r1, ENode* r2, ENode* n1, ENode* n2);
-  void propagateBoolENodeAssignmentCore(ENode* source, ENode* target);
   void applyStickyUpdates(ENode* e1,
                           uint32_t e1Generation,
                           ENode* e2,
@@ -518,7 +518,6 @@ class SmtContext final : protected EnvObj, public TheorySide
     pushEq(n1, n2);
   }
 
-  bool addDiseq(ENode* n1, ENode* n2);
   bool isDiseqCore(ENode* n1, ENode* n2, bool checkDistinctRootValues) const;
 
   void assignQuantifier(TNode q);

@@ -38,9 +38,9 @@ namespace z3 {
 class HostCore;
 
 /**
- * Feeds the E-graph of the ported core, a shadow of cvc5's own theories,
- * with the equalities those theories derive, so that the core matches modulo
- * them. They come from cvc5's master equality engine, which collects the terms
+ * Feeds the E-graph of the ported core with the equalities cvc5's theories
+ * derive, which are its only merges besides the congruences they imply, so
+ * that the core matches modulo them. They come from cvc5's master equality engine, which collects the terms
  * and merges of the equality engines of all theories, as it does for cvc5's
  * quantifiers engine.
  *

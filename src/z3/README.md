@@ -4,10 +4,11 @@ A port of Z3's E-matching core, which runs as the only module of cvc5's
 quantifiers engine (`Z3Module`). cvc5's own prop engine and theories do the
 ground reasoning, and cvc5's quantifiers engine registers the quantified
 formulas and skolemizes those asserted false (the core takes that lemma when
-the formula is relevant to it); the core keeps a shadow of the ground state (an
-E-graph, and a Boolean mirror of the SAT assignment for Z3's relevancy), sends
-quantifier instances and delayed units to cvc5 as lemmas, and asks it for
-decisions. Since it sends only lemmas, it never explains anything, and keeps no
+the formula is relevant to it). The core keeps an E-graph whose merges are
+those of cvc5's master equality engine (`ShadowFeed`), closed under congruence,
+and a Boolean mirror of the SAT assignment for Z3's relevancy, whose atoms
+only cvc5 assigns. It sends quantifier instances and delayed units to cvc5 as
+lemmas, and asks it for decisions. Since it sends only lemmas, it never explains anything, and keeps no
 justifications.
 
 Its lemmas have proofs (`LemmaProofGenerator`), made when they are asked for:
@@ -77,9 +78,9 @@ as of this README:
 | Directory | Files | Code | Comment | Blank |
 |---|---:|---:|---:|---:|
 | `src/z3/util/` | 8 | 651 | 287 | 157 |
-| `src/z3/relevancy/` | 12 | 2274 | 514 | 373 |
-| `src/z3/quantifiers/` | 27 | 7714 | 1606 | 990 |
-| **Total** | 47 | **10639** | 2407 | 1520 |
+| `src/z3/relevancy/` | 12 | 2282 | 516 | 373 |
+| `src/z3/quantifiers/` | 27 | 7586 | 1605 | 985 |
+| **Total** | 47 | **10519** | 2408 | 1515 |
 
 The rest of cvc5 changes by 257 added and 18 deleted lines over 21 C++ files,
 most of them in `smt/set_defaults.cpp` (the capability checks) and

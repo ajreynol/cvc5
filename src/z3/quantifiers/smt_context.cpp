@@ -192,11 +192,6 @@ void SmtContext::addEq(ENode* n1, ENode* n2)
   // those are.
   pushTrail(AddEqTrail(*this, r1, r2NumParents));
 
-  if (n2->isBool())
-  {
-    propagateBoolENodeAssignment(r1, r2, n1, n2);
-  }
-
   // merge the equivalence classes
   std::swap(r1->d_next, r2->d_next);
 
@@ -273,17 +268,9 @@ void SmtContext::reinsertParentsIntoCgTable(ENode* r1, ENode* r2)
       ENode* rhs = parent->getArg(1);
       if (lhs->getRoot() == rhs->getRoot())
       {
+        // The equality is true, which cvc5 propagates; it leaves the
+        // congruence table, as true equalities are not in it.
         Assert(parent->isTrueEq());
-        size_t exprId = parent->getOwnerId();
-        BoolVar v = getBoolVarOfId(exprId);
-        LBool val = getAssignment(v);
-        if (val != L_TRUE)
-        {
-          assign(Literal(v));
-        }
-        // There is no need to reinsert the equality into the congruence
-        // table: the congruence propagations it could lead to are already
-        // handled by the assign above.
         continue;
       }
     }
@@ -331,75 +318,6 @@ void SmtContext::reinsertParentsIntoCgTable(ENode* r1, ENode* r2)
     }
   }
   d_r1ParentGenerations.clear();
-}
-
-void SmtContext::propagateBoolENodeAssignment(ENode* r1,
-                                              ENode* r2,
-                                              ENode* n1,
-                                              ENode* n2)
-{
-  Assert(n1->isBool());
-  Assert(n2->isBool());
-  Assert(r1->isBool());
-  Assert(r2->isBool());
-  if (r2 == d_falseENode || r2 == d_trueENode)
-  {
-    bool sign = r2 == d_falseENode;
-    ENode* curr = r1;
-    do
-    {
-      Assert(curr != d_falseENode);
-      BoolVar v = enode2BoolVar(curr);
-      Literal l(v, sign);
-      if (getAssignment(l) != L_TRUE)
-      {
-        assign(l);
-      }
-      curr = curr->d_next;
-    } while (curr != r1);
-  }
-  else
-  {
-    BoolVar v1 = enode2BoolVar(n1);
-    BoolVar v2 = enode2BoolVar(n2);
-    LBool val1 = getAssignment(v1);
-    LBool val2 = getAssignment(v2);
-    if (val1 != val2)
-    {
-      if (val2 == L_UNDEF)
-      {
-        propagateBoolENodeAssignmentCore(n1, n2);
-      }
-      else
-      {
-        propagateBoolENodeAssignmentCore(n2, n1);
-      }
-    }
-  }
-}
-
-void SmtContext::propagateBoolENodeAssignmentCore(ENode* source, ENode* target)
-{
-  // source and target are Boolean enodes that were proved equal, and the
-  // variable of source is assigned; copy the assignment across the class.
-  Assert(source->isBool());
-  Assert(target->isBool());
-  Assert(source->getRoot() == target->getRoot());
-  BoolVar vSource = enode2BoolVar(source);
-  LBool val = getAssignment(vSource);
-  Assert(val != L_UNDEF);
-  bool sign = val == L_FALSE;
-  ENode* first = target;
-  do
-  {
-    BoolVar v2 = enode2BoolVar(target);
-    LBool val2 = getAssignment(v2);
-    if (val2 != val)
-    {
-      assign(Literal(v2, sign));
-    }
-    target = target->getNext();
-  } while (first != target);
 }
 
 void SmtContext::undoAddEq(ENode* r1, size_t r2NumParents)
@@ -536,12 +454,6 @@ void SmtContext::applyStickyUpdates(ENode* e1,
   }
 }
 
-bool SmtContext::addDiseq(ENode* n1, ENode* n2)
-{
-  // There is no theory plugin to tell of the disequality.
-  return n1->getRoot() != n2->getRoot();
-}
-
 bool SmtContext::isDiseq(ENode* n1, ENode* n2) const
 {
   return isDiseqCore(n1, n2, true);
@@ -647,30 +559,10 @@ bool SmtContext::propagateAtoms()
     {
       return false;
     }
+    // The merges of the equalities are those of cvc5's master equality
+    // engine, see ShadowFeed.
     BoolVarData& d = getBdata(v);
-    if (d.isEq())
-    {
-      TNode n = boolVar2Expr(v);
-      Assert(n.getKind() == Kind::EQUAL);
-      TNode lhs = n[0];
-      TNode rhs = n[1];
-      if (lhs.getType().isBoolean())
-      {
-        // no-op: Boolean equality is handled by the gate clauses
-      }
-      else if (val == L_TRUE)
-      {
-        addEq(getENode(lhs), getENode(rhs));
-      }
-      else
-      {
-        if (!addDiseq(getENode(lhs), getENode(rhs)) && !inconsistent())
-        {
-          setConflict();
-        }
-      }
-    }
-    else if (d.isQuantifier())
+    if (d.isQuantifier())
     {
       // Note that with relevancy lemmas a quantifier may be asserted to
       // false and marked relevant, which happens when a quantifier is part
@@ -705,33 +597,10 @@ void SmtContext::propagateBoolVarENode(BoolVar v)
   LBool val = getAssignment(v);
   Assert(v < d_prop.getNumBoolVars());
   ENode* n = boolVar2ENode(v);
-
-  bool sign = val == L_FALSE;
+  // cvc5 assigns the other members of its class
   if (n->mergeTf())
   {
-    addEq(n, sign ? d_falseENode : d_trueENode);
-  }
-  ENode* r = n->getRoot();
-  if (r == d_trueENode || r == d_falseENode)
-  {
-    return;
-  }
-  // Move the truth value to the other members of the equivalence class if
-  // n is the root, or the variable of the root is unassigned.
-  if (n == r || !isRelevant(r)  // needed to fix a propagation bug
-      || getAssignment(enode2BoolVar(r)) != val)
-  {
-    ENode* first = n;
-    n = n->getNext();
-    while (n != first)
-    {
-      BoolVar v2 = enode2BoolVar(n);
-      if (getAssignment(v2) != val)
-      {
-        assign(Literal(v2, sign));
-      }
-      n = n->getNext();
-    }
+    addEq(n, val == L_FALSE ? d_falseENode : d_trueENode);
   }
 }
 
