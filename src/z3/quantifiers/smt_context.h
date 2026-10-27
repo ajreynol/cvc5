@@ -117,15 +117,15 @@ class SmtContext final : protected EnvObj, public TheorySide
   void pushTheoryScope() override;
 
   /**
-   * Pop numScopes scopes of the quantifier manager, before the Boolean
+   * Discard the pending work of the quantifier manager, before the Boolean
    * variables are unassigned.
    */
-  void popTheoryScopeBegin(size_t numScopes) override;
+  void popTheoryScopeBegin() override;
 
   /**
-   * Pop numScopes scopes of the rest of the theory side, after the Boolean
-   * variables are unassigned: the trail (and its memory) and the propagation
-   * queues.
+   * Pop numScopes scopes of the theory side, after the Boolean variables are
+   * unassigned: the trail stack, which pops the trail (and its memory) and
+   * the data in its context, and the propagation queues.
    */
   void popTheoryScopeEnd(size_t numScopes) override;
 
@@ -550,15 +550,17 @@ class SmtContext final : protected EnvObj, public TheorySide
 
   // ------------------------------------------------------------- the fields
   /**
-   * The propositional side: the Boolean search state. It refers to d_stats,
-   * so it is declared after it.
-   */
-  PropCore d_prop;
-  /**
    * The trail of the theory side, and the memory of the enodes, relevancy
-   * handlers, fingerprints and quantifier statistics.
+   * handlers, fingerprints, code trees and quantifier statistics. Its context
+   * holds the scoped data of the relevancy propagator, the queue and the
+   * fingerprints, so it is declared before them.
    */
   TrailStack d_trailStack;
+  /**
+   * The propositional side: the Boolean search state. It refers to d_stats
+   * and d_trailStack, so it is declared after them.
+   */
+  PropCore d_prop;
   QuantifierNormalizer d_normalizer;
   /** See setInstanceMaker. */
   InstanceMaker d_instanceMaker;

@@ -2795,6 +2795,7 @@ class MamImpl final : public Mam
   MamImpl(SmtContext& ctx, QuantifierManager& qm)
       : d_context(ctx),
         d_qm(qm),
+        d_trailStack(ctx.getTrailStack()),
         d_lblHasher(ctx),
         d_ctManager(d_lblHasher, d_trailStack),
         d_compiler(ctx, qm, d_ctManager, d_lblHasher),
@@ -2806,7 +2807,6 @@ class MamImpl final : public Mam
     resetPpPc();
   }
 
-  ~MamImpl() override { d_trailStack.reset(); }
 
   void addPattern(TNode q, TNode mp) override
   {
@@ -2848,13 +2848,11 @@ class MamImpl final : public Mam
     }
   }
 
-  void pushScope() override { d_trailStack.pushScope(); }
-
-  void popScope(size_t numScopes) override
+  void notifyPop() override
   {
     if (!d_toMatch.empty())
     {
-      Trace("z3-mam-order") << "popScope discards candidates of "
+      Trace("z3-mam-order") << "notifyPop discards candidates of "
                             << d_toMatch.size() << " trees" << std::endl;
       for (CodeTree* t : d_toMatch)
       {
@@ -2863,7 +2861,6 @@ class MamImpl final : public Mam
       d_toMatch.clear();
     }
     d_newPatterns.clear();
-    d_trailStack.popScope(numScopes);
   }
 
   void match() override
@@ -3696,8 +3693,8 @@ class MamImpl final : public Mam
   SmtContext& d_context;
   /** The quantifier manager, which receives the matches. */
   QuantifierManager& d_qm;
-  /** The trail, and the memory of the code trees. */
-  TrailStack d_trailStack;
+  /** The trail of the context, and the memory of the code trees. */
+  TrailStack& d_trailStack;
   LabelHasher d_lblHasher;
   CodeTreeManager d_ctManager;
   Compiler d_compiler;

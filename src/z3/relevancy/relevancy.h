@@ -30,6 +30,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "context/cdlist.h"
 #include "expr/node.h"
 #include "z3/relevancy/theory_side.h"
 #include "z3/util/trail.h"
@@ -126,12 +127,6 @@ class RelevancyPropagator
   /** True if there is relevancy left to propagate. */
   bool canPropagate() const { return d_qhead < d_relevantExprs.size(); }
 
-  /** Create a backtracking point. */
-  void push();
-
-  /** Backtrack. */
-  void pop(size_t numScopes);
-
   /** The trail stack of the theory side, where the handlers live. */
   TrailStack& getTrailStack() const;
 
@@ -194,10 +189,18 @@ class RelevancyPropagator
     TNode getNode() const { return d_node; }
   };
 
-  struct Scope
+  /** Unmarks an expression marked relevant when it is popped. */
+  struct UnmarkCleanup
   {
-    size_t d_relevantExprsLim;
-    size_t d_trailLim;
+    RelevancyPropagator* d_rp;
+    void operator()(Node& n) { d_rp->d_isRelevant[n.getId()] = false; }
+  };
+
+  /** Undoes a handler installation when it is popped. */
+  struct UndoHandlerCleanup
+  {
+    RelevancyPropagator* d_rp;
+    void operator()(HandlerTrail& t) { d_rp->undoHandler(t); }
   };
 
   RelevancyHandlers* getHandlers(TNode n) const;
@@ -207,16 +210,19 @@ class RelevancyPropagator
 
   void setRelevant(TNode n);
 
-  /** Unmark the expressions marked relevant since oldLim. */
-  void unmarkRelevantExprs(size_t oldLim);
-  void undoTrail(size_t oldLim);
+  /** Undo the handler installation t. */
+  void undoHandler(const HandlerTrail& t);
 
   /** The propositional side, which owns this object. */
   PropCore& d_core;
   /** The theory side: equivalence classes, trail stack and statistics. */
   TheorySide& d_theory;
+  /**
+   * The next expression of d_relevantExprs to propagate. It is not popped:
+   * a pop leaves it past the end, and it is moved back to the end when an
+   * expression is added.
+   */
   size_t d_qhead;
-  std::vector<Node> d_relevantExprs;
   /** Indexed by node id, true if the node is in d_relevantExprs. */
   std::vector<bool> d_isRelevant;
   std::unordered_map<TNode, RelevancyHandlers*> d_relevantHandlers;
@@ -229,8 +235,13 @@ class RelevancyPropagator
    * unwatched-literal case at the notifyAssigned hotspot.
    */
   std::vector<bool> d_isWatched[2];
-  std::vector<HandlerTrail> d_trail;
-  std::vector<Scope> d_scopes;
+  /**
+   * The expressions marked relevant, and the handler installations, in the
+   * context of the trail stack. Their cleanups use the fields above, so they
+   * are declared after them.
+   */
+  context::CDList<Node, UnmarkCleanup> d_relevantExprs;
+  context::CDList<HandlerTrail, UndoHandlerCleanup> d_trail;
   bool d_propagating;
 };
 

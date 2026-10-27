@@ -53,10 +53,16 @@ class TheorySide
   virtual void initSearch() = 0;
   /** The final check, when every relevant Boolean variable is assigned. */
   virtual FinalCheckStatus finalCheck() = 0;
-  /** Push a scope of the theory side, after the Boolean side's. */
+  /**
+   * Push a scope of the theory side, after the Boolean side's: the scope of
+   * the trail stack, whose context the relevancy propagator uses as well.
+   */
   virtual void pushTheoryScope() = 0;
-  /** Pop numScopes scopes, before the Boolean variables are unassigned. */
-  virtual void popTheoryScopeBegin(size_t numScopes) = 0;
+  /**
+   * Discard the pending work of the theory side, before the Boolean
+   * variables are unassigned.
+   */
+  virtual void popTheoryScopeBegin() = 0;
   /** Pop numScopes scopes, after the Boolean variables are unassigned. */
   virtual void popTheoryScopeEnd(size_t numScopes) = 0;
   /** Whether the search is to stop. */

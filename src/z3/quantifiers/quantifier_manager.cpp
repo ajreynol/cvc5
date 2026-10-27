@@ -52,9 +52,7 @@ QuantifierManager::QuantifierManager(SmtContext& ctx)
       d_fingerprints(ctx.getTrailStack()),
       d_qstatGen(ctx.getTrailStack()),
       d_lazyMatchingIdx(0),
-      d_active(false),
-      d_lazyScopes(0),
-      d_lazy(true)
+      d_active(false)
 {
   d_queue.setup();
   d_mam = mkMam(ctx, *this);
@@ -65,15 +63,6 @@ QuantifierManager::~QuantifierManager() {}
 
 void QuantifierManager::add(TNode q, uint32_t generation)
 {
-  if (d_lazy)
-  {
-    while (d_lazyScopes > 0)
-    {
-      --d_lazyScopes;
-      pushCore();
-    }
-    d_lazy = false;
-  }
   QuantifierStat* stat = d_qstatGen(q, generation);
   d_quantifierStat[q] = stat;
   d_id2Quant[q.getId()] = q;
@@ -242,39 +231,11 @@ void QuantifierManager::propagate()
   d_queue.instantiate();
 }
 
-void QuantifierManager::pushCore()
+void QuantifierManager::notifyPop()
 {
-  d_mam->pushScope();
-  d_lazyMam->pushScope();
-  d_queue.pushScope();
-}
-
-void QuantifierManager::push()
-{
-  if (d_lazy)
-  {
-    ++d_lazyScopes;
-  }
-  else
-  {
-    pushCore();
-  }
-  d_fingerprints.pushScope();
-}
-
-void QuantifierManager::pop(size_t numScopes)
-{
-  if (d_lazy)
-  {
-    d_lazyScopes -= numScopes;
-  }
-  else
-  {
-    d_mam->popScope(numScopes);
-    d_lazyMam->popScope(numScopes);
-    d_queue.popScope(numScopes);
-  }
-  d_fingerprints.popScope(numScopes);
+  d_mam->notifyPop();
+  d_lazyMam->notifyPop();
+  d_queue.notifyPop();
 }
 
 }  // namespace z3

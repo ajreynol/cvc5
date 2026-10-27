@@ -30,6 +30,12 @@ Fingerprint::Fingerprint(
   std::memcpy(d_args, args, sizeof(ENode*) * n);
 }
 
+FingerprintSet::FingerprintSet(TrailStack& t)
+    : d_trailStack(t),
+      d_fingerprints(t.getContext(), true, EraseCleanup{&d_set})
+{
+}
+
 bool FingerprintSet::FingerprintEqProc::operator()(const Fingerprint* f1,
                                                    const Fingerprint* f2) const
 {
@@ -97,30 +103,6 @@ Fingerprint* FingerprintSet::insert(uint64_t data,
   d_fingerprints.push_back(f);
   d_set.insert(f);
   return f;
-}
-
-void FingerprintSet::pushScope() { d_scopes.push_back(d_fingerprints.size()); }
-
-void FingerprintSet::popScope(size_t numScopes)
-{
-  size_t lvl = d_scopes.size();
-  Assert(numScopes <= lvl);
-  size_t newLvl = lvl - numScopes;
-  size_t oldSize = d_scopes[newLvl];
-  size_t size = d_fingerprints.size();
-  if (oldSize == 0 && size > 0)
-  {
-    d_set.clear();
-  }
-  else
-  {
-    for (size_t i = oldSize; i < size; ++i)
-    {
-      d_set.erase(d_fingerprints[i]);
-    }
-  }
-  d_fingerprints.resize(oldSize);
-  d_scopes.resize(newLvl);
 }
 
 }  // namespace z3

@@ -30,6 +30,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include "context/cdhashset.h"
+#include "context/cdlist.h"
 #include "expr/node.h"
 #include "z3/quantifiers/checker.h"
 #include "z3/quantifiers/fingerprints.h"
@@ -75,8 +77,8 @@ class QiQueue
    */
   bool finalCheck();
 
-  void pushScope();
-  void popScope(size_t numScopes);
+  /** Discard the new entries, before the scopes are popped. */
+  void notifyPop() { d_newEntries.clear(); }
 
   const QiQueueStats& getStats() const { return d_stats; }
 
@@ -85,19 +87,11 @@ class QiQueue
   {
     Fingerprint* d_qb;
     float d_cost;
-    uint32_t d_generation : 31;
-    uint32_t d_instantiated : 1;
+    uint32_t d_generation;
     Entry(Fingerprint* f, float c, uint32_t g)
-        : d_qb(f), d_cost(c), d_generation(g), d_instantiated(false)
+        : d_qb(f), d_cost(c), d_generation(g)
     {
     }
-  };
-
-  struct Scope
-  {
-    size_t d_delayedEntriesLim;
-    size_t d_instancesLim;
-    size_t d_instantiatedTrailLim;
   };
 
   /**
@@ -114,7 +108,7 @@ class QiQueue
    * in Z3's qi_params.h.
    */
   float getCost(TNode q, uint32_t generation);
-  void instantiate(Entry& ent);
+  void instantiate(const Entry& ent);
   /** The quantifier of the fingerprint f. */
   TNode getQuantifier(Fingerprint* f) const;
   /**
@@ -144,16 +138,18 @@ class QiQueue
   double d_eagerCostThreshold;
 
   std::vector<Entry> d_newEntries;
-  std::vector<Entry> d_delayedEntries;
-  std::vector<Node> d_instances;
+  /**
+   * The entries delayed for the final check, and the indices of those that
+   * the final check instantiated, in the context of the trail stack.
+   */
+  context::CDList<Entry> d_delayedEntries;
+  context::CDHashSet<size_t> d_instantiated;
   /**
    * The lemmas of the instances made so far, by (SEXPR q t1 ... tn), null for
    * an instance that rewrites to true. The core makes an instance again after
    * backtracking, and its lemma is the same.
    */
   std::unordered_map<Node, Node> d_lemmas;
-  std::vector<size_t> d_instantiatedTrail;
-  std::vector<Scope> d_scopes;
 };
 
 }  // namespace z3

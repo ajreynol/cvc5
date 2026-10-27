@@ -786,14 +786,9 @@ void SmtContext::notifyBoolVarDeleted(TNode n)
 void SmtContext::pushTheoryScope()
 {
   getTrailStack().pushScope();
-
-  d_qmanager->push();
 }
 
-void SmtContext::popTheoryScopeBegin(size_t numScopes)
-{
-  d_qmanager->pop(numScopes);
-}
+void SmtContext::popTheoryScopeBegin() { d_qmanager->notifyPop(); }
 
 void SmtContext::popTheoryScopeEnd(size_t numScopes)
 {

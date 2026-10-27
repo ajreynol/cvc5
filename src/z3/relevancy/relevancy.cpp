@@ -104,7 +104,14 @@ class IteTermRelevancyHandler : public RelevancyHandler
 }  // namespace
 
 RelevancyPropagator::RelevancyPropagator(PropCore& core, TheorySide& theory)
-    : d_core(core), d_theory(theory), d_qhead(0), d_propagating(false)
+    : d_core(core),
+      d_theory(theory),
+      d_qhead(0),
+      d_relevantExprs(
+          theory.getTrailStack().getContext(), true, UnmarkCleanup{this}),
+      d_trail(
+          theory.getTrailStack().getContext(), true, UndoHandlerCleanup{this}),
+      d_propagating(false)
 {
 }
 
@@ -235,71 +242,39 @@ void RelevancyPropagator::addWatch(TNode n, bool val, RelevancyHandler* eh)
   }
 }
 
-void RelevancyPropagator::push()
+void RelevancyPropagator::undoHandler(const HandlerTrail& t)
 {
-  d_scopes.push_back(Scope{d_relevantExprs.size(), d_trail.size()});
-}
-
-void RelevancyPropagator::pop(size_t numScopes)
-{
-  size_t lvl = d_scopes.size();
-  Assert(numScopes <= lvl);
-  size_t newLvl = lvl - numScopes;
-  Scope& s = d_scopes[newLvl];
-  unmarkRelevantExprs(s.d_relevantExprsLim);
-  undoTrail(s.d_trailLim);
-  d_scopes.resize(newLvl);
-}
-
-void RelevancyPropagator::unmarkRelevantExprs(size_t oldLim)
-{
-  Assert(oldLim <= d_relevantExprs.size());
-  size_t i = d_relevantExprs.size();
-  while (i != oldLim)
+  TNode n = t.getNode();
+  RelevancyHandlers* ehs;
+  switch (t.getKind())
   {
-    --i;
-    d_isRelevant[d_relevantExprs[i].getId()] = false;
+    case HandlerTrail::Kind::POS_WATCH:
+      ehs = getWatches(n, true);
+      Assert(ehs != nullptr);
+      setWatches(n, true, ehs->tail());
+      break;
+    case HandlerTrail::Kind::NEG_WATCH:
+      ehs = getWatches(n, false);
+      Assert(ehs != nullptr);
+      setWatches(n, false, ehs->tail());
+      break;
+    case HandlerTrail::Kind::HANDLER:
+      ehs = getHandlers(n);
+      Assert(ehs != nullptr);
+      setHandlers(n, ehs->tail());
+      break;
   }
-  d_relevantExprs.resize(oldLim);
-  d_qhead = d_relevantExprs.size();
-}
-
-void RelevancyPropagator::undoTrail(size_t oldLim)
-{
-  Assert(oldLim <= d_trail.size());
-  size_t i = d_trail.size();
-  while (i != oldLim)
-  {
-    --i;
-    HandlerTrail& t = d_trail[i];
-    TNode n = t.getNode();
-    RelevancyHandlers* ehs;
-    switch (t.getKind())
-    {
-      case HandlerTrail::Kind::POS_WATCH:
-        ehs = getWatches(n, true);
-        Assert(ehs != nullptr);
-        setWatches(n, true, ehs->tail());
-        break;
-      case HandlerTrail::Kind::NEG_WATCH:
-        ehs = getWatches(n, false);
-        Assert(ehs != nullptr);
-        setWatches(n, false, ehs->tail());
-        break;
-      case HandlerTrail::Kind::HANDLER:
-        ehs = getHandlers(n);
-        Assert(ehs != nullptr);
-        setHandlers(n, ehs->tail());
-        break;
-    }
-  }
-  d_trail.erase(d_trail.begin() + oldLim, d_trail.end());
 }
 
 void RelevancyPropagator::setRelevant(TNode n)
 {
   d_theory.getStats().d_numSetRelevant++;
   setx(d_isRelevant, n.getId(), true, false);
+  if (d_qhead > d_relevantExprs.size())
+  {
+    // the expressions past the end were popped
+    d_qhead = d_relevantExprs.size();
+  }
   d_relevantExprs.push_back(n);
   d_core.notifyRelevant(n);
 }

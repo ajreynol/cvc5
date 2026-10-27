@@ -32,7 +32,12 @@ namespace cvc5::internal {
 namespace z3 {
 
 QiQueue::QiQueue(QuantifierManager& qm, SmtContext& ctx)
-    : d_qm(qm), d_context(ctx), d_checker(ctx), d_eagerCostThreshold(0)
+    : d_qm(qm),
+      d_context(ctx),
+      d_checker(ctx),
+      d_eagerCostThreshold(0),
+      d_delayedEntries(ctx.getTrailStack().getContext()),
+      d_instantiated(ctx.getTrailStack().getContext())
 {
 }
 
@@ -101,7 +106,7 @@ void QiQueue::instantiate()
   d_newEntries.clear();
 }
 
-void QiQueue::instantiate(Entry& ent)
+void QiQueue::instantiate(const Entry& ent)
 {
   if (d_context.inconsistent())
   {
@@ -113,8 +118,6 @@ void QiQueue::instantiate(Entry& ent)
   uint32_t generation = ent.d_generation;
   size_t numBindings = f->getNumArgs();
   ENode* const* bindings = f->getArgs();
-
-  ent.d_instantiated = true;
 
   QuantifierStat* stat = d_qm.getStat(q);
   if (skipSatisfied(q, stat, numBindings, bindings))
@@ -153,7 +156,6 @@ void QiQueue::instantiate(Entry& ent)
   {
     return;
   }
-  d_instances.push_back(lemma);
   d_stats.d_numInstances++;
   uint32_t gen = static_cast<uint32_t>(ent.d_cost);
   Trace("z3-qi") << "[instance] q" << q.getId() << " nargs " << numBindings
@@ -164,31 +166,6 @@ void QiQueue::instantiate(Entry& ent)
   d_context.internalizeInstance(q, terms, gen);
 }
 
-void QiQueue::pushScope()
-{
-  Assert(d_context.inconsistent() || d_newEntries.empty());
-  d_scopes.push_back(Scope{
-      d_delayedEntries.size(), d_instances.size(), d_instantiatedTrail.size()});
-}
-
-void QiQueue::popScope(size_t numScopes)
-{
-  size_t newLvl = d_scopes.size() - numScopes;
-  Scope& s = d_scopes[newLvl];
-  size_t oldSz = s.d_instantiatedTrailLim;
-  size_t sz = d_instantiatedTrail.size();
-  for (size_t i = oldSz; i < sz; ++i)
-  {
-    d_delayedEntries[d_instantiatedTrail[i]].d_instantiated = false;
-  }
-  d_instantiatedTrail.resize(oldSz);
-  d_delayedEntries.erase(d_delayedEntries.begin() + s.d_delayedEntriesLim,
-                         d_delayedEntries.end());
-  d_instances.resize(s.d_instancesLim);
-  d_newEntries.clear();
-  d_scopes.resize(newLvl);
-}
-
 void QiQueue::initSearch() { d_newEntries.clear(); }
 
 bool QiQueue::finalCheck()
@@ -196,12 +173,12 @@ bool QiQueue::finalCheck()
   bool result = true;
   for (size_t i = 0; i < d_delayedEntries.size(); ++i)
   {
-    Entry& e = d_delayedEntries[i];
-    if (!e.d_instantiated
+    const Entry& e = d_delayedEntries[i];
+    if (!d_instantiated.contains(i)
         && e.d_cost <= d_context.getEnv().getOptions().z3.z3QiLazyThreshold)
     {
       result = false;
-      d_instantiatedTrail.push_back(i);
+      d_instantiated.insert(i);
       d_stats.d_numLazyInstances++;
       d_context.getStats().d_numLazyInstances++;
       instantiate(e);

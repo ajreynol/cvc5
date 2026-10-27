@@ -28,6 +28,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "context/cdlist.h"
 #include "z3/quantifiers/enode.h"
 #include "z3/util/trail.h"
 
@@ -79,8 +80,19 @@ class FingerprintSet
   using Set =
       std::unordered_set<Fingerprint*, FingerprintHashProc, FingerprintEqProc>;
 
+  /** Erases a fingerprint from the set when it is popped. */
+  struct EraseCleanup
+  {
+    Set* d_set;
+    void operator()(Fingerprint* f) { d_set->erase(f); }
+  };
+
  public:
-  FingerprintSet(TrailStack& t) : d_trailStack(t) {}
+  /**
+   * The fingerprints live in the memory of the trail stack t, and are erased
+   * when its scopes are popped.
+   */
+  FingerprintSet(TrailStack& t);
 
   /**
    * Record the fingerprint if it is new, returning it; return null if an
@@ -93,9 +105,6 @@ class FingerprintSet
 
   size_t size() const { return d_fingerprints.size(); }
 
-  void pushScope();
-  void popScope(size_t numScopes);
-
  private:
   Fingerprint* mkDummy(uint64_t data,
                        uint32_t dataHash,
@@ -104,8 +113,8 @@ class FingerprintSet
 
   TrailStack& d_trailStack;
   Set d_set;
-  std::vector<Fingerprint*> d_fingerprints;
-  std::vector<size_t> d_scopes;
+  /** The fingerprints of d_set, in the context of the trail stack. */
+  context::CDList<Fingerprint*, EraseCleanup> d_fingerprints;
   ENodeVector d_tmp;
   Fingerprint d_dummy;
 };

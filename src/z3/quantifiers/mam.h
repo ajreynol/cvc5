@@ -49,9 +49,12 @@ class Mam
   /** Compile the multi-pattern mp of quantifier q into the code trees. */
   virtual void addPattern(TNode q, TNode mp) = 0;
 
-  virtual void pushScope() = 0;
-
-  virtual void popScope(size_t numScopes) = 0;
+  /**
+   * Discard the pending matching work, before the scopes are popped. The
+   * code trees are in the trail stack of the context, and are popped with
+   * it.
+   */
+  virtual void notifyPop() = 0;
 
   /** Execute the pending matching work. */
   virtual void match() = 0;

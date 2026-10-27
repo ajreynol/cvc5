@@ -605,7 +605,6 @@ void PropCore::pushScope()
   d_scopes.push_back(Scope{d_assignedLiterals.size(),
                            d_auxClauses.size(),
                            d_unitsToReassert.size()});
-  d_relevancyPropagator->push();
   d_ctx.pushTheoryScope();
 }
 
@@ -625,8 +624,7 @@ void PropCore::popScope(size_t numScopes)
   d_conflict = false;
   delClauses(d_auxClauses, sc.d_auxClausesLim);
   size_t unitsToReassertLim = sc.d_unitsToReassertLim;
-  d_relevancyPropagator->pop(numScopes);
-  d_ctx.popTheoryScopeBegin(numScopes);
+  d_ctx.popTheoryScopeBegin();
   unassignVars(d_scopes[newLvl].d_assignedLiteralsLim);
   d_ctx.popTheoryScopeEnd(numScopes);
   d_scopes.resize(newLvl);

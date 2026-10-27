@@ -82,13 +82,14 @@ class QuantifierManager
   bool canPropagate() const;
   void propagate();
 
-  void push();
-  void pop(size_t numScopes);
+  /**
+   * Discard the pending work of the matchers and the queue, before the
+   * scopes are popped. Their scoped state is in the trail stack of the
+   * context, and is popped with it.
+   */
+  void notifyPop();
 
  private:
-  /** Push the scopes of the matchers and the queue. */
-  void pushCore();
-
   SmtContext& d_context;
   /** When the instances of the matches found are made. */
   QiQueue d_queue;
@@ -106,13 +107,6 @@ class QuantifierManager
   size_t d_lazyMatchingIdx;
   /** Whether a quantifier was asserted. */
   bool d_active;
-  /**
-   * The scopes pushed before the first quantifier was added, which the
-   * matchers and the queue only get then, so that a problem without
-   * quantifiers pays nothing.
-   */
-  size_t d_lazyScopes;
-  bool d_lazy;
 };
 
 }  // namespace z3

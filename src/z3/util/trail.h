@@ -199,6 +199,12 @@ class TrailStack
     d_trail.push_back(new (allocate(sizeof(TrailObject))) TrailObject(obj));
   }
 
+  /**
+   * The context of the stack, for the context-dependent data that is popped
+   * with it.
+   */
+  context::Context* getContext() { return &d_context; }
+
   void pushScope() { d_context.push(); }
 
   void popScope(size_t numScopes)
