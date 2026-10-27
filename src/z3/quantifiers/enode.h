@@ -154,8 +154,7 @@ class ENode
                      bool suppressArgs,
                      bool mergeTf,
                      uint32_t iscopeLvl,
-                     bool cgcEnabled,
-                     bool updateChildrenParent);
+                     bool cgcEnabled);
 
  public:
   static size_t getENodeSize(size_t numArgs)
@@ -171,20 +170,10 @@ class ENode
                    bool suppressArgs,
                    bool mergeTf,
                    uint32_t iscopeLvl,
-                   bool cgcEnabled,
-                   bool updateChildrenParent);
-
-  /** Allocate an enode on the heap, for temporary use. */
-  static ENode* mkDummy(const App2ENode& app2enode, TNode owner);
-
-  static void delDummy(ENode* n)
-  {
-    n->~ENode();
-    ::operator delete(reinterpret_cast<char*>(n));
-  }
+                   bool cgcEnabled);
 
   /** Release this node, running its destructor. */
-  void destroy(bool updateChildrenParent = true);
+  void destroy();
 
   void markAsInterpreted()
   {

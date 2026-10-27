@@ -33,7 +33,7 @@ namespace z3 {
  * - it receives every literal the SAT solver asserts, for its E-graph and
  *   for relevancy (RelevancyTracker), and the equalities cvc5's theories
  *   derive, through the master equality engine, of whose merges the
- *   quantifiers engine notifies this module (ShadowFeed);
+ *   quantifiers engine notifies this module (notifyMasterMerge);
  * - it sends lemmas only (instances, conflicts and splits), which need no
  *   explanation, and reports no propagations;
  * - the formulas it asserts go through cvc5's preprocessing first.

@@ -14,9 +14,9 @@
  *
  * The theory side of the core: the E-graph (congruence closure over
  * enodes), the internalizer, and the quantifier manager. Its propositional
- * side, PropCore, mirrors cvc5's assignment (see host.cpp); the ground
+ * side, PropCore, mirrors cvc5's assignment (see syncLevel); the ground
  * reasoning is cvc5's theories', whose equalities reach the E-graph through
- * the ShadowFeed.
+ * the master equality engine (notifyMasterMerge).
  *
  * Of Z3's context, only what E-matching and quantifier instantiation need
  * is ported: not its search (decisions, conflict resolution, restarts, lemma
@@ -36,6 +36,8 @@
 #include <unordered_set>
 #include <vector>
 
+#include "context/cdhashmap.h"
+#include "context/cdo.h"
 #include "context/context.h"
 #include "expr/node.h"
 #include "smt/env_obj.h"
@@ -76,11 +78,10 @@ namespace z3 {
 class LemmaProofGenerator;
 class QuantifierManager;
 class RelevancyTracker;
-class ShadowFeed;
 
 /**
  * The ported core: the theory side, whose propositional side is PropCore, and
- * the boundary with cvc5 (host.cpp).
+ * the boundary with cvc5.
  *
  * It implements the search contract of cvc5's prop engine (preregistration,
  * facts and checks) over PropCore, which mirrors the assignment for the theory
@@ -110,8 +111,6 @@ class SmtContext final : protected EnvObj
   SmtContext& operator=(const SmtContext&) = delete;
 
   // -------------------------------------------- the boundary with cvc5
-  //
-  // See host.cpp.
 
   /**
    * Assert the input formulas, cvc5's preprocessed assertions, to the core,
@@ -343,12 +342,6 @@ class SmtContext final : protected EnvObj
   /** The canonicalizer for quantifiers; see z3/ast.h. */
   QuantifierNormalizer& getNormalizer() { return d_normalizer; }
 
-  /**
-   * Merge the classes of a and b, which must be internalized as terms, since
-   * cvc5's theories made them equal. The merge is queued for the next
-   * propagation.
-   */
-  void assumeExternalEq(TNode a, TNode b) { pushEq(getENode(a), getENode(b)); }
   /** The environment of the enclosing cvc5 solver. */
   const Env& getEnv() const { return d_env; }
 
@@ -557,7 +550,7 @@ class SmtContext final : protected EnvObj
   void syncLevel();
   /**
    * Note that the core is in conflict, which it leaves to cvc5's theories to
-   * find; see enterConflict in host.cpp.
+   * find; see enterConflict in smt_context.cpp.
    */
   void enterConflict();
   /**
@@ -640,6 +633,17 @@ class SmtContext final : protected EnvObj
    */
   TrustNode getSkolemization(TNode q);
   /**
+   * Queue in the E-graph the merges of the master equality engine notified
+   * since the last call, and those of the terms the core internalized since
+   * then, for its next propagation.
+   */
+  void applyMasterMerges();
+  /** The term of the core recorded for the representative rep, or null. */
+  Node masterTermOf(TNode rep) const;
+  /** Merge a and b, which the master equality engine made equal, if both
+   * are internalized. */
+  void mergeMasterTerms(TNode a, TNode b);
+  /**
    * Preprocess the lemma trn proves, which the core sends, into the form
    * cvc5's theories take, as mkInstance and mkSkolemization do.
    */
@@ -695,8 +699,32 @@ class SmtContext final : protected EnvObj
   std::unique_ptr<SplitStrategy> d_splitStrategy;
   /** Follows the pops of the SAT context. */
   std::unique_ptr<PopNotify> d_popNotify;
-  /** Gives the core the merges of the master equality engine. */
-  std::unique_ptr<ShadowFeed> d_feed;
+  /**
+   * The master equality engine, which collects the terms and merges of the
+   * equality engines of cvc5's theories, or null. Its merges are the
+   * E-graph's, besides the congruences they imply: they are queued as they
+   * are notified (notifyMasterMerge), and applied at the next check
+   * (applyMasterMerges). The master equality engine keeps no reasons, so the
+   * core cannot explain these merges, and it does not need to: the core
+   * keeps no explanations.
+   */
+  theory::eq::EqualityEngine* d_masterEe;
+  /**
+   * For a representative of the master equality engine, a term of the core
+   * in its class, in the SAT context.
+   */
+  context::CDHashMap<Node, Node> d_masterTerm;
+  /**
+   * How many of the terms the core internalized were looked up in the
+   * master equality engine. In the SAT context, as the core's scopes are.
+   */
+  context::CDO<size_t> d_masterIdx;
+  /**
+   * The merges notified since the last check, as the representative that
+   * survived and the one that was merged into it. The SAT context popping
+   * voids them.
+   */
+  std::vector<std::pair<Node, Node>> d_pendingMerges;
   /** Gives the core the literals the SAT solver asserts. */
   std::unique_ptr<RelevancyTracker> d_tracker;
 
@@ -798,7 +826,8 @@ class SmtContext final : protected EnvObj
    * the same form then, without the skolem definitions it gave the first time.
    */
   std::unordered_map<Node, Node> d_instanceForms;
-  std::unique_ptr<QuantifierManager> d_qmanager;
+  /** The quantifiers: E-matching and instantiation. */
+  QuantifierManager d_qmanager;
 
   /** The expressions already internalized as enodes. */
   std::vector<Node> d_eInternalizedStack;
@@ -821,9 +850,6 @@ class SmtContext final : protected EnvObj
    */
   std::vector<std::pair<ENode*, uint32_t>> d_r1ParentGenerations;
   std::vector<NewEq> d_eqPropagationQueue;
-  /** An auxiliary enode used to find congruent equality atoms. */
-  ENode* d_isDiseqTmp;
-  Node d_isDiseqTmpExpr;
   TmpENode d_tmpENode;
 
   LiteralVector d_atomPropagationQueue;

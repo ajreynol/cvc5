@@ -32,8 +32,7 @@ ENode* ENode::init(void* mem,
                    bool suppressArgs,
                    bool mergeTf,
                    uint32_t iscopeLvl,
-                   bool cgcEnabled,
-                   bool updateChildrenParent)
+                   bool cgcEnabled)
 {
   Assert(owner.getType().isBoolean() || !mergeTf);
   ENode* n = new (mem) ENode();
@@ -65,10 +64,7 @@ ENode* ENode::init(void* mem,
     ENode* arg = app2enode[owner[i].getId()];
     Assert(arg != nullptr);
     args[i] = arg;
-    if (updateChildrenParent)
-    {
-      arg->getRoot()->d_parents.push_back(n);
-    }
+    arg->getRoot()->d_parents.push_back(n);
   }
   return n;
 }
@@ -80,8 +76,7 @@ ENode* ENode::mk(TrailStack& r,
                  bool suppressArgs,
                  bool mergeTf,
                  uint32_t iscopeLvl,
-                 bool cgcEnabled,
-                 bool updateChildrenParent)
+                 bool cgcEnabled)
 {
   Assert(owner.getType().isBoolean() || !mergeTf);
   size_t numArgs =
@@ -95,18 +90,10 @@ ENode* ENode::mk(TrailStack& r,
               suppressArgs,
               mergeTf,
               iscopeLvl,
-              cgcEnabled,
-              updateChildrenParent);
+              cgcEnabled);
 }
 
-ENode* ENode::mkDummy(const App2ENode& app2enode, TNode owner)
-{
-  size_t sz = getENodeSize(owner.getNumChildren());
-  void* mem = ::operator new(sz);
-  return init(mem, app2enode, owner, 0, false, false, 0, true, false);
-}
-
-void ENode::destroy(bool updateChildrenParent)
+void ENode::destroy()
 {
   Assert(d_classSize == 1);
   Assert(d_root == this);
@@ -115,11 +102,8 @@ void ENode::destroy(bool updateChildrenParent)
   for (uint32_t i = 0; i < numArgs; ++i)
   {
     ENode* arg = getArg(i);
-    if (updateChildrenParent)
-    {
-      Assert(arg->getRoot()->d_parents.back() == this);
-      arg->getRoot()->d_parents.pop_back();
-    }
+    Assert(arg->getRoot()->d_parents.back() == this);
+    arg->getRoot()->d_parents.pop_back();
   }
   this->~ENode();
 }

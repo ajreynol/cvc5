@@ -1338,10 +1338,8 @@ libcvc5_add_sources(
   z3/quantifiers/enode.h
   z3/quantifiers/fingerprints.cpp
   z3/quantifiers/fingerprints.h
-  z3/quantifiers/host.cpp
   z3/quantifiers/lemma_proof_generator.cpp
   z3/quantifiers/lemma_proof_generator.h
-  z3/quantifiers/internalizer.cpp
   z3/quantifiers/mam.cpp
   z3/quantifiers/mam.h
   z3/quantifiers/qi_queue.cpp
@@ -1350,8 +1348,6 @@ libcvc5_add_sources(
   z3/quantifiers/quantifier_manager.h
   z3/quantifiers/quantifier_stat.cpp
   z3/quantifiers/quantifier_stat.h
-  z3/quantifiers/shadow_feed.cpp
-  z3/quantifiers/shadow_feed.h
   z3/quantifiers/smt_context.cpp
   z3/quantifiers/smt_context.h
   z3/quantifiers/z3_module.cpp
