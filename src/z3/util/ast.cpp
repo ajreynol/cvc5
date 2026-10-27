@@ -13,10 +13,12 @@
 
 #include "z3/util/ast.h"
 
+#include "expr/bound_var_manager.h"
 #include "expr/node_algorithm.h"
 #include "expr/node_manager.h"
 #include "smt/env.h"
 #include "theory/quantifiers/quantifiers_attributes.h"
+#include "theory/quantifiers/term_util.h"
 #include "theory/rewriter.h"
 #include "theory/theory.h"
 #include "util/string.h"
@@ -42,32 +44,9 @@ bool isCommutative(TNode n)
 {
   // Z3 consults func_decl::is_commutative(), which the congruence table uses
   // to normalize the argument order of binary applications. Only the binary
-  // case matters, since that is the only specialization of the table that
-  // treats arguments as unordered.
-  if (n.getNumChildren() != 2)
-  {
-    return false;
-  }
-  switch (n.getKind())
-  {
-    case Kind::EQUAL:
-    case Kind::AND:
-    case Kind::OR:
-    case Kind::XOR:
-    case Kind::ADD:
-    case Kind::MULT:
-    case Kind::NONLINEAR_MULT:
-    case Kind::BITVECTOR_ADD:
-    case Kind::BITVECTOR_MULT:
-    case Kind::BITVECTOR_AND:
-    case Kind::BITVECTOR_OR:
-    case Kind::BITVECTOR_XOR:
-    case Kind::BITVECTOR_XNOR:
-    case Kind::BITVECTOR_NAND:
-    case Kind::BITVECTOR_NOR:
-    case Kind::BITVECTOR_COMP: return true;
-    default: return false;
-  }
+  // case matters, since that is the only one the table treats as unordered.
+  return n.getNumChildren() == 2
+         && theory::quantifiers::TermUtil::isComm(n.getKind());
 }
 
 void getPatterns(TNode q, std::vector<std::vector<Node>>& patterns)
@@ -90,21 +69,14 @@ QuantifierNormalizer::QuantifierNormalizer(NodeManager* nm) : d_nm(nm) {}
 
 Node QuantifierNormalizer::mkVar(uint32_t idx, const TypeNode& tn)
 {
-  if (idx >= d_vars.size())
-  {
-    d_vars.resize(idx + 1);
-  }
-  std::unordered_map<TypeNode, Node>& m = d_vars[idx];
-  auto it = m.find(tn);
-  if (it != m.end())
-  {
-    return it->second;
-  }
   std::stringstream ss;
   ss << "z3v" << idx;
-  Node v = NodeManager::mkBoundVar(ss.str(), tn);
+  Node v = d_nm->getBoundVarManager()->mkBoundVar(
+      BoundVarId::Z3_QUANT_VAR,
+      BoundVarManager::getCacheValue(d_nm, idx),
+      ss.str(),
+      tn);
   v.setAttribute(QuantVarLevelAttr(), static_cast<uint64_t>(idx) + 1);
-  m[tn] = v;
   return v;
 }
 

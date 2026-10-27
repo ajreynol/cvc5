@@ -166,8 +166,6 @@ class QuantifierNormalizer
                             std::unordered_map<Node, Node>& subs);
 
   NodeManager* d_nm;
-  /** Canonical variables, indexed by de Bruijn level then by type. */
-  std::vector<std::unordered_map<TypeNode, Node>> d_vars;
   /** Memoization of normalize, which is applied to whole assertions. */
   std::unordered_map<Node, Node> d_cache;
 };

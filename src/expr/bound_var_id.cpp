@@ -46,6 +46,7 @@ const char* toString(BoundVarId id)
     case BoundVarId::QUANT_SYGUS_BUILTIN_FV: return "QUANT_SYGUS_BUILTIN_FV";
     case BoundVarId::TERM_CANONIZE: return "TERM_CANONIZE";
     case BoundVarId::VALID_WITNESS_VAR: return "VALID_WITNESS_VAR";
+    case BoundVarId::Z3_QUANT_VAR: return "Z3_QUANT_VAR";
     default: return "?";
   }
 }
