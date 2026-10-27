@@ -20,10 +20,22 @@
 
 #include <vector>
 
-#include "z3/util/literal.h"
+#include "base/check.h"
+#include "prop/sat_solver_types.h"
 
 namespace cvc5::internal {
 namespace z3 {
+
+/** The Boolean variables and literals of the core are cvc5's SAT ones. */
+using prop::SatLiteral;
+using prop::SatVariable;
+
+/** The variable reserved for the constant true. */
+inline constexpr SatVariable s_trueBoolVar = 0;
+/** The literal that is always true. */
+inline constexpr SatLiteral s_trueLiteral(s_trueBoolVar, false);
+/** The literal that is always false. */
+inline constexpr SatLiteral s_falseLiteral(s_trueBoolVar, true);
 
 /**
  * An auxiliary clause of the ported Z3 core, which encodes the Boolean
@@ -36,19 +48,19 @@ class Clause
 {
  public:
   /** Create a new clause. */
-  static Clause* mk(size_t numLits, Literal* lits);
+  static Clause* mk(size_t numLits, SatLiteral* lits);
 
   void deallocate();
 
-  Literal& getLiteral(size_t idx)
+  SatLiteral& getLiteral(size_t idx)
   {
     Assert(idx < d_numLiterals);
     return litsPtr()[idx];
   }
 
-  Literal* begin() { return litsPtr(); }
+  SatLiteral* begin() { return litsPtr(); }
 
-  Literal* end() { return litsPtr() + d_numLiterals; }
+  SatLiteral* end() { return litsPtr() + d_numLiterals; }
 
   void markAsDeleted()
   {
@@ -66,21 +78,21 @@ class Clause
    */
   uint32_t d_deleted : 1;
 
-  Literal* litsPtr()
+  SatLiteral* litsPtr()
   {
-    return reinterpret_cast<Literal*>(reinterpret_cast<char*>(this)
+    return reinterpret_cast<SatLiteral*>(reinterpret_cast<char*>(this)
                                       + sizeof(Clause));
   }
 
-  const Literal* litsPtr() const
+  const SatLiteral* litsPtr() const
   {
-    return reinterpret_cast<const Literal*>(reinterpret_cast<const char*>(this)
+    return reinterpret_cast<const SatLiteral*>(reinterpret_cast<const char*>(this)
                                             + sizeof(Clause));
   }
 
   friend class PropCore;
 
-  void setLiteral(size_t idx, Literal l) { litsPtr()[idx] = l; }
+  void setLiteral(size_t idx, SatLiteral l) { litsPtr()[idx] = l; }
 };
 
 using ClauseVector = std::vector<Clause*>;

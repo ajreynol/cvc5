@@ -48,7 +48,6 @@
 #include "z3/relevancy/relevancy.h"
 #include "z3/relevancy/watch_list.h"
 #include "z3/util/ast.h"
-#include "z3/util/literal.h"
 #include "z3/util/statistics.h"
 #include "z3/util/trail.h"
 
@@ -97,7 +96,7 @@ class SmtContext final : protected EnvObj
    * it is not internalized, for instance because it was deleted on
    * backtracking.
    */
-  Literal literalOf(TNode n);
+  SatLiteral literalOf(TNode n);
   /** Assert a (prepared) formula. */
   void assertFormula(TNode e);
 
@@ -171,23 +170,23 @@ class SmtContext final : protected EnvObj
 
   const PropCore& getPropCore() const { return d_prop; }
 
-  ENode* boolVar2ENode(BoolVar v) const
+  ENode* boolVar2ENode(SatVariable v) const
   {
     Assert(d_prop.getBdata(v).isENode());
     return d_egraph.getENode(d_prop.boolVar2Expr(v));
   }
 
-  BoolVar enode2BoolVar(const ENode* n) const
+  SatVariable enode2BoolVar(const ENode* n) const
   {
     Assert(n->isBool());
     Assert(n != d_falseENode);
     return d_prop.getBoolVarOfId(n->getOwnerId());
   }
 
-  Literal enode2Literal(const ENode* n) const
+  SatLiteral enode2Literal(const ENode* n) const
   {
     Assert(n->isBool());
-    return n == d_falseENode ? s_falseLiteral : Literal(enode2BoolVar(n));
+    return n == d_falseENode ? s_falseLiteral : SatLiteral(enode2BoolVar(n));
   }
 
   SatValue getAssignment(ENode* n) const;
@@ -233,7 +232,7 @@ class SmtContext final : protected EnvObj
   ENode* mkENode(TNode n, bool suppressArgs, bool mergeTf, bool cgcEnabled);
 
   /** Hand an assigned atom to the theory side; see propagateAtoms. */
-  void enqueueAtom(Literal l) { d_atomPropagationQueue.push_back(l); }
+  void enqueueAtom(SatLiteral l) { d_atomPropagationQueue.push_back(l); }
 
   /** Called when the Boolean variable of n is deleted on backtracking. */
   void notifyBoolVarDeleted(TNode n);
@@ -263,7 +262,7 @@ class SmtContext final : protected EnvObj
   void assertRoot(TNode n);
   void assertDefault(TNode n);
 
-  void setEnodeFlag(BoolVar v, bool isNewVar);
+  void setEnodeFlag(SatVariable v, bool isNewVar);
 
   // ------------------------------------------------------------- engine
   bool isDiseq(ENode* n1, ENode* n2) const;
@@ -328,7 +327,7 @@ class SmtContext final : protected EnvObj
   void cacheUnitGenerations(uint32_t newScopeLvl);
   /** Reassert the units from unitsToReassertLim on, after a backtrack. */
   void reassertUnits(size_t unitsToReassertLim);
-  void propagateBoolVarENode(BoolVar v);
+  void propagateBoolVarENode(SatVariable v);
 
   // --------------------------------------------------------- backtracking
 
@@ -346,7 +345,7 @@ class SmtContext final : protected EnvObj
   void internalizeDistinct(TNode n, bool gateCtx);
   void internalizeQuantifier(TNode q, bool gateCtx);
   void internalizeFormulaCore(TNode n, bool gateCtx);
-  void setMergeTf(ENode* n, BoolVar v, bool isNewVar);
+  void setMergeTf(ENode* n, SatVariable v, bool isNewVar);
   void internalizeTerm(TNode n);
   void internalizeUninterpreted(TNode n);
 
@@ -384,7 +383,7 @@ class SmtContext final : protected EnvObj
   ENode* d_trueENode;
   ENode* d_falseENode;
 
-  LiteralVector d_atomPropagationQueue;
+  std::vector<SatLiteral> d_atomPropagationQueue;
 
   std::unordered_map<TNode, uint32_t> d_cachedGeneration;
   /**

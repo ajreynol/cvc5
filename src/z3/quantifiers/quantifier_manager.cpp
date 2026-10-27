@@ -65,7 +65,6 @@ void QuantifierManager::add(TNode q, uint32_t generation)
 {
   QuantifierStat* stat = d_qstatGen(q, generation);
   d_quantifierStat[q] = stat;
-  d_id2Quant[q.getId()] = q;
   d_quantifiers.push_back(q);
 }
 
@@ -79,13 +78,6 @@ QuantifierStat* QuantifierManager::getStat(TNode q) const
 {
   auto it = d_quantifierStat.find(q);
   Assert(it != d_quantifierStat.end());
-  return it->second;
-}
-
-TNode QuantifierManager::getQuantifierById(uint64_t id) const
-{
-  auto it = d_id2Quant.find(id);
-  Assert(it != d_id2Quant.end());
   return it->second;
 }
 
@@ -106,8 +98,7 @@ bool QuantifierManager::addInstance(TNode q,
   }
   maxGeneration = std::max(maxGeneration, getGeneration(q));
   getStat(q)->updateMaxGeneration(maxGeneration);
-  Fingerprint* f = d_fingerprints.insert(
-      q.getId(), static_cast<uint32_t>(q.getId()), numBindings, bindings);
+  Fingerprint* f = d_fingerprints.insert(q, numBindings, bindings);
   if (f != nullptr)
   {
     d_queue.insert(f, maxGeneration);

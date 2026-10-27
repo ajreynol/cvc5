@@ -32,7 +32,6 @@
 
 #include "context/cdlist.h"
 #include "expr/node.h"
-#include "z3/util/literal.h"
 #include "z3/util/trail.h"
 
 namespace cvc5::internal {

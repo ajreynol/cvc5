@@ -23,8 +23,8 @@ namespace cvc5::internal {
 namespace z3 {
 
 Fingerprint::Fingerprint(
-    TrailStack& r, uint64_t d, uint32_t dH, size_t n, ENode* const* args)
-    : d_data(d), d_dataHash(dH), d_numArgs(n), d_args(nullptr)
+    TrailStack& r, TNode q, uint32_t dH, size_t n, ENode* const* args)
+    : d_quant(q), d_dataHash(dH), d_numArgs(n), d_args(nullptr)
 {
   d_args = static_cast<ENode**>(r.allocate(sizeof(ENode*) * n));
   std::memcpy(d_args, args, sizeof(ENode*) * n);
@@ -39,7 +39,7 @@ FingerprintSet::FingerprintSet(TrailStack& t)
 bool FingerprintSet::FingerprintEqProc::operator()(const Fingerprint* f1,
                                                    const Fingerprint* f2) const
 {
-  if (f1->getData() != f2->getData())
+  if (f1->getQuantifier() != f2->getQuantifier())
   {
     return false;
   }
@@ -58,33 +58,32 @@ bool FingerprintSet::FingerprintEqProc::operator()(const Fingerprint* f1,
   return true;
 }
 
-Fingerprint* FingerprintSet::mkDummy(uint64_t data,
+Fingerprint* FingerprintSet::mkDummy(TNode q,
                                      uint32_t dataHash,
                                      size_t numArgs,
                                      ENode* const* args)
 {
   d_tmp.clear();
   d_tmp.insert(d_tmp.end(), args, args + numArgs);
-  d_dummy.d_data = data;
+  d_dummy.d_quant = q;
   d_dummy.d_dataHash = dataHash;
   d_dummy.d_numArgs = numArgs;
   d_dummy.d_args = d_tmp.data();
   return &d_dummy;
 }
 
-Fingerprint* FingerprintSet::insert(uint64_t data,
-                                    uint32_t dataHash,
+Fingerprint* FingerprintSet::insert(TNode q,
                                     size_t numArgs,
                                     ENode* const* args)
 {
-  uint64_t h = fnv1a::fnv1a_64(dataHash);
+  uint64_t h = fnv1a::fnv1a_64(static_cast<uint32_t>(q.getId()));
   for (size_t i = 0; i < numArgs; ++i)
   {
     h = fnv1a::fnv1a_64(args[i]->hash(), h);
   }
-  dataHash = static_cast<uint32_t>(h);
+  uint32_t dataHash = static_cast<uint32_t>(h);
 
-  Fingerprint* d = mkDummy(data, dataHash, numArgs, args);
+  Fingerprint* d = mkDummy(q, dataHash, numArgs, args);
   if (d_set.count(d) != 0)
   {
     return nullptr;
@@ -99,7 +98,7 @@ Fingerprint* FingerprintSet::insert(uint64_t data,
     return nullptr;
   }
   Fingerprint* f = new (d_trailStack)
-      Fingerprint(d_trailStack, data, dataHash, numArgs, d->d_args);
+      Fingerprint(d_trailStack, q, dataHash, numArgs, d->d_args);
   d_fingerprints.push_back(f);
   d_set.insert(f);
   return f;

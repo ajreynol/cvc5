@@ -292,11 +292,11 @@ void EGraph::reinsertParentsIntoCgTable(ENode* r1, ENode* r2)
       {
         Assert(parent->isTrueEq());
         size_t exprId = parent->getOwnerId();
-        BoolVar v = d_ctx.getPropCore().getBoolVarOfId(exprId);
+        SatVariable v = d_ctx.getPropCore().getBoolVarOfId(exprId);
         SatValue val = d_ctx.getPropCore().getAssignment(v);
         if (val != SAT_VALUE_TRUE)
         {
-          d_ctx.getPropCore().assign(Literal(v));
+          d_ctx.getPropCore().assign(SatLiteral(v));
         }
         // There is no need to reinsert the equality into the congruence
         // table: the congruence propagations it could lead to are already

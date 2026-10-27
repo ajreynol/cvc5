@@ -90,8 +90,6 @@ class QiQueue
    */
   float getCost(TNode q, uint32_t generation);
   void instantiate(const Entry& ent);
-  /** The quantifier of the fingerprint f. */
-  TNode getQuantifier(Fingerprint* f) const;
   /**
    * Whether the checker finds the instance of q with these bindings already
    * satisfied (--z3-qi-checker), in which case it is counted, as in Z3, but

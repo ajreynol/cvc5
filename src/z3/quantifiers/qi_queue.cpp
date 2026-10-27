@@ -55,7 +55,7 @@ float QiQueue::getCost(TNode q, uint32_t generation)
 
 void QiQueue::insert(Fingerprint* f, uint32_t generation)
 {
-  TNode q = getQuantifier(f);
+  TNode q = f->getQuantifier();
   float cost = getCost(q, generation);
   d_newEntries.push_back(Entry(f, cost, generation));
 }
@@ -75,7 +75,7 @@ void QiQueue::instantiate()
       break;
     }
     Fingerprint* f = curr.d_qb;
-    TNode qa = getQuantifier(f);
+    TNode qa = f->getQuantifier();
 
     if (curr.d_cost <= d_eagerCostThreshold)
     {
@@ -111,7 +111,7 @@ void QiQueue::instantiate(const Entry& ent)
   }
 
   Fingerprint* f = ent.d_qb;
-  TNode q = getQuantifier(f);
+  TNode q = f->getQuantifier();
   uint32_t generation = ent.d_generation;
   size_t numBindings = f->getNumArgs();
   ENode* const* bindings = f->getArgs();
@@ -164,22 +164,6 @@ void QiQueue::instantiate(const Entry& ent)
 }
 
 void QiQueue::initSearch() { d_newEntries.clear(); }
-
-namespace {
-
-struct DelayedQaInfo
-{
-  size_t d_num = 0;
-  float d_minCost = 0.0f;
-  float d_maxCost = 0.0f;
-};
-
-}  // namespace
-
-TNode QiQueue::getQuantifier(Fingerprint* f) const
-{
-  return d_qm.getQuantifierById(f->getData());
-}
 
 bool QiQueue::skipSatisfied(TNode q,
                             QuantifierStat* stat,

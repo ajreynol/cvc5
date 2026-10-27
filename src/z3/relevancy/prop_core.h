@@ -34,7 +34,6 @@
 #include "z3/relevancy/relevancy.h"
 #include "z3/relevancy/watch_list.h"
 #include "z3/util/ast.h"
-#include "z3/util/literal.h"
 #include "z3/util/statistics.h"
 #include "z3/util/trail.h"
 
@@ -79,38 +78,38 @@ class PropCore : protected EnvObj
   void flushClauses();
 
   // ------------------------------------------------------ Boolean variables
-  BoolVar mkBoolVar(TNode n);
+  SatVariable mkBoolVar(TNode n);
 
   /** Undo the last mkBoolVar; invoked from the trail. */
   void undoMkBoolVar();
 
-  BoolVar getBoolVar(TNode n) const { return d_expr2BoolVar[n.getId()]; }
+  SatVariable getBoolVar(TNode n) const { return d_expr2BoolVar[n.getId()]; }
 
-  BoolVar getBoolVarOfId(size_t id) const { return d_expr2BoolVar[id]; }
+  SatVariable getBoolVarOfId(size_t id) const { return d_expr2BoolVar[id]; }
 
-  BoolVar getBoolVarOfIdOption(size_t id) const
+  SatVariable getBoolVarOfIdOption(size_t id) const
   {
-    return id < d_expr2BoolVar.size() ? d_expr2BoolVar[id] : s_nullBoolVar;
+    return id < d_expr2BoolVar.size() ? d_expr2BoolVar[id] : prop::undefSatVariable;
   }
 
-  void setBoolVar(size_t id, BoolVar v)
+  void setBoolVar(size_t id, SatVariable v)
   {
     if (id >= d_expr2BoolVar.size())
     {
-      d_expr2BoolVar.resize(id + 1, s_nullBoolVar);
+      d_expr2BoolVar.resize(id + 1, prop::undefSatVariable);
     }
     d_expr2BoolVar[id] = v;
   }
 
-  TNode boolVar2Expr(BoolVar v) const { return d_boolVar2Expr[v]; }
+  TNode boolVar2Expr(SatVariable v) const { return d_boolVar2Expr[v]; }
 
-  Literal getLiteral(TNode n) const;
+  SatLiteral getLiteral(TNode n) const;
 
   size_t getNumBoolVars() const { return d_bInternalizedStack.size(); }
 
   bool bInternalized(TNode n) const
   {
-    return getBoolVarOfIdOption(n.getId()) != s_nullBoolVar;
+    return getBoolVarOfIdOption(n.getId()) != prop::undefSatVariable;
   }
 
   bool litInternalized(TNode n) const
@@ -122,12 +121,12 @@ class PropCore : protected EnvObj
     return n.getKind() == Kind::NOT ? bInternalized(n[0]) : bInternalized(n);
   }
 
-  BoolVarData& getBdata(BoolVar v) { return d_bdata[v]; }
+  BoolVarData& getBdata(SatVariable v) { return d_bdata[v]; }
 
-  const BoolVarData& getBdata(BoolVar v) const { return d_bdata[v]; }
+  const BoolVarData& getBdata(SatVariable v) const { return d_bdata[v]; }
 
   /** The scope level at which v was internalized. */
-  uint32_t getInternLevel(BoolVar v) const
+  uint32_t getInternLevel(SatVariable v) const
   {
     return getBdata(v).getInternLevel();
   }
@@ -138,12 +137,12 @@ class PropCore : protected EnvObj
     return d_assignment[litIdx];
   }
 
-  SatValue getAssignment(Literal l) const
+  SatValue getAssignment(SatLiteral l) const
   {
-    return getLitAssignment(l.index());
+    return getLitAssignment(l.toInt());
   }
 
-  SatValue getAssignment(BoolVar v) const { return getAssignment(Literal(v)); }
+  SatValue getAssignment(SatVariable v) const { return getAssignment(SatLiteral(v)); }
 
   SatValue getAssignment(TNode n) const;
 
@@ -151,10 +150,10 @@ class PropCore : protected EnvObj
    * internalized. */
   SatValue findAssignment(TNode n) const;
 
-  void assign(Literal l)
+  void assign(SatLiteral l)
   {
     Assert(l != s_falseLiteral);
-    Assert(l != s_nullLiteral);
+    Assert(l != prop::undefSatLiteral);
     switch (getAssignment(l))
     {
       case SAT_VALUE_FALSE: setConflict(); break;
@@ -163,7 +162,7 @@ class PropCore : protected EnvObj
     }
   }
 
-  void assignCore(Literal l);
+  void assignCore(SatLiteral l);
 
   /** Boolean constraint propagation; returns false on a conflict. */
   bool bcp();
@@ -200,12 +199,12 @@ class PropCore : protected EnvObj
     return d_relevancyPropagator->isRelevant(n);
   }
 
-  bool isRelevant(BoolVar v) const { return isRelevant(boolVar2Expr(v)); }
+  bool isRelevant(SatVariable v) const { return isRelevant(boolVar2Expr(v)); }
 
-  bool isRelevant(Literal l) const
+  bool isRelevant(SatLiteral l) const
   {
     Assert(l != s_trueLiteral && l != s_falseLiteral);
-    return isRelevant(l.var());
+    return isRelevant(l.getSatVariable());
   }
 
   void markAsRelevant(TNode n)
@@ -214,18 +213,18 @@ class PropCore : protected EnvObj
     d_relevancyPropagator->propagate();
   }
 
-  void markAsRelevant(BoolVar v) { markAsRelevant(boolVar2Expr(v)); }
+  void markAsRelevant(SatVariable v) { markAsRelevant(boolVar2Expr(v)); }
 
-  void markAsRelevant(Literal l) { markAsRelevant(l.var()); }
+  void markAsRelevant(SatLiteral l) { markAsRelevant(l.getSatVariable()); }
 
   void addRelevancyDependency(TNode source, TNode target)
   {
     d_relevancyPropagator->addDependency(source, target);
   }
 
-  void addRelWatch(Literal l, RelevancyHandler* eh)
+  void addRelWatch(SatLiteral l, RelevancyHandler* eh)
   {
-    d_relevancyPropagator->addWatch(boolVar2Expr(l.var()), !l.sign(), eh);
+    d_relevancyPropagator->addWatch(boolVar2Expr(l.getSatVariable()), !l.isNegated(), eh);
   }
 
   /**
@@ -245,8 +244,8 @@ class PropCore : protected EnvObj
   // these where a gate or a root assertion occurs.
 
   /** Make a clause of a root assertion. */
-  void mkRootClause(size_t numLits, Literal* lits);
-  void mkRootClause(Literal l1, Literal l2);
+  void mkRootClause(size_t numLits, SatLiteral* lits);
+  void mkRootClause(SatLiteral l1, SatLiteral l2);
   /** The relevancy watches of the gate n, asserted as a root. */
   void addAndRelWatches(TNode n);
   void addOrRelWatches(TNode n);
@@ -258,7 +257,7 @@ class PropCore : protected EnvObj
    * Assign l, which the host asserted. Returns false if l is false here, a
    * conflict.
    */
-  bool hostAssign(Literal l);
+  bool hostAssign(SatLiteral l);
   /**
    * Move to out the expressions of the variables that became relevant while
    * unassigned since the last call.
@@ -275,13 +274,13 @@ class PropCore : protected EnvObj
    */
   void mkGateConstraints(TNode n);
 
-  void mkGateClause(size_t numLits, Literal* lits);
-  void mkGateClause(Literal l1, Literal l2);
-  void mkGateClause(Literal l1, Literal l2, Literal l3);
+  void mkGateClause(size_t numLits, SatLiteral* lits);
+  void mkGateClause(SatLiteral l1, SatLiteral l2);
+  void mkGateClause(SatLiteral l1, SatLiteral l2, SatLiteral l3);
 
   // ---------------------------------------------------------------- clauses
   /** Make an auxiliary clause, which is deleted on backtracking. */
-  Clause* mkClause(size_t numLits, Literal* lits);
+  Clause* mkClause(size_t numLits, SatLiteral* lits);
 
   // ----------------------------------------------------------------- scopes
   uint32_t getScopeLevel() const
@@ -333,8 +332,8 @@ class PropCore : protected EnvObj
   void removeWatchLiteral(Clause* cls, size_t idx);
   void delClause(Clause* cls);
   void delClauses(ClauseVector& v, size_t oldSize);
-  bool simplifyAuxClauseLiterals(size_t& numLits, Literal* lits);
-  bool useBinaryClauseOpt(Literal l1, Literal l2) const;
+  bool simplifyAuxClauseLiterals(size_t& numLits, SatLiteral* lits);
+  bool useBinaryClauseOpt(SatLiteral l1, SatLiteral l2) const;
   void addWatchLiteral(Clause* cls, size_t idx);
 
   /** The unassigned variables that became relevant; see hostTakeRelevant. */
@@ -347,7 +346,7 @@ class PropCore : protected EnvObj
   std::unique_ptr<RelevancyPropagator> d_relevancyPropagator;
 
   /** Maps the id of an expression to its Boolean variable. */
-  std::vector<BoolVar> d_expr2BoolVar;
+  std::vector<SatVariable> d_expr2BoolVar;
   /** Maps a Boolean variable to its expression. */
   std::vector<Node> d_boolVar2Expr;
   /** The Boolean expressions already internalized. */
@@ -358,7 +357,7 @@ class PropCore : protected EnvObj
   std::vector<WatchList> d_watches;
   std::vector<BoolVarData> d_bdata;
   ClauseVector d_auxClauses;
-  LiteralVector d_assignedLiterals;
+  std::vector<SatLiteral> d_assignedLiterals;
   size_t d_qhead;
 
   /** True if a conflict was found at the current scope. */

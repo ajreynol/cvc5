@@ -263,7 +263,7 @@ void Z3Module::assertFact(TNode literal)
   }
   syncLevel();
   Trace("z3-host") << "assert " << literal << std::endl;
-  Literal l = d_core->literalOf(toCore(literal));
+  SatLiteral l = d_core->literalOf(toCore(literal));
   if (!d_core->getPropCore().hostAssign(l))
   {
     enterConflict();
@@ -537,7 +537,7 @@ void Z3Module::splitNewlyRelevant()
     {
       continue;
     }
-    BoolVar v = d_core->getPropCore().getBoolVar(n);
+    SatVariable v = d_core->getPropCore().getBoolVar(n);
     if (d_core->getPropCore().getAssignment(v) == SAT_VALUE_UNKNOWN
         && d_core->getPropCore().isRelevant(v))
     {
@@ -546,7 +546,7 @@ void Z3Module::splitNewlyRelevant()
   }
 }
 
-void Z3Module::split(BoolVar v)
+void Z3Module::split(SatVariable v)
 {
   prop::PropEngine* pe = d_te->getPropEngine();
   TNode atom = d_core->getPropCore().boolVar2Expr(v);
@@ -599,7 +599,7 @@ void Z3Module::splitPendingAtoms()
 {
   for (size_t i = 0, n = d_core->getPropCore().getNumBoolVars(); i < n; ++i)
   {
-    BoolVar v = static_cast<BoolVar>(i);
+    SatVariable v = static_cast<SatVariable>(i);
     if (d_core->getPropCore().getAssignment(v) == SAT_VALUE_UNKNOWN
         && d_core->getPropCore().isRelevant(v))
     {

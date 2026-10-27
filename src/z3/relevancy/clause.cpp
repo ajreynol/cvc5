@@ -21,14 +21,14 @@
 namespace cvc5::internal {
 namespace z3 {
 
-Clause* Clause::mk(size_t numLits, Literal* lits)
+Clause* Clause::mk(size_t numLits, SatLiteral* lits)
 {
   Assert(numLits >= 2);
-  void* mem = ::operator new(sizeof(Clause) + sizeof(Literal) * numLits);
+  void* mem = ::operator new(sizeof(Clause) + sizeof(SatLiteral) * numLits);
   Clause* cls = new (mem) Clause();
   cls->d_numLiterals = static_cast<uint32_t>(numLits);
   cls->d_deleted = false;
-  std::memcpy(cls->litsPtr(), lits, sizeof(Literal) * numLits);
+  std::memcpy(cls->litsPtr(), lits, sizeof(SatLiteral) * numLits);
   return cls;
 }
 

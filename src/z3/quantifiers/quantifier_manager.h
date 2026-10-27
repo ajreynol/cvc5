@@ -53,11 +53,6 @@ class QuantifierManager
 
   QuantifierStat* getStat(TNode q) const;
 
-  /**
-   * The quantifier whose node id is the given one. Fingerprints key on the
-   * id rather than on a pointer, so this maps back.
-   */
-  TNode getQuantifierById(uint64_t id) const;
   uint32_t getGeneration(TNode q) const;
 
   /**
@@ -97,7 +92,6 @@ class QuantifierManager
   /** The fingerprints of the instances made in the current scopes. */
   FingerprintSet d_fingerprints;
   std::unordered_map<Node, QuantifierStat*> d_quantifierStat;
-  std::unordered_map<uint64_t, Node> d_id2Quant;
   QuantifierStatGen d_qstatGen;
   std::vector<Node> d_quantifiers;
   /** The E-matching engine for the patterns matched eagerly. */

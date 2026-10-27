@@ -27,7 +27,6 @@
 #include "theory/quantifiers/quant_module.h"
 #include "z3/quantifiers/smt_context.h"
 #include "z3/relevancy/relevancy_tracker.h"
-#include "z3/util/literal.h"
 
 namespace cvc5::internal {
 namespace z3 {
@@ -190,7 +189,7 @@ class Z3Module : public theory::quantifiers::QuantifiersModule
    */
   void splitNewlyRelevant();
   /** Have cvc5 decide v, unless it was asked before. */
-  void split(BoolVar v);
+  void split(SatVariable v);
   /** Propagate, and report what follows; returns false on a conflict. */
   bool propagateAndReport();
   /**

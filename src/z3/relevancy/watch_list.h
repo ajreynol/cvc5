@@ -20,8 +20,8 @@
 
 #include <vector>
 
+#include "prop/sat_solver_types.h"
 #include "z3/relevancy/clause.h"
-#include "z3/util/literal.h"
 
 namespace cvc5::internal {
 namespace z3 {
@@ -52,11 +52,11 @@ class WatchList
   ClauseIterator endClause() { return d_clauses.data() + d_clauses.size(); }
 
   /** The binary watches, in the order they were inserted. */
-  const std::vector<Literal>& getLiterals() const { return d_literals; }
+  const std::vector<SatLiteral>& getLiterals() const { return d_literals; }
 
   void insertClause(Clause* c) { d_clauses.push_back(c); }
 
-  void insertLiteral(const Literal& l) { d_literals.push_back(l); }
+  void insertLiteral(const SatLiteral& l) { d_literals.push_back(l); }
 
   void removeClause(Clause* c);
 
@@ -71,7 +71,7 @@ class WatchList
 
  private:
   std::vector<Clause*> d_clauses;
-  std::vector<Literal> d_literals;
+  std::vector<SatLiteral> d_literals;
 };
 
 }  // namespace z3

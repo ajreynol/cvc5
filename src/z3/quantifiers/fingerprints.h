@@ -41,9 +41,10 @@ class Fingerprint
 {
  public:
   Fingerprint(
-      TrailStack& r, uint64_t d, uint32_t dHash, size_t n, ENode* const* args);
+      TrailStack& r, TNode q, uint32_t dHash, size_t n, ENode* const* args);
 
-  uint64_t getData() const { return d_data; }
+  /** The quantifier the bindings are for. */
+  TNode getQuantifier() const { return d_quant; }
   uint32_t getDataHash() const { return d_dataHash; }
   size_t getNumArgs() const { return d_numArgs; }
   ENode* const* getArgs() const { return d_args; }
@@ -54,7 +55,11 @@ class Fingerprint
   }
 
  protected:
-  uint64_t d_data = 0;
+  /**
+   * Not reference counted, since a fingerprint is never destroyed: the
+   * quantifier manager keeps the quantifier.
+   */
+  TNode d_quant;
   uint32_t d_dataHash = 0;
   size_t d_numArgs = 0;
   ENode** d_args = nullptr;
@@ -62,8 +67,6 @@ class Fingerprint
   friend class FingerprintSet;
   Fingerprint() = default;
 };
-
-std::ostream& operator<<(std::ostream& out, const Fingerprint& f);
 
 class FingerprintSet
 {
@@ -98,15 +101,12 @@ class FingerprintSet
    * Record the fingerprint if it is new, returning it; return null if an
    * equivalent fingerprint was already recorded.
    */
-  Fingerprint* insert(uint64_t data,
-                      uint32_t dataHash,
-                      size_t numArgs,
-                      ENode* const* args);
+  Fingerprint* insert(TNode q, size_t numArgs, ENode* const* args);
 
   size_t size() const { return d_fingerprints.size(); }
 
  private:
-  Fingerprint* mkDummy(uint64_t data,
+  Fingerprint* mkDummy(TNode q,
                        uint32_t dataHash,
                        size_t numArgs,
                        ENode* const* args);
