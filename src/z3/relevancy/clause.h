@@ -39,28 +39,33 @@ inline constexpr SatLiteral s_falseLiteral(s_trueBoolVar, true);
 
 /**
  * An auxiliary clause of the ported Z3 core, which encodes the Boolean
- * structure of the input and is deleted on backtracking.
- *
- * As in Z3, the literals are stored inline immediately after the header, so
- * that a clause costs one allocation and its literals are contiguous.
+ * structure of the input and is deleted on backtracking. Its first two
+ * literals are the watched ones.
  */
 class Clause
 {
  public:
-  /** Create a new clause. */
-  static Clause* mk(size_t numLits, SatLiteral* lits);
-
-  void deallocate();
-
-  SatLiteral& getLiteral(size_t idx)
+  Clause(size_t numLits, const SatLiteral* lits)
+      : d_lits(lits, lits + numLits), d_deleted(false)
   {
-    Assert(idx < d_numLiterals);
-    return litsPtr()[idx];
+    Assert(numLits >= 2);
   }
 
-  SatLiteral* begin() { return litsPtr(); }
+  SatLiteral getLiteral(size_t idx) const
+  {
+    Assert(idx < d_lits.size());
+    return d_lits[idx];
+  }
 
-  SatLiteral* end() { return litsPtr() + d_numLiterals; }
+  void setLiteral(size_t idx, SatLiteral l)
+  {
+    Assert(idx < d_lits.size());
+    d_lits[idx] = l;
+  }
+
+  SatLiteral* begin() { return d_lits.data(); }
+
+  SatLiteral* end() { return d_lits.data() + d_lits.size(); }
 
   void markAsDeleted()
   {
@@ -68,31 +73,15 @@ class Clause
     d_deleted = true;
   }
 
+  /**
+   * True if the clause is marked for deletion but was not deleted yet,
+   * because it is still referenced from somewhere.
+   */
   bool deleted() const { return d_deleted; }
 
  private:
-  uint32_t d_numLiterals;
-  /**
-   * true if the clause is marked for deletion but was not deleted yet,
-   * because it is still referenced from somewhere
-   */
-  uint32_t d_deleted : 1;
-
-  SatLiteral* litsPtr()
-  {
-    return reinterpret_cast<SatLiteral*>(reinterpret_cast<char*>(this)
-                                      + sizeof(Clause));
-  }
-
-  const SatLiteral* litsPtr() const
-  {
-    return reinterpret_cast<const SatLiteral*>(reinterpret_cast<const char*>(this)
-                                            + sizeof(Clause));
-  }
-
-  friend class PropCore;
-
-  void setLiteral(size_t idx, SatLiteral l) { litsPtr()[idx] = l; }
+  std::vector<SatLiteral> d_lits;
+  bool d_deleted;
 };
 
 using ClauseVector = std::vector<Clause*>;

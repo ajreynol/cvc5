@@ -1359,7 +1359,6 @@ libcvc5_add_sources(
   z3/quantifiers/z3_module.cpp
   z3/quantifiers/z3_module.h
   z3/relevancy/bool_var_data.h
-  z3/relevancy/clause.cpp
   z3/relevancy/clause.h
   z3/relevancy/prop_core.cpp
   z3/relevancy/prop_core.h

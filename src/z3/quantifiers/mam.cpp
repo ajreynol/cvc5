@@ -38,6 +38,7 @@
 #include <algorithm>
 #include <cstring>
 #include <deque>
+#include <memory>
 #include <ostream>
 #include <unordered_map>
 #include <unordered_set>
@@ -1793,19 +1794,13 @@ class Compiler
 class ENodeVectorPool
 {
  public:
-  ~ENodeVectorPool()
-  {
-    for (ENodeVector* v : d_free)
-    {
-      delete v;
-    }
-  }
-
+  /** An empty vector, which stays owned by the pool. */
   ENodeVector* mk()
   {
     if (d_free.empty())
     {
-      return new ENodeVector();
+      d_vectors.push_back(std::make_unique<ENodeVector>());
+      return d_vectors.back().get();
     }
     ENodeVector* r = d_free.back();
     d_free.pop_back();
@@ -1813,9 +1808,11 @@ class ENodeVectorPool
     return r;
   }
 
+  /** Make v, which mk returned, available to mk again. */
   void recycle(ENodeVector* v) { d_free.push_back(v); }
 
  private:
+  std::vector<std::unique_ptr<ENodeVector>> d_vectors;
   std::vector<ENodeVector*> d_free;
 };
 
@@ -1928,15 +1925,6 @@ class Interpreter
     }
   }
 
-  ENodeVector* mkENodeVector()
-  {
-    ENodeVector* r = d_pool.mk();
-    r->clear();
-    return r;
-  }
-
-  void recycleENodeVector(ENodeVector* v) { d_pool.recycle(v); }
-
   void updateMaxGeneration(ENode* n)
   {
     d_maxGeneration = std::max(d_maxGeneration, d_egraph.getGeneration(n));
@@ -2035,7 +2023,7 @@ class Interpreter
   /** The relevant f-parents of n in which n is the i-th argument. */
   ENodeVector* mkDepth1Vector(ENode* n, TNode f, uint16_t i)
   {
-    ENodeVector* v = mkENodeVector();
+    ENodeVector* v = d_pool.mk();
     n = n->getRoot();
     for (ENode* p : n->getConstParents())
     {
@@ -2061,7 +2049,7 @@ class Interpreter
     {
       return nullptr;
     }
-    ENodeVector* v = mkENodeVector();
+    ENodeVector* v = d_pool.mk();
     for (ENode* p : n->getConstParents())
     {
       if (p->getDecl() == j2->d_decl
@@ -2180,18 +2168,18 @@ ENode* Interpreter::initContinue(const Cont* c, uint16_t expectedNumArgs)
       {
         if (bestV != nullptr)
         {
-          recycleENodeVector(bestV);
+          d_pool.recycle(bestV);
         }
         bestV = currV;
         if (bestV->empty())
         {
-          recycleENodeVector(bestV);
+          d_pool.recycle(bestV);
           return nullptr;
         }
       }
       else
       {
-        recycleENodeVector(currV);
+        d_pool.recycle(currV);
       }
     }
   }
@@ -2228,7 +2216,7 @@ ENode* Interpreter::initContinue(const Cont* c, uint16_t expectedNumArgs)
     if (bestV != nullptr)
     {
       bpRest.d_toRecycle = nullptr;
-      recycleENodeVector(bestV);
+      d_pool.recycle(bestV);
     }
     return nullptr;
   }
@@ -2509,7 +2497,7 @@ backtrack:
           if (bp2.d_instr->d_opcode == CONTINUE
               && bp2.d_rest.d_toRecycle != nullptr)
           {
-            recycleENodeVector(bp2.d_rest.d_toRecycle);
+            d_pool.recycle(bp2.d_rest.d_toRecycle);
           }
           d_top--;
         }
@@ -2578,7 +2566,7 @@ backtrack:
         // the continue failed
         if (bpRest.d_toRecycle != nullptr)
         {
-          recycleENodeVector(bpRest.d_toRecycle);
+          d_pool.recycle(bpRest.d_toRecycle);
         }
         d_top--;
         goto backtrack;
@@ -3018,15 +3006,6 @@ class MamImpl final : public Mam
     ENode* d_enode;
   };
 
-  ENodeVector* mkTmpVector()
-  {
-    ENodeVector* r = d_pool.mk();
-    r->clear();
-    return r;
-  }
-
-  void recycle(ENodeVector* v) { d_pool.recycle(v); }
-
   void addCandidate(CodeTree* t, ENode* app)
   {
     if (t != nullptr)
@@ -3438,9 +3417,9 @@ class MamImpl final : public Mam
     }
     d_todo.clear();
     d_inCollectParents = true;
-    ENodeVector* toUnmark = mkTmpVector();
-    ENodeVector* toUnmark2 = mkTmpVector();
-    t->d_todo = mkTmpVector();
+    ENodeVector* toUnmark = d_pool.mk();
+    ENodeVector* toUnmark2 = d_pool.mk();
+    t->d_todo = d_pool.mk();
     t->d_todo->push_back(r);
     d_todo.push_back(t);
     size_t head = 0;
@@ -3518,7 +3497,7 @@ class MamImpl final : public Mam
                     PathTree* child = currTree->d_firstChild;
                     if (child->d_todo == nullptr)
                     {
-                      child->d_todo = mkTmpVector();
+                      child->d_todo = d_pool.mk();
                       d_todo.push_back(child);
                     }
                     if (!currParentRoot->isMarked2())
@@ -3540,7 +3519,7 @@ class MamImpl final : public Mam
           }
         }
       }
-      recycle(currT->d_todo);
+      d_pool.recycle(currT->d_todo);
       currT->d_todo = nullptr;
       // remove both marks
       unmarkENodes(toUnmark->size(), toUnmark->data());
@@ -3548,8 +3527,8 @@ class MamImpl final : public Mam
       toUnmark->clear();
       toUnmark2->clear();
     }
-    recycle(toUnmark);
-    recycle(toUnmark2);
+    d_pool.recycle(toUnmark);
+    d_pool.recycle(toUnmark2);
     d_inCollectParents = false;
   }
 

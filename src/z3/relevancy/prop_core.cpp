@@ -528,7 +528,7 @@ void PropCore::delClause(Clause* cls)
     removeWatchLiteral(cls, 0);
     removeWatchLiteral(cls, 1);
   }
-  cls->deallocate();
+  delete cls;
   d_stats.d_numDelClause++;
 }
 
@@ -566,7 +566,7 @@ void PropCore::delClauses(ClauseVector& v, size_t oldSize)
     for (size_t i = v.size(); i != oldSize;)
     {
       --i;
-      v[i]->deallocate();
+      delete v[i];
     }
     d_stats.d_numDelClause += (v.size() - oldSize);
   }
@@ -753,7 +753,7 @@ Clause* PropCore::mkClause(size_t numLits, SatLiteral* lits)
     default:
     {
       d_stats.d_numMkClause++;
-      Clause* cls = Clause::mk(numLits, lits);
+      Clause* cls = new Clause(numLits, lits);
       d_auxClauses.push_back(cls);
       addWatchLiteral(cls, 0);
       addWatchLiteral(cls, 1);
