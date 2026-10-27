@@ -672,10 +672,9 @@ bool PropCore::bcp()
     Literal notL = ~l;
     Assert(getAssignment(notL) == SAT_VALUE_FALSE);
     WatchList& w = d_watches[l.index()];
-    // binary clause propagation
-    Literal* bit = w.beginLiterals();
-    Literal* bend = w.endLiterals();
-    for (; bit != bend; ++bit)
+    // binary clause propagation, the most recent watch first, as in Z3
+    const std::vector<Literal>& lits = w.getLiterals();
+    for (auto bit = lits.rbegin(), bend = lits.rend(); bit != bend; ++bit)
     {
       Literal l2 = *bit;
       switch (getAssignment(l2))

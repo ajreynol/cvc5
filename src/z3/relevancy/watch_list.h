@@ -18,7 +18,7 @@
 #ifndef CVC5__Z3__RELEVANCY__WATCH_LIST_H
 #define CVC5__Z3__RELEVANCY__WATCH_LIST_H
 
-#include <algorithm>
+#include <vector>
 
 #include "z3/relevancy/clause.h"
 #include "z3/util/literal.h"
@@ -29,158 +29,49 @@ namespace z3 {
 /**
  * The list of clauses and literals watching a given literal.
  *
- * One allocation holds both, growing towards each other from opposite ends,
- * with a three-word header stored just before the data pointer:
- *
- *  ------------------------------------------------------------------------
- *  | endCls | beginLits | end |  clauses  | ->        <- |  literals      |
- *  ------------------------------------------------------------------------
- *  ^                      ^                ^              ^
- *  d_data               endCls          beginLits       endLits
- *
  * When used for unit propagation, a literal l1 in the watch list of l2
  * represents the binary clause (or l1 (not l2)).
+ *
+ * Z3 keeps both in one allocation, growing towards each other, so that the
+ * literals are visited most recent first; getLiterals gives them in the order
+ * they were inserted, and propagation visits them in reverse.
  */
 class WatchList
 {
  public:
-  WatchList() : d_data(nullptr) {}
-
-  WatchList(WatchList&& other) noexcept : d_data(nullptr)
-  {
-    std::swap(d_data, other.d_data);
-  }
-
-  WatchList(const WatchList&) = delete;
-  WatchList& operator=(const WatchList&) = delete;
-
-  ~WatchList() { destroy(); }
-
-  size_t size() const
-  {
-    if (d_data != nullptr)
-    {
-      return reinterpret_cast<uint32_t*>(d_data)[-3]
-             + reinterpret_cast<uint32_t*>(d_data)[-1]
-             - reinterpret_cast<uint32_t*>(d_data)[-2];
-    }
-    return 0;
-  }
-
   using ClauseIterator = Clause**;
 
   void reset()
   {
-    if (d_data != nullptr)
-    {
-      endClsCore() = 0;
-      beginLitsCore() = endLitsCore();
-    }
+    d_clauses.clear();
+    d_literals.clear();
   }
 
-  ClauseIterator beginClause() { return reinterpret_cast<Clause**>(d_data); }
+  ClauseIterator beginClause() { return d_clauses.data(); }
 
-  ClauseIterator endClause()
-  {
-    return reinterpret_cast<Clause**>(d_data + endCls());
-  }
+  ClauseIterator endClause() { return d_clauses.data() + d_clauses.size(); }
 
-  Literal* beginLiterals()
-  {
-    return reinterpret_cast<Literal*>(d_data + beginLits());
-  }
+  /** The binary watches, in the order they were inserted. */
+  const std::vector<Literal>& getLiterals() const { return d_literals; }
 
-  Literal* endLiterals()
-  {
-    return reinterpret_cast<Literal*>(d_data + endLits());
-  }
+  void insertClause(Clause* c) { d_clauses.push_back(c); }
 
-  const Literal* beginLiterals() const
-  {
-    return reinterpret_cast<const Literal*>(d_data + beginLits());
-  }
-
-  const Literal* endLiterals() const
-  {
-    return reinterpret_cast<const Literal*>(d_data + endLits());
-  }
-
-  void insertClause(Clause* c)
-  {
-    if (d_data == nullptr || endClsCore() + sizeof(Clause*) >= beginLitsCore())
-    {
-      expand();
-    }
-    *(reinterpret_cast<Clause**>(d_data + endClsCore())) = c;
-    endClsCore() += sizeof(Clause*);
-  }
-
-  void insertLiteral(const Literal& l)
-  {
-    if (d_data == nullptr || beginLitsCore() <= endClsCore() + sizeof(Literal))
-    {
-      expand();
-    }
-    Assert(beginLitsCore() >= sizeof(Literal));
-    beginLitsCore() -= sizeof(Literal);
-    *(reinterpret_cast<Literal*>(d_data + beginLitsCore())) = l;
-  }
+  void insertLiteral(const Literal& l) { d_literals.push_back(l); }
 
   void removeClause(Clause* c);
 
   void removeDeleted();
 
+  /** Drop the clauses from newEnd on, which must be in the list. */
   void setEndClause(ClauseIterator newEnd)
   {
-    Assert(newEnd <= endClause());
-    if (d_data != nullptr)
-    {
-      endClsCore() =
-          static_cast<uint32_t>(reinterpret_cast<char*>(newEnd) - d_data);
-    }
+    Assert(beginClause() <= newEnd && newEnd <= endClause());
+    d_clauses.resize(static_cast<size_t>(newEnd - beginClause()));
   }
 
  private:
-  void expand();
-  void destroy();
-
-  uint32_t& endClsCore()
-  {
-    Assert(d_data != nullptr);
-    return reinterpret_cast<uint32_t*>(d_data)[-3];
-  }
-
-  uint32_t endCls() { return d_data != nullptr ? endClsCore() : 0; }
-
-  uint32_t& beginLitsCore()
-  {
-    Assert(d_data != nullptr);
-    return reinterpret_cast<uint32_t*>(d_data)[-2];
-  }
-
-  uint32_t beginLitsCore() const
-  {
-    Assert(d_data != nullptr);
-    return reinterpret_cast<uint32_t*>(d_data)[-2];
-  }
-
-  uint32_t beginLits() const { return d_data != nullptr ? beginLitsCore() : 0; }
-
-  uint32_t& endLitsCore()
-  {
-    Assert(d_data != nullptr);
-    return reinterpret_cast<uint32_t*>(d_data)[-1];
-  }
-
-  uint32_t endLitsCore() const
-  {
-    Assert(d_data != nullptr);
-    return reinterpret_cast<uint32_t*>(d_data)[-1];
-  }
-
-  uint32_t endLits() const { return d_data != nullptr ? endLitsCore() : 0; }
-
-  char* d_data;
+  std::vector<Clause*> d_clauses;
+  std::vector<Literal> d_literals;
 };
 
 }  // namespace z3
