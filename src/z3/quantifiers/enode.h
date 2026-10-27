@@ -189,8 +189,6 @@ class ENode
 
   uint32_t getOwnerId() const { return d_owner.getId(); }
 
-  uint32_t getExprId() const { return d_owner.getId(); }
-
   /** The congruence key, or a null node if the owner is not an application. */
   TNode getDecl() const { return d_decl; }
 

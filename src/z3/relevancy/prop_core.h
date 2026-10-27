@@ -195,12 +195,10 @@ class PropCore : protected EnvObj
   // Relevancy runs at level 2: an assigned atom other than a quantifier
   // reaches the theory side only once it is relevant.
 
-  bool isRelevantCore(TNode n) const
+  bool isRelevant(TNode n) const
   {
     return d_relevancyPropagator->isRelevant(n);
   }
-
-  bool isRelevant(TNode n) const { return isRelevantCore(n); }
 
   bool isRelevant(BoolVar v) const { return isRelevant(boolVar2Expr(v)); }
 

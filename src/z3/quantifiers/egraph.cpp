@@ -171,7 +171,7 @@ void EGraph::addEq(ENode* n1, ENode* n2)
   if (r1->isInterpreted() && r2->isInterpreted())
   {
     // two distinct values were found equal
-    d_ctx.setConflict();
+    d_ctx.getPropCore().setConflict();
     return;
   }
 
@@ -292,11 +292,11 @@ void EGraph::reinsertParentsIntoCgTable(ENode* r1, ENode* r2)
       {
         Assert(parent->isTrueEq());
         size_t exprId = parent->getOwnerId();
-        BoolVar v = d_ctx.getBoolVarOfId(exprId);
-        SatValue val = d_ctx.getAssignment(v);
+        BoolVar v = d_ctx.getPropCore().getBoolVarOfId(exprId);
+        SatValue val = d_ctx.getPropCore().getAssignment(v);
         if (val != SAT_VALUE_TRUE)
         {
-          d_ctx.assign(Literal(v));
+          d_ctx.getPropCore().assign(Literal(v));
         }
         // There is no need to reinsert the equality into the congruence
         // table: the congruence propagations it could lead to are already
@@ -513,7 +513,7 @@ bool EGraph::propagateEqs()
   {
     NewEq& entry = d_eqPropagationQueue[i];
     addEq(entry.d_lhs, entry.d_rhs);
-    if (d_ctx.inconsistent())
+    if (d_ctx.getPropCore().inconsistent())
     {
       d_eqPropagationQueue.clear();
       return false;
@@ -627,7 +627,7 @@ void EGraph::applyMasterMerges()
   {
     return;
   }
-  if (d_ctx.inconsistent())
+  if (d_ctx.getPropCore().inconsistent())
   {
     d_pendingMerges.clear();
     return;

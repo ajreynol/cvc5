@@ -211,7 +211,7 @@ void RelevancyPropagator::setWatches(TNode n, bool val, RelevancyHandlers* ehs)
 
 void RelevancyPropagator::addHandler(TNode source, RelevancyHandler* eh)
 {
-  if (isRelevantCore(source))
+  if (isRelevant(source))
   {
     eh->operator()(*this, source);
   }
@@ -290,7 +290,7 @@ void RelevancyPropagator::setRelevant(TNode n)
 
 void RelevancyPropagator::markAsRelevant(TNode n)
 {
-  if (!isRelevantCore(n))
+  if (!isRelevant(n))
   {
     TNode next = d_theory.getEGraph().getNextInEClass(n);
     if (!next.isNull())
@@ -299,7 +299,7 @@ void RelevancyPropagator::markAsRelevant(TNode n)
       TNode curr = n;
       do
       {
-        if (!isRelevantCore(curr))
+        if (!isRelevant(curr))
         {
           setRelevant(curr);
         }
@@ -315,7 +315,7 @@ void RelevancyPropagator::markAsRelevant(TNode n)
 
 void RelevancyPropagator::propagateRelevantApp(TNode n)
 {
-  Assert(isRelevantCore(n));
+  Assert(isRelevant(n));
   size_t j = n.getNumChildren();
   while (j > 0)
   {
@@ -344,7 +344,7 @@ void RelevancyPropagator::propagateRelevantImplies(TNode n)
       TNode arg1 = n[1];
       if (d_core.findAssignment(arg0) == SAT_VALUE_FALSE)
       {
-        if (!isRelevantCore(arg0))
+        if (!isRelevant(arg0))
         {
           markAsRelevant(arg0);
         }
@@ -352,7 +352,7 @@ void RelevancyPropagator::propagateRelevantImplies(TNode n)
       }
       if (d_core.findAssignment(arg1) == SAT_VALUE_TRUE)
       {
-        if (!isRelevantCore(arg1))
+        if (!isRelevant(arg1))
         {
           markAsRelevant(arg1);
         }
@@ -385,7 +385,7 @@ void RelevancyPropagator::propagateRelevantOr(TNode n)
       {
         if (d_core.findAssignment(arg) == SAT_VALUE_TRUE)
         {
-          if (isRelevantCore(arg))
+          if (isRelevant(arg))
           {
             return;
           }
@@ -417,7 +417,7 @@ void RelevancyPropagator::propagateRelevantAnd(TNode n)
       {
         if (d_core.findAssignment(arg) == SAT_VALUE_FALSE)
         {
-          if (isRelevantCore(arg))
+          if (isRelevant(arg))
           {
             return;
           }
@@ -459,7 +459,7 @@ void RelevancyPropagator::propagate()
   while (d_qhead < d_relevantExprs.size())
   {
     TNode n = d_relevantExprs[d_qhead];
-    Assert(isRelevantCore(n));
+    Assert(isRelevant(n));
     d_qhead++;
     if (z3::isApp(n))
     {
@@ -485,7 +485,7 @@ void RelevancyPropagator::propagate()
 
 void RelevancyPropagator::notifyAssigned(TNode n, bool val)
 {
-  if (isRelevantCore(n))
+  if (isRelevant(n))
   {
     switch (n.getKind())
     {

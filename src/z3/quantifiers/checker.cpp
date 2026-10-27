@@ -75,9 +75,10 @@ bool Checker::checkCore(TNode n, size_t depth, bool isTrue)
     return false;
   }
   Assert(n.getType().isBoolean());
-  if (d_context.bInternalized(n) && d_context.isRelevantForChecking(n))
+  if (d_context.getPropCore().bInternalized(n)
+      && d_context.getPropCore().isRelevant(n))
   {
-    SatValue val = d_context.getAssignment(n);
+    SatValue val = d_context.getPropCore().getAssignment(n);
     return val != SAT_VALUE_UNKNOWN && isTrue == (val == SAT_VALUE_TRUE);
   }
   if (!isApp(n))
@@ -104,8 +105,8 @@ bool Checker::checkCore(TNode n, size_t depth, bool isTrue)
         ENode* lhs = getENodeEqTo(n[0]);
         ENode* rhs = getENodeEqTo(n[1]);
         if (lhs != nullptr && rhs != nullptr
-            && d_context.isRelevantForChecking(lhs)
-            && d_context.isRelevantForChecking(rhs))
+            && d_context.getPropCore().isRelevant(lhs->getExpr())
+            && d_context.getPropCore().isRelevant(rhs->getExpr()))
         {
           if (isTrue && lhs->getRoot() == rhs->getRoot())
           {
@@ -138,10 +139,10 @@ bool Checker::checkCore(TNode n, size_t depth, bool isTrue)
                  && check(n[1], depth + 1, false));
     case Kind::ITE:
     {
-      if (d_context.litInternalized(n[0])
-          && d_context.isRelevantForChecking(n[0]))
+      if (d_context.getPropCore().litInternalized(n[0])
+          && d_context.getPropCore().isRelevant(n[0]))
       {
-        switch (d_context.getAssignment(n[0]))
+        switch (d_context.getPropCore().getAssignment(n[0]))
         {
           case SAT_VALUE_FALSE: return check(n[2], depth + 1, isTrue);
           case SAT_VALUE_UNKNOWN: return false;
@@ -153,9 +154,10 @@ bool Checker::checkCore(TNode n, size_t depth, bool isTrue)
     default: break;
   }
   ENode* e = getENodeEqTo(n);
-  if (e != nullptr && e->isBool() && d_context.isRelevantForChecking(e))
+  if (e != nullptr && e->isBool()
+      && d_context.getPropCore().isRelevant(e->getExpr()))
   {
-    SatValue val = d_context.getAssignment(e->getExpr());
+    SatValue val = d_context.getPropCore().getAssignment(e->getExpr());
     return val != SAT_VALUE_UNKNOWN && isTrue == (val == SAT_VALUE_TRUE);
   }
   return false;
@@ -193,7 +195,7 @@ ENode* Checker::getENodeEqToCore(TNode n)
   {
     return nullptr;
   }
-  return d_context.isRelevantForChecking(e) ? e : nullptr;
+  return d_context.getPropCore().isRelevant(e->getExpr()) ? e : nullptr;
 }
 
 ENode* Checker::getENodeEqTo(TNode n)
@@ -207,7 +209,7 @@ ENode* Checker::getENodeEqTo(TNode n)
     }
     return d_bindings[idx];
   }
-  if (d_egraph.eInternalized(n) && d_context.isRelevantForChecking(n))
+  if (d_egraph.eInternalized(n) && d_context.getPropCore().isRelevant(n))
   {
     return d_egraph.getENode(n);
   }

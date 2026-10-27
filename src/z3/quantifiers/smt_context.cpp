@@ -77,13 +77,13 @@ void SmtContext::notifyMerge(ENode* r1, ENode* r2)
 {
   // Relevancy must be propagated to the rest of the equivalence class, to
   // maintain the invariant on the parent lists of enodes.
-  if (isRelevant(r1))
+  if (d_prop.isRelevant(r1->getExpr()))
   {
-    markAsRelevant(r2);
+    d_prop.markAsRelevant(r2->getExpr());
   }
-  else if (isRelevant(r2))
+  else if (d_prop.isRelevant(r2->getExpr()))
   {
-    markAsRelevant(r1);
+    d_prop.markAsRelevant(r1->getExpr());
   }
   d_qmanager.notifyMerge(r1, r2);
 }
@@ -106,9 +106,9 @@ void SmtContext::propagateBoolENodeAssignment(ENode* r1,
       Assert(curr != d_falseENode);
       BoolVar v = enode2BoolVar(curr);
       Literal l(v, sign);
-      if (getAssignment(l) != SAT_VALUE_TRUE)
+      if (d_prop.getAssignment(l) != SAT_VALUE_TRUE)
       {
-        assign(l);
+        d_prop.assign(l);
       }
       curr = curr->d_next;
     } while (curr != r1);
@@ -117,8 +117,8 @@ void SmtContext::propagateBoolENodeAssignment(ENode* r1,
   {
     BoolVar v1 = enode2BoolVar(n1);
     BoolVar v2 = enode2BoolVar(n2);
-    SatValue val1 = getAssignment(v1);
-    SatValue val2 = getAssignment(v2);
+    SatValue val1 = d_prop.getAssignment(v1);
+    SatValue val2 = d_prop.getAssignment(v2);
     if (val1 != val2)
     {
       if (val2 == SAT_VALUE_UNKNOWN)
@@ -141,17 +141,17 @@ void SmtContext::propagateBoolENodeAssignmentCore(ENode* source, ENode* target)
   Assert(target->isBool());
   Assert(source->getRoot() == target->getRoot());
   BoolVar vSource = enode2BoolVar(source);
-  SatValue val = getAssignment(vSource);
+  SatValue val = d_prop.getAssignment(vSource);
   Assert(val != SAT_VALUE_UNKNOWN);
   bool sign = val == SAT_VALUE_FALSE;
   ENode* first = target;
   do
   {
     BoolVar v2 = enode2BoolVar(target);
-    SatValue val2 = getAssignment(v2);
+    SatValue val2 = d_prop.getAssignment(v2);
     if (val2 != val)
     {
-      assign(Literal(v2, sign));
+      d_prop.assign(Literal(v2, sign));
     }
     target = target->getNext();
   } while (first != target);
@@ -193,33 +193,34 @@ bool SmtContext::isDiseqCore(ENode* n1,
     Literal l = enode2Literal(r->getRoot());
     return l != s_trueLiteral
            && (l == s_falseLiteral
-               || (isRelevant(l) && getAssignment(l) == SAT_VALUE_FALSE));
+               || (d_prop.isRelevant(l)
+                   && d_prop.getAssignment(l) == SAT_VALUE_FALSE));
   }
   return false;
 }
 
 bool SmtContext::propagateAtoms()
 {
-  Assert(!inconsistent());
+  Assert(!d_prop.inconsistent());
   for (size_t i = 0; i < d_atomPropagationQueue.size() && !getCancelFlag(); ++i)
   {
-    Assert(!inconsistent());
+    Assert(!d_prop.inconsistent());
     Literal l = d_atomPropagationQueue[i];
     BoolVar v = l.var();
-    SatValue val = getAssignment(v);
+    SatValue val = d_prop.getAssignment(v);
     Assert(val != SAT_VALUE_UNKNOWN);
-    if (getBdata(v).isENode())
+    if (d_prop.getBdata(v).isENode())
     {
       propagateBoolVarENode(v);
     }
-    if (inconsistent())
+    if (d_prop.inconsistent())
     {
       return false;
     }
-    BoolVarData& d = getBdata(v);
+    BoolVarData& d = d_prop.getBdata(v);
     if (d.isEq())
     {
-      TNode n = boolVar2Expr(v);
+      TNode n = d_prop.boolVar2Expr(v);
       Assert(n.getKind() == Kind::EQUAL);
       TNode lhs = n[0];
       TNode rhs = n[1];
@@ -234,9 +235,9 @@ bool SmtContext::propagateAtoms()
       else
       {
         if (!addDiseq(d_egraph.getENode(lhs), d_egraph.getENode(rhs))
-            && !inconsistent())
+            && !d_prop.inconsistent())
         {
-          setConflict();
+          d_prop.setConflict();
         }
       }
     }
@@ -245,19 +246,19 @@ bool SmtContext::propagateAtoms()
       // Note that with relevancy lemmas a quantifier may be asserted to
       // false and marked relevant, which happens when a quantifier is part
       // of a conflict clause that becomes unit.
-      Assert(isQuantifier(boolVar2Expr(v)));
-      if (getAssignment(v) == SAT_VALUE_TRUE)
+      Assert(isQuantifier(d_prop.boolVar2Expr(v)));
+      if (d_prop.getAssignment(v) == SAT_VALUE_TRUE)
       {
-        assignQuantifier(boolVar2Expr(v));
+        assignQuantifier(d_prop.boolVar2Expr(v));
       }
       else
       {
         // cvc5's quantifiers engine skolemized it when cvc5 asserted it
         // false; the core takes that lemma when it is relevant
-        skolemize(boolVar2Expr(v));
+        skolemize(d_prop.boolVar2Expr(v));
       }
     }
-    if (inconsistent())
+    if (d_prop.inconsistent())
     {
       return false;
     }
@@ -270,9 +271,9 @@ void SmtContext::propagateBoolVarENode(BoolVar v)
 {
   // Propagate the truth value of v to the enode n associated with it: n is
   // merged with the true (false) enode when v is assigned true (false).
-  Assert(getAssignment(v) != SAT_VALUE_UNKNOWN);
-  Assert(getBdata(v).isENode());
-  SatValue val = getAssignment(v);
+  Assert(d_prop.getAssignment(v) != SAT_VALUE_UNKNOWN);
+  Assert(d_prop.getBdata(v).isENode());
+  SatValue val = d_prop.getAssignment(v);
   Assert(v < d_prop.getNumBoolVars());
   ENode* n = boolVar2ENode(v);
 
@@ -288,17 +289,18 @@ void SmtContext::propagateBoolVarENode(BoolVar v)
   }
   // Move the truth value to the other members of the equivalence class if
   // n is the root, or the variable of the root is unassigned.
-  if (n == r || !isRelevant(r)  // needed to fix a propagation bug
-      || getAssignment(enode2BoolVar(r)) != val)
+  if (n == r
+      || !d_prop.isRelevant(r->getExpr())  // needed to fix a propagation bug
+      || d_prop.getAssignment(enode2BoolVar(r)) != val)
   {
     ENode* first = n;
     n = n->getNext();
     while (n != first)
     {
       BoolVar v2 = enode2BoolVar(n);
-      if (getAssignment(v2) != val)
+      if (d_prop.getAssignment(v2) != val)
       {
-        assign(Literal(v2, sign));
+        d_prop.assign(Literal(v2, sign));
       }
       n = n->getNext();
     }
@@ -337,7 +339,7 @@ bool SmtContext::theoryPropagate()
   {
     d_qmanager.propagate();
   }
-  if (inconsistent())
+  if (d_prop.inconsistent())
   {
     return false;
   }
@@ -353,7 +355,7 @@ bool SmtContext::propagate()
 {
   while (true)
   {
-    if (inconsistent())
+    if (d_prop.inconsistent())
     {
       return false;
     }
@@ -362,9 +364,9 @@ bool SmtContext::propagate()
     {
       return false;
     }
-    Assert(!inconsistent());
+    Assert(!d_prop.inconsistent());
     d_prop.propagateRelevancy(qhead);
-    if (inconsistent())
+    if (d_prop.inconsistent())
     {
       return false;
     }
@@ -460,10 +462,10 @@ void SmtContext::reassertUnits(size_t unitsToReassertLim)
   {
     ReplayUnit& ru = d_unitsToReassert[i];
     internalize(ru.d_unit, true);
-    BoolVar v = getBoolVar(ru.d_unit);
+    BoolVar v = d_prop.getBoolVar(ru.d_unit);
     Assert(v != s_nullBoolVar) << "unit without a variable: " << ru.d_unit;
     Literal l(v, ru.d_sign);
-    assign(l);
+    d_prop.assign(l);
     if (ru.d_relevant)
     {
       d_prop.markAsRelevant(l);
@@ -519,7 +521,7 @@ void SmtContext::cacheGeneration(TNode n, uint32_t newScopeLvl)
         }
       }
     }
-    else if (isQuantifier(curr) && bInternalized(curr))
+    else if (isQuantifier(curr) && d_prop.bInternalized(curr))
     {
       d_cachedGeneration[curr] = d_qmanager.getGeneration(curr);
       todo.push_back(curr[1]);
@@ -537,7 +539,7 @@ void SmtContext::internalizeInstance(TNode q,
                                      const std::vector<Node>& terms,
                                      uint32_t generation)
 {
-  if (inconsistent())
+  if (d_prop.inconsistent())
   {
     return;
   }
@@ -595,7 +597,7 @@ void SmtContext::skolemize(TNode q)
   {
     return;
   }
-  if (inconsistent())
+  if (d_prop.inconsistent())
   {
     return;
   }
@@ -730,10 +732,10 @@ void SmtContext::internalizeFormula(TNode n, bool gateCtx)
     return;
   }
 
-  if (bInternalized(n))
+  if (d_prop.bInternalized(n))
   {
     // n was already internalized as a Boolean.
-    BoolVar v = getBoolVar(n);
+    BoolVar v = d_prop.getBoolVar(n);
 
     updateGeneration(n);
 
@@ -750,7 +752,7 @@ void SmtContext::internalizeFormula(TNode n, bool gateCtx)
                 true, /* merge with true/false, since this is not a gate */
                 false /* congruence closure is not enabled */);
         setEnodeFlag(v, false);
-        if (getAssignment(v) != SAT_VALUE_UNKNOWN)
+        if (d_prop.getAssignment(v) != SAT_VALUE_UNKNOWN)
         {
           propagateBoolVarENode(v);
         }
@@ -771,12 +773,12 @@ void SmtContext::internalizeFormula(TNode n, bool gateCtx)
                 true, /* merge with true/false, since this is not a gate */
                 false /* congruence closure is not enabled */);
         setEnodeFlag(v, false);
-        if (getAssignment(v) != SAT_VALUE_UNKNOWN)
+        if (d_prop.getAssignment(v) != SAT_VALUE_UNKNOWN)
         {
           propagateBoolVarENode(v);
         }
       }
-      Assert(hasENode(v));
+      Assert(d_prop.getBdata(v).isENode());
     }
     return;
   }
@@ -801,18 +803,18 @@ void SmtContext::internalizeFormula(TNode n, bool gateCtx)
 
 void SmtContext::internalizeEq(TNode n, bool gateCtx)
 {
-  Assert(!bInternalized(n));
+  Assert(!d_prop.bInternalized(n));
   Assert(n.getKind() == Kind::EQUAL);
   internalizeFormulaCore(n, gateCtx);
-  BoolVar v = getBoolVar(n);
-  getBdata(v).setEqFlag();
+  BoolVar v = d_prop.getBoolVar(n);
+  d_prop.getBdata(v).setEqFlag();
 }
 
 void SmtContext::internalizeDistinct(TNode n, bool gateCtx)
 {
-  Assert(!bInternalized(n));
+  Assert(!d_prop.bInternalized(n));
   Assert(n.getKind() == Kind::DISTINCT);
-  BoolVar v = mkBoolVar(n);
+  BoolVar v = d_prop.mkBoolVar(n);
   Literal l(v);
   // the pairwise expansion of the distinct
   std::vector<Node> diseqs;
@@ -828,20 +830,20 @@ void SmtContext::internalizeDistinct(TNode n, bool gateCtx)
   Node def =
       diseqs.size() == 1 ? diseqs[0] : nodeManager()->mkNode(Kind::AND, diseqs);
   internalizeRec(def, true);
-  Literal lDef = getLiteral(def);
-  mkGateClause(~l, lDef);
-  mkGateClause(l, ~lDef);
+  Literal lDef = d_prop.getLiteral(def);
+  d_prop.mkGateClause(~l, lDef);
+  d_prop.mkGateClause(l, ~lDef);
   // Reference counts of negations are not tracked, so a relevancy dependency
   // on the equality is added instead.
   Node relDef = def.getKind() == Kind::NOT ? def[0] : def;
-  addRelevancyDependency(n, relDef);
+  d_prop.addRelevancyDependency(n, relDef);
   if (!gateCtx)
   {
     mkENode(n, true, true, false);
     setEnodeFlag(v, true);
     // v may have been assigned by the definition clauses before the enode
     // was created.
-    if (getAssignment(v) != SAT_VALUE_UNKNOWN)
+    if (d_prop.getAssignment(v) != SAT_VALUE_UNKNOWN)
     {
       propagateBoolVarENode(v);
     }
@@ -850,15 +852,15 @@ void SmtContext::internalizeDistinct(TNode n, bool gateCtx)
 
 void SmtContext::internalizeQuantifier(TNode q, bool gateCtx)
 {
-  Assert(!bInternalized(q));
+  Assert(!d_prop.bInternalized(q));
   if (q.getKind() != Kind::FORALL)
   {
     // Z3's preprocessing puts every formula in a form where only universal
     // quantifiers survive, so its internalizer has no case for exists.
-    mkBoolVar(q);
+    d_prop.mkBoolVar(q);
     return;
   }
-  BoolVar v = mkBoolVar(q);
+  BoolVar v = d_prop.mkBoolVar(q);
   if (!gateCtx)
   {
     // Z3 asserts gateCtx here: its rewriter guarantees a quantifier only ever
@@ -873,7 +875,7 @@ void SmtContext::internalizeQuantifier(TNode q, bool gateCtx)
     setEnodeFlag(v, false);
   }
   uint32_t generation = generationOf(q);
-  BoolVarData& d = getBdata(v);
+  BoolVarData& d = d_prop.getBdata(v);
   d.setQuantifierFlag();
   d_qmanager.add(q, generation);
 }
@@ -881,7 +883,7 @@ void SmtContext::internalizeQuantifier(TNode q, bool gateCtx)
 void SmtContext::internalizeFormulaCore(TNode n, bool gateCtx)
 {
   // Internalize gates, and the (uninterpreted and equality) predicates.
-  Assert(!bInternalized(n));
+  Assert(!d_prop.bInternalized(n));
   Assert(!d_egraph.eInternalized(n));
 
   bool isGateN = expr::isBooleanConnective(n);
@@ -896,14 +898,14 @@ void SmtContext::internalizeFormulaCore(TNode n, bool gateCtx)
   // n may already be internalized once its children are, for example the
   // equality in (= (ite c 1 0) 1): internalizing the ite term forces both
   // (= (ite c 1 0) 1) and (= (ite c 1 0) 0).
-  if (!bInternalized(n))
+  if (!d_prop.bInternalized(n))
   {
     isNewVar = true;
-    v = mkBoolVar(n);
+    v = d_prop.mkBoolVar(n);
   }
   else
   {
-    v = getBoolVar(n);
+    v = d_prop.getBoolVar(n);
   }
 
   // A formula needs an enode when it is not in a gate context, or when it has
@@ -916,7 +918,7 @@ void SmtContext::internalizeFormulaCore(TNode n, bool gateCtx)
     bool mergeTf = !gateCtx;
     mkENode(n, suppressArgs, mergeTf, true);
     setEnodeFlag(v, isNewVar);
-    Assert(hasENode(v));
+    Assert(d_prop.getBdata(v).isENode());
   }
   else if (!gateCtx && d_egraph.eInternalized(n))
   {
@@ -956,7 +958,7 @@ class SetENodeFlagTrail : public Trail
 {
  public:
   SetENodeFlagTrail(SmtContext& ctx, BoolVar v) : d_ctx(ctx), d_var(v) {}
-  void undo() override { d_ctx.getBdata(d_var).resetENodeFlag(); }
+  void undo() override { d_ctx.getPropCore().getBdata(d_var).resetENodeFlag(); }
 
  private:
   SmtContext& d_ctx;
@@ -976,10 +978,10 @@ void SmtContext::setMergeTf(ENode* n, BoolVar v, bool isNewVar)
   }
   if (!isNewVar)
   {
-    pushTrail(SetMergeTfTrail(n));
+    d_trailStack.push(SetMergeTfTrail(n));
   }
   n->d_mergeTf = true;
-  switch (getAssignment(v))
+  switch (d_prop.getAssignment(v))
   {
     case SAT_VALUE_UNKNOWN: break;
     case SAT_VALUE_TRUE:
@@ -999,13 +1001,13 @@ void SmtContext::setMergeTf(ENode* n, BoolVar v, bool isNewVar)
 
 void SmtContext::setEnodeFlag(BoolVar v, bool isNewVar)
 {
-  Assert(d_egraph.eInternalized(boolVar2Expr(v)));
-  BoolVarData& data = getBdata(v);
+  Assert(d_egraph.eInternalized(d_prop.boolVar2Expr(v)));
+  BoolVarData& data = d_prop.getBdata(v);
   if (!data.isENode())
   {
     if (!isNewVar)
     {
-      pushTrail(SetENodeFlagTrail(*this, v));
+      d_trailStack.push(SetENodeFlagTrail(*this, v));
     }
     data.setENodeFlag();
   }
@@ -1071,7 +1073,7 @@ ENode* SmtContext::mkENode(TNode n,
   if (e->getNumArgs() > 0 && e->isTrueEq())
   {
     // the equality holds already
-    assign(Literal(enode2BoolVar(e)));
+    d_prop.assign(Literal(enode2BoolVar(e)));
     d_egraph.pushEq(e, d_trueENode);
   }
   return e;
@@ -1176,7 +1178,7 @@ void SmtContext::internalizeAssertions()
   d_internalizingAssertions = true;
   if (d_prop.isAssertedInconsistent())
   {
-    setConflict();
+    d_prop.setConflict();
     d_internalizingAssertions = false;
     return;
   }
@@ -1205,7 +1207,7 @@ void SmtContext::assertRoot(TNode n)
         for (const Node& arg : n)
         {
           internalizeRec(arg, true);
-          Literal lit = getLiteral(arg);
+          Literal lit = d_prop.getLiteral(arg);
           d_prop.mkRootClause(1, &lit);
         }
         break;
@@ -1216,7 +1218,7 @@ void SmtContext::assertRoot(TNode n)
         for (const Node& arg : n)
         {
           internalizeRec(arg, true);
-          lits.push_back(getLiteral(arg));
+          lits.push_back(d_prop.getLiteral(arg));
         }
         d_prop.mkRootClause(lits.size(), lits.data());
         d_prop.addOrRelWatches(n);
@@ -1226,7 +1228,7 @@ void SmtContext::assertRoot(TNode n)
       {
         internalizeRec(n[0], true);
         internalizeRec(n[1], true);
-        d_prop.mkRootClause(~getLiteral(n[0]), getLiteral(n[1]));
+        d_prop.mkRootClause(~d_prop.getLiteral(n[0]), d_prop.getLiteral(n[1]));
         d_prop.addImpliesRelWatches(n);
         break;
       }
@@ -1237,8 +1239,8 @@ void SmtContext::assertRoot(TNode n)
         TNode rhs = n[1];
         internalizeRec(lhs, true);
         internalizeRec(rhs, true);
-        Literal l1 = getLiteral(lhs);
-        Literal l2 = getLiteral(rhs);
+        Literal l1 = d_prop.getLiteral(lhs);
+        Literal l2 = d_prop.getLiteral(rhs);
         if (n.getKind() == Kind::XOR)
         {
           l2 = ~l2;
@@ -1255,9 +1257,9 @@ void SmtContext::assertRoot(TNode n)
         internalizeRec(c, true);
         internalizeRec(t, true);
         internalizeRec(e, true);
-        Literal cl = getLiteral(c);
-        Literal tl = getLiteral(t);
-        Literal el = getLiteral(e);
+        Literal cl = d_prop.getLiteral(c);
+        Literal tl = d_prop.getLiteral(t);
+        Literal el = d_prop.getLiteral(e);
         d_prop.mkRootClause(~cl, tl);
         d_prop.mkRootClause(cl, el);
         d_prop.addIteRelWatches(n);
@@ -1265,7 +1267,7 @@ void SmtContext::assertRoot(TNode n)
       }
       default: Unreachable();
     }
-    markAsRelevant(n);
+    d_prop.markAsRelevant(n);
   }
   else if (n.getKind() == Kind::DISTINCT)
   {
@@ -1273,7 +1275,7 @@ void SmtContext::assertRoot(TNode n)
     // sort. cvc5's rewriter expands distinct during preprocessing, so the
     // core is not expected to meet one at all; the plain encoding is used.
     assertDefault(n);
-    markAsRelevant(n);
+    d_prop.markAsRelevant(n);
   }
   else
   {
@@ -1284,10 +1286,10 @@ void SmtContext::assertRoot(TNode n)
 void SmtContext::assertDefault(TNode n)
 {
   internalize(n, true);
-  Literal l = getLiteral(n);
+  Literal l = d_prop.getLiteral(n);
   if (l == s_falseLiteral)
   {
-    setConflict();
+    d_prop.setConflict();
   }
   else if (l == s_trueLiteral)
   {
@@ -1295,7 +1297,7 @@ void SmtContext::assertDefault(TNode n)
   }
   else
   {
-    assign(l);
+    d_prop.assign(l);
     d_prop.markAsRelevant(l);
   }
 }
@@ -1327,11 +1329,11 @@ Literal SmtContext::literalOf(TNode n)
 {
   bool neg = n.getKind() == Kind::NOT;
   TNode atom = neg ? n[0] : n;
-  if (!bInternalized(atom))
+  if (!d_prop.bInternalized(atom))
   {
     internalize(atom, true);
   }
-  Literal l = getLiteral(atom);
+  Literal l = d_prop.getLiteral(atom);
   return neg ? ~l : l;
 }
 

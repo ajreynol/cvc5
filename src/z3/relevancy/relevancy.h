@@ -110,9 +110,7 @@ class RelevancyPropagator
   void markAsRelevant(TNode n);
 
   /** True if the given expression is marked as relevant. */
-  bool isRelevant(TNode n) const { return isRelevantCore(n); }
-
-  bool isRelevantCore(TNode n) const
+  bool isRelevant(TNode n) const
   {
     Assert(!n.isNull());
     size_t id = n.getId();

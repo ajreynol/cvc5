@@ -204,7 +204,7 @@ bool QuantifierManager::finalCheck()
   if (!empty() && d_lazyMatchingIdx < s_maxLazyMultipatternMatching)
   {
     d_lazyMam->rematch();
-    d_context.pushTrail(ValueTrail<size_t>(d_lazyMatchingIdx));
+    d_context.getTrailStack().push(ValueTrail<size_t>(d_lazyMatchingIdx));
     d_lazyMatchingIdx++;
   }
   return result && !d_context.canPropagate();

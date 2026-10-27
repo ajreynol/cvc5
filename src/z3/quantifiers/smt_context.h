@@ -102,10 +102,6 @@ class SmtContext final : protected EnvObj
   void assertFormula(TNode e);
 
   // ---------------------------------------------------------- assertions
-  size_t getNumAssertedFormulas() const { return d_assertedFormulas.size(); }
-
-  TNode getAssertedFormula(size_t idx) const { return d_assertedFormulas[idx]; }
-
   /**
    * Internalize the asserted formula n, of the given generation: its subterms,
    * then its Boolean structure (assertRoot).
@@ -168,35 +164,24 @@ class SmtContext final : protected EnvObj
 
   const EGraph& getEGraph() const { return d_egraph; }
 
-  // ------------------------------------- the Boolean search, see PropCore
-  //
-  // The methods below forward to the propositional side, d_prop. They are
-  // the Boolean API that the theory side and the quantifier engine use.
-
+  // ------------------------------- the Boolean side, and the bridge to the
+  //                                 E-graph
   /** The propositional side. */
   PropCore& getPropCore() { return d_prop; }
 
   const PropCore& getPropCore() const { return d_prop; }
 
-  BoolVar getBoolVar(TNode n) const { return d_prop.getBoolVar(n); }
-
-  BoolVar getBoolVar(const ENode* n) const { return getBoolVar(n->getExpr()); }
-
-  BoolVar getBoolVarOfId(size_t id) const { return d_prop.getBoolVarOfId(id); }
-
-  Literal getLiteral(TNode n) const { return d_prop.getLiteral(n); }
-
   ENode* boolVar2ENode(BoolVar v) const
   {
-    Assert(getBdata(v).isENode());
-    return d_egraph.getENode(boolVar2Expr(v));
+    Assert(d_prop.getBdata(v).isENode());
+    return d_egraph.getENode(d_prop.boolVar2Expr(v));
   }
 
   BoolVar enode2BoolVar(const ENode* n) const
   {
     Assert(n->isBool());
     Assert(n != d_falseENode);
-    return getBoolVarOfId(n->getOwnerId());
+    return d_prop.getBoolVarOfId(n->getOwnerId());
   }
 
   Literal enode2Literal(const ENode* n) const
@@ -205,23 +190,9 @@ class SmtContext final : protected EnvObj
     return n == d_falseENode ? s_falseLiteral : Literal(enode2BoolVar(n));
   }
 
-  BoolVarData& getBdata(BoolVar v) { return d_prop.getBdata(v); }
-
-  const BoolVarData& getBdata(BoolVar v) const { return d_prop.getBdata(v); }
-
-  bool hasENode(BoolVar v) const { return getBdata(v).isENode(); }
-
-  SatValue getAssignment(Literal l) const { return d_prop.getAssignment(l); }
-
-  SatValue getAssignment(BoolVar v) const { return d_prop.getAssignment(v); }
-
-  SatValue getAssignment(TNode n) const { return d_prop.getAssignment(n); }
-
   SatValue getAssignment(ENode* n) const;
 
   uint32_t getScopeLevel() const { return d_prop.getScopeLevel(); }
-
-  TNode boolVar2Expr(BoolVar v) const { return d_prop.boolVar2Expr(v); }
 
   bool isTrue(const ENode* n) const { return n == d_trueENode; }
 
@@ -229,21 +200,9 @@ class SmtContext final : protected EnvObj
   bool hasQuantifiers() const { return d_hasQuantifiers; }
 
   // ----------------------------------------------- backtracking support
-  template <typename TrailObject>
-  void pushTrail(const TrailObject& obj)
-  {
-    d_trailStack.push(obj);
-  }
-
-  void pushTrailPtr(Trail* ptr) { d_trailStack.pushPtr(ptr); }
-
   TrailStack& getTrailStack() { return d_trailStack; }
 
   // ------------------------------------------------------ internalization
-  bool bInternalized(TNode n) const { return d_prop.bInternalized(n); }
-
-  bool litInternalized(TNode n) const { return d_prop.litInternalized(n); }
-
   /** The canonicalizer for quantifiers; see z3/ast.h. */
   QuantifierNormalizer& getNormalizer() { return d_normalizer; }
 
@@ -271,8 +230,6 @@ class SmtContext final : protected EnvObj
   void internalize(const Node* exprs, size_t numExprs, bool gateCtx);
   void internalize(TNode n, bool gateCtx, uint32_t generation);
 
-  BoolVar mkBoolVar(TNode n) { return d_prop.mkBoolVar(n); }
-
   ENode* mkENode(TNode n, bool suppressArgs, bool mergeTf, bool cgcEnabled);
 
   /** Hand an assigned atom to the theory side; see propagateAtoms. */
@@ -286,8 +243,6 @@ class SmtContext final : protected EnvObj
    * to newScopeLvl deletes, so that they are recreated with it.
    */
   void cacheGeneration(TNode n, uint32_t newScopeLvl);
-
-  void mkGateClause(Literal l1, Literal l2) { d_prop.mkGateClause(l1, l2); }
 
   /**
    * Internalize n, a subterm of an assertion, in the given context; see
@@ -311,12 +266,6 @@ class SmtContext final : protected EnvObj
   void setEnodeFlag(BoolVar v, bool isNewVar);
 
   // ------------------------------------------------------------- engine
-  void assign(Literal l) { d_prop.assign(l); }
-
-  void setConflict() { d_prop.setConflict(); }
-
-  bool inconsistent() const { return d_prop.inconsistent(); }
-
   bool isDiseq(ENode* n1, ENode* n2) const;
 
   /**
@@ -331,40 +280,11 @@ class SmtContext final : protected EnvObj
   void propagateBoolENodeAssignment(ENode* r1, ENode* r2, ENode* n1, ENode* n2);
 
   // ------------------------------------------------------------ relevancy
-  //
-  // Relevancy belongs to the propositional side; see PropCore. The methods
-  // below forward to it.
-
   /**
    * Notify the quantifier manager and the theories that n became relevant;
    * called by PropCore::notifyRelevant.
    */
   void notifyRelevant(TNode n);
-
-  bool isRelevantCore(TNode n) const { return d_prop.isRelevantCore(n); }
-
-  bool isRelevant(TNode n) const { return d_prop.isRelevant(n); }
-
-  bool isRelevant(ENode* n) const { return isRelevant(n->getExpr()); }
-
-  bool isRelevant(Literal l) const { return d_prop.isRelevant(l); }
-
-  /** Whether E-matching considers n. */
-  bool isRelevantForMatching(ENode* n) const { return isRelevant(n); }
-
-  /** Whether the instance checkers consider n. */
-  bool isRelevantForChecking(TNode n) const { return isRelevant(n); }
-
-  bool isRelevantForChecking(ENode* n) const { return isRelevant(n); }
-
-  void markAsRelevant(TNode n) { d_prop.markAsRelevant(n); }
-
-  void markAsRelevant(ENode* n) { markAsRelevant(n->getExpr()); }
-
-  void addRelevancyDependency(TNode source, TNode target)
-  {
-    d_prop.addRelevancyDependency(source, target);
-  }
 
   /**
    * Rewrite a quantifier instance before it is internalized. Z3 applies its

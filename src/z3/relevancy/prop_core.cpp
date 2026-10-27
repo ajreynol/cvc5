@@ -332,7 +332,7 @@ void PropCore::assignCore(Literal l)
   d_assignment[(~l).index()] = SAT_VALUE_FALSE;
   const BoolVarData& d = getBdata(l.var());
   d_stats.d_numAssignments++;
-  if (d.isAtom() && isRelevantCore(boolVar2Expr(l.var())))
+  if (d.isAtom() && isRelevant(boolVar2Expr(l.var())))
   {
     d_ctx.enqueueAtom(l);
   }
@@ -633,7 +633,7 @@ BoolVar PropCore::mkBoolVar(TNode n)
   // record the level at which the variable was internalized
   d_bdata[v].init(getScopeLevel());
   d_bInternalizedStack.push_back(n);
-  d_ctx.pushTrailPtr(&d_mkBoolVarTrail);
+  d_ctx.getTrailStack().pushPtr(&d_mkBoolVarTrail);
   d_stats.d_numMkBoolVar++;
   return v;
 }

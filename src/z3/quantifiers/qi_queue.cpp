@@ -108,7 +108,7 @@ void QiQueue::instantiate()
 
 void QiQueue::instantiate(const Entry& ent)
 {
-  if (d_context.inconsistent())
+  if (d_context.getPropCore().inconsistent())
   {
     return;
   }
