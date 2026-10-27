@@ -106,7 +106,7 @@ ENode* ENode::mkDummy(const App2ENode& app2enode, TNode owner)
   return init(mem, app2enode, owner, 0, false, false, 0, true, false);
 }
 
-void ENode::delEh(bool updateChildrenParent)
+void ENode::destroy(bool updateChildrenParent)
 {
   Assert(d_classSize == 1);
   Assert(d_root == this);

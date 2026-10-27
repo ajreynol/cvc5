@@ -189,9 +189,9 @@ void QiQueue::popScope(size_t numScopes)
   d_scopes.resize(newLvl);
 }
 
-void QiQueue::initSearchEh() { d_newEntries.clear(); }
+void QiQueue::initSearch() { d_newEntries.clear(); }
 
-bool QiQueue::finalCheckEh()
+bool QiQueue::finalCheck()
 {
   bool result = true;
   for (size_t i = 0; i < d_delayedEntries.size(); ++i)

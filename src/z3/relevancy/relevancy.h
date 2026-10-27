@@ -42,10 +42,10 @@ class PropCore;
 class RelevancyPropagator;
 
 /** An event handler invoked when an expression becomes relevant. */
-class RelevancyEh
+class RelevancyHandler
 {
  public:
-  virtual ~RelevancyEh() = default;
+  virtual ~RelevancyHandler() = default;
 
   /** Invoked when n is marked as relevant. */
   virtual void operator()(RelevancyPropagator& rp, TNode /*n*/)
@@ -66,10 +66,10 @@ class RelevancyEh
 };
 
 /** Marks a single target as relevant. */
-class SimpleRelevancyEh : public RelevancyEh
+class SimpleRelevancyHandler : public RelevancyHandler
 {
  public:
-  SimpleRelevancyEh(TNode t) : d_target(t) {}
+  SimpleRelevancyHandler(TNode t) : d_target(t) {}
   void operator()(RelevancyPropagator& rp) override;
 
  private:
@@ -83,8 +83,8 @@ class SimpleRelevancyEh : public RelevancyEh
  * class also provides helpers for the constraints the internalizer needs.
  *
  * It uses the equivalence classes of the theory side (TheorySide), notifies it
- * that an expression became relevant through relevantEh, and is told about new
- * assignments through assignEh.
+ * that an expression became relevant through notifyRelevant, and is told about
+ * new assignments through notifyAssigned.
  */
 class RelevancyPropagator
 {
@@ -93,16 +93,16 @@ class RelevancyPropagator
   ~RelevancyPropagator();
 
   /** Install a handler invoked whenever n is marked as relevant. */
-  void addHandler(TNode source, RelevancyEh* eh);
+  void addHandler(TNode source, RelevancyHandler* eh);
 
   /** Install a handler invoked whenever n is assigned to val. */
-  void addWatch(TNode n, bool val, RelevancyEh* eh);
+  void addWatch(TNode n, bool val, RelevancyHandler* eh);
 
   /** Install a handler that marks target relevant when n is assigned val. */
   void addWatch(TNode n, bool val, TNode target);
 
   /** Called by SmtContext whenever an expression is assigned. */
-  void assignEh(TNode n, bool val);
+  void notifyAssigned(TNode n, bool val);
 
   /** Mark the given expression as relevant. */
   void markAsRelevant(TNode n);
@@ -135,19 +135,19 @@ class RelevancyPropagator
   /** The trail stack of the theory side, where the handlers live. */
   TrailStack& getTrailStack() const;
 
-  template <typename Eh>
-  RelevancyEh* mkRelevancyEh(const Eh& eh)
+  template <typename Handler>
+  RelevancyHandler* mkRelevancyHandler(const Handler& eh)
   {
-    return new (getTrailStack()) Eh(eh);
+    return new (getTrailStack()) Handler(eh);
   }
 
   /** Mark target relevant whenever src is marked relevant. */
   void addDependency(TNode src, TNode target);
 
-  RelevancyEh* mkOrRelevancyEh(TNode n);
-  RelevancyEh* mkImpliesRelevancyEh(TNode n);
-  RelevancyEh* mkAndRelevancyEh(TNode n);
-  RelevancyEh* mkIteRelevancyEh(TNode n);
+  RelevancyHandler* mkOrRelevancyHandler(TNode n);
+  RelevancyHandler* mkImpliesRelevancyHandler(TNode n);
+  RelevancyHandler* mkAndRelevancyHandler(TNode n);
+  RelevancyHandler* mkIteRelevancyHandler(TNode n);
 
   /** Marks the children of n as relevant. Requires n to be relevant. */
   void propagateRelevantApp(TNode n);
@@ -162,17 +162,20 @@ class RelevancyPropagator
 
  private:
   /** An immutable list of handlers, allocated in the trail stack. */
-  struct RelevancyEhs
+  struct RelevancyHandlers
   {
-    RelevancyEh* d_head;
-    RelevancyEhs* d_tail;
-    RelevancyEhs(RelevancyEh* h, RelevancyEhs* t) : d_head(h), d_tail(t) {}
-    RelevancyEh* head() const { return d_head; }
-    RelevancyEhs* tail() const { return d_tail; }
+    RelevancyHandler* d_head;
+    RelevancyHandlers* d_tail;
+    RelevancyHandlers(RelevancyHandler* h, RelevancyHandlers* t)
+        : d_head(h), d_tail(t)
+    {
+    }
+    RelevancyHandler* head() const { return d_head; }
+    RelevancyHandlers* tail() const { return d_tail; }
   };
 
   /** A record of a handler installation, to be undone on backtracking. */
-  struct EhTrail
+  struct HandlerTrail
   {
     enum class Kind
     {
@@ -182,8 +185,8 @@ class RelevancyPropagator
     };
     Kind d_kind;
     Node d_node;
-    EhTrail(TNode n) : d_kind(Kind::HANDLER), d_node(n) {}
-    EhTrail(TNode n, bool val)
+    HandlerTrail(TNode n) : d_kind(Kind::HANDLER), d_node(n) {}
+    HandlerTrail(TNode n, bool val)
         : d_kind(val ? Kind::POS_WATCH : Kind::NEG_WATCH), d_node(n)
     {
     }
@@ -197,10 +200,10 @@ class RelevancyPropagator
     size_t d_trailLim;
   };
 
-  RelevancyEhs* getHandlers(TNode n) const;
-  void setHandlers(TNode n, RelevancyEhs* ehs);
-  RelevancyEhs* getWatches(TNode n, bool val) const;
-  void setWatches(TNode n, bool val, RelevancyEhs* ehs);
+  RelevancyHandlers* getHandlers(TNode n) const;
+  void setHandlers(TNode n, RelevancyHandlers* ehs);
+  RelevancyHandlers* getWatches(TNode n, bool val) const;
+  void setWatches(TNode n, bool val, RelevancyHandlers* ehs);
 
   void setRelevant(TNode n);
 
@@ -216,17 +219,17 @@ class RelevancyPropagator
   std::vector<Node> d_relevantExprs;
   /** Indexed by node id, true if the node is in d_relevantExprs. */
   std::vector<bool> d_isRelevant;
-  std::unordered_map<TNode, RelevancyEhs*> d_relevantEhs;
-  std::unordered_map<TNode, RelevancyEhs*> d_watches[2];
+  std::unordered_map<TNode, RelevancyHandlers*> d_relevantHandlers;
+  std::unordered_map<TNode, RelevancyHandlers*> d_watches[2];
   /**
    * An over-approximating membership filter for d_watches, holding a superset
    * of the ids that have, or ever had, a watch list for the given phase. It is
    * monotonic -- never cleared on erase or pop -- so it can only yield false
    * positives. This lets getWatches skip the hash probe for the common
-   * unwatched-literal case at the assignEh hotspot.
+   * unwatched-literal case at the notifyAssigned hotspot.
    */
   std::vector<bool> d_isWatched[2];
-  std::vector<EhTrail> d_trail;
+  std::vector<HandlerTrail> d_trail;
   std::vector<Scope> d_scopes;
   bool d_propagating;
 };

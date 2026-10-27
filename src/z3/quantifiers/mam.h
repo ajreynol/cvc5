@@ -62,10 +62,10 @@ class Mam
   virtual bool hasWork() const = 0;
 
   /** Notification that n became relevant. */
-  virtual void relevantEh(ENode* n, bool lazy) = 0;
+  virtual void notifyRelevant(ENode* n, bool lazy) = 0;
 
   /** Notification that the classes of r1 and r2 merged. */
-  virtual void addEqEh(ENode* r1, ENode* r2) = 0;
+  virtual void notifyMerge(ENode* r1, ENode* r2) = 0;
 };
 
 std::unique_ptr<Mam> mkMam(SmtContext& ctx, QuantifierManager& qm);

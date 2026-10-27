@@ -87,24 +87,23 @@ void Z3Module::check(theory::Theory::Effort e, QEffort quant_e)
   {
     return;
   }
-  // -o inst-strategy prints a line per call that made instances, as for the
+  // -o inst-strategy prints a line per call that sent lemmas, as for the
   // other modules, which count them through the inference manager; the core
-  // sends its instances itself, and counts them. It is called at every
-  // standard effort check, most of which make none.
+  // sends its lemmas itself, rather than buffering them. It is called at
+  // every standard effort check, most of which send none.
   bool printing = isOutputOn(OutputTag::INST_STRATEGY);
-  const Statistics& stats = d_core->getContext().getStats();
-  uint64_t numInstances = stats.d_numInstances;
+  uint32_t numLemmas = d_qim.numSentLemmas();
   clock_t start = printing ? clock() : 0;
   // the literals asserted since the last check, then the core
   d_tracker->flush(d_qstate);
   d_core->check(e);
-  if (printing && stats.d_numInstances > numInstances)
+  if (printing && d_qim.numSentLemmas() > numLemmas)
   {
     double time = static_cast<double>(clock() - start)
                   / static_cast<double>(CLOCKS_PER_SEC);
     std::ostream& out = output(OutputTag::INST_STRATEGY);
     out << "(inst-strategy " << identify();
-    out << " :inst " << (stats.d_numInstances - numInstances);
+    out << " :inst " << (d_qim.numSentLemmas() - numLemmas);
     out << " :time " << time;
     if (d_qstate.isInConflict())
     {

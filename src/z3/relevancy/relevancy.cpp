@@ -21,17 +21,17 @@
 namespace cvc5::internal {
 namespace z3 {
 
-void SimpleRelevancyEh::operator()(RelevancyPropagator& rp)
+void SimpleRelevancyHandler::operator()(RelevancyPropagator& rp)
 {
   rp.markAsRelevant(d_target);
 }
 
 namespace {
 
-class AndRelevancyEh : public RelevancyEh
+class AndRelevancyHandler : public RelevancyHandler
 {
  public:
-  AndRelevancyEh(TNode p) : d_parent(p) {}
+  AndRelevancyHandler(TNode p) : d_parent(p) {}
   void operator()(RelevancyPropagator& rp) override
   {
     if (rp.isRelevant(d_parent))
@@ -44,10 +44,10 @@ class AndRelevancyEh : public RelevancyEh
   TNode d_parent;
 };
 
-class OrRelevancyEh : public RelevancyEh
+class OrRelevancyHandler : public RelevancyHandler
 {
  public:
-  OrRelevancyEh(TNode p) : d_parent(p) {}
+  OrRelevancyHandler(TNode p) : d_parent(p) {}
   void operator()(RelevancyPropagator& rp) override
   {
     if (rp.isRelevant(d_parent))
@@ -60,10 +60,10 @@ class OrRelevancyEh : public RelevancyEh
   TNode d_parent;
 };
 
-class ImpliesRelevancyEh : public RelevancyEh
+class ImpliesRelevancyHandler : public RelevancyHandler
 {
  public:
-  ImpliesRelevancyEh(TNode p) : d_parent(p) {}
+  ImpliesRelevancyHandler(TNode p) : d_parent(p) {}
   void operator()(RelevancyPropagator& rp) override
   {
     if (rp.isRelevant(d_parent))
@@ -76,10 +76,10 @@ class ImpliesRelevancyEh : public RelevancyEh
   TNode d_parent;
 };
 
-class IteRelevancyEh : public RelevancyEh
+class IteRelevancyHandler : public RelevancyHandler
 {
  public:
-  IteRelevancyEh(TNode p) : d_parent(p) {}
+  IteRelevancyHandler(TNode p) : d_parent(p) {}
   void operator()(RelevancyPropagator& rp) override
   {
     if (rp.isRelevant(d_parent))
@@ -92,7 +92,7 @@ class IteRelevancyEh : public RelevancyEh
   TNode d_parent;
 };
 
-class IteTermRelevancyEh : public RelevancyEh
+class IteTermRelevancyHandler : public RelevancyHandler
 {
  public:
  private:
@@ -123,54 +123,54 @@ void RelevancyPropagator::addDependency(TNode src, TNode target)
   }
   else
   {
-    addHandler(src, mkRelevancyEh(SimpleRelevancyEh(target)));
+    addHandler(src, mkRelevancyHandler(SimpleRelevancyHandler(target)));
   }
 }
 
-RelevancyEh* RelevancyPropagator::mkOrRelevancyEh(TNode n)
+RelevancyHandler* RelevancyPropagator::mkOrRelevancyHandler(TNode n)
 {
   Assert(n.getKind() == Kind::OR);
-  return mkRelevancyEh(OrRelevancyEh(n));
+  return mkRelevancyHandler(OrRelevancyHandler(n));
 }
 
-RelevancyEh* RelevancyPropagator::mkImpliesRelevancyEh(TNode n)
+RelevancyHandler* RelevancyPropagator::mkImpliesRelevancyHandler(TNode n)
 {
   Assert(n.getKind() == Kind::IMPLIES);
-  return mkRelevancyEh(ImpliesRelevancyEh(n));
+  return mkRelevancyHandler(ImpliesRelevancyHandler(n));
 }
 
-RelevancyEh* RelevancyPropagator::mkAndRelevancyEh(TNode n)
+RelevancyHandler* RelevancyPropagator::mkAndRelevancyHandler(TNode n)
 {
   Assert(n.getKind() == Kind::AND);
-  return mkRelevancyEh(AndRelevancyEh(n));
+  return mkRelevancyHandler(AndRelevancyHandler(n));
 }
 
-RelevancyEh* RelevancyPropagator::mkIteRelevancyEh(TNode n)
+RelevancyHandler* RelevancyPropagator::mkIteRelevancyHandler(TNode n)
 {
   Assert(n.getKind() == Kind::ITE);
-  return mkRelevancyEh(IteRelevancyEh(n));
+  return mkRelevancyHandler(IteRelevancyHandler(n));
 }
 
-RelevancyPropagator::RelevancyEhs* RelevancyPropagator::getHandlers(
+RelevancyPropagator::RelevancyHandlers* RelevancyPropagator::getHandlers(
     TNode n) const
 {
-  auto it = d_relevantEhs.find(n);
-  return it == d_relevantEhs.end() ? nullptr : it->second;
+  auto it = d_relevantHandlers.find(n);
+  return it == d_relevantHandlers.end() ? nullptr : it->second;
 }
 
-void RelevancyPropagator::setHandlers(TNode n, RelevancyEhs* ehs)
+void RelevancyPropagator::setHandlers(TNode n, RelevancyHandlers* ehs)
 {
   if (ehs == nullptr)
   {
-    d_relevantEhs.erase(n);
+    d_relevantHandlers.erase(n);
   }
   else
   {
-    d_relevantEhs[n] = ehs;
+    d_relevantHandlers[n] = ehs;
   }
 }
 
-RelevancyPropagator::RelevancyEhs* RelevancyPropagator::getWatches(
+RelevancyPropagator::RelevancyHandlers* RelevancyPropagator::getWatches(
     TNode n, bool val) const
 {
   size_t idx = val ? 1 : 0;
@@ -183,7 +183,7 @@ RelevancyPropagator::RelevancyEhs* RelevancyPropagator::getWatches(
   return it == d_watches[idx].end() ? nullptr : it->second;
 }
 
-void RelevancyPropagator::setWatches(TNode n, bool val, RelevancyEhs* ehs)
+void RelevancyPropagator::setWatches(TNode n, bool val, RelevancyHandlers* ehs)
 {
   size_t idx = val ? 1 : 0;
   if (ehs == nullptr)
@@ -197,7 +197,7 @@ void RelevancyPropagator::setWatches(TNode n, bool val, RelevancyEhs* ehs)
   }
 }
 
-void RelevancyPropagator::addHandler(TNode source, RelevancyEh* eh)
+void RelevancyPropagator::addHandler(TNode source, RelevancyHandler* eh)
 {
   if (isRelevantCore(source))
   {
@@ -206,13 +206,14 @@ void RelevancyPropagator::addHandler(TNode source, RelevancyEh* eh)
   else
   {
     Assert(eh != nullptr);
-    d_trail.push_back(EhTrail(source));
+    d_trail.push_back(HandlerTrail(source));
     setHandlers(source,
-                new (getTrailStack()) RelevancyEhs(eh, getHandlers(source)));
+                new (getTrailStack())
+                    RelevancyHandlers(eh, getHandlers(source)));
   }
 }
 
-void RelevancyPropagator::addWatch(TNode n, bool val, RelevancyEh* eh)
+void RelevancyPropagator::addWatch(TNode n, bool val, RelevancyHandler* eh)
 {
   LBool lval = d_core.findAssignment(n);
   if (!val)
@@ -224,9 +225,11 @@ void RelevancyPropagator::addWatch(TNode n, bool val, RelevancyEh* eh)
     case L_FALSE: return;
     case L_UNDEF:
       Assert(eh != nullptr);
-      setWatches(
-          n, val, new (getTrailStack()) RelevancyEhs(eh, getWatches(n, val)));
-      d_trail.push_back(EhTrail(n, val));
+      setWatches(n,
+                 val,
+                 new (getTrailStack())
+                     RelevancyHandlers(eh, getWatches(n, val)));
+      d_trail.push_back(HandlerTrail(n, val));
       break;
     case L_TRUE: eh->operator()(*this, n, val); break;
   }
@@ -268,22 +271,22 @@ void RelevancyPropagator::undoTrail(size_t oldLim)
   while (i != oldLim)
   {
     --i;
-    EhTrail& t = d_trail[i];
+    HandlerTrail& t = d_trail[i];
     TNode n = t.getNode();
-    RelevancyEhs* ehs;
+    RelevancyHandlers* ehs;
     switch (t.getKind())
     {
-      case EhTrail::Kind::POS_WATCH:
+      case HandlerTrail::Kind::POS_WATCH:
         ehs = getWatches(n, true);
         Assert(ehs != nullptr);
         setWatches(n, true, ehs->tail());
         break;
-      case EhTrail::Kind::NEG_WATCH:
+      case HandlerTrail::Kind::NEG_WATCH:
         ehs = getWatches(n, false);
         Assert(ehs != nullptr);
         setWatches(n, false, ehs->tail());
         break;
-      case EhTrail::Kind::HANDLER:
+      case HandlerTrail::Kind::HANDLER:
         ehs = getHandlers(n);
         Assert(ehs != nullptr);
         setHandlers(n, ehs->tail());
@@ -298,7 +301,7 @@ void RelevancyPropagator::setRelevant(TNode n)
   d_theory.getStats().d_numSetRelevant++;
   setx(d_isRelevant, n.getId(), true, false);
   d_relevantExprs.push_back(n);
-  d_core.relevantEh(n);
+  d_core.notifyRelevant(n);
 }
 
 void RelevancyPropagator::markAsRelevant(TNode n)
@@ -486,7 +489,7 @@ void RelevancyPropagator::propagate()
       }
     }
 
-    RelevancyEhs* ehs = getHandlers(n);
+    RelevancyHandlers* ehs = getHandlers(n);
     while (ehs != nullptr)
     {
       ehs->head()->operator()(*this, n);
@@ -496,7 +499,7 @@ void RelevancyPropagator::propagate()
   d_propagating = false;
 }
 
-void RelevancyPropagator::assignEh(TNode n, bool val)
+void RelevancyPropagator::notifyAssigned(TNode n, bool val)
 {
   if (isRelevantCore(n))
   {
@@ -508,7 +511,7 @@ void RelevancyPropagator::assignEh(TNode n, bool val)
       default: break;
     }
   }
-  RelevancyEhs* ehs = getWatches(n, val);
+  RelevancyHandlers* ehs = getWatches(n, val);
   while (ehs != nullptr)
   {
     ehs->head()->operator()(*this, n, val);

@@ -50,7 +50,7 @@ class TheorySide
   /** Whether the theory side has propagation work pending. */
   virtual bool hasPendingTheoryWork() const = 0;
   /** Called at the start of a search. */
-  virtual void initSearchEh() = 0;
+  virtual void initSearch() = 0;
   /** The final check, when every relevant Boolean variable is assigned. */
   virtual FinalCheckStatus finalCheck() = 0;
   /** Push a scope of the theory side, after the Boolean side's. */
@@ -80,7 +80,7 @@ class TheorySide
   /** The atom of l was assigned: propagate it on the theory side. */
   virtual void enqueueAtom(Literal l) = 0;
   /** n became relevant. */
-  virtual void relevantEh(TNode n) = 0;
+  virtual void notifyRelevant(TNode n) = 0;
 
   // ------------------------------------------------------------ utilities
   /**

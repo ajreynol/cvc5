@@ -32,7 +32,6 @@
 #include "theory/smt_engine_subsolver.h"
 #include "theory/theory.h"
 #include "util/resource_manager.h"
-#include "util/statistics_registry.h"
 #include "z3/quantifiers/quantifier_manager.h"
 #include "z3/util/types.h"
 
@@ -45,6 +44,7 @@ namespace {
 
 SmtContext::SmtContext(Env& env)
     : EnvObj(env),
+      d_stats(statisticsRegistry()),
       d_prop(env, *this, d_stats),
       d_normalizer(env.getNodeManager()),
       d_qmanager(nullptr),
@@ -55,7 +55,6 @@ SmtContext::SmtContext(Env& env)
       d_mkENodeTrail(*this)
 {
   d_qmanager.reset(new QuantifierManager(*this));
-  registerStatistics();
   init();
 }
 
@@ -78,7 +77,7 @@ void SmtContext::flush()
   d_qmanager.reset(nullptr);
   if (d_isDiseqTmp != nullptr)
   {
-    d_isDiseqTmp->delEh(false);
+    d_isDiseqTmp->destroy(false);
     ENode::delDummy(d_isDiseqTmp);
     d_isDiseqTmp = nullptr;
   }
@@ -173,7 +172,7 @@ void SmtContext::addEq(ENode* n1, ENode* n2)
 
   size_t r2NumParents = r2->getNumParents();
 
-  d_qmanager->addEqEh(r1, r2);
+  d_qmanager->notifyMerge(r1, r2);
 
   removeParentsFromCgTable(r1);
 
@@ -735,7 +734,7 @@ void SmtContext::propagateBoolVarENode(BoolVar v)
   }
 }
 
-void SmtContext::relevantEh(TNode n)
+void SmtContext::notifyRelevant(TNode n)
 {
   if (!isApp(n))
   {
@@ -743,7 +742,7 @@ void SmtContext::relevantEh(TNode n)
   }
   if (eInternalized(n))
   {
-    d_qmanager->relevantEh(getENode(n));
+    d_qmanager->notifyRelevant(getENode(n));
   }
 }
 
@@ -774,7 +773,7 @@ bool SmtContext::theoryPropagate()
   return true;
 }
 
-void SmtContext::assignQuantifier(TNode q) { d_qmanager->assignEh(q); }
+void SmtContext::assignQuantifier(TNode q) { d_qmanager->notifyAssigned(q); }
 
 void SmtContext::notifyBoolVarDeleted(TNode n)
 {
@@ -924,77 +923,25 @@ void SmtContext::skolemize(TNode q)
   internalizePreprocessed(norm, defs, generationOf(q), false);
 }
 
-void SmtContext::initSearchEh() { d_qmanager->initSearchEh(); }
+void SmtContext::initSearch() { d_qmanager->initSearch(); }
 
 FinalCheckStatus SmtContext::finalCheck()
 {
   d_stats.d_numFinalChecks++;
-  Trace("z3-events") << "FINALCHECK " << d_stats.d_numFinalChecks << std::endl;
+  Trace("z3-events") << "FINALCHECK " << d_stats.d_numFinalChecks.get()
+                     << std::endl;
 
-  FinalCheckStatus result = d_qmanager->finalCheckEh(false);
+  FinalCheckStatus result = d_qmanager->finalCheck(false);
   if (result != FC_DONE)
   {
     return result;
   }
-  result = d_qmanager->finalCheckEh(true);
+  result = d_qmanager->finalCheck(true);
   if (result != FC_CONTINUE && canPropagate())
   {
     return FC_CONTINUE;
   }
   return result;
-}
-
-void SmtContext::registerStatistics()
-{
-  StatisticsRegistry& reg = statisticsRegistry();
-  // Note the handle is stored first and only then pointed at the counter:
-  // the temporary returned by registerReference detaches the counter when it
-  // is destroyed at the end of the statement.
-  auto add = [&](const char* name, const uint64_t& v) {
-    d_regStats.push_back(reg.registerReference<uint64_t>(name, false));
-    d_regStats.back().set(v);
-  };
-  add("z3::propagations", d_stats.d_numPropagations);
-  add("z3::binPropagations", d_stats.d_numBinPropagations);
-  add("z3::addEq", d_stats.d_numAddEq);
-  add("z3::finalChecks", d_stats.d_numFinalChecks);
-  add("z3::assertedFormulas", d_stats.d_numAssertedFormulas);
-  add("z3::mkBoolVar", d_stats.d_numMkBoolVar);
-  add("z3::delBoolVar", d_stats.d_numDelBoolVar);
-  add("z3::mkENode", d_stats.d_numMkENode);
-  add("z3::delENode", d_stats.d_numDelENode);
-  add("z3::mkClause", d_stats.d_numMkClause);
-  add("z3::delClause", d_stats.d_numDelClause);
-  add("z3::mkBinClause", d_stats.d_numMkBinClause);
-  add("z3::mkLits", d_stats.d_numMkLits);
-  add("z3::maxGeneration", d_stats.d_maxGeneration);
-  add("z3::assignments", d_stats.d_numAssignments);
-  add("z3::instances", d_stats.d_numInstances);
-  add("z3::skolemizations", d_stats.d_numSkolemizations);
-  add("z3::lazyInstances", d_stats.d_numLazyInstances);
-  add("z3::instancesCheckerSat", d_stats.d_numInstancesCheckerSat);
-  add("z3::instancesSimplifyTrue", d_stats.d_numInstancesSimplifyTrue);
-  add("z3::hostChecks", d_stats.d_numHostChecks);
-  add("z3::hostFullChecks", d_stats.d_numHostFullChecks);
-  add("z3::hostPops", d_stats.d_numHostPops);
-  add("z3::hostScopesPopped", d_stats.d_numHostScopesPopped);
-  add("z3::hostRestarts", d_stats.d_numHostRestarts);
-  add("z3::hostLemmas", d_stats.d_numHostLemmas);
-  add("z3::hostDuplicateLemmas", d_stats.d_numHostDuplicateLemmas);
-  add("z3::hostSplits", d_stats.d_numHostSplits);
-  add("z3::shadowMerges", d_stats.d_numShadowMerges);
-  add("z3::shadowConflicts", d_stats.d_numShadowConflicts);
-  add("z3::hostDelayedUnits", d_stats.d_numHostDelayedUnits);
-  add("z3::missedInstances", d_stats.d_numMissedInstances);
-  add("z3::mamRelevantEh", d_stats.d_numMamRelevantEh);
-  add("z3::mamRelevantApp", d_stats.d_numMamRelevantApp);
-  add("z3::mamTrees", d_stats.d_numMamTrees);
-  add("z3::setRelevant", d_stats.d_numSetRelevant);
-  add("z3::mamEqCandidates", d_stats.d_numMamEqCandidates);
-  add("z3::mamAddEq", d_stats.d_numMamAddEq);
-  add("z3::mamCandidates", d_stats.d_numMamCandidates);
-  add("z3::mamExecs", d_stats.d_numMamExecs);
-  add("z3::mamMatches", d_stats.d_numMamMatches);
 }
 
 }  // namespace z3

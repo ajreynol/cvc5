@@ -2917,11 +2917,11 @@ class MamImpl final : public Mam
    * the list of candidate enodes for matching, and the method only updates
    * the labels.
    */
-  void relevantEh(ENode* n, bool lazy) override
+  void notifyRelevant(ENode* n, bool lazy) override
   {
     if (!lazy)
     {
-      d_context.getStats().d_numMamRelevantEh++;
+      d_context.getStats().d_numMamNotifyRelevant++;
       if (n->getNumArgs() > 0)
       {
         d_context.getStats().d_numMamRelevantApp++;
@@ -2955,7 +2955,7 @@ class MamImpl final : public Mam
     return !d_toMatch.empty() || !d_newPatterns.empty();
   }
 
-  void addEqEh(ENode* r1, ENode* r2) override
+  void notifyMerge(ENode* r1, ENode* r2) override
   {
     d_context.getStats().d_numMamAddEq++;
     ENode* oldR1 = d_r1;

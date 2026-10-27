@@ -129,8 +129,7 @@ void SmtContext::internalizeAssertion(TNode n, uint32_t generation)
 {
   uint32_t oldGeneration = d_generation;
   d_generation = generation;
-  d_stats.d_maxGeneration =
-      std::max<uint64_t>(generation, d_stats.d_maxGeneration);
+  d_stats.d_maxGeneration.maxAssign(generation);
   Assert(n.getType().isBoolean());
   d_prop.assertRoot(n);
   d_generation = oldGeneration;
@@ -140,8 +139,7 @@ void SmtContext::internalize(TNode n, bool gateCtx, uint32_t generation)
 {
   uint32_t oldGeneration = d_generation;
   d_generation = generation;
-  d_stats.d_maxGeneration =
-      std::max<uint64_t>(generation, d_stats.d_maxGeneration);
+  d_stats.d_maxGeneration.maxAssign(generation);
   internalizeRec(n, gateCtx);
   d_generation = oldGeneration;
 }
@@ -607,7 +605,7 @@ void SmtContext::undoMkENode()
     Assert(d_decl2ENodes[declId].back() == e);
     d_decl2ENodes[declId].pop_back();
   }
-  e->delEh();
+  e->destroy();
   Assert(d_eInternalizedStack.size() == d_enodes.size());
   d_enodes.pop_back();
   d_eInternalizedStack.pop_back();

@@ -18,84 +18,131 @@
 #ifndef CVC5__Z3__UTIL__STATISTICS_H
 #define CVC5__Z3__UTIL__STATISTICS_H
 
-#include <cstdint>
-#include <cstring>
+#include "util/statistics_registry.h"
+#include "util/statistics_stats.h"
 
 namespace cvc5::internal {
 namespace z3 {
 
+/** The statistics of the core, which cvc5's --stats shows. */
 struct Statistics
 {
-  uint64_t d_numPropagations;
-  uint64_t d_numBinPropagations;
-  uint64_t d_numAddEq;
-  uint64_t d_numFinalChecks;
-  uint64_t d_numMkBoolVar;
-  uint64_t d_numDelBoolVar;
-  uint64_t d_numMkENode;
-  uint64_t d_numDelENode;
-  uint64_t d_numMkClause;
-  uint64_t d_numDelClause;
-  uint64_t d_numMkBinClause;
-  uint64_t d_numMkLits;
-  uint64_t d_maxGeneration;
-  uint64_t d_numAssignments;
+  Statistics(StatisticsRegistry& sr);
+
+  IntStat d_numPropagations;
+  IntStat d_numBinPropagations;
+  IntStat d_numAddEq;
+  IntStat d_numFinalChecks;
+  IntStat d_numMkBoolVar;
+  IntStat d_numDelBoolVar;
+  IntStat d_numMkENode;
+  IntStat d_numDelENode;
+  IntStat d_numMkClause;
+  IntStat d_numDelClause;
+  IntStat d_numMkBinClause;
+  IntStat d_numMkLits;
+  IntStat d_maxGeneration;
+  IntStat d_numAssignments;
   /** assertions handed to the core */
-  uint64_t d_numAssertedFormulas;
+  IntStat d_numAssertedFormulas;
   /** skolemizations of quantifiers assigned false */
-  uint64_t d_numSkolemizations;
+  IntStat d_numSkolemizations;
   /** quantifier instantiations produced by E-matching */
-  uint64_t d_numInstances;
+  IntStat d_numInstances;
   /** instantiations dropped because their cost exceeded the lazy threshold */
-  uint64_t d_numLazyInstances;
+  IntStat d_numLazyInstances;
   /** instances the checker found already satisfied */
-  uint64_t d_numInstancesCheckerSat;
+  IntStat d_numInstancesCheckerSat;
   /** instances whose body simplified to true */
-  uint64_t d_numInstancesSimplifyTrue;
+  IntStat d_numInstancesSimplifyTrue;
   /** checks at standard and full effort */
-  uint64_t d_numHostChecks;
-  uint64_t d_numHostFullChecks;
+  IntStat d_numHostChecks;
+  IntStat d_numHostFullChecks;
   /** pops of the core's scopes, and scopes popped */
-  uint64_t d_numHostPops;
-  uint64_t d_numHostScopesPopped;
+  IntStat d_numHostPops;
+  IntStat d_numHostScopesPopped;
   /** pops to the base level, which are cvc5's restarts */
-  uint64_t d_numHostRestarts;
+  IntStat d_numHostRestarts;
   /** lemmas sent, and lemmas not sent again */
-  uint64_t d_numHostLemmas;
-  uint64_t d_numHostDuplicateLemmas;
+  IntStat d_numHostLemmas;
+  IntStat d_numHostDuplicateLemmas;
   /** splitting lemmas for relevant, unassigned variables */
-  uint64_t d_numHostSplits;
+  IntStat d_numHostSplits;
   /** merges of the shadow from cvc5's theories */
-  uint64_t d_numShadowMerges;
+  IntStat d_numShadowMerges;
   /** conflicts of the shadow, left to cvc5's theories */
-  uint64_t d_numShadowConflicts;
+  IntStat d_numShadowConflicts;
   /** lemmas sent weakened, see HostCore::delayUnit */
-  uint64_t d_numHostDelayedUnits;
+  IntStat d_numHostDelayedUnits;
   /** matches that were already instantiated (Z3's missed instantiations) */
-  uint64_t d_numMissedInstances;
-  /** relevantEh calls the matcher received */
-  uint64_t d_numMamRelevantEh;
-  /** relevantEh calls for an enode with arguments */
-  uint64_t d_numMamRelevantApp;
+  IntStat d_numMissedInstances;
+  /** notifyRelevant calls the matcher received */
+  IntStat d_numMamNotifyRelevant;
+  /** notifyRelevant calls for an enode with arguments */
+  IntStat d_numMamRelevantApp;
   /** code trees created */
-  uint64_t d_numMamTrees;
+  IntStat d_numMamTrees;
   /** expressions marked relevant */
-  uint64_t d_numSetRelevant;
+  IntStat d_numSetRelevant;
   /** candidates found by the inverted path index when classes merge */
-  uint64_t d_numMamEqCandidates;
+  IntStat d_numMamEqCandidates;
   /** calls to the inverted path index */
-  uint64_t d_numMamAddEq;
+  IntStat d_numMamAddEq;
   /** enodes offered to a code tree as E-matching candidates */
-  uint64_t d_numMamCandidates;
+  IntStat d_numMamCandidates;
   /** code trees executed */
-  uint64_t d_numMamExecs;
+  IntStat d_numMamExecs;
   /** matches the matching abstract machine reported */
-  uint64_t d_numMamMatches;
-
-  Statistics() { reset(); }
-
-  void reset() { std::memset(this, 0, sizeof(Statistics)); }
+  IntStat d_numMamMatches;
 };
+
+inline Statistics::Statistics(StatisticsRegistry& sr)
+    : d_numPropagations(sr.registerInt("z3::propagations", false)),
+      d_numBinPropagations(sr.registerInt("z3::binPropagations", false)),
+      d_numAddEq(sr.registerInt("z3::addEq", false)),
+      d_numFinalChecks(sr.registerInt("z3::finalChecks", false)),
+      d_numMkBoolVar(sr.registerInt("z3::mkBoolVar", false)),
+      d_numDelBoolVar(sr.registerInt("z3::delBoolVar", false)),
+      d_numMkENode(sr.registerInt("z3::mkENode", false)),
+      d_numDelENode(sr.registerInt("z3::delENode", false)),
+      d_numMkClause(sr.registerInt("z3::mkClause", false)),
+      d_numDelClause(sr.registerInt("z3::delClause", false)),
+      d_numMkBinClause(sr.registerInt("z3::mkBinClause", false)),
+      d_numMkLits(sr.registerInt("z3::mkLits", false)),
+      d_maxGeneration(sr.registerInt("z3::maxGeneration", false)),
+      d_numAssignments(sr.registerInt("z3::assignments", false)),
+      d_numAssertedFormulas(sr.registerInt("z3::assertedFormulas", false)),
+      d_numSkolemizations(sr.registerInt("z3::skolemizations", false)),
+      d_numInstances(sr.registerInt("z3::instances", false)),
+      d_numLazyInstances(sr.registerInt("z3::lazyInstances", false)),
+      d_numInstancesCheckerSat(
+          sr.registerInt("z3::instancesCheckerSat", false)),
+      d_numInstancesSimplifyTrue(
+          sr.registerInt("z3::instancesSimplifyTrue", false)),
+      d_numHostChecks(sr.registerInt("z3::hostChecks", false)),
+      d_numHostFullChecks(sr.registerInt("z3::hostFullChecks", false)),
+      d_numHostPops(sr.registerInt("z3::hostPops", false)),
+      d_numHostScopesPopped(sr.registerInt("z3::hostScopesPopped", false)),
+      d_numHostRestarts(sr.registerInt("z3::hostRestarts", false)),
+      d_numHostLemmas(sr.registerInt("z3::hostLemmas", false)),
+      d_numHostDuplicateLemmas(
+          sr.registerInt("z3::hostDuplicateLemmas", false)),
+      d_numHostSplits(sr.registerInt("z3::hostSplits", false)),
+      d_numShadowMerges(sr.registerInt("z3::shadowMerges", false)),
+      d_numShadowConflicts(sr.registerInt("z3::shadowConflicts", false)),
+      d_numHostDelayedUnits(sr.registerInt("z3::hostDelayedUnits", false)),
+      d_numMissedInstances(sr.registerInt("z3::missedInstances", false)),
+      d_numMamNotifyRelevant(sr.registerInt("z3::mamRelevantEh", false)),
+      d_numMamRelevantApp(sr.registerInt("z3::mamRelevantApp", false)),
+      d_numMamTrees(sr.registerInt("z3::mamTrees", false)),
+      d_numSetRelevant(sr.registerInt("z3::setRelevant", false)),
+      d_numMamEqCandidates(sr.registerInt("z3::mamEqCandidates", false)),
+      d_numMamAddEq(sr.registerInt("z3::mamAddEq", false)),
+      d_numMamCandidates(sr.registerInt("z3::mamCandidates", false)),
+      d_numMamExecs(sr.registerInt("z3::mamExecs", false)),
+      d_numMamMatches(sr.registerInt("z3::mamMatches", false))
+{
+}
 
 }  // namespace z3
 }  // namespace cvc5::internal

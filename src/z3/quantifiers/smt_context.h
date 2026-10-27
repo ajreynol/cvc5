@@ -30,7 +30,6 @@
 #ifndef CVC5__Z3__QUANTIFIERS__SMT_CONTEXT_H
 #define CVC5__Z3__QUANTIFIERS__SMT_CONTEXT_H
 
-#include <deque>
 #include <functional>
 #include <memory>
 #include <set>
@@ -40,7 +39,6 @@
 
 #include "expr/node.h"
 #include "smt/env_obj.h"
-#include "util/statistics_stats.h"
 #include "z3/quantifiers/cg_table.h"
 #include "z3/quantifiers/enode.h"
 #include "z3/quantifiers/quantifier_manager.h"
@@ -69,12 +67,6 @@ class SmtContext final : protected EnvObj, public TheorySide
  public:
   /** The search statistics. Public, as in Z3. */
   Statistics d_stats;
-  /**
-   * Handles keeping the counters above registered with cvc5. A deque is used
-   * because a ReferenceStat detaches from its counter when a copy of it is
-   * destroyed, so the stored handles must never be relocated.
-   */
-  std::deque<ReferenceStat<uint64_t>> d_regStats;
 
   SmtContext(Env& env);
   virtual ~SmtContext();
@@ -116,7 +108,7 @@ class SmtContext final : protected EnvObj, public TheorySide
   bool hasPendingTheoryWork() const override;
 
   /** Called at the start of a search. */
-  void initSearchEh() override;
+  void initSearch() override;
 
   /** The final check, when every relevant Boolean variable is assigned. */
   FinalCheckStatus finalCheck() override;
@@ -430,9 +422,9 @@ class SmtContext final : protected EnvObj, public TheorySide
 
   /**
    * Notify the quantifier manager and the theories that n became relevant;
-   * called by PropCore::relevantEh.
+   * called by PropCore::notifyRelevant.
    */
-  void relevantEh(TNode n) override;
+  void notifyRelevant(TNode n) override;
 
   bool isRelevantCore(TNode n) const { return d_prop.isRelevantCore(n); }
 
@@ -473,12 +465,6 @@ class SmtContext final : protected EnvObj, public TheorySide
   uint32_t getDeclId(TNode decl);
   /** The dense id of decl, or UINT32_MAX if it has none yet. */
   uint32_t getDeclIdOption(TNode decl) const;
-
-  /**
-   * Expose the core's counters through cvc5's --stats, so that the search
-   * behavior can be compared against Z3's own -st output.
-   */
-  void registerStatistics();
 
   bool resourceLimitsExceeded() { return d_prop.resourceLimitsExceeded(); }
 

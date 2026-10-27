@@ -67,13 +67,13 @@ class QiQueue
 
   bool hasWork() const { return !d_newEntries.empty(); }
 
-  void initSearchEh();
+  void initSearch();
 
   /**
    * Instantiate the delayed entries whose cost is within the lazy threshold.
    * Returns true if nothing was instantiated, i.e. the final check succeeds.
    */
-  bool finalCheckEh();
+  bool finalCheck();
 
   void pushScope();
   void popScope(size_t numScopes);

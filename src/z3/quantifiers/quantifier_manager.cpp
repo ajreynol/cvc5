@@ -130,17 +130,17 @@ bool QuantifierManager::addInstance(TNode q,
   return f != nullptr;
 }
 
-void QuantifierManager::initSearchEh()
+void QuantifierManager::initSearch()
 {
   for (const Node& q : d_quantifiers)
   {
     getStat(q)->resetNumInstancesCurrSearch();
   }
-  d_queue.initSearchEh();
+  d_queue.initSearch();
   d_lazyMatchingIdx = 0;
 }
 
-void QuantifierManager::assignEh(TNode q)
+void QuantifierManager::notifyAssigned(TNode q)
 {
   d_active = true;
   // A multi-pattern is only matched eagerly up to a bound, since matching
@@ -191,30 +191,30 @@ void QuantifierManager::assignEh(TNode q)
   }
 }
 
-void QuantifierManager::addEqEh(ENode* n1, ENode* n2)
+void QuantifierManager::notifyMerge(ENode* n1, ENode* n2)
 {
   if (!empty())
   {
-    d_mam->addEqEh(n1, n2);
+    d_mam->notifyMerge(n1, n2);
   }
 }
 
-void QuantifierManager::relevantEh(ENode* n)
+void QuantifierManager::notifyRelevant(ENode* n)
 {
   if (!empty())
   {
-    d_mam->relevantEh(n, false);
-    d_lazyMam->relevantEh(n, true);
+    d_mam->notifyRelevant(n, false);
+    d_lazyMam->notifyRelevant(n, true);
   }
 }
 
-FinalCheckStatus QuantifierManager::finalCheckEh(bool full)
+FinalCheckStatus QuantifierManager::finalCheck(bool full)
 {
   if (!full)
   {
     return FC_DONE;
   }
-  FinalCheckStatus result = d_queue.finalCheckEh() ? FC_DONE : FC_CONTINUE;
+  FinalCheckStatus result = d_queue.finalCheck() ? FC_DONE : FC_CONTINUE;
   if (!empty() && d_lazyMatchingIdx < s_maxLazyMultipatternMatching)
   {
     d_lazyMam->rematch();

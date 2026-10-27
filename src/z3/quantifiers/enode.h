@@ -182,7 +182,7 @@ class ENode
   }
 
   /** Release this node, running its destructor. */
-  void delEh(bool updateChildrenParent = true);
+  void destroy(bool updateChildrenParent = true);
 
   void markAsInterpreted()
   {

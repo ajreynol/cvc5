@@ -57,10 +57,10 @@ namespace z3 {
  * The theory side, SmtContext, owns this object. This side calls it, through
  * the TheorySide interface,
  * theoryPropagate and hasPendingTheoryWork for the propagation fixpoint,
- * finalCheck, initSearchEh, and pushTheoryScope, popTheoryScopeBegin and
+ * finalCheck, initSearch, and pushTheoryScope, popTheoryScopeBegin and
  * popTheoryScopeEnd when scopes are pushed and popped; besides that, it
  * hands it the assigned atoms (enqueueAtom), notifies it of relevant terms
- * (relevantEh), and has it internalize the asserted formulas.
+ * (notifyRelevant), and has it internalize the asserted formulas.
  */
 class PropCore : protected EnvObj
 {
@@ -226,7 +226,7 @@ class PropCore : protected EnvObj
     d_relevancyPropagator->addDependency(source, target);
   }
 
-  void addRelWatch(Literal l, RelevancyEh* eh)
+  void addRelWatch(Literal l, RelevancyHandler* eh)
   {
     d_relevancyPropagator->addWatch(boolVar2Expr(l.var()), !l.sign(), eh);
   }
@@ -236,7 +236,7 @@ class PropCore : protected EnvObj
    * relevant. This side requeues an assigned atom that now reaches the theory
    * side; then the theory side is notified.
    */
-  void relevantEh(TNode n);
+  void notifyRelevant(TNode n);
 
   /** Destroy the relevancy propagator, when the context is flushed. */
   void flushRelevancy() { d_relevancyPropagator.reset(nullptr); }

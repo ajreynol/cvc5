@@ -70,14 +70,14 @@ class QuantifierManager
                    ENode* const* bindings,
                    uint32_t maxGeneration);
 
-  void initSearchEh();
+  void initSearch();
   /** Invoked whenever q is assigned to true. */
-  void assignEh(TNode q);
+  void notifyAssigned(TNode q);
   /** Invoked whenever n1 and n2 are merged into the same class. */
-  void addEqEh(ENode* n1, ENode* n2);
+  void notifyMerge(ENode* n1, ENode* n2);
   /** Invoked whenever n is marked as relevant. */
-  void relevantEh(ENode* n);
-  FinalCheckStatus finalCheckEh(bool full);
+  void notifyRelevant(ENode* n);
+  FinalCheckStatus finalCheck(bool full);
 
   bool canPropagate() const;
   void propagate();

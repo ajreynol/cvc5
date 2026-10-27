@@ -440,7 +440,7 @@ void PropCore::mkRootClause(Literal l1, Literal l2)
 
 void PropCore::addAndRelWatches(TNode n)
 {
-  RelevancyEh* eh = d_relevancyPropagator->mkAndRelevancyEh(n);
+  RelevancyHandler* eh = d_relevancyPropagator->mkAndRelevancyHandler(n);
   for (const Node& arg : n)
   {
     // if one child is assigned false, the and-parent must be notified
@@ -450,7 +450,7 @@ void PropCore::addAndRelWatches(TNode n)
 
 void PropCore::addOrRelWatches(TNode n)
 {
-  RelevancyEh* eh = d_relevancyPropagator->mkOrRelevancyEh(n);
+  RelevancyHandler* eh = d_relevancyPropagator->mkOrRelevancyHandler(n);
   for (const Node& arg : n)
   {
     // if one child is assigned true, the or-parent must be notified
@@ -460,14 +460,14 @@ void PropCore::addOrRelWatches(TNode n)
 
 void PropCore::addImpliesRelWatches(TNode n)
 {
-  RelevancyEh* eh = d_relevancyPropagator->mkImpliesRelevancyEh(n);
+  RelevancyHandler* eh = d_relevancyPropagator->mkImpliesRelevancyHandler(n);
   addRelWatch(~getLiteral(n[0]), eh);
   addRelWatch(getLiteral(n[1]), eh);
 }
 
 void PropCore::addIteRelWatches(TNode n)
 {
-  RelevancyEh* eh = d_relevancyPropagator->mkIteRelevancyEh(n);
+  RelevancyHandler* eh = d_relevancyPropagator->mkIteRelevancyHandler(n);
   Literal l = getLiteral(n[0]);
   // when the condition of an ite is assigned, the ite-parent is notified
   addRelWatch(l, eh);
@@ -559,7 +559,7 @@ void PropCore::mkIteCnstr(TNode n)
 
 // ----------------------------------------------------------------- relevancy
 
-void PropCore::relevantEh(TNode n)
+void PropCore::notifyRelevant(TNode n)
 {
   if (bInternalized(n))
   {
@@ -579,7 +579,7 @@ void PropCore::relevantEh(TNode n)
       d_hostRelevant.push_back(n);
     }
   }
-  d_ctx.relevantEh(n);
+  d_ctx.notifyRelevant(n);
 }
 
 void PropCore::propagateRelevancy(size_t qhead)
@@ -592,7 +592,7 @@ void PropCore::propagateRelevancy(size_t qhead)
     qhead++;
     BoolVar var = l.var();
     TNode n = boolVar2Expr(var);
-    d_relevancyPropagator->assignEh(n, !l.sign());
+    d_relevancyPropagator->notifyAssigned(n, !l.sign());
   }
   d_relevancyPropagator->propagate();
 }
@@ -1122,10 +1122,11 @@ Clause* PropCore::mkClause(size_t numLits, Literal* lits)
 
 void PropCore::hostInit()
 {
-  d_stats.d_numAssertedFormulas = d_assertedFormulas.size();
+  d_stats.d_numAssertedFormulas =
+      static_cast<int64_t>(d_assertedFormulas.size());
   popToBaseLvl();
   internalizeAssertions();
-  d_ctx.initSearchEh();
+  d_ctx.initSearch();
   d_resourceOut = false;
   d_searching = true;
 }
