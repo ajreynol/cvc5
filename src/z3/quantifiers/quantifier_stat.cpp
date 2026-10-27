@@ -73,7 +73,7 @@ QuantifierStat* QuantifierStatGen::operator()(TNode q, uint32_t generation)
 {
   reset();
   QuantifierStat* r = new (d_trailStack) QuantifierStat(generation);
-  d_todo.push_back(Entry(getQuantBody(q)));
+  d_todo.push_back(Entry(q[1]));
   while (!d_todo.empty())
   {
     Entry e = d_todo.back();

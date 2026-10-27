@@ -55,7 +55,6 @@
 #include "z3/util/ast.h"
 #include "z3/util/statistics.h"
 #include "z3/util/trail.h"
-#include "z3/util/types.h"
 
 namespace cvc5::internal {
 namespace z3 {
@@ -789,7 +788,7 @@ class Compiler
       setRegister(i + 1, p[i]);
       d_todo.push_back(i + 1);
     }
-    size_t numDecls = getNumDecls(qa);
+    size_t numDecls = qa[0].getNumChildren();
     if (numDecls > d_vars.size())
     {
       d_vars.resize(numDecls, -1);
@@ -1231,7 +1230,7 @@ class Compiler
     }
 
     // the pattern must capture every variable
-    size_t numDecls = getNumDecls(d_qa);
+    size_t numDecls = d_qa[0].getNumChildren();
     for (size_t i = 0; i < numDecls; ++i)
     {
       if (d_vars[i] == -1)
@@ -3390,7 +3389,7 @@ class MamImpl final : public Mam
   /** Update the inverted path index. */
   void updateFilters(TNode q, TNode mp)
   {
-    size_t numVars = getNumDecls(q);
+    size_t numVars = q[0].getNumChildren();
     if (numVars >= d_varPaths.size())
     {
       d_varPaths.resize(numVars + 1);

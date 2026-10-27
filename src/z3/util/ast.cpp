@@ -49,22 +49,6 @@ bool isCommutative(TNode n)
          && theory::quantifiers::TermUtil::isComm(n.getKind());
 }
 
-void getPatterns(TNode q, std::vector<std::vector<Node>>& patterns)
-{
-  Assert(isQuantifier(q));
-  if (q.getNumChildren() < 3)
-  {
-    return;
-  }
-  for (const Node& p : q[2])
-  {
-    if (p.getKind() == Kind::INST_PATTERN)
-    {
-      patterns.emplace_back(p.begin(), p.end());
-    }
-  }
-}
-
 QuantifierNormalizer::QuantifierNormalizer(NodeManager* nm) : d_nm(nm) {}
 
 Node QuantifierNormalizer::mkVar(uint32_t idx, const TypeNode& tn)

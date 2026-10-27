@@ -34,7 +34,6 @@
 #include "expr/node.h"
 #include "z3/relevancy/theory_side.h"
 #include "z3/util/trail.h"
-#include "z3/util/types.h"
 
 namespace cvc5::internal {
 namespace z3 {

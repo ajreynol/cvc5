@@ -83,7 +83,7 @@ void QiQueue::instantiate()
     {
       instantiate(curr);
     }
-    else if (d_checker.isUnsat(getQuantBody(qa), f->getNumArgs(), f->getArgs()))
+    else if (d_checker.isUnsat(qa[1], f->getNumArgs(), f->getArgs()))
     {
       // do not delay an instance that produces a conflict
       instantiate(curr);
@@ -209,7 +209,7 @@ bool QiQueue::skipSatisfied(TNode q,
                             ENode* const* bindings)
 {
   if (d_context.getEnv().getOptions().z3.z3QiChecker
-      && d_checker.isSat(getQuantBody(q), numBindings, bindings))
+      && d_checker.isSat(q[1], numBindings, bindings))
   {
     // The instance is already satisfied, so creating it would be wasted
     // work. It still counts as an instantiation, as it does in Z3.
@@ -237,8 +237,8 @@ Node QiQueue::mkLemma(TNode q,
     vars.push_back(bvl[i]);
     subs.push_back(bindings[i]->getExpr());
   }
-  Node instance = getQuantBody(q).substitute(
-      vars.begin(), vars.end(), subs.begin(), subs.end());
+  Node instance =
+      q[1].substitute(vars.begin(), vars.end(), subs.begin(), subs.end());
 
   Trace("z3-qi-raw") << "RAWINST " << instance << std::endl;
   Trace("z3-events") << "INSTANCE " << instance << std::endl;

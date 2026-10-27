@@ -33,12 +33,12 @@
 #include "z3/quantifiers/fingerprints.h"
 #include "z3/quantifiers/qi_queue.h"
 #include "z3/quantifiers/quantifier_stat.h"
-#include "z3/util/types.h"
 
 namespace cvc5::internal {
 namespace z3 {
 
 class Mam;
+class ENode;
 class SmtContext;
 
 class QuantifierManager

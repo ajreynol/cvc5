@@ -29,12 +29,12 @@
 #include <vector>
 
 #include "expr/node.h"
-#include "z3/util/types.h"
 
 namespace cvc5::internal {
 namespace z3 {
 
 class QuantifierManager;
+class ENode;
 class SmtContext;
 
 /**

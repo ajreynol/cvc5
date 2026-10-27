@@ -36,12 +36,12 @@
 #include "z3/quantifiers/checker.h"
 #include "z3/quantifiers/fingerprints.h"
 #include "z3/quantifiers/quantifier_stat.h"
-#include "z3/util/types.h"
 
 namespace cvc5::internal {
 namespace z3 {
 
 class QuantifierManager;
+class ENode;
 class SmtContext;
 
 struct QiQueueStats

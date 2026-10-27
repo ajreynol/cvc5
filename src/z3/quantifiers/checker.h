@@ -28,11 +28,11 @@
 #include <unordered_map>
 
 #include "expr/node.h"
-#include "z3/util/types.h"
 
 namespace cvc5::internal {
 namespace z3 {
 
+class ENode;
 class SmtContext;
 
 class Checker

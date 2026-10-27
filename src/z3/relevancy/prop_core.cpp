@@ -271,7 +271,7 @@ bool PropCore::propagate()
 
 void PropCore::assertRoot(TNode n)
 {
-  if (isGate(n))
+  if (expr::isBooleanConnective(n) && n.getKind() != Kind::NOT)
   {
     switch (n.getKind())
     {

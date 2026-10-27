@@ -27,6 +27,7 @@
 #include <vector>
 
 #include "expr/node.h"
+#include "prop/sat_solver_types.h"
 #include "smt/env_obj.h"
 #include "z3/relevancy/bool_var_data.h"
 #include "z3/relevancy/clause.h"
@@ -37,10 +38,15 @@
 #include "z3/util/literal.h"
 #include "z3/util/statistics.h"
 #include "z3/util/trail.h"
-#include "z3/util/types.h"
 
 namespace cvc5::internal {
 namespace z3 {
+
+/** The value of a literal: cvc5's SAT value, true, false or unknown. */
+using prop::SAT_VALUE_FALSE;
+using prop::SAT_VALUE_TRUE;
+using prop::SAT_VALUE_UNKNOWN;
+using prop::SatValue;
 
 /**
  * The Boolean side of the core: the Boolean variables and their assignment,

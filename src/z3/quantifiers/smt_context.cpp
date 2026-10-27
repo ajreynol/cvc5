@@ -33,7 +33,6 @@
 #include "theory/theory.h"
 #include "util/resource_manager.h"
 #include "z3/quantifiers/quantifier_manager.h"
-#include "z3/util/types.h"
 
 namespace cvc5::internal {
 namespace z3 {
@@ -834,7 +833,7 @@ void SmtContext::cacheGeneration(TNode n, uint32_t newScopeLvl)
     else if (isQuantifier(curr) && bInternalized(curr))
     {
       d_cachedGeneration[curr] = d_qmanager->getGeneration(curr);
-      todo.push_back(getQuantBody(curr));
+      todo.push_back(curr[1]);
     }
   }
 }

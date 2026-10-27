@@ -19,7 +19,7 @@ weakening; cvc5's preprocessing proves the form the core takes them in.
 
 | Directory | Contents | May include (from the port) |
 |---|---|---|
-| `src/z3/util/` | Data structures and the term interface: literals, the trail stack (on a `context::Context` of its own), approximate sets, `types.h`, `ast.h` (incl. `QuantifierNormalizer`), and `statistics` | nothing outside `z3/util/` |
+| `src/z3/util/` | Data structures and the term interface: literals, the trail stack (on a `context::Context` of its own), approximate sets, `ast.h` (incl. `QuantifierNormalizer`), and `statistics` | nothing outside `z3/util/` |
 | `src/z3/relevancy/` | The Boolean side: `PropCore` (assignment, clauses, watch lists, propagation), `RelevancyPropagator`, `RelevancyTracker` (the `TheoryEngineModule` that hands it every asserted literal), and `TheorySide`, the interface through which it reaches the theory side | `z3/util/` only |
 | `src/z3/quantifiers/` | The theory side and the cvc5 integration: `SmtContext` (E-graph, internalizer), `mam` (E-matching), `QiQueue`, the checker, the quantifier manager, `HostCore` (which owns the core), `LemmaProofGenerator`, `ShadowFeed`, `Z3Module` | anything |
 

@@ -136,15 +136,16 @@ void QuantifierManager::notifyAssigned(TNode q)
   // one is much more expensive than matching a unary pattern. The bound is
   // raised by one when the quantifier has no unary pattern at all, so that
   // at least one of its patterns is always matched eagerly.
-  std::vector<std::vector<Node>> patterns;
-  getPatterns(q, patterns);
   bool hasUnaryPattern = false;
-  for (const std::vector<Node>& mp : patterns)
+  if (q.getNumChildren() == 3)
   {
-    if (mp.size() == 1)
+    for (const Node& p : q[2])
     {
-      hasUnaryPattern = true;
-      break;
+      if (p.getKind() == Kind::INST_PATTERN && p.getNumChildren() == 1)
+      {
+        hasUnaryPattern = true;
+        break;
+      }
     }
   }
   uint32_t numEagerMultiPatterns = static_cast<uint32_t>(

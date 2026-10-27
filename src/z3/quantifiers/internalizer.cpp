@@ -29,7 +29,6 @@
 #include "theory/theory.h"
 #include "z3/quantifiers/quantifier_manager.h"
 #include "z3/quantifiers/smt_context.h"
-#include "z3/util/types.h"
 
 namespace cvc5::internal {
 namespace z3 {
@@ -336,7 +335,7 @@ void SmtContext::internalizeFormulaCore(TNode n, bool gateCtx)
   Assert(!bInternalized(n));
   Assert(!eInternalized(n));
 
-  bool isGateN = isGate(n) || n.getKind() == Kind::NOT;
+  bool isGateN = expr::isBooleanConnective(n);
   // process the arguments
   for (const Node& arg : n)
   {

@@ -38,7 +38,6 @@
 
 #include "expr/attribute.h"
 #include "expr/node.h"
-#include "z3/util/types.h"
 
 namespace cvc5::internal {
 
@@ -68,21 +67,6 @@ inline uint32_t varIndex(TNode n)
   return static_cast<uint32_t>(n.getAttribute(QuantVarLevelAttr()) - 1);
 }
 
-/** True if the expression is viewed as a logical gate. */
-inline bool isGate(TNode n)
-{
-  switch (n.getKind())
-  {
-    case Kind::AND:
-    case Kind::OR:
-    case Kind::IMPLIES:
-    case Kind::XOR:
-    case Kind::ITE: return true;
-    case Kind::EQUAL: return n[0].getType().isBoolean();
-    default: return false;
-  }
-}
-
 /** True if n is a quantifier. This is Z3's is_quantifier. */
 inline bool isQuantifier(TNode n)
 {
@@ -110,26 +94,6 @@ TNode getDecl(TNode n);
  * the congruence table normalizes the argument order.
  */
 bool isCommutative(TNode n);
-
-/** The number of variables bound by quantifier q. */
-inline size_t getNumDecls(TNode q)
-{
-  Assert(isQuantifier(q));
-  return q[0].getNumChildren();
-}
-
-/** The body of quantifier q. */
-inline TNode getQuantBody(TNode q)
-{
-  Assert(isQuantifier(q));
-  return q[1];
-}
-
-/**
- * The explicit patterns of q, each as the vector of terms of a (possibly
- * multi-) pattern. Empty if q has no pattern annotation.
- */
-void getPatterns(TNode q, std::vector<std::vector<Node>>& patterns);
 
 /**
  * Rewrites quantifiers into the canonical de Bruijn-level form the core and

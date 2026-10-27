@@ -22,7 +22,6 @@
 
 #include "expr/node.h"
 #include "z3/util/literal.h"
-#include "z3/util/types.h"
 
 namespace cvc5::internal {
 namespace z3 {

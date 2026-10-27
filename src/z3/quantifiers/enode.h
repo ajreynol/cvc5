@@ -25,13 +25,15 @@
 #include "z3/util/approx_set.h"
 #include "z3/util/ast.h"
 #include "z3/util/trail.h"
-#include "z3/util/types.h"
 
 namespace cvc5::internal {
 namespace z3 {
 
+class ENode;
 class SmtContext;
 class TrailStack;
+
+using ENodeVector = std::vector<ENode*>;
 
 /** Maps the id of a term to its enode. */
 using App2ENode = std::vector<ENode*>;
