@@ -46,7 +46,6 @@
 #include "z3/relevancy/clause.h"
 #include "z3/relevancy/prop_core.h"
 #include "z3/relevancy/relevancy.h"
-#include "z3/relevancy/theory_side.h"
 #include "z3/relevancy/watch_list.h"
 #include "z3/util/ast.h"
 #include "z3/util/literal.h"
@@ -61,7 +60,7 @@ class QuantifierManager;
 /**
  * The theory side of the ported core; PropCore is the propositional side.
  */
-class SmtContext final : protected EnvObj, public TheorySide
+class SmtContext final : protected EnvObj
 {
  public:
   /** The search statistics. Public, as in Z3. */
@@ -92,7 +91,7 @@ class SmtContext final : protected EnvObj, public TheorySide
    * Internalize the asserted formula n, of the given generation: its subterms,
    * then its Boolean structure through PropCore::assertRoot.
    */
-  void internalizeAssertion(TNode n, uint32_t generation) override;
+  void internalizeAssertion(TNode n, uint32_t generation);
 
   // ------------------------------------- the scheduling and backtracking
   //                                       contract, called by PropCore
@@ -101,42 +100,42 @@ class SmtContext final : protected EnvObj, public TheorySide
    * have saturated: the assigned atoms, the equalities, the theories and the
    * quantifiers, in that order. Returns false on a conflict.
    */
-  bool theoryPropagate() override;
+  bool theoryPropagate();
 
   /** Whether the theory side has propagation work pending. */
-  bool hasPendingTheoryWork() const override;
+  bool hasPendingTheoryWork() const;
 
   /** Called at the start of a search. */
-  void initSearch() override;
+  void initSearch();
 
   /**
    * The final check, when every relevant Boolean variable is assigned.
    * Returns true if it is done, and false if it made progress and the search
    * is to continue.
    */
-  bool finalCheck() override;
+  bool finalCheck();
 
   /** Push a scope of the theory side, after the propositional side's. */
-  void pushTheoryScope() override;
+  void pushTheoryScope();
 
   /**
    * Discard the pending work of the quantifier manager, before the Boolean
    * variables are unassigned.
    */
-  void popTheoryScopeBegin() override;
+  void popTheoryScopeBegin();
 
   /**
    * Pop numScopes scopes of the theory side, after the Boolean variables are
    * unassigned: the trail stack, which pops the trail (and its memory) and
    * the data in its context, and the propagation queues.
    */
-  void popTheoryScopeEnd(size_t numScopes) override;
+  void popTheoryScopeEnd(size_t numScopes);
 
-  void resetCacheGeneration() override;
+  void resetCacheGeneration();
 
   // ----------------------------------------------------------- accessors
 
-  Statistics& getStats() override { return d_stats; }
+  Statistics& getStats() { return d_stats; }
 
   ENode* getENode(TNode n) const
   {
@@ -151,7 +150,7 @@ class SmtContext final : protected EnvObj, public TheorySide
     return id < d_app2ENode.size() ? d_app2ENode[id] : nullptr;
   }
 
-  TNode getNextInEClass(TNode n) const override
+  TNode getNextInEClass(TNode n) const
   {
     ENode* e = findENode(n);
     return e == nullptr ? TNode::null() : TNode(e->getNext()->getExpr());
@@ -263,9 +262,9 @@ class SmtContext final : protected EnvObj, public TheorySide
     d_trailStack.push(obj);
   }
 
-  void pushTrailPtr(Trail* ptr) override { d_trailStack.pushPtr(ptr); }
+  void pushTrailPtr(Trail* ptr) { d_trailStack.pushPtr(ptr); }
 
-  TrailStack& getTrailStack() override { return d_trailStack; }
+  TrailStack& getTrailStack() { return d_trailStack; }
 
   // ------------------------------------------------------ internalization
   bool bInternalized(TNode n) const { return d_prop.bInternalized(n); }
@@ -335,7 +334,7 @@ class SmtContext final : protected EnvObj, public TheorySide
    */
   void skolemize(TNode q);
 
-  void internalize(TNode n, bool gateCtx) override;
+  void internalize(TNode n, bool gateCtx);
   void internalize(const Node* exprs, size_t numExprs, bool gateCtx);
   void internalize(TNode n, bool gateCtx, uint32_t generation);
 
@@ -354,16 +353,16 @@ class SmtContext final : protected EnvObj, public TheorySide
   ENode* mkENode(TNode n, bool suppressArgs, bool mergeTf, bool cgcEnabled);
 
   /** Hand an assigned atom to the theory side; see propagateAtoms. */
-  void enqueueAtom(Literal l) override { d_atomPropagationQueue.push_back(l); }
+  void enqueueAtom(Literal l) { d_atomPropagationQueue.push_back(l); }
 
   /** Called when the Boolean variable of n is deleted on backtracking. */
-  void notifyBoolVarDeleted(TNode n) override;
+  void notifyBoolVarDeleted(TNode n);
 
   /**
    * Cache the generation of the enodes and quantifiers in n that backtracking
    * to newScopeLvl deletes, so that they are recreated with it.
    */
-  void cacheGeneration(TNode n, uint32_t newScopeLvl) override;
+  void cacheGeneration(TNode n, uint32_t newScopeLvl);
 
   void mkGateClause(Literal l1, Literal l2) { d_prop.mkGateClause(l1, l2); }
 
@@ -371,7 +370,7 @@ class SmtContext final : protected EnvObj, public TheorySide
    * Internalize n, a subterm of an assertion, in the given context; see
    * PropCore::assertRoot.
    */
-  void internalizeRec(TNode n, bool gateCtx) override;
+  void internalizeRec(TNode n, bool gateCtx);
 
   void setEnodeFlag(BoolVar v, bool isNewVar);
 
@@ -424,7 +423,7 @@ class SmtContext final : protected EnvObj, public TheorySide
    * Notify the quantifier manager and the theories that n became relevant;
    * called by PropCore::notifyRelevant.
    */
-  void notifyRelevant(TNode n) override;
+  void notifyRelevant(TNode n);
 
   bool isRelevantCore(TNode n) const { return d_prop.isRelevantCore(n); }
 
@@ -468,7 +467,7 @@ class SmtContext final : protected EnvObj, public TheorySide
 
   bool resourceLimitsExceeded() { return d_prop.resourceLimitsExceeded(); }
 
-  bool getCancelFlag() override { return d_prop.getCancelFlag(); }
+  bool getCancelFlag() { return d_prop.getCancelFlag(); }
 
  protected:
   // --------------------------------------------- equality and congruence

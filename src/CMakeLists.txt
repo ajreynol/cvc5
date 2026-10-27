@@ -1366,7 +1366,6 @@ libcvc5_add_sources(
   z3/relevancy/relevancy.h
   z3/relevancy/relevancy_tracker.cpp
   z3/relevancy/relevancy_tracker.h
-  z3/relevancy/theory_side.h
   z3/relevancy/watch_list.cpp
   z3/relevancy/watch_list.h
   z3/util/approx_set.h

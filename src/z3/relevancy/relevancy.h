@@ -32,11 +32,13 @@
 
 #include "context/cdlist.h"
 #include "expr/node.h"
-#include "z3/relevancy/theory_side.h"
+#include "z3/util/literal.h"
 #include "z3/util/trail.h"
 
 namespace cvc5::internal {
 namespace z3 {
+
+class SmtContext;
 
 class PropCore;
 class RelevancyPropagator;
@@ -82,14 +84,14 @@ class SimpleRelevancyHandler : public RelevancyHandler
  * Propagation constraints are declared with addHandler and addWatch; this
  * class also provides helpers for the constraints the internalizer needs.
  *
- * It uses the equivalence classes of the theory side (TheorySide), notifies it
+ * It uses the equivalence classes of the theory side (SmtContext), notifies it
  * that an expression became relevant through notifyRelevant, and is told about
  * new assignments through notifyAssigned.
  */
 class RelevancyPropagator
 {
  public:
-  RelevancyPropagator(PropCore& core, TheorySide& theory);
+  RelevancyPropagator(PropCore& core, SmtContext& theory);
   ~RelevancyPropagator();
 
   /** Install a handler invoked whenever n is marked as relevant. */
@@ -215,7 +217,7 @@ class RelevancyPropagator
   /** The propositional side, which owns this object. */
   PropCore& d_core;
   /** The theory side: equivalence classes, trail stack and statistics. */
-  TheorySide& d_theory;
+  SmtContext& d_theory;
   /**
    * The next expression of d_relevantExprs to propagate. It is not popped:
    * a pop leaves it past the end, and it is moved back to the end when an

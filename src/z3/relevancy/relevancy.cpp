@@ -15,6 +15,7 @@
 
 #include "z3/relevancy/relevancy.h"
 
+#include "z3/quantifiers/smt_context.h"
 #include "z3/relevancy/prop_core.h"
 #include "z3/util/ast.h"
 
@@ -103,7 +104,7 @@ class IteTermRelevancyHandler : public RelevancyHandler
 
 }  // namespace
 
-RelevancyPropagator::RelevancyPropagator(PropCore& core, TheorySide& theory)
+RelevancyPropagator::RelevancyPropagator(PropCore& core, SmtContext& theory)
     : d_core(core),
       d_theory(theory),
       d_qhead(0),

@@ -23,6 +23,7 @@
 #include "expr/node_manager.h"
 #include "smt/env.h"
 #include "util/resource_manager.h"
+#include "z3/quantifiers/smt_context.h"
 
 namespace cvc5::internal {
 namespace z3 {
@@ -48,7 +49,7 @@ bool isLiteralNode(TNode n)
 
 }  // namespace
 
-PropCore::PropCore(Env& env, TheorySide& ctx, Statistics& stats)
+PropCore::PropCore(Env& env, SmtContext& ctx, Statistics& stats)
     : EnvObj(env),
       d_ctx(ctx),
       d_stats(stats),

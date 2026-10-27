@@ -32,7 +32,6 @@
 #include "z3/relevancy/bool_var_data.h"
 #include "z3/relevancy/clause.h"
 #include "z3/relevancy/relevancy.h"
-#include "z3/relevancy/theory_side.h"
 #include "z3/relevancy/watch_list.h"
 #include "z3/util/ast.h"
 #include "z3/util/literal.h"
@@ -41,6 +40,8 @@
 
 namespace cvc5::internal {
 namespace z3 {
+
+class SmtContext;
 
 /** The value of a literal: cvc5's SAT value, true, false or unknown. */
 using prop::SAT_VALUE_FALSE;
@@ -60,8 +61,7 @@ using prop::SatValue;
  * SAT context (see HostCore). Its clauses stay private: the theory side
  * sends cvc5 its instances and lemmas (SmtContext::setLemmaSender).
  *
- * The theory side, SmtContext, owns this object. This side calls it, through
- * the TheorySide interface,
+ * The theory side, SmtContext, owns this object. This side calls it:
  * theoryPropagate and hasPendingTheoryWork for the propagation fixpoint,
  * finalCheck, initSearch, and pushTheoryScope, popTheoryScopeBegin and
  * popTheoryScopeEnd when scopes are pushed and popped; besides that, it
@@ -79,7 +79,7 @@ class PropCore : protected EnvObj
     bool d_relevant;
   };
 
-  PropCore(Env& env, TheorySide& ctx, Statistics& stats);
+  PropCore(Env& env, SmtContext& ctx, Statistics& stats);
   ~PropCore();
 
   PropCore(const PropCore&) = delete;
@@ -408,7 +408,7 @@ class PropCore : protected EnvObj
   std::vector<Node> d_hostRelevant;
 
   /** The theory side. */
-  TheorySide& d_ctx;
+  SmtContext& d_ctx;
   Statistics& d_stats;
 
   std::unique_ptr<RelevancyPropagator> d_relevancyPropagator;
