@@ -14,14 +14,14 @@
 #include "z3/relevancy/relevancy_tracker.h"
 
 #include "theory/theory_state.h"
-#include "z3/quantifiers/smt_context.h"
+#include "z3/quantifiers/z3_module.h"
 
 namespace cvc5::internal {
 namespace z3 {
 
 RelevancyTracker::RelevancyTracker(Env& env,
                                    TheoryEngine* engine,
-                                   SmtContext& core)
+                                   Z3Module& core)
     : TheoryEngineModule(env, engine, "z3::RelevancyTracker"),
       d_core(core),
       d_facts(context()),

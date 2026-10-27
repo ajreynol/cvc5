@@ -30,7 +30,7 @@ class TheoryState;
 
 namespace z3 {
 
-class SmtContext;
+class Z3Module;
 
 /**
  * Like cvc5's RelevanceManager, a module of the theory engine that tracks
@@ -52,7 +52,7 @@ class RelevancyTracker : public theory::TheoryEngineModule
    * The literals are given to core, which assigns them on its Boolean side
    * (PropCore).
    */
-  RelevancyTracker(Env& env, TheoryEngine* engine, SmtContext& core);
+  RelevancyTracker(Env& env, TheoryEngine* engine, Z3Module& core);
 
   bool needsFacts() override { return true; }
   /** Queue the literal. */
@@ -66,7 +66,7 @@ class RelevancyTracker : public theory::TheoryEngineModule
 
  private:
   /** The core, which owns this module. */
-  SmtContext& d_core;
+  Z3Module& d_core;
   /** The literals the SAT solver asserted, in order. */
   context::CDList<Node> d_facts;
   /** The index in d_facts of the first literal not given to the core. */

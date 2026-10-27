@@ -21,14 +21,14 @@ weakening; cvc5's preprocessing proves the form the core takes them in.
 |---|---|---|
 | `src/z3/util/` | Data structures and the term interface: literals, the trail stack (on a `context::Context` of its own), approximate sets, `ast.h` (incl. `QuantifierNormalizer`), and `statistics` | nothing outside `z3/util/` |
 | `src/z3/relevancy/` | The Boolean side: `PropCore` (variables, assignment, clauses, watch lists, Boolean propagation), `RelevancyPropagator`, and `RelevancyTracker` (the `TheoryEngineModule` that hands it every asserted literal) | `z3/util/`, and `SmtContext` |
-| `src/z3/quantifiers/` | The coordinator and the cvc5 integration: `SmtContext` (internalizer, propagation and scopes, and the boundary with cvc5), `EGraph`, `mam` (E-matching), `QiQueue`, the checker, the quantifier manager, `LemmaProofGenerator`, `Z3Module` | anything |
+| `src/z3/quantifiers/` | The coordinator and the cvc5 integration: `Z3Module` (the boundary with cvc5), `SmtContext` (internalizer, propagation and scopes), `EGraph`, `mam` (E-matching), `QiQueue`, the checker, the quantifier manager, `LemmaProofGenerator` | anything |
 
 `PropCore` and `RelevancyPropagator` reach the theory side, `SmtContext`,
 directly, so the two directories depend on each other.
 
 The core takes the input as cvc5's preprocessing leaves it, from
 `ppNotifyAssertions`. It renames the quantified variables to the canonical
-ones it expects (`QuantifierNormalizer`) at its boundary: `SmtContext` renames
+ones it expects (`QuantifierNormalizer`) at its boundary: `Z3Module` renames
 the formulas, atoms and literals that come from cvc5 (`toCore`), and gives
 cvc5 its own atoms back in the lemmas and queries it sends (`toHost`). cvc5
 preprocesses the core's lemmas as any other, and the core takes them in that
@@ -39,17 +39,28 @@ All of the port's classes are in the namespace `cvc5::internal::z3`.
 ## Ownership
 
 Each class owns the ones below it; `(-> X)` is a reference it keeps to X.
-`SmtContext` drives the others; their references to it are for
+`Z3Module` drives `SmtContext`, which calls it back only to send its
+instances, skolemizations and lemmas (`mkInstance`, `mkSkolemization`,
+`sendLemma`). `SmtContext` drives the others; their references to it are for
 notifications (`PropCore`: an atom assigned, a term relevant, a variable
 deleted; `EGraph`: a merge, of Boolean classes, a conflict) and for what it
 coordinates (the trail stack, relevancy, the statistics).
 
 ```
 QuantifiersEngine (cvc5)
-└── Z3Module                      the module of cvc5's quantifiers engine
-    └── SmtContext                the core: internalization, propagation and
-        │                         scopes, and the boundary with cvc5 (lemmas,
-        │                         splits, following the SAT context)
+└── Z3Module                      the module of cvc5's quantifiers engine, and
+    │                             the boundary with cvc5: facts, checks,
+    │                             lemmas and their proofs, splits, following
+    │                             the SAT context
+    ├── LemmaProofGenerator
+    ├── SplitStrategy             registered with cvc5's DecisionManager
+    ├── PopNotify                 a ContextNotifyObj on the SAT context
+    │                                                   (-> Z3Module)
+    ├── RelevancyTracker          registered with TheoryEngine::addModule:
+    │                             the literals the SAT solver asserts
+    │                                                   (-> Z3Module)
+    └── SmtContext                the core: input, internalization,
+        │                         propagation and scopes   (-> Z3Module)
         ├── Statistics
         ├── TrailStack            its own context::Context, and the memory of
         │                         the enodes, relevancy handlers, fingerprints
@@ -61,24 +72,17 @@ QuantifiersEngine (cvc5)
         │   │                                           (-> SmtContext)
         │   └── CgTable, TmpENode
         ├── QuantifierNormalizer
-        ├── QuantifierManager                           (-> SmtContext)
-        │   ├── QiQueue                                 (-> QuantifierManager,
-        │   │   │                                           SmtContext)
-        │   │   └── Checker                             (-> SmtContext, EGraph)
-        │   ├── FingerprintSet                          (-> TrailStack)
-        │   ├── QuantifierStatGen                       (-> TrailStack)
-        │   └── Mam x2, eager and lazy (MamImpl: LabelHasher,
-        │       CodeTreeManager, Compiler, Interpreter, CodeTreeMap)
-        │                                               (-> SmtContext, EGraph,
-        │                                                   QuantifierManager,
-        │                                                   TrailStack)
-        ├── LemmaProofGenerator
-        ├── SplitStrategy         registered with cvc5's DecisionManager
-        ├── PopNotify             a ContextNotifyObj on the SAT context
-        │                                               (-> SmtContext)
-        └── RelevancyTracker      registered with TheoryEngine::addModule:
-                                  the literals the SAT solver asserts
-                                                        (-> SmtContext)
+        └── QuantifierManager                           (-> SmtContext)
+            ├── QiQueue                                 (-> QuantifierManager,
+            │   │                                           SmtContext)
+            │   └── Checker                             (-> SmtContext, EGraph)
+            ├── FingerprintSet                          (-> TrailStack)
+            ├── QuantifierStatGen                       (-> TrailStack)
+            └── Mam x2, eager and lazy (MamImpl: LabelHasher,
+                CodeTreeManager, Compiler, Interpreter, CodeTreeMap)
+                                                        (-> SmtContext, EGraph,
+                                                            QuantifierManager,
+                                                            TrailStack)
 ```
 
 ## Hooks in cvc5
@@ -122,8 +126,8 @@ as of this README:
 |---|---:|---:|---:|---:|
 | `src/z3/util/` | 6 | 553 | 245 | 131 |
 | `src/z3/relevancy/` | 11 | 1683 | 402 | 308 |
-| `src/z3/quantifiers/` | 24 | 7799 | 1660 | 972 |
-| **Total** | 41 | **10035** | 2307 | 1411 |
+| `src/z3/quantifiers/` | 24 | 7767 | 1646 | 967 |
+| **Total** | 41 | **10003** | 2293 | 1406 |
 
 The rest of cvc5 changes by 260 added and 18 deleted lines over 23 C++ files,
 most of them in `smt/set_defaults.cpp` (the capability checks) and
