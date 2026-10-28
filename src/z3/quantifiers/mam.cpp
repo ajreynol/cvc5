@@ -46,6 +46,7 @@
 #include <vector>
 
 #include "base/output.h"
+#include "context/cdhashset.h"
 #include "expr/node_algorithm.h"
 #include "expr/node_manager.h"
 #include "util/hash.h"
@@ -2813,6 +2814,8 @@ class MamImpl
         d_compiler(ctx, qm, d_ctManager, d_lblHasher),
         d_interpreter(ctx, qm),
         d_trees(ctx, d_compiler, d_trailStack),
+        d_isPlbl(d_trailStack.getContext()),
+        d_isClbl(d_trailStack.getContext()),
         d_r1(nullptr),
         d_r2(nullptr)
   {
@@ -3029,13 +3032,13 @@ class MamImpl
   bool isPlbl(TNode lbl) const
   {
     uint32_t lblId = d_egraph.getDeclIdOption(lbl);
-    return lblId < d_isPlbl.size() && d_isPlbl[lblId];
+    return d_isPlbl.contains(lblId);
   }
 
   bool isClbl(TNode lbl) const
   {
     uint32_t lblId = d_egraph.getDeclIdOption(lbl);
-    return lblId < d_isClbl.size() && d_isClbl[lblId];
+    return d_isClbl.contains(lblId);
   }
 
   void updateLbls(ENode* n, uint32_t elem)
@@ -3051,16 +3054,10 @@ class MamImpl
   void updateClbls(TNode lbl)
   {
     uint32_t lblId = d_egraph.getDeclId(lbl);
-    if (d_isClbl.size() < lblId + 1)
-    {
-      d_isClbl.resize(lblId + 1, false);
-    }
-    if (d_isClbl[lblId])
+    if (!d_isClbl.insert(lblId))
     {
       return;
     }
-    d_trailStack.push(SetBitvectorTrail<std::vector<bool>>(d_isClbl, lblId));
-    Assert(d_isClbl[lblId]);
     uint8_t h = d_lblHasher(lbl);
     for (ENode* app : d_egraph.enodesOf(lbl))
     {
@@ -3089,16 +3086,10 @@ class MamImpl
   void updatePlbls(TNode lbl)
   {
     uint32_t lblId = d_egraph.getDeclId(lbl);
-    if (d_isPlbl.size() < lblId + 1)
-    {
-      d_isPlbl.resize(lblId + 1, false);
-    }
-    if (d_isPlbl[lblId])
+    if (!d_isPlbl.insert(lblId))
     {
       return;
     }
-    d_trailStack.push(SetBitvectorTrail<std::vector<bool>>(d_isPlbl, lblId));
-    Assert(d_isPlbl[lblId]);
     uint8_t h = d_lblHasher(lbl);
     for (ENode* app : d_egraph.enodesOf(lbl))
     {
@@ -3700,15 +3691,15 @@ class MamImpl
   std::vector<std::pair<Node, Node>> d_newPatterns;
 
   /**
-   * If d_isPlbl[f] is true then when f(c_1, ..., c_n) becomes relevant,
+   * If d_isPlbl contains f then when f(c_1, ..., c_n) becomes relevant,
    * lblHash(f) is inserted into c_i->getRoot()->getPlbls() for each c_i.
    */
-  std::vector<bool> d_isPlbl;
+  context::CDHashSet<uint32_t> d_isPlbl;
   /**
-   * If d_isClbl[f] is true then when n = f(c_1, ..., c_n) becomes relevant,
+   * If d_isClbl contains f then when n = f(c_1, ..., c_n) becomes relevant,
    * lblHash(f) is inserted into n->getRoot()->getLbls().
    */
-  std::vector<bool> d_isClbl;
+  context::CDHashSet<uint32_t> d_isClbl;
 
   /** The paths of updateFilters, which are dropped at each call. */
   std::deque<Path> d_tmpPaths;

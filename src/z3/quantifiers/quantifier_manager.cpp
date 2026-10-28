@@ -51,7 +51,7 @@ QuantifierManager::QuantifierManager(Env& env, SmtContext& ctx)
       d_context(ctx),
       d_queue(env, *this, ctx),
       d_fingerprints(ctx.getTrailStack()),
-      d_lazyMatchingIdx(0),
+      d_lazyMatchingIdx(ctx.getTrailStack().getContext(), 0),
       d_active(false)
 {
   d_queue.setup();
@@ -181,8 +181,7 @@ bool QuantifierManager::finalCheck()
   if (!empty() && d_lazyMatchingIdx < s_maxLazyMultipatternMatching)
   {
     d_lazyMam->rematch();
-    d_context.getTrailStack().push(ValueTrail<size_t>(d_lazyMatchingIdx));
-    d_lazyMatchingIdx++;
+    d_lazyMatchingIdx = d_lazyMatchingIdx + 1;
   }
   return !d_context.canPropagate();
 }

@@ -67,24 +67,6 @@ class SetPtrTrail : public Trail
   T*& d_ptr;
 };
 
-/** Set a bit of a Boolean vector, and clear it again on undo. */
-template <typename V>
-class SetBitvectorTrail : public Trail
-{
- public:
-  SetBitvectorTrail(V& v, size_t idx) : d_vector(v), d_idx(idx)
-  {
-    Assert(!d_vector[d_idx]);
-    d_vector[d_idx] = true;
-  }
-
-  void undo() override { d_vector[d_idx] = false; }
-
- private:
-  V& d_vector;
-  size_t d_idx;
-};
-
 /** Delete a heap-allocated object. */
 template <typename T>
 class NewObjTrail : public Trail

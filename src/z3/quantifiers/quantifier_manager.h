@@ -29,6 +29,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "context/cdo.h"
 #include "expr/node.h"
 #include "smt/env_obj.h"
 #include "z3/quantifiers/fingerprints.h"
@@ -97,7 +98,7 @@ class QuantifierManager : protected EnvObj
   /** The E-matching engine for the multi-patterns matched at final check. */
   std::unique_ptr<Mam> d_lazyMam;
   /** How many times the lazy patterns were matched in this search. */
-  size_t d_lazyMatchingIdx;
+  context::CDO<size_t> d_lazyMatchingIdx;
   /** Whether a quantifier was asserted. */
   bool d_active;
 };
