@@ -16,7 +16,6 @@
 #include "z3/quantifiers/qi_queue.h"
 
 #include <algorithm>
-#include <unordered_map>
 
 #include "base/output.h"
 #include "options/z3_options.h"
@@ -116,44 +115,22 @@ void QiQueue::instantiate(const Entry& ent)
   {
     return;
   }
-  std::vector<Node> key{q};
+  std::vector<Node> terms;
   for (size_t i = 0; i < numBindings; ++i)
   {
-    key.push_back(bindings[i]->getExpr());
+    terms.push_back(bindings[i]->getExpr());
   }
-  Node lemma;
-  auto it =
-      d_lemmas.emplace(q.getNodeManager()->mkNode(Kind::SEXPR, key), Node());
-  if (it.second)
+  uint32_t gen = static_cast<uint32_t>(ent.d_cost);
+  if (!d_context.internalizeInstance(q, terms, gen))
   {
-    lemma = mkLemma(q, numBindings, bindings);
-    it.first->second = lemma;
-  }
-  else
-  {
-    // made before: counted as mkLemma counts it
-    lemma = it.first->second;
-    if (lemma.isNull())
-    {
-      d_context.getStats().d_numInstancesSimplifyTrue++;
-    }
-    else
-    {
-      d_context.getStats().d_numInstances++;
-    }
-  }
-  if (lemma.isNull())
-  {
+    d_context.getStats().d_numInstancesSimplifyTrue++;
     return;
   }
+  d_context.getStats().d_numInstances++;
   d_numInstances++;
-  uint32_t gen = static_cast<uint32_t>(ent.d_cost);
   Trace("z3-qi") << "[instance] q" << q.getId() << " nargs " << numBindings
                  << " gen " << generation << " cost " << ent.d_cost
                  << " newgen " << gen << std::endl;
-  Trace("z3-qi-lemma") << "  lemma: " << lemma << std::endl;
-  std::vector<Node> terms(key.begin() + 1, key.end());
-  d_context.internalizeInstance(q, terms, gen);
 }
 
 void QiQueue::initSearch() { d_newEntries.clear(); }
@@ -168,56 +145,6 @@ bool QiQueue::skipSatisfied(TNode q, size_t numBindings, ENode* const* bindings)
     return true;
   }
   return false;
-}
-
-Node QiQueue::mkLemma(TNode q, size_t numBindings, ENode* const* bindings)
-{
-  // Substitute the bindings for the canonical quantified variables. Note
-  // bindings[i] is the binding of the i-th variable of the bound variable
-  // list, which is the variable at de Bruijn level i.
-  TNode bvl = q[0];
-  Assert(bvl.getNumChildren() == numBindings);
-  std::vector<Node> vars;
-  std::vector<Node> subs;
-  for (size_t i = 0; i < numBindings; ++i)
-  {
-    vars.push_back(bvl[i]);
-    subs.push_back(bindings[i]->getExpr());
-  }
-  Node instance =
-      q[1].substitute(vars.begin(), vars.end(), subs.begin(), subs.end());
-
-  Trace("z3-qi-raw") << "RAWINST " << instance << std::endl;
-  Trace("z3-events") << "INSTANCE " << instance << std::endl;
-  Node sInstance = d_context.rewriteInstance(instance);
-
-  if (sInstance.getKind() == Kind::CONST_BOOLEAN && sInstance.getConst<bool>())
-  {
-    d_context.getStats().d_numInstancesSimplifyTrue++;
-    return Node::null();
-  }
-
-  NodeManager* nm = q.getNodeManager();
-  Node notQ = nm->mkNode(Kind::NOT, q);
-  Node lemma;
-  if (sInstance.getKind() == Kind::OR)
-  {
-    std::vector<Node> args;
-    args.push_back(notQ);
-    args.insert(args.end(), sInstance.begin(), sInstance.end());
-    lemma = nm->mkNode(Kind::OR, args);
-  }
-  else if (sInstance.getKind() == Kind::CONST_BOOLEAN
-           && !sInstance.getConst<bool>())
-  {
-    lemma = notQ;
-  }
-  else
-  {
-    lemma = nm->mkNode(Kind::OR, notQ, sInstance);
-  }
-  d_context.getStats().d_numInstances++;
-  return lemma;
 }
 
 }  // namespace z3

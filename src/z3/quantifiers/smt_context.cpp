@@ -519,24 +519,44 @@ void SmtContext::resetCacheGeneration()
   d_cachedGeneration.clear();
 }
 
-void SmtContext::internalizeInstance(TNode q,
+bool SmtContext::internalizeInstance(TNode q,
                                      const std::vector<Node>& terms,
                                      uint32_t generation)
 {
-  if (d_prop.inconsistent())
-  {
-    return;
-  }
+  NodeManager* nm = q.getNodeManager();
   std::vector<Node> key{q};
   key.insert(key.end(), terms.begin(), terms.end());
-  auto it = d_instanceForms.emplace(
-      q.getNodeManager()->mkNode(Kind::SEXPR, key), Node());
-  std::vector<Node> defs;
+  auto it = d_instanceForms.emplace(nm->mkNode(Kind::SEXPR, key), Node());
+  Node& form = it.first->second;
   if (it.second)
   {
-    it.first->second = d_host.mkInstance(q, terms, defs);
+    // Note terms[i] is the term for the i-th variable of the bound variable
+    // list, which is the variable at de Bruijn level i.
+    std::vector<Node> vars(q[0].begin(), q[0].end());
+    Node instance =
+        q[1].substitute(vars.begin(), vars.end(), terms.begin(), terms.end());
+    Trace("z3-events") << "INSTANCE " << instance << std::endl;
+    Node rinstance = rewrite(instance);
+    if (rinstance.isConst() && rinstance.getConst<bool>())
+    {
+      form = rinstance;
+    }
   }
-  internalizePreprocessed(it.first->second, defs, generation, true);
+  if (!form.isNull() && form.isConst() && form.getConst<bool>())
+  {
+    return false;
+  }
+  if (d_prop.inconsistent())
+  {
+    return true;
+  }
+  std::vector<Node> defs;
+  if (form.isNull())
+  {
+    form = d_host.mkInstance(q, terms, defs);
+  }
+  internalizePreprocessed(form, defs, generation, true);
+  return true;
 }
 
 void SmtContext::internalizePreprocessed(TNode norm,

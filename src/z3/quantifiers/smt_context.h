@@ -207,9 +207,10 @@ class SmtContext final : protected EnvObj
    * Internalize the instance of the quantified formula q for terms, the
    * terms for its variables, in the form cvc5's theories take (see
    * mkInstance), and send it to cvc5. The instance is asserted at the
-   * current scope.
+   * current scope. Returns false, and makes nothing, if the instance
+   * rewrites to true.
    */
-  void internalizeInstance(TNode q,
+  bool internalizeInstance(TNode q,
                            const std::vector<Node>& terms,
                            uint32_t generation);
 
@@ -287,8 +288,6 @@ class SmtContext final : protected EnvObj
    * Rewrite a quantifier instance before it is internalized. Z3 applies its
    * th_rewriter here; this port uses cvc5's rewriter.
    */
-  Node rewriteInstance(TNode n) const { return rewrite(n); }
-
   /**
    * True if the resource limits were exceeded during this search, which
    * then stays out of resources.
@@ -369,9 +368,10 @@ class SmtContext final : protected EnvObj
   EGraph d_egraph;
   QuantifierNormalizer d_normalizer;
   /**
-   * The forms of the instances made so far, by (SEXPR q t1 ... tn). The core
-   * makes an instance again after backtracking, and mkInstance gives
-   * the same form then, without the skolem definitions it gave the first time.
+   * The forms of the instances made so far, by (SEXPR q t1 ... tn): true for
+   * an instance that rewrites to true, null for one not yet made. The core
+   * makes an instance again after backtracking, and mkInstance gives the
+   * same form then, without the skolem definitions it gave the first time.
    */
   std::unordered_map<Node, Node> d_instanceForms;
   /** The quantifiers: E-matching and instantiation. */

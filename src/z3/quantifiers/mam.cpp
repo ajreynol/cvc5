@@ -713,6 +713,10 @@ class Compiler
       // the E-matching engine was built when every application of a symbol
       // had the symbol's arity. A pattern with an unexpected arity is
       // ignored, which is not ideal but avoids a crash.
+      Trace("z3-mam-newpat")
+          << "  ARITY MISMATCH for " << getDecl(mp[firstIdx])
+          << ": tree expects " << tree->expectedNumArgs() << " but pattern has "
+          << mp[firstIdx].getNumChildren() << std::endl;
       return;
     }
     d_isTmpTree = isTmpTree;
@@ -2629,25 +2633,9 @@ class CodeTreeMap
     }
     else
     {
-      CodeTree* tree = d_trees[lblId];
-      // The number of arguments has to be checked because of the n-ary + and
-      // * operators: the E-matching engine was built when every application
-      // of a symbol had the symbol's arity. A pattern with an unexpected
-      // number of arguments is ignored, which is not ideal but avoids a
-      // crash.
-      if (tree->expectedNumArgs() == p.getNumChildren())
-      {
-        Trace("z3-mam-newpat")
-            << "  insert into existing tree for " << getDecl(p) << std::endl;
-        d_compiler.insert(tree, q, mp, firstIdx, false);
-      }
-      else
-      {
-        Trace("z3-mam-newpat")
-            << "  ARITY MISMATCH for " << getDecl(p) << ": tree expects "
-            << tree->expectedNumArgs() << " but pattern has "
-            << p.getNumChildren() << std::endl;
-      }
+      Trace("z3-mam-newpat")
+          << "  insert into existing tree for " << getDecl(p) << std::endl;
+      d_compiler.insert(d_trees[lblId], q, mp, firstIdx, false);
     }
   }
 
@@ -2794,7 +2782,11 @@ using PathTreePair = std::pair<PathTree*, PathTree*>;
  */
 bool isFlatAssociative(ENode* n)
 {
-  return NodeManager::isNAryKind(n->getExpr().getKind());
+  // as the congruence keys, this is read from the declaration, which a
+  // temporary enode has too
+  TNode decl = n->getDecl();
+  return decl.getKind() == Kind::BUILTIN
+         && NodeManager::isNAryKind(NodeManager::operatorToKind(decl));
 }
 
 }  // namespace

@@ -120,8 +120,8 @@ as of this README:
 | Directory | Files | Code | Comment | Blank |
 |---|---:|---:|---:|---:|
 | `src/z3/relevancy/` | 10 | 1512 | 399 | 264 |
-| `src/z3/quantifiers/` | 26 | 7639 | 1747 | 965 |
-| **Total** | 36 | **9151** | 2146 | 1229 |
+| `src/z3/quantifiers/` | 26 | 7583 | 1735 | 960 |
+| **Total** | 36 | **9095** | 2134 | 1224 |
 
 The rest of cvc5 changes by 259 added and 18 deleted lines over 22 C++ files,
 most of them in `smt/set_defaults.cpp` (the capability checks) and

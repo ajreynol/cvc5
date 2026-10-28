@@ -25,7 +25,6 @@
 #define CVC5__Z3__QUANTIFIERS__QI_QUEUE_H
 
 #include <ostream>
-#include <unordered_map>
 #include <vector>
 
 #include "expr/node.h"
@@ -95,11 +94,6 @@ class QiQueue : protected EnvObj
    * not made.
    */
   bool skipSatisfied(TNode q, size_t numBindings, ENode* const* bindings);
-  /**
-   * The lemma (or (not q) instance) for the instance of q with these
-   * bindings, counted as made; or null if the instance rewrites to true.
-   */
-  Node mkLemma(TNode q, size_t numBindings, ENode* const* bindings);
 
   QuantifierManager& d_qm;
   SmtContext& d_context;
@@ -111,12 +105,6 @@ class QiQueue : protected EnvObj
   double d_eagerCostThreshold;
 
   std::vector<Entry> d_newEntries;
-  /**
-   * The lemmas of the instances made so far, by (SEXPR q t1 ... tn), null for
-   * an instance that rewrites to true. The core makes an instance again after
-   * backtracking, and its lemma is the same.
-   */
-  std::unordered_map<Node, Node> d_lemmas;
 };
 
 }  // namespace z3
