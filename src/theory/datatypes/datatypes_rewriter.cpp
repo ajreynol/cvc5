@@ -1088,6 +1088,21 @@ Node DatatypesRewriter::expandApplySelector(Node n, bool sharedSel)
   size_t selectorIndex = utils::indexOf(selector);
   Trace("dt-expand") << "...selector index = " << selectorIndex << std::endl;
   Assert(selectorIndex < c.getNumArgs());
+  // We can only use the shared selector if it is not also the shared selector
+  // of an argument of another constructor. Otherwise, e.g. if constructors A
+  // and B both have an argument of type Int, the selectors for these
+  // arguments would become equal, whereas the selector of A applied to a
+  // term built by B is unconstrained.
+  Node ssel = c.getSharedSelector(ndt, selectorIndex);
+  for (size_t i = 0, ncons = dt.getNumConstructors(); i < ncons; i++)
+  {
+    if (i != cindex && dt[i].getSelectorIndexInternal(ssel) >= 0)
+    {
+      Trace("dt-expand") << "...shared with constructor " << dt[i].getName()
+                         << std::endl;
+      return n;
+    }
+  }
   return utils::applySelector(c, selectorIndex, true, n[0]);
 }
 
