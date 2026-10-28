@@ -70,9 +70,6 @@ class Z3Module;
 class SmtContext final : protected EnvObj
 {
  public:
-  /** The search statistics. Public, as in Z3. */
-  Statistics d_stats;
-
   /**
    * The core of the module host, which sends its instances and lemmas to
    * cvc5.
@@ -202,11 +199,8 @@ class SmtContext final : protected EnvObj
   TrailStack& getTrailStack() { return d_trailStack; }
 
   // ------------------------------------------------------ internalization
-  /** The canonicalizer for quantifiers; see z3/ast.h. */
+  /** The canonicalizer for quantifiers; see quantifier_normalizer.h. */
   QuantifierNormalizer& getNormalizer() { return d_normalizer; }
-
-  /** The environment of the enclosing cvc5 solver. */
-  const Env& getEnv() const { return d_env; }
 
   /**
    * Internalize the instance of the quantified formula q for terms, the
@@ -226,7 +220,6 @@ class SmtContext final : protected EnvObj
   void skolemize(TNode q);
 
   void internalize(TNode n, bool gateCtx);
-  void internalize(const Node* exprs, size_t numExprs, bool gateCtx);
   void internalize(TNode n, bool gateCtx, uint32_t generation);
 
   ENode* mkENode(TNode n, bool suppressArgs, bool mergeTf, bool cgcEnabled);
@@ -265,6 +258,10 @@ class SmtContext final : protected EnvObj
   void setEnodeFlag(SatVariable v, bool isNewVar);
 
   // ------------------------------------------------------------- engine
+  /**
+   * True if n1 and n2 are known to be distinct: their roots are distinct
+   * constants, or their equality is relevant and false.
+   */
   bool isDiseq(ENode* n1, ENode* n2) const;
 
   /**
@@ -303,8 +300,6 @@ class SmtContext final : protected EnvObj
  protected:
   // --------------------------------------------- equality and congruence
   void propagateBoolENodeAssignmentCore(ENode* source, ENode* target);
-  bool addDiseq(ENode* n1, ENode* n2);
-  bool isDiseqCore(ENode* n1, ENode* n2, bool checkDistinctRootValues) const;
 
   void assignQuantifier(TNode q);
   /**
@@ -353,6 +348,8 @@ class SmtContext final : protected EnvObj
   void flush();
 
   // ------------------------------------------------------------- the fields
+  /** The search statistics. */
+  Statistics d_stats;
   /** The module that owns the core, its boundary with cvc5. */
   Z3Module& d_host;
   /**

@@ -7,7 +7,7 @@
  * directory for licensing information.
  * ****************************************************************************
  *
- * The logical context: the ported Z3 SMT d_prop.
+ * The logical context: the ported Z3 SMT core.
  *
  * Ported from Z3 (MIT License, Copyright (c) Microsoft Corporation), files
  * src/smt/smt_context.cpp and src/smt/smt_internalizer.cpp, and recast in
@@ -42,7 +42,7 @@ SmtContext::SmtContext(Env& env, Z3Module& host)
       d_prop(env, *this, d_stats),
       d_egraph(env, *this, d_trailStack, d_stats),
       d_normalizer(env.getNodeManager()),
-      d_qmanager(*this),
+      d_qmanager(env, *this),
       d_trueENode(nullptr),
       d_falseENode(nullptr),
       d_assertedFormulasQhead(0),
@@ -157,30 +157,14 @@ void SmtContext::propagateBoolENodeAssignmentCore(ENode* source, ENode* target)
   } while (first != target);
 }
 
-bool SmtContext::addDiseq(ENode* n1, ENode* n2)
-{
-  // There is no theory plugin to tell of the disequality.
-  return n1->getRoot() != n2->getRoot();
-}
-
 bool SmtContext::isDiseq(ENode* n1, ENode* n2) const
 {
-  return isDiseqCore(n1, n2, true);
-}
-
-bool SmtContext::isDiseqCore(ENode* n1,
-                             ENode* n2,
-                             bool checkDistinctRootValues) const
-{
   Assert(n1->getSort() == n2->getSort());
-  if (checkDistinctRootValues)
+  TNode e1 = n1->getRoot()->getExpr();
+  TNode e2 = n2->getRoot()->getExpr();
+  if (e1.isConst() && e2.isConst() && e1 != e2)
   {
-    TNode e1 = n1->getRoot()->getExpr();
-    TNode e2 = n2->getRoot()->getExpr();
-    if (e1.isConst() && e2.isConst() && e1 != e2)
-    {
-      return true;
-    }
+    return true;
   }
   // the equality of n1 and n2, if the E-graph has one
   Assert(NodeManager::hasOperator(Kind::EQUAL));
@@ -232,13 +216,12 @@ bool SmtContext::propagateAtoms()
       {
         d_egraph.addEq(d_egraph.getENode(lhs), d_egraph.getENode(rhs));
       }
-      else
+      else if (d_egraph.getENode(lhs)->getRoot()
+               == d_egraph.getENode(rhs)->getRoot())
       {
-        if (!addDiseq(d_egraph.getENode(lhs), d_egraph.getENode(rhs))
-            && !d_prop.inconsistent())
-        {
-          d_prop.setConflict();
-        }
+        // there is no theory plugin to tell of the disequality, only the
+        // conflict when the classes are already merged
+        d_prop.setConflict();
       }
     }
     else if (d.isQuantifier())
@@ -635,16 +618,6 @@ bool SmtContext::finalCheck()
 
 namespace {
 
-bool isTrueNode(TNode n)
-{
-  return n.getKind() == Kind::CONST_BOOLEAN && n.getConst<bool>();
-}
-
-bool isFalseNode(TNode n)
-{
-  return n.getKind() == Kind::CONST_BOOLEAN && !n.getConst<bool>();
-}
-
 /** True if n is an atom or the negation of one, as Z3's is_literal is. */
 bool isLiteralNode(TNode n)
 {
@@ -825,8 +798,8 @@ void SmtContext::internalizeDistinct(TNode n, bool gateCtx)
       diseqs.size() == 1 ? diseqs[0] : nodeManager()->mkNode(Kind::AND, diseqs);
   internalizeRec(def, true);
   SatLiteral lDef = d_prop.getLiteral(def);
-  d_prop.mkGateClause(~l, lDef);
-  d_prop.mkGateClause(l, ~lDef);
+  d_prop.mkClause(~l, lDef);
+  d_prop.mkClause(l, ~lDef);
   // Reference counts of negations are not tracked, so a relevancy dependency
   // on the equality is added instead.
   Node relDef = def.getKind() == Kind::NOT ? def[0] : def;
@@ -1202,7 +1175,7 @@ void SmtContext::assertRoot(TNode n)
         {
           internalizeRec(arg, true);
           SatLiteral lit = d_prop.getLiteral(arg);
-          d_prop.mkRootClause(1, &lit);
+          d_prop.mkClause(1, &lit);
         }
         break;
       }
@@ -1214,7 +1187,7 @@ void SmtContext::assertRoot(TNode n)
           internalizeRec(arg, true);
           lits.push_back(d_prop.getLiteral(arg));
         }
-        d_prop.mkRootClause(lits.size(), lits.data());
+        d_prop.mkClause(lits.size(), lits.data());
         d_prop.addOrRelWatches(n);
         break;
       }
@@ -1222,7 +1195,7 @@ void SmtContext::assertRoot(TNode n)
       {
         internalizeRec(n[0], true);
         internalizeRec(n[1], true);
-        d_prop.mkRootClause(~d_prop.getLiteral(n[0]), d_prop.getLiteral(n[1]));
+        d_prop.mkClause(~d_prop.getLiteral(n[0]), d_prop.getLiteral(n[1]));
         d_prop.addImpliesRelWatches(n);
         break;
       }
@@ -1239,8 +1212,8 @@ void SmtContext::assertRoot(TNode n)
         {
           l2 = ~l2;
         }
-        d_prop.mkRootClause(l1, ~l2);
-        d_prop.mkRootClause(~l1, l2);
+        d_prop.mkClause(l1, ~l2);
+        d_prop.mkClause(~l1, l2);
         break;
       }
       case Kind::ITE:
@@ -1254,8 +1227,8 @@ void SmtContext::assertRoot(TNode n)
         SatLiteral cl = d_prop.getLiteral(c);
         SatLiteral tl = d_prop.getLiteral(t);
         SatLiteral el = d_prop.getLiteral(e);
-        d_prop.mkRootClause(~cl, tl);
-        d_prop.mkRootClause(cl, el);
+        d_prop.mkClause(~cl, tl);
+        d_prop.mkClause(cl, el);
         d_prop.addIteRelWatches(n);
         break;
       }

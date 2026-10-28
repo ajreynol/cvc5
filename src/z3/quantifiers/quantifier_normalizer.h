@@ -59,6 +59,18 @@ inline uint32_t varIndex(TNode n)
   return static_cast<uint32_t>(n.getAttribute(QuantVarLevelAttr()) - 1);
 }
 
+/** True if n is the constant true. */
+inline bool isTrueNode(TNode n)
+{
+  return n.getKind() == Kind::CONST_BOOLEAN && n.getConst<bool>();
+}
+
+/** True if n is the constant false. */
+inline bool isFalseNode(TNode n)
+{
+  return n.getKind() == Kind::CONST_BOOLEAN && !n.getConst<bool>();
+}
+
 /** True if n is a quantifier. This is Z3's is_quantifier. */
 inline bool isQuantifier(TNode n)
 {
@@ -101,11 +113,6 @@ class QuantifierNormalizer
   Node normalizeRec(TNode n,
                     uint32_t depth,
                     std::unordered_map<Node, Node>& subs);
-
-  /** Normalize the pattern list child of a quantifier. */
-  Node normalizePatternList(TNode ipl,
-                            uint32_t depth,
-                            std::unordered_map<Node, Node>& subs);
 
   NodeManager* d_nm;
   /** Memoization of normalize, which is applied to whole assertions. */

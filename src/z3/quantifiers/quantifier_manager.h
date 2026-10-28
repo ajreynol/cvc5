@@ -30,6 +30,7 @@
 #include <vector>
 
 #include "expr/node.h"
+#include "smt/env_obj.h"
 #include "z3/quantifiers/fingerprints.h"
 #include "z3/quantifiers/qi_queue.h"
 
@@ -40,10 +41,10 @@ class Mam;
 class ENode;
 class SmtContext;
 
-class QuantifierManager
+class QuantifierManager : protected EnvObj
 {
  public:
-  QuantifierManager(SmtContext& ctx);
+  QuantifierManager(Env& env, SmtContext& ctx);
   ~QuantifierManager();
 
   void add(TNode q, uint32_t generation);

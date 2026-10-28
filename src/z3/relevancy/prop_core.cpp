@@ -28,20 +28,6 @@
 namespace cvc5::internal {
 namespace z3 {
 
-namespace {
-
-bool isTrueNode(TNode n)
-{
-  return n.getKind() == Kind::CONST_BOOLEAN && n.getConst<bool>();
-}
-
-bool isFalseNode(TNode n)
-{
-  return n.getKind() == Kind::CONST_BOOLEAN && !n.getConst<bool>();
-}
-
-}  // namespace
-
 PropCore::PropCore(Env& env, SmtContext& ctx, Statistics& stats)
     : EnvObj(env),
       d_ctx(ctx),
@@ -66,10 +52,6 @@ void PropCore::initTrue(TNode t)
 }
 
 void PropCore::flushClauses() { delClauses(d_auxClauses, 0); }
-
-// ---------------------------------------------------- input and entry points
-
-// ----------------------------------------------------------- the fixpoint
 
 // ------------------------------------------------- the Boolean structure
 
@@ -108,37 +90,21 @@ void PropCore::mkGateConstraints(TNode n)
   }
 }
 
-void PropCore::mkGateClause(size_t numLits, SatLiteral* lits)
-{
-  mkClause(numLits, lits);
-}
-
-void PropCore::mkGateClause(SatLiteral l1, SatLiteral l2)
+void PropCore::mkClause(SatLiteral l1, SatLiteral l2)
 {
   SatLiteral ls[2] = {l1, l2};
-  mkGateClause(2, ls);
+  mkClause(2, ls);
 }
 
-void PropCore::mkGateClause(SatLiteral l1, SatLiteral l2, SatLiteral l3)
+void PropCore::mkClause(SatLiteral l1, SatLiteral l2, SatLiteral l3)
 {
   SatLiteral ls[3] = {l1, l2, l3};
-  mkGateClause(3, ls);
-}
-
-void PropCore::mkRootClause(size_t numLits, SatLiteral* lits)
-{
-  mkClause(numLits, lits);
-}
-
-void PropCore::mkRootClause(SatLiteral l1, SatLiteral l2)
-{
-  SatLiteral ls[2] = {l1, l2};
-  mkRootClause(2, ls);
+  mkClause(3, ls);
 }
 
 void PropCore::addAndRelWatches(TNode n)
 {
-  RelevancyHandler* eh = d_relevancyPropagator->mkAndRelevancyHandler(n);
+  RelevancyHandler* eh = d_relevancyPropagator->mkGateRelevancyHandler(n);
   for (const Node& arg : n)
   {
     // if one child is assigned false, the and-parent must be notified
@@ -148,7 +114,7 @@ void PropCore::addAndRelWatches(TNode n)
 
 void PropCore::addOrRelWatches(TNode n)
 {
-  RelevancyHandler* eh = d_relevancyPropagator->mkOrRelevancyHandler(n);
+  RelevancyHandler* eh = d_relevancyPropagator->mkGateRelevancyHandler(n);
   for (const Node& arg : n)
   {
     // if one child is assigned true, the or-parent must be notified
@@ -158,14 +124,14 @@ void PropCore::addOrRelWatches(TNode n)
 
 void PropCore::addImpliesRelWatches(TNode n)
 {
-  RelevancyHandler* eh = d_relevancyPropagator->mkImpliesRelevancyHandler(n);
+  RelevancyHandler* eh = d_relevancyPropagator->mkGateRelevancyHandler(n);
   addRelWatch(~getLiteral(n[0]), eh);
   addRelWatch(getLiteral(n[1]), eh);
 }
 
 void PropCore::addIteRelWatches(TNode n)
 {
-  RelevancyHandler* eh = d_relevancyPropagator->mkIteRelevancyHandler(n);
+  RelevancyHandler* eh = d_relevancyPropagator->mkGateRelevancyHandler(n);
   SatLiteral l = getLiteral(n[0]);
   // when the condition of an ite is assigned, the ite-parent is notified
   addRelWatch(l, eh);
@@ -178,8 +144,8 @@ void PropCore::mkNotCnstr(TNode n)
   SatVariable v = getBoolVar(n);
   SatLiteral l(v, false);
   SatLiteral c = getLiteral(n[0]);
-  mkGateClause(~l, ~c);
-  mkGateClause(l, c);
+  mkClause(~l, ~c);
+  mkClause(l, c);
 }
 
 void PropCore::mkAndCnstr(TNode n)
@@ -190,10 +156,10 @@ void PropCore::mkAndCnstr(TNode n)
   for (const Node& arg : n)
   {
     SatLiteral lArg = getLiteral(arg);
-    mkGateClause(~l, lArg);
+    mkClause(~l, lArg);
     buffer.push_back(~lArg);
   }
-  mkGateClause(buffer.size(), buffer.data());
+  mkClause(buffer.size(), buffer.data());
 }
 
 void PropCore::mkOrCnstr(TNode n)
@@ -204,10 +170,10 @@ void PropCore::mkOrCnstr(TNode n)
   for (const Node& arg : n)
   {
     SatLiteral lArg = getLiteral(arg);
-    mkGateClause(l, ~lArg);
+    mkClause(l, ~lArg);
     buffer.push_back(lArg);
   }
-  mkGateClause(buffer.size(), buffer.data());
+  mkClause(buffer.size(), buffer.data());
 }
 
 void PropCore::mkImpliesCnstr(TNode n)
@@ -216,12 +182,12 @@ void PropCore::mkImpliesCnstr(TNode n)
   std::vector<SatLiteral> buffer;
   buffer.push_back(~l);
   SatLiteral lArg1 = getLiteral(n[0]);
-  mkGateClause(l, lArg1);
+  mkClause(l, lArg1);
   buffer.push_back(~lArg1);
   SatLiteral lArg2 = getLiteral(n[1]);
-  mkGateClause(l, ~lArg2);
+  mkClause(l, ~lArg2);
   buffer.push_back(lArg2);
-  mkGateClause(buffer.size(), buffer.data());
+  mkClause(buffer.size(), buffer.data());
 }
 
 void PropCore::mkIffCnstr(TNode n, bool sign)
@@ -237,10 +203,10 @@ void PropCore::mkIffCnstr(TNode n, bool sign)
   {
     l = ~l;
   }
-  mkGateClause(~l, l1, ~l2);
-  mkGateClause(~l, ~l1, l2);
-  mkGateClause(l, l1, l2);
-  mkGateClause(l, ~l1, ~l2);
+  mkClause(~l, l1, ~l2);
+  mkClause(~l, ~l1, l2);
+  mkClause(l, l1, l2);
+  mkClause(l, ~l1, ~l2);
 }
 
 void PropCore::mkIteCnstr(TNode n)
@@ -249,10 +215,10 @@ void PropCore::mkIteCnstr(TNode n)
   SatLiteral l1 = getLiteral(n[0]);
   SatLiteral l2 = getLiteral(n[1]);
   SatLiteral l3 = getLiteral(n[2]);
-  mkGateClause(~l, ~l1, l2);
-  mkGateClause(~l, l1, l3);
-  mkGateClause(l, ~l1, ~l2);
-  mkGateClause(l, l1, ~l3);
+  mkClause(~l, ~l1, l2);
+  mkClause(~l, l1, l3);
+  mkClause(l, ~l1, ~l2);
+  mkClause(l, l1, ~l3);
 }
 
 // ----------------------------------------------------------------- relevancy
@@ -709,11 +675,12 @@ void PropCore::addWatchLiteral(Clause* cls, size_t idx)
   d_watches[(~l).toInt()].insertClause(cls);
 }
 
-Clause* PropCore::mkClause(size_t numLits, SatLiteral* lits)
+void PropCore::mkClause(size_t numLits, SatLiteral* lits)
 {
+  // the literals are unassigned once simplified
   if (!simplifyAuxClauseLiterals(numLits, lits))
   {
-    return nullptr;  // the clause is equivalent to true
+    return;  // the clause is equivalent to true
   }
   d_stats.d_numMkLits += numLits;
 
@@ -722,8 +689,8 @@ Clause* PropCore::mkClause(size_t numLits, SatLiteral* lits)
     case 0:
       setConflict();
       Assert(inconsistent());
-      return nullptr;
-    case 1: assign(lits[0]); return nullptr;
+      return;
+    case 1: assign(lits[0]); return;
     case 2:
       if (useBinaryClauseOpt(lits[0], lits[1]))
       {
@@ -731,16 +698,8 @@ Clause* PropCore::mkClause(size_t numLits, SatLiteral* lits)
         SatLiteral l2 = lits[1];
         d_watches[(~l1).toInt()].insertLiteral(l2);
         d_watches[(~l2).toInt()].insertLiteral(l1);
-        if (getAssignment(l1) == SAT_VALUE_FALSE)
-        {
-          assign(l2);
-        }
-        else if (getAssignment(l2) == SAT_VALUE_FALSE)
-        {
-          assign(l1);
-        }
         d_stats.d_numMkBinClause++;
-        return nullptr;
+        return;
       }
       CVC5_FALLTHROUGH;
     default:
@@ -750,15 +709,6 @@ Clause* PropCore::mkClause(size_t numLits, SatLiteral* lits)
       d_auxClauses.push_back(cls);
       addWatchLiteral(cls, 0);
       addWatchLiteral(cls, 1);
-      if (getAssignment(cls->getLiteral(0)) == SAT_VALUE_FALSE)
-      {
-        setConflict();
-      }
-      else if (getAssignment(cls->getLiteral(1)) == SAT_VALUE_FALSE)
-      {
-        assign(cls->getLiteral(0));
-      }
-      return cls;
     }
   }
 }

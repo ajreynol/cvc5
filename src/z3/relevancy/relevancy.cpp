@@ -22,84 +22,27 @@
 namespace cvc5::internal {
 namespace z3 {
 
-void SimpleRelevancyHandler::operator()(RelevancyPropagator& rp)
+void SimpleRelevancyHandler::notify(RelevancyPropagator& rp)
 {
   rp.markAsRelevant(d_target);
 }
 
 namespace {
 
-class AndRelevancyHandler : public RelevancyHandler
+class GateRelevancyHandler : public RelevancyHandler
 {
  public:
-  AndRelevancyHandler(TNode p) : d_parent(p) {}
-  void operator()(RelevancyPropagator& rp) override
+  GateRelevancyHandler(TNode p) : d_parent(p) {}
+  void notify(RelevancyPropagator& rp) override
   {
     if (rp.isRelevant(d_parent))
     {
-      rp.propagateRelevantAnd(d_parent);
+      rp.propagateRelevantGate(d_parent);
     }
   }
 
  private:
   TNode d_parent;
-};
-
-class OrRelevancyHandler : public RelevancyHandler
-{
- public:
-  OrRelevancyHandler(TNode p) : d_parent(p) {}
-  void operator()(RelevancyPropagator& rp) override
-  {
-    if (rp.isRelevant(d_parent))
-    {
-      rp.propagateRelevantOr(d_parent);
-    }
-  }
-
- private:
-  TNode d_parent;
-};
-
-class ImpliesRelevancyHandler : public RelevancyHandler
-{
- public:
-  ImpliesRelevancyHandler(TNode p) : d_parent(p) {}
-  void operator()(RelevancyPropagator& rp) override
-  {
-    if (rp.isRelevant(d_parent))
-    {
-      rp.propagateRelevantImplies(d_parent);
-    }
-  }
-
- private:
-  TNode d_parent;
-};
-
-class IteRelevancyHandler : public RelevancyHandler
-{
- public:
-  IteRelevancyHandler(TNode p) : d_parent(p) {}
-  void operator()(RelevancyPropagator& rp) override
-  {
-    if (rp.isRelevant(d_parent))
-    {
-      rp.propagateRelevantIte(d_parent);
-    }
-  }
-
- private:
-  TNode d_parent;
-};
-
-class IteTermRelevancyHandler : public RelevancyHandler
-{
- public:
- private:
-  TNode d_parent;
-  TNode d_thenEq;
-  TNode d_elseEq;
 };
 
 }  // namespace
@@ -135,28 +78,11 @@ void RelevancyPropagator::addDependency(TNode src, TNode target)
   }
 }
 
-RelevancyHandler* RelevancyPropagator::mkOrRelevancyHandler(TNode n)
+RelevancyHandler* RelevancyPropagator::mkGateRelevancyHandler(TNode n)
 {
-  Assert(n.getKind() == Kind::OR);
-  return mkRelevancyHandler(OrRelevancyHandler(n));
-}
-
-RelevancyHandler* RelevancyPropagator::mkImpliesRelevancyHandler(TNode n)
-{
-  Assert(n.getKind() == Kind::IMPLIES);
-  return mkRelevancyHandler(ImpliesRelevancyHandler(n));
-}
-
-RelevancyHandler* RelevancyPropagator::mkAndRelevancyHandler(TNode n)
-{
-  Assert(n.getKind() == Kind::AND);
-  return mkRelevancyHandler(AndRelevancyHandler(n));
-}
-
-RelevancyHandler* RelevancyPropagator::mkIteRelevancyHandler(TNode n)
-{
-  Assert(n.getKind() == Kind::ITE);
-  return mkRelevancyHandler(IteRelevancyHandler(n));
+  Assert(n.getKind() == Kind::AND || n.getKind() == Kind::OR
+         || n.getKind() == Kind::IMPLIES || n.getKind() == Kind::ITE);
+  return mkRelevancyHandler(GateRelevancyHandler(n));
 }
 
 RelevancyPropagator::RelevancyHandlers* RelevancyPropagator::getHandlers(
@@ -213,7 +139,7 @@ void RelevancyPropagator::addHandler(TNode source, RelevancyHandler* eh)
 {
   if (isRelevant(source))
   {
-    eh->operator()(*this, source);
+    eh->notify(*this);
   }
   else
   {
@@ -243,7 +169,7 @@ void RelevancyPropagator::addWatch(TNode n, bool val, RelevancyHandler* eh)
                      RelevancyHandlers(eh, getWatches(n, val)));
       d_trail.push_back(HandlerTrail(n, val));
       break;
-    case SAT_VALUE_TRUE: eh->operator()(*this, n, val); break;
+    case SAT_VALUE_TRUE: eh->notify(*this); break;
   }
 }
 
@@ -449,6 +375,18 @@ void RelevancyPropagator::propagateRelevantIte(TNode n)
   }
 }
 
+void RelevancyPropagator::propagateRelevantGate(TNode n)
+{
+  switch (n.getKind())
+  {
+    case Kind::OR: propagateRelevantOr(n); break;
+    case Kind::AND: propagateRelevantAnd(n); break;
+    case Kind::IMPLIES: propagateRelevantImplies(n); break;
+    case Kind::ITE: propagateRelevantIte(n); break;
+    default: propagateRelevantApp(n); break;
+  }
+}
+
 void RelevancyPropagator::propagate()
 {
   if (d_propagating)
@@ -463,20 +401,13 @@ void RelevancyPropagator::propagate()
     d_qhead++;
     if (z3::isApp(n))
     {
-      switch (n.getKind())
-      {
-        case Kind::OR: propagateRelevantOr(n); break;
-        case Kind::AND: propagateRelevantAnd(n); break;
-        case Kind::IMPLIES: propagateRelevantImplies(n); break;
-        case Kind::ITE: propagateRelevantIte(n); break;
-        default: propagateRelevantApp(n); break;
-      }
+      propagateRelevantGate(n);
     }
 
     RelevancyHandlers* ehs = getHandlers(n);
     while (ehs != nullptr)
     {
-      ehs->head()->operator()(*this, n);
+      ehs->head()->notify(*this);
       ehs = ehs->tail();
     }
   }
@@ -498,7 +429,7 @@ void RelevancyPropagator::notifyAssigned(TNode n, bool val)
   RelevancyHandlers* ehs = getWatches(n, val);
   while (ehs != nullptr)
   {
-    ehs->head()->operator()(*this, n, val);
+    ehs->head()->notify(*this);
     ehs = ehs->tail();
   }
 }

@@ -42,28 +42,16 @@ class SmtContext;
 class PropCore;
 class RelevancyPropagator;
 
-/** An event handler invoked when an expression becomes relevant. */
+/**
+ * An event handler, invoked when an expression it is attached to becomes
+ * relevant (RelevancyPropagator::addHandler) or is assigned a value
+ * (RelevancyPropagator::addWatch).
+ */
 class RelevancyHandler
 {
  public:
   virtual ~RelevancyHandler() = default;
-
-  /** Invoked when n is marked as relevant. */
-  virtual void operator()(RelevancyPropagator& rp, TNode /*n*/)
-  {
-    operator()(rp);
-  }
-
-  /** Invoked when atom is assigned to val. */
-  virtual void operator()(RelevancyPropagator& rp, TNode /*atom*/, bool /*val*/)
-  {
-    operator()(rp);
-  }
-
-  /** The fallback for the two methods above. */
-  virtual void operator()(RelevancyPropagator& rp) = 0;
-
- protected:
+  virtual void notify(RelevancyPropagator& rp) = 0;
 };
 
 /** Marks a single target as relevant. */
@@ -71,7 +59,7 @@ class SimpleRelevancyHandler : public RelevancyHandler
 {
  public:
   SimpleRelevancyHandler(TNode t) : d_target(t) {}
-  void operator()(RelevancyPropagator& rp) override;
+  void notify(RelevancyPropagator& rp) override;
 
  private:
   TNode d_target;
@@ -98,9 +86,6 @@ class RelevancyPropagator
 
   /** Install a handler invoked whenever n is assigned to val. */
   void addWatch(TNode n, bool val, RelevancyHandler* eh);
-
-  /** Install a handler that marks target relevant when n is assigned val. */
-  void addWatch(TNode n, bool val, TNode target);
 
   /** Called by SmtContext whenever an expression is assigned. */
   void notifyAssigned(TNode n, bool val);
@@ -137,10 +122,11 @@ class RelevancyPropagator
   /** Mark target relevant whenever src is marked relevant. */
   void addDependency(TNode src, TNode target);
 
-  RelevancyHandler* mkOrRelevancyHandler(TNode n);
-  RelevancyHandler* mkImpliesRelevancyHandler(TNode n);
-  RelevancyHandler* mkAndRelevancyHandler(TNode n);
-  RelevancyHandler* mkIteRelevancyHandler(TNode n);
+  /**
+   * A handler that applies the relevancy rule of the gate n (an and, or,
+   * implies or ite), if n is relevant.
+   */
+  RelevancyHandler* mkGateRelevancyHandler(TNode n);
 
   /** Marks the children of n as relevant. Requires n to be relevant. */
   void propagateRelevantApp(TNode n);
@@ -152,6 +138,8 @@ class RelevancyPropagator
   void propagateRelevantImplies(TNode n);
   /** The relevancy rule for an if-then-else. */
   void propagateRelevantIte(TNode n);
+  /** The relevancy rule for n, by its kind. */
+  void propagateRelevantGate(TNode n);
 
  private:
   /** An immutable list of handlers, allocated in the trail stack. */

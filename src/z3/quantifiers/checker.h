@@ -50,6 +50,8 @@ class Checker
                ENode* const* bindings = nullptr);
 
  private:
+  /** True if n has the value isTrue under the given bindings. */
+  bool run(TNode n, size_t numBindings, ENode* const* bindings, bool isTrue);
   bool allArgs(TNode a, size_t depth, bool isTrue);
   bool anyArg(TNode a, size_t depth, bool isTrue);
   bool checkCore(TNode n, size_t depth, bool isTrue);

@@ -46,16 +46,17 @@ constexpr size_t s_maxLazyMultipatternMatching = 2;
 
 }  // namespace
 
-QuantifierManager::QuantifierManager(SmtContext& ctx)
-    : d_context(ctx),
-      d_queue(*this, ctx),
+QuantifierManager::QuantifierManager(Env& env, SmtContext& ctx)
+    : EnvObj(env),
+      d_context(ctx),
+      d_queue(env, *this, ctx),
       d_fingerprints(ctx.getTrailStack()),
       d_lazyMatchingIdx(0),
       d_active(false)
 {
   d_queue.setup();
-  d_mam = mkMam(ctx, *this);
-  d_lazyMam = mkMam(ctx, *this);
+  d_mam = std::make_unique<Mam>(ctx, *this);
+  d_lazyMam = std::make_unique<Mam>(ctx, *this);
 }
 
 QuantifierManager::~QuantifierManager() {}
@@ -125,8 +126,8 @@ void QuantifierManager::notifyAssigned(TNode q)
       }
     }
   }
-  uint32_t numEagerMultiPatterns = static_cast<uint32_t>(
-      d_context.getEnv().getOptions().z3.z3QiMaxMultiPatterns);
+  uint32_t numEagerMultiPatterns =
+      static_cast<uint32_t>(options().z3.z3QiMaxMultiPatterns);
   if (!hasUnaryPattern)
   {
     numEagerMultiPatterns++;

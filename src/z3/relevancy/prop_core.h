@@ -248,9 +248,19 @@ class PropCore : protected EnvObj
   // CnfStream does. The theory side's internalizer walks the input and calls
   // these where a gate or a root assertion occurs.
 
-  /** Make a clause of a root assertion. */
-  void mkRootClause(size_t numLits, SatLiteral* lits);
-  void mkRootClause(SatLiteral l1, SatLiteral l2);
+  /**
+   * Make an auxiliary clause, of a gate or a root assertion, which is deleted
+   * on backtracking.
+   */
+  void mkClause(size_t numLits, SatLiteral* lits);
+  void mkClause(SatLiteral l1, SatLiteral l2);
+  void mkClause(SatLiteral l1, SatLiteral l2, SatLiteral l3);
+  /**
+   * Add the clauses that define the Boolean variable of the gate n in terms
+   * of its arguments, and the relevancy watches of n. Called once, when the
+   * variable of n is made.
+   */
+  void mkGateConstraints(TNode n);
   /** The relevancy watches of the gate n, asserted as a root. */
   void addAndRelWatches(TNode n);
   void addOrRelWatches(TNode n);
@@ -263,20 +273,6 @@ class PropCore : protected EnvObj
    * conflict.
    */
   bool hostAssign(SatLiteral l);
-  /**
-   * Add the clauses that define the Boolean variable of the gate n in terms
-   * of its arguments, and the relevancy watches of n. Called once, when the
-   * variable of n is made.
-   */
-  void mkGateConstraints(TNode n);
-
-  void mkGateClause(size_t numLits, SatLiteral* lits);
-  void mkGateClause(SatLiteral l1, SatLiteral l2);
-  void mkGateClause(SatLiteral l1, SatLiteral l2, SatLiteral l3);
-
-  // ---------------------------------------------------------------- clauses
-  /** Make an auxiliary clause, which is deleted on backtracking. */
-  Clause* mkClause(size_t numLits, SatLiteral* lits);
 
   // ----------------------------------------------------------------- scopes
   uint32_t getScopeLevel() const

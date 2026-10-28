@@ -308,15 +308,6 @@ class ENode
 
   ENode* const* getArgs() const { return argsPtr(); }
 
-  /** Range over the arguments. */
-  class ConstArgs
-  {
-    const ENode& d_n;
-
-   public:
-    ConstArgs(const ENode& n) : d_n(n) {}
-  };
-
   uint32_t getClassSize() const { return d_classSize; }
 
   bool isBool() const { return d_bool; }

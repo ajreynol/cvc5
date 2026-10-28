@@ -29,8 +29,8 @@
  * Bruijn index, where index 0 is the *last* declared variable, and its YIELD
  * instruction reverses the registers to recover declaration order. This port
  * numbers them by de Bruijn *level*, which is already declaration order (see
- * z3/ast.h), so YIELD here does not reverse. In both cases `bindings[i]` ends
- * up being the binding of the i-th declared variable.
+ * quantifier_normalizer.h), so YIELD here does not reverse. In both cases
+ * `bindings[i]` ends up being the binding of the i-th declared variable.
  */
 
 #include "z3/quantifiers/mam.h"
@@ -112,9 +112,6 @@ class TaggedPtr
  private:
   uintptr_t d_data;
 };
-
-/** Z3 uses IS_CGR in place of BIND when every argument is already bound. */
-constexpr bool s_isCgrSupport = true;
 
 /** True if the pattern subterm n contains no quantified variable. */
 bool isGroundPat(TNode n) { return !expr::hasBoundVar(n); }
@@ -955,7 +952,7 @@ class Compiler
       // d_todo contained at least one non-ground application
       TNode lbl = getDecl(firstApp);
       uint16_t numArgs = static_cast<uint16_t>(firstApp.getNumChildren());
-      if (s_isCgrSupport && allArgsAreBoundVars(firstApp))
+      if (allArgsAreBoundVars(firstApp))
       {
         // Every argument is bound already, so the application only has to be
         // looked up rather than branched over: IS_CGR instead of BIND.
@@ -2799,9 +2796,11 @@ bool isFlatAssociative(ENode* n)
   return NodeManager::isNAryKind(n->getExpr().getKind());
 }
 
+}  // namespace
+
 // ----------------------------------------- matching abstract machine impl
 
-class MamImpl final : public Mam
+class MamImpl
 {
  public:
   MamImpl(SmtContext& ctx, QuantifierManager& qm)
@@ -2820,7 +2819,7 @@ class MamImpl final : public Mam
     resetPpPc();
   }
 
-  void addPattern(TNode q, TNode mp) override
+  void addPattern(TNode q, TNode mp)
   {
     Assert(mp.getKind() == Kind::INST_PATTERN);
     // Ground patterns are discarded before solving, but the preprocessor may
@@ -2860,7 +2859,7 @@ class MamImpl final : public Mam
     }
   }
 
-  void notifyPop() override
+  void notifyPop()
   {
     if (!d_toMatch.empty())
     {
@@ -2875,7 +2874,7 @@ class MamImpl final : public Mam
     d_newPatterns.clear();
   }
 
-  void match() override
+  void match()
   {
     for (CodeTree* t : d_toMatch)
     {
@@ -2897,7 +2896,7 @@ class MamImpl final : public Mam
     }
   }
 
-  void rematch() override
+  void rematch()
   {
     for (CodeTree* t : d_trees.getCodeTrees())
     {
@@ -2926,7 +2925,7 @@ class MamImpl final : public Mam
    * the list of candidate enodes for matching, and the method only updates
    * the labels.
    */
-  void notifyRelevant(ENode* n, bool lazy) override
+  void notifyRelevant(ENode* n, bool lazy)
   {
     if (!lazy)
     {
@@ -2959,12 +2958,9 @@ class MamImpl final : public Mam
     }
   }
 
-  bool hasWork() const override
-  {
-    return !d_toMatch.empty() || !d_newPatterns.empty();
-  }
+  bool hasWork() const { return !d_toMatch.empty() || !d_newPatterns.empty(); }
 
-  void notifyMerge(ENode* r1, ENode* r2) override
+  void notifyMerge(ENode* r1, ENode* r2)
   {
     d_context.getStats().d_numMamAddEq++;
     ENode* oldR1 = d_r1;
@@ -2991,19 +2987,6 @@ class MamImpl final : public Mam
   }
 
  private:
-  /** Erase a shared enode when its scope is popped. */
-  class AddSharedENodeTrail : public Trail
-  {
-   public:
-    AddSharedENodeTrail(MamImpl& m, ENode* n) : d_mam(m), d_enode(n) {}
-
-    void undo() override { d_mam.d_sharedENodes.erase(d_enode); }
-
-   private:
-    MamImpl& d_mam;
-    ENode* d_enode;
-  };
-
   void addCandidate(CodeTree* t, ENode* app)
   {
     if (t != nullptr)
@@ -3671,8 +3654,6 @@ class MamImpl final : public Mam
       {
         ENode* e = mkPatENode(d_context, d_qm, q, pat);
         d_context.getPropCore().markAsRelevant(e->getExpr());
-        d_context.getTrailStack().push(AddSharedENodeTrail(*this, e));
-        d_sharedENodes.insert(e);
       }
       else
       {
@@ -3685,9 +3666,7 @@ class MamImpl final : public Mam
       todo.pop_back();
       if (isGroundPat(n))
       {
-        ENode* e = mkPatENode(d_context, d_qm, q, n);
-        d_context.getTrailStack().push(AddSharedENodeTrail(*this, e));
-        d_sharedENodes.insert(e);
+        mkPatENode(d_context, d_qm, q, n);
       }
       else
       {
@@ -3742,21 +3721,35 @@ class MamImpl final : public Mam
   /** temporary field used to collect candidates */
   std::vector<PathTree*> d_todo;
 
-  /** the ground terms that appear in patterns */
-  std::unordered_set<ENode*> d_sharedENodes;
-
   ENode* d_r1;
   ENode* d_r2;
   /** true while collectParents is running, for the statistics */
   bool d_inCollectParents = false;
 };
 
-}  // namespace
-
-std::unique_ptr<Mam> mkMam(SmtContext& ctx, QuantifierManager& qm)
+Mam::Mam(SmtContext& ctx, QuantifierManager& qm)
+    : d_impl(std::make_unique<MamImpl>(ctx, qm))
 {
-  return std::make_unique<MamImpl>(ctx, qm);
 }
+
+Mam::~Mam() {}
+
+void Mam::addPattern(TNode q, TNode mp) { d_impl->addPattern(q, mp); }
+
+void Mam::notifyPop() { d_impl->notifyPop(); }
+
+void Mam::match() { d_impl->match(); }
+
+void Mam::rematch() { d_impl->rematch(); }
+
+bool Mam::hasWork() const { return d_impl->hasWork(); }
+
+void Mam::notifyRelevant(ENode* n, bool lazy)
+{
+  d_impl->notifyRelevant(n, lazy);
+}
+
+void Mam::notifyMerge(ENode* r1, ENode* r2) { d_impl->notifyMerge(r1, r2); }
 
 }  // namespace z3
 }  // namespace cvc5::internal

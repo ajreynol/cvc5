@@ -37,41 +37,45 @@ class QuantifierManager;
 class ENode;
 class SmtContext;
 
+class MamImpl;
+
 /**
- * The interface of the machine, which hides the code trees and the
- * interpreter in mam.cpp; mkMam makes one.
+ * The matching abstract machine: the code trees of the patterns and their
+ * interpreter, which are hidden in mam.cpp.
  */
 class Mam
 {
  public:
-  virtual ~Mam() = default;
+  Mam(SmtContext& ctx, QuantifierManager& qm);
+  ~Mam();
 
   /** Compile the multi-pattern mp of quantifier q into the code trees. */
-  virtual void addPattern(TNode q, TNode mp) = 0;
+  void addPattern(TNode q, TNode mp);
 
   /**
    * Discard the pending matching work, before the scopes are popped. The
    * code trees are in the trail stack of the context, and are popped with
    * it.
    */
-  virtual void notifyPop() = 0;
+  void notifyPop();
 
   /** Execute the pending matching work. */
-  virtual void match() = 0;
+  void match();
 
   /** Re-execute every code tree from scratch. */
-  virtual void rematch() = 0;
+  void rematch();
 
-  virtual bool hasWork() const = 0;
+  bool hasWork() const;
 
   /** Notification that n became relevant. */
-  virtual void notifyRelevant(ENode* n, bool lazy) = 0;
+  void notifyRelevant(ENode* n, bool lazy);
 
   /** Notification that the classes of r1 and r2 merged. */
-  virtual void notifyMerge(ENode* r1, ENode* r2) = 0;
-};
+  void notifyMerge(ENode* r1, ENode* r2);
 
-std::unique_ptr<Mam> mkMam(SmtContext& ctx, QuantifierManager& qm);
+ private:
+  std::unique_ptr<MamImpl> d_impl;
+};
 
 }  // namespace z3
 }  // namespace cvc5::internal

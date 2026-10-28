@@ -270,7 +270,6 @@ class EGraph : protected EnvObj
   std::vector<Node> d_eInternalizedStack;
   /** Maps the id of a term to its enode. */
   App2ENode d_app2ENode;
-  ENodeVector d_enodes;
   /** Maps a declaration id to the enodes with that declaration. */
   std::vector<ENodeVector> d_decl2ENodes;
   std::unordered_map<TNode, uint32_t> d_declIds;

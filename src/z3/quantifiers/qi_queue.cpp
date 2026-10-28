@@ -30,8 +30,9 @@
 namespace cvc5::internal {
 namespace z3 {
 
-QiQueue::QiQueue(QuantifierManager& qm, SmtContext& ctx)
-    : d_qm(qm),
+QiQueue::QiQueue(Env& env, QuantifierManager& qm, SmtContext& ctx)
+    : EnvObj(env),
+      d_qm(qm),
       d_context(ctx),
       d_checker(ctx),
       d_numInstances(0),
@@ -41,7 +42,7 @@ QiQueue::QiQueue(QuantifierManager& qm, SmtContext& ctx)
 
 void QiQueue::setup()
 {
-  d_eagerCostThreshold = d_context.getEnv().getOptions().z3.z3QiEagerThreshold;
+  d_eagerCostThreshold = options().z3.z3QiEagerThreshold;
 }
 
 float QiQueue::getCost(uint32_t generation)
@@ -64,7 +65,7 @@ void QiQueue::instantiate()
     {
       break;
     }
-    if (d_numInstances > d_context.getEnv().getOptions().z3.z3QiMaxInstances)
+    if (d_numInstances > options().z3.z3QiMaxInstances)
     {
       // the maximum number of quantifier instances was reached
       break;
@@ -159,8 +160,7 @@ void QiQueue::initSearch() { d_newEntries.clear(); }
 
 bool QiQueue::skipSatisfied(TNode q, size_t numBindings, ENode* const* bindings)
 {
-  if (d_context.getEnv().getOptions().z3.z3QiChecker
-      && d_checker.isSat(q[1], numBindings, bindings))
+  if (options().z3.z3QiChecker && d_checker.isSat(q[1], numBindings, bindings))
   {
     // The instance is already satisfied, so creating it would be wasted
     // work. It still counts as an instantiation, as it does in Z3.

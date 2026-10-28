@@ -29,6 +29,7 @@
 #include <vector>
 
 #include "expr/node.h"
+#include "smt/env_obj.h"
 #include "z3/quantifiers/checker.h"
 #include "z3/quantifiers/fingerprints.h"
 
@@ -39,10 +40,10 @@ class QuantifierManager;
 class ENode;
 class SmtContext;
 
-class QiQueue
+class QiQueue : protected EnvObj
 {
  public:
-  QiQueue(QuantifierManager& qm, SmtContext& ctx);
+  QiQueue(Env& env, QuantifierManager& qm, SmtContext& ctx);
 
   void setup();
 

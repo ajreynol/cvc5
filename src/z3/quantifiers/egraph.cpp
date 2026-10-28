@@ -64,7 +64,6 @@ ENode* EGraph::mkENode(TNode n,
   d_app2ENode[id] = e;
   d_eInternalizedStack.push_back(n);
   d_trailStack.pushPtr(&d_mkENodeTrail);
-  d_enodes.push_back(e);
   if (e->getNumArgs() > 0)
   {
     if (e->isTrueEq())
@@ -564,8 +563,6 @@ void EGraph::undoMkENode()
     d_decl2ENodes[declId].pop_back();
   }
   e->destroy();
-  Assert(d_eInternalizedStack.size() == d_enodes.size());
-  d_enodes.pop_back();
   d_eInternalizedStack.pop_back();
 }
 

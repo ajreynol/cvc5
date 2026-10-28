@@ -28,12 +28,6 @@ namespace {
 
 /** The depth at which the structural evaluation gives up. */
 constexpr size_t s_maxDepth = 600;
-
-bool isTrueNode(TNode n)
-{
-  return n.getKind() == Kind::CONST_BOOLEAN && n.getConst<bool>();
-}
-
 }  // namespace
 
 Checker::Checker(SmtContext& c)
@@ -229,22 +223,22 @@ ENode* Checker::getENodeEqTo(TNode n)
 
 bool Checker::isSat(TNode n, size_t numBindings, ENode* const* bindings)
 {
-  d_numBindings = numBindings;
-  d_bindings = bindings;
-  bool r = check(n, 0, true);
-  d_isTrueCache[0].clear();
-  d_isTrueCache[1].clear();
-  d_toENodeCache.clear();
-  d_numBindings = 0;
-  d_bindings = nullptr;
-  return r;
+  return run(n, numBindings, bindings, true);
 }
 
 bool Checker::isUnsat(TNode n, size_t numBindings, ENode* const* bindings)
 {
+  return run(n, numBindings, bindings, false);
+}
+
+bool Checker::run(TNode n,
+                  size_t numBindings,
+                  ENode* const* bindings,
+                  bool isTrue)
+{
   d_numBindings = numBindings;
   d_bindings = bindings;
-  bool r = check(n, 0, false);
+  bool r = check(n, 0, isTrue);
   d_isTrueCache[0].clear();
   d_isTrueCache[1].clear();
   d_toENodeCache.clear();

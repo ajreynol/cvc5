@@ -88,7 +88,9 @@ Node QuantifierNormalizer::normalizeRec(TNode n,
     children.push_back(normalizeRec(n[1], newDepth, subs));
     if (n.getNumChildren() == 3)
     {
-      children.push_back(normalizePatternList(n[2], newDepth, subs));
+      // the patterns, whose terms are normalized as any other; the other
+      // annotations, such as :qid, do not mention the bound variables
+      children.push_back(normalizeRec(n[2], newDepth, subs));
     }
     // Restore the substitution.
     for (size_t i = 0; i < numDecls; i++)
@@ -111,33 +113,6 @@ Node QuantifierNormalizer::normalizeRec(TNode n,
     children.push_back(normalizeRec(nc, depth, subs));
   }
   return d_nm->mkNode(n.getKind(), children);
-}
-
-Node QuantifierNormalizer::normalizePatternList(
-    TNode ipl, uint32_t depth, std::unordered_map<Node, Node>& subs)
-{
-  Assert(ipl.getKind() == Kind::INST_PATTERN_LIST);
-  std::vector<Node> annotations;
-  for (const Node& p : ipl)
-  {
-    Kind pk = p.getKind();
-    if (pk == Kind::INST_PATTERN || pk == Kind::INST_NO_PATTERN
-        || pk == Kind::INST_POOL || pk == Kind::INST_ADD_TO_POOL)
-    {
-      std::vector<Node> terms;
-      for (const Node& t : p)
-      {
-        terms.push_back(normalizeRec(t, depth, subs));
-      }
-      annotations.push_back(d_nm->mkNode(pk, terms));
-    }
-    else
-    {
-      // Attributes such as ":qid" do not mention the bound variables.
-      annotations.push_back(p);
-    }
-  }
-  return d_nm->mkNode(Kind::INST_PATTERN_LIST, annotations);
 }
 
 }  // namespace z3
