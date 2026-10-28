@@ -26,6 +26,7 @@
 #include <string>
 #include <vector>
 
+#include "context/cdlist.h"
 #include "expr/node.h"
 #include "prop/sat_solver_types.h"
 #include "smt/env_obj.h"
@@ -58,10 +59,11 @@ using prop::SatValue;
  * private: the theory side sends cvc5 its instances and lemmas.
  *
  * SmtContext owns this object and drives it: the input, the propagation
- * fixpoint and the scopes are SmtContext's, which pushes and pops this
- * side's scopes with its own. This side notifies it of the assigned atoms
- * (enqueueAtom), the relevant terms (notifyRelevant) and the deleted
- * variables (notifyBoolVarDeleted).
+ * fixpoint and the scopes are SmtContext's: this side's assignment and
+ * clauses are context-dependent lists on its trail stack, popped with it,
+ * after which SmtContext calls notifyPopped. This side notifies it of the
+ * assigned atoms (enqueueAtom), the relevant terms (notifyRelevant) and the
+ * deleted variables (notifyBoolVarDeleted).
  */
 class PropCore : protected EnvObj
 {
@@ -74,8 +76,6 @@ class PropCore : protected EnvObj
 
   /** Make the variable of t, the constant true, assigned by an axiom. */
   void initTrue(TNode t);
-  /** Delete all clauses, when the context is flushed. */
-  void flushClauses();
 
   // ------------------------------------------------------ Boolean variables
   SatVariable mkBoolVar(TNode n);
@@ -275,28 +275,33 @@ class PropCore : protected EnvObj
   bool hostAssign(SatLiteral l);
 
   // ----------------------------------------------------------------- scopes
-  uint32_t getScopeLevel() const
-  {
-    return static_cast<uint32_t>(d_scopes.size());
-  }
-
-  /** Open a new scope. */
-  void pushScope();
+  /**
+   * The scopes are those of the trail stack: popping one unassigns the
+   * variables assigned in it and retires the clauses made in it.
+   */
+  uint32_t getScopeLevel() const;
 
   /**
-   * Backtrack numScopes scopes: delete the clauses and unassign the
-   * variables of the scopes popped.
+   * Delete the clauses retired by the scopes just popped, or by all scopes
+   * when the trail stack was reset.
    */
-  void popScope(size_t numScopes);
+  void notifyPopped();
 
   /** Whether this side has propagation work pending. */
   bool hasPendingPropagation() const;
 
  private:
-  struct Scope
+  /** Unassigns a literal popped from d_assignedLiterals. */
+  struct UnassignCleanup
   {
-    size_t d_assignedLiteralsLim;
-    size_t d_auxClausesLim;
+    PropCore* d_core;
+    void operator()(SatLiteral& l) { d_core->unassign(l); }
+  };
+  /** Retires a clause popped from d_auxClauses. */
+  struct RetireCleanup
+  {
+    PropCore* d_core;
+    void operator()(Clause*& c) { d_core->d_retiredClauses.push_back(c); }
   };
 
   /** The trail object that undoes mkBoolVar. */
@@ -310,7 +315,7 @@ class PropCore : protected EnvObj
     PropCore& d_core;
   };
 
-  void unassignVars(size_t oldLim);
+  void unassign(SatLiteral l);
 
   // the Boolean structure
   void mkNotCnstr(TNode n);
@@ -323,7 +328,6 @@ class PropCore : protected EnvObj
   // clause management
   void removeWatchLiteral(Clause* cls, size_t idx);
   void delClause(Clause* cls);
-  void delClauses(ClauseVector& v, size_t oldSize);
   bool simplifyAuxClauseLiterals(size_t& numLits, SatLiteral* lits);
   bool useBinaryClauseOpt(SatLiteral l1, SatLiteral l2) const;
   void addWatchLiteral(Clause* cls, size_t idx);
@@ -345,16 +349,20 @@ class PropCore : protected EnvObj
   /** The watch list of each literal. */
   std::vector<WatchList> d_watches;
   std::vector<BoolVarData> d_bdata;
-  ClauseVector d_auxClauses;
-  std::vector<SatLiteral> d_assignedLiterals;
+  /**
+   * The clauses of the popped scopes, which are deleted together after the
+   * pop, so that a large batch sweeps the watch lists once.
+   */
+  ClauseVector d_retiredClauses;
+  /** The transient clauses, made at scopes above the base level. */
+  context::CDList<Clause*, RetireCleanup> d_auxClauses;
+  context::CDList<SatLiteral, UnassignCleanup> d_assignedLiterals;
   size_t d_qhead;
 
   /** True if a conflict was found at the current scope. */
   bool d_conflict;
   /** True if a formula asserted false. */
   bool d_assertedInconsistent;
-
-  std::vector<Scope> d_scopes;
 
   MkBoolVarTrail d_mkBoolVarTrail;
 };

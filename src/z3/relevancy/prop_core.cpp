@@ -33,6 +33,9 @@ PropCore::PropCore(Env& env, SmtContext& ctx, Statistics& stats)
       d_ctx(ctx),
       d_stats(stats),
       d_relevancyPropagator(new RelevancyPropagator(*this, ctx)),
+      d_auxClauses(ctx.getTrailStack().getContext(), true, RetireCleanup{this}),
+      d_assignedLiterals(
+          ctx.getTrailStack().getContext(), true, UnassignCleanup{this}),
       d_qhead(0),
       d_conflict(false),
       d_assertedInconsistent(false),
@@ -50,8 +53,6 @@ void PropCore::initTrue(TNode t)
   d_assignment[s_trueLiteral.toInt()] = SAT_VALUE_TRUE;
   d_assignment[s_falseLiteral.toInt()] = SAT_VALUE_FALSE;
 }
-
-void PropCore::flushClauses() { delClauses(d_auxClauses, 0); }
 
 // ------------------------------------------------- the Boolean structure
 
@@ -259,21 +260,51 @@ void PropCore::propagateRelevancy(size_t qhead)
 
 // -------------------------------------------------------------------- scopes
 
-void PropCore::pushScope()
+uint32_t PropCore::getScopeLevel() const
 {
-  d_scopes.push_back(Scope{d_assignedLiterals.size(), d_auxClauses.size()});
+  return d_ctx.getTrailStack().getScopeLevel();
 }
 
-void PropCore::popScope(size_t numScopes)
+void PropCore::notifyPopped()
 {
-  Assert(numScopes > 0);
-  Assert(numScopes <= d_scopes.size());
-  size_t newLvl = d_scopes.size() - numScopes;
-  Scope& sc = d_scopes[newLvl];
   d_conflict = false;
-  delClauses(d_auxClauses, sc.d_auxClausesLim);
-  unassignVars(sc.d_assignedLiteralsLim);
-  d_scopes.resize(newLvl);
+  d_qhead = d_assignedLiterals.size();
+  size_t numCollect = d_retiredClauses.size();
+  if (numCollect > 1000)
+  {
+    // For a large batch it is cheaper to mark everything deleted first and
+    // then sweep the affected watch lists once.
+    std::vector<bool> watches(d_watches.size(), false);
+    for (Clause* c : d_retiredClauses)
+    {
+      if (!c->deleted())
+      {
+        c->markAsDeleted();
+      }
+      watches[(~c->getLiteral(0)).toInt()] = true;
+      watches[(~c->getLiteral(1)).toInt()] = true;
+    }
+    for (size_t w = 0, sz = d_watches.size(); w < sz; ++w)
+    {
+      if (watches[w])
+      {
+        d_watches[w].removeDeleted();
+      }
+    }
+    for (Clause* c : d_retiredClauses)
+    {
+      delete c;
+    }
+    d_stats.d_numDelClause += numCollect;
+  }
+  else
+  {
+    for (Clause* c : d_retiredClauses)
+    {
+      delClause(c);
+    }
+  }
+  d_retiredClauses.clear();
 }
 
 bool PropCore::hasPendingPropagation() const
@@ -491,70 +522,10 @@ void PropCore::delClause(Clause* cls)
   d_stats.d_numDelClause++;
 }
 
-void PropCore::delClauses(ClauseVector& v, size_t oldSize)
+void PropCore::unassign(SatLiteral l)
 {
-  size_t numCollect = v.size() - oldSize;
-  if (numCollect == 0)
-  {
-    return;
-  }
-
-  if (numCollect > 1000)
-  {
-    // For a large batch it is cheaper to mark everything deleted first and
-    // then sweep the affected watch lists once.
-    std::vector<bool> watches(d_watches.size(), false);
-    for (size_t i = v.size(); i != oldSize;)
-    {
-      --i;
-      Clause* c = v[i];
-      if (!c->deleted())
-      {
-        c->markAsDeleted();
-      }
-      watches[(~c->getLiteral(0)).toInt()] = true;
-      watches[(~c->getLiteral(1)).toInt()] = true;
-    }
-    for (size_t w = 0, sz = d_watches.size(); w < sz; ++w)
-    {
-      if (watches[w])
-      {
-        d_watches[w].removeDeleted();
-      }
-    }
-    for (size_t i = v.size(); i != oldSize;)
-    {
-      --i;
-      delete v[i];
-    }
-    d_stats.d_numDelClause += (v.size() - oldSize);
-  }
-  else
-  {
-    for (size_t i = v.size(); i != oldSize;)
-    {
-      --i;
-      delClause(v[i]);
-    }
-  }
-  v.resize(oldSize);
-}
-
-void PropCore::unassignVars(size_t oldLim)
-{
-  Assert(oldLim <= d_assignedLiterals.size());
-
-  size_t i = d_assignedLiterals.size();
-  while (i != oldLim)
-  {
-    --i;
-    SatLiteral l = d_assignedLiterals[i];
-    d_assignment[l.toInt()] = SAT_VALUE_UNKNOWN;
-    d_assignment[(~l).toInt()] = SAT_VALUE_UNKNOWN;
-  }
-
-  d_assignedLiterals.resize(oldLim);
-  d_qhead = oldLim;
+  d_assignment[l.toInt()] = SAT_VALUE_UNKNOWN;
+  d_assignment[(~l).toInt()] = SAT_VALUE_UNKNOWN;
 }
 
 SatVariable PropCore::mkBoolVar(TNode n)

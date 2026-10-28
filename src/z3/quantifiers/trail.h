@@ -187,6 +187,12 @@ class TrailStack
    */
   context::Context* getContext() { return &d_context; }
 
+  /**
+   * The number of scopes pushed by pushScope. The context's base scope holds
+   * the objects pushed before the first one (see reset).
+   */
+  uint32_t getScopeLevel() const { return d_context.getLevel() - 1; }
+
   void pushScope() { d_context.push(); }
 
   void popScope(size_t numScopes)

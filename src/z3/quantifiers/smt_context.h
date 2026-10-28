@@ -37,6 +37,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "context/cdlist.h"
 #include "expr/node.h"
 #include "smt/env_obj.h"
 #include "z3/quantifiers/egraph.h"
@@ -188,7 +189,7 @@ class SmtContext final : protected EnvObj
 
   SatValue getAssignment(ENode* n) const;
 
-  uint32_t getScopeLevel() const { return d_prop.getScopeLevel(); }
+  uint32_t getScopeLevel() const { return d_trailStack.getScopeLevel(); }
 
   bool isTrue(const ENode* n) const { return n == d_trueENode; }
 
@@ -414,7 +415,7 @@ class SmtContext final : protected EnvObj
   };
   std::vector<ReplayUnit> d_unitsToReassert;
   /** For each scope, the size of d_unitsToReassert when it was pushed. */
-  std::vector<size_t> d_unitsToReassertLims;
+  context::CDList<size_t> d_unitsToReassertLims;
 
   // ------------------------------------------------------------ backtracking
 

@@ -50,6 +50,7 @@ SmtContext::SmtContext(Env& env, Z3Module& host)
       d_internalizingAssertions(false),
       d_searching(false),
       d_resourceOut(false),
+      d_unitsToReassertLims(d_trailStack.getContext()),
       d_generation(0)
 {
   init();
@@ -69,8 +70,8 @@ void SmtContext::init()
 void SmtContext::flush()
 {
   d_prop.flushRelevancy();
-  d_prop.flushClauses();
   d_trailStack.reset();
+  d_prop.notifyPopped();
 }
 
 void SmtContext::notifyMerge(ENode* r1, ENode* r2)
@@ -390,9 +391,8 @@ bool SmtContext::resourceLimitsExceeded()
 
 void SmtContext::pushScope()
 {
-  d_prop.pushScope();
-  d_unitsToReassertLims.push_back(d_unitsToReassert.size());
   d_trailStack.pushScope();
+  d_unitsToReassertLims.push_back(d_unitsToReassert.size());
 }
 
 void SmtContext::popScope(size_t numScopes)
@@ -401,16 +401,16 @@ void SmtContext::popScope(size_t numScopes)
   Assert(numScopes <= getScopeLevel());
   uint32_t newLvl = getScopeLevel() - static_cast<uint32_t>(numScopes);
   // The order is that of Z3's pop_scope_core, except that the theory side's
-  // state other than the trail is popped in one step, before the Boolean
-  // side's clauses and assignment, which are independent of it.
+  // state other than the trail is popped in one step, and that the Boolean
+  // side's clauses and assignment, which are independent of it, are popped
+  // with the trail.
   cacheUnitGenerations(newLvl);
   size_t unitsToReassertLim = d_unitsToReassertLims[newLvl];
   d_qmanager.notifyPop();
-  d_prop.popScope(numScopes);
   d_trailStack.popScope(numScopes);
+  d_prop.notifyPopped();
   d_egraph.clearPendingEqs();
   d_atomPropagationQueue.clear();
-  d_unitsToReassertLims.resize(newLvl);
   reassertUnits(unitsToReassertLim);
   resetCacheGeneration();
 }
