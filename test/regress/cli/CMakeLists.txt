@@ -747,6 +747,7 @@ set(regress_0_tests
   regress0/cores/issue4971-1.smt2
   regress0/cores/issue4971-2.smt2
   regress0/cores/issue4971-3.smt2
+  regress0/cores/issue13116-sat-proof-pop.smt2
   regress0/cores/issue5079.smt2
   regress0/cores/issue5234-uc-ua.smt2
   regress0/cores/issue5238.smt2

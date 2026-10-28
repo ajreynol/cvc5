@@ -325,8 +325,13 @@ class SatProofManager : protected EnvObj
    *
    * This and the version below both call the node version of this method,
    * described further below, which actually does the necessary processing.
+   *
+   * @param lit the literal concluded by the resolution chain
+   * @param level the user context level at which lit was assigned, if any.
+   * If this is below the current user context level, the proof of lit is
+   * saved so that it is kept when popping.
    */
-  void endResChain(Minisat::Lit lit);
+  void endResChain(Minisat::Lit lit, uint32_t level = -1);
   /** Ends resolution chain concluding a clause */
   void endResChain(const Minisat::Clause& clause);
   /** Build refutation proof starting from conflict clause

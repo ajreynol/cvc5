@@ -658,7 +658,10 @@ void Solver::removeClause(CRef cr) {
         {
           d_pfManager->addResolutionStep(c[i]);
         }
-        d_pfManager->endResChain(c[0]);
+        // The literal c[0] may have been assigned at a user level below the
+        // current one, in which case it survives popping the current user
+        // level. Thus we pass its user level so that its proof is kept.
+        d_pfManager->endResChain(c[0], user_level(var(c[0])) + 1);
       }
       vardata[var(c[0])].d_reason = CRef_Undef;
     }
