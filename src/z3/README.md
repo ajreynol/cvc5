@@ -191,7 +191,5 @@ as of this README:
 | `src/z3/quantifiers/` | 26 | 7532 | 1760 | 960 |
 | **Total** | 36 | **9044** | 2159 | 1224 |
 
-The rest of cvc5 changes by 259 added and 18 deleted lines over 22 C++ files,
-most of them in `smt/set_defaults.cpp` (the capability checks) and
-`theory/quantifiers/quantifiers_preprocess.cpp` (pre-skolemization of
-quantified formulas with patterns).
+The rest of cvc5 changes by 204 added and 10 deleted lines over 18 C++ files,
+most of them in `smt/set_defaults.cpp` (the capability checks).
