@@ -2836,10 +2836,11 @@ set(regress_0_tests
   regress0/z3/ematch-nested-pattern.smt2
   regress0/z3/ematch-nested-quantifier-levels.smt2
   regress0/z3/ematch-repeated-var.smt2
+  regress0/z3/get-qe.smt2
   regress0/z3/hosted-quant.smt2
-  regress0/z3/qe-returns-input.smt2
   regress0/z3/quant-generation.smt2
   regress0/z3/quant-incomplete-unknown.smt2
+  regress0/z3/sat-finite-model-find.smt2
   regress0/z3/unsat-cores.smt2
   regress0/z3/unsupported-deep-restart.smt2
   regress0/z3/unsupported-incremental.smt2

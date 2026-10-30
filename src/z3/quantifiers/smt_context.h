@@ -201,9 +201,6 @@ class SmtContext final : protected EnvObj
 
   bool isTrue(const ENode* n) const { return n == d_trueENode; }
 
-  /** True if the input contains universal quantifiers. */
-  bool hasQuantifiers() const { return d_hasQuantifiers; }
-
   // ----------------------------------------------- backtracking support
   TrailStack& getTrailStack() { return d_trailStack; }
 
@@ -422,7 +419,6 @@ class SmtContext final : protected EnvObj
   std::unordered_set<Node> d_encodedDistincts;
   /** The equalities f(a_i) = v_i made by assertDistinct. */
   std::vector<Node> d_distinctEqs;
-  bool d_hasQuantifiers;
   bool d_internalizingAssertions;
   /** Whether the search started (setupSearch). */
   bool d_searching;

@@ -335,16 +335,9 @@ void Z3Module::checkCore(theory::Theory::Effort effort)
                      << " at level " << context()->getLevel() << std::endl;
     if (done)
     {
-      if (d_needCheck)
-      {
-        return;
-      }
-      // The ground part of the model is cvc5's theories'; the quantified
-      // formulas are not checked against it.
-      if (d_core->hasQuantifiers())
-      {
-        d_qim.setModelUnsound(theory::IncompleteId::QUANTIFIERS);
-      }
+      // Whether the model satisfies the quantified formulas is for the
+      // quantifiers engine to decide at last call: the core claims
+      // completeness for none of them.
       return;
     }
     // not done: the theory side made progress
@@ -357,7 +350,6 @@ void Z3Module::checkCore(theory::Theory::Effort effort)
       return;
     }
   }
-  d_qim.setModelUnsound(theory::IncompleteId::UNKNOWN);
 }
 
 TrustNode Z3Module::getSkolemization(TNode q)

@@ -47,7 +47,6 @@ SmtContext::SmtContext(Env& env, Z3Module& host)
       d_trueENode(nullptr),
       d_falseENode(nullptr),
       d_assertedFormulasQhead(0),
-      d_hasQuantifiers(false),
       d_internalizingAssertions(false),
       d_searching(false),
       d_resourceOut(false),
@@ -1148,10 +1147,6 @@ void SmtContext::pushAssertion(TNode e)
         return;
       }
     }
-  }
-  if (!d_hasQuantifiers && expr::hasClosure(Node(e)))
-  {
-    d_hasQuantifiers = true;
   }
   Trace("z3-assert") << "ASSERT " << e << std::endl;
   d_assertedFormulas.push_back(e);
