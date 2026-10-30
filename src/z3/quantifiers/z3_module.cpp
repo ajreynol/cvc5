@@ -244,7 +244,7 @@ void Z3Module::preRegister(TNode atom)
   // the search starts; the others are internalized at the next check.
   Trace("z3-host") << "preregister " << atom << std::endl;
   Node a = toCore(atom);
-  if (d_setup)
+  if (d_setup && !d_core->isEncodedDistinct(a))
   {
     d_preregistered.push_back(a);
   }
@@ -258,7 +258,14 @@ void Z3Module::assertFact(TNode literal)
   }
   syncLevel();
   Trace("z3-host") << "assert " << literal << std::endl;
-  SatLiteral l = d_core->literalOf(toCore(literal));
+  Node lit = toCore(literal);
+  if (d_core->isEncodedDistinct(lit))
+  {
+    // asserted as a root, which it is in cvc5 as well; internalizing it as
+    // an atom would expand it
+    return;
+  }
+  SatLiteral l = d_core->literalOf(lit);
   if (!d_core->getPropCore().hostAssign(l))
   {
     enterConflict();

@@ -22,6 +22,7 @@
 #include "base/output.h"
 #include "expr/node_algorithm.h"
 #include "expr/node_manager.h"
+#include "expr/skolem_manager.h"
 #include "options/smt_options.h"
 #include "options/z3_options.h"
 #include "smt/env.h"
@@ -1258,10 +1259,7 @@ void SmtContext::assertRoot(TNode n)
   }
   else if (n.getKind() == Kind::DISTINCT)
   {
-    // Z3 encodes a very large distinct with auxiliary values over a fresh
-    // sort. cvc5's rewriter expands distinct during preprocessing, so the
-    // core is not expected to meet one at all; the plain encoding is used.
-    assertDefault(n);
+    assertDistinct(n);
     d_prop.markAsRelevant(n);
   }
   else
@@ -1286,6 +1284,32 @@ void SmtContext::assertDefault(TNode n)
   {
     d_prop.assign(l);
     d_prop.markAsRelevant(l);
+  }
+}
+
+void SmtContext::assertDistinct(TNode n)
+{
+  // Z3's DISTINCT_SZ_THRESHOLD
+  if (n.getNumChildren() <= 32)
+  {
+    assertDefault(n);
+    return;
+  }
+  d_encodedDistincts.insert(n);
+  NodeManager* nm = nodeManager();
+  SkolemManager* sm = nm->getSkolemManager();
+  TypeNode u = nm->mkSort("distinct-elems");
+  Node f = sm->mkDummySkolem("distinct-aux-f",
+                             nm->mkFunctionType(n[0].getType(), u));
+  for (const Node& arg : n)
+  {
+    Node val = sm->mkDummySkolem("unique-value", u);
+    ENode* e = mkENode(val, false, false, true);
+    e->markAsInterpreted();
+    Node eq = nm->mkNode(Kind::EQUAL, nm->mkNode(Kind::APPLY_UF, f, arg), val);
+    d_distinctEqs.push_back(eq);
+    assertDefault(eq);
+    d_prop.markAsRelevant(eq);
   }
 }
 

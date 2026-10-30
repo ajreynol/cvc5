@@ -95,6 +95,14 @@ class SmtContext final : protected EnvObj
    * backtracking.
    */
   SatLiteral literalOf(TNode n);
+  /**
+   * Whether n is a root distinct encoded by assertDistinct, which, as in Z3,
+   * has no Boolean variable: the host's assignment of it is ignored.
+   */
+  bool isEncodedDistinct(TNode n) const
+  {
+    return d_encodedDistincts.find(n) != d_encodedDistincts.end();
+  }
   /** Assert a (prepared) formula. */
   void assertFormula(TNode e);
 
@@ -256,6 +264,16 @@ class SmtContext final : protected EnvObj
    */
   void assertRoot(TNode n);
   void assertDefault(TNode n);
+  /**
+   * Assert the root distinct n. As in Z3 (assert_distinct), a distinct with
+   * more than 32 arguments is not expanded into its pairwise disequalities:
+   * each argument a_i is instead asserted to be mapped by a fresh function f
+   * to a fresh interpreted value v_i, so that merging two arguments merges
+   * two values, which is a conflict. Every Verus query asserts such a
+   * distinct over its fuel constants (150 to 700 of them), whose expansion
+   * made up most of the core's Boolean variables and enodes.
+   */
+  void assertDistinct(TNode n);
 
   void setEnodeFlag(SatVariable v, bool isNewVar);
 
@@ -400,6 +418,10 @@ class SmtContext final : protected EnvObj
   /** The formulas asserted to the core, and how far they are internalized. */
   std::vector<Node> d_assertedFormulas;
   size_t d_assertedFormulasQhead;
+  /** The root distincts that assertDistinct encoded. */
+  std::unordered_set<Node> d_encodedDistincts;
+  /** The equalities f(a_i) = v_i made by assertDistinct. */
+  std::vector<Node> d_distinctEqs;
   bool d_hasQuantifiers;
   bool d_internalizingAssertions;
   /** Whether the search started (setupSearch). */
