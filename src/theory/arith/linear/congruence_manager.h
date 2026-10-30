@@ -93,6 +93,15 @@ class ArithCongruenceManager : protected EnvObj
   void equalsConstant(ConstraintCP eq);
   void equalsConstant(ConstraintCP lb, ConstraintCP ub);
 
+  /**
+   * Assert a = b, where a - b = sum_j c_j * (v_j - k_j) as polynomials, for
+   * the pairs (v_j, c_j) of sum and the values k_j that the bounds of v_j fix
+   * it to. It is explained by these bounds.
+   */
+  void impliedEquality(TNode a,
+                       TNode b,
+                       const std::vector<std::pair<ArithVar, Rational>>& sum);
+
   bool inConflict() const;
 
   bool hasMorePropagations() const;
@@ -100,6 +109,9 @@ class ArithCongruenceManager : protected EnvObj
   const Node getNextPropagation();
 
   bool canExplain(TNode n) const;
+
+  /** Is t a term of the equality engine? */
+  bool hasTerm(TNode t) const;
 
   /**
    * Propagate. Called when the equality engine has inferred literal x.
@@ -238,6 +250,16 @@ class ArithCongruenceManager : protected EnvObj
    */
   TrustNode explainInternal(TNode internal);
 
+  /**
+   * The proof of the equality eq of impliedEquality, for sum and the proofs
+   * of the lower and upper bounds of its variables.
+   */
+  std::shared_ptr<ProofNode> proveImpliedEquality(
+      const Node& eq,
+      const std::vector<std::pair<ArithVar, Rational>>& sum,
+      const std::vector<std::pair<std::shared_ptr<ProofNode>,
+                                  std::shared_ptr<ProofNode>>>& bounds);
+
   class Statistics
   {
    public:
@@ -246,6 +268,7 @@ class ArithCongruenceManager : protected EnvObj
     IntStat d_watchedVariableIsNotZero;
 
     IntStat d_equalsConstantCalls;
+    IntStat d_impliedEqualities;
 
     IntStat d_propagations;
     IntStat d_propagateConstraints;

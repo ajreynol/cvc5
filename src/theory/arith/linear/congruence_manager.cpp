@@ -106,6 +106,8 @@ ArithCongruenceManager::Statistics::Statistics(StatisticsRegistry& sr)
           "theory::arith::congruence::watchedVariableIsNotZero")),
       d_equalsConstantCalls(
           sr.registerInt("theory::arith::congruence::equalsConstantCalls")),
+      d_impliedEqualities(
+          sr.registerInt("theory::arith::congruence::impliedEqualities")),
       d_propagations(sr.registerInt("theory::arith::congruence::propagations")),
       d_propagateConstraints(
           sr.registerInt("theory::arith::congruence::propagateConstraints")),
@@ -143,6 +145,8 @@ bool ArithCongruenceManager::canExplain(TNode n) const
 {
   return d_explanationMap.find(n) != d_explanationMap.end();
 }
+
+bool ArithCongruenceManager::hasTerm(TNode t) const { return d_ee->hasTerm(t); }
 
 Node ArithCongruenceManager::externalToInternal(TNode n) const
 {
@@ -908,6 +912,91 @@ void ArithCongruenceManager::equalsConstant(ConstraintCP lb, ConstraintCP ub)
                     << std::endl;
 
   assertLitToEqualityEngine(eq, reason, pf);
+}
+
+void ArithCongruenceManager::impliedEquality(
+    TNode a, TNode b, const std::vector<std::pair<ArithVar, Rational>>& sum)
+{
+  if (inConflict())
+  {
+    return;
+  }
+  std::pair<Node, Node> p = mkSameType(a, b);
+  if (d_ee->hasTerm(p.first) && d_ee->hasTerm(p.second)
+      && d_ee->areEqual(p.first, p.second))
+  {
+    return;
+  }
+  ++(d_statistics.d_impliedEqualities);
+  NodeManager* nm = nodeManager();
+  NodeBuilder nb(nm, Kind::AND);
+  std::vector<std::pair<std::shared_ptr<ProofNode>, std::shared_ptr<ProofNode>>>
+      bounds;
+  for (const std::pair<ArithVar, Rational>& vc : sum)
+  {
+    std::pair<ConstraintP, ConstraintP> lu =
+        d_avariables.explainEqualBounds(vc.first);
+    std::shared_ptr<ProofNode> pfLb = lu.first->externalExplainByAssertions(nb);
+    std::shared_ptr<ProofNode> pfUb =
+        lu.second == NullConstraint
+            ? pfLb
+            : lu.second->externalExplainByAssertions(nb);
+    bounds.emplace_back(pfLb, pfUb);
+  }
+  Node reason = mkAndFromBuilder(nm, nb);
+  Node eq = p.first.eqNode(p.second);
+  std::shared_ptr<ProofNode> pf;
+  if (isProofEnabled())
+  {
+    pf = proveImpliedEquality(eq, sum, bounds);
+  }
+  d_keepAlive.push_back(eq);
+  d_keepAlive.push_back(reason);
+  Trace("arith-ee") << "Assert impliedEquality " << eq << ", reason " << reason
+                    << std::endl;
+  assertLitToEqualityEngine(eq, reason, pf);
+}
+
+std::shared_ptr<ProofNode> ArithCongruenceManager::proveImpliedEquality(
+    const Node& eq,
+    const std::vector<std::pair<ArithVar, Rational>>& sum,
+    const std::vector<std::pair<std::shared_ptr<ProofNode>,
+                                std::shared_ptr<ProofNode>>>& bounds)
+{
+  std::shared_ptr<ProofNode> pf = bounds[0].first;
+  if (sum.size() == 1 && pf == bounds[0].second)
+  {
+    // a - b = c * (v - k), by v = k
+    return ensurePredTransform(d_pnm, pf, eq);
+  }
+  // a <= b, since a - b = sum_j c_j * (v_j - k_j) <= 0 by the upper bound of
+  // v_j if c_j > 0 and its lower bound otherwise, and dually b <= a
+  NodeManager* nm = nodeManager();
+  std::vector<std::shared_ptr<ProofNode>> dirPfs;
+  for (Kind k : {Kind::LEQ, Kind::GEQ})
+  {
+    std::vector<std::shared_ptr<ProofNode>> children;
+    std::vector<Node> coeffs;
+    for (size_t i = 0, n = sum.size(); i < n; i++)
+    {
+      Rational c = k == Kind::LEQ ? sum[i].second : -sum[i].second;
+      children.push_back(c.sgn() > 0 ? bounds[i].second : bounds[i].first);
+      coeffs.push_back(nm->mkConstReal(c));
+    }
+    if (children.size() == 1)
+    {
+      pf = children[0];
+    }
+    else
+    {
+      std::vector<Node> coeffUse = getMacroSumUbCoeff(nm, children, coeffs);
+      pf = d_pnm->mkNode(
+          ProofRule::MACRO_ARITH_SCALE_SUM_UB, children, coeffUse);
+    }
+    Node rel = nm->mkNode(k, eq[0], eq[1]);
+    dirPfs.push_back(ensurePredTransform(d_pnm, pf, rel));
+  }
+  return d_pnm->mkNode(ProofRule::ARITH_TRICHOTOMY, dirPfs, {}, eq);
 }
 
 bool ArithCongruenceManager::isProofEnabled() const { return d_pnm != nullptr; }

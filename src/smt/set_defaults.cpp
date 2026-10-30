@@ -1617,6 +1617,9 @@ void SetDefaults::setDefaultsQuantifiers(const LogicInfo& logic,
     // Conflict-based instantiation at full effort duplicates the core's
     // search for conflicting instances.
     SET_AND_NOTIFY_IF_NOT_USER(quantifiers, conflictBasedInst, false, "z3");
+    // As Z3, propagate the equalities that arithmetic finds cheaply: matching
+    // relies on them, e.g. to recognize new terms as equal to existing ones.
+    SET_AND_NOTIFY_IF_NOT_USER(arith, arithImpliedEqs, true, "z3");
   }
   if (opts.arrays.arraysExp)
   {

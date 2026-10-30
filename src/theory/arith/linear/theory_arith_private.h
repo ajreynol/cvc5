@@ -38,6 +38,7 @@
 #include "theory/arith/linear/dual_simplex.h"
 #include "theory/arith/linear/error_set.h"
 #include "theory/arith/linear/fc_simplex.h"
+#include "theory/arith/linear/implied_equalities.h"
 #include "theory/arith/linear/infer_bounds.h"
 #include "theory/arith/linear/linear_equality.h"
 #include "theory/arith/linear/matrix.h"
@@ -890,6 +891,9 @@ class TheoryArithPrivate : protected EnvObj
   };
 
   Statistics d_statistics;
+
+  /** The equalities implied by the tableau, if --arith-implied-eqs. */
+  std::unique_ptr<ImpliedEqualities> d_impliedEqs;
 }; /* class TheoryArithPrivate */
 
 }  // namespace arith::linear

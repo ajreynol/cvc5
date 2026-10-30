@@ -1,0 +1,17 @@
+; COMMAND-LINE: --arith-implied-eqs --simplification=none
+; EXPECT: unsat
+(set-logic QF_UFLRA)
+(declare-fun f (Real) Real)
+(declare-fun p (Real) Bool)
+(declare-const x Real)
+(declare-const n Real)
+(declare-const k Real)
+(assert (or (= n 2.5) (< n 0.0)))
+(assert (>= n 0.0))
+(assert (<= k 1.0))
+(assert (>= k 1.0))
+(assert (>= (+ x (* 2.0 k) n) 7.0))
+(assert (<= (+ x (* 2.0 k) n) 7.0))
+(assert (p (f x)))
+(assert (not (p (f 2.5))))
+(check-sat)

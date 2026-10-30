@@ -613,6 +613,14 @@ name   = "Arithmetic Theory"
   help       = "whether to use the equality solver in the theory of arithmetic"
 
 [[option]]
+  name       = "arithImpliedEqs"
+  category   = "expert"
+  long       = "arith-implied-eqs"
+  type       = "bool"
+  default    = "false"
+  help       = "infer the equalities between terms implied by the rows of the simplex tableau whose other variables are fixed"
+
+[[option]]
   name       = "arithStaticLearning"
   category   = "regular"
   long       = "arith-static-learning"

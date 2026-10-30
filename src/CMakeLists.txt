@@ -444,6 +444,8 @@ libcvc5_add_sources(
   theory/arith/linear/error_set.h
   theory/arith/linear/fc_simplex.cpp
   theory/arith/linear/fc_simplex.h
+  theory/arith/linear/implied_equalities.cpp
+  theory/arith/linear/implied_equalities.h
   theory/arith/linear/infer_bounds.cpp
   theory/arith/linear/infer_bounds.h
   theory/arith/linear/linear_solver.cpp

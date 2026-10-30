@@ -1,0 +1,18 @@
+; COMMAND-LINE: --arith-implied-eqs --simplification=none
+; EXPECT: unsat
+(set-logic QF_UFLIA)
+(declare-fun f (Int) Int)
+(declare-fun p (Int) Bool)
+(declare-const x Int)
+(declare-const y Int)
+(declare-const z Int)
+(declare-const n Int)
+(assert (or (= n 3) (< n 0)))
+(assert (>= n 0))
+(assert (<= (+ x n) (+ y 5)))
+(assert (>= (+ x n) (+ y 5)))
+(assert (<= (+ z 1) (+ y n)))
+(assert (>= (+ z 1) (+ y n)))
+(assert (p (f x)))
+(assert (not (p (f z))))
+(check-sat)

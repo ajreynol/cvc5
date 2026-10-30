@@ -173,6 +173,11 @@ TheoryArithPrivate::TheoryArithPrivate(Env& env,
       d_previousStatus(Result::UNKNOWN),
       d_statistics(statisticsRegistry(), "theory::arith::")
 {
+  if (options().arith.arithImpliedEqs)
+  {
+    d_impliedEqs = std::make_unique<ImpliedEqualities>(
+        d_env, d_partialModel, d_tableau, d_congruenceManager);
+  }
 }
 
 TheoryArithPrivate::~TheoryArithPrivate()
@@ -1927,6 +1932,10 @@ bool TheoryArithPrivate::assertionCases(ConstraintP constraint)
   Assert(!constraint->negationHasProof());
 
   ArithVar x_i = constraint->getVariable();
+  if (d_impliedEqs != nullptr && constraint->getType() != Disequality)
+  {
+    d_impliedEqs->notifyBound(x_i);
+  }
 
   switch (constraint->getType())
   {
@@ -3894,6 +3903,15 @@ bool TheoryArithPrivate::postCheck(Theory::Effort effortLevel)
       }
       break;
     default: Unimplemented();
+  }
+  if (!emmittedConflictOrSplit && d_impliedEqs != nullptr && d_cmEnabled)
+  {
+    d_impliedEqs->check();
+    if (anyConflict())
+    {
+      outputConflicts();
+      return true;
+    }
   }
   d_statistics.d_avgUnknownsInARow << d_unknownsInARow;
 
