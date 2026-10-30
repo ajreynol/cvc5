@@ -107,6 +107,13 @@ class VtsTermCache : protected EnvObj
    *
    * This method ensures that the returned node is equivalent to n and does
    * not contain free occurrences of the virtual terms.
+   *
+   * If n contains a literal that cannot be handled by virtual term
+   * substitution (e.g. delta has a non-constant coefficient) or contains a
+   * virtual term beneath a nested quantifier, then we return the result of
+   * replacing all virtual terms in n by their free variants. Note that we
+   * must not combine virtual term substitution for some literals of n with
+   * free variants in other literals of n, as this is unsound in general.
    */
   Node rewriteVtsSymbols(Node n);
   /**
@@ -140,6 +147,12 @@ class VtsTermCache : protected EnvObj
   std::map<TypeNode, Node> d_vts_inf_free;
   /** substitute vts terms with their corresponding vts free terms */
   Node substituteVtsFreeTerms(Node n);
+  /**
+   * Helper for rewriteVtsSymbols. Sets needsFree to true if n contains a
+   * virtual term that cannot be eliminated by virtual term substitution, in
+   * which case the return value of this method should be ignored.
+   */
+  Node rewriteVtsSymbolsRec(Node n, bool& needsFree);
 }; /* class TermUtil */
 
 }  // namespace quantifiers

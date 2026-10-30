@@ -121,6 +121,26 @@ Node VtsTermCache::substituteVtsFreeTerms(Node n)
 
 Node VtsTermCache::rewriteVtsSymbols(Node n)
 {
+  bool needsFree = false;
+  Node ret = rewriteVtsSymbolsRec(n, needsFree);
+  if (needsFree)
+  {
+    // We cannot eliminate the virtual terms in some part of n. We replace all
+    // virtual terms in n by their free variants, which ensures that n is
+    // interpreted consistently, i.e. as an instance whose virtual terms are
+    // replaced by the free terms.
+    ret = substituteVtsFreeTerms(n);
+    Trace("quant-vts-debug") << "...return free " << ret << std::endl;
+  }
+  return ret;
+}
+
+Node VtsTermCache::rewriteVtsSymbolsRec(Node n, bool& needsFree)
+{
+  if (needsFree)
+  {
+    return n;
+  }
   NodeManager* nm = nodeManager();
   if (((n.getKind() == Kind::EQUAL && n[0].getType().isRealOrInt())
        || n.getKind() == Kind::GEQ))
@@ -188,16 +208,18 @@ Node VtsTermCache::rewriteVtsSymbols(Node n)
           Trace("quant-vts-debug") << "VTS isolated :  -> " << iso_n
                                    << ", res = " << res << std::endl;
           Node slv = iso_n[res == 1 ? 1 : 0];
-          // ensure the vts terms have been eliminated
-          if (containsVtsTerm(slv))
+          // ensure the vts terms have been eliminated. If we are rewriting
+          // infinity, then it is fine if slv contains delta, since the
+          // result only depends on the coefficient of infinity.
+          if (!rew_vts_inf.isNull() ? containsVtsInfinity(slv)
+                                    : containsVtsTerm(slv))
           {
             Trace("quant-vts-warn")
                 << "Bad vts literal : " << n << ", contains " << vts_sym
                 << " but bad solved form " << slv << "." << std::endl;
-            // safe case: just convert to free symbols
-            nlit = substituteVtsFreeTerms(n);
-            Trace("quant-vts-debug") << "...return " << nlit << std::endl;
-            return nlit;
+            // safe case: convert to free symbols
+            needsFree = true;
+            return n;
           }
           else
           {
@@ -234,10 +256,9 @@ Node VtsTermCache::rewriteVtsSymbols(Node n)
           Trace("quant-vts-warn")
               << "Bad vts literal : " << n << ", contains " << vts_sym
               << " but could not isolate." << std::endl;
-          // safe case: just convert to free symbols
-          nlit = substituteVtsFreeTerms(n);
-          Trace("quant-vts-debug") << "...return " << nlit << std::endl;
-          return nlit;
+          // safe case: convert to free symbols
+          needsFree = true;
+          return n;
         }
       }
     }
@@ -246,13 +267,21 @@ Node VtsTermCache::rewriteVtsSymbols(Node n)
   else if (n.getKind() == Kind::FORALL)
   {
     // cannot traverse beneath quantifiers
-    return substituteVtsFreeTerms(n);
+    if (containsVtsTerm(n))
+    {
+      needsFree = true;
+    }
+    return n;
   }
   bool childChanged = false;
   std::vector<Node> children;
   for (const Node& nc : n)
   {
-    Node nn = rewriteVtsSymbols(nc);
+    Node nn = rewriteVtsSymbolsRec(nc, needsFree);
+    if (needsFree)
+    {
+      return n;
+    }
     children.push_back(nn);
     childChanged = childChanged || nn != nc;
   }
