@@ -193,7 +193,6 @@ enum Opcode
   CHECK,
   FILTER,
   CFILTER,
-  PFILTER,
   CHOOSE,
   NOOP,
   CONTINUE,
@@ -335,7 +334,6 @@ struct GetCgr : public Instr
 struct Yield : public Instr
 {
   TNode d_qa;
-  TNode d_pat;
   uint16_t d_numBindings;
   uint32_t* bindingsPtr()
   {
@@ -498,11 +496,6 @@ class CodeTreeManager
     return mkFilterCore(FILTER, reg, s);
   }
 
-  Filter* mkPfilter(uint32_t reg, ApproxSet s)
-  {
-    return mkFilterCore(PFILTER, reg, s);
-  }
-
   Filter* mkCfilter(uint32_t reg, ApproxSet s)
   {
     return mkFilterCore(CFILTER, reg, s);
@@ -578,7 +571,6 @@ class CodeTreeManager
   }
 
   Yield* mkYield(TNode qa,
-                 TNode pat,
                  uint16_t numBindings,
                  const uint32_t* bindings)
   {
@@ -588,7 +580,6 @@ class CodeTreeManager
     Yield* y =
         mkInstr<Yield>(op, sizeof(Yield) + numBindings * sizeof(uint32_t));
     y->d_qa = qa;
-    y->d_pat = pat;
     y->d_numBindings = numBindings;
     std::memcpy(y->bindingsPtr(), bindings, sizeof(uint32_t) * numBindings);
     return y;
@@ -1066,7 +1057,7 @@ class Compiler
   }
 
   /** Process the patterns of a multi-pattern other than firstIdx. */
-  void lineariseMultiPattern(size_t /*firstIdx*/)
+  void lineariseMultiPattern()
   {
     size_t numArgs = d_mp.getNumChildren();
     for (size_t i = 1; i < numArgs; ++i)
@@ -1228,7 +1219,7 @@ class Compiler
     {
       d_mpAlreadyProcessed.assign(d_mp.getNumChildren(), false);
       d_mpAlreadyProcessed[firstIdx] = true;
-      lineariseMultiPattern(firstIdx);
+      lineariseMultiPattern();
     }
 
     // the pattern must capture every variable
@@ -1251,7 +1242,7 @@ class Compiler
       varRegs[i] = static_cast<uint32_t>(d_vars[i]);
     }
     d_seq.push_back(d_ctManager.mkYield(
-        d_qa, d_mp, static_cast<uint16_t>(numDecls), varRegs.data()));
+        d_qa, static_cast<uint16_t>(numDecls), varRegs.data()));
 
     for (Instr* curr : d_seq)
     {
@@ -1369,7 +1360,10 @@ class Compiler
   bool isSemiCompatible(Check* instr) const
   {
     uint32_t reg = instr->d_reg;
-    if (instr->d_enode != nullptr && !instr->d_enode->hasLblHash())
+    // The enode may not have a label hash even though updateFilters ran
+    // first: it can be a ground subterm of a maximal ground term, and only
+    // the maximal ones get a hash there.
+    if (!instr->d_enode->hasLblHash())
     {
       instr->d_enode->setLblHash(d_context.getTrailStack());
     }
@@ -1377,7 +1371,6 @@ class Compiler
     return !r.isNull()
            // no point filtering a register another filter already checked
            && getCheckMark(reg) == NOT_CHECKED && isGroundPat(r)
-           && instr->d_enode != nullptr
            && getPatLblHash(reg) == instr->d_enode->getLblHash();
   }
 
@@ -1411,19 +1404,6 @@ class Compiler
     TNode r = getRegister(reg);
     return !r.isNull() && getCheckMark(reg) == NOT_CHECKED && isApp(r)
            && !isGroundPat(r);
-  }
-
-  bool isCompatible(Cont* instr) const
-  {
-    uint32_t oreg = instr->d_oreg;
-    for (uint16_t i = 0; i < instr->d_numArgs; ++i)
-    {
-      if (!getRegister(oreg + i).isNull())
-      {
-        return false;
-      }
-    }
-    return true;
   }
 
   /**
@@ -1573,15 +1553,8 @@ class Compiler
             else if (isSemiCompatible(chk))
             {
               uint32_t reg = chk->d_reg;
-              ENode* n1 = chk->d_enode;
-              // n1 may not have a label hash even though updateFilters ran
-              // first: n1 can be a ground subterm of a maximal ground term,
-              // and only the maximal ones get a hash there.
-              if (!n1->hasLblHash())
-              {
-                n1->setLblHash(d_context.getTrailStack());
-              }
-              uint32_t h1 = n1->getLblHash();
+              // isSemiCompatible gave the enode a label hash
+              uint32_t h1 = chk->d_enode->getLblHash();
               uint32_t h2 = getPatLblHash(reg);
               ApproxSet s(h1);
               s.insert(h2);
@@ -1877,36 +1850,31 @@ class Interpreter
   {
     d_context.getStats().d_numMamExecs++;
     init(t);
-    if (t->filterCandidates())
+    // the candidates of a tree that filters them (one of the inverted path
+    // index) may repeat, and are marked to be matched once
+    bool filter = t->filterCandidates();
+    bool ok = true;
+    for (ENode* app : t->getCandidates())
     {
-      for (ENode* app : t->getCandidates())
+      if ((filter && app->isMarked()) || !app->isCgr())
       {
-        if (!app->isMarked() && app->isCgr())
-        {
-          if (d_context.resourceLimitsExceeded() || !executeCore(t, app))
-          {
-            cleanup(t);
-            return false;
-          }
-          app->setMark();
-        }
+        continue;
       }
+      if (d_context.resourceLimitsExceeded() || !executeCore(t, app))
+      {
+        ok = false;
+        break;
+      }
+      if (filter)
+      {
+        app->setMark();
+      }
+    }
+    if (filter)
+    {
       cleanup(t);
     }
-    else
-    {
-      for (ENode* app : t->getCandidates())
-      {
-        if (app->isCgr())
-        {
-          if (d_context.resourceLimitsExceeded() || !executeCore(t, app))
-          {
-            return false;
-          }
-        }
-      }
-    }
-    return true;
+    return ok;
   }
 
   /** init(t) must be invoked before executeCore. */
@@ -1936,20 +1904,21 @@ class Interpreter
    * class. The arity has to be given explicitly because of the n-ary
    * operators, whose applications may have any number of arguments.
    */
+  /** Whether n is an application of lbl with numExpectedArgs arguments. */
+  static bool isFApp(const ENode* n, TNode lbl, uint16_t numExpectedArgs)
+  {
+    return n->getDecl() == lbl && n->isCgr()
+           && n->getNumArgs() == numExpectedArgs;
+  }
+
   ENode* getFirstFApp(TNode lbl, uint16_t numExpectedArgs, ENode* curr)
   {
-    ENode* first = curr;
-    do
+    if (isFApp(curr, lbl, numExpectedArgs))
     {
-      if (curr->getDecl() == lbl && curr->isCgr()
-          && curr->getNumArgs() == numExpectedArgs)
-      {
-        updateMaxGeneration(curr);
-        return curr;
-      }
-      curr = curr->getNext();
-    } while (curr != first);
-    return nullptr;
+      updateMaxGeneration(curr);
+      return curr;
+    }
+    return getNextFApp(lbl, numExpectedArgs, curr, curr);
   }
 
   ENode* getNextFApp(TNode lbl,
@@ -1957,16 +1926,13 @@ class Interpreter
                      ENode* first,
                      ENode* curr)
   {
-    curr = curr->getNext();
-    while (curr != first)
+    for (curr = curr->getNext(); curr != first; curr = curr->getNext())
     {
-      if (curr->getDecl() == lbl && curr->isCgr()
-          && curr->getNumArgs() == numExpectedArgs)
+      if (isFApp(curr, lbl, numExpectedArgs))
       {
         updateMaxGeneration(curr);
         return curr;
       }
-      curr = curr->getNext();
     }
     return nullptr;
   }
@@ -2076,6 +2042,24 @@ class Interpreter
   }
 
   ENode* initContinue(const Cont* c, uint16_t expectedNumArgs);
+  /**
+   * Move st to the next relevant application with numArgs arguments, from
+   * where it is. The applications may be the whole enode list of the label,
+   * which is not necessarily relevant. Returns false at the end.
+   */
+  bool seekContApp(ContState& st, uint16_t numArgs) const
+  {
+    for (; st.d_it != st.d_end; ++st.d_it)
+    {
+      ENode* curr = *st.d_it;
+      if (curr->getNumArgs() == numArgs
+          && d_context.getPropCore().isRelevant(curr->getExpr()))
+      {
+        return true;
+      }
+    }
+    return false;
+  }
 
   /** Report a match to the quantifier manager. */
   void onMatch(TNode q,
@@ -2202,17 +2186,7 @@ ENode* Interpreter::initContinue(const Cont* c, uint16_t expectedNumArgs)
     bpRest.d_it = bestV->data();
     bpRest.d_end = bestV->data() + bestV->size();
   }
-  // find an application with the right number of arguments
-  for (; bpRest.d_it != bpRest.d_end; ++bpRest.d_it)
-  {
-    ENode* curr = *bpRest.d_it;
-    if (curr->getNumArgs() == expectedNumArgs
-        && d_context.getPropCore().isRelevant(curr->getExpr()))
-    {
-      break;
-    }
-  }
-  if (bpRest.d_it == bpRest.d_end)
+  if (!seekContApp(bpRest, expectedNumArgs))
   {
     if (bestV != nullptr)
     {
@@ -2300,7 +2274,7 @@ main_loop:
     case CHECK:
       d_n1 = d_registers[static_cast<const Check*>(d_pc)->d_reg];
       d_n2 = static_cast<const Check*>(d_pc)->d_enode;
-      if (d_n1 == nullptr || d_n2 == nullptr)
+      if (d_n1 == nullptr)
       {
         goto backtrack;
       }
@@ -2322,16 +2296,6 @@ main_loop:
       d_n1 = d_registers[static_cast<const Filter*>(d_pc)->d_reg]->getRoot();
       if (static_cast<const Filter*>(d_pc)->d_lblSet.emptyIntersection(
               d_n1->getLbls()))
-      {
-        goto backtrack;
-      }
-      d_pc = d_pc->d_next;
-      goto main_loop;
-
-    case PFILTER:
-      d_n1 = d_registers[static_cast<const Filter*>(d_pc)->d_reg]->getRoot();
-      if (static_cast<const Filter*>(d_pc)->d_lblSet.emptyIntersection(
-              d_n1->getPlbls()))
       {
         goto backtrack;
       }
@@ -2543,26 +2507,20 @@ backtrack:
       case CONTINUE:
       {
         ContState& bpRest = bp.d_rest;
+        const Cont* c = static_cast<const Cont*>(bp.d_instr);
         ++bpRest.d_it;
-        for (; bpRest.d_it != bpRest.d_end; ++bpRest.d_it)
+        if (seekContApp(bpRest, c->d_numArgs))
         {
           d_app = *bpRest.d_it;
-          const Cont* c = static_cast<const Cont*>(bp.d_instr);
-          // The iterator may walk the whole enode list of the label, which
-          // is not necessarily relevant, so relevance has to be checked.
-          if (d_app->getNumArgs() == c->d_numArgs
-              && d_context.getPropCore().isRelevant(d_app->getExpr()))
+          updateMaxGeneration(d_app);
+          d_numArgs = c->d_numArgs;
+          d_oreg = c->d_oreg;
+          for (uint16_t i = 0; i < d_numArgs; ++i)
           {
-            updateMaxGeneration(d_app);
-            d_numArgs = c->d_numArgs;
-            d_oreg = c->d_oreg;
-            for (uint16_t i = 0; i < d_numArgs; ++i)
-            {
-              d_registers[d_oreg + i] = d_app->getArg(i);
-            }
-            d_pc = c->d_next;
-            goto main_loop;
+            d_registers[d_oreg + i] = d_app->getArg(i);
           }
+          d_pc = c->d_next;
+          goto main_loop;
         }
         // the continue failed
         if (bpRest.d_toRecycle != nullptr)
@@ -2899,18 +2857,23 @@ class MamImpl
       {
         continue;
       }
-      d_interpreter.init(t);
-      TNode lbl = t->getRootLbl();
-      // executeCore may internalize new applications of lbl, which can grow
-      // and reallocate the context's enode vector for lbl, so the vector
-      // itself (not just its size) is re-fetched on every iteration.
-      for (size_t i = 0; i < d_egraph.enodesOf(lbl).size(); ++i)
+      executeOnRelevant(t, t->getRootLbl());
+    }
+  }
+
+  /** Run the tree t over every relevant application of lbl. */
+  void executeOnRelevant(CodeTree* t, TNode lbl)
+  {
+    d_interpreter.init(t);
+    // executeCore may internalize new applications of lbl, which can grow
+    // and reallocate the context's enode vector for lbl, so the vector
+    // itself (not just its size) is re-fetched on every iteration.
+    for (size_t i = 0; i < d_egraph.enodesOf(lbl).size(); ++i)
+    {
+      ENode* curr = d_egraph.enodesOf(lbl)[i];
+      if (d_context.getPropCore().isRelevant(curr->getExpr()))
       {
-        ENode* curr = d_egraph.enodesOf(lbl)[i];
-        if (d_context.getPropCore().isRelevant(curr->getExpr()))
-        {
-          d_interpreter.executeCore(t, curr);
-        }
+        d_interpreter.executeCore(t, curr);
       }
     }
   }
@@ -3003,21 +2966,9 @@ class MamImpl
   void addCandidate(ENode* app)
   {
     CodeTree* t = d_trees.getCodeTreeFor(app->getDecl());
-    if (TraceIsOn("z3-mam-order"))
-    {
-      Trace("z3-mam-order")
-          << "addCandidate " << app->getExpr() << " tree=" << (t != nullptr)
-          << " lvl=" << d_context.getScopeLevel() << std::endl;
-    }
-    if (t == nullptr)
-    {
-      Trace("z3-mam-nocand") << "no tree for " << app->getDecl() << std::endl;
-    }
-    else
-    {
-      Trace("z3-mam-cand") << "cand " << app->getDecl() << std::endl;
-      Trace("z3-mam-cand-full") << "cand " << app->getExpr() << std::endl;
-    }
+    Trace("z3-mam-order") << "addCandidate " << app->getExpr()
+                          << " tree=" << (t != nullptr)
+                          << " lvl=" << d_context.getScopeLevel() << std::endl;
     addCandidate(t, app);
   }
 
@@ -3521,29 +3472,18 @@ class MamImpl
           std::swap(nPlbl1, nPlbl2);
           std::swap(nR1, nR2);
         }
-        if (nPlbl1 == nPlbl2)
+        // Collect from the root with fewer parents. The second path tree is
+        // for the larger label, which is the same as the first when the two
+        // labels are equal.
+        PathTreePair& pp = d_pp[nPlbl1][nPlbl2];
+        Assert(nPlbl1 < nPlbl2 || pp.second == nullptr);
+        if (nR1->getNumParents() <= nR2->getNumParents())
         {
-          Assert(d_pp[nPlbl1][nPlbl2].second == nullptr);
-          if (nR1->getNumParents() <= nR2->getNumParents())
-          {
-            collectParents(nR1, d_pp[nPlbl1][nPlbl2].first);
-          }
-          else
-          {
-            collectParents(nR2, d_pp[nPlbl1][nPlbl2].first);
-          }
+          collectParents(nR1, pp.first);
         }
         else
         {
-          Assert(nPlbl1 < nPlbl2);
-          if (nR1->getNumParents() <= nR2->getNumParents())
-          {
-            collectParents(nR1, d_pp[nPlbl1][nPlbl2].first);
-          }
-          else
-          {
-            collectParents(nR2, d_pp[nPlbl1][nPlbl2].second);
-          }
+          collectParents(nR2, nPlbl1 == nPlbl2 ? pp.first : pp.second);
         }
       }
     }
@@ -3612,19 +3552,10 @@ class MamImpl
       Trace("z3-mam-newpat")
           << "  running tree for " << lbl << " over "
           << d_egraph.enodesOf(lbl).size() << " enodes" << std::endl;
-      d_interpreter.init(tmpTree);
-      for (size_t i = 0; i < d_egraph.enodesOf(lbl).size(); ++i)
-      {
-        ENode* app = d_egraph.enodesOf(lbl)[i];
-        if (d_context.getPropCore().isRelevant(app->getExpr()))
-        {
-          d_interpreter.executeCore(tmpTree, app);
-        }
-      }
+      executeOnRelevant(tmpTree, lbl);
       d_tmpTrees[lblId] = nullptr;
       delete tmpTree;
     }
-    d_newPatterns.clear();
   }
 
   void collectGroundExprs(TNode q, TNode mp)

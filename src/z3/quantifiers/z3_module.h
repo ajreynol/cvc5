@@ -19,6 +19,7 @@
 
 #include <memory>
 
+#include "context/cdo.h"
 #include "context/context.h"
 #include "theory/incomplete_id.h"
 #include "theory/inference_id.h"
@@ -193,10 +194,11 @@ class Z3Module : public theory::quantifiers::QuantifiersModule
   TheoryEngine* d_te;
   /** Whether the propositional side was set up (presolve). */
   bool d_setup;
-  /** Whether the core is in conflict in the current context. */
-  bool d_inConflict;
-  /** The level of the SAT context at which the conflict was found. */
-  uint32_t d_conflictLevel;
+  /**
+   * Whether the core is in conflict in the current context. The conflict
+   * holds until the SAT context pops below the level it was found at.
+   */
+  context::CDO<bool> d_inConflict;
   /** Whether cvc5 must call check again. */
   bool d_needCheck;
   /**

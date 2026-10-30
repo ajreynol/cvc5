@@ -40,8 +40,7 @@ Z3Module::Z3Module(Env& env,
     : QuantifiersModule(env, qs, qim, qr, tr),
       d_te(nullptr),
       d_setup(false),
-      d_inConflict(false),
-      d_conflictLevel(0),
+      d_inConflict(context(), false),
       d_needCheck(false),
       d_popLevel(UINT32_MAX),
       d_pg(std::make_unique<LemmaProofGenerator>(env)),
@@ -278,8 +277,8 @@ void Z3Module::checkCore(theory::Theory::Effort effort)
     stats.d_numHostFullChecks++;
   }
   Trace("z3-host") << "check " << effort << " at level "
-                   << context()->getLevel() << " inConflict " << d_inConflict
-                   << std::endl;
+                   << context()->getLevel() << " inConflict "
+                   << d_inConflict.get() << std::endl;
   if (d_inConflict)
   {
     // The core's conflict is for cvc5's theories to find, and they have not
@@ -380,16 +379,6 @@ void Z3Module::notifyPop()
   }
   // the merges notified and not applied are void
   d_core->getEGraph().clearPendingMasterMerges();
-  if (!d_setup)
-  {
-    return;
-  }
-  // The core's conflict, at d_conflictLevel, holds until the SAT context
-  // pops below it; cvc5 may pop to shallower levels that still hold it.
-  if (lvl < d_conflictLevel)
-  {
-    d_inConflict = false;
-  }
 }
 
 void Z3Module::syncLevel()
@@ -420,7 +409,6 @@ void Z3Module::enterConflict()
   // the current level, the core does nothing.
   d_core->getStats().d_numShadowConflicts++;
   d_inConflict = true;
-  d_conflictLevel = context()->getLevel();
 }
 
 void Z3Module::sendLemma(const Node& coreLem, bool local)
