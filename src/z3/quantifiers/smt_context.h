@@ -417,7 +417,10 @@ class SmtContext final : protected EnvObj
   size_t d_assertedFormulasQhead;
   /** The root distincts that assertDistinct encoded. */
   std::unordered_set<Node> d_encodedDistincts;
-  /** The equalities f(a_i) = v_i made by assertDistinct. */
+  /**
+   * The equalities f(a_i) = v_i made by assertDistinct, which are kept alive
+   * here.
+   */
   std::vector<Node> d_distinctEqs;
   bool d_internalizingAssertions;
   /** Whether the search started (setupSearch). */
@@ -435,9 +438,10 @@ class SmtContext final : protected EnvObj
   /** For each scope, the size of d_unitsToReassert when it was pushed. */
   context::CDList<size_t> d_unitsToReassertLims;
 
-  // ------------------------------------------------------------ backtracking
-
-  /** A temporary variable used during internalization. */
+  /**
+   * The generation given to the terms internalized now (0 outside of an
+   * instance), see generationOf.
+   */
   uint32_t d_generation;
 };
 

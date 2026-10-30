@@ -1,6 +1,6 @@
 # The ported Z3 core (`--z3`)
 
-A port of Z3's E-matching core, which runs as the only module of cvc5's
+A port of Z3's E-matching core, which runs as the first module of cvc5's
 quantifiers engine (`Z3Module`). cvc5's own prop engine and theories do the
 ground reasoning, and cvc5's quantifiers engine registers the quantified
 formulas and skolemizes those asserted false (the core takes that lemma when

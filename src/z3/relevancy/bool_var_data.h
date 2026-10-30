@@ -31,45 +31,25 @@ struct BoolVarData
   uint32_t d_quantifier : 1;
   /** the scope level at which the variable was internalized */
   uint32_t d_iscopeLvl : 23;
-  /** the disjunction of d_eq, d_enode and d_quantifier */
-  uint32_t d_atom : 1;
-
-  void updateAtomFlag() { d_atom = d_eq || d_quantifier || d_enode; }
 
  public:
   uint32_t getInternLevel() const { return d_iscopeLvl; }
 
-  bool isAtom() const { return d_atom; }
+  bool isAtom() const { return d_eq || d_quantifier || d_enode; }
 
   bool isENode() const { return d_enode; }
 
-  void setENodeFlag()
-  {
-    d_enode = true;
-    d_atom = true;
-  }
+  void setENodeFlag() { d_enode = true; }
 
-  void resetENodeFlag()
-  {
-    d_enode = false;
-    updateAtomFlag();
-  }
+  void resetENodeFlag() { d_enode = false; }
 
   bool isQuantifier() const { return d_quantifier; }
 
-  void setQuantifierFlag()
-  {
-    d_quantifier = true;
-    d_atom = true;
-  }
+  void setQuantifierFlag() { d_quantifier = true; }
 
   bool isEq() const { return d_eq; }
 
-  void setEqFlag()
-  {
-    d_eq = true;
-    d_atom = true;
-  }
+  void setEqFlag() { d_eq = true; }
 
   void init(uint32_t iscopeLvl)
   {
@@ -77,7 +57,6 @@ struct BoolVarData
     d_eq = false;
     d_enode = false;
     d_quantifier = false;
-    d_atom = false;
   }
 };
 

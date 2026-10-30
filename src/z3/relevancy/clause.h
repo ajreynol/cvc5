@@ -74,8 +74,8 @@ class Clause
   }
 
   /**
-   * True if the clause is marked for deletion but was not deleted yet,
-   * because it is still referenced from somewhere.
+   * True if the clause is marked for deletion, by the batch deletion of
+   * PropCore::notifyPopped, which then sweeps it from the watch lists.
    */
   bool deleted() const { return d_deleted; }
 

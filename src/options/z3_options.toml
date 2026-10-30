@@ -7,7 +7,7 @@ name   = "Z3 Core"
   long       = "z3"
   type       = "bool"
   default    = "false"
-  help       = "use the ported Z3 quantifier core (E-matching, relevancy, instance scheduling) in place of cvc5's quantifiers engine; cvc5's theories do the ground reasoning"
+  help       = "use the ported Z3 quantifier core (E-matching, relevancy, instance scheduling) as the first module of cvc5's quantifiers engine; cvc5's theories do the ground reasoning"
 
 [[option]]
   name       = "z3HostDelayUnits"

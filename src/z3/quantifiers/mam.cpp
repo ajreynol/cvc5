@@ -168,27 +168,9 @@ class LabelHasher
 
 enum Opcode
 {
-  INIT1 = 0,
-  INIT2,
-  INIT3,
-  INIT4,
-  INIT5,
-  INIT6,
-  INITN,
-  BIND1,
-  BIND2,
-  BIND3,
-  BIND4,
-  BIND5,
-  BIND6,
-  BINDN,
-  YIELD1,
-  YIELD2,
-  YIELD3,
-  YIELD4,
-  YIELD5,
-  YIELD6,
-  YIELDN,
+  INIT = 0,
+  BIND,
+  YIELD,
   COMPARE,
   CHECK,
   FILTER,
@@ -197,13 +179,7 @@ enum Opcode
   NOOP,
   CONTINUE,
   GET_ENODE,
-  GET_CGR1,
-  GET_CGR2,
-  GET_CGR3,
-  GET_CGR4,
-  GET_CGR5,
-  GET_CGR6,
-  GET_CGRN,
+  GET_CGR,
   IS_CGR
 };
 
@@ -211,17 +187,7 @@ struct Instr
 {
   Opcode d_opcode;
   Instr* d_next = nullptr;
-  bool isInit() const { return d_opcode >= INIT1 && d_opcode <= INITN; }
-};
-
-/**
- * INITN carries the argument count explicitly, because n-ary operators such
- * as + and * may be applied to any number of arguments. INIT1 to INIT6 do not
- * need it.
- */
-struct InitN : public Instr
-{
-  uint32_t d_numArgs;
+  bool isInit() const { return d_opcode == INIT; }
 };
 
 struct Compare : public Instr
@@ -456,7 +422,8 @@ class CodeTreeManager
   CodeTree* mkCodeTree(TNode lbl, uint16_t numArgs, bool filterCandidates)
   {
     CodeTree* r = new CodeTree(lbl, numArgs, filterCandidates);
-    r->d_root = mkInit(numArgs);
+    Assert(numArgs >= 1);
+    r->d_root = mkInstr<Instr>(INIT, sizeof(Instr));
     return r;
   }
 
@@ -483,22 +450,14 @@ class CodeTreeManager
     return r;
   }
 
-  Filter* mkFilterCore(Opcode op, uint32_t reg, ApproxSet s)
+  /** A filter, for op FILTER or CFILTER. */
+  Filter* mkFilter(Opcode op, uint32_t reg, ApproxSet s)
   {
+    Assert(op == FILTER || op == CFILTER);
     Filter* r = mkInstr<Filter>(op, sizeof(Filter));
     r->d_reg = reg;
     r->d_lblSet = s;
     return r;
-  }
-
-  Filter* mkFilter(uint32_t reg, ApproxSet s)
-  {
-    return mkFilterCore(FILTER, reg, s);
-  }
-
-  Filter* mkCfilter(uint32_t reg, ApproxSet s)
-  {
-    return mkFilterCore(CFILTER, reg, s);
   }
 
   GetENodeInstr* mkGetENode(uint32_t reg, ENode* n)
@@ -526,8 +485,7 @@ class CodeTreeManager
   Bind* mkBind(TNode lbl, uint16_t numArgs, uint32_t ireg, uint32_t oreg)
   {
     Assert(numArgs >= 1);
-    Opcode op = numArgs <= 6 ? static_cast<Opcode>(BIND1 + numArgs - 1) : BINDN;
-    Bind* r = mkInstr<Bind>(op, sizeof(Bind));
+    Bind* r = mkInstr<Bind>(BIND, sizeof(Bind));
     r->d_label = lbl;
     r->d_numArgs = numArgs;
     r->d_ireg = ireg;
@@ -542,10 +500,8 @@ class CodeTreeManager
                    const uint32_t* iregs)
   {
     Assert(numArgs >= 1);
-    Opcode op =
-        numArgs <= 6 ? static_cast<Opcode>(GET_CGR1 + numArgs - 1) : GET_CGRN;
     GetCgr* r =
-        mkInstr<GetCgr>(op, sizeof(GetCgr) + numArgs * sizeof(uint32_t));
+        mkInstr<GetCgr>(GET_CGR, sizeof(GetCgr) + numArgs * sizeof(uint32_t));
     r->d_label = lbl;
     r->d_lblSet.insert(d_lblHasher(lbl));
     r->d_commutative = commutative;
@@ -575,10 +531,8 @@ class CodeTreeManager
                  const uint32_t* bindings)
   {
     Assert(numBindings >= 1);
-    Opcode op = numBindings <= 6 ? static_cast<Opcode>(YIELD1 + numBindings - 1)
-                                 : YIELDN;
     Yield* y =
-        mkInstr<Yield>(op, sizeof(Yield) + numBindings * sizeof(uint32_t));
+        mkInstr<Yield>(YIELD, sizeof(Yield) + numBindings * sizeof(uint32_t));
     y->d_qa = qa;
     y->d_numBindings = numBindings;
     std::memcpy(y->bindingsPtr(), bindings, sizeof(uint32_t) * numBindings);
@@ -633,19 +587,6 @@ class CodeTreeManager
     r->d_opcode = op;
     r->d_next = nullptr;
     return r;
-  }
-
-  Instr* mkInit(uint32_t n)
-  {
-    Assert(n >= 1);
-    Opcode op = n <= 6 ? static_cast<Opcode>(INIT1 + n - 1) : INITN;
-    if (op == INITN)
-    {
-      InitN* r = mkInstr<InitN>(op, sizeof(InitN));
-      r->d_numArgs = n;
-      return r;
-    }
-    return mkInstr<Instr>(op, sizeof(Instr));
   }
 
   LabelHasher& d_lblHasher;
@@ -902,7 +843,7 @@ class Compiler
       if (getCheckMark(reg) != CHECK_SINGLETON)
       {
         ApproxSet s(d_lblHasher(getDecl(p)));
-        d_seq.push_back(d_ctManager.mkFilter(reg, s));
+        d_seq.push_back(d_ctManager.mkFilter(FILTER, reg, s));
         setCheckMark(reg, CHECK_SINGLETON);
       }
 
@@ -1424,13 +1365,7 @@ class Compiler
       numInstr++;
       switch (curr->d_opcode)
       {
-        case BIND1:
-        case BIND2:
-        case BIND3:
-        case BIND4:
-        case BIND5:
-        case BIND6:
-        case BINDN:
+        case BIND:
           if (isCompatible(static_cast<Bind*>(curr)))
           {
             // a BIND weighs more than a COMPARE or a CHECK
@@ -1508,13 +1443,7 @@ class Compiler
       {
         switch (curr->d_opcode)
         {
-          case BIND1:
-          case BIND2:
-          case BIND3:
-          case BIND4:
-          case BIND5:
-          case BIND6:
-          case BINDN:
+          case BIND:
           {
             Bind* bnd = static_cast<Bind*>(curr);
             if (isCompatible(bnd))
@@ -1558,7 +1487,7 @@ class Compiler
               uint32_t h2 = getPatLblHash(reg);
               ApproxSet s(h1);
               s.insert(h2);
-              Filter* newInstr = d_ctManager.mkCfilter(reg, s);
+              Filter* newInstr = d_ctManager.mkFilter(CFILTER, reg, s);
               setCheckMark(reg, CHECK_SET);
               d_compatible.push_back(newInstr);
               d_incompatible.push_back(curr);
@@ -1638,7 +1567,7 @@ class Compiler
                 Assert(s.size() == 1);
                 ApproxSet newS(s);
                 newS.insert(h);
-                Filter* newInstr = d_ctManager.mkFilter(reg, newS);
+                Filter* newInstr = d_ctManager.mkFilter(FILTER, reg, newS);
                 d_compatible.push_back(newInstr);
                 d_incompatible.push_back(curr);
               }
@@ -1899,11 +1828,6 @@ class Interpreter
     d_maxGeneration = std::max(d_maxGeneration, d_egraph.getGeneration(n));
   }
 
-  /**
-   * The first application of lbl with the expected arity in n's equivalence
-   * class. The arity has to be given explicitly because of the n-ary
-   * operators, whose applications may have any number of arguments.
-   */
   /** Whether n is an application of lbl with numExpectedArgs arguments. */
   static bool isFApp(const ENode* n, TNode lbl, uint16_t numExpectedArgs)
   {
@@ -1911,6 +1835,11 @@ class Interpreter
            && n->getNumArgs() == numExpectedArgs;
   }
 
+  /**
+   * The first application of lbl with the expected arity in n's equivalence
+   * class. The arity has to be given explicitly because of the n-ary
+   * operators, whose applications may have any number of arguments.
+   */
   ENode* getFirstFApp(TNode lbl, uint16_t numExpectedArgs, ENode* curr)
   {
     if (isFApp(curr, lbl, numExpectedArgs))
@@ -1992,7 +1921,7 @@ class Interpreter
   {
     ENodeVector* v = d_pool.mk();
     n = n->getRoot();
-    for (ENode* p : n->getConstParents())
+    for (ENode* p : n->getParents())
     {
       if (p->getDecl() == f && i < p->getNumArgs()
           && d_context.getPropCore().isRelevant(p->getExpr()) && p->isCgr()
@@ -2017,7 +1946,7 @@ class Interpreter
       return nullptr;
     }
     ENodeVector* v = d_pool.mk();
-    for (ENode* p : n->getConstParents())
+    for (ENode* p : n->getParents())
     {
       if (p->getDecl() == j2->d_decl
           && d_context.getPropCore().isRelevant(p->getExpr())
@@ -2026,7 +1955,7 @@ class Interpreter
       {
         // p is in the joint
         ENode* pr = p->getRoot();
-        for (ENode* p2 : pr->getConstParents())
+        for (ENode* p2 : pr->getParents())
         {
           if (p2->getDecl() == f
               && d_context.getPropCore().isRelevant(p2->getExpr())
@@ -2222,31 +2151,11 @@ main_loop:
 
   switch (d_pc->d_opcode)
   {
-    case INIT1:
-    case INIT2:
-    case INIT3:
-    case INIT4:
-    case INIT5:
-    case INIT6:
-    {
-      d_app = d_registers[0];
-      uint16_t expected = static_cast<uint16_t>(d_pc->d_opcode - INIT1 + 1);
-      if (d_app->getNumArgs() != expected)
-      {
-        goto backtrack;
-      }
-      for (uint16_t i = 0; i < expected; ++i)
-      {
-        d_registers[i + 1] = d_app->getArg(i);
-      }
-      d_pc = d_pc->d_next;
-      goto main_loop;
-    }
-
-    case INITN:
+    case INIT:
+      // the root of the tree t, which holds the expected number of arguments
       d_app = d_registers[0];
       d_numArgs = static_cast<uint16_t>(d_app->getNumArgs());
-      if (d_numArgs != static_cast<const InitN*>(d_pc)->d_numArgs)
+      if (d_numArgs != t->expectedNumArgs())
       {
         goto backtrack;
       }
@@ -2314,13 +2223,7 @@ main_loop:
       d_pc = d_pc->d_next;
       goto main_loop;
 
-    case BIND1:
-    case BIND2:
-    case BIND3:
-    case BIND4:
-    case BIND5:
-    case BIND6:
-    case BINDN:
+    case BIND:
     {
       const Bind* bi = static_cast<const Bind*>(d_pc);
       d_n1 = d_registers[bi->d_ireg];
@@ -2344,13 +2247,7 @@ main_loop:
       goto main_loop;
     }
 
-    case YIELD1:
-    case YIELD2:
-    case YIELD3:
-    case YIELD4:
-    case YIELD5:
-    case YIELD6:
-    case YIELDN:
+    case YIELD:
     {
       const Yield* y = static_cast<const Yield*>(d_pc);
       const uint32_t* bnds = y->bindingsPtr();
@@ -2378,13 +2275,7 @@ main_loop:
       d_pc = d_pc->d_next;
       goto main_loop;
 
-    case GET_CGR1:
-    case GET_CGR2:
-    case GET_CGR3:
-    case GET_CGR4:
-    case GET_CGR5:
-    case GET_CGR6:
-    case GET_CGRN:
+    case GET_CGR:
     {
       const GetCgr* c = static_cast<const GetCgr*>(d_pc);
       d_numArgs = c->d_numArgs;
@@ -2478,13 +2369,7 @@ backtrack:
         d_top--;
         goto main_loop;
 
-      case BIND1:
-      case BIND2:
-      case BIND3:
-      case BIND4:
-      case BIND5:
-      case BIND6:
-      case BINDN:
+      case BIND:
       {
         d_b = static_cast<const Bind*>(bp.d_instr);
         d_n1 = d_registers[d_b->d_ireg];
@@ -3360,7 +3245,7 @@ class MamImpl
           continue;
         }
 
-        for (ENode* currParent : currChild->getConstParents())
+        for (ENode* currParent : currChild->getParents())
         {
           // An equality is never in the inverted path index.
           if (currParent->isEq())
@@ -3514,7 +3399,9 @@ class MamImpl
   {
     Trace("z3-mam-newpat") << "matchNewPatterns: " << d_newPatterns.size()
                            << " new patterns" << std::endl;
-    d_tmpTreesToDelete.clear();
+    // a temporary tree per label, in the order they are made
+    std::vector<std::pair<TNode, CodeTree*>> tmpTrees;
+    std::unordered_map<uint32_t, CodeTree*> lblToTree;
     for (const std::pair<Node, Node>& kv : d_newPatterns)
     {
       if (d_context.getCancelFlag())
@@ -3528,33 +3415,28 @@ class MamImpl
       if (d_egraph.getNumENodesOf(lbl) > 0)
       {
         uint32_t lblId = d_egraph.getDeclId(lbl);
-        if (d_tmpTrees.size() < lblId + 1)
+        std::unordered_map<uint32_t, CodeTree*>::iterator it =
+            lblToTree.find(lblId);
+        if (it == lblToTree.end())
         {
-          d_tmpTrees.resize(lblId + 1, static_cast<CodeTree*>(nullptr));
-        }
-        if (d_tmpTrees[lblId] == nullptr)
-        {
-          d_tmpTrees[lblId] = d_compiler.mkTree(q, mp, 0, false);
-          d_tmpTreesToDelete.push_back(lbl);
+          CodeTree* tmpTree = d_compiler.mkTree(q, mp, 0, false);
+          lblToTree[lblId] = tmpTree;
+          tmpTrees.emplace_back(lbl, tmpTree);
         }
         else
         {
-          d_compiler.insert(d_tmpTrees[lblId], q, mp, 0, true);
+          d_compiler.insert(it->second, q, mp, 0, true);
         }
       }
     }
 
-    for (TNode lbl : d_tmpTreesToDelete)
+    for (const std::pair<TNode, CodeTree*>& lt : tmpTrees)
     {
-      uint32_t lblId = d_egraph.getDeclId(lbl);
-      CodeTree* tmpTree = d_tmpTrees[lblId];
-      Assert(tmpTree != nullptr);
       Trace("z3-mam-newpat")
-          << "  running tree for " << lbl << " over "
-          << d_egraph.enodesOf(lbl).size() << " enodes" << std::endl;
-      executeOnRelevant(tmpTree, lbl);
-      d_tmpTrees[lblId] = nullptr;
-      delete tmpTree;
+          << "  running tree for " << lt.first << " over "
+          << d_egraph.enodesOf(lt.first).size() << " enodes" << std::endl;
+      executeOnRelevant(lt.second, lt.first);
+      delete lt.second;
     }
   }
 
@@ -3607,8 +3489,6 @@ class MamImpl
   Interpreter d_interpreter;
   CodeTreeMap d_trees;
 
-  std::vector<CodeTree*> d_tmpTrees;
-  std::vector<Node> d_tmpTreesToDelete;
   std::vector<CodeTree*> d_toMatch;
   /** recently added patterns */
   std::vector<std::pair<Node, Node>> d_newPatterns;

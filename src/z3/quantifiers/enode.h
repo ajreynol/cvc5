@@ -366,42 +366,14 @@ class ENode
 
   bool isCommutative() const { return d_commutative; }
 
-  /** Range over the parents of this equivalence class. */
-  class ConstParents
-  {
-    const ENode& d_n;
-
-   public:
-    ConstParents(const ENode& n) : d_n(n) {}
-    ConstParents(const ENode* n) : d_n(*n) {}
-    ENodeVector::const_iterator begin() const { return d_n.beginParents(); }
-    ENodeVector::const_iterator end() const { return d_n.endParents(); }
-  };
-
-  class Parents
-  {
-    ENode& d_n;
-
-   public:
-    Parents(ENode& n) : d_n(n) {}
-    Parents(ENode* n) : d_n(*n) {}
-    ENodeVector::iterator begin() const { return d_n.beginParents(); }
-    ENodeVector::iterator end() const { return d_n.endParents(); }
-  };
-
-  Parents getParents() { return Parents(this); }
-
-  ConstParents getConstParents() const { return ConstParents(this); }
+  /** The parents of this equivalence class. */
+  const ENodeVector& getParents() const { return d_parents; }
 
   size_t getNumParents() const { return d_parents.size(); }
 
   ENodeVector::iterator beginParents() { return d_parents.begin(); }
 
   ENodeVector::iterator endParents() { return d_parents.end(); }
-
-  ENodeVector::const_iterator beginParents() const { return d_parents.begin(); }
-
-  ENodeVector::const_iterator endParents() const { return d_parents.end(); }
 
   /** Iterator over the members of the equivalence class. */
   class iterator

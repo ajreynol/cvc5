@@ -1134,8 +1134,7 @@ bool SetDefaults::usesInputConversion(const Options& opts,
 void SetDefaults::checkZ3Capabilities(Options& opts) const
 {
   // What the ported core does support is a single check-sat, outside of
-  // incremental mode. Everything below has no implementation in the port, or
-  // needs a module of cvc5's quantifiers engine that is not made with --z3.
+  // incremental mode. Everything below has no implementation in the port.
   const char* unsupported = nullptr;
   if (opts.base.incrementalSolving)
   {
@@ -1167,9 +1166,7 @@ void SetDefaults::checkZ3Capabilities(Options& opts) const
   }
   else if (opts.quantifiers.oracles)
   {
-    // Oracle functions are interpreted by a module of cvc5's quantifiers
-    // engine, which is not made with --z3; the core would treat them as
-    // uninterpreted.
+    // The core treats oracle functions as uninterpreted.
     unsupported = "--oracles";
   }
   else if (opts.quantifiers.sygus)

@@ -42,12 +42,10 @@ class Checker
   Checker(SmtContext& c);
 
   /** True if the body is already satisfied under the given bindings. */
-  bool isSat(TNode n, size_t numBindings = 0, ENode* const* bindings = nullptr);
+  bool isSat(TNode n, size_t numBindings, ENode* const* bindings);
 
   /** True if the body is already falsified under the given bindings. */
-  bool isUnsat(TNode n,
-               size_t numBindings = 0,
-               ENode* const* bindings = nullptr);
+  bool isUnsat(TNode n, size_t numBindings, ENode* const* bindings);
 
  private:
   /** True if n has the value isTrue under the given bindings. */

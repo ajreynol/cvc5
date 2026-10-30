@@ -277,10 +277,7 @@ void PropCore::notifyPopped()
     std::vector<bool> watches(d_watches.size(), false);
     for (Clause* c : d_retiredClauses)
     {
-      if (!c->deleted())
-      {
-        c->markAsDeleted();
-      }
+      c->markAsDeleted();
       watches[(~c->getLiteral(0)).toInt()] = true;
       watches[(~c->getLiteral(1)).toInt()] = true;
     }
@@ -513,11 +510,11 @@ void PropCore::removeWatchLiteral(Clause* cls, size_t idx)
 
 void PropCore::delClause(Clause* cls)
 {
-  if (!cls->deleted())
-  {
-    removeWatchLiteral(cls, 0);
-    removeWatchLiteral(cls, 1);
-  }
+  // only the batch in notifyPopped marks clauses deleted, and deletes them
+  // itself
+  Assert(!cls->deleted());
+  removeWatchLiteral(cls, 0);
+  removeWatchLiteral(cls, 1);
   delete cls;
   d_stats.d_numDelClause++;
 }

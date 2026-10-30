@@ -102,7 +102,7 @@ class QuantifiersModules
   std::unique_ptr<InstStrategyMbqi> d_mbqi;
   /** Oracle engine */
   std::unique_ptr<OracleEngine> d_oracleEngine;
-  /** The module of the ported Z3 core, the only one with --z3. */
+  /** The module of the ported Z3 core, the first one with --z3. */
   std::unique_ptr<z3::Z3Module> d_z3;
 };
 
