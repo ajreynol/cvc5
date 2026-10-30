@@ -3909,6 +3909,7 @@ bool TheoryArithPrivate::postCheck(Theory::Effort effortLevel)
     d_impliedEqs->check();
     if (anyConflict())
     {
+      revertOutOfConflict();
       outputConflicts();
       return true;
     }
