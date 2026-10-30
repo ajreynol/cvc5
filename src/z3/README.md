@@ -110,70 +110,61 @@ Outside the directories above, the port touches:
   nested in quantified formulas get skolem functions of the enclosing
   variables, as in Z3's negation normal form, which `QuantifiersPreprocess`
   now also applies to quantified formulas with patterns. It also sets
-  `--inst-when=last-call-delay` and turns off `--cbqi`, as above.
+  `--inst-when=last-call-delay` and turns off `--cbqi`, as above, and sets
+  `--arith-implied-eqs`, see below.
 
-## Next step: arithmetic equalities as matching hints
+## Arithmetic equalities (`--arith-implied-eqs`)
 
-The worst files of the Verus set (in `quant-07-25/slow`: cs56, cs59, cs65,
-cs77, cs100, cs101, cs102, cs150, cs151 ...) run out of resources under
-`--z3`, while Z3 solves them in about 0.1s with a similar number of
-instances. The core's maximum instance generation there reaches the eager
-threshold (101) where Z3's stays at 6 to 31: a matching loop over the
-sequence axioms (`axiom_seq_add_index*`) and `prelude_add`/`prelude_sub`
-nests terms `Add(%I(I(Sub(%I(I(Add ... i ... len ... len)))))` without end.
-Z3 breaks it with the equalities its arithmetic propagates to the E-graph
-(`smt.arith.propagate_eqs`, on by default): each new term is found equal to
-`i` and joins an existing class, so it makes no new match. With
-`smt.arith.propagate_eqs=false`, Z3 loops in the same way (cs65: generation
-101 and 28,504 instances instead of 774; cs56, cs59, cs150 and cs151 time out).
-cvc5's linear arithmetic propagates no such equalities: theory combination
-finds them only at full effort, as one split per pair of shared terms with
-equal values (38,612 splits on cs65 in a single round).
+The worst files of the Verus set (in `quant-07-25/slow`: cs56, cs65, cs100,
+cs102 ...) ran out of resources under `--z3` while Z3 solves them in about
+0.1s: a matching loop over the sequence axioms (`axiom_seq_add_index*`) and
+`prelude_add`/`prelude_sub` nests terms
+`Add(%I(I(Sub(%I(I(Add ... i ... len ... len)))))` without end. Z3 breaks it
+with the equalities its arithmetic propagates to the E-graph
+(`smt.arith.propagate_eqs`, on by default; `theory_arith_eq.h`): each new term
+is found equal to `i` and joins an existing class, so it makes no new match.
+With `smt.arith.propagate_eqs=false`, Z3 loops in the same way.
 
-Z3 propagates two kinds of cheap equalities (`theory_arith_eq.h`):
+cvc5's linear arithmetic now finds the same equalities, under
+`--arith-implied-eqs`, which `--z3` sets. It is not specific to the core:
+`ImpliedEqualities` (`theory/arith/linear/implied_equalities.{h,cpp}`) visits,
+at the end of each standard check, the rows of the tableau of the variables
+fixed (equal bounds) since the last check. A row whose variables are fixed
+but
 
-- fixed: two variables whose bounds fix them to the same value;
-- offset: a row `x - y + k = 0` whose other variables are all fixed, gives
-  `x = y - k`; two variables with the same offset from `y` are equal.
+- x, fixes x to a value c: x = c;
+- x and y, of opposite coefficients, gives an offset x = y + k; with k = 0,
+  x = y, and two variables at the same offset from y are equal (a table of
+  offsets, in the SAT context).
 
-A prototype (2026-10-30, not committed) did this and gained 6 files on the
-388 Verus files (373 to 379 at `--rlimit=10000000`, none lost; cs65 went from
-out of resources to 0.6s), at +5% time and +14% instances on the commonly
-solved files:
+`ArithCongruenceManager::impliedEquality` asserts the equalities between terms
+of arithmetic's equality engine to it, explained by the bounds of the fixed
+variables, with a proof (two sums of these bounds,
+`MACRO_ARITH_SCALE_SUM_UB`, and `ARITH_TRICHOTOMY`). From there they reach the
+other theories (without a split of theory combination), the master equality
+engine and so cvc5's E-matching, and the core, through the merges of the master
+equality engine it already takes.
 
-- In `TheoryArithPrivate`, `assertionCases` records each variable whose bound
-  is asserted. At the end of `postCheck` (when there is no conflict), each
-  recorded variable that is now fixed is entered in a value table, and the
-  rows of its column (`Tableau::colIterator`) are checked: a row with one
-  non-fixed variable fixes it (value table), a row with two non-fixed
-  variables of opposite coefficients is an offset (offset table keyed by
-  `(y, k)`), with offset 0 an equality. Both tables are `CDHashMap`s in the
-  SAT context, so they are popped with the bounds they depend on. The
-  equalities between variables that have nodes (`ArithVariables::asNode`) are
-  collected. A first version that scanned the whole tableau at every check
-  was too slow (14 files lost to timeouts): it must be incremental.
-- `Z3Module::checkCore` merges the collected pairs into the E-graph after
-  `applyMasterMerges`, mapping each term to the core's term of its class in
-  the master equality engine, as the master merges are; the pairs are
-  dropped when the SAT context pops. The merges are not explained: they only
-  steer matching, and an instance is valid whatever led to it, so soundness
-  does not depend on them.
+Results on the 388 Verus files (`--rlimit=10000000`):
 
-To do:
+- `--z3`: 373 to 379 solved (cs56, cs63, cs65, cs78, cs100, cs102), none
+  lost, 0.91 of the time on the common files (geometric mean). The equalities
+  to a value (x = c) account for 3 of the 6.
+- cvc5 without `--z3`, with `--arith-implied-eqs`: 370 to 371 (cs63), none
+  lost, 0.92 of the time. It is off by default there.
 
-- A proper interface between arithmetic and the core instead of a shared
-  global list, e.g. a callback registered with the theory engine, or an
-  equality notification on the master equality engine's side.
+Known issues and to do:
+
+- Strings: with the option forced on, 6 strings regressions time out (e.g.
+  `regress0/proofs/proj-issue777-open-eqproof.smt2`). The equalities to a value
+  give exact lengths to the strings solver, explained by the bound of whatever
+  length it is currently trying, so the conflicts it learns are specific to
+  that length and its length enumeration does not terminate.
 - cs150 and cs151 still loop: there `len` is not fixed, and the offset only
   appears after substituting one row in another (`A = S + len`,
-  `S = i - len`). Check which rows Z3 examines (`propagate_cheap_eq`,
-  `fixed_var_eh`, and after pivoting) and do the same.
-- Measure before going further whether plain cvc5 (without `--z3`) would gain
-  from the same equalities, now asserted to the equality engine with an
-  explanation (the fixed bounds of the row), by counting how many of them
-  relate terms the master equality engine does not already have equal. Its
-  lazy instantiation does not loop on these files (it solves cs65 in about 1s),
-  so the gain may be small.
+  `S = i - len`). The rows are visited only when one of their variables is
+  fixed, not after pivoting; check which rows Z3 examines
+  (`propagate_cheap_eq`, `fixed_var_eh`) and do the same.
 
 Also measured: only about half of the arithmetic literals and 12% to 33% of
 the datatype literals that cvc5 asserts to its theories are relevant to the
@@ -191,7 +182,8 @@ as of this README:
 | `src/z3/quantifiers/` | 26 | 7532 | 1760 | 960 |
 | **Total** | 36 | **9044** | 2159 | 1224 |
 
-The rest of cvc5 changes by 259 added and 18 deleted lines over 22 C++ files,
-most of them in `smt/set_defaults.cpp` (the capability checks) and
+The rest of cvc5 changes by 730 added and 18 deleted lines over 28 C++ files,
+most of them in `theory/arith/linear` (the implied equalities, 468 lines),
+`smt/set_defaults.cpp` (the capability checks) and
 `theory/quantifiers/quantifiers_preprocess.cpp` (pre-skolemization of
 quantified formulas with patterns).

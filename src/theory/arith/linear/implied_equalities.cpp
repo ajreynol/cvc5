@@ -48,7 +48,7 @@ const Rational& ImpliedEqualities::fixedValue(ArithVar x) const
 
 bool ImpliedEqualities::isTerm(ArithVar x) const
 {
-  return !d_vars.isAuxiliary(x) || d_cm.hasTerm(d_vars.asNode(x));
+  return d_cm.hasTerm(d_vars.asNode(x));
 }
 
 void ImpliedEqualities::check()

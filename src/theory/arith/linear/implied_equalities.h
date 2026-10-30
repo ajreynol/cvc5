@@ -81,8 +81,8 @@ class ImpliedEqualities : protected EnvObj
                                          RationalHashFunction>;
 
   /**
-   * Is x a term? An auxiliary variable of the tableau, which stands for a sum
-   * of terms, is one only if the sum is a term of the equality engine.
+   * Is x a term of the equality engine? The equalities between other terms
+   * would only add these terms to it, where nothing relates to them.
    */
   bool isTerm(ArithVar x) const;
   /** Is x fixed? */
