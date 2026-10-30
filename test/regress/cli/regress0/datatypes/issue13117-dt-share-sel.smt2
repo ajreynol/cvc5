@@ -1,3 +1,4 @@
+; REQUIRES: unrestricted-mode
 ; COMMAND-LINE: --dt-share-sel
 ; EXPECT: sat
 (set-logic ALL)
