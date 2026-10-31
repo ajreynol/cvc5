@@ -130,6 +130,12 @@ const char* toString(InferenceId i)
     case InferenceId::ARITH_NL_ICP_CONFLICT: return "ARITH_NL_ICP_CONFLICT";
     case InferenceId::ARITH_NL_ICP_PROPAGATION:
       return "ARITH_NL_ICP_PROPAGATION";
+    case InferenceId::ARITH_LIA_STAR_EXISTS: return "ARITH_LIA_STAR_EXISTS";
+    case InferenceId::ARITH_LIA_STAR_NOT_EXISTS:
+      return "ARITH_LIA_STAR_NOT_EXISTS";
+    case InferenceId::ARITH_LIA_STAR_NONNEGATIVE:
+      return "ARITH_LIA_STAR_NONNEGATIVE";
+    case InferenceId::ARITH_LIA_STAR_SPLIT: return "ARITH_LIA_STAR_SPLIT";
     case InferenceId::FF_LEMMA: return "FF_LEMMA";
 
     case InferenceId::ARRAYS_EXT: return "ARRAYS_EXT";
@@ -381,6 +387,7 @@ const char* toString(InferenceId i)
 
     case InferenceId::SETS_SKOLEM: return "SETS_SKOLEM";
     case InferenceId::SETS_CG_SPLIT: return "SETS_CG_SPLIT";
+    case InferenceId::SETS_CHOOSE_MEMBER: return "SETS_CHOOSE_MEMBER";
     case InferenceId::SETS_COMPREHENSION: return "SETS_COMPREHENSION";
     case InferenceId::SETS_DEQ: return "SETS_DEQ";
     case InferenceId::SETS_DOWN_CLOSURE: return "SETS_DOWN_CLOSURE";

@@ -200,6 +200,14 @@ enum class InferenceId
   ARITH_NL_ICP_CONFLICT,
   // propagation / contraction of variable bounds from icp
   ARITH_NL_ICP_PROPAGATION,
+  // lia star reduction lemma
+  ARITH_LIA_STAR_EXISTS,
+  // lia star reduction lemma for a negated star-contains literal
+  ARITH_LIA_STAR_NOT_EXISTS,
+  // lia star nonnegative constraints
+  ARITH_LIA_STAR_NONNEGATIVE,
+  // lia star split lemma
+  ARITH_LIA_STAR_SPLIT,
   //-------------------- ff inference
   // ---------------------------------- end arith theory
 
@@ -543,6 +551,8 @@ enum class InferenceId
   // split when computing care graph
   SETS_SKOLEM,
   SETS_CG_SPLIT,
+  // (or (= A (as set.empty (Set E))) (set.member (set.choose A) A))
+  SETS_CHOOSE_MEMBER,
   SETS_COMPREHENSION,
   SETS_DEQ,
   SETS_DOWN_CLOSURE,
