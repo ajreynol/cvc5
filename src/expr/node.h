@@ -1002,6 +1002,24 @@ std::ostream& operator<<(
 
 }  // namespace cvc5::internal
 
+namespace std {
+
+// Defined inline so that hashing nodes (which is very frequent) can be inlined
+// at call sites.
+inline size_t hash<cvc5::internal::Node>::operator()(
+    const cvc5::internal::Node& node) const
+{
+  return node.getId();
+}
+
+inline size_t hash<cvc5::internal::TNode>::operator()(
+    const cvc5::internal::TNode& node) const
+{
+  return node.getId();
+}
+
+}  // namespace std
+
 // #include "expr/attribute.h"
 #include "expr/node_manager.h"
 

@@ -113,6 +113,7 @@ TermDb::TermDb(Env& env, QuantifiersState& qs, QuantifiersRegistry& qr)
       d_opMap(context()),
       d_inactive_map(context()),
       d_has_map(context()),
+      d_factsProcessed(context()),
       d_dcproof(options().smt.produceProofs ? new DeqCongProofGenerator(d_env)
                                             : nullptr)
 {
@@ -686,9 +687,9 @@ void TermDb::setHasTerm(Node n)
   {
     cur = visit.back();
     visit.pop_back();
-    if (d_has_map.find(cur) == d_has_map.end())
+    // insert returns true if cur was not already in the set
+    if (d_has_map.insert(cur))
     {
-      d_has_map.insert(cur);
       visit.insert(visit.end(), cur.begin(), cur.end());
     }
   } while (!visit.empty());
@@ -727,14 +728,30 @@ bool TermDb::reset(Theory::Effort effort)
       // remaining terms that appear in assertions are marked relevant here
       // in case there are terms appearing in assertions but not in the master
       // equality engine.
-      for (context::CDList<Assertion>::const_iterator
-               it = d_qstate.factsBegin(theoryId),
-               it_end = d_qstate.factsEnd(theoryId);
-           it != it_end;
-           ++it)
+      // We only process the facts that we have not already processed in
+      // this context.
+      context::CDList<Assertion>::const_iterator it =
+          d_qstate.factsBegin(theoryId);
+      context::CDList<Assertion>::const_iterator itEnd =
+          d_qstate.factsEnd(theoryId);
+      size_t nfacts = static_cast<size_t>(itEnd - it);
+      size_t nprocessed = 0;
+      context::CDHashMap<size_t, size_t>::const_iterator itp =
+          d_factsProcessed.find(theoryId);
+      if (itp != d_factsProcessed.end())
+      {
+        nprocessed = itp->second;
+      }
+      Assert(nprocessed <= nfacts);
+      if (nprocessed == nfacts)
+      {
+        continue;
+      }
+      for (it += nprocessed; it != itEnd; ++it)
       {
         setHasTerm((*it).d_assertion);
       }
+      d_factsProcessed[theoryId] = nfacts;
     }
   }
   // finish reset

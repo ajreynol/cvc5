@@ -269,6 +269,14 @@ class TermDb : public QuantifiersUtil
   std::map<Node, std::vector<std::vector<TNode>>> d_fmapRelDom;
   /** has map */
   context::CDHashSet<Node> d_has_map;
+  /**
+   * For each theory, the number of facts (from the beginning of its fact list)
+   * for which we have already called setHasTerm. This is context-dependent
+   * and in the same context as d_has_map, so that the terms of the first
+   * d_factsProcessed[tid] facts of theory tid are guaranteed to be in
+   * d_has_map. This avoids rescanning all facts on each call to reset.
+   */
+  context::CDHashMap<size_t, size_t> d_factsProcessed;
   /** map from reps to a term in eqc in d_has_map */
   std::map<Node, Node> d_term_elig_eqc;
   /**

@@ -185,19 +185,3 @@ template InternalSkolemId NodeTemplate<true>::getInternalSkolemId() const;
 template InternalSkolemId NodeTemplate<false>::getInternalSkolemId() const;
 
 }  // namespace cvc5::internal
-
-namespace std {
-
-size_t hash<cvc5::internal::Node>::operator()(
-    const cvc5::internal::Node& node) const
-{
-  return node.getId();
-}
-
-size_t hash<cvc5::internal::TNode>::operator()(
-    const cvc5::internal::TNode& node) const
-{
-  return node.getId();
-}
-
-}  // namespace std

@@ -808,13 +808,3 @@ TypeNode TypeNode::getRangeType() const
 }
 
 }  // namespace cvc5::internal
-
-namespace std {
-
-size_t hash<cvc5::internal::TypeNode>::operator()(
-    const cvc5::internal::TypeNode& tn) const
-{
-  return tn.getId();
-}
-
-}  // namespace std

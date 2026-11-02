@@ -791,7 +791,10 @@ namespace std {
 template <>
 struct hash<cvc5::internal::TypeNode>
 {
-  size_t operator()(const cvc5::internal::TypeNode& tn) const;
+  size_t operator()(const cvc5::internal::TypeNode& tn) const
+  {
+    return tn.getId();
+  }
 };
 
 }  // namespace std

@@ -141,6 +141,21 @@ class InsertHashMap
   }
 
   /**
+   * If k is not currently mapped, inserts an element into the map, pushes its
+   * key onto the back of the stack, and returns true. Otherwise, returns false.
+   * This requires only a single hash lookup.
+   */
+  bool push_back_safe(const Key& k, const Data& d)
+  {
+    if (!d_hashMap.emplace(k, d).second)
+    {
+      return false;
+    }
+    d_keys.push_back(k);
+    return true;
+  }
+
+  /**
    * Pops the key at the front of the list off and removes its key from the map.
    */
   void pop_front()
@@ -292,15 +307,17 @@ class CDInsertHashMap : public ContextObj
    */
   bool insert_safe(const Key& k, const Data& d)
   {
-    if (contains(k))
+    // Note that the saved state of this object (see save) only depends on
+    // d_size, hence it is safe to call makeCurrent after modifying
+    // d_insertMap, as long as we do so before modifying d_size.
+    if (!d_insertMap->push_back_safe(k, d))
     {
       return false;
     }
-    else
-    {
-      insert(k, d);
-      return true;
-    }
+    makeCurrent();
+    ++d_size;
+    Assert(d_insertMap->size() == d_size);
+    return true;
   }
 
   /** Returns true if k is a mapped key in the context. */
