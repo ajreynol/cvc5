@@ -100,9 +100,10 @@ Outside the directories above, the port touches:
 - `Skolemize::getSkolemizationLemma` gives the core the lemma with which the
   quantifiers engine skolemized a formula, with its proof.
 - `PropEngine` uses `FormulaLitPolicy::TRACK_AND_NOTIFY_VAR` under `--z3`, so
-  Boolean variables reach the core.
+  Boolean variables reach the core. `PropEngine::getPropDecisions` skips the
+  activation literals of user scopes, which have no node.
 - `SetDefaults::checkZ3Capabilities` refuses what the core does not support:
-  `--incremental`, `--deep-restart`, sygus (and so interpolants and abducts),
+  `--deep-restart`, sygus (and so interpolants and abducts),
   oracles, and `--dump-instantiations` without proofs (the instantiations are
   read from the proof). Unsat cores default to `--unsat-cores-mode=sat-proof`,
   since deciding on the input as assumptions first hurts the core's search.
@@ -111,6 +112,22 @@ Outside the directories above, the port touches:
   variables, as in Z3's negation normal form, which `QuantifiersPreprocess`
   now also applies to quantified formulas with patterns. It also sets
   `--inst-when=last-call-delay` and turns off `--cbqi`, as above.
+
+## Incremental solving
+
+The core's scope level is cvc5's SAT context level minus one, so its level 0
+is below every user scope, and each user push is a scope of the core, as in
+Z3, where the user scopes are the base level of the search. Each check-sat
+internalizes the new assertions at the scope of their user level (`presolve`,
+`SmtContext::setupSearch`), and a user pop pops them with the scope: the
+asserted formulas and the encoded distincts are on the core's trail. What
+outlives the scopes of the core is in cvc5's user context: the lemmas sent
+(cvc5 drops a lemma with the pop of the user scope of its atoms) and the
+forms of the instances (cvc5's preprocessing gives the definitions of their
+skolems again after a pop). Delayed units count the decision levels of the
+activation literals of the user scopes as the base of the search.
+`reset-assertions` pops the SAT context to level 0, and the core is then made
+again.
 
 ## Next step: arithmetic equalities as matching hints
 

@@ -2838,12 +2838,18 @@ set(regress_0_tests
   regress0/z3/ematch-repeated-var.smt2
   regress0/z3/get-qe.smt2
   regress0/z3/hosted-quant.smt2
+  regress0/z3/incremental-check-sat-assuming.smt2
+  regress0/z3/incremental-nested.smt2
+  regress0/z3/incremental-pop-quantifier.smt2
+  regress0/z3/incremental-push-pop.smt2
+  regress0/z3/incremental-reset-assertions.smt2
+  regress0/z3/incremental-skolem-defs.smt2
+  regress0/z3/incremental-skolemize.smt2
   regress0/z3/quant-generation.smt2
   regress0/z3/quant-incomplete-unknown.smt2
   regress0/z3/sat-finite-model-find.smt2
   regress0/z3/unsat-cores.smt2
   regress0/z3/unsupported-deep-restart.smt2
-  regress0/z3/unsupported-incremental.smt2
   regress0/z3/unsupported-instantiations.smt2
 )
 

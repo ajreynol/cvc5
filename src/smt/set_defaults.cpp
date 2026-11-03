@@ -224,10 +224,14 @@ void SetDefaults::setDefaultsPre(Options& opts)
   {
     if (opts.smt.unsatCoresMode == options::UnsatCoresMode::OFF)
     {
-      if (opts.z3.z3)
+      if (opts.z3.z3 && !opts.base.incrementalSolving)
       {
         // The ported Z3 core (--z3) proves its lemmas, and its search
         // depends on the input not being decided on first, as assumptions.
+        // In incremental mode, where --z3 keeps CaDiCaL, the cores of
+        // sat-proof are wrong (plain cvc5 with --sat-solver=cadical
+        // --incremental --unsat-cores-mode=sat-proof as well), so the
+        // default below is taken.
         SET_AND_NOTIFY(smt,
                        unsatCoresMode,
                        options::UnsatCoresMode::SAT_PROOF,
@@ -434,7 +438,11 @@ void SetDefaults::setDefaultsPre(Options& opts)
 
 void SetDefaults::finalizeLogic(LogicInfo& logic, Options& opts) const
 {
-  if (opts.base.incrementalSolving && !opts.prop.satSolverWasSetByUser)
+  // The ported Z3 core (--z3) is tuned for CaDiCaL, which supports
+  // incremental solving as well: its delayed units rely on how CaDiCaL
+  // backtracks, and its base level counts CaDiCaL's activation literals.
+  if (opts.base.incrementalSolving && !opts.prop.satSolverWasSetByUser
+      && !opts.z3.z3)
   {
     // use minisat by default if incremental is enabled, due to performance
     SET_AND_NOTIFY_VAL_SYM(
@@ -1133,16 +1141,9 @@ bool SetDefaults::usesInputConversion(const Options& opts,
 
 void SetDefaults::checkZ3Capabilities(Options& opts) const
 {
-  // What the ported core does support is a single check-sat, outside of
-  // incremental mode. Everything below has no implementation in the port.
+  // Everything below has no implementation in the port.
   const char* unsupported = nullptr;
-  if (opts.base.incrementalSolving)
-  {
-    // The core does not follow user scopes (push, pop, the assumptions of
-    // check-sat-assuming) or answer more than one check-sat.
-    unsupported = "--incremental";
-  }
-  else if (opts.smt.produceInterpolants)
+  if (opts.smt.produceInterpolants)
   {
     unsupported = "--produce-interpolants";
   }

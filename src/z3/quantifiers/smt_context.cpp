@@ -43,12 +43,16 @@ SmtContext::SmtContext(Env& env, Z3Module& host)
       d_prop(env, *this, d_stats),
       d_egraph(env, *this, d_trailStack, d_stats),
       d_normalizer(env.getNodeManager()),
+      d_instanceForms(userContext()),
       d_qmanager(env, *this),
       d_trueENode(nullptr),
       d_falseENode(nullptr),
-      d_assertedFormulasQhead(0),
+      d_assertedFormulas(d_trailStack.getContext()),
+      d_assertedFormulasQhead(d_trailStack.getContext(), 0),
+      d_encodedDistincts(d_trailStack.getContext()),
       d_internalizingAssertions(false),
       d_searching(false),
+      d_baseLevel(0),
       d_resourceOut(false),
       d_unitsToReassertLims(d_trailStack.getContext()),
       d_generation(0)
@@ -415,14 +419,6 @@ void SmtContext::popScope(size_t numScopes)
   resetCacheGeneration();
 }
 
-void SmtContext::popToBaseLvl()
-{
-  if (getScopeLevel() > 0)
-  {
-    popScope(getScopeLevel());
-  }
-}
-
 void SmtContext::cacheUnitGenerations(uint32_t newScopeLvl)
 {
   // When a unit is reasserted its enodes and literals may have to be
@@ -455,7 +451,7 @@ void SmtContext::reassertUnits(size_t unitsToReassertLim)
       d_prop.markAsRelevant(l);
     }
   }
-  if (getScopeLevel() == 0)
+  if (getScopeLevel() <= d_baseLevel)
   {
     d_unitsToReassert.clear();
   }
@@ -526,9 +522,14 @@ bool SmtContext::internalizeInstance(TNode q,
   NodeManager* nm = q.getNodeManager();
   std::vector<Node> key{q};
   key.insert(key.end(), terms.begin(), terms.end());
-  auto it = d_instanceForms.emplace(nm->mkNode(Kind::SEXPR, key), Node());
-  Node& form = it.first->second;
-  if (it.second)
+  Node k = nm->mkNode(Kind::SEXPR, key);
+  context::CDHashMap<Node, Node>::const_iterator it = d_instanceForms.find(k);
+  Node form;
+  if (it != d_instanceForms.end())
+  {
+    form = it->second;
+  }
+  else
   {
     // Note terms[i] is the term for the i-th variable of the bound variable
     // list, which is the variable at de Bruijn level i.
@@ -541,6 +542,7 @@ bool SmtContext::internalizeInstance(TNode q,
     {
       form = rinstance;
     }
+    d_instanceForms.insert(k, form);
   }
   if (!form.isNull() && form.isConst() && form.getConst<bool>())
   {
@@ -554,6 +556,7 @@ bool SmtContext::internalizeInstance(TNode q,
   if (form.isNull())
   {
     form = d_host.mkInstance(q, terms, defs);
+    d_instanceForms.insert(k, form);
   }
   internalizePreprocessed(form, defs, generation, true);
   return true;
@@ -1072,10 +1075,6 @@ void SmtContext::assertFormula(TNode e)
   {
     return;
   }
-  if (!d_searching)
-  {
-    popToBaseLvl();
-  }
   pushAssertion(e);
 }
 
@@ -1173,7 +1172,7 @@ void SmtContext::internalizeAssertions()
       return;
     }
     TNode f = d_assertedFormulas[d_assertedFormulasQhead];
-    ++d_assertedFormulasQhead;
+    d_assertedFormulasQhead = d_assertedFormulasQhead + 1;
     internalizeAssertion(f, 0);
   }
   d_internalizingAssertions = false;
@@ -1312,7 +1311,8 @@ void SmtContext::setupSearch()
 {
   d_stats.d_numAssertedFormulas =
       static_cast<int64_t>(d_assertedFormulas.size());
-  popToBaseLvl();
+  // the host set the scope level to that of cvc5's user scopes
+  d_baseLevel = getScopeLevel();
   internalizeAssertions();
   initSearch();
   d_resourceOut = false;

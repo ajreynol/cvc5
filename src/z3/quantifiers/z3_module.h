@@ -19,6 +19,7 @@
 
 #include <memory>
 
+#include "context/cdhashset.h"
 #include "context/cdo.h"
 #include "context/context.h"
 #include "theory/incomplete_id.h"
@@ -129,7 +130,11 @@ class Z3Module : public theory::quantifiers::QuantifiersModule
   void lemma(const Node& lem, theory::LemmaProperty p);
   /** Note a pop of the SAT context, which syncLevel follows. */
   void notifyPop();
-  /** Push or pop the core's scopes to the level of the SAT context. */
+  /**
+   * Push or pop the core's scopes to the level of the SAT context: the
+   * core's scope level is the SAT context's level minus one, so that its
+   * level 0 is the SAT context's level 1, below every user scope.
+   */
   void syncLevel();
   /**
    * Note that the core is in conflict, which it leaves to cvc5's theories to
@@ -195,6 +200,17 @@ class Z3Module : public theory::quantifiers::QuantifiersModule
   /** Whether the propositional side was set up (presolve). */
   bool d_setup;
   /**
+   * Whether the SAT context popped to level 0, which reset-assertions does:
+   * the core is then made again, at the next syncLevel.
+   */
+  bool d_reset;
+  /**
+   * The level of the SAT context below the first decision of the current
+   * search: that of presolve, plus a decision level for the activation
+   * literal of each of cvc5's user scopes.
+   */
+  uint32_t d_searchBaseLevel;
+  /**
    * Whether the core is in conflict in the current context. The conflict
    * holds until the SAT context pops below the level it was found at.
    */
@@ -208,8 +224,11 @@ class Z3Module : public theory::quantifiers::QuantifiersModule
   uint32_t d_popLevel;
   /** The atoms registered by cvc5 before the next check. */
   std::vector<Node> d_preregistered;
-  /** The lemmas sent, which are permanent in cvc5. */
-  std::unordered_set<Node> d_lemmasSent;
+  /**
+   * The lemmas sent. cvc5 keeps a lemma until the pop of the user scope of
+   * its atoms, so this is in the user context.
+   */
+  context::CDHashSet<Node> d_lemmasSent;
   /** The lemmas weakened by delayUnit, to send as they are, see check. */
   std::vector<Node> d_delayedUnits;
   /**

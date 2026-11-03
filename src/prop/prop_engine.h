@@ -178,7 +178,8 @@ class PropEngine : protected EnvObj
 
   /**
    * Get the current list of decisions made by the SAT solver at the moment in
-   * time that getPropDecisions() is called.
+   * time that getPropDecisions() is called, except for the activation
+   * literals of the user scopes, which have no node.
    *
    * @return List of decisions made by the SAT solver.
    */

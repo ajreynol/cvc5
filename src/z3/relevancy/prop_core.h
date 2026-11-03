@@ -27,6 +27,7 @@
 #include <vector>
 
 #include "context/cdlist.h"
+#include "context/cdo.h"
 #include "expr/node.h"
 #include "prop/sat_solver_types.h"
 #include "smt/env_obj.h"
@@ -188,7 +189,10 @@ class PropCore : protected EnvObj
 
   bool inconsistent() const { return d_conflict || d_assertedInconsistent; }
 
-  /** An asserted formula is false, which no backtracking undoes. */
+  /**
+   * An asserted formula is false, which no backtracking undoes, only the pop
+   * of the user scope it was asserted in.
+   */
   void setAssertedInconsistent() { d_assertedInconsistent = true; }
 
   bool isAssertedInconsistent() const { return d_assertedInconsistent; }
@@ -362,7 +366,7 @@ class PropCore : protected EnvObj
   /** True if a conflict was found at the current scope. */
   bool d_conflict;
   /** True if a formula asserted false. */
-  bool d_assertedInconsistent;
+  context::CDO<bool> d_assertedInconsistent;
 
   MkBoolVarTrail d_mkBoolVarTrail;
 };

@@ -37,7 +37,10 @@
 #include <unordered_set>
 #include <vector>
 
+#include "context/cdhashmap.h"
+#include "context/cdhashset.h"
 #include "context/cdlist.h"
+#include "context/cdo.h"
 #include "expr/node.h"
 #include "smt/env_obj.h"
 #include "z3/quantifiers/egraph.h"
@@ -101,7 +104,7 @@ class SmtContext final : protected EnvObj
    */
   bool isEncodedDistinct(TNode n) const
   {
-    return d_encodedDistincts.find(n) != d_encodedDistincts.end();
+    return d_encodedDistincts.contains(n);
   }
   /** Assert a (prepared) formula. */
   void assertFormula(TNode e);
@@ -154,9 +157,6 @@ class SmtContext final : protected EnvObj
    * scopes popped.
    */
   void popScope(size_t numScopes);
-
-  /** Backtrack to the base level. */
-  void popToBaseLvl();
 
   void resetCacheGeneration();
 
@@ -387,8 +387,10 @@ class SmtContext final : protected EnvObj
    * an instance that rewrites to true, null for one not yet made. The core
    * makes an instance again after backtracking, and mkInstance gives the
    * same form then, without the skolem definitions it gave the first time.
+   * They are in the user context, as cvc5's preprocessing, which gives the
+   * skolem definitions again after a user pop.
    */
-  std::unordered_map<Node, Node> d_instanceForms;
+  context::CDHashMap<Node, Node> d_instanceForms;
   /** The quantifiers: E-matching and instantiation. */
   QuantifierManager d_qmanager;
 
@@ -412,11 +414,14 @@ class SmtContext final : protected EnvObj
   std::unordered_set<TNode> d_cacheGenerationVisited;
 
   // ------------------------------------------------------ input and scopes
-  /** The formulas asserted to the core, and how far they are internalized. */
-  std::vector<Node> d_assertedFormulas;
-  size_t d_assertedFormulasQhead;
+  /**
+   * The formulas asserted to the core, and how far they are internalized,
+   * in the scope of the user level they were asserted at.
+   */
+  context::CDList<Node> d_assertedFormulas;
+  context::CDO<size_t> d_assertedFormulasQhead;
   /** The root distincts that assertDistinct encoded. */
-  std::unordered_set<Node> d_encodedDistincts;
+  context::CDHashSet<Node> d_encodedDistincts;
   /**
    * The equalities f(a_i) = v_i made by assertDistinct, which are kept alive
    * here.
@@ -425,6 +430,12 @@ class SmtContext final : protected EnvObj
   bool d_internalizingAssertions;
   /** Whether the search started (setupSearch). */
   bool d_searching;
+  /**
+   * The scope level of the current search's assertions, Z3's base level:
+   * the user scopes of cvc5, where this core's scope level 0 is cvc5's SAT
+   * context level 1.
+   */
+  uint32_t d_baseLevel;
   /** Whether the resource limits were exceeded during this search. */
   bool d_resourceOut;
   /** A unit literal that is reasserted after every backtrack. */

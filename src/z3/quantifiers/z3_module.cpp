@@ -40,9 +40,12 @@ Z3Module::Z3Module(Env& env,
     : QuantifiersModule(env, qs, qim, qr, tr),
       d_te(nullptr),
       d_setup(false),
+      d_reset(false),
+      d_searchBaseLevel(1),
       d_inConflict(context(), false),
       d_needCheck(false),
       d_popLevel(UINT32_MAX),
+      d_lemmasSent(userContext()),
       d_pg(std::make_unique<LemmaProofGenerator>(env)),
       d_popNotify(std::make_unique<PopNotify>(context(), *this))
 {
@@ -60,16 +63,19 @@ void Z3Module::finishInit(TheoryEngine* te)
 
 void Z3Module::presolve()
 {
+  // Each check-sat is a search over the assertions of the current user
+  // scopes, which the core internalizes at its scope of them.
+  syncLevel();
   d_core->getEGraph().setMasterEqualityEngine(d_qstate.getEqualityEngine());
-  if (!d_setup)
-  {
-    d_core->setupSearch();
-    d_setup = true;
-  }
+  d_core->setupSearch();
+  d_setup = true;
+  d_searchBaseLevel =
+      context()->getLevel() + d_te->getPropEngine()->getAssertionLevel();
 }
 
 void Z3Module::ppNotifyAssertions(const std::vector<Node>& assertions)
 {
+  syncLevel();
   for (const Node& a : assertions)
   {
     d_core->assertFormula(toCore(a));
@@ -299,14 +305,14 @@ void Z3Module::checkCore(theory::Theory::Effort effort)
   syncLevel();
   // the equalities cvc5's theories derived since the last check
   d_core->getEGraph().applyMasterMerges();
-  if (context()->getLevel() <= 1 && !d_delayedUnits.empty())
+  if (context()->getLevel() <= d_searchBaseLevel && !d_delayedUnits.empty())
   {
     // As Z3 asserts its delayed units after a restart, the lemmas weakened
     // by delayUnit are sent as they are near the base level, where CaDiCaL
     // backtracks at most one level for them.
     for (const Node& du : d_delayedUnits)
     {
-      if (d_lemmasSent.insert(du).second)
+      if (d_lemmasSent.insert(du))
       {
         lemma(du, theory::LemmaProperty::NONE);
         d_needCheck = true;
@@ -376,16 +382,31 @@ void Z3Module::notifyPop()
   {
     d_popLevel = lvl;
   }
+  if (lvl == 0)
+  {
+    d_reset = true;
+  }
   // the merges notified and not applied are void
   d_core->getEGraph().clearPendingMasterMerges();
 }
 
 void Z3Module::syncLevel()
 {
-  uint32_t lvl = context()->getLevel();
+  if (d_reset)
+  {
+    // everything the core has is for assertions that are gone
+    d_reset = false;
+    d_core = std::make_unique<SmtContext>(d_env, *this);
+    d_preregistered.clear();
+    d_delayedUnits.clear();
+  }
+  uint32_t satLvl = context()->getLevel();
+  uint32_t lvl = satLvl > 0 ? satLvl - 1 : 0;
   // The scopes above the lowest level the SAT context reached since the last
   // call belong to a branch it left, even if it is now as deep again.
-  uint32_t popTo = std::min(lvl, d_popLevel);
+  uint32_t popTo = d_popLevel == UINT32_MAX
+                       ? lvl
+                       : std::min(lvl, d_popLevel > 0 ? d_popLevel - 1 : 0);
   d_popLevel = UINT32_MAX;
   if (d_core->getScopeLevel() > popTo)
   {
@@ -420,11 +441,11 @@ void Z3Module::sendLemma(const Node& coreLem, bool local)
   // it is sent again when the core makes it again, as is or weakened by the
   // first decision of then.
   Node sent = lem;
-  if (d_lemmasSent.find(lem) == d_lemmasSent.end())
+  if (!d_lemmasSent.contains(lem))
   {
     sent = delayUnit(lem);
   }
-  if (d_lemmasSent.insert(sent).second)
+  if (d_lemmasSent.insert(sent))
   {
     stats.d_numHostLemmas++;
   }
@@ -443,7 +464,8 @@ void Z3Module::sendLemma(const Node& coreLem, bool local)
 
 Node Z3Module::delayUnit(const Node& lem)
 {
-  if (!options().z3.z3HostDelayUnits || context()->getLevel() < 2)
+  if (!options().z3.z3HostDelayUnits
+      || context()->getLevel() <= d_searchBaseLevel)
   {
     return lem;
   }

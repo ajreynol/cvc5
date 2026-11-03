@@ -430,9 +430,14 @@ std::vector<Node> PropEngine::getPropDecisions() const
 {
   std::vector<Node> decisions;
   std::vector<SatLiteral> miniDecisions = d_satSolver->getDecisions();
+  const CnfStream::LiteralToNodeMap& nodes = d_cnfStream->getNodeCache();
   for (SatLiteral d : miniDecisions)
   {
-    decisions.push_back(d_cnfStream->getNode(d));
+    // skip the activation literals of the user scopes, which have no node
+    if (nodes.find(d) != nodes.end())
+    {
+      decisions.push_back(d_cnfStream->getNode(d));
+    }
   }
   return decisions;
 }

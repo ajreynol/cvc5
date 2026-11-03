@@ -38,7 +38,7 @@ PropCore::PropCore(Env& env, SmtContext& ctx, Statistics& stats)
           ctx.getTrailStack().getContext(), true, UnassignCleanup{this}),
       d_qhead(0),
       d_conflict(false),
-      d_assertedInconsistent(false),
+      d_assertedInconsistent(ctx.getTrailStack().getContext(), false),
       d_mkBoolVarTrail(*this)
 {
 }
