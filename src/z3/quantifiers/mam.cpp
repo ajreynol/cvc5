@@ -526,9 +526,7 @@ class CodeTreeManager
     return r;
   }
 
-  Yield* mkYield(TNode qa,
-                 uint16_t numBindings,
-                 const uint32_t* bindings)
+  Yield* mkYield(TNode qa, uint16_t numBindings, const uint32_t* bindings)
   {
     Assert(numBindings >= 1);
     Yield* y =

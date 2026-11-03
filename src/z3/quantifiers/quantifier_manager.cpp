@@ -89,10 +89,7 @@ bool QuantifierManager::addInstance(TNode q,
   return f != nullptr;
 }
 
-void QuantifierManager::initSearch()
-{
-  d_queue.initSearch();
-}
+void QuantifierManager::initSearch() { d_queue.initSearch(); }
 
 void QuantifierManager::notifyAssigned(TNode q)
 {
