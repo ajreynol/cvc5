@@ -29,7 +29,6 @@
 #include <unordered_map>
 #include <vector>
 
-#include "context/cdo.h"
 #include "expr/node.h"
 #include "smt/env_obj.h"
 #include "z3/quantifiers/fingerprints.h"
@@ -71,9 +70,6 @@ class QuantifierManager : protected EnvObj
   void notifyMerge(ENode* n1, ENode* n2);
   /** Invoked whenever n is marked as relevant. */
   void notifyRelevant(ENode* n);
-  /** Match the lazy multi-patterns. Returns true if this made no progress. */
-  bool finalCheck();
-
   bool canPropagate() const;
   void propagate();
 
@@ -93,12 +89,8 @@ class QuantifierManager : protected EnvObj
   /** The generation of each quantifier, as Z3's quantifier_stat keeps it. */
   std::unordered_map<Node, uint32_t> d_generations;
   std::vector<Node> d_quantifiers;
-  /** The E-matching engine for the patterns matched eagerly. */
+  /** The E-matching engine. */
   std::unique_ptr<Mam> d_mam;
-  /** The E-matching engine for the multi-patterns matched at final check. */
-  std::unique_ptr<Mam> d_lazyMam;
-  /** How many times the lazy patterns were matched in this search. */
-  context::CDO<size_t> d_lazyMatchingIdx;
   /** Whether a quantifier was asserted. */
   bool d_active;
 };

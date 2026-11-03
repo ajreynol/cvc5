@@ -62,13 +62,10 @@ class Mam
   /** Execute the pending matching work. */
   void match();
 
-  /** Re-execute every code tree from scratch. */
-  void rematch();
-
   bool hasWork() const;
 
   /** Notification that n became relevant. */
-  void notifyRelevant(ENode* n, bool lazy);
+  void notifyRelevant(ENode* n);
 
   /** Notification that the classes of r1 and r2 merged. */
   void notifyMerge(ENode* r1, ENode* r2);

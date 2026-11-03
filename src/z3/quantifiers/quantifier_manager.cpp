@@ -36,27 +36,15 @@
 namespace cvc5::internal {
 namespace z3 {
 
-namespace {
-
-/**
- * How many times the final check rematches the multi-patterns that are not
- * matched eagerly (Z3's qi.max_lazy_multipattern_matching).
- */
-constexpr size_t s_maxLazyMultipatternMatching = 2;
-
-}  // namespace
-
 QuantifierManager::QuantifierManager(Env& env, SmtContext& ctx)
     : EnvObj(env),
       d_context(ctx),
       d_queue(env, *this, ctx),
       d_fingerprints(ctx.getTrailStack()),
-      d_lazyMatchingIdx(ctx.getTrailStack().getContext(), 0),
       d_active(false)
 {
   d_queue.setup();
   d_mam = std::make_unique<Mam>(ctx, *this);
-  d_lazyMam = std::make_unique<Mam>(ctx, *this);
 }
 
 QuantifierManager::~QuantifierManager() {}
@@ -104,57 +92,21 @@ bool QuantifierManager::addInstance(TNode q,
 void QuantifierManager::initSearch()
 {
   d_queue.initSearch();
-  d_lazyMatchingIdx = 0;
 }
 
 void QuantifierManager::notifyAssigned(TNode q)
 {
   d_active = true;
-  // A multi-pattern is only matched eagerly up to a bound, since matching
-  // one is much more expensive than matching a unary pattern. The bound is
-  // raised by one when the quantifier has no unary pattern at all, so that
-  // at least one of its patterns is always matched eagerly.
-  bool hasUnaryPattern = false;
-  if (q.getNumChildren() == 3)
-  {
-    for (const Node& p : q[2])
-    {
-      if (p.getKind() == Kind::INST_PATTERN && p.getNumChildren() == 1)
-      {
-        hasUnaryPattern = true;
-        break;
-      }
-    }
-  }
-  uint32_t numEagerMultiPatterns =
-      static_cast<uint32_t>(options().z3.z3QiMaxMultiPatterns);
-  if (!hasUnaryPattern)
-  {
-    numEagerMultiPatterns++;
-  }
   if (q.getNumChildren() != 3)
   {
     return;
   }
-  size_t j = 0;
+  // every pattern, including the multi-patterns, is matched eagerly
   for (const Node& mp : q[2])
   {
-    if (mp.getKind() != Kind::INST_PATTERN)
-    {
-      continue;
-    }
-    bool unary = mp.getNumChildren() == 1;
-    if (!unary && j >= numEagerMultiPatterns)
-    {
-      d_lazyMam->addPattern(q, mp);
-    }
-    else
+    if (mp.getKind() == Kind::INST_PATTERN)
     {
       d_mam->addPattern(q, mp);
-    }
-    if (!unary)
-    {
-      j++;
     }
   }
 }
@@ -171,19 +123,8 @@ void QuantifierManager::notifyRelevant(ENode* n)
 {
   if (!empty())
   {
-    d_mam->notifyRelevant(n, false);
-    d_lazyMam->notifyRelevant(n, true);
+    d_mam->notifyRelevant(n);
   }
-}
-
-bool QuantifierManager::finalCheck()
-{
-  if (!empty() && d_lazyMatchingIdx < s_maxLazyMultipatternMatching)
-  {
-    d_lazyMam->rematch();
-    d_lazyMatchingIdx = d_lazyMatchingIdx + 1;
-  }
-  return !d_context.canPropagate();
 }
 
 bool QuantifierManager::canPropagate() const
@@ -203,7 +144,6 @@ void QuantifierManager::propagate()
 void QuantifierManager::notifyPop()
 {
   d_mam->notifyPop();
-  d_lazyMam->notifyPop();
   d_queue.notifyPop();
 }
 

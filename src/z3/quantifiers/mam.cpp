@@ -2488,8 +2488,6 @@ class CodeTreeMap
     return lblId < d_trees.size() ? d_trees[lblId] : nullptr;
   }
 
-  const std::vector<CodeTree*>& getCodeTrees() const { return d_trees; }
-
  private:
   /** Delete the tree created for a label when its scope is popped. */
   class MkTreeTrail : public Trail
@@ -2734,18 +2732,6 @@ class MamImpl
     }
   }
 
-  void rematch()
-  {
-    for (CodeTree* t : d_trees.getCodeTrees())
-    {
-      if (t == nullptr)
-      {
-        continue;
-      }
-      executeOnRelevant(t, t->getRootLbl());
-    }
-  }
-
   /** Run the tree t over every relevant application of lbl. */
   void executeOnRelevant(CodeTree* t, TNode lbl)
   {
@@ -2764,19 +2750,15 @@ class MamImpl
   }
 
   /**
-   * Invoked when n becomes relevant. If lazy is true then n is not added to
-   * the list of candidate enodes for matching, and the method only updates
-   * the labels.
+   * Invoked when n becomes relevant: updates the labels, and adds n to the
+   * candidate enodes for matching.
    */
-  void notifyRelevant(ENode* n, bool lazy)
+  void notifyRelevant(ENode* n)
   {
-    if (!lazy)
+    d_context.getStats().d_numMamNotifyRelevant++;
+    if (n->getNumArgs() > 0)
     {
-      d_context.getStats().d_numMamNotifyRelevant++;
-      if (n->getNumArgs() > 0)
-      {
-        d_context.getStats().d_numMamRelevantApp++;
-      }
+      d_context.getStats().d_numMamRelevantApp++;
     }
     if (n->hasLblHash())
     {
@@ -2794,10 +2776,7 @@ class MamImpl
       {
         updateChildrenPlbls(n, h);
       }
-      if (!lazy)
-      {
-        addCandidate(n);
-      }
+      addCandidate(n);
     }
   }
 
@@ -3534,14 +3513,9 @@ void Mam::notifyPop() { d_impl->notifyPop(); }
 
 void Mam::match() { d_impl->match(); }
 
-void Mam::rematch() { d_impl->rematch(); }
-
 bool Mam::hasWork() const { return d_impl->hasWork(); }
 
-void Mam::notifyRelevant(ENode* n, bool lazy)
-{
-  d_impl->notifyRelevant(n, lazy);
-}
+void Mam::notifyRelevant(ENode* n) { d_impl->notifyRelevant(n); }
 
 void Mam::notifyMerge(ENode* r1, ENode* r2) { d_impl->notifyMerge(r1, r2); }
 

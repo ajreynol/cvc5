@@ -75,7 +75,7 @@ QuantifiersEngine (cvc5)
             │   │                                           SmtContext)
             │   └── Checker                             (-> SmtContext, EGraph)
             ├── FingerprintSet                          (-> TrailStack)
-            └── Mam x2, eager and lazy (MamImpl: LabelHasher,
+            └── Mam (MamImpl: LabelHasher,
                 CodeTreeManager, Compiler, Interpreter, CodeTreeMap)
                                                         (-> SmtContext, EGraph,
                                                             QuantifierManager,

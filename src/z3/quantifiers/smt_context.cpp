@@ -623,7 +623,7 @@ bool SmtContext::finalCheck()
   Trace("z3-events") << "FINALCHECK " << d_stats.d_numFinalChecks.get()
                      << std::endl;
 
-  return d_qmanager.finalCheck() && !canPropagate();
+  return !canPropagate();
 }
 
 // ------------------------------------------------------------ internalization
