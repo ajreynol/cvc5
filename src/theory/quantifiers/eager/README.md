@@ -115,10 +115,10 @@ Outside this directory, the port touches:
   `--eager-e-matching`, so Boolean variables reach the core.
   `PropEngine::getPropDecisions` skips the activation literals of user
   scopes, which have no node.
-- `SetDefaults::checkEagerEMatchingCapabilities` refuses what the core does
-  not support: `--deep-restart`, sygus (and so interpolants and abducts),
-  oracles, and `--dump-instantiations` without proofs (the instantiations are
-  read from the proof). Unsat cores default to `--unsat-cores-mode=sat-proof`,
+- `SetDefaults` refuses what the core does not support: higher-order logic
+  (lambdas would bring bound variables into its E-graph and instances), and
+  `--dump-instantiations` without proofs (the instantiations are read from the
+  proof). Unsat cores default to `--unsat-cores-mode=sat-proof`,
   since deciding on the input as assumptions first hurts the core's search.
   `setDefaultsQuantifiers` sets `--pre-skolem-quant=agg`: the existentials
   nested in quantified formulas get skolem functions of the enclosing

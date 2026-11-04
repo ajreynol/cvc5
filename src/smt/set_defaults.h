@@ -136,12 +136,6 @@ class SetDefaults : protected EnvObj
    * (finalizeLogic).
    */
   void setDefaultsPre(Options& opts);
-  /**
-   * Throw an OptionException for any option the eager E-matching core
-   * (--eager-e-matching) does not support. Its supported surface is
-   * deliberately minimal.
-   */
-  void checkEagerEMatchingCapabilities(Options& opts) const;
   //------------------------- finalization of the logic
   /**
    * Finalize the logic based on the options.

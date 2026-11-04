@@ -168,11 +168,13 @@ class EagerEMatching : public theory::quantifiers::QuantifiersModule
   /**
    * cvc5's form of n, a formula of the core: the atoms the core renamed are
    * cvc5's again. The other atoms, the new quantified formulas of the
-   * instances for example, are the same for both.
+   * instances for example, are the same for both. Since alpha-equivalent
+   * atoms of cvc5 have the same core's form, this is one of them; the lemmas
+   * the core sends are not given back by this, but by d_hostLemma.
    */
   Node toHost(TNode n);
   /**
-   * The core's form of n, a formula of cvc5, in the form cvc5's theories
+   * The core's form of n, a lemma of cvc5, in the form cvc5's theories
    * take, by cvc5's lemma preprocessing, adding to defs the definitions of
    * the skolems it introduces, and setting pp to the rewrite of n by the
    * preprocessing.
@@ -231,12 +233,19 @@ class EagerEMatching : public theory::quantifiers::QuantifiersModule
   /** The lemmas weakened by delayUnit, to send as they are, see check. */
   std::vector<Node> d_delayedUnits;
   /**
-   * For each atom of cvc5 that toCore renamed, the core's form and cvc5's.
-   * Alpha-equivalent atoms of cvc5 would have the same core's form, which
-   * does not happen with the inputs the core takes: the core's forms keep
-   * the quantifier names (qid) and patterns.
+   * For each atom of cvc5 that toCore renamed, the core's form and cvc5's,
+   * the first one renamed to it: alpha-equivalent atoms of cvc5 have the
+   * same core's form.
    */
   std::unordered_map<Node, Node> d_hostAtom;
+  /**
+   * For each lemma the core sends (an instance, a skolemization or the
+   * definition of a skolem), the form of cvc5 it was made from, the first
+   * one if alpha-equivalent forms give the same lemma of the core. The core
+   * renames only its own copy of a lemma, so cvc5 is sent the very formula
+   * its preprocessing gave, with its proof.
+   */
+  std::unordered_map<Node, Node> d_hostLemma;
   /**
    * Proves the lemmas the core sends, and gives, for an instance or the
    * definition of a skolem, the lemma cvc5 is sent for it.

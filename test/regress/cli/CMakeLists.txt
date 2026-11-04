@@ -1898,6 +1898,7 @@ set(regress_0_tests
   regress0/quantifiers/eager/arith-03.smt2
   regress0/quantifiers/eager/check-sat-assuming.smt2
   regress0/quantifiers/eager/datatypes-03.smt2
+  regress0/quantifiers/eager/deep-restart.smt2
   regress0/quantifiers/eager/ematch-04.smt2
   regress0/quantifiers/eager/ematch-05.smt2
   regress0/quantifiers/eager/ematch-06.smt2
@@ -1922,11 +1923,12 @@ set(regress_0_tests
   regress0/quantifiers/eager/incremental-reset-assertions.smt2
   regress0/quantifiers/eager/incremental-skolem-defs.smt2
   regress0/quantifiers/eager/incremental-skolemize.smt2
+  regress0/quantifiers/eager/proof-renamed-lemma.smt2
   regress0/quantifiers/eager/quant-generation.smt2
   regress0/quantifiers/eager/quant-incomplete-unknown.smt2
   regress0/quantifiers/eager/sat-finite-model-find.smt2
   regress0/quantifiers/eager/unsat-cores.smt2
-  regress0/quantifiers/eager/unsupported-deep-restart.smt2
+  regress0/quantifiers/eager/unsupported-ho.smt2
   regress0/quantifiers/eager/unsupported-instantiations.smt2
   regress0/quantifiers/ex3.smt2
   regress0/quantifiers/ex6.smt2

@@ -131,11 +131,6 @@ void SetDefaults::setDefaults(LogicInfo& logic, Options& opts)
 
 void SetDefaults::setDefaultsPre(Options& opts)
 {
-  if (opts.quantifiers.eagerEMatching)
-  {
-    // Reject what the eager E-matching core cannot do.
-    checkEagerEMatchingCapabilities(opts);
-  }
   // safe options
   if (options().base.safeMode != options::SafeMode::UNRESTRICTED)
   {
@@ -1138,49 +1133,6 @@ bool SetDefaults::usesInputConversion(const Options& opts,
   return false;
 }
 
-void SetDefaults::checkEagerEMatchingCapabilities(Options& opts) const
-{
-  // Everything below has no implementation in the port.
-  const char* unsupported = nullptr;
-  if (opts.smt.produceInterpolants)
-  {
-    unsupported = "--produce-interpolants";
-  }
-  else if (opts.smt.produceAbducts)
-  {
-    unsupported = "--produce-abducts";
-  }
-  else if (opts.smt.deepRestartMode != options::DeepRestartMode::NONE)
-  {
-    // A deep restart makes a new prop engine from the literals learned at
-    // level zero, while the core keeps the state of the previous search.
-    unsupported = "--deep-restart";
-  }
-  else if ((opts.driver.dumpInstantiations
-            || opts.driver.dumpInstantiationsDebug)
-           && !opts.smt.produceProofs)
-  {
-    // cvc5's quantifiers engine records none of the core's instantiations:
-    // they are read from the proof, which has them.
-    unsupported = "--dump-instantiations without --produce-proofs";
-  }
-  else if (opts.quantifiers.oracles)
-  {
-    // The core treats oracle functions as uninterpreted.
-    unsupported = "--oracles";
-  }
-  else if (opts.quantifiers.sygus)
-  {
-    unsupported = "sygus";
-  }
-  if (unsupported != nullptr)
-  {
-    std::stringstream ss;
-    ss << unsupported << " is not supported with --eager-e-matching";
-    throw OptionException(ss.str());
-  }
-}
-
 bool SetDefaults::incompatibleWithProofs(Options& opts,
                                          std::ostream& reason) const
 {
@@ -1617,6 +1569,15 @@ void SetDefaults::setDefaultsQuantifiers(const LogicInfo& logic,
     // search for conflicting instances.
     SET_AND_NOTIFY_IF_NOT_USER(
         quantifiers, conflictBasedInst, false, "eager-e-matching");
+    // cvc5's quantifiers engine records none of the core's instantiations:
+    // they are read from the proof, which has them.
+    if ((opts.driver.dumpInstantiations || opts.driver.dumpInstantiationsDebug)
+        && !opts.smt.produceProofs)
+    {
+      throw OptionException(
+          "--dump-instantiations without --produce-proofs is not supported "
+          "with --eager-e-matching");
+    }
   }
   if (opts.arrays.arraysExp)
   {
@@ -1682,6 +1643,13 @@ void SetDefaults::setDefaultsQuantifiers(const LogicInfo& logic,
     // Cannot use macros, since lambda lifting and macro elimination are inverse
     // operations.
     SET_AND_NOTIFY(quantifiers, macrosQuant, false, "higher-order logic");
+    // The eager E-matching core has no support for lambdas, whose bound
+    // variables would reach its E-graph and its instances.
+    if (opts.quantifiers.eagerEMatching)
+    {
+      throw OptionException(
+          "--eager-e-matching is not supported in higher-order logic");
+    }
   }
   if (opts.quantifiers.fmfFunWellDefinedRelevant)
   {

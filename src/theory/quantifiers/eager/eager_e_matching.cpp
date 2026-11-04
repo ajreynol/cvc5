@@ -190,21 +190,18 @@ Node EagerEMatching::preprocessForTheories(TNode n,
   // only when it introduces it, here, so the core sends the definitions,
   // with their proofs.
   std::vector<theory::SkolemLemma> sks;
-  Node h = toHost(n);
-  TrustNode trn = d_te->getPropEngine()->preprocess(h, sks);
+  TrustNode trn = d_te->getPropEngine()->preprocess(n, sks);
   for (const theory::SkolemLemma& sk : sks)
   {
-    Node d = toCore(sk.getProven());
-    Node hd = toHost(d);
-    if (hd == sk.getProven())
-    {
-      d_pg->notifyPreprocessed(sk.getProven(), sk.d_lemma, TrustNode::null());
-    }
+    const Node& hd = sk.getProven();
+    Node d = toCore(hd);
+    d_hostLemma.emplace(d, hd);
+    d_pg->notifyPreprocessed(hd, sk.d_lemma, TrustNode::null());
     d_lemmaIds.emplace(hd, id);
     defs.push_back(d);
   }
   pp = trn;
-  return toCore(trn.isNull() ? h : trn.getNode());
+  return toCore(trn.isNull() ? Node(n) : trn.getNode());
 }
 
 Node EagerEMatching::mkInstance(TNode q,
@@ -236,13 +233,10 @@ Node EagerEMatching::preprocessLemma(const TrustNode& trn,
   TrustNode pp;
   Node norm = preprocessForTheories(lem, defs, pp, id);
   Node form = pp.isNull() ? lem : pp.getNode();
-  Node hnorm = toHost(norm);
   // the core sends norm as form, and cvc5 is sent lem for it
-  if (hnorm == form)
-  {
-    d_pg->notifyPreprocessed(form, trn, pp);
-  }
-  d_lemmaIds.emplace(hnorm, id);
+  d_hostLemma.emplace(norm, form);
+  d_pg->notifyPreprocessed(form, trn, pp);
+  d_lemmaIds.emplace(form, id);
   return norm;
 }
 
@@ -437,7 +431,10 @@ void EagerEMatching::enterConflict()
 void EagerEMatching::sendLemma(const Node& coreLem, bool local)
 {
   Statistics& stats = d_core->getStats();
-  Node lem = toHost(coreLem);
+  // the core sends only the lemmas it made through preprocessLemma
+  auto it = d_hostLemma.find(coreLem);
+  Assert(it != d_hostLemma.end());
+  Node lem = it == d_hostLemma.end() ? toHost(coreLem) : it->second;
   // cvc5 keeps its lemmas, while the core makes an instance or an axiom
   // again after backtracking, so a lemma is sent once. A lemma weakened by
   // delayUnit holds only under the first decision it was weakened with, so
