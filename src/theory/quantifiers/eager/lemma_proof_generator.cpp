@@ -22,7 +22,13 @@
 namespace cvc5::internal {
 namespace theory::quantifiers::eager {
 
-LemmaProofGenerator::LemmaProofGenerator(Env& env) : EnvObj(env) {}
+LemmaProofGenerator::LemmaProofGenerator(Env& env)
+    : EnvObj(env),
+      d_forms(userContext()),
+      d_hostForms(userContext()),
+      d_weakened(userContext())
+{
+}
 
 Node LemmaProofGenerator::mkInstance(TNode q, const std::vector<Node>& terms)
 {
@@ -39,17 +45,33 @@ Node LemmaProofGenerator::mkInstance(TNode q, const std::vector<Node>& terms)
   return lem;
 }
 
-void LemmaProofGenerator::notifyPreprocessed(const Node& form,
+void LemmaProofGenerator::notifyPreprocessed(const Node& norm,
+                                             const Node& form,
                                              const TrustNode& trn,
                                              const TrustNode& pp)
 {
-  d_forms.emplace(form, std::make_pair(trn, pp));
+  // the first lemma preprocessed to form, and the first form of norm
+  if (d_forms.find(form) == d_forms.end())
+  {
+    d_forms.insert(form, std::make_pair(trn, pp));
+  }
+  if (d_env.isTheoryProofProducing()
+      && d_hostForms.find(norm) == d_hostForms.end())
+  {
+    d_hostForms.insert(norm, form);
+  }
 }
 
 TrustNode LemmaProofGenerator::getLemmaFor(const Node& form) const
 {
   auto it = d_forms.find(form);
   return it == d_forms.end() ? TrustNode::null() : it->second.first;
+}
+
+Node LemmaProofGenerator::getHostForm(const Node& norm) const
+{
+  auto it = d_hostForms.find(norm);
+  return it == d_hostForms.end() ? Node::null() : it->second;
 }
 
 Node LemmaProofGenerator::mkWeakened(const Node& form, const Node& d)
@@ -71,7 +93,7 @@ Node LemmaProofGenerator::mkWeakened(const Node& form, const Node& d)
   Node w = nodeManager()->mkNode(Kind::OR, disj);
   if (d_env.isTheoryProofProducing())
   {
-    d_weakened.emplace(w, std::make_pair(form, d));
+    d_weakened.insert(w, std::make_pair(form, d));
   }
   return w;
 }

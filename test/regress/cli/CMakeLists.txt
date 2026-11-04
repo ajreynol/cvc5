@@ -1919,6 +1919,7 @@ set(regress_0_tests
   regress0/quantifiers/eager/incremental-check-sat-assuming.smt2
   regress0/quantifiers/eager/incremental-nested.smt2
   regress0/quantifiers/eager/incremental-pop-quantifier.smt2
+  regress0/quantifiers/eager/incremental-proofs.smt2
   regress0/quantifiers/eager/incremental-push-pop.smt2
   regress0/quantifiers/eager/incremental-reset-assertions.smt2
   regress0/quantifiers/eager/incremental-skolem-defs.smt2

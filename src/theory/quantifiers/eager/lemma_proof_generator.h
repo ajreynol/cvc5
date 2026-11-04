@@ -20,6 +20,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "context/cdhashmap.h"
 #include "expr/node.h"
 #include "proof/proof_generator.h"
 #include "proof/trust_node.h"
@@ -50,13 +51,21 @@ class LemmaProofGenerator : protected EnvObj, public ProofGenerator
   /**
    * Note that the lemma lem, which trn proves (an instance, or the definition
    * of a skolem), is preprocessed by cvc5 to form, as proven by the rewrite
-   * pp, which is null if form is lem.
+   * pp, which is null if form is lem, and that norm is its core's form.
    */
-  void notifyPreprocessed(const Node& form,
+  void notifyPreprocessed(const Node& norm,
+                          const Node& form,
                           const TrustNode& trn,
                           const TrustNode& pp);
   /** The lemma that cvc5 is sent for form, see notifyPreprocessed. */
   TrustNode getLemmaFor(const Node& form) const;
+  /**
+   * The form of cvc5 that the lemma norm of the core was made from, which
+   * has a proof, or null if proofs are not produced. Alpha-equivalent forms
+   * of cvc5 have the same core's form, which cvc5's form given back by the
+   * core's renaming is then one of, without a proof.
+   */
+  Node getHostForm(const Node& norm) const;
   /**
    * Make the lemma form weakened by the negation of d, (or form (not d))
    * flattened, which this proves; or null if this has no proof of form.
@@ -76,10 +85,16 @@ class LemmaProofGenerator : protected EnvObj, public ProofGenerator
   std::shared_ptr<ProofNode> getInstanceProof(const Node& f);
   /** For each instance, the terms of its instantiation. */
   std::unordered_map<Node, std::vector<Node>> d_terms;
-  /** See notifyPreprocessed. */
-  std::unordered_map<Node, std::pair<TrustNode, TrustNode>> d_forms;
+  /**
+   * See notifyPreprocessed. This and the maps below are in the user context,
+   * as the proofs of cvc5's preprocessing are, which gives a lemma again,
+   * with its skolem definitions, after a user pop.
+   */
+  context::CDHashMap<Node, std::pair<TrustNode, TrustNode>> d_forms;
+  /** See getHostForm. */
+  context::CDHashMap<Node, Node> d_hostForms;
   /** For each weakened lemma, the lemma and the decision, see mkWeakened. */
-  std::unordered_map<Node, std::pair<Node, Node>> d_weakened;
+  context::CDHashMap<Node, std::pair<Node, Node>> d_weakened;
 };
 
 }  // namespace theory::quantifiers::eager

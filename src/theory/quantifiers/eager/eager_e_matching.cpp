@@ -193,11 +193,9 @@ Node EagerEMatching::preprocessForTheories(TNode n,
   TrustNode trn = d_te->getPropEngine()->preprocess(n, sks);
   for (const theory::SkolemLemma& sk : sks)
   {
-    const Node& hd = sk.getProven();
-    Node d = toCore(hd);
-    d_hostLemma.emplace(d, hd);
-    d_pg->notifyPreprocessed(hd, sk.d_lemma, TrustNode::null());
-    d_lemmaIds.emplace(hd, id);
+    Node d = toCore(sk.getProven());
+    d_pg->notifyPreprocessed(d, sk.getProven(), sk.d_lemma, TrustNode::null());
+    d_lemmaIds.emplace(toHostLemma(d), id);
     defs.push_back(d);
   }
   pp = trn;
@@ -233,10 +231,9 @@ Node EagerEMatching::preprocessLemma(const TrustNode& trn,
   TrustNode pp;
   Node norm = preprocessForTheories(lem, defs, pp, id);
   Node form = pp.isNull() ? lem : pp.getNode();
-  // the core sends norm as form, and cvc5 is sent lem for it
-  d_hostLemma.emplace(norm, form);
-  d_pg->notifyPreprocessed(form, trn, pp);
-  d_lemmaIds.emplace(form, id);
+  // the core sends norm, and cvc5 is sent lem for it
+  d_pg->notifyPreprocessed(norm, form, trn, pp);
+  d_lemmaIds.emplace(toHostLemma(norm), id);
   return norm;
 }
 
@@ -431,10 +428,7 @@ void EagerEMatching::enterConflict()
 void EagerEMatching::sendLemma(const Node& coreLem, bool local)
 {
   Statistics& stats = d_core->getStats();
-  // the core sends only the lemmas it made through preprocessLemma
-  auto it = d_hostLemma.find(coreLem);
-  Assert(it != d_hostLemma.end());
-  Node lem = it == d_hostLemma.end() ? toHost(coreLem) : it->second;
+  Node lem = toHostLemma(coreLem);
   // cvc5 keeps its lemmas, while the core makes an instance or an axiom
   // again after backtracking, so a lemma is sent once. A lemma weakened by
   // delayUnit holds only under the first decision it was weakened with, so
@@ -561,6 +555,12 @@ void EagerEMatching::recordRenamedAtoms(TNode n, TNode nc)
     return;
   }
   d_hostAtom.emplace(nc, n);
+}
+
+Node EagerEMatching::toHostLemma(TNode norm)
+{
+  Node form = d_pg->getHostForm(norm);
+  return form.isNull() ? toHost(norm) : form;
 }
 
 Node EagerEMatching::toHost(TNode n)
