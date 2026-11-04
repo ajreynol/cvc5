@@ -106,38 +106,34 @@ void PropCore::mkClause(SatLiteral l1, SatLiteral l2, SatLiteral l3)
 
 void PropCore::addAndRelWatches(TNode n)
 {
-  RelevancyHandler* eh = d_relevancyPropagator->mkGateRelevancyHandler(n);
   for (const Node& arg : n)
   {
     // if one child is assigned false, the and-parent must be notified
-    addRelWatch(~getLiteral(arg), eh);
+    addGateWatch(~getLiteral(arg), n);
   }
 }
 
 void PropCore::addOrRelWatches(TNode n)
 {
-  RelevancyHandler* eh = d_relevancyPropagator->mkGateRelevancyHandler(n);
   for (const Node& arg : n)
   {
     // if one child is assigned true, the or-parent must be notified
-    addRelWatch(getLiteral(arg), eh);
+    addGateWatch(getLiteral(arg), n);
   }
 }
 
 void PropCore::addImpliesRelWatches(TNode n)
 {
-  RelevancyHandler* eh = d_relevancyPropagator->mkGateRelevancyHandler(n);
-  addRelWatch(~getLiteral(n[0]), eh);
-  addRelWatch(getLiteral(n[1]), eh);
+  addGateWatch(~getLiteral(n[0]), n);
+  addGateWatch(getLiteral(n[1]), n);
 }
 
 void PropCore::addIteRelWatches(TNode n)
 {
-  RelevancyHandler* eh = d_relevancyPropagator->mkGateRelevancyHandler(n);
   SatLiteral l = getLiteral(n[0]);
   // when the condition of an ite is assigned, the ite-parent is notified
-  addRelWatch(l, eh);
-  addRelWatch(~l, eh);
+  addGateWatch(l, n);
+  addGateWatch(~l, n);
 }
 
 void PropCore::mkNotCnstr(TNode n)

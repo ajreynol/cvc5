@@ -63,8 +63,8 @@ void EagerEMatching::finishInit(TheoryEngine* te)
 {
   d_te = te;
   d_core = std::make_unique<SmtContext>(d_env, *this);
-  d_tracker = std::make_unique<RelevancyTracker>(d_env, te, *this);
-  te->addModule(d_tracker.get());
+  d_factFeed = std::make_unique<FactFeed>(d_env, te, *this);
+  te->addModule(d_factFeed.get());
 }
 
 void EagerEMatching::presolve()
@@ -279,7 +279,7 @@ void EagerEMatching::assertFact(TNode literal)
 void EagerEMatching::checkCore(theory::Theory::Effort effort)
 {
   // the literals asserted since the last check
-  d_tracker->flush(d_qstate);
+  d_factFeed->flush(d_qstate);
   d_needCheck = false;
   Statistics& stats = d_core->getStats();
   stats.d_numHostChecks++;

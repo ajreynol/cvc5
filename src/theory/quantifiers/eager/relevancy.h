@@ -32,48 +32,26 @@
 
 #include "context/cdlist.h"
 #include "expr/node.h"
-#include "theory/quantifiers/eager/trail.h"
 
 namespace cvc5::internal {
 namespace theory::quantifiers::eager {
 
 class SmtContext;
-
 class PropCore;
-class RelevancyPropagator;
-
-/**
- * An event handler, invoked when an expression it is attached to becomes
- * relevant (RelevancyPropagator::addHandler) or is assigned a value
- * (RelevancyPropagator::addWatch).
- */
-class RelevancyHandler
-{
- public:
-  virtual ~RelevancyHandler() = default;
-  virtual void notify(RelevancyPropagator& rp) = 0;
-};
-
-/** Marks a single target as relevant. */
-class SimpleRelevancyHandler : public RelevancyHandler
-{
- public:
-  SimpleRelevancyHandler(TNode t) : d_target(t) {}
-  void notify(RelevancyPropagator& rp) override;
-
- private:
-  TNode d_target;
-};
 
 /**
  * The relevancy propagator.
  *
- * Propagation constraints are declared with addHandler and addWatch; this
- * class also provides helpers for the constraints the internalizer needs.
+ * An expression marked relevant makes its arguments relevant by the rule of
+ * its kind (propagateRelevantGate), and the expressions that depend on it
+ * (addDependency). A gate whose rule depends on the values of its arguments
+ * watches them (addGateWatch), and its rule is applied again when one is
+ * assigned. Relevancy is shared by an entire equivalence class of the
+ * E-graph: marking an expression marks its class, and merging a relevant
+ * class with another marks the other (notifyMerge).
  *
- * It uses the equivalence classes of the E-graph, notifies SmtContext
- * that an expression became relevant through notifyRelevant, and is told about
- * new assignments through notifyAssigned.
+ * It notifies PropCore that an expression became relevant through
+ * notifyRelevant, and is told about new assignments through notifyAssigned.
  */
 class RelevancyPropagator
 {
@@ -81,16 +59,25 @@ class RelevancyPropagator
   RelevancyPropagator(PropCore& core, SmtContext& theory);
   ~RelevancyPropagator();
 
-  /** Install a handler invoked whenever n is marked as relevant. */
-  void addHandler(TNode source, RelevancyHandler* eh);
+  /** Mark target relevant whenever src is marked relevant. */
+  void addDependency(TNode src, TNode target);
 
-  /** Install a handler invoked whenever n is assigned to val. */
-  void addWatch(TNode n, bool val, RelevancyHandler* eh);
+  /**
+   * Apply the rule of the gate n (an and, or, implies or ite) again, if n is
+   * relevant, when the expression child is assigned val.
+   */
+  void addGateWatch(TNode child, bool val, TNode gate);
 
-  /** Called by SmtContext whenever an expression is assigned. */
+  /** Called by PropCore whenever an expression is assigned. */
   void notifyAssigned(TNode n, bool val);
 
-  /** Mark the given expression as relevant. */
+  /**
+   * The classes of n1 and n2 merge: if either is relevant, the other becomes
+   * relevant.
+   */
+  void notifyMerge(TNode n1, TNode n2);
+
+  /** Mark the given expression, and its equivalence class, as relevant. */
   void markAsRelevant(TNode n);
 
   /** True if the given expression is marked as relevant. */
@@ -102,31 +89,13 @@ class RelevancyPropagator
   }
 
   /**
-   * Propagate relevancy, using the handlers installed by addHandler and
-   * addWatch and the structure of the expressions already marked relevant.
+   * Propagate relevancy, using the dependencies, the gate watches and the
+   * structure of the expressions already marked relevant.
    */
   void propagate();
 
   /** True if there is relevancy left to propagate. */
   bool canPropagate() const { return d_qhead < d_relevantExprs.size(); }
-
-  /** The trail stack of the theory side, where the handlers live. */
-  TrailStack& getTrailStack() const;
-
-  template <typename Handler>
-  RelevancyHandler* mkRelevancyHandler(const Handler& eh)
-  {
-    return new (getTrailStack()) Handler(eh);
-  }
-
-  /** Mark target relevant whenever src is marked relevant. */
-  void addDependency(TNode src, TNode target);
-
-  /**
-   * A handler that applies the relevancy rule of the gate n (an and, or,
-   * implies or ite), if n is relevant.
-   */
-  RelevancyHandler* mkGateRelevancyHandler(TNode n);
 
   /** Marks the children of n as relevant. Requires n to be relevant. */
   void propagateRelevantApp(TNode n);
@@ -142,37 +111,20 @@ class RelevancyPropagator
   void propagateRelevantGate(TNode n);
 
  private:
-  /** An immutable list of handlers, allocated in the trail stack. */
-  struct RelevancyHandlers
-  {
-    RelevancyHandler* d_head;
-    RelevancyHandlers* d_tail;
-    RelevancyHandlers(RelevancyHandler* h, RelevancyHandlers* t)
-        : d_head(h), d_tail(t)
-    {
-    }
-    RelevancyHandler* head() const { return d_head; }
-    RelevancyHandlers* tail() const { return d_tail; }
-  };
-
-  /** A record of a handler installation, to be undone on backtracking. */
-  struct HandlerTrail
+  /**
+   * An edge added by addDependency (to d_dependents) or addGateWatch (to
+   * d_gateWatches), to be removed on backtracking.
+   */
+  struct Edge
   {
     enum class Kind
     {
       POS_WATCH,
       NEG_WATCH,
-      HANDLER
+      DEPENDENCY
     };
     Kind d_kind;
     Node d_node;
-    HandlerTrail(TNode n) : d_kind(Kind::HANDLER), d_node(n) {}
-    HandlerTrail(TNode n, bool val)
-        : d_kind(val ? Kind::POS_WATCH : Kind::NEG_WATCH), d_node(n)
-    {
-    }
-    Kind getKind() const { return d_kind; }
-    TNode getNode() const { return d_node; }
   };
 
   /** Unmarks an expression marked relevant when it is popped. */
@@ -182,22 +134,24 @@ class RelevancyPropagator
     void operator()(Node& n) { d_rp->d_isRelevant[n.getId()] = false; }
   };
 
-  /** Undoes a handler installation when it is popped. */
-  struct UndoHandlerCleanup
+  /** Removes an edge when it is popped. */
+  struct RemoveEdgeCleanup
   {
     RelevancyPropagator* d_rp;
-    void operator()(HandlerTrail& t) { d_rp->undoHandler(t); }
+    void operator()(Edge& e) { d_rp->removeEdge(e); }
   };
 
-  RelevancyHandlers* getHandlers(TNode n) const;
-  void setHandlers(TNode n, RelevancyHandlers* ehs);
-  RelevancyHandlers* getWatches(TNode n, bool val) const;
-  void setWatches(TNode n, bool val, RelevancyHandlers* ehs);
+  /**
+   * The expressions of n in edges, newest first, as they are notified. They
+   * are copied, since notifying them may add edges.
+   */
+  static std::vector<TNode> getEdges(
+      const std::unordered_map<TNode, std::vector<TNode>>& edges, TNode n);
 
   void setRelevant(TNode n);
 
-  /** Undo the handler installation t. */
-  void undoHandler(const HandlerTrail& t);
+  /** Remove the edge e, the last one added for its node. */
+  void removeEdge(const Edge& e);
 
   /** The propositional side, which owns this object. */
   PropCore& d_core;
@@ -211,23 +165,28 @@ class RelevancyPropagator
   size_t d_qhead;
   /** Indexed by node id, true if the node is in d_relevantExprs. */
   std::vector<bool> d_isRelevant;
-  std::unordered_map<TNode, RelevancyHandlers*> d_relevantHandlers;
-  std::unordered_map<TNode, RelevancyHandlers*> d_watches[2];
+  /** For each expression, the expressions that depend on it, oldest first. */
+  std::unordered_map<TNode, std::vector<TNode>> d_dependents;
   /**
-   * An over-approximating membership filter for d_watches, holding a superset
-   * of the ids that have, or ever had, a watch list for the given phase. It is
-   * monotonic -- never cleared on erase or pop -- so it can only yield false
-   * positives. This lets getWatches skip the hash probe for the common
+   * For each expression and value (index 1 for true), the gates that watch
+   * it, oldest first.
+   */
+  std::unordered_map<TNode, std::vector<TNode>> d_gateWatches[2];
+  /**
+   * An over-approximating membership filter for d_gateWatches, holding a
+   * superset of the ids that have, or ever had, a watch for the given value.
+   * It is monotonic -- never cleared on erase or pop -- so it can only yield
+   * false positives. This lets getWatches skip the hash probe for the common
    * unwatched-literal case at the notifyAssigned hotspot.
    */
   std::vector<bool> d_isWatched[2];
   /**
-   * The expressions marked relevant, and the handler installations, in the
-   * context of the trail stack. Their cleanups use the fields above, so they
-   * are declared after them.
+   * The expressions marked relevant, and the edges added, in the context of
+   * the trail stack. Their cleanups use the fields above, so they are
+   * declared after them.
    */
   context::CDList<Node, UnmarkCleanup> d_relevantExprs;
-  context::CDList<HandlerTrail, UndoHandlerCleanup> d_trail;
+  context::CDList<Edge, RemoveEdgeCleanup> d_edges;
   bool d_propagating;
 };
 

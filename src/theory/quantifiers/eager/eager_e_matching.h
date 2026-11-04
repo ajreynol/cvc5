@@ -27,7 +27,7 @@
 #include "theory/incomplete_id.h"
 #include "theory/inference_id.h"
 #include "theory/lemma_property.h"
-#include "theory/quantifiers/eager/relevancy_tracker.h"
+#include "theory/quantifiers/eager/fact_feed.h"
 #include "theory/quantifiers/eager/smt_context.h"
 #include "theory/quantifiers/quant_module.h"
 
@@ -44,7 +44,7 @@ class LemmaProofGenerator;
  * reasoning, with their equality engines and theory combination; the core
  * matches and instantiates over a shadow of the ground state:
  * - it receives every literal the SAT solver asserts, for its E-graph and
- *   for relevancy (RelevancyTracker), and the equalities cvc5's theories
+ *   for relevancy (FactFeed), and the equalities cvc5's theories
  *   derive, through the master equality engine, of whose merges the
  *   quantifiers engine notifies this module (notifyMasterMerge);
  * - the formulas it asserts go through cvc5's preprocessing first.
@@ -105,7 +105,7 @@ class EagerEMatching : public theory::quantifiers::QuantifiersModule
   std::string identify() const override { return "EagerEMatching"; }
 
   // ------------------------------------------------ called by the core
-  /** cvc5 asserted the literal; see RelevancyTracker. */
+  /** cvc5 asserted the literal; see FactFeed. */
   void assertFact(TNode literal);
   /**
    * Send the lemma lem, unless it was sent before, or send it again as a
@@ -295,7 +295,7 @@ class EagerEMatching : public theory::quantifiers::QuantifiersModule
   /** Follows the pops of the SAT context. */
   std::unique_ptr<PopNotify> d_popNotify;
   /** Gives the core the literals the SAT solver asserts. */
-  std::unique_ptr<RelevancyTracker> d_tracker;
+  std::unique_ptr<FactFeed> d_factFeed;
   /** The ported core, under cvc5's prop engine. */
   std::unique_ptr<SmtContext> d_core;
 };

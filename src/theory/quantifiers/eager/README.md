@@ -21,7 +21,7 @@ All of the port is in `src/theory/quantifiers/eager/`, in the namespace
 `cvc5::internal::theory::quantifiers::eager`:
 
 - the cvc5 integration: `EagerEMatching` (the module of the quantifiers
-  engine, and the boundary with cvc5), `RelevancyTracker` (the
+  engine, and the boundary with cvc5), `FactFeed` (the
   `TheoryEngineModule` that hands it every asserted literal) and
   `LemmaProofGenerator`;
 - the coordinator: `SmtContext` (internalizer, propagation and scopes);
@@ -65,15 +65,14 @@ QuantifiersEngine (cvc5)
     ├── LemmaProofGenerator
     ├── PopNotify                 a ContextNotifyObj on the SAT context
     │                                                   (-> EagerEMatching)
-    ├── RelevancyTracker          registered with TheoryEngine::addModule:
+    ├── FactFeed                  registered with TheoryEngine::addModule:
     │                             the literals the SAT solver asserts
     │                                                   (-> EagerEMatching)
     └── SmtContext                the core: input, internalization,
         │                         propagation and scopes   (-> EagerEMatching)
         ├── Statistics
         ├── TrailStack            its own context::Context, and the memory of
-        │                         the enodes, relevancy handlers, fingerprints
-        │                         and code trees
+        │                         the enodes, fingerprints and code trees
         ├── PropCore              the Boolean side     (-> SmtContext)
         │   └── RelevancyPropagator                     (-> PropCore, SmtContext)
         ├── EGraph                the enodes, congruence closure, generations,
@@ -108,7 +107,7 @@ Outside this directory, the port touches:
 - `TermDb` and `InstEvaluatorManager` do not reset at standard effort, where
   only the core checks, at every check.
 - `TheoryEngineModule::notifyFact` / `needsFacts` and
-  `TheoryEngine::addModule` are used by `RelevancyTracker`.
+  `TheoryEngine::addModule` are used by `FactFeed`.
 - `Skolemize::getSkolemizationLemma` gives the core the lemma with which the
   quantifiers engine skolemized a formula, with its proof.
 - `PropEngine` uses `FormulaLitPolicy::TRACK_AND_NOTIFY_VAR` under
@@ -233,7 +232,7 @@ as of this README:
 
 | Directory | Files | Code | Comment | Blank |
 |---|---:|---:|---:|---:|
-| `src/theory/quantifiers/eager/` | 36 | 8848 | 2182 | 1198 |
+| `src/theory/quantifiers/eager/` | 36 | 8777 | 2248 | 1183 |
 
-The rest of cvc5 changes by 213 added and 13 deleted lines over 19 C++ files,
-most of them in `smt/set_defaults.cpp` (the capability checks).
+The rest of cvc5 changes by 175 added and 13 deleted lines over 18 C++ files,
+most of them in `smt/set_defaults.cpp` (the defaults and refusals).

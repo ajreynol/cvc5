@@ -22,138 +22,36 @@
 namespace cvc5::internal {
 namespace theory::quantifiers::eager {
 
-void SimpleRelevancyHandler::notify(RelevancyPropagator& rp)
-{
-  rp.markAsRelevant(d_target);
-}
-
-namespace {
-
-class GateRelevancyHandler : public RelevancyHandler
-{
- public:
-  GateRelevancyHandler(TNode p) : d_parent(p) {}
-  void notify(RelevancyPropagator& rp) override
-  {
-    if (rp.isRelevant(d_parent))
-    {
-      rp.propagateRelevantGate(d_parent);
-    }
-  }
-
- private:
-  TNode d_parent;
-};
-
-}  // namespace
-
 RelevancyPropagator::RelevancyPropagator(PropCore& core, SmtContext& theory)
     : d_core(core),
       d_theory(theory),
       d_qhead(0),
       d_relevantExprs(
           theory.getTrailStack().getContext(), true, UnmarkCleanup{this}),
-      d_trail(
-          theory.getTrailStack().getContext(), true, UndoHandlerCleanup{this}),
+      d_edges(
+          theory.getTrailStack().getContext(), true, RemoveEdgeCleanup{this}),
       d_propagating(false)
 {
 }
 
 RelevancyPropagator::~RelevancyPropagator() {}
 
-TrailStack& RelevancyPropagator::getTrailStack() const
-{
-  return d_theory.getTrailStack();
-}
-
 void RelevancyPropagator::addDependency(TNode src, TNode target)
 {
   if (isRelevant(src))
   {
     markAsRelevant(target);
+    return;
   }
-  else
-  {
-    addHandler(src, mkRelevancyHandler(SimpleRelevancyHandler(target)));
-  }
+  d_dependents[src].push_back(target);
+  d_edges.push_back(Edge{Edge::Kind::DEPENDENCY, src});
 }
 
-RelevancyHandler* RelevancyPropagator::mkGateRelevancyHandler(TNode n)
+void RelevancyPropagator::addGateWatch(TNode child, bool val, TNode gate)
 {
-  Assert(n.getKind() == Kind::AND || n.getKind() == Kind::OR
-         || n.getKind() == Kind::IMPLIES || n.getKind() == Kind::ITE);
-  return mkRelevancyHandler(GateRelevancyHandler(n));
-}
-
-RelevancyPropagator::RelevancyHandlers* RelevancyPropagator::getHandlers(
-    TNode n) const
-{
-  auto it = d_relevantHandlers.find(n);
-  return it == d_relevantHandlers.end() ? nullptr : it->second;
-}
-
-void RelevancyPropagator::setHandlers(TNode n, RelevancyHandlers* ehs)
-{
-  if (ehs == nullptr)
-  {
-    d_relevantHandlers.erase(n);
-  }
-  else
-  {
-    d_relevantHandlers[n] = ehs;
-  }
-}
-
-RelevancyPropagator::RelevancyHandlers* RelevancyPropagator::getWatches(
-    TNode n, bool val) const
-{
-  size_t idx = val ? 1 : 0;
-  size_t id = n.getId();
-  if (id >= d_isWatched[idx].size() || !d_isWatched[idx][id])
-  {
-    return nullptr;
-  }
-  auto it = d_watches[idx].find(n);
-  return it == d_watches[idx].end() ? nullptr : it->second;
-}
-
-void RelevancyPropagator::setWatches(TNode n, bool val, RelevancyHandlers* ehs)
-{
-  size_t idx = val ? 1 : 0;
-  if (ehs == nullptr)
-  {
-    d_watches[idx].erase(n);
-  }
-  else
-  {
-    d_watches[idx][n] = ehs;
-    if (n.getId() >= d_isWatched[idx].size())
-    {
-      d_isWatched[idx].resize(n.getId() + 1, false);
-    }
-    d_isWatched[idx][n.getId()] = true;
-  }
-}
-
-void RelevancyPropagator::addHandler(TNode source, RelevancyHandler* eh)
-{
-  if (isRelevant(source))
-  {
-    eh->notify(*this);
-  }
-  else
-  {
-    Assert(eh != nullptr);
-    d_trail.push_back(HandlerTrail(source));
-    setHandlers(source,
-                new (getTrailStack())
-                    RelevancyHandlers(eh, getHandlers(source)));
-  }
-}
-
-void RelevancyPropagator::addWatch(TNode n, bool val, RelevancyHandler* eh)
-{
-  SatValue lval = d_core.findAssignment(n);
+  Assert(gate.getKind() == Kind::AND || gate.getKind() == Kind::OR
+         || gate.getKind() == Kind::IMPLIES || gate.getKind() == Kind::ITE);
+  SatValue lval = d_core.findAssignment(child);
   if (!val)
   {
     lval = ~lval;
@@ -162,38 +60,50 @@ void RelevancyPropagator::addWatch(TNode n, bool val, RelevancyHandler* eh)
   {
     case SAT_VALUE_FALSE: return;
     case SAT_VALUE_UNKNOWN:
-      Assert(eh != nullptr);
-      setWatches(n,
-                 val,
-                 new (getTrailStack())
-                     RelevancyHandlers(eh, getWatches(n, val)));
-      d_trail.push_back(HandlerTrail(n, val));
+    {
+      size_t idx = val ? 1 : 0;
+      d_gateWatches[idx][child].push_back(gate);
+      if (child.getId() >= d_isWatched[idx].size())
+      {
+        d_isWatched[idx].resize(child.getId() + 1, false);
+      }
+      d_isWatched[idx][child.getId()] = true;
+      d_edges.push_back(
+          Edge{val ? Edge::Kind::POS_WATCH : Edge::Kind::NEG_WATCH, child});
       break;
-    case SAT_VALUE_TRUE: eh->notify(*this); break;
+    }
+    case SAT_VALUE_TRUE:
+      if (isRelevant(gate))
+      {
+        propagateRelevantGate(gate);
+      }
+      break;
   }
 }
 
-void RelevancyPropagator::undoHandler(const HandlerTrail& t)
+std::vector<TNode> RelevancyPropagator::getEdges(
+    const std::unordered_map<TNode, std::vector<TNode>>& edges, TNode n)
 {
-  TNode n = t.getNode();
-  RelevancyHandlers* ehs;
-  switch (t.getKind())
+  auto it = edges.find(n);
+  if (it == edges.end())
   {
-    case HandlerTrail::Kind::POS_WATCH:
-      ehs = getWatches(n, true);
-      Assert(ehs != nullptr);
-      setWatches(n, true, ehs->tail());
-      break;
-    case HandlerTrail::Kind::NEG_WATCH:
-      ehs = getWatches(n, false);
-      Assert(ehs != nullptr);
-      setWatches(n, false, ehs->tail());
-      break;
-    case HandlerTrail::Kind::HANDLER:
-      ehs = getHandlers(n);
-      Assert(ehs != nullptr);
-      setHandlers(n, ehs->tail());
-      break;
+    return {};
+  }
+  return std::vector<TNode>(it->second.rbegin(), it->second.rend());
+}
+
+void RelevancyPropagator::removeEdge(const Edge& e)
+{
+  std::unordered_map<TNode, std::vector<TNode>>& edges =
+      e.d_kind == Edge::Kind::DEPENDENCY
+          ? d_dependents
+          : d_gateWatches[e.d_kind == Edge::Kind::POS_WATCH ? 1 : 0];
+  auto it = edges.find(e.d_node);
+  Assert(it != edges.end() && !it->second.empty());
+  it->second.pop_back();
+  if (it->second.empty())
+  {
+    edges.erase(it);
   }
 }
 
@@ -404,11 +314,9 @@ void RelevancyPropagator::propagate()
       propagateRelevantGate(n);
     }
 
-    RelevancyHandlers* ehs = getHandlers(n);
-    while (ehs != nullptr)
+    for (TNode target : getEdges(d_dependents, n))
     {
-      ehs->head()->notify(*this);
-      ehs = ehs->tail();
+      markAsRelevant(target);
     }
   }
   d_propagating = false;
@@ -426,11 +334,31 @@ void RelevancyPropagator::notifyAssigned(TNode n, bool val)
       default: break;
     }
   }
-  RelevancyHandlers* ehs = getWatches(n, val);
-  while (ehs != nullptr)
+  size_t idx = val ? 1 : 0;
+  if (n.getId() >= d_isWatched[idx].size() || !d_isWatched[idx][n.getId()])
   {
-    ehs->head()->notify(*this);
-    ehs = ehs->tail();
+    return;
+  }
+  for (TNode gate : getEdges(d_gateWatches[idx], n))
+  {
+    if (isRelevant(gate))
+    {
+      propagateRelevantGate(gate);
+    }
+  }
+}
+
+void RelevancyPropagator::notifyMerge(TNode n1, TNode n2)
+{
+  if (isRelevant(n1))
+  {
+    markAsRelevant(n2);
+    propagate();
+  }
+  else if (isRelevant(n2))
+  {
+    markAsRelevant(n1);
+    propagate();
   }
 }
 

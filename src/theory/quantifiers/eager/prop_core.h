@@ -230,10 +230,20 @@ class PropCore : protected EnvObj
     d_relevancyPropagator->addDependency(source, target);
   }
 
-  void addRelWatch(SatLiteral l, RelevancyHandler* eh)
+  /**
+   * Apply the relevancy rule of the gate n again, if it is relevant, when l
+   * is assigned true.
+   */
+  void addGateWatch(SatLiteral l, TNode gate)
   {
-    d_relevancyPropagator->addWatch(
-        boolVar2Expr(l.getSatVariable()), !l.isNegated(), eh);
+    d_relevancyPropagator->addGateWatch(
+        boolVar2Expr(l.getSatVariable()), !l.isNegated(), gate);
+  }
+
+  /** The classes of n1 and n2 merge, see RelevancyPropagator::notifyMerge. */
+  void notifyRelevancyMerge(TNode n1, TNode n2)
+  {
+    d_relevancyPropagator->notifyMerge(n1, n2);
   }
 
   /**

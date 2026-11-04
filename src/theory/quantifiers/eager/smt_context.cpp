@@ -82,14 +82,7 @@ void SmtContext::notifyMerge(ENode* r1, ENode* r2)
 {
   // Relevancy must be propagated to the rest of the equivalence class, to
   // maintain the invariant on the parent lists of enodes.
-  if (d_prop.isRelevant(r1->getExpr()))
-  {
-    d_prop.markAsRelevant(r2->getExpr());
-  }
-  else if (d_prop.isRelevant(r2->getExpr()))
-  {
-    d_prop.markAsRelevant(r1->getExpr());
-  }
+  d_prop.notifyRelevancyMerge(r1->getExpr(), r2->getExpr());
   d_qmanager.notifyMerge(r1, r2);
 }
 

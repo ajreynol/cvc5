@@ -854,6 +854,8 @@ libcvc5_add_sources(
   theory/quantifiers/eager/egraph.h
   theory/quantifiers/eager/enode.cpp
   theory/quantifiers/eager/enode.h
+  theory/quantifiers/eager/fact_feed.cpp
+  theory/quantifiers/eager/fact_feed.h
   theory/quantifiers/eager/fingerprints.cpp
   theory/quantifiers/eager/fingerprints.h
   theory/quantifiers/eager/lemma_proof_generator.cpp
@@ -870,8 +872,6 @@ libcvc5_add_sources(
   theory/quantifiers/eager/quantifier_normalizer.h
   theory/quantifiers/eager/relevancy.cpp
   theory/quantifiers/eager/relevancy.h
-  theory/quantifiers/eager/relevancy_tracker.cpp
-  theory/quantifiers/eager/relevancy_tracker.h
   theory/quantifiers/eager/smt_context.cpp
   theory/quantifiers/eager/smt_context.h
   theory/quantifiers/eager/statistics.h
