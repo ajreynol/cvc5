@@ -50,9 +50,10 @@ class LemmaProofGenerator;
  * - the formulas it asserts go through cvc5's preprocessing first.
  *
  * The rest is the quantifiers engine's: it registers the quantified formulas,
- * and skolemizes those asserted false. The core also takes the skolemization
- * of a quantified formula assigned false that is relevant to it, so that the
- * witnesses are relevant as well.
+ * and skolemizes those asserted false. Skolemization is not this module's
+ * responsibility: the core only internalizes the skolemization lemma of a
+ * quantified formula assigned false that is relevant to it, without sending
+ * it, so that the witnesses are relevant to the core as well.
  *
  * Soundness. What this module gives cvc5 is limited to the following, so
  * that no error in the core (its E-graph, relevancy, matching, or how it
@@ -64,9 +65,8 @@ class LemmaProofGenerator;
  *   - an instance of a quantified formula q of cvc5, (=> q q[1]{x->t}),
  *     made by LemmaProofGenerator::mkInstance, which checks that the terms
  *     t are closed and of the types of the variables x;
- *   - the skolemization of q, made by cvc5's Skolemize;
- *   - the definition of a skolem, made by cvc5's preprocessing of one of
- *     these lemmas;
+ *   - the definition of a skolem, made by cvc5's preprocessing of an
+ *     instance (or of a skolemization lemma, which the core does not send);
  *   - one of these, or its preprocessed form, weakened by the negation of a
  *     decision (delayUnit).
  *   With proofs, each has a proof (LemmaProofGenerator), which shows it.
@@ -122,8 +122,9 @@ class EagerEMatching : public theory::quantifiers::QuantifiersModule
                   std::vector<Node>& defs);
   /**
    * The skolemization of the core's quantified formula q, in the form cvc5's
-   * theories take, see skolemize. The lemma sent for it is
-   * the one of cvc5's quantifiers engine, with its proof.
+   * theories take, see SmtContext::skolemize: the lemma that cvc5's
+   * quantifiers engine sent, for the core to internalize only; null if it
+   * did not skolemize q.
    */
   Node mkSkolemization(TNode q, std::vector<Node>& defs);
 
@@ -217,12 +218,13 @@ class EagerEMatching : public theory::quantifiers::QuantifiersModule
                              theory::InferenceId id);
   /**
    * The lemma of cvc5's Skolemize utility that skolemizes q, which the
-   * quantifiers engine sent when q was asserted false.
+   * quantifiers engine sent when q was asserted false, or null if it did not
+   * skolemize q.
    */
   TrustNode getSkolemization(TNode q);
   /**
    * Preprocess the lemma trn proves, which the core sends, into the form
-   * cvc5's theories take, as mkInstance and mkSkolemization do.
+   * cvc5's theories take, as mkInstance does.
    */
   Node preprocessLemma(const TrustNode& trn,
                        std::vector<Node>& defs,
@@ -287,7 +289,7 @@ class EagerEMatching : public theory::quantifiers::QuantifiersModule
   std::unique_ptr<LemmaProofGenerator> d_pg;
   /**
    * The inference of each lemma the core sends, in cvc5's form: an instance,
-   * a skolemization, or the definition of a skolem in one of these, which
+   * or the definition of a skolem in an instance or a skolemization, which
    * has the inference of that lemma. A weakened lemma has the inference of
    * the lemma it weakens.
    */

@@ -68,8 +68,9 @@ class EagerEMatching;
  *
  * EagerEMatching drives it: it asserts the input and the facts of cvc5, sets
  * its scope level to follow the SAT context, and runs the propagation and the
- * final check. The core sends its instances and skolemizations back through
- * EagerEMatching (mkInstance, mkSkolemization, sendLemma).
+ * final check. The core sends its instances back through EagerEMatching
+ * (mkInstance, sendLemma), and takes the skolemizations of cvc5's quantifiers
+ * engine from it (mkSkolemization) without sending them.
  */
 class SmtContext final : protected EnvObj
 {
@@ -220,9 +221,12 @@ class SmtContext final : protected EnvObj
                            uint32_t generation);
 
   /**
-   * Take the skolemization of the quantified formula q, which is assigned
-   * false and relevant: assert the lemma of cvc5's quantifiers engine (see
-   * mkSkolemization).
+   * Internalize the skolemization of the quantified formula q, which is
+   * assigned false and relevant: the lemma that cvc5's quantifiers engine
+   * sent when cvc5 asserted q false (see mkSkolemization). This is only so
+   * that its witnesses are relevant to the core, through q, as the core's
+   * own formulas make them; the lemma is cvc5's, and the core does not send
+   * it.
    */
   void skolemize(TNode q);
 
@@ -319,9 +323,8 @@ class SmtContext final : protected EnvObj
   void assignQuantifier(TNode q);
   /**
    * Internalize the formula norm, in the form cvc5's theories take, with the
-   * definitions defs of the skolems in it, after sending them to cvc5: norm as
-   * an instance if instance is true, and otherwise as a lemma that holds
-   * globally.
+   * definitions defs of the skolems in it, after sending the definitions to
+   * cvc5, and norm too if it is an instance (instance is true).
    */
   void internalizePreprocessed(TNode norm,
                                const std::vector<Node>& defs,

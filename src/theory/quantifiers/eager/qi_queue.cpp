@@ -34,7 +34,6 @@ QiQueue::QiQueue(Env& env, QuantifierManager& qm, SmtContext& ctx)
       d_qm(qm),
       d_context(ctx),
       d_checker(ctx),
-      d_numInstances(0),
       d_eagerCostThreshold(0)
 {
 }
@@ -62,11 +61,6 @@ void QiQueue::instantiate()
   {
     if (d_context.getCancelFlag())
     {
-      break;
-    }
-    if (d_numInstances > options().quantifiers.eagerEMatchingMaxInst)
-    {
-      // the maximum number of quantifier instances was reached
       break;
     }
     Fingerprint* f = curr.d_qb;
@@ -127,7 +121,6 @@ void QiQueue::instantiate(const Entry& ent)
     return;
   }
   d_context.getStats().d_numInstances++;
-  d_numInstances++;
   Trace("eager-qi") << "[instance] q" << q.getId() << " nargs " << numBindings
                     << " gen " << generation << " cost " << ent.d_cost
                     << " newgen " << gen << std::endl;
@@ -137,8 +130,7 @@ void QiQueue::initSearch() { d_newEntries.clear(); }
 
 bool QiQueue::skipSatisfied(TNode q, size_t numBindings, ENode* const* bindings)
 {
-  if (options().quantifiers.eagerEMatchingChecker
-      && d_checker.isSat(q[1], numBindings, bindings))
+  if (d_checker.isSat(q[1], numBindings, bindings))
   {
     // The instance is already satisfied, so creating it would be wasted
     // work. It still counts as an instantiation, as it does in Z3.

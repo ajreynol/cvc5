@@ -223,9 +223,16 @@ Node EagerEMatching::mkInstance(TNode q,
 
 Node EagerEMatching::mkSkolemization(TNode q, std::vector<Node>& defs)
 {
-  return preprocessLemma(getSkolemization(toHost(q)),
-                         defs,
-                         theory::InferenceId::QUANTIFIERS_SKOLEMIZE);
+  TrustNode lem = getSkolemization(toHost(q));
+  if (lem.isNull())
+  {
+    return Node::null();
+  }
+  // the lemma is cvc5's and is not sent, so only the definitions of the
+  // skolems its preprocessing gives need their proofs and inferences
+  TrustNode pp;
+  return preprocessForTheories(
+      lem.getProven(), defs, pp, theory::InferenceId::QUANTIFIERS_SKOLEMIZE);
 }
 
 Node EagerEMatching::preprocessLemma(const TrustNode& trn,
@@ -361,14 +368,10 @@ void EagerEMatching::checkCore(theory::Theory::Effort effort)
 TrustNode EagerEMatching::getSkolemization(TNode q)
 {
   // The lemma is made once per user context, by the quantifiers engine when
-  // q is asserted false (or here, for a quantified formula it reduced), while
-  // the core asserts it again each time q is assigned false after a
-  // backtrack.
-  theory::quantifiers::Skolemize* sk = d_qim.getSkolemize();
-  sk->process(q);
-  TrustNode lem = sk->getSkolemizationLemma(q);
-  Assert(!lem.isNull());
-  return lem;
+  // q is asserted false, while the core takes it again each time q is
+  // assigned false after a backtrack. It is null if the quantifiers engine
+  // did not skolemize q, e.g. as it reduced q to another formula.
+  return d_qim.getSkolemize()->getSkolemizationLemma(q);
 }
 
 void EagerEMatching::notifyPop()
@@ -464,8 +467,7 @@ void EagerEMatching::sendLemma(const Node& coreLem, bool local)
 
 Node EagerEMatching::delayUnit(const Node& lem)
 {
-  if (!options().quantifiers.eagerEMatchingDelayUnits
-      || context()->getLevel() <= d_searchBaseLevel)
+  if (context()->getLevel() <= d_searchBaseLevel)
   {
     return lem;
   }

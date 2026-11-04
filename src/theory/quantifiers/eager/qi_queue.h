@@ -90,8 +90,7 @@ class QiQueue : protected EnvObj
   void instantiate(const Entry& ent);
   /**
    * Whether the checker finds the instance of q with these bindings already
-   * satisfied (--eager-e-matching-checker), in which case it is counted, as in
-   * Z3, but not made.
+   * satisfied, in which case it is counted, as in Z3, but not made.
    */
   bool skipSatisfied(TNode q, size_t numBindings, ENode* const* bindings);
 
@@ -100,8 +99,6 @@ class QiQueue : protected EnvObj
   /** The instance checker. */
   Checker d_checker;
 
-  /** The instances made, for --eager-e-matching-max-inst. */
-  uint64_t d_numInstances;
   double d_eagerCostThreshold;
 
   std::vector<Entry> d_newEntries;

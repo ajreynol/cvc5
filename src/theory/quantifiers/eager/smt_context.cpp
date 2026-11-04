@@ -579,16 +579,16 @@ void SmtContext::internalizePreprocessed(TNode norm,
   {
     return;
   }
-  // the formula is also a lemma for cvc5's prop engine: an instance, which
-  // holds where it was made, or a lemma that holds globally
-  // An instance is local to the SAT context (--eager-e-matching-local-inst, the
-  // default), as with cvc5's --inst-local: cvc5 adds its clause once, but its
-  // decision heuristic treats it as an assertion only in the context where
-  // it was last made. The core makes it again when matching finds it again
-  // after backtracking, as Z3 does, and it is then sent again, which makes it
-  // an assertion there again. Otherwise an instance is sent once.
-  d_host.sendLemma(norm,
-                   instance && options().quantifiers.eagerEMatchingLocalInst);
+  if (instance)
+  {
+    // An instance is also a lemma for cvc5's prop engine, local to the SAT
+    // context, as with cvc5's --inst-local: cvc5 adds its clause once, but
+    // its decision heuristic treats it as an assertion only in the context
+    // where it was last made. The core makes it again when matching finds it
+    // again after backtracking, as Z3 does, and it is then sent again, which
+    // makes it an assertion there again.
+    d_host.sendLemma(norm, true);
+  }
   internalizeAssertion(norm, generation);
 }
 
@@ -602,12 +602,16 @@ void SmtContext::skolemize(TNode q)
   {
     return;
   }
-  // The core internalizes the lemma, as it does an instance, so that its
-  // witnesses are relevant as the core's own formulas make them: through q,
-  // which is relevant here. It also sends it, although cvc5's quantifiers
-  // engine did, since cvc5's decisions then treat it as the core's lemma.
+  // Skolemization is the quantifiers engine's: it sent the lemma when cvc5
+  // asserted q false. The core only internalizes it, as it does an instance,
+  // so that its witnesses are relevant as the core's own formulas make them:
+  // through q, which is relevant here.
   std::vector<Node> defs;
   Node norm = d_host.mkSkolemization(q, defs);
+  if (norm.isNull())
+  {
+    return;
+  }
   d_stats.d_numSkolemizations++;
   internalizePreprocessed(norm, defs, generationOf(q), false);
 }

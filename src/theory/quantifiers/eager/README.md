@@ -3,17 +3,17 @@
 A port of Z3's E-matching core, which runs as the first module of cvc5's
 quantifiers engine (`EagerEMatching`). cvc5's own prop engine and theories do
 the ground reasoning, and cvc5's quantifiers engine registers the quantified
-formulas and skolemizes those asserted false (the core takes that lemma when
-the formula is relevant to it); the core keeps a shadow of the ground state (an
-E-graph, and a Boolean mirror of the SAT assignment for Z3's relevancy), sends
-quantifier instances and delayed units to cvc5 as lemmas, and asks it for
-decisions. Since it sends only lemmas, it never explains anything, and keeps no
-justifications.
+formulas and skolemizes those asserted false (the core internalizes that
+lemma when the formula is relevant to it, only so that the witnesses are
+relevant to it, and does not send it); the core keeps a shadow of the ground
+state (an E-graph, and a Boolean mirror of the SAT assignment for Z3's
+relevancy) and sends quantifier instances to cvc5 as lemmas. Since it sends
+only lemmas, it never explains anything, and keeps no justifications.
 
 Its lemmas have proofs (`LemmaProofGenerator`), made when they are asked for:
-an instance is sent as cvc5's instantiation lemma, proven by `INSTANTIATE`, a
-skolemization with the proof of cvc5's `Skolemize`, and a delayed unit by
-weakening; cvc5's preprocessing proves the form the core takes them in.
+an instance is sent as cvc5's instantiation lemma, proven by `INSTANTIATE`,
+and a delayed unit by weakening; cvc5's preprocessing proves the form the core
+takes them in.
 
 ## Layout
 
@@ -49,9 +49,9 @@ form.
 ## Ownership
 
 Each class owns the ones below it; `(-> X)` is a reference it keeps to X.
-`EagerEMatching` drives `SmtContext`, which calls it back only to send its
-instances, skolemizations and lemmas (`mkInstance`, `mkSkolemization`,
-`sendLemma`). `SmtContext` drives the others; their references to it are for
+`EagerEMatching` drives `SmtContext`, which calls it back only to make and
+send its instances (`mkInstance`, `sendLemma`) and to take the skolemizations
+of cvc5's quantifiers engine (`mkSkolemization`). `SmtContext` drives the others; their references to it are for
 notifications (`PropCore`: an atom assigned, a term relevant, a variable
 deleted; `EGraph`: a merge, of Boolean classes, a conflict) and for what it
 coordinates (the trail stack, relevancy, the statistics).
@@ -109,7 +109,8 @@ Outside this directory, the port touches:
 - `TheoryEngineModule::notifyFact` / `needsFacts` and
   `TheoryEngine::addModule` are used by `FactFeed`.
 - `Skolemize::getSkolemizationLemma` gives the core the lemma with which the
-  quantifiers engine skolemized a formula, with its proof.
+  quantifiers engine skolemized a formula, which the core internalizes for
+  relevancy only.
 - `PropEngine` uses `FormulaLitPolicy::TRACK_AND_NOTIFY_VAR` under
   `--eager-e-matching`, so Boolean variables reach the core.
   `PropEngine::getPropDecisions` skips the activation literals of user
