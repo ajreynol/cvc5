@@ -1,0 +1,14 @@
+; COMMAND-LINE: --eager-e-matching
+; EXPECT: unsat
+; DISABLE-TESTER: unsat-core
+; The unsat core drops the assertions that provide the trigger terms, so
+; E-matching answers unknown on the core alone.
+(set-logic UF)
+(declare-sort U 0) (declare-fun f (U U) U) (declare-fun h (U) U)
+(declare-fun a () U) (declare-fun b () U) (declare-fun c () U)
+(declare-fun p (U) Bool) (declare-fun r (U) Bool)
+(assert (forall ((x U) (y U)) (! (p (f x y)) :pattern ((f (h x) y)))))
+(assert (= a (h b)))
+(assert (r (f a c)))
+(assert (not (p (f b c))))
+(check-sat)

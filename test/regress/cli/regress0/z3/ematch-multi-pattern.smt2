@@ -1,9 +1,0 @@
-; COMMAND-LINE: --z3
-; EXPECT: unsat
-; multi-pattern
-(set-logic UF)
-(declare-sort U 0) (declare-fun f (U) U) (declare-fun g (U) U)
-(declare-fun a () U) (declare-fun p (U U) Bool)
-(assert (forall ((x U) (y U)) (! (p (f x) (g y)) :pattern ((f x) (g y)))))
-(assert (not (p (f a) (g a))))
-(check-sat)

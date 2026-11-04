@@ -137,10 +137,11 @@ class SetDefaults : protected EnvObj
    */
   void setDefaultsPre(Options& opts);
   /**
-   * Throw an OptionException for any option the ported Z3 core
-   * (--z3) does not support. Its supported surface is deliberately minimal.
+   * Throw an OptionException for any option the eager E-matching core
+   * (--eager-e-matching) does not support. Its supported surface is
+   * deliberately minimal.
    */
-  void checkZ3Capabilities(Options& opts) const;
+  void checkEagerEMatchingCapabilities(Options& opts) const;
   //------------------------- finalization of the logic
   /**
    * Finalize the logic based on the options.

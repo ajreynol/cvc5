@@ -13,7 +13,6 @@
 #include "theory/quantifiers/theory_quantifiers.h"
 
 #include "options/quantifiers_options.h"
-#include "options/z3_options.h"
 #include "proof/proof_node_manager.h"
 #include "theory/quantifiers/quantifiers_macros.h"
 #include "theory/quantifiers/quantifiers_modules.h"
@@ -43,9 +42,9 @@ TheoryQuantifiers::TheoryQuantifiers(Env& env,
   // construct the quantifiers engine
   d_qengine.reset(
       new QuantifiersEngine(env, d_qstate, d_qreg, d_treg, d_qim, d_pnm));
-  if (options().z3.z3)
+  if (options().quantifiers.eagerEMatching)
   {
-    // the module of the ported Z3 core is checked even without new facts
+    // the module of the eager E-matching core is checked even without new facts
     d_checkEarlyExit = false;
   }
 

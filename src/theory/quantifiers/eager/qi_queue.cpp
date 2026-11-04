@@ -1,0 +1,152 @@
+/******************************************************************************
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2026 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * The queue of quantifier instantiations.
+ *
+ * Ported from Z3 (MIT License, Copyright (c) Microsoft Corporation),
+ * file src/smt/qi_queue.cpp, and recast in cvc5 style.
+ */
+
+#include "theory/quantifiers/eager/qi_queue.h"
+
+#include <algorithm>
+
+#include "base/output.h"
+#include "options/quantifiers_options.h"
+#include "smt/env.h"
+#include "theory/quantifiers/eager/enode.h"
+#include "theory/quantifiers/eager/quantifier_manager.h"
+#include "theory/quantifiers/eager/quantifier_normalizer.h"
+#include "theory/quantifiers/eager/smt_context.h"
+#include "theory/quantifiers/eager/statistics.h"
+
+namespace cvc5::internal {
+namespace theory::quantifiers::eager {
+
+QiQueue::QiQueue(Env& env, QuantifierManager& qm, SmtContext& ctx)
+    : EnvObj(env),
+      d_qm(qm),
+      d_context(ctx),
+      d_checker(ctx),
+      d_numInstances(0),
+      d_eagerCostThreshold(0)
+{
+}
+
+void QiQueue::setup()
+{
+  d_eagerCostThreshold = options().quantifiers.eagerEMatchingThreshold;
+}
+
+float QiQueue::getCost(uint32_t generation)
+{
+  // Z3's default cost function, qi.cost = (+ weight generation), weight 1
+  return 1.0f + static_cast<float>(generation);
+}
+
+void QiQueue::insert(Fingerprint* f, uint32_t generation)
+{
+  d_newEntries.push_back(Entry(f, getCost(generation), generation));
+}
+
+void QiQueue::instantiate()
+{
+  size_t sinceLastCheck = 0;
+  for (Entry& curr : d_newEntries)
+  {
+    if (d_context.getCancelFlag())
+    {
+      break;
+    }
+    if (d_numInstances > options().quantifiers.eagerEMatchingMaxInst)
+    {
+      // the maximum number of quantifier instances was reached
+      break;
+    }
+    Fingerprint* f = curr.d_qb;
+    TNode qa = f->getQuantifier();
+
+    if (curr.d_cost <= d_eagerCostThreshold)
+    {
+      instantiate(curr);
+    }
+    else if (d_checker.isUnsat(qa[1], f->getNumArgs(), f->getArgs()))
+    {
+      // do not drop an instance that produces a conflict
+      instantiate(curr);
+    }
+    // Otherwise the instance is dropped. Z3 delays it to the final check,
+    // where it makes it if its cost is within qi.lazy_threshold, 20 by
+    // default; with Verus's eager threshold of 100, none ever is.
+
+    // periodically check that we did not run out of time or memory
+    if (sinceLastCheck++ > 100)
+    {
+      if (d_context.resourceLimitsExceeded())
+      {
+        break;
+      }
+      sinceLastCheck = 0;
+    }
+  }
+  d_newEntries.clear();
+}
+
+void QiQueue::instantiate(const Entry& ent)
+{
+  if (d_context.getPropCore().inconsistent())
+  {
+    return;
+  }
+
+  Fingerprint* f = ent.d_qb;
+  TNode q = f->getQuantifier();
+  uint32_t generation = ent.d_generation;
+  size_t numBindings = f->getNumArgs();
+  ENode* const* bindings = f->getArgs();
+
+  if (skipSatisfied(q, numBindings, bindings))
+  {
+    return;
+  }
+  std::vector<Node> terms;
+  for (size_t i = 0; i < numBindings; ++i)
+  {
+    terms.push_back(bindings[i]->getExpr());
+  }
+  uint32_t gen = static_cast<uint32_t>(ent.d_cost);
+  if (!d_context.internalizeInstance(q, terms, gen))
+  {
+    d_context.getStats().d_numInstancesSimplifyTrue++;
+    return;
+  }
+  d_context.getStats().d_numInstances++;
+  d_numInstances++;
+  Trace("eager-qi") << "[instance] q" << q.getId() << " nargs " << numBindings
+                    << " gen " << generation << " cost " << ent.d_cost
+                    << " newgen " << gen << std::endl;
+}
+
+void QiQueue::initSearch() { d_newEntries.clear(); }
+
+bool QiQueue::skipSatisfied(TNode q, size_t numBindings, ENode* const* bindings)
+{
+  if (options().quantifiers.eagerEMatchingChecker
+      && d_checker.isSat(q[1], numBindings, bindings))
+  {
+    // The instance is already satisfied, so creating it would be wasted
+    // work. It still counts as an instantiation, as it does in Z3.
+    d_context.getStats().d_numInstancesCheckerSat++;
+    return true;
+  }
+  return false;
+}
+
+}  // namespace theory::quantifiers::eager
+}  // namespace cvc5::internal

@@ -148,10 +148,11 @@ enum class BoundVarId
    */
   VALID_WITNESS_VAR,
   /**
-   * The canonical quantified variable of the ported Z3 core (--z3), cached on
-   * its de Bruijn level and its type, see z3::QuantifierNormalizer.
+   * The canonical quantified variable of the eager E-matching core
+   * (--eager-e-matching), cached on its de Bruijn level and its type, see
+   * eager::QuantifierNormalizer.
    */
-  Z3_QUANT_VAR,
+  EAGER_QUANT_VAR,
 };
 /** Converts a bound variable identifier to a string. */
 const char* toString(BoundVarId id);

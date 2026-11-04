@@ -40,7 +40,6 @@
 #include "options/strings_options.h"
 #include "options/theory_options.h"
 #include "options/uf_options.h"
-#include "options/z3_options.h"
 #include "smt/logic_exception.h"
 #include "theory/theory.h"
 
@@ -132,10 +131,10 @@ void SetDefaults::setDefaults(LogicInfo& logic, Options& opts)
 
 void SetDefaults::setDefaultsPre(Options& opts)
 {
-  if (opts.z3.z3)
+  if (opts.quantifiers.eagerEMatching)
   {
-    // Reject what the ported Z3 core cannot do.
-    checkZ3Capabilities(opts);
+    // Reject what the eager E-matching core cannot do.
+    checkEagerEMatchingCapabilities(opts);
   }
   // safe options
   if (options().base.safeMode != options::SafeMode::UNRESTRICTED)
@@ -224,18 +223,18 @@ void SetDefaults::setDefaultsPre(Options& opts)
   {
     if (opts.smt.unsatCoresMode == options::UnsatCoresMode::OFF)
     {
-      if (opts.z3.z3 && !opts.base.incrementalSolving)
+      if (opts.quantifiers.eagerEMatching && !opts.base.incrementalSolving)
       {
-        // The ported Z3 core (--z3) proves its lemmas, and its search
-        // depends on the input not being decided on first, as assumptions.
-        // In incremental mode, where --z3 keeps CaDiCaL, the cores of
-        // sat-proof are wrong (plain cvc5 with --sat-solver=cadical
-        // --incremental --unsat-cores-mode=sat-proof as well), so the
-        // default below is taken.
+        // The eager E-matching core (--eager-e-matching) proves its lemmas, and
+        // its search depends on the input not being decided on first, as
+        // assumptions. In incremental mode, where --eager-e-matching keeps
+        // CaDiCaL, the cores of sat-proof are wrong (plain cvc5 with
+        // --sat-solver=cadical --incremental --unsat-cores-mode=sat-proof as
+        // well), so the default below is taken.
         SET_AND_NOTIFY(smt,
                        unsatCoresMode,
                        options::UnsatCoresMode::SAT_PROOF,
-                       "enabling unsat cores with z3");
+                       "enabling unsat cores with eager-e-matching");
       }
       else
       {
@@ -438,11 +437,11 @@ void SetDefaults::setDefaultsPre(Options& opts)
 
 void SetDefaults::finalizeLogic(LogicInfo& logic, Options& opts) const
 {
-  // The ported Z3 core (--z3) is tuned for CaDiCaL, which supports
-  // incremental solving as well: its delayed units rely on how CaDiCaL
+  // The eager E-matching core (--eager-e-matching) is tuned for CaDiCaL, which
+  // supports incremental solving as well: its delayed units rely on how CaDiCaL
   // backtracks, and its base level counts CaDiCaL's activation literals.
   if (opts.base.incrementalSolving && !opts.prop.satSolverWasSetByUser
-      && !opts.z3.z3)
+      && !opts.quantifiers.eagerEMatching)
   {
     // use minisat by default if incremental is enabled, due to performance
     SET_AND_NOTIFY_VAL_SYM(
@@ -1139,7 +1138,7 @@ bool SetDefaults::usesInputConversion(const Options& opts,
   return false;
 }
 
-void SetDefaults::checkZ3Capabilities(Options& opts) const
+void SetDefaults::checkEagerEMatchingCapabilities(Options& opts) const
 {
   // Everything below has no implementation in the port.
   const char* unsupported = nullptr;
@@ -1177,7 +1176,7 @@ void SetDefaults::checkZ3Capabilities(Options& opts) const
   if (unsupported != nullptr)
   {
     std::stringstream ss;
-    ss << unsupported << " is not supported with --z3";
+    ss << unsupported << " is not supported with --eager-e-matching";
     throw OptionException(ss.str());
   }
 }
@@ -1598,23 +1597,26 @@ void SetDefaults::setDefaultsQuantifiers(const LogicInfo& logic,
   {
     SET_AND_NOTIFY(quantifiers, enumInst, true, "full-saturate-quant");
   }
-  if (opts.z3.z3)
+  if (opts.quantifiers.eagerEMatching)
   {
     // Skolemize the existentials nested in quantified formulas eagerly, as
     // Z3's negation normal form does: the instances of a quantified formula
     // then share skolem functions of its variables, which congruence closure
     // identifies when the instantiation terms are equal.
-    SET_AND_NOTIFY_IF_NOT_USER_VAL_SYM(
-        quantifiers, preSkolemQuant, options::PreSkolemQuantMode::AGG, "z3");
+    SET_AND_NOTIFY_IF_NOT_USER_VAL_SYM(quantifiers,
+                                       preSkolemQuant,
+                                       options::PreSkolemQuantMode::AGG,
+                                       "eager-e-matching");
     // The other modules of the quantifiers engine instantiate only once the
     // core and every theory are done, on a complete model.
     SET_AND_NOTIFY_IF_NOT_USER_VAL_SYM(quantifiers,
                                        instWhenMode,
                                        options::InstWhenMode::LAST_CALL_DELAY,
-                                       "z3");
+                                       "eager-e-matching");
     // Conflict-based instantiation at full effort duplicates the core's
     // search for conflicting instances.
-    SET_AND_NOTIFY_IF_NOT_USER(quantifiers, conflictBasedInst, false, "z3");
+    SET_AND_NOTIFY_IF_NOT_USER(
+        quantifiers, conflictBasedInst, false, "eager-e-matching");
   }
   if (opts.arrays.arraysExp)
   {

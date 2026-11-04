@@ -23,8 +23,8 @@
 #include "options/options.h"
 #include "options/proof_options.h"
 #include "options/prop_options.h"
+#include "options/quantifiers_options.h"
 #include "options/smt_options.h"
-#include "options/z3_options.h"
 #include "proof/annotation_id.h"
 #include "proof/proof_node_algorithm.h"
 #include "prop/cnf_stream.h"
@@ -88,10 +88,10 @@ PropEngine::PropEngine(Env& env, TheoryEngine* te)
       env, statisticsRegistry(), env.getResourceManager(), d_theoryProxy, "");
 
   // create CnfStream with new SAT solver
-  // With --z3, Boolean variables are asserted to the theory engine like
-  // atoms: the ported core derives the values of its gates from those of
-  // their leaves, for relevancy, and Boolean variables are leaves.
-  FormulaLitPolicy flp = options().z3.z3
+  // With --eager-e-matching, Boolean variables are asserted to the theory
+  // engine like atoms: the ported core derives the values of its gates from
+  // those of their leaves, for relevancy, and Boolean variables are leaves.
+  FormulaLitPolicy flp = options().quantifiers.eagerEMatching
                              ? FormulaLitPolicy::TRACK_AND_NOTIFY_VAR
                              : FormulaLitPolicy::TRACK;
   d_cnfStream =

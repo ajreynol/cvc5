@@ -842,6 +842,42 @@ libcvc5_add_sources(
   theory/quantifiers/conjecture_generator.h
   theory/quantifiers/dynamic_rewrite.cpp
   theory/quantifiers/dynamic_rewrite.h
+  theory/quantifiers/eager/bool_var_data.h
+  theory/quantifiers/eager/cg_table.cpp
+  theory/quantifiers/eager/cg_table.h
+  theory/quantifiers/eager/checker.cpp
+  theory/quantifiers/eager/checker.h
+  theory/quantifiers/eager/clause.h
+  theory/quantifiers/eager/eager_e_matching.cpp
+  theory/quantifiers/eager/eager_e_matching.h
+  theory/quantifiers/eager/egraph.cpp
+  theory/quantifiers/eager/egraph.h
+  theory/quantifiers/eager/enode.cpp
+  theory/quantifiers/eager/enode.h
+  theory/quantifiers/eager/fingerprints.cpp
+  theory/quantifiers/eager/fingerprints.h
+  theory/quantifiers/eager/lemma_proof_generator.cpp
+  theory/quantifiers/eager/lemma_proof_generator.h
+  theory/quantifiers/eager/mam.cpp
+  theory/quantifiers/eager/mam.h
+  theory/quantifiers/eager/prop_core.cpp
+  theory/quantifiers/eager/prop_core.h
+  theory/quantifiers/eager/qi_queue.cpp
+  theory/quantifiers/eager/qi_queue.h
+  theory/quantifiers/eager/quantifier_manager.cpp
+  theory/quantifiers/eager/quantifier_manager.h
+  theory/quantifiers/eager/quantifier_normalizer.cpp
+  theory/quantifiers/eager/quantifier_normalizer.h
+  theory/quantifiers/eager/relevancy.cpp
+  theory/quantifiers/eager/relevancy.h
+  theory/quantifiers/eager/relevancy_tracker.cpp
+  theory/quantifiers/eager/relevancy_tracker.h
+  theory/quantifiers/eager/smt_context.cpp
+  theory/quantifiers/eager/smt_context.h
+  theory/quantifiers/eager/statistics.h
+  theory/quantifiers/eager/trail.h
+  theory/quantifiers/eager/watch_list.cpp
+  theory/quantifiers/eager/watch_list.h
   theory/quantifiers/ematching/candidate_generator.cpp
   theory/quantifiers/ematching/candidate_generator.h
   theory/quantifiers/ematching/ho_trigger.cpp
@@ -1340,42 +1376,6 @@ libcvc5_add_sources(
   theory/uf/type_enumerator.h
   theory/valuation.cpp
   theory/valuation.h
-  z3/quantifiers/cg_table.cpp
-  z3/quantifiers/cg_table.h
-  z3/quantifiers/checker.cpp
-  z3/quantifiers/checker.h
-  z3/quantifiers/egraph.cpp
-  z3/quantifiers/egraph.h
-  z3/quantifiers/enode.cpp
-  z3/quantifiers/enode.h
-  z3/quantifiers/fingerprints.cpp
-  z3/quantifiers/fingerprints.h
-  z3/quantifiers/lemma_proof_generator.cpp
-  z3/quantifiers/lemma_proof_generator.h
-  z3/quantifiers/mam.cpp
-  z3/quantifiers/mam.h
-  z3/quantifiers/qi_queue.cpp
-  z3/quantifiers/qi_queue.h
-  z3/quantifiers/quantifier_manager.cpp
-  z3/quantifiers/quantifier_manager.h
-  z3/quantifiers/quantifier_normalizer.cpp
-  z3/quantifiers/quantifier_normalizer.h
-  z3/quantifiers/smt_context.cpp
-  z3/quantifiers/smt_context.h
-  z3/quantifiers/statistics.h
-  z3/quantifiers/trail.h
-  z3/quantifiers/z3_module.cpp
-  z3/quantifiers/z3_module.h
-  z3/relevancy/bool_var_data.h
-  z3/relevancy/clause.h
-  z3/relevancy/prop_core.cpp
-  z3/relevancy/prop_core.h
-  z3/relevancy/relevancy.cpp
-  z3/relevancy/relevancy.h
-  z3/relevancy/relevancy_tracker.cpp
-  z3/relevancy/relevancy_tracker.h
-  z3/relevancy/watch_list.cpp
-  z3/relevancy/watch_list.h
 )
 
 # suppress deprecated warnings to not error in CI
@@ -1428,7 +1428,6 @@ set(options_toml_files
   options/strings_options.toml
   options/theory_options.toml
   options/uf_options.toml
-  options/z3_options.toml
 )
 string(REPLACE "toml" "cpp;" options_gen_cpp_files ${options_toml_files})
 string(REPLACE "toml" "h;"   options_gen_h_files ${options_toml_files})

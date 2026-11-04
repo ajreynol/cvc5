@@ -1895,6 +1895,39 @@ set(regress_0_tests
   regress0/quantifiers/dd.javafe-ieval.smt2
   regress0/quantifiers/delta-simp.smt2
   regress0/quantifiers/double-pattern.smt2
+  regress0/quantifiers/eager/arith-03.smt2
+  regress0/quantifiers/eager/check-sat-assuming.smt2
+  regress0/quantifiers/eager/datatypes-03.smt2
+  regress0/quantifiers/eager/ematch-04.smt2
+  regress0/quantifiers/eager/ematch-05.smt2
+  regress0/quantifiers/eager/ematch-06.smt2
+  regress0/quantifiers/eager/ematch-07.smt2
+  regress0/quantifiers/eager/ematch-08.smt2
+  regress0/quantifiers/eager/ematch-09.smt2
+  regress0/quantifiers/eager/ematch-10.smt2
+  regress0/quantifiers/eager/ematch-11.smt2
+  regress0/quantifiers/eager/ematch-12.smt2
+  regress0/quantifiers/eager/ematch-ground-arg-after-merge.smt2
+  regress0/quantifiers/eager/ematch-guarded-by-instance.smt2
+  regress0/quantifiers/eager/ematch-multi-pattern.smt2
+  regress0/quantifiers/eager/ematch-nested-pattern.smt2
+  regress0/quantifiers/eager/ematch-nested-quantifier-levels.smt2
+  regress0/quantifiers/eager/ematch-repeated-var.smt2
+  regress0/quantifiers/eager/get-qe.smt2
+  regress0/quantifiers/eager/hosted-quant.smt2
+  regress0/quantifiers/eager/incremental-check-sat-assuming.smt2
+  regress0/quantifiers/eager/incremental-nested.smt2
+  regress0/quantifiers/eager/incremental-pop-quantifier.smt2
+  regress0/quantifiers/eager/incremental-push-pop.smt2
+  regress0/quantifiers/eager/incremental-reset-assertions.smt2
+  regress0/quantifiers/eager/incremental-skolem-defs.smt2
+  regress0/quantifiers/eager/incremental-skolemize.smt2
+  regress0/quantifiers/eager/quant-generation.smt2
+  regress0/quantifiers/eager/quant-incomplete-unknown.smt2
+  regress0/quantifiers/eager/sat-finite-model-find.smt2
+  regress0/quantifiers/eager/unsat-cores.smt2
+  regress0/quantifiers/eager/unsupported-deep-restart.smt2
+  regress0/quantifiers/eager/unsupported-instantiations.smt2
   regress0/quantifiers/ex3.smt2
   regress0/quantifiers/ex6.smt2
   regress0/quantifiers/floor.smt2
@@ -2818,39 +2851,6 @@ set(regress_0_tests
   regress0/wiki.19.cvc.smt2
   regress0/wiki.20.cvc.smt2
   regress0/wiki.21.cvc.smt2
-  regress0/z3/arith-03.smt2
-  regress0/z3/check-sat-assuming.smt2
-  regress0/z3/datatypes-03.smt2
-  regress0/z3/ematch-04.smt2
-  regress0/z3/ematch-05.smt2
-  regress0/z3/ematch-06.smt2
-  regress0/z3/ematch-07.smt2
-  regress0/z3/ematch-08.smt2
-  regress0/z3/ematch-09.smt2
-  regress0/z3/ematch-10.smt2
-  regress0/z3/ematch-11.smt2
-  regress0/z3/ematch-12.smt2
-  regress0/z3/ematch-ground-arg-after-merge.smt2
-  regress0/z3/ematch-guarded-by-instance.smt2
-  regress0/z3/ematch-multi-pattern.smt2
-  regress0/z3/ematch-nested-pattern.smt2
-  regress0/z3/ematch-nested-quantifier-levels.smt2
-  regress0/z3/ematch-repeated-var.smt2
-  regress0/z3/get-qe.smt2
-  regress0/z3/hosted-quant.smt2
-  regress0/z3/incremental-check-sat-assuming.smt2
-  regress0/z3/incremental-nested.smt2
-  regress0/z3/incremental-pop-quantifier.smt2
-  regress0/z3/incremental-push-pop.smt2
-  regress0/z3/incremental-reset-assertions.smt2
-  regress0/z3/incremental-skolem-defs.smt2
-  regress0/z3/incremental-skolemize.smt2
-  regress0/z3/quant-generation.smt2
-  regress0/z3/quant-incomplete-unknown.smt2
-  regress0/z3/sat-finite-model-find.smt2
-  regress0/z3/unsat-cores.smt2
-  regress0/z3/unsupported-deep-restart.smt2
-  regress0/z3/unsupported-instantiations.smt2
 )
 
 #-----------------------------------------------------------------------------#

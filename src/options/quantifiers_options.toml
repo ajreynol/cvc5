@@ -1869,6 +1869,57 @@ name   = "Quantifiers"
   default    = "false"
   help       = "Instantiations are local to the SAT context"
 
+### Eager E-matching options
+
+[[option]]
+  name       = "eagerEMatching"
+  category   = "expert"
+  long       = "eager-e-matching"
+  type       = "bool"
+  default    = "false"
+  help       = "use eager E-matching, ported from Z3 (E-matching, relevancy, instance scheduling), as the first module of the quantifiers engine; cvc5's theories do the ground reasoning"
+
+[[option]]
+  name       = "eagerEMatchingDelayUnits"
+  category   = "expert"
+  long       = "eager-e-matching-delay-units"
+  type       = "bool"
+  default    = "true"
+  help       = "with --eager-e-matching, weaken a lemma that is a unit at the base level of the SAT solver with the negation of the first decision, so that the SAT solver assigns its literal at the first decision level rather than restarting (as Z3's delay_units)"
+
+[[option]]
+  name       = "eagerEMatchingLocalInst"
+  category   = "expert"
+  long       = "eager-e-matching-local-inst"
+  type       = "bool"
+  default    = "true"
+  help       = "with --eager-e-matching, send quantifier instances as lemmas local to the SAT context (as --inst-local), so that cvc5's decision heuristic considers an instance only where it was last made"
+
+[[option]]
+  name       = "eagerEMatchingThreshold"
+  category   = "expert"
+  long       = "eager-e-matching-threshold=F"
+  type       = "double"
+  default    = "100.0"
+  minimum    = "0.0"
+  help       = "with --eager-e-matching, instantiations whose cost (weight plus generation, as Z3's default qi.cost) exceeds this are dropped, unless their body is false; the default is the value Verus passes to Z3 (smt.qi.eager_threshold=100)"
+
+[[option]]
+  name       = "eagerEMatchingMaxInst"
+  category   = "expert"
+  long       = "eager-e-matching-max-inst=N"
+  type       = "uint64_t"
+  default    = "4294967295"
+  help       = "with --eager-e-matching, maximum number of quantifier instantiations"
+
+[[option]]
+  name       = "eagerEMatchingChecker"
+  category   = "expert"
+  long       = "eager-e-matching-checker"
+  type       = "bool"
+  default    = "true"
+  help       = "with --eager-e-matching, skip an instance whose body the current assignment already satisfies"
+
 ### SyGuS instantiation options
 
 [[option]]
