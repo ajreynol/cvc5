@@ -19,7 +19,9 @@
 
 #include <memory>
 
+#include "context/cdhashmap.h"
 #include "context/cdhashset.h"
+#include "context/cdlist.h"
 #include "context/cdo.h"
 #include "context/context.h"
 #include "theory/incomplete_id.h"
@@ -45,14 +47,35 @@ class LemmaProofGenerator;
  *   for relevancy (RelevancyTracker), and the equalities cvc5's theories
  *   derive, through the master equality engine, of whose merges the
  *   quantifiers engine notifies this module (notifyMasterMerge);
- * - it sends lemmas only (instances and conflicts), which need no
- *   explanation, and reports no propagations;
  * - the formulas it asserts go through cvc5's preprocessing first.
  *
  * The rest is the quantifiers engine's: it registers the quantified formulas,
  * and skolemizes those asserted false. The core also takes the skolemization
  * of a quantified formula assigned false that is relevant to it, so that the
  * witnesses are relevant as well.
+ *
+ * Soundness. What this module gives cvc5 is limited to the following, so
+ * that no error in the core (its E-graph, relevancy, matching, or how it
+ * follows the SAT and user contexts) can make cvc5 answer wrongly; at most
+ * it makes the core miss instances or search worse.
+ * - Lemmas, each valid on its own, interpreting each skolem as the term it
+ *   stands for (cvc5's skolems are canonical), whatever is asserted, so
+ *   also after the user pop of the scope it was made in:
+ *   - an instance of a quantified formula q of cvc5, (=> q q[1]{x->t}),
+ *     made by LemmaProofGenerator::mkInstance, which checks that the terms
+ *     t are closed and of the types of the variables x;
+ *   - the skolemization of q, made by cvc5's Skolemize;
+ *   - the definition of a skolem, made by cvc5's preprocessing of one of
+ *     these lemmas;
+ *   - one of these, or its preprocessed form, weakened by the negation of a
+ *     decision (delayUnit).
+ *   With proofs, each has a proof (LemmaProofGenerator), which shows it.
+ * - Nothing else: no conflicts (an inconsistency of the core is left for
+ *   cvc5's theories to find, see enterConflict), no propagations, no
+ *   explanations, and no decisions.
+ * - No claim of completeness (checkCompleteFor), so a model is never
+ *   accepted because of the core, and none while the core is inconsistent
+ *   (checkCore marks the model unsound then).
  */
 class EagerEMatching : public theory::quantifiers::QuantifiersModule
 {
@@ -72,6 +95,11 @@ class EagerEMatching : public theory::quantifiers::QuantifiersModule
   bool needsCheck(theory::Theory::Effort e) override;
   void check(theory::Theory::Effort e, QEffort quant_e) override;
   void preRegisterQuantifier(Node q) override;
+  /**
+   * The core claims completeness for no quantified formula: whether a model
+   * satisfies them is for the other modules of the quantifiers engine.
+   */
+  bool checkCompleteFor(CVC5_UNUSED Node q) override { return false; }
   /** Give the merge to the core. */
   void notifyMasterMerge(TNode t1, TNode t2) override;
   std::string identify() const override { return "EagerEMatching"; }
@@ -227,21 +255,31 @@ class EagerEMatching : public theory::quantifiers::QuantifiersModule
    * UINT32_MAX if it did not pop.
    */
   uint32_t d_popLevel;
-  /** The atoms registered by cvc5 before the next check. */
-  std::vector<Node> d_preregistered;
+  /**
+   * The atoms registered by cvc5, to take before the next check from
+   * d_preregisteredHead on. The state below that refers to cvc5's atoms and
+   * lemmas is in the user context, so that none of a popped user scope is
+   * used after the pop.
+   */
+  context::CDList<Node> d_preregistered;
+  context::CDO<size_t> d_preregisteredHead;
   /**
    * The lemmas sent. cvc5 keeps a lemma until the pop of the user scope of
    * its atoms, so this is in the user context.
    */
   context::CDHashSet<Node> d_lemmasSent;
-  /** The lemmas weakened by delayUnit, to send as they are, see check. */
-  std::vector<Node> d_delayedUnits;
+  /**
+   * The lemmas weakened by delayUnit, to send as they are from
+   * d_delayedUnitsHead on, see checkCore.
+   */
+  context::CDList<Node> d_delayedUnits;
+  context::CDO<size_t> d_delayedUnitsHead;
   /**
    * For each atom of cvc5 that toCore renamed, the core's form and cvc5's,
-   * the first one renamed to it: alpha-equivalent atoms of cvc5 have the
-   * same core's form.
+   * the first one renamed to it in the current user scopes: alpha-equivalent
+   * atoms of cvc5 have the same core's form.
    */
-  std::unordered_map<Node, Node> d_hostAtom;
+  context::CDHashMap<Node, Node> d_hostAtom;
   /**
    * Proves the lemmas the core sends, and gives, for an instance or the
    * definition of a skolem, the lemma cvc5 is sent for it.

@@ -46,7 +46,12 @@ EagerEMatching::EagerEMatching(
       d_inConflict(context(), false),
       d_needCheck(false),
       d_popLevel(UINT32_MAX),
+      d_preregistered(userContext()),
+      d_preregisteredHead(userContext(), 0),
       d_lemmasSent(userContext()),
+      d_delayedUnits(userContext()),
+      d_delayedUnitsHead(userContext(), 0),
+      d_hostAtom(userContext()),
       d_pg(std::make_unique<LemmaProofGenerator>(env)),
       d_popNotify(std::make_unique<PopNotify>(context(), *this))
 {
@@ -298,26 +303,27 @@ void EagerEMatching::checkCore(theory::Theory::Effort effort)
   syncLevel();
   // the equalities cvc5's theories derived since the last check
   d_core->getEGraph().applyMasterMerges();
-  if (context()->getLevel() <= d_searchBaseLevel && !d_delayedUnits.empty())
+  if (context()->getLevel() <= d_searchBaseLevel)
   {
     // As Z3 asserts its delayed units after a restart, the lemmas weakened
     // by delayUnit are sent as they are near the base level, where CaDiCaL
     // backtracks at most one level for them.
-    for (const Node& du : d_delayedUnits)
+    for (size_t i = d_delayedUnitsHead, n = d_delayedUnits.size(); i < n; ++i)
     {
+      const Node& du = d_delayedUnits[i];
       if (d_lemmasSent.insert(du))
       {
         lemma(du, theory::LemmaProperty::NONE);
         d_needCheck = true;
       }
     }
-    d_delayedUnits.clear();
+    d_delayedUnitsHead = d_delayedUnits.size();
   }
-  for (const Node& atom : d_preregistered)
+  for (size_t i = d_preregisteredHead, n = d_preregistered.size(); i < n; ++i)
   {
-    d_core->literalOf(atom);
+    d_core->literalOf(d_preregistered[i]);
   }
-  d_preregistered.clear();
+  d_preregisteredHead = d_preregistered.size();
   if (!propagateAndReport())
   {
     return;
@@ -391,8 +397,8 @@ void EagerEMatching::syncLevel()
     // everything the core has is for assertions that are gone
     d_reset = false;
     d_core = std::make_unique<SmtContext>(d_env, *this);
-    d_preregistered.clear();
-    d_delayedUnits.clear();
+    d_preregisteredHead = d_preregistered.size();
+    d_delayedUnitsHead = d_delayedUnits.size();
   }
   uint32_t satLvl = context()->getLevel();
   uint32_t lvl = satLvl > 0 ? satLvl - 1 : 0;
@@ -554,7 +560,10 @@ void EagerEMatching::recordRenamedAtoms(TNode n, TNode nc)
     }
     return;
   }
-  d_hostAtom.emplace(nc, n);
+  if (d_hostAtom.find(nc) == d_hostAtom.end())
+  {
+    d_hostAtom.insert(nc, n);
+  }
 }
 
 Node EagerEMatching::toHostLemma(TNode norm)

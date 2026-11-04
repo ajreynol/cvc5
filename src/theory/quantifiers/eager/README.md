@@ -142,6 +142,22 @@ activation literals of the user scopes as the base of the search.
 `reset-assertions` pops the SAT context to level 0, and the core is then made
 again.
 
+Where the state that refers to cvc5's formulas lives:
+
+| State | Context | Why |
+|---|---|---|
+| The core (`SmtContext` and below) | the core's trail, following the SAT context | its scopes are cvc5's SAT levels |
+| `EagerEMatching::d_lemmasSent` | user | cvc5 drops a lemma with the pop of the user scope of its atoms |
+| `EagerEMatching::d_hostAtom` | user | the instances of a formula of the core must be of a formula of cvc5 asserted now, not of a popped alpha-variant |
+| `EagerEMatching::d_delayedUnits`, `d_preregistered` | user | the lemmas and atoms of a popped scope are not to be sent or taken |
+| `SmtContext::d_instanceForms` | user | cvc5's preprocessing gives the skolem definitions again after a pop |
+| `LemmaProofGenerator::d_forms`, `d_hostForms`, `d_weakened` | user | the proofs of cvc5's preprocessing are in the user context |
+| `LemmaProofGenerator::d_terms`, `EagerEMatching::d_lemmaIds` | none | an instance's proof and a lemma's inference do not depend on the scope |
+
+None of this matters for soundness, only for completeness and for proofs:
+every lemma the core sends is valid whatever the scope (see the class
+comment of `EagerEMatching`).
+
 ## Next step: arithmetic equalities as matching hints
 
 The worst files of the Verus set (in `quant-07-25/slow`: cs56, cs59, cs65,

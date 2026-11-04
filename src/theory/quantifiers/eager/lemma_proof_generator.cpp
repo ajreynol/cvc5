@@ -12,6 +12,7 @@
 
 #include "theory/quantifiers/eager/lemma_proof_generator.h"
 
+#include "expr/node_algorithm.h"
 #include "proof/lazy_proof.h"
 #include "proof/proof.h"
 #include "proof/proof_node.h"
@@ -32,8 +33,19 @@ LemmaProofGenerator::LemmaProofGenerator(Env& env)
 
 Node LemmaProofGenerator::mkInstance(TNode q, const std::vector<Node>& terms)
 {
-  Assert(q.getKind() == Kind::FORALL);
-  Assert(q[0].getNumChildren() == terms.size());
+  // The instance is valid, whatever led the core to it, if it substitutes
+  // closed terms of their types for the variables of q. This is what the
+  // soundness of the lemmas the core sends rests on, so it is checked in
+  // all builds.
+  AlwaysAssert(q.getKind() == Kind::FORALL
+               && q[0].getNumChildren() == terms.size());
+  for (size_t i = 0, nterms = terms.size(); i < nterms; ++i)
+  {
+    AlwaysAssert(terms[i].getType() == q[0][i].getType())
+        << "ill-typed term " << terms[i] << " for " << q[0][i];
+    AlwaysAssert(!expr::hasFreeVar(terms[i]))
+        << "term " << terms[i] << " with a free variable for " << q[0][i];
+  }
   std::vector<Node> vars(q[0].begin(), q[0].end());
   Node body =
       q[1].substitute(vars.begin(), vars.end(), terms.begin(), terms.end());

@@ -1669,6 +1669,7 @@ set(regress_0_tests
   regress0/proofs/dsl-rule-comp-types.smt2
   regress0/proofs/dt-cons-eq-clash-qfdt.smt2
   regress0/proofs/dt-cons-eq-clash-ufdt.smt2
+  regress0/proofs/dt-label-exh-cyclic-eq.smt2
   regress0/proofs/equal-eval-rw_340.smt2
   regress0/proofs/eval-rhs.smt2
   regress0/proofs/exists-shadow-simple.smt2
@@ -1916,6 +1917,7 @@ set(regress_0_tests
   regress0/quantifiers/eager/ematch-repeated-var.smt2
   regress0/quantifiers/eager/get-qe.smt2
   regress0/quantifiers/eager/hosted-quant.smt2
+  regress0/quantifiers/eager/incremental-alpha-variant.smt2
   regress0/quantifiers/eager/incremental-check-sat-assuming.smt2
   regress0/quantifiers/eager/incremental-nested.smt2
   regress0/quantifiers/eager/incremental-pop-quantifier.smt2
