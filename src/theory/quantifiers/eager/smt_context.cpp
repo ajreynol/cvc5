@@ -610,10 +610,27 @@ void SmtContext::skolemize(TNode q)
   Node norm = d_host.mkSkolemization(q, defs);
   if (norm.isNull())
   {
+    d_pendingSkolemizations.insert(q);
     return;
   }
   d_stats.d_numSkolemizations++;
   internalizePreprocessed(norm, defs, generationOf(q), false);
+}
+
+void SmtContext::retrySkolemizations()
+{
+  std::unordered_set<Node> pending;
+  pending.swap(d_pendingSkolemizations);
+  for (const Node& q : pending)
+  {
+    // Otherwise q is skolemized again when it is assigned false and relevant
+    // again.
+    if (d_prop.bInternalized(q) && d_prop.getAssignment(q) == SAT_VALUE_FALSE
+        && d_prop.isRelevant(q))
+    {
+      skolemize(q);
+    }
+  }
 }
 
 void SmtContext::initSearch() { d_qmanager.initSearch(); }

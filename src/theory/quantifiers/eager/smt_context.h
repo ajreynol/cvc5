@@ -226,9 +226,17 @@ class SmtContext final : protected EnvObj
    * sent when cvc5 asserted q false (see mkSkolemization). This is only so
    * that its witnesses are relevant to the core, through q, as the core's
    * own formulas make them; the lemma is cvc5's, and the core does not send
-   * it.
+   * it. If cvc5 has not skolemized q yet, which is when the core assigned q
+   * false before cvc5's SAT solver did, q waits for retrySkolemizations.
    */
   void skolemize(TNode q);
+  /**
+   * Skolemize the quantified formulas whose skolemization cvc5 had not sent
+   * when the core skolemized them, if they are still assigned false and
+   * relevant. Called after cvc5's facts are given to the core, since cvc5
+   * skolemizes q when it asserts q false.
+   */
+  void retrySkolemizations();
 
   void internalize(TNode n, bool gateCtx);
   void internalize(TNode n, bool gateCtx, uint32_t generation);
@@ -449,6 +457,8 @@ class SmtContext final : protected EnvObj
     bool d_relevant;
   };
   std::vector<ReplayUnit> d_unitsToReassert;
+  /** The quantified formulas waiting for retrySkolemizations. */
+  std::unordered_set<Node> d_pendingSkolemizations;
   /** For each scope, the size of d_unitsToReassert when it was pushed. */
   context::CDList<size_t> d_unitsToReassertLims;
 

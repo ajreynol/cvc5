@@ -310,6 +310,8 @@ void EagerEMatching::checkCore(theory::Theory::Effort effort)
   syncLevel();
   // the equalities cvc5's theories derived since the last check
   d_core->getEGraph().applyMasterMerges();
+  // the skolemizations cvc5 made for the facts given above
+  d_core->retrySkolemizations();
   if (context()->getLevel() <= d_searchBaseLevel)
   {
     // As Z3 asserts its delayed units after a restart, the lemmas weakened

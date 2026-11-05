@@ -110,7 +110,9 @@ Outside this directory, the port touches:
   `TheoryEngine::addModule` are used by `FactFeed`.
 - `Skolemize::getSkolemizationLemma` gives the core the lemma with which the
   quantifiers engine skolemized a formula, which the core internalizes for
-  relevancy only.
+  relevancy only. When the core assigns the formula false before cvc5's SAT
+  solver does, there is no lemma yet, and the core takes it at the next
+  check (`SmtContext::retrySkolemizations`).
 - `PropEngine` uses `FormulaLitPolicy::TRACK_AND_NOTIFY_VAR` under
   `--eager-e-matching`, so Boolean variables reach the core.
   `PropEngine::getPropDecisions` skips the activation literals of user
@@ -120,11 +122,10 @@ Outside this directory, the port touches:
   `--dump-instantiations` without proofs (the instantiations are read from the
   proof). Unsat cores default to `--unsat-cores-mode=sat-proof`,
   since deciding on the input as assumptions first hurts the core's search.
-  `setDefaultsQuantifiers` sets `--pre-skolem-quant=agg`: the existentials
-  nested in quantified formulas get skolem functions of the enclosing
-  variables, as in Z3's negation normal form, which `QuantifiersPreprocess`
-  now also applies to quantified formulas with patterns. It also sets
-  `--inst-when=last-call-delay` and turns off `--cbqi`, as above.
+  `setDefaultsQuantifiers` sets `--inst-when=last-call-delay` and turns off
+  `--cbqi`, as above. It leaves `--pre-skolem-quant` at its default, unlike
+  Z3's negation normal form, which skolemizes the existentials nested in
+  quantified formulas with functions of the enclosing variables.
 
 ## Incremental solving
 
