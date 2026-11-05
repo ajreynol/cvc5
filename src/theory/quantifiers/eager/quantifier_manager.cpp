@@ -39,7 +39,7 @@ namespace theory::quantifiers::eager {
 QuantifierManager::QuantifierManager(Env& env, SmtContext& ctx)
     : EnvObj(env),
       d_context(ctx),
-      d_queue(env, *this, ctx),
+      d_queue(env, ctx),
       d_fingerprints(ctx.getTrailStack()),
       d_active(false)
 {

@@ -35,14 +35,13 @@
 namespace cvc5::internal {
 namespace theory::quantifiers::eager {
 
-class QuantifierManager;
 class ENode;
 class SmtContext;
 
 class QiQueue : protected EnvObj
 {
  public:
-  QiQueue(Env& env, QuantifierManager& qm, SmtContext& ctx);
+  QiQueue(Env& env, SmtContext& ctx);
 
   void setup();
 
@@ -94,7 +93,6 @@ class QiQueue : protected EnvObj
    */
   bool skipSatisfied(TNode q, size_t numBindings, ENode* const* bindings);
 
-  QuantifierManager& d_qm;
   SmtContext& d_context;
   /** The instance checker. */
   Checker d_checker;
