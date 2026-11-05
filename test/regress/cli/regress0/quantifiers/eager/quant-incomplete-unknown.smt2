@@ -1,3 +1,4 @@
+; REQUIRES: unrestricted-mode
 ; COMMAND-LINE: --eager-e-matching --no-e-matching
 ; EXPECT: unknown
 ; Satisfiable only with model based instantiation, which is not ported. The

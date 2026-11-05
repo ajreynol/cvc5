@@ -41,7 +41,9 @@ Node LemmaProofGenerator::mkInstance(TNode q, const std::vector<Node>& terms)
                && q[0].getNumChildren() == terms.size());
   for (size_t i = 0, nterms = terms.size(); i < nterms; ++i)
   {
-    AlwaysAssert(terms[i].getType() == q[0][i].getType())
+    TypeNode termType = terms[i].getType();
+    TypeNode varType = q[0][i].getType();
+    AlwaysAssert(termType == varType)
         << "ill-typed term " << terms[i] << " for " << q[0][i];
     AlwaysAssert(!expr::hasFreeVar(terms[i]))
         << "term " << terms[i] << " with a free variable for " << q[0][i];

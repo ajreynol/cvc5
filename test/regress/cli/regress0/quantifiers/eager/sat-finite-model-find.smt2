@@ -1,3 +1,4 @@
+; REQUIRES: unrestricted-mode
 ; COMMAND-LINE: --eager-e-matching --finite-model-find
 ; EXPECT: sat
 ; The core claims completeness for no quantified formula, which leaves it to

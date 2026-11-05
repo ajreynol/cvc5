@@ -155,7 +155,11 @@ class AddEqTrail : public Trail
 
 void EGraph::addEq(ENode* n1, ENode* n2)
 {
-  Assert(n1->getSort() == n2->getSort());
+#ifdef CVC5_ASSERTIONS
+  TypeNode sort1 = n1->getSort();
+  TypeNode sort2 = n2->getSort();
+  Assert(sort1 == sort2);
+#endif
 
   d_stats.d_numAddEq++;
   ENode* r1 = n1->getRoot();

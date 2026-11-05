@@ -157,7 +157,11 @@ void SmtContext::propagateBoolENodeAssignmentCore(ENode* source, ENode* target)
 
 bool SmtContext::isDiseq(ENode* n1, ENode* n2) const
 {
-  Assert(n1->getSort() == n2->getSort());
+#ifdef CVC5_ASSERTIONS
+  TypeNode sort1 = n1->getSort();
+  TypeNode sort2 = n2->getSort();
+  Assert(sort1 == sort2);
+#endif
   TNode e1 = n1->getRoot()->getExpr();
   TNode e2 = n2->getRoot()->getExpr();
   if (e1.isConst() && e2.isConst() && e1 != e2)

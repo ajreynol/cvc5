@@ -1873,7 +1873,7 @@ name   = "Quantifiers"
 
 [[option]]
   name       = "eagerEMatching"
-  category   = "expert"
+  category   = "regular"
   long       = "eager-e-matching"
   type       = "bool"
   default    = "false"

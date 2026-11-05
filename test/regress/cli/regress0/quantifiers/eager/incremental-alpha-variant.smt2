@@ -1,3 +1,4 @@
+; REQUIRES: unrestricted-mode
 ; COMMAND-LINE: --eager-e-matching --incremental --no-e-matching --no-quant-alpha-equiv
 ; EXPECT: unknown
 ; EXPECT: unsat

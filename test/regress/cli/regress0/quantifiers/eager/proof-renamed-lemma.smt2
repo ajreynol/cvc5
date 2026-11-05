@@ -1,4 +1,5 @@
-; COMMAND-LINE: --eager-e-matching --pre-skolem-quant=off --no-proof-allow-trust
+; REQUIRES: unrestricted-mode
+; COMMAND-LINE: --eager-e-matching --no-proof-allow-trust
 ; EXPECT: unsat
 ; The nested quantified formula of the instance for a is alpha-equivalent to
 ; the one in the first assertion, so the core has the same form for both; it
