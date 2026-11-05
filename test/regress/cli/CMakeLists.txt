@@ -85,6 +85,7 @@ set(regress_0_tests
   regress0/arith/issue9643.smt2
   regress0/arith/ite-lift.smt2
   regress0/arith/leq.01.smtv1.smt2
+  regress0/arith/liastar/no_normaliz.smt2
   regress0/arith/log1.smt2
   regress0/arith/log2.smt2
   regress0/arith/log3.smt2
@@ -1011,11 +1012,19 @@ set(regress_0_tests
   regress0/fp/from_ubv.smt2
   regress0/fp/from_sbv.smt2
   regress0/fp/fp-set-comprehension-basic.smt2
+  regress0/fp/fpexp_exp2_pow2_rti.smt2
+  regress0/fp/fpexp_fp2fp_range.smt2
+  regress0/fp/fpexp_rti_matchwidth.smt2
+  regress0/fp/fpexp_rti_overflow.smt2
+  regress0/fp/fpexp_sig3_add.smt2
+  regress0/fp/fpexp_sig3_to_fp.smt2
   regress0/fp/issue-5524.smt2
   regress0/fp/issue10144.smt2
   regress0/fp/issue10507.smt2
   regress0/fp/issue13012-1.smt2
   regress0/fp/issue13012-2.smt2
+  regress0/fp/issue13072-1.smt2
+  regress0/fp/issue13072-2.smt2
   regress0/fp/issue3536.smt2
   regress0/fp/issue3582.smt2
   regress0/fp/issue3619.smt2
@@ -1142,6 +1151,10 @@ set(regress_0_tests
   regress0/ho/lambda-cycle.smt2
   regress0/ho/lambda-elim-sat.smt2
   regress0/ho/lambda-equality-non-canon.smt2
+  regress0/ho/lambda-lift-argument-equality.smt2
+  regress0/ho/lambda-lift-circular.smt2
+  regress0/ho/lambda-lift-partial.smt2
+  regress0/ho/lambda-model-sets-filter.smt2
   regress0/ho/lambda-test-deps.smt2
   regress0/ho/lambda-test-deps-simple.smt2
   regress0/ho/lazy-lambda-model.smt2
@@ -1697,6 +1710,7 @@ set(regress_0_tests
   regress0/proofs/issue12708-check-proofs-arith-cm.smt2
   regress0/proofs/issue12709-open-sat-proof.smt2
   regress0/proofs/issue12761-incremental-arith-open-proof.smt2
+  regress0/proofs/issue12884-incremental-lemma-proof.smt2
   regress0/proofs/issue12884-sat-assuming-open-proof.smt2
   regress0/proofs/issue12942-cpc-alpha-eq.smt2
   regress0/proofs/issue13126-pop-factoring-assume.smt2
@@ -2890,6 +2904,32 @@ set(regress_1_tests
   regress1/abduction/sygus-abduct-test-user.smt2
   regress1/abduction/uf-abduct.smt2
   regress1/abduction/yoni-true-sol.smt2
+  regress1/arith/liastar/assume_not_nonnegative.smt2
+  regress1/arith/liastar/assume_nonnegative.smt2
+  regress1/arith/liastar/constant_lambda.smt2
+  regress1/arith/liastar/disjoint_union.smt2
+  regress1/arith/liastar/f2_sat.smt2
+  regress1/arith/liastar/f2_unsat.smt2
+  regress1/arith/liastar/function_equalities.smt2
+  regress1/arith/liastar/get_value.smt2
+  regress1/arith/liastar/lineality_line_sat.smt2
+  regress1/arith/liastar/lineality_line_unsat.smt2
+  regress1/arith/liastar/linear_logic.smt2
+  regress1/arith/liastar/neg_line.smt2
+  regress1/arith/liastar/neg_mixed_sat.smt2
+  regress1/arith/liastar/neg_parity_unsat.smt2
+  regress1/arith/liastar/neg_sum_sat.smt2
+  regress1/arith/liastar/neg_sum_unsat.smt2
+  regress1/arith/liastar/nonlinear_negated_sat.smt2
+  regress1/arith/liastar/nonlinear_relevance.smt2
+  regress1/arith/liastar/nonlinear_sat.smt2
+  regress1/arith/liastar/paper2008.smt2
+  regress1/arith/liastar/paper2020.smt2
+  regress1/arith/liastar/query026.smt2
+  regress1/arith/liastar/sat1.smt2
+  regress1/arith/liastar/sat2.smt2
+  regress1/arith/liastar/simple.smt2
+  regress1/arith/liastar/two-star-predicates.smt2
   regress1/arith/arith-brab-test.smt2
   regress1/arith/arith-int-004.cvc.smt2
   regress1/arith/arith-int-011.cvc.smt2
