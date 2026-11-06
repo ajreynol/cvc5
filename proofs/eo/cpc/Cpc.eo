@@ -99,6 +99,7 @@
 (include "./rules/Arrays.eo")
 (include "./rules/Uf.eo")
 (include "./rules/Arith.eo")
+(include "./rules/Coverings.eo")
 (include "./rules/BitVectors.eo")
 (include "./rules/Strings.eo")
 (include "./rules/Sets.eo")

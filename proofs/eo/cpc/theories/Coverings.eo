@@ -1,0 +1,77 @@
+(include "../theories/Arith.eo")
+(include "../programs/UPoly.eo")
+
+; Rules and operators of the univariate cylindrical algebraic coverings calculus.
+
+; disclaimer: All of the functions in this file are not in SMT-LIB.
+
+; The markers for the infinite endpoints of an interval.
+(declare-const @cov_minus_inf Real)
+(declare-const @cov_plus_inf Real)
+
+; program: $cov_seq_values
+; args:
+; - s @List: A sequence of (quotient remainder) pairs, as in $upoly_rem_seq_check.
+; - v Real: A rational, or one of the markers @cov_minus_inf and @cov_plus_inf.
+; return: >
+;   The list of the values of the remainders of s at v. If v is infinite,
+;   each value is a rational with the sign of the remainder at v, as given by
+;   $upoly_sign_at_inf.
+(program $cov_seq_values ((ql @List) (cl @List) (s @List :list) (v Real))
+  :signature (@List Real) @List
+  (
+  (($cov_seq_values @list.nil v)  @list.nil)
+  (($cov_seq_values (@list (@list ql cl) s) v)
+    (eo::define ((p ($upoly_of_list cl)))
+    (eo::cons @list
+      (eo::ite (eo::is_eq v @cov_minus_inf) ($upoly_sign_at_inf p false)
+      (eo::ite (eo::is_eq v @cov_plus_inf) ($upoly_sign_at_inf p true)
+        ($upoly_eval p v)))
+      ($cov_seq_values s v))))
+  )
+)
+
+; define: $cov_sign_var
+; args:
+; - s @List: A sequence of (quotient remainder) pairs, as in $upoly_rem_seq_check.
+; - v Real: A rational, or one of the markers @cov_minus_inf and @cov_plus_inf.
+; return: the number of sign variations of the remainders of s at v.
+(define $cov_sign_var ((s @List) (v Real))
+  ($sign_variations ($cov_seq_values s v)))
+
+; define: $valid_ran
+; args:
+; - q @List: The coefficients of the defining polynomial.
+; - lo Real: The lower bound of the isolating interval.
+; - hi Real: The upper bound of the isolating interval.
+; - s @List: The Sturm sequence of the defining polynomial.
+; return: >
+;   true if (@ran q lo hi s) is a well defined real algebraic number, that is,
+;   lo and hi are rationals, s is the Sturm sequence of q, q has opposite
+;   signs at lo and hi (and in particular neither is a root of q), and the
+;   number of sign variations of s drops by exactly one from lo to hi, i.e.
+;   q has exactly one root in (lo, hi). This also implies that q is not zero
+;   and that lo < hi. The change of sign is not needed for the number to be
+;   well defined, but allows refining the interval by bisection, keeping the
+;   half where q changes sign.
+(define $valid_ran ((q @List) (lo Real) (hi Real) (s @List))
+  (eo::ite (eo::and (eo::is_q lo) (eo::is_q hi))
+    (eo::define ((p ($upoly_of_list q)))
+    (eo::ite ($upoly_sturm_check p s)
+      (eo::and
+        (eo::is_neg (eo::mul ($upoly_eval p lo) ($upoly_eval p hi)))
+        (eo::is_eq
+          (eo::add ($cov_sign_var s lo) (eo::neg ($cov_sign_var s hi)))
+          1))
+      false))
+    false))
+
+; (@ran q lo hi s): the unique root of the polynomial with coefficients q, from
+; the lowest to the highest degree, in the interval (lo, hi), where s is the
+; Sturm sequence of the polynomial, as a list of (quotient remainder) pairs.
+(declare-parameterized-const @ran
+  ((q @List :opaque) (lo Real :opaque) (hi Real :opaque) (s @List :opaque))
+  (eo::requires ($valid_ran q lo hi s) true Real))
+
+(declare-parameterized-const @sgn_inv ((p Real :opaque)) (-> Real Real Bool))
+(declare-parameterized-const @is_root ((p Real :opaque)) (-> Real Bool))
