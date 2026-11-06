@@ -167,40 +167,60 @@
 ; args:
 ; - c Real: The coefficient.
 ; - k Int: The degree, which is non-negative.
-; return: the polynomial c * x^k.
-(program $upoly_monomial ((c Real) (k Int))
-  :signature (Real Int) @UPoly
+; - f @UPoly: >
+;     A polynomial with more than k coefficients, used only to bound the
+;     recursion.
+; return: >
+;   The polynomial c * x^k. This does not evaluate if k is negative, or if f has
+;   at most k coefficients.
+(program $upoly_monomial ((c Real) (k Int) (x Real) (f @UPoly :list))
+  :signature (Real Int @UPoly) @UPoly
   (
-  (($upoly_monomial c 0)  ($upoly_cons c @upoly.zero))
-  (($upoly_monomial c k)  ($upoly_cons 0/1 ($upoly_monomial c (eo::add k -1))))
+  (($upoly_monomial c 0 f)            ($upoly_cons c @upoly.zero))
+  (($upoly_monomial c k (@upoly x f))
+    ($upoly_cons 0/1 ($upoly_monomial c (eo::add k -1) f)))
   )
 )
 
-; program: $upoly_divides
+; program: $upoly_divides_rec
 ; args:
 ; - b @UPoly: The divisor, which is not zero.
 ; - a @UPoly: The dividend.
+; - f @UPoly: >
+;     A polynomial with more coefficients than the degree of a, used only to
+;     bound the recursion. Each step lowers the degree of a by at least one and
+;     removes one coefficient of f, so a is zero by the time f is.
 ; return: >
 ;   true if and only if b divides a. The leading term of a is cancelled by a
 ;   multiple of b until the degree of a is lower than the degree of b.
-(program $upoly_divides ((a @UPoly) (b @UPoly))
-  :signature (@UPoly @UPoly) Bool
+(program $upoly_divides_rec ((a @UPoly) (b @UPoly) (x Real) (f @UPoly :list))
+  :signature (@UPoly @UPoly @UPoly) Bool
   (
-  (($upoly_divides b @upoly.zero)  true)
-  (($upoly_divides b a)
+  (($upoly_divides_rec b @upoly.zero f)  true)
+  (($upoly_divides_rec b a @upoly.zero)  false)
+  (($upoly_divides_rec b a (@upoly x f))
     (eo::define ((da ($upoly_deg a)))
     (eo::define ((db ($upoly_deg b)))
     (eo::ite (eo::gt db da)
       false
-      ($upoly_divides b
+      ($upoly_divides_rec b
         ($upoly_add a
           ($upoly_mul
             ($upoly_monomial
               (eo::neg (eo::qdiv ($upoly_lc a) ($upoly_lc b)))
-              (eo::add da (eo::neg db)))
-            b)))))))
+              (eo::add da (eo::neg db))
+              a)
+            b))
+        f)))))
   )
 )
+
+; define: $upoly_divides
+; args:
+; - b @UPoly: The divisor, which is not zero.
+; - a @UPoly: The dividend.
+; return: true if and only if b divides a.
+(define $upoly_divides ((b @UPoly) (a @UPoly)) ($upoly_divides_rec b a a))
 
 ; program: $upoly_rem_seq_chain
 ; args:
