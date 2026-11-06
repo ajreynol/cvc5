@@ -44,6 +44,18 @@
   )
 )
 
+; program: $upoly_to_list
+; args:
+; - p @UPoly: The polynomial.
+; return: the list of the coefficients of p, from the lowest to the highest degree.
+(program $upoly_to_list ((a Real) (p @UPoly :list))
+  :signature (@UPoly) @List
+  (
+  (($upoly_to_list @upoly.zero)   @list.nil)
+  (($upoly_to_list (@upoly a p))  (eo::cons @list a ($upoly_to_list p)))
+  )
+)
+
 ; define: $upoly_eq
 ; args:
 ; - p @UPoly: The first polynomial.

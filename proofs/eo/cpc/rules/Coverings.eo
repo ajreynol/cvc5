@@ -281,12 +281,14 @@
 ; - sl @List: The Sturm-Tarski sequence for l, empty if l is not algebraic.
 ; - sr @List: The Sturm-Tarski sequence for r, empty if r is not algebraic.
 ; requires: The conditions of $cov_sgn_inv_intro_ok.
-; conclusion: p has a constant sign on the open interval (l, r).
+; conclusion: >
+;   The polynomial denoted by p, given by its coefficients, has a constant sign
+;   on the open interval (l, r).
 (declare-rule sgn_inv_intro
   ((p Real) (l Real) (r Real) (lo Real) (hi Real) (s @List) (sl @List) (sr @List))
   :args (p l r lo hi s sl sr)
   :requires ((($cov_sgn_inv_intro_ok p l r lo hi s sl sr) true))
-  :conclusion (@sgn_inv p l r)
+  :conclusion (@sgn_inv ($upoly_to_list ($upoly_of_term ($upoly_term_var p) p)) l r)
 )
 
 ;;;;; ProofRule::IS_ROOT_INTRO
@@ -298,11 +300,11 @@
 ; - r Real: A rational or a real algebraic number.
 ; - st @List: The Sturm-Tarski sequence for r, as in $cov_is_root, empty if r is rational.
 ; requires: r is a root of p, as checked by $cov_is_root.
-; conclusion: r is a root of p.
+; conclusion: r is a root of the polynomial denoted by p, given by its coefficients.
 (declare-rule is_root_intro ((p Real) (r Real) (st @List))
   :args (p r st)
   :requires ((($cov_is_root ($upoly_of_term ($upoly_term_var p) p) r st) true))
-  :conclusion (@is_root p r)
+  :conclusion (@is_root ($upoly_to_list ($upoly_of_term ($upoly_term_var p) p)) r)
 )
 
 ;;;;; Literals comparing a polynomial with zero, for RAN_EVAL and SGN_INV_ELIM
@@ -375,7 +377,7 @@
 ; rule: ran_eval
 ; implements: ProofRule::RAN_EVAL
 ; premises:
-; - (@is_root p r): r is a root of p.
+; - (@is_root q r): r is a root of the polynomial with coefficients q.
 ; - F: A literal comparing p with zero, as in $cov_lit_poly.
 ; args:
 ; - x Real: The variable of p.
@@ -386,12 +388,12 @@
 ;   in x, i.e. $upoly_of_term x p evaluates. The latter ensures that F states
 ;   that p is not zero at x, so x is not the root r.
 ; conclusion: x is not r.
-(declare-rule ran_eval ((x Real) (r Real) (p Real) (F Bool))
-  :premises ((@is_root p r) F)
+(declare-rule ran_eval ((x Real) (r Real) (p Real) (q @List) (F Bool))
+  :premises ((@is_root q r) F)
   :args (x r p)
   :requires ((($cov_lit_poly F) p)
              (($cov_lit_holds F 0/1) false)
-             ((eo::is_ok ($upoly_of_term x p)) true))
+             (($upoly_to_list ($upoly_of_term x p)) q))
   :conclusion (not (= x r))
 )
 
@@ -400,7 +402,8 @@
 ; rule: sgn_inv_elim
 ; implements: ProofRule::SGN_INV_ELIM
 ; premises:
-; - (@sgn_inv p l r): p has a constant sign on the open interval (l, r).
+; - (@sgn_inv q l r): The polynomial with coefficients q has a constant sign on the
+;   open interval (l, r).
 ; - F: A literal comparing p with zero, as in $cov_lit_poly.
 ; args:
 ; - x Real: The variable of p.
@@ -418,11 +421,11 @@
 ;   $mk_cover_piece for the cover rule, or false if (l, r) is the whole line.
 ;   Note the piece is never the point case of $mk_cover_piece: l and r cannot
 ;   be the same term, since l < s < r is required.
-(declare-rule sgn_inv_elim ((x Real) (p Real) (s Real) (l Real) (r Real) (F Bool))
-  :premises ((@sgn_inv p l r) F)
+(declare-rule sgn_inv_elim ((x Real) (p Real) (q @List) (s Real) (l Real) (r Real) (F Bool))
+  :premises ((@sgn_inv q l r) F)
   :args (x p s l r)
   :requires ((($cov_lit_poly F) p)
-             ((eo::is_ok ($upoly_of_term x p)) true)
+             (($upoly_to_list ($upoly_of_term x p)) q)
              ((eo::is_q s) true)
              (($cov_bound_lt l s) true)
              (($cov_bound_lt s r) true)

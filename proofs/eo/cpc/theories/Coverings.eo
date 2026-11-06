@@ -73,5 +73,11 @@
   ((q @List :opaque) (lo Real :opaque) (hi Real :opaque) (s @List :opaque))
   (eo::requires ($valid_ran q lo hi s) true Real))
 
-(declare-parameterized-const @sgn_inv ((p Real :opaque)) (-> Real Real Bool))
-(declare-parameterized-const @is_root ((p Real :opaque)) (-> Real Bool))
+; (@sgn_inv q l r): the polynomial with coefficients q, from the lowest to the
+; highest degree, has a constant sign on the open interval (l, r), whose endpoints
+; may be @cov_minus_inf and @cov_plus_inf.
+(declare-parameterized-const @sgn_inv ((q @List :opaque)) (-> Real Real Bool))
+
+; (@is_root q r): r is a root of the polynomial with coefficients q, from the
+; lowest to the highest degree.
+(declare-parameterized-const @is_root ((q @List :opaque)) (-> Real Bool))
