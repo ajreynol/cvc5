@@ -130,7 +130,8 @@
 ; return: >
 ;   The formula stating that x is in the interval: (= x l) for a point, and
 ;   otherwise the conjunction of (> x l) and (< x r), where a conjunct with an
-;   infinite endpoint is omitted, and which is true if both are omitted.
+;   infinite endpoint is omitted, and which is true if both are omitted. This does
+;   not evaluate if l is @cov_plus_inf or r is @cov_minus_inf.
 (program $mk_cover_piece ((T Type) (x T) (l Real) (r Real))
   :signature (T Real Real) Bool
   (
@@ -138,7 +139,8 @@
   (($mk_cover_piece x @cov_minus_inf r)              (< x r))
   (($mk_cover_piece x l @cov_plus_inf)               (> x l))
   (($mk_cover_piece x l r)
-    (eo::ite (eo::is_eq l r) (= x l) (and (> x l) (< x r))))
+    (eo::requires (eo::or (eo::is_eq l @cov_plus_inf) (eo::is_eq r @cov_minus_inf)) false
+      (eo::ite (eo::is_eq l r) (= x l) (and (> x l) (< x r)))))
   )
 )
 

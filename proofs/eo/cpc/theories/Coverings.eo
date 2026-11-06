@@ -6,8 +6,13 @@
 ; disclaimer: All of the functions in this file are not in SMT-LIB.
 
 ; The markers for the infinite endpoints of an interval.
-(declare-const @cov_minus_inf Real)
-(declare-const @cov_plus_inf Real)
+(declare-const @@cov_minus_inf Real)
+
+(define @cov_minus_inf () @@cov_minus_inf)
+
+(declare-const @@cov_plus_inf Real)
+
+(define @cov_plus_inf () @@cov_plus_inf)
 
 ; program: $cov_seq_values
 ; args:
