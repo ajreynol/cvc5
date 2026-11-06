@@ -71,12 +71,14 @@
       false))
     false))
 
-; (@ran q lo hi s): the unique root of the polynomial with coefficients q, from
-; the lowest to the highest degree, in the interval (lo, hi), where s is the
-; Sturm sequence of the polynomial, as a list of (quotient remainder) pairs.
+; (@ran q lo hi s): the root of the polynomial with coefficients q, from the lowest
+; to the highest degree, in the interval (lo, hi), where s is the Sturm sequence of
+; the polynomial, as a list of (quotient remainder) pairs. The type of this term
+; does not require that it is well defined: a rule that relies on the root or on
+; the interval checks $valid_ran, see $cov_lt and $cov_is_root.
 (declare-parameterized-const @ran
   ((q @List :opaque) (lo Real :opaque) (hi Real :opaque) (s @List :opaque))
-  (eo::requires ($valid_ran q lo hi s) true Real))
+  Real)
 
 ; (@sgn_inv q l r): the polynomial with coefficients q, from the lowest to the
 ; highest degree, has a constant sign on the open interval (l, r), whose endpoints

@@ -20,13 +20,18 @@
 ;   false if the isolating intervals of a and b are not separated. As the
 ;   bounds of an isolating interval are not roots of the defining polynomial,
 ;   an algebraic number lies strictly inside its interval, so a bound may
-;   touch the other number: e.g. a < (@ran q l2 h2 s2) if a <= l2.
+;   touch the other number: e.g. a < (@ran q l2 h2 s2) if a <= l2. This relies on
+;   the isolating intervals, so it is false unless each number is well defined.
 (program $cov_lt ((q1 @List) (l1 Real) (h1 Real) (s1 @List) (q2 @List) (l2 Real) (h2 Real) (s2 @List) (a Real) (b Real))
   :signature (Real Real) Bool
   (
-  (($cov_lt (@ran q1 l1 h1 s1) (@ran q2 l2 h2 s2))  (eo::not (eo::gt h1 l2)))
-  (($cov_lt (@ran q1 l1 h1 s1) b)                   (eo::not (eo::gt h1 b)))
-  (($cov_lt a (@ran q2 l2 h2 s2))                   (eo::not (eo::gt a l2)))
+  (($cov_lt (@ran q1 l1 h1 s1) (@ran q2 l2 h2 s2))
+    (eo::and (eo::and ($valid_ran q1 l1 h1 s1) ($valid_ran q2 l2 h2 s2))
+             (eo::not (eo::gt h1 l2))))
+  (($cov_lt (@ran q1 l1 h1 s1) b)
+    (eo::and ($valid_ran q1 l1 h1 s1) (eo::not (eo::gt h1 b))))
+  (($cov_lt a (@ran q2 l2 h2 s2))
+    (eo::and ($valid_ran q2 l2 h2 s2) (eo::not (eo::gt a l2))))
   (($cov_lt a b)                                    (eo::gt b a))
   )
 )
@@ -198,17 +203,21 @@
 ;   a root of p if its defining polynomial q divides p, in which case st is
 ;   ignored. Otherwise, by the Sturm-Tarski theorem, the number of sign
 ;   variations of st at a minus at b is the sum of the signs of p at the roots
-;   of q in (a, b). As e is the only one, it is zero if and only if p(e) = 0.
+;   of q in (a, b). As e is the only one, it is zero if and only if p(e) = 0. Both
+;   rely on e being the root of q in (a, b), so this is false unless e is well
+;   defined.
 (program $cov_is_root ((p @UPoly) (q @List) (a Real) (b Real) (s @List) (st @List) (e Real))
   :signature (@UPoly Real @List) Bool
   (
   (($cov_is_root p (@ran q a b s) st)
-    (eo::define ((qp ($upoly_of_list q)))
-    (eo::ite ($upoly_divides qp p)
-      true
-    (eo::ite ($upoly_rem_seq_check qp ($upoly_mul ($upoly_derivative qp) p) st)
-      (eo::is_eq ($cov_sign_var st a) ($cov_sign_var st b))
-      false))))
+    (eo::ite ($valid_ran q a b s)
+      (eo::define ((qp ($upoly_of_list q)))
+      (eo::ite ($upoly_divides qp p)
+        true
+      (eo::ite ($upoly_rem_seq_check qp ($upoly_mul ($upoly_derivative qp) p) st)
+        (eo::is_eq ($cov_sign_var st a) ($cov_sign_var st b))
+        false)))
+      false))
   (($cov_is_root p e st)
     (eo::ite (eo::and (eo::is_q e) (eo::is_eq st @list.nil))
       (eo::is_eq ($upoly_eval p e) 0/1)
