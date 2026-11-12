@@ -345,9 +345,6 @@ class ENode
     return argsPtr()[idx];
   }
 
-  /** The argument array, of length getNumArgs(). */
-  ENode* const* getArgs() const { return argsPtr(); }
-
   /** The size of the equivalence class, valid when this is the root. */
   uint32_t getClassSize() const { return d_classSize; }
 
@@ -435,48 +432,6 @@ class ENode
 
   /** The mutable past-the-end iterator of the parents. */
   ENodeVector::iterator endParents() { return d_parents.end(); }
-
-  /** Iterator over the members of the equivalence class. */
-  class iterator
-  {
-    /** The member the iterator is at. */
-    ENode* d_first;
-    /** Null before the first increment, then the start of the iteration. */
-    ENode* d_last;
-
-   public:
-    /** An iterator at n; m is null for begin() and n for end(). */
-    iterator(ENode* n, ENode* m) : d_first(n), d_last(m) {}
-    /** The member the iterator is at. */
-    ENode* operator*() { return d_first; }
-    /** Advance to the next member of the class. */
-    iterator& operator++()
-    {
-      if (d_last == nullptr)
-      {
-        d_last = d_first;
-      }
-      d_first = d_first->d_next;
-      return *this;
-    }
-    /** Postfix increment. */
-    iterator operator++(int)
-    {
-      iterator tmp = *this;
-      ++*this;
-      return tmp;
-    }
-    /** True if the iterators are at different positions. */
-    bool operator!=(const iterator& other) const
-    {
-      return d_last != other.d_last || d_first != other.d_first;
-    }
-  };
-
-  /** An iterator at this node, the first member visited. */
-  iterator begin() { return iterator(this, nullptr); }
-  /** The iterator reached once every member has been visited. */
-  iterator end() { return iterator(this, this); }
 
   /** The scope level at which this node was internalized. */
   uint32_t getIscopeLvl() const { return d_iscopeLvl; }

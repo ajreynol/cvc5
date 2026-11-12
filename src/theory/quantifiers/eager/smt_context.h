@@ -171,16 +171,10 @@ class SmtContext final : protected EnvObj
   /** The E-graph. */
   EGraph& getEGraph() { return d_egraph; }
 
-  /** The E-graph, read-only. */
-  const EGraph& getEGraph() const { return d_egraph; }
-
   // ------------------------------- the Boolean side, and the bridge to the
   //                                 E-graph
   /** The propositional side. */
   PropCore& getPropCore() { return d_prop; }
-
-  /** The propositional side, read-only. */
-  const PropCore& getPropCore() const { return d_prop; }
 
   /** The enode of the Boolean variable v, which must have one. */
   ENode* boolVar2ENode(SatVariable v) const
@@ -204,14 +198,8 @@ class SmtContext final : protected EnvObj
     return n == d_falseENode ? s_falseLiteral : SatLiteral(enode2BoolVar(n));
   }
 
-  /** The value of the Boolean variable of the Boolean enode n. */
-  SatValue getAssignment(ENode* n) const;
-
   /** The current scope level of the core. */
   uint32_t getScopeLevel() const { return d_trailStack.getScopeLevel(); }
-
-  /** Whether n is the enode of true. */
-  bool isTrue(const ENode* n) const { return n == d_trueENode; }
 
   // ----------------------------------------------- backtracking support
   /** The trail stack, which undoes the theory side's changes on a pop. */

@@ -122,9 +122,6 @@ class FingerprintSet
    */
   Fingerprint* insert(TNode q, size_t numArgs, ENode* const* args);
 
-  /** The number of fingerprints recorded. */
-  size_t size() const { return d_fingerprints.size(); }
-
  private:
   /**
    * Make the reusable d_dummy stand for q, dataHash and a copy of args

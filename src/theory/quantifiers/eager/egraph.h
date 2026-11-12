@@ -173,12 +173,6 @@ class EGraph : protected EnvObj
                                uint32_t e2Generation);
 
   // ---------------------------------------------- equality and congruence
-  /** True if n1 and n2 are in the same equivalence class. */
-  static bool isEq(const ENode* n1, const ENode* n2)
-  {
-    return n1->getRoot() == n2->getRoot();
-  }
-
   /** Merge the classes of n1 and n2. */
   void addEq(ENode* n1, ENode* n2);
   /** Undo an addEq; invoked from the trail. */

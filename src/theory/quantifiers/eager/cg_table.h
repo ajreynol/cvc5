@@ -81,9 +81,6 @@ class CgTable
   /** True if n itself is the element of the table congruent to n. */
   bool containsPtr(ENode* n) const { return find(n) == n; }
 
-  /** Remove all elements. */
-  void reset() { d_table.clear(); }
-
  private:
   /** The elements, hashed and compared modulo congruence. */
   std::unordered_set<ENode*, Hash, Eq> d_table;
