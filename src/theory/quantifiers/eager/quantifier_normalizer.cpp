@@ -8,6 +8,8 @@
  * ****************************************************************************
  *
  * The quantified variables of the eager E-matching core.
+ *
+ * Not ported from Z3: original cvc5 code.
  */
 
 #include "theory/quantifiers/eager/quantifier_normalizer.h"

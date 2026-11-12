@@ -8,6 +8,8 @@
  * ****************************************************************************
  *
  * The quantifiers module of the eager E-matching core.
+ *
+ * Not ported from Z3: original cvc5 code.
  */
 
 #include "theory/quantifiers/eager/eager_e_matching.h"

@@ -9,8 +9,9 @@
  *
  * Relevancy propagation.
  *
- * Ported from Z3 (MIT License, Copyright (c) Microsoft Corporation),
- * file src/smt/smt_relevancy.cpp, and recast in cvc5 style.
+ * Ported from Z3: src/smt/smt_relevancy.cpp.
+ * Z3 is Copyright (c) Microsoft Corporation and licensed under the MIT
+ * License, see licenses/z3-LICENSE.
  */
 
 #include "theory/quantifiers/eager/relevancy.h"

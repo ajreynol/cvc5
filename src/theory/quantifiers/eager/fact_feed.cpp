@@ -9,6 +9,8 @@
  *
  * The module of the theory engine that gives the eager E-matching core the
  * assignment of the SAT solver.
+ *
+ * Not ported from Z3: original cvc5 code.
  */
 
 #include "theory/quantifiers/eager/fact_feed.h"

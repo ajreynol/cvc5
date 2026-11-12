@@ -9,10 +9,12 @@
  *
  * Relevancy propagation.
  *
- * Ported from Z3 (MIT License, Copyright (c) Microsoft Corporation),
- * files src/smt/smt_relevancy.h and src/smt/smt_relevancy.cpp, and recast in
- * cvc5 style. Z3's abstract propagator and its single implementation are
- * merged into one class here.
+ * Ported from Z3: src/smt/smt_relevancy.h, src/smt/smt_relevancy.cpp.
+ * Z3 is Copyright (c) Microsoft Corporation and licensed under the MIT
+ * License, see licenses/z3-LICENSE.
+ *
+ * Z3's abstract propagator and its single implementation are merged into one
+ * class here.
  *
  * Relevancy is the reason the Z3 core does far less quantifier instantiation
  * than a naive CDCL(T) engine: a term only becomes relevant when it is needed
@@ -56,6 +58,7 @@ class PropCore;
 class RelevancyPropagator
 {
  public:
+  /** Make the propagator of core, on the trail stack of theory. */
   RelevancyPropagator(PropCore& core, SmtContext& theory);
   ~RelevancyPropagator();
 
@@ -117,27 +120,37 @@ class RelevancyPropagator
    */
   struct Edge
   {
+    /** Which map the edge is in. */
     enum class Kind
     {
+      /** A gate watch for the value true. */
       POS_WATCH,
+      /** A gate watch for the value false. */
       NEG_WATCH,
+      /** A dependency. */
       DEPENDENCY
     };
+    /** The kind of the edge. */
     Kind d_kind;
+    /** The source of the edge: the watched or depended-on expression. */
     Node d_node;
   };
 
   /** Unmarks an expression marked relevant when it is popped. */
   struct UnmarkCleanup
   {
+    /** The owner of the list. */
     RelevancyPropagator* d_rp;
+    /** Unmark n. */
     void operator()(Node& n) { d_rp->d_isRelevant[n.getId()] = false; }
   };
 
   /** Removes an edge when it is popped. */
   struct RemoveEdgeCleanup
   {
+    /** The owner of the list. */
     RelevancyPropagator* d_rp;
+    /** Remove e. */
     void operator()(Edge& e) { d_rp->removeEdge(e); }
   };
 
@@ -148,6 +161,10 @@ class RelevancyPropagator
   static std::vector<TNode> getEdges(
       const std::unordered_map<TNode, std::vector<TNode>>& edges, TNode n);
 
+  /**
+   * Mark n alone relevant, queue it for propagate, and notify PropCore.
+   * Requires n not to be relevant.
+   */
   void setRelevant(TNode n);
 
   /** Remove the edge e, the last one added for its node. */
@@ -186,7 +203,9 @@ class RelevancyPropagator
    * declared after them.
    */
   context::CDList<Node, UnmarkCleanup> d_relevantExprs;
+  /** The edges added, see Edge. */
   context::CDList<Edge, RemoveEdgeCleanup> d_edges;
+  /** True while propagate runs, so that a nested call returns at once. */
   bool d_propagating;
 };
 

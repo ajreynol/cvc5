@@ -9,7 +9,7 @@
  *
  * The proofs of the lemmas of the eager E-matching core.
  *
- * Not ported from Z3: this is cvc5 integration code.
+ * Not ported from Z3: original cvc5 code.
  */
 
 #include "cvc5_private.h"
@@ -42,6 +42,7 @@ namespace theory::quantifiers::eager {
 class LemmaProofGenerator : protected EnvObj, public ProofGenerator
 {
  public:
+  /** The maps of preprocessed and weakened lemmas are in env's user context. */
   LemmaProofGenerator(Env& env);
   /**
    * Make the instance of q for terms, which this proves; terms are the
@@ -71,8 +72,14 @@ class LemmaProofGenerator : protected EnvObj, public ProofGenerator
    * flattened, which this proves; or null if this has no proof of form.
    */
   Node mkWeakened(const Node& form, const Node& d);
+  /**
+   * The proof of f, an instance made by mkInstance or a lemma weakened by
+   * mkWeakened.
+   */
   std::shared_ptr<ProofNode> getProofFor(Node f) override;
+  /** Whether f is an instance made by mkInstance or a weakened lemma. */
   bool hasProofFor(Node f) override;
+  /** The name of this proof generator. */
   std::string identify() const override
   {
     return "quantifiers::eager::LemmaProofGenerator";

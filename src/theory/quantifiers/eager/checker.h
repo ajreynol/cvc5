@@ -10,8 +10,9 @@
  * A cheap check of whether an instance is already satisfied, or already in
  * conflict, under the current assignment.
  *
- * Ported from Z3 (MIT License, Copyright (c) Microsoft Corporation), files
- * src/smt/smt_checker.h and src/smt/smt_checker.cpp, recast in cvc5 style.
+ * Ported from Z3: src/smt/smt_checker.h, src/smt/smt_checker.cpp.
+ * Z3 is Copyright (c) Microsoft Corporation and licensed under the MIT
+ * License, see licenses/z3-LICENSE.
  *
  * The check is done without internalizing the instance: the body is evaluated
  * structurally, mapping its ground subterms to existing enodes and reading
@@ -36,9 +37,14 @@ class EGraph;
 class ENode;
 class SmtContext;
 
+/**
+ * Evaluates an instance body under bindings, against the assignment and the
+ * E-graph of the core, without internalizing it.
+ */
 class Checker
 {
  public:
+  /** Make the checker of the core c. */
   Checker(SmtContext& c);
 
   /** True if the body is already satisfied under the given bindings. */
@@ -50,18 +56,41 @@ class Checker
  private:
   /** True if n has the value isTrue under the given bindings. */
   bool run(TNode n, size_t numBindings, ENode* const* bindings, bool isTrue);
+  /** True if every argument of a has the value isTrue. */
   bool allArgs(TNode a, size_t depth, bool isTrue);
+  /** True if some argument of a has the value isTrue. */
   bool anyArg(TNode a, size_t depth, bool isTrue);
+  /**
+   * True if n, at the given depth of the body, is known to have the value
+   * isTrue: by the assignment of n if it is relevant, else by the rule of
+   * its connective, else by the assignment of an equal relevant enode.
+   * False past the maximum depth.
+   */
   bool checkCore(TNode n, size_t depth, bool isTrue);
+  /** checkCore, cached for the current run. */
   bool check(TNode n, size_t depth, bool isTrue);
+  /**
+   * A relevant enode congruent to the application n, whose arguments are
+   * mapped by getENodeEqTo, or null.
+   */
   ENode* getENodeEqToCore(TNode n);
+  /**
+   * A relevant enode equal to n under the bindings, or null: the binding of
+   * a variable, the enode of n, or one found by getENodeEqToCore (cached).
+   */
   ENode* getENodeEqTo(TNode n);
 
+  /** The core, whose assignment and relevancy are read. */
   SmtContext& d_context;
+  /** The E-graph of the core. */
   EGraph& d_egraph;
+  /** The results of check for each value (index 1 for true), per run. */
   std::unordered_map<Node, bool> d_isTrueCache[2];
+  /** The results of getENodeEqTo for applications, per run. */
   std::unordered_map<Node, ENode*> d_toENodeCache;
+  /** The number of bindings of the current run. */
   size_t d_numBindings;
+  /** The bindings of the current run, indexed by variable index. */
   ENode* const* d_bindings;
 };
 

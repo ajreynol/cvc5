@@ -9,8 +9,9 @@
  *
  * Fingerprints: the record of quantifier instantiations already made.
  *
- * Ported from Z3 (MIT License, Copyright (c) Microsoft Corporation),
- * file src/smt/fingerprints.cpp, and recast in cvc5 style.
+ * Ported from Z3: src/smt/fingerprints.cpp.
+ * Z3 is Copyright (c) Microsoft Corporation and licensed under the MIT
+ * License, see licenses/z3-LICENSE.
  */
 
 #include "theory/quantifiers/eager/fingerprints.h"

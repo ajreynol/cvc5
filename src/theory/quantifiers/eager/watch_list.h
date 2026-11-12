@@ -9,8 +9,9 @@
  *
  * The watch list of a literal.
  *
- * Ported from Z3 (MIT License, Copyright (c) Microsoft Corporation),
- * file src/smt/watch_list.h, and recast in cvc5 style.
+ * Ported from Z3: src/smt/watch_list.h.
+ * Z3 is Copyright (c) Microsoft Corporation and licensed under the MIT
+ * License, see licenses/z3-LICENSE.
  */
 
 #include "cvc5_private.h"
@@ -41,25 +42,32 @@ class WatchList
  public:
   using ClauseIterator = Clause**;
 
+  /** Remove all clauses and literals. */
   void reset()
   {
     d_clauses.clear();
     d_literals.clear();
   }
 
+  /** An iterator to the first clause watching this literal. */
   ClauseIterator beginClause() { return d_clauses.data(); }
 
+  /** The past-the-end iterator of the clauses watching this literal. */
   ClauseIterator endClause() { return d_clauses.data() + d_clauses.size(); }
 
   /** The binary watches, in the order they were inserted. */
   const std::vector<SatLiteral>& getLiterals() const { return d_literals; }
 
+  /** Add c to the clauses watching this literal. */
   void insertClause(Clause* c) { d_clauses.push_back(c); }
 
+  /** Add the binary watch l; see the class comment. */
   void insertLiteral(const SatLiteral& l) { d_literals.push_back(l); }
 
+  /** Remove c from the clauses, if it is there. */
   void removeClause(Clause* c);
 
+  /** Remove the clauses marked as deleted. */
   void removeDeleted();
 
   /** Drop the clauses from newEnd on, which must be in the list. */
@@ -70,7 +78,9 @@ class WatchList
   }
 
  private:
+  /** The clauses watching this literal. */
   std::vector<Clause*> d_clauses;
+  /** The binary watches, in the order they were inserted. */
   std::vector<SatLiteral> d_literals;
 };
 

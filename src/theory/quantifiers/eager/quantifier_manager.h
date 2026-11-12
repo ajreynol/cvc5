@@ -9,9 +9,9 @@
  *
  * Quantifier reasoning for the eager E-matching core.
  *
- * Ported from Z3 (MIT License, Copyright (c) Microsoft Corporation),
- * files src/smt/smt_quantifier.h and src/smt/smt_quantifier.cpp, recast in
- * cvc5 style.
+ * Ported from Z3: src/smt/smt_quantifier.h, src/smt/smt_quantifier.cpp.
+ * Z3 is Copyright (c) Microsoft Corporation and licensed under the MIT
+ * License, see licenses/z3-LICENSE.
  *
  * The manager owns the E-matching engines (Mam), the queue of delayed
  * instantiations (QiQueue) and the generations of the quantifiers. Of Z3's
@@ -41,16 +41,29 @@ class Mam;
 class ENode;
 class SmtContext;
 
+/**
+ * The quantifiers of the core, Z3's quantifier_manager: their generations,
+ * and the E-matching engine and instantiation queue that make their
+ * instances.
+ */
 class QuantifierManager : protected EnvObj
 {
  public:
+  /** The quantifier manager of the core ctx. */
   QuantifierManager(Env& env, SmtContext& ctx);
   ~QuantifierManager();
 
+  /** Register the quantifier q, internalized with the given generation. */
   void add(TNode q, uint32_t generation);
+  /**
+   * Unregister q, the last quantifier added, whose Boolean variable is
+   * deleted on backtracking.
+   */
   void del(TNode q);
+  /** Whether no quantifier is registered. */
   bool empty() const { return d_quantifiers.empty(); }
 
+  /** The generation of q, or 0 if q is not registered. */
   uint32_t getGeneration(TNode q) const;
 
   /**
@@ -63,6 +76,7 @@ class QuantifierManager : protected EnvObj
                    ENode* const* bindings,
                    uint32_t maxGeneration);
 
+  /** Discard the queue's pending instances, at the start of a search. */
   void initSearch();
   /** Invoked whenever q is assigned to true. */
   void notifyAssigned(TNode q);
@@ -70,7 +84,12 @@ class QuantifierManager : protected EnvObj
   void notifyMerge(ENode* n1, ENode* n2);
   /** Invoked whenever n is marked as relevant. */
   void notifyRelevant(ENode* n);
+  /** Whether the queue or the matchers have pending work. */
   bool canPropagate() const;
+  /**
+   * Run the matchers, if a quantifier was asserted, then process the queued
+   * instances: make the cheap or conflicting ones, and drop the others.
+   */
   void propagate();
 
   /**
@@ -81,6 +100,7 @@ class QuantifierManager : protected EnvObj
   void notifyPop();
 
  private:
+  /** The core. */
   SmtContext& d_context;
   /** When the instances of the matches found are made. */
   QiQueue d_queue;
@@ -88,6 +108,7 @@ class QuantifierManager : protected EnvObj
   FingerprintSet d_fingerprints;
   /** The generation of each quantifier, as Z3's quantifier_stat keeps it. */
   std::unordered_map<Node, uint32_t> d_generations;
+  /** The registered quantifiers, in the order they were added. */
   std::vector<Node> d_quantifiers;
   /** The E-matching engine. */
   std::unique_ptr<Mam> d_mam;

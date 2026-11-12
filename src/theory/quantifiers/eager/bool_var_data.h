@@ -9,8 +9,9 @@
  *
  * Per-Boolean-variable data of the eager E-matching core.
  *
- * Ported from Z3 (MIT License, Copyright (c) Microsoft Corporation),
- * file src/smt/smt_bool_var_data.h, and recast in cvc5 style.
+ * Ported from Z3: src/smt/smt_bool_var_data.h.
+ * Z3 is Copyright (c) Microsoft Corporation and licensed under the MIT
+ * License, see licenses/z3-LICENSE.
  */
 
 #include "cvc5_private.h"
@@ -21,9 +22,11 @@
 namespace cvc5::internal {
 namespace theory::quantifiers::eager {
 
+/** The data the core keeps for each Boolean variable. */
 struct BoolVarData
 {
  private:
+  /** true if the variable is an equality atom */
   uint32_t d_eq : 1;
   /** has an enode associated with it */
   uint32_t d_enode : 1;
@@ -33,24 +36,34 @@ struct BoolVarData
   uint32_t d_iscopeLvl : 23;
 
  public:
+  /** The scope level at which the variable was internalized. */
   uint32_t getInternLevel() const { return d_iscopeLvl; }
 
+  /** True if the variable is an equality, a quantifier, or has an enode. */
   bool isAtom() const { return d_eq || d_quantifier || d_enode; }
 
+  /** True if the variable has an enode associated with it. */
   bool isENode() const { return d_enode; }
 
+  /** Record that the variable has an enode. */
   void setENodeFlag() { d_enode = true; }
 
+  /** Clear the enode flag; invoked from the trail. */
   void resetENodeFlag() { d_enode = false; }
 
+  /** True if the variable is attached to a quantifier. */
   bool isQuantifier() const { return d_quantifier; }
 
+  /** Record that the variable is attached to a quantifier. */
   void setQuantifierFlag() { d_quantifier = true; }
 
+  /** True if the variable is an equality atom. */
   bool isEq() const { return d_eq; }
 
+  /** Record that the variable is an equality atom. */
   void setEqFlag() { d_eq = true; }
 
+  /** Initialize the data of a variable internalized at scope iscopeLvl. */
   void init(uint32_t iscopeLvl)
   {
     d_iscopeLvl = iscopeLvl;

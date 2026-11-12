@@ -9,11 +9,13 @@
  *
  * The Boolean search of the eager E-matching core.
  *
- * Ported from Z3 (MIT License, Copyright (c) Microsoft Corporation), the
- * Boolean part of files src/smt/smt_context.{h,cpp} and
- * src/smt/smt_internalizer.cpp, and recast in cvc5 style. In Z3 this is part
- * of the context class; here it is separate so that the Boolean search and
- * the theory reasoning have an explicit boundary.
+ * Ported from Z3: the Boolean part of src/smt/smt_context.{h,cpp},
+ * src/smt/smt_internalizer.cpp.
+ * Z3 is Copyright (c) Microsoft Corporation and licensed under the MIT
+ * License, see licenses/z3-LICENSE.
+ *
+ * In Z3 this is part of the context class; here it is separate so that the
+ * Boolean search and the theory reasoning have an explicit boundary.
  */
 
 #include "cvc5_private.h"
@@ -69,6 +71,7 @@ using prop::SatValue;
 class PropCore : protected EnvObj
 {
  public:
+  /** Make the Boolean side of ctx, which counts its work in stats. */
   PropCore(Env& env, SmtContext& ctx, Statistics& stats);
   ~PropCore();
 
@@ -79,21 +82,29 @@ class PropCore : protected EnvObj
   void initTrue(TNode t);
 
   // ------------------------------------------------------ Boolean variables
+  /**
+   * Make the Boolean variable of n, which has none, at the current scope.
+   * Pushes a trail object that deletes it when the scope is popped.
+   */
   SatVariable mkBoolVar(TNode n);
 
   /** Undo the last mkBoolVar; invoked from the trail. */
   void undoMkBoolVar();
 
+  /** The Boolean variable of n; the id of n must be in the map. */
   SatVariable getBoolVar(TNode n) const { return d_expr2BoolVar[n.getId()]; }
 
+  /** The Boolean variable of the expression with this id, unchecked. */
   SatVariable getBoolVarOfId(size_t id) const { return d_expr2BoolVar[id]; }
 
+  /** The Boolean variable of the expression with this id, or undef. */
   SatVariable getBoolVarOfIdOption(size_t id) const
   {
     return id < d_expr2BoolVar.size() ? d_expr2BoolVar[id]
                                       : prop::undefSatVariable;
   }
 
+  /** Map the expression with this id to v, growing the map as needed. */
   void setBoolVar(size_t id, SatVariable v)
   {
     if (id >= d_expr2BoolVar.size())
@@ -103,17 +114,28 @@ class PropCore : protected EnvObj
     d_expr2BoolVar[id] = v;
   }
 
+  /** The expression of the Boolean variable v. */
   TNode boolVar2Expr(SatVariable v) const { return d_boolVar2Expr[v]; }
 
+  /**
+   * The literal of n, which is a Boolean constant, an internalized
+   * expression or the negation of one.
+   */
   SatLiteral getLiteral(TNode n) const;
 
+  /** The number of Boolean variables that currently exist. */
   size_t getNumBoolVars() const { return d_bInternalizedStack.size(); }
 
+  /** True if n has a Boolean variable. */
   bool bInternalized(TNode n) const
   {
     return getBoolVarOfIdOption(n.getId()) != prop::undefSatVariable;
   }
 
+  /**
+   * True if getLiteral can map the literal n: it is false, or it, or the
+   * argument of its negation, has a Boolean variable.
+   */
   bool litInternalized(TNode n) const
   {
     if (n.isConst() && !n.getConst<bool>())
@@ -123,8 +145,10 @@ class PropCore : protected EnvObj
     return n.getKind() == Kind::NOT ? bInternalized(n[0]) : bInternalized(n);
   }
 
+  /** The data of the Boolean variable v. */
   BoolVarData& getBdata(SatVariable v) { return d_bdata[v]; }
 
+  /** The data of the Boolean variable v, read-only. */
   const BoolVarData& getBdata(SatVariable v) const { return d_bdata[v]; }
 
   /** The scope level at which v was internalized. */
@@ -134,27 +158,37 @@ class PropCore : protected EnvObj
   }
 
   // ------------------------------------------------------------- assignment
+  /** The value of the literal with index litIdx (SatLiteral::toInt). */
   SatValue getLitAssignment(size_t litIdx) const
   {
     return d_assignment[litIdx];
   }
 
+  /** The value of the literal l. */
   SatValue getAssignment(SatLiteral l) const
   {
     return getLitAssignment(l.toInt());
   }
 
+  /** The value of the Boolean variable v. */
   SatValue getAssignment(SatVariable v) const
   {
     return getAssignment(SatLiteral(v));
   }
 
+  /**
+   * The value of n, which is false, an internalized expression or the
+   * negation of one.
+   */
   SatValue getAssignment(TNode n) const;
 
   /** Like getAssignment, but returns SAT_VALUE_UNKNOWN if n is not
    * internalized. */
   SatValue findAssignment(TNode n) const;
 
+  /**
+   * Assign l true: a conflict if l is false, nothing if it is already true.
+   */
   void assign(SatLiteral l)
   {
     Assert(l != s_falseLiteral);
@@ -167,6 +201,10 @@ class PropCore : protected EnvObj
     }
   }
 
+  /**
+   * Assign the unassigned l true, and enqueue it for the theory side if it
+   * is a relevant atom.
+   */
   void assignCore(SatLiteral l);
 
   /** Boolean constraint propagation; returns false on a conflict. */
@@ -185,8 +223,10 @@ class PropCore : protected EnvObj
   void propagateRelevancy(size_t qhead);
 
   // -------------------------------------------------------------- conflicts
+  /** Record a conflict at the current scope, which the pop clears. */
   void setConflict() { d_conflict = true; }
 
+  /** True if there is a conflict, at this scope or by an asserted formula. */
   bool inconsistent() const { return d_conflict || d_assertedInconsistent; }
 
   /**
@@ -195,6 +235,7 @@ class PropCore : protected EnvObj
    */
   void setAssertedInconsistent() { d_assertedInconsistent = true; }
 
+  /** True if an asserted formula is false, see setAssertedInconsistent. */
   bool isAssertedInconsistent() const { return d_assertedInconsistent; }
 
   // -------------------------------------------------------------- relevancy
@@ -202,29 +243,36 @@ class PropCore : protected EnvObj
   // Relevancy runs at level 2: an assigned atom other than a quantifier
   // reaches the theory side only once it is relevant.
 
+  /** True if n is marked relevant. */
   bool isRelevant(TNode n) const
   {
     return d_relevancyPropagator->isRelevant(n);
   }
 
+  /** True if the expression of v is marked relevant. */
   bool isRelevant(SatVariable v) const { return isRelevant(boolVar2Expr(v)); }
 
+  /** True if the variable of l, which is not a constant, is relevant. */
   bool isRelevant(SatLiteral l) const
   {
     Assert(l != s_trueLiteral && l != s_falseLiteral);
     return isRelevant(l.getSatVariable());
   }
 
+  /** Mark n and its class relevant, and propagate relevancy. */
   void markAsRelevant(TNode n)
   {
     d_relevancyPropagator->markAsRelevant(n);
     d_relevancyPropagator->propagate();
   }
 
+  /** Mark the expression of v relevant, and propagate relevancy. */
   void markAsRelevant(SatVariable v) { markAsRelevant(boolVar2Expr(v)); }
 
+  /** Mark the variable of l relevant, and propagate relevancy. */
   void markAsRelevant(SatLiteral l) { markAsRelevant(l.getSatVariable()); }
 
+  /** Mark target relevant whenever source is, until the scope is popped. */
   void addRelevancyDependency(TNode source, TNode target)
   {
     d_relevancyPropagator->addDependency(source, target);
@@ -275,10 +323,13 @@ class PropCore : protected EnvObj
    * variable of n is made.
    */
   void mkGateConstraints(TNode n);
-  /** The relevancy watches of the gate n, asserted as a root. */
+  /** Have the and-gate n watch each of its arguments for false. */
   void addAndRelWatches(TNode n);
+  /** Have the or-gate n watch each of its arguments for true. */
   void addOrRelWatches(TNode n);
+  /** Have the implication n watch its antecedent false, consequent true. */
   void addImpliesRelWatches(TNode n);
+  /** Have the ite n watch its condition for either value. */
   void addIteRelWatches(TNode n);
 
   // ------------------------------------------------------------ host mode
@@ -308,13 +359,17 @@ class PropCore : protected EnvObj
   /** Unassigns a literal popped from d_assignedLiterals. */
   struct UnassignCleanup
   {
+    /** The owner of the list. */
     PropCore* d_core;
+    /** Unassign l. */
     void operator()(SatLiteral& l) { d_core->unassign(l); }
   };
   /** Retires a clause popped from d_auxClauses. */
   struct RetireCleanup
   {
+    /** The owner of the list. */
     PropCore* d_core;
+    /** Add c to the clauses to delete in notifyPopped. */
     void operator()(Clause*& c) { d_core->d_retiredClauses.push_back(c); }
   };
 
@@ -322,34 +377,58 @@ class PropCore : protected EnvObj
   class MkBoolVarTrail : public Trail
   {
    public:
+    /** A trail object that undoes the mkBoolVar calls of core. */
     MkBoolVarTrail(PropCore& core) : d_core(core) {}
+    /** Delete the last Boolean variable made. */
     void undo() override { d_core.undoMkBoolVar(); }
 
    private:
+    /** The core whose variable is deleted. */
     PropCore& d_core;
   };
 
+  /** Make l and its negation unassigned. */
   void unassign(SatLiteral l);
 
   // the Boolean structure
+  /** The clauses defining the variable of the negation n. */
   void mkNotCnstr(TNode n);
+  /** The clauses defining the variable of the conjunction n. */
   void mkAndCnstr(TNode n);
+  /** The clauses defining the variable of the disjunction n. */
   void mkOrCnstr(TNode n);
+  /** The clauses defining the variable of the implication n. */
   void mkImpliesCnstr(TNode n);
+  /** The clauses defining the variable of n, an iff, or an xor if sign. */
   void mkIffCnstr(TNode n, bool sign);
+  /** The clauses defining the variable of the Boolean ite n. */
   void mkIteCnstr(TNode n);
 
   // clause management
+  /** Remove cls from the watch list of its literal at idx (0 or 1). */
   void removeWatchLiteral(Clause* cls, size_t idx);
+  /** Unwatch and delete cls, which is not marked deleted. */
   void delClause(Clause* cls);
+  /**
+   * Sort the literals of an auxiliary clause and remove the false and
+   * duplicate ones, in place, updating numLits. Returns false if the clause
+   * is equivalent to true.
+   */
   bool simplifyAuxClauseLiterals(size_t& numLits, SatLiteral* lits);
+  /**
+   * True if the clause l1 or l2 can be kept only in the watch lists: it is
+   * made at the base level, over variables of the base level.
+   */
   bool useBinaryClauseOpt(SatLiteral l1, SatLiteral l2) const;
+  /** Add cls to the watch list of its literal at idx (0 or 1). */
   void addWatchLiteral(Clause* cls, size_t idx);
 
   /** The theory side. */
   SmtContext& d_ctx;
+  /** The statistics of the core. */
   Statistics& d_stats;
 
+  /** The relevancy propagator, destroyed by flushRelevancy. */
   std::unique_ptr<RelevancyPropagator> d_relevancyPropagator;
 
   /** Maps the id of an expression to its Boolean variable. */
@@ -362,6 +441,7 @@ class PropCore : protected EnvObj
   std::vector<SatValue> d_assignment;
   /** The watch list of each literal. */
   std::vector<WatchList> d_watches;
+  /** The data of each Boolean variable. */
   std::vector<BoolVarData> d_bdata;
   /**
    * The clauses of the popped scopes, which are deleted together after the
@@ -370,7 +450,9 @@ class PropCore : protected EnvObj
   ClauseVector d_retiredClauses;
   /** The transient clauses, made at scopes above the base level. */
   context::CDList<Clause*, RetireCleanup> d_auxClauses;
+  /** The assigned literals, in order, unassigned when popped. */
   context::CDList<SatLiteral, UnassignCleanup> d_assignedLiterals;
+  /** The index in d_assignedLiterals of the next literal for bcp. */
   size_t d_qhead;
 
   /** True if a conflict was found at the current scope. */
@@ -378,6 +460,7 @@ class PropCore : protected EnvObj
   /** True if a formula asserted false. */
   context::CDO<bool> d_assertedInconsistent;
 
+  /** The trail object pushed by every mkBoolVar, through pushPtr. */
   MkBoolVarTrail d_mkBoolVarTrail;
 };
 

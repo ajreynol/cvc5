@@ -9,8 +9,9 @@
  *
  * Statistics of the eager E-matching core.
  *
- * Ported from Z3 (MIT License, Copyright (c) Microsoft Corporation),
- * file src/smt/smt_statistics.h, and recast in cvc5 style.
+ * Ported from Z3: src/smt/smt_statistics.h.
+ * Z3 is Copyright (c) Microsoft Corporation and licensed under the MIT
+ * License, see licenses/z3-LICENSE.
  */
 
 #include "cvc5_private.h"
@@ -27,21 +28,39 @@ namespace theory::quantifiers::eager {
 /** The statistics of the core, which cvc5's --stats shows. */
 struct Statistics
 {
+  /** Register the statistics in sr. */
   Statistics(StatisticsRegistry& sr);
 
+  /** propagations by clause objects (see d_numMkClause) */
   IntStat d_numPropagations;
+  /** propagations and conflicts by binary clauses kept in watch lists only */
   IntStat d_numBinPropagations;
+  /** equalities added to the E-graph, including redundant ones */
   IntStat d_numAddEq;
+  /** final checks of the core */
   IntStat d_numFinalChecks;
+  /** Boolean variables created */
   IntStat d_numMkBoolVar;
+  /** Boolean variables deleted on backtracking */
   IntStat d_numDelBoolVar;
+  /** enodes created */
   IntStat d_numMkENode;
+  /** enodes deleted on backtracking */
   IntStat d_numDelENode;
+  /**
+   * clauses created as clause objects: those that are not binary, and binary
+   * ones that cannot be kept in the watch lists only (useBinaryClauseOpt)
+   */
   IntStat d_numMkClause;
+  /** clauses deleted, which happens on backtracking */
   IntStat d_numDelClause;
+  /** binary clauses created and kept in the watch lists only */
   IntStat d_numMkBinClause;
+  /** literals in the clauses created */
   IntStat d_numMkLits;
+  /** the maximum generation reached */
   IntStat d_maxGeneration;
+  /** literals assigned */
   IntStat d_numAssignments;
   /** assertions handed to the core */
   IntStat d_numAssertedFormulas;
@@ -53,16 +72,19 @@ struct Statistics
   IntStat d_numInstancesCheckerSat;
   /** instances whose body simplified to true */
   IntStat d_numInstancesSimplifyTrue;
-  /** checks at standard and full effort */
+  /** checks by cvc5, at any effort */
   IntStat d_numHostChecks;
+  /** checks by cvc5 at full effort */
   IntStat d_numHostFullChecks;
-  /** pops of the core's scopes, and scopes popped */
+  /** pops of the core's scopes */
   IntStat d_numHostPops;
+  /** scopes popped, over all pops */
   IntStat d_numHostScopesPopped;
   /** pops to the base level, which are cvc5's restarts */
   IntStat d_numHostRestarts;
-  /** lemmas sent, and lemmas not sent again */
+  /** lemmas sent */
   IntStat d_numHostLemmas;
+  /** lemmas not sent again, since they were sent already */
   IntStat d_numHostDuplicateLemmas;
   /** merges of the shadow from cvc5's theories */
   IntStat d_numShadowMerges;

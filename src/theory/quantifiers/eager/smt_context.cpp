@@ -9,9 +9,9 @@
  *
  * The logical context: the eager E-matching core.
  *
- * Ported from Z3 (MIT License, Copyright (c) Microsoft Corporation), files
- * src/smt/smt_context.cpp and src/smt/smt_internalizer.cpp, and recast in
- * cvc5 style.
+ * Ported from Z3: src/smt/smt_context.cpp, src/smt/smt_internalizer.cpp.
+ * Z3 is Copyright (c) Microsoft Corporation and licensed under the MIT
+ * License, see licenses/z3-LICENSE.
  */
 
 #include "theory/quantifiers/eager/smt_context.h"

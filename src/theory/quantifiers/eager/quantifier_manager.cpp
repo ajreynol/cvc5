@@ -9,8 +9,9 @@
  *
  * Quantifier reasoning for the eager E-matching core.
  *
- * Ported from Z3 (MIT License, Copyright (c) Microsoft Corporation),
- * file src/smt/smt_quantifier.cpp, and recast in cvc5 style.
+ * Ported from Z3: src/smt/smt_quantifier.cpp.
+ * Z3 is Copyright (c) Microsoft Corporation and licensed under the MIT
+ * License, see licenses/z3-LICENSE.
  *
  * Not ported: higher-order matching, and the model finder and model checker
  * that implement model based quantifier instantiation. Without the latter,

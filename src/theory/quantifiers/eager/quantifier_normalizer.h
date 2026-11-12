@@ -9,6 +9,8 @@
  *
  * The quantified variables of the eager E-matching core.
  *
+ * Not ported from Z3: original cvc5 code.
+ *
  * The ported core uses cvc5's Node as its AST; there is no port of Z3's
  * ast_manager. Z3 quantifier bodies use de Bruijn variables, and mam.cpp
  * binds pattern variables by index. cvc5 uses named bound variables, so two
@@ -92,6 +94,7 @@ inline bool isApp(TNode n) { return !isQuantifier(n) && !isVar(n); }
 class QuantifierNormalizer
 {
  public:
+  /** The canonical variables and normalized nodes are made with nm. */
   QuantifierNormalizer(NodeManager* nm);
 
   /**
@@ -114,6 +117,7 @@ class QuantifierNormalizer
                     uint32_t depth,
                     std::unordered_map<Node, Node>& subs);
 
+  /** The node manager. */
   NodeManager* d_nm;
   /** Memoization of normalize, which is applied to whole assertions. */
   std::unordered_map<Node, Node> d_cache;

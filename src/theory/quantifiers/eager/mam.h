@@ -9,8 +9,9 @@
  *
  * The Matching Abstract Machine: Z3's E-matching engine.
  *
- * Ported from Z3 (MIT License, Copyright (c) Microsoft Corporation),
- * file src/smt/mam.h, and recast in cvc5 style.
+ * Ported from Z3: src/smt/mam.h.
+ * Z3 is Copyright (c) Microsoft Corporation and licensed under the MIT
+ * License, see licenses/z3-LICENSE.
  *
  * Patterns are compiled into code trees whose instructions bind, compare and
  * filter enodes, and common prefixes of different patterns are shared. The
@@ -37,6 +38,7 @@ class QuantifierManager;
 class ENode;
 class SmtContext;
 
+/** The implementation of Mam, in mam.cpp. */
 class MamImpl;
 
 /**
@@ -46,6 +48,7 @@ class MamImpl;
 class Mam
 {
  public:
+  /** Make the machine of ctx, which reports its matches to qm. */
   Mam(SmtContext& ctx, QuantifierManager& qm);
   ~Mam();
 
@@ -62,6 +65,7 @@ class Mam
   /** Execute the pending matching work. */
   void match();
 
+  /** True if a code tree has candidates or a new pattern is not matched yet. */
   bool hasWork() const;
 
   /** Notification that n became relevant. */
@@ -71,6 +75,7 @@ class Mam
   void notifyMerge(ENode* r1, ENode* r2);
 
  private:
+  /** The implementation. */
   std::unique_ptr<MamImpl> d_impl;
 };
 

@@ -9,8 +9,9 @@
  *
  * Clauses of the eager E-matching core.
  *
- * Ported from Z3 (MIT License, Copyright (c) Microsoft Corporation),
- * file src/smt/smt_clause.h, and recast in cvc5 style.
+ * Ported from Z3: src/smt/smt_clause.h.
+ * Z3 is Copyright (c) Microsoft Corporation and licensed under the MIT
+ * License, see licenses/z3-LICENSE.
  */
 
 #include "cvc5_private.h"
@@ -45,28 +46,34 @@ inline constexpr SatLiteral s_falseLiteral(s_trueBoolVar, true);
 class Clause
 {
  public:
+  /** The clause of the numLits >= 2 literals lits, which are copied. */
   Clause(size_t numLits, const SatLiteral* lits)
       : d_lits(lits, lits + numLits), d_deleted(false)
   {
     Assert(numLits >= 2);
   }
 
+  /** The idx-th literal. */
   SatLiteral getLiteral(size_t idx) const
   {
     Assert(idx < d_lits.size());
     return d_lits[idx];
   }
 
+  /** Replace the idx-th literal by l, as when the watches change. */
   void setLiteral(size_t idx, SatLiteral l)
   {
     Assert(idx < d_lits.size());
     d_lits[idx] = l;
   }
 
+  /** A pointer to the first literal. */
   SatLiteral* begin() { return d_lits.data(); }
 
+  /** A pointer past the last literal. */
   SatLiteral* end() { return d_lits.data() + d_lits.size(); }
 
+  /** Mark the clause for deletion; it must not be marked already. */
   void markAsDeleted()
   {
     Assert(!d_deleted);
@@ -80,7 +87,9 @@ class Clause
   bool deleted() const { return d_deleted; }
 
  private:
+  /** The literals; the first two are watched. */
   std::vector<SatLiteral> d_lits;
+  /** True if the clause is marked for deletion. */
   bool d_deleted;
 };
 

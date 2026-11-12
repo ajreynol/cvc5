@@ -9,8 +9,9 @@
  *
  * The logical context: the eager E-matching core.
  *
- * Ported from Z3 (MIT License, Copyright (c) Microsoft Corporation),
- * file src/smt/smt_context.h, and recast in cvc5 style.
+ * Ported from Z3: src/smt/smt_context.h.
+ * Z3 is Copyright (c) Microsoft Corporation and licensed under the MIT
+ * License, see licenses/z3-LICENSE.
  *
  * The coordinator of the core: it owns and drives the Boolean side (PropCore),
  * the E-graph (EGraph) and the quantifiers (QuantifierManager), internalizes
@@ -159,15 +160,18 @@ class SmtContext final : protected EnvObj
    */
   void popScope(size_t numScopes);
 
+  /** Clear the generations cacheGeneration saved, after a backtrack. */
   void resetCacheGeneration();
 
   // ----------------------------------------------------------- accessors
 
+  /** The statistics of the core. */
   Statistics& getStats() { return d_stats; }
 
   /** The E-graph. */
   EGraph& getEGraph() { return d_egraph; }
 
+  /** The E-graph, read-only. */
   const EGraph& getEGraph() const { return d_egraph; }
 
   // ------------------------------- the Boolean side, and the bridge to the
@@ -175,14 +179,17 @@ class SmtContext final : protected EnvObj
   /** The propositional side. */
   PropCore& getPropCore() { return d_prop; }
 
+  /** The propositional side, read-only. */
   const PropCore& getPropCore() const { return d_prop; }
 
+  /** The enode of the Boolean variable v, which must have one. */
   ENode* boolVar2ENode(SatVariable v) const
   {
     Assert(d_prop.getBdata(v).isENode());
     return d_egraph.getENode(d_prop.boolVar2Expr(v));
   }
 
+  /** The Boolean variable of the Boolean enode n, other than false's. */
   SatVariable enode2BoolVar(const ENode* n) const
   {
     Assert(n->isBool());
@@ -190,19 +197,24 @@ class SmtContext final : protected EnvObj
     return d_prop.getBoolVarOfId(n->getOwnerId());
   }
 
+  /** The literal of the Boolean enode n: the false literal for false's. */
   SatLiteral enode2Literal(const ENode* n) const
   {
     Assert(n->isBool());
     return n == d_falseENode ? s_falseLiteral : SatLiteral(enode2BoolVar(n));
   }
 
+  /** The value of the Boolean variable of the Boolean enode n. */
   SatValue getAssignment(ENode* n) const;
 
+  /** The current scope level of the core. */
   uint32_t getScopeLevel() const { return d_trailStack.getScopeLevel(); }
 
+  /** Whether n is the enode of true. */
   bool isTrue(const ENode* n) const { return n == d_trueENode; }
 
   // ----------------------------------------------- backtracking support
+  /** The trail stack, which undoes the theory side's changes on a pop. */
   TrailStack& getTrailStack() { return d_trailStack; }
 
   // ------------------------------------------------------ internalization
@@ -238,9 +250,18 @@ class SmtContext final : protected EnvObj
    */
   void retrySkolemizations();
 
+  /**
+   * Internalize n, in a gate context if gateCtx, with the given generation,
+   * or the current one if none is given.
+   */
   void internalize(TNode n, bool gateCtx);
   void internalize(TNode n, bool gateCtx, uint32_t generation);
 
+  /**
+   * Make the enode of n, with its generation, at the current scope level; the
+   * flags are those of EGraph::mkENode. An equality that already holds is
+   * assigned true.
+   */
   ENode* mkENode(TNode n, bool suppressArgs, bool mergeTf, bool cgcEnabled);
 
   /** Hand an assigned atom to the theory side; see propagateAtoms. */
@@ -272,6 +293,10 @@ class SmtContext final : protected EnvObj
    * literal of anything else.
    */
   void assertRoot(TNode n);
+  /**
+   * Assert n as a unit: internalize it in a gate context, then assign its
+   * literal true and relevant, or set a conflict if it is false.
+   */
   void assertDefault(TNode n);
   /**
    * Assert the root distinct n. As in Z3 (assert_distinct), a distinct with
@@ -284,6 +309,7 @@ class SmtContext final : protected EnvObj
    */
   void assertDistinct(TNode n);
 
+  /** Mark v as having an enode, on the trail unless v is new (isNewVar). */
   void setEnodeFlag(SatVariable v, bool isNewVar);
 
   // ------------------------------------------------------------- engine
@@ -312,10 +338,6 @@ class SmtContext final : protected EnvObj
   void notifyRelevant(TNode n);
 
   /**
-   * Rewrite a quantifier instance before it is internalized. Z3 applies its
-   * th_rewriter here; this port uses cvc5's rewriter.
-   */
-  /**
    * True if the resource limits were exceeded during this search, which
    * then stays out of resources.
    */
@@ -326,8 +348,13 @@ class SmtContext final : protected EnvObj
 
  protected:
   // --------------------------------------------- equality and congruence
+  /**
+   * Copy the assignment of the variable of source, which is assigned, to the
+   * variables of the members of its class, from target on.
+   */
   void propagateBoolENodeAssignmentCore(ENode* source, ENode* target);
 
+  /** q is assigned true: the quantifier manager matches its patterns. */
   void assignQuantifier(TNode q);
   /**
    * Internalize the formula norm, in the form cvc5's theories take, with the
@@ -340,6 +367,11 @@ class SmtContext final : protected EnvObj
                                bool instance);
 
   // ----------------------------------------------------------- the search
+  /**
+   * Propagate the assigned atoms of d_atomPropagationQueue: their enodes,
+   * their equalities to the E-graph, and their quantifiers, matched if true
+   * and skolemized if false. Returns false on a conflict.
+   */
   bool propagateAtoms();
   /**
    * Cache the generations of the atoms of the units that will be reasserted
@@ -348,11 +380,21 @@ class SmtContext final : protected EnvObj
   void cacheUnitGenerations(uint32_t newScopeLvl);
   /** Reassert the units from unitsToReassertLim on, after a backtrack. */
   void reassertUnits(size_t unitsToReassertLim);
+  /**
+   * Propagate the value of v to its enode: merge it with true or false if
+   * its merge_tf flag is set, and assign the value to the other members of
+   * its class.
+   */
   void propagateBoolVarENode(SatVariable v);
 
   // --------------------------------------------------------- backtracking
 
   // -------------------------------------------------------- internalization
+  /**
+   * Lower the generation of the enode n (or of the enode of e, if any) to
+   * the current generation, if that is positive and lower. Equalities are
+   * skipped, as patterns have none.
+   */
   void updateGeneration(ENode* n);
   void updateGeneration(TNode e)
   {
@@ -361,16 +403,42 @@ class SmtContext final : protected EnvObj
       updateGeneration(d_egraph.getENode(e));
     }
   }
+  /**
+   * Internalize the formula n: its Boolean variable, and an enode when it is
+   * not in a gate context. Equalities, distincts and quantifiers go to their
+   * own cases, and the other formulas to internalizeFormulaCore.
+   */
   void internalizeFormula(TNode n, bool gateCtx);
+  /** Internalize the equality n of non-Boolean terms, flagged as one. */
   void internalizeEq(TNode n, bool gateCtx);
+  /** Internalize the distinct n as equivalent to its pairwise expansion. */
   void internalizeDistinct(TNode n, bool gateCtx);
+  /**
+   * Internalize the quantifier q as a Boolean variable, with an enode if it
+   * is not in a gate context, and add a forall to the quantifier manager.
+   */
   void internalizeQuantifier(TNode q, bool gateCtx);
+  /**
+   * Internalize the gate or predicate n: its arguments, its Boolean
+   * variable, its enode if it needs one, then its gate constraints.
+   */
   void internalizeFormulaCore(TNode n, bool gateCtx);
+  /**
+   * Set the merge_tf flag of n, the enode of v, on the trail unless v is new
+   * (isNewVar), and merge n with true or false if v is assigned.
+   */
   void setMergeTf(ENode* n, SatVariable v, bool isNewVar);
+  /** Internalize the term n, or update its generation if it has an enode. */
   void internalizeTerm(TNode n);
+  /**
+   * Make the enode of the application n, after its arguments', with
+   * congruence closure enabled unless n is an arithmetic sum or product.
+   */
   void internalizeUninterpreted(TNode n);
 
+  /** Make the enodes of true and false. */
   void init();
+  /** Flush relevancy, and reset the trail stack and the Boolean side. */
   void flush();
 
   // ------------------------------------------------------------- the fields
@@ -392,6 +460,7 @@ class SmtContext final : protected EnvObj
   PropCore d_prop;
   /** The E-graph. */
   EGraph d_egraph;
+  /** Rewrites quantifiers over the canonical variables. */
   QuantifierNormalizer d_normalizer;
   /**
    * The forms of the instances made so far, by (SEXPR q t1 ... tn): true for
@@ -409,8 +478,13 @@ class SmtContext final : protected EnvObj
   ENode* d_trueENode;
   ENode* d_falseENode;
 
+  /** The assigned atoms waiting for propagateAtoms. */
   std::vector<SatLiteral> d_atomPropagationQueue;
 
+  /**
+   * The generations cacheGeneration saved, of the terms and quantifiers a
+   * backtrack deletes, for when they are recreated.
+   */
   std::unordered_map<TNode, uint32_t> d_cachedGeneration;
   /**
    * Under cvc5's prop engine, the generation each term and quantifier had
@@ -422,6 +496,7 @@ class SmtContext final : protected EnvObj
   std::unordered_map<Node, uint32_t> d_hostGeneration;
   /** The generation of n: cached, recorded under cvc5, or the current one. */
   uint32_t generationOf(TNode n);
+  /** The nodes cacheGeneration visited since resetCacheGeneration. */
   std::unordered_set<TNode> d_cacheGenerationVisited;
 
   // ------------------------------------------------------ input and scopes
@@ -438,6 +513,7 @@ class SmtContext final : protected EnvObj
    * here.
    */
   std::vector<Node> d_distinctEqs;
+  /** Whether internalizeAssertions is running, which it does not reenter. */
   bool d_internalizingAssertions;
   /** Whether the search started (setupSearch). */
   bool d_searching;
@@ -452,8 +528,11 @@ class SmtContext final : protected EnvObj
   /** A unit literal that is reasserted after every backtrack. */
   struct ReplayUnit
   {
+    /** The atom of the unit. */
     Node d_unit;
+    /** Whether the unit is the negation of the atom. */
     bool d_sign;
+    /** Whether the unit is marked relevant. */
     bool d_relevant;
   };
   std::vector<ReplayUnit> d_unitsToReassert;

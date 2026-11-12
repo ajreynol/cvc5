@@ -9,8 +9,9 @@
  *
  * Backtracking trail objects and the trail stack of the eager E-matching core.
  *
- * Ported from Z3 (MIT License, Copyright (c) Microsoft Corporation),
- * file src/util/trail.h, and recast in cvc5 style.
+ * Ported from Z3: src/util/trail.h.
+ * Z3 is Copyright (c) Microsoft Corporation and licensed under the MIT
+ * License, see licenses/z3-LICENSE.
  *
  * The trail objects are Z3's: undo actions, pushed when the state changes. The
  * stack is a context-dependent list of them, on a context of the core's own.
@@ -37,6 +38,7 @@ class Trail
 {
  public:
   virtual ~Trail() = default;
+  /** Undo the action, when the scope it was pushed in is popped. */
   virtual void undo() = 0;
 };
 
@@ -45,12 +47,16 @@ template <typename T>
 class ValueTrail : public Trail
 {
  public:
+  /** Save the current value of value. */
   ValueTrail(T& value) : d_value(value), d_oldValue(value) {}
 
+  /** Restore the saved value. */
   void undo() override { d_value = d_oldValue; }
 
  private:
+  /** The variable to restore. */
   T& d_value;
+  /** Its value when the trail object was created. */
   T d_oldValue;
 };
 
@@ -59,11 +65,14 @@ template <typename T>
 class SetPtrTrail : public Trail
 {
  public:
+  /** Reset ptr, which is null now and is about to be set, on undo. */
   SetPtrTrail(T*& ptr) : d_ptr(ptr) { Assert(d_ptr == nullptr); }
 
+  /** Set the pointer back to null. */
   void undo() override { d_ptr = nullptr; }
 
  private:
+  /** The pointer to reset. */
   T*& d_ptr;
 };
 
@@ -72,11 +81,14 @@ template <typename T>
 class NewObjTrail : public Trail
 {
  public:
+  /** Take ownership of obj, which is deleted on undo. */
   NewObjTrail(T* obj) : d_obj(obj) {}
 
+  /** Delete the object. */
   void undo() override { delete d_obj; }
 
  private:
+  /** The object to delete. */
   T* d_obj;
 };
 
@@ -84,17 +96,21 @@ class NewObjTrail : public Trail
 class PtrTrail : public Trail
 {
  public:
+  /** Forward to t, which must outlive the scope. */
   PtrTrail(Trail* t) : d_trail(t) {}
 
+  /** Undo the forwarded trail object, without destroying it. */
   void undo() override { d_trail->undo(); }
 
  private:
+  /** The trail object owned elsewhere. */
   Trail* d_trail;
 };
 
 /** Undoes and destroys a trail object popped from a TrailStack. */
 struct TrailCleanup
 {
+  /** Undo t and run its destructor; its memory is the context's. */
   void operator()(Trail* t)
   {
     t->undo();
@@ -118,11 +134,14 @@ class TrailStack
   class FreeTrail : public Trail
   {
    public:
+    /** Free mem, from ::operator new, on undo. */
     FreeTrail(void* mem) : d_mem(mem) {}
 
+    /** Free the allocation. */
     void undo() override { ::operator delete(d_mem); }
 
    private:
+    /** The allocation to free. */
     void* d_mem;
   };
 
@@ -130,6 +149,7 @@ class TrailStack
   /** The alignment of allocate(), which is enough for the core's objects. */
   static constexpr size_t s_align = alignof(uint64_t);
 
+  /** An empty stack, at scope level 0. */
   TrailStack() : d_trail(&d_context, true, TrailCleanup()) { d_context.push(); }
 
   /**
@@ -193,8 +213,13 @@ class TrailStack
    */
   uint32_t getScopeLevel() const { return d_context.getLevel() - 1; }
 
+  /** Push a new scope. */
   void pushScope() { d_context.push(); }
 
+  /**
+   * Pop numScopes scopes, undoing their trail objects, newest first, and
+   * releasing their memory. At most getScopeLevel() scopes may be popped.
+   */
   void popScope(size_t numScopes)
   {
     Assert(numScopes < d_context.getLevel());
@@ -202,7 +227,9 @@ class TrailStack
   }
 
  private:
+  /** The context of the stack, whose scopes are the stack's. */
   context::Context d_context;
+  /** The trail objects, undone and destroyed as the context pops. */
   context::CDList<Trail*, TrailCleanup> d_trail;
 };
 

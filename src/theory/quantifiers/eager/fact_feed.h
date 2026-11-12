@@ -10,7 +10,7 @@
  * The module of the theory engine that feeds the eager E-matching core the
  * literals the SAT solver asserts.
  *
- * Not ported from Z3: this is cvc5 integration code.
+ * Not ported from Z3: original cvc5 code.
  */
 
 #include "cvc5_private.h"
@@ -52,6 +52,7 @@ class FactFeed : public theory::TheoryEngineModule
    */
   FactFeed(Env& env, TheoryEngine* engine, EagerEMatching& core);
 
+  /** Always true: this module is notified of every asserted literal. */
   bool needsFacts() override { return true; }
   /** Queue the literal. */
   void notifyFact(TNode literal) override;

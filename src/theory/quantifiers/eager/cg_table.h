@@ -10,8 +10,9 @@
  * The congruence table, keyed on the declaration and the equivalence class
  * roots of the arguments.
  *
- * Ported from Z3 (MIT License, Copyright (c) Microsoft Corporation),
- * file src/smt/smt_cg_table.h, and recast in cvc5 style.
+ * Ported from Z3: src/smt/smt_cg_table.h.
+ * Z3 is Copyright (c) Microsoft Corporation and licensed under the MIT
+ * License, see licenses/z3-LICENSE.
  */
 
 #include "cvc5_private.h"
@@ -35,13 +36,20 @@ namespace theory::quantifiers::eager {
  */
 class CgTable
 {
+  /**
+   * Hashes an enode by its declaration and the roots of its arguments,
+   * ignoring the argument order for a commutative node.
+   */
   struct Hash
   {
+    /** The hash of n modulo the classes of its arguments. */
     size_t operator()(ENode* n) const;
   };
 
+  /** Equality modulo congruence. */
   struct Eq
   {
+    /** True if n1 and n2 are congruent; see congruentApps. */
     bool operator()(ENode* n1, ENode* n2) const
     {
       return congruentApps(n1, n2);
@@ -60,6 +68,7 @@ class CgTable
     return *d_table.insert(n).first;
   }
 
+  /** Remove the element congruent to n, which callers expect to be n. */
   void erase(ENode* n) { d_table.erase(n); }
 
   /** The element congruent to n, or null. */
@@ -72,9 +81,11 @@ class CgTable
   /** True if n itself is the element of the table congruent to n. */
   bool containsPtr(ENode* n) const { return find(n) == n; }
 
+  /** Remove all elements. */
   void reset() { d_table.clear(); }
 
  private:
+  /** The elements, hashed and compared modulo congruence. */
   std::unordered_set<ENode*, Hash, Eq> d_table;
 };
 

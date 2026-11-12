@@ -9,7 +9,7 @@
  *
  * The quantifiers module of the eager E-matching core.
  *
- * Not ported from Z3: this is cvc5 integration code.
+ * Not ported from Z3: original cvc5 code.
  */
 
 #include "cvc5_private.h"
@@ -80,6 +80,7 @@ class LemmaProofGenerator;
 class EagerEMatching : public theory::quantifiers::QuantifiersModule
 {
  public:
+  /** The core is made by finishInit. */
   EagerEMatching(Env& env,
                  theory::quantifiers::QuantifiersState& qs,
                  theory::quantifiers::QuantifiersInferenceManager& qim,
@@ -88,12 +89,18 @@ class EagerEMatching : public theory::quantifiers::QuantifiersModule
   ~EagerEMatching();
   /** Make the core, for the theory engine te. */
   void finishInit(TheoryEngine* te) override;
+  /**
+   * Sync the core to the SAT context, set up its E-graph's master equality
+   * engine, and start its search over the current assertions.
+   */
   void presolve() override;
   /** Assert the preprocessed assertions to the core. */
   void ppNotifyAssertions(const std::vector<Node>& assertions) override;
   /** Run the core, at standard and full effort. */
   bool needsCheck(theory::Theory::Effort e) override;
+  /** Run the core (checkCore), once per check, at the conflict effort. */
   void check(theory::Theory::Effort e, QEffort quant_e) override;
+  /** Register q with the core, if q is an atom of the SAT solver. */
   void preRegisterQuantifier(Node q) override;
   /**
    * The core claims completeness for no quantified formula: whether a model
@@ -102,6 +109,7 @@ class EagerEMatching : public theory::quantifiers::QuantifiersModule
   bool checkCompleteFor(CVC5_UNUSED Node q) override { return false; }
   /** Give the merge to the core. */
   void notifyMasterMerge(TNode t1, TNode t2) override;
+  /** The name of this module. */
   std::string identify() const override { return "EagerEMatching"; }
 
   // ------------------------------------------------ called by the core
@@ -140,15 +148,18 @@ class EagerEMatching : public theory::quantifiers::QuantifiersModule
   class PopNotify : public context::ContextNotifyObj
   {
    public:
+    /** Notifies hc of the pops of c. */
     PopNotify(context::Context* c, EagerEMatching& hc)
         : context::ContextNotifyObj(c), d_hc(hc)
     {
     }
 
    protected:
+    /** Note the pop in the module (notifyPop). */
     void contextNotifyPop() override { d_hc.notifyPop(); }
 
    private:
+    /** The module notified. */
     EagerEMatching& d_hc;
   };
   /**
@@ -264,6 +275,7 @@ class EagerEMatching : public theory::quantifiers::QuantifiersModule
    * used after the pop.
    */
   context::CDList<Node> d_preregistered;
+  /** The index in d_preregistered of the first atom not taken yet. */
   context::CDO<size_t> d_preregisteredHead;
   /**
    * The lemmas sent. cvc5 keeps a lemma until the pop of the user scope of
@@ -275,6 +287,7 @@ class EagerEMatching : public theory::quantifiers::QuantifiersModule
    * d_delayedUnitsHead on, see checkCore.
    */
   context::CDList<Node> d_delayedUnits;
+  /** The index in d_delayedUnits of the first lemma not sent as it is. */
   context::CDO<size_t> d_delayedUnitsHead;
   /**
    * For each atom of cvc5 that toCore renamed, the core's form and cvc5's,

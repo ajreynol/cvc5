@@ -9,8 +9,9 @@
  *
  * The watch list of a literal.
  *
- * Ported from Z3 (MIT License, Copyright (c) Microsoft Corporation),
- * file src/smt/watch_list.cpp, and recast in cvc5 style.
+ * Ported from Z3: src/smt/watch_list.cpp.
+ * Z3 is Copyright (c) Microsoft Corporation and licensed under the MIT
+ * License, see licenses/z3-LICENSE.
  */
 
 #include "theory/quantifiers/eager/watch_list.h"

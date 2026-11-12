@@ -8,6 +8,8 @@
  * ****************************************************************************
  *
  * The proofs of the lemmas of the eager E-matching core.
+ *
+ * Not ported from Z3: original cvc5 code.
  */
 
 #include "theory/quantifiers/eager/lemma_proof_generator.h"

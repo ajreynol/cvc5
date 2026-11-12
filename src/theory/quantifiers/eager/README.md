@@ -38,6 +38,20 @@ Relevancy is not separable from the rest: it runs on the core's trail stack,
 over the core's renamed terms and its E-graph, and `PropCore` exists only as
 the Boolean mirror it propagates on.
 
+Provenance: every source file's header says where it comes from, in one of
+two fixed forms, right after its one-line summary. A file ported from Z3 says
+
+```
+ * Ported from Z3: <Z3 files, or the part of them, it was ported from>.
+ * Z3 is Copyright (c) Microsoft Corporation and licensed under the MIT
+ * License, see licenses/z3-LICENSE.
+```
+
+and any other file says `Not ported from Z3: original cvc5 code.`. Z3's
+license is in `licenses/z3-LICENSE` and referenced from `COPYING`, as for
+MiniSat. A new file takes one of the two forms; a file that gains ported code
+moves to the first.
+
 The core takes the input as cvc5's preprocessing leaves it, from
 `ppNotifyAssertions`. It renames the quantified variables to the canonical
 ones it expects (`QuantifierNormalizer`) at its boundary: `EagerEMatching`

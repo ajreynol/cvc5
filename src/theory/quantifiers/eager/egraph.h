@@ -9,9 +9,9 @@
  *
  * The E-graph of the eager E-matching core.
  *
- * Ported from Z3 (MIT License, Copyright (c) Microsoft Corporation),
- * the E-graph part of file src/smt/smt_context.cpp, and recast in cvc5
- * style.
+ * Ported from Z3: the E-graph part of src/smt/smt_context.{h,cpp}.
+ * Z3 is Copyright (c) Microsoft Corporation and licensed under the MIT
+ * License, see licenses/z3-LICENSE.
  */
 
 #include "cvc5_private.h"
@@ -57,6 +57,7 @@ class SmtContext;
 class EGraph : protected EnvObj
 {
  public:
+  /** The E-graph of ctx, backtracked through trail, recording into stats. */
   EGraph(Env& env, SmtContext& ctx, TrailStack& trail, Statistics& stats);
 
   EGraph(const EGraph&) = delete;
@@ -76,6 +77,7 @@ class EGraph : protected EnvObj
   /** Undo the last mkENode; invoked from the trail. */
   void undoMkENode();
 
+  /** The enode of n, which must be internalized. */
   ENode* getENode(TNode n) const
   {
     Assert(eInternalized(n));
@@ -89,10 +91,13 @@ class EGraph : protected EnvObj
     return id < d_app2ENode.size() ? d_app2ENode[id] : nullptr;
   }
 
+  /** True if n has an enode. */
   bool eInternalized(TNode n) const { return findENode(n) != nullptr; }
 
+  /** The number of terms that have an enode. */
   size_t getNumEInternalized() const { return d_eInternalizedStack.size(); }
 
+  /** The idx-th term given an enode, in order of creation. */
   TNode getEInternalized(size_t idx) const { return d_eInternalizedStack[idx]; }
 
   /**
@@ -105,12 +110,14 @@ class EGraph : protected EnvObj
     return e == nullptr ? TNode::null() : TNode(e->getNext()->getExpr());
   }
 
+  /** The size of enodesOf(decl). */
   size_t getNumENodesOf(TNode decl) const
   {
     uint32_t id = getDeclIdOption(decl);
     return id < d_decl2ENodes.size() ? d_decl2ENodes[id].size() : 0;
   }
 
+  /** The enodes of the applications of decl, excluding equalities. */
   const ENodeVector& enodesOf(TNode decl) const
   {
     uint32_t id = getDeclIdOption(decl);
@@ -127,6 +134,7 @@ class EGraph : protected EnvObj
   uint32_t getDeclIdOption(TNode decl) const;
 
   // -------------------------------------------------------- the generations
+  /** The generation of the congruence class of e; 0 for an equality. */
   uint32_t getGeneration(ENode* e) const
   {
     // Patterns with equalities are not supported, so there is no need to
@@ -138,6 +146,7 @@ class EGraph : protected EnvObj
     return getCgRoot(e)->d_generation;
   }
 
+  /** The largest generation of the given enodes. */
   uint32_t getMaxGeneration(size_t numENodes, ENode* const* enodes) const
   {
     uint32_t max = 0;
@@ -152,6 +161,10 @@ class EGraph : protected EnvObj
     return max;
   }
 
+  /**
+   * Set the generation of the congruence class of e (a no-op for an
+   * equality). This is not recorded on the trail.
+   */
   void setGeneration(ENode* e, uint32_t generation);
   /** Undo a congruence class generation merge; invoked from the trail. */
   void undoMergeCgcGenerations(ENode* e1,
@@ -160,6 +173,7 @@ class EGraph : protected EnvObj
                                uint32_t e2Generation);
 
   // ---------------------------------------------- equality and congruence
+  /** True if n1 and n2 are in the same equivalence class. */
   static bool isEq(const ENode* n1, const ENode* n2)
   {
     return n1->getRoot() == n2->getRoot();
@@ -179,13 +193,16 @@ class EGraph : protected EnvObj
     }
   }
 
+  /** True if equalities are queued for propagateEqs. */
   bool hasPendingEqs() const { return !d_eqPropagationQueue.empty(); }
 
+  /** Drop the queued equalities. */
   void clearPendingEqs() { d_eqPropagationQueue.clear(); }
 
   /** Merge the queued equalities; returns false on a conflict. */
   bool propagateEqs();
 
+  /** The congruence root of n; n itself if it does not use the table. */
   ENode* getCgRoot(ENode* n) const
   {
     if (!n->usesCgTable())
@@ -226,10 +243,14 @@ class EGraph : protected EnvObj
   void clearPendingMasterMerges() { d_pendingMerges.clear(); }
 
  private:
+  /** An equality queued for propagateEqs. */
   struct NewEq
   {
+    /** The left side. */
     ENode* d_lhs;
+    /** The right side. */
     ENode* d_rhs;
+    /** The equality of lhs and rhs. */
     NewEq(ENode* lhs, ENode* rhs) : d_lhs(lhs), d_rhs(rhs) {}
   };
 
@@ -237,17 +258,39 @@ class EGraph : protected EnvObj
   class MkENodeTrail : public Trail
   {
    public:
+    /** The trail object undoing the mkENode calls of eg. */
     MkENodeTrail(EGraph& eg) : d_eg(eg) {}
+    /** Undo the last mkENode of the E-graph. */
     void undo() override { d_eg.undoMkENode(); }
 
    private:
+    /** The E-graph. */
     EGraph& d_eg;
   };
 
+  /**
+   * Before the class of r1 is merged into another, remove from the
+   * congruence table the parents of r1 that are congruence roots, since
+   * their hashes are about to change. They are marked, and their
+   * generations cached in d_r1ParentGenerations.
+   */
   void removeParentsFromCgTable(ENode* r1);
+  /**
+   * After the class of r1 is merged into that of r2, reinsert the parents
+   * taken out by removeParentsFromCgTable. Those that stay congruence
+   * roots move to the parents of r2; the others merge their class
+   * generations and queue their congruence. A parent that became a true
+   * equality is assigned true instead of being reinserted.
+   */
   void reinsertParentsIntoCgTable(ENode* r1, ENode* r2);
+  /**
+   * e1, of generation e1Generation, was found congruent to the congruence
+   * root e2: lower the generation of e2 to e1Generation if that is
+   * smaller. The trail records the undo even when nothing changes.
+   */
   void mergeCgcGenerations(ENode* e1, uint32_t e1Generation, ENode* e2);
 
+  /** Queue the merge of n1 with n2, the congruence root it is congruent to. */
   void pushNewCongruence(ENode* n1, ENode* n2)
   {
     Assert(n1->d_cg == n2);
@@ -264,6 +307,7 @@ class EGraph : protected EnvObj
   SmtContext& d_ctx;
   /** The trail stack of the core, and the memory of the enodes. */
   TrailStack& d_trailStack;
+  /** The statistics of the core. */
   Statistics& d_stats;
 
   /** The expressions already internalized as enodes. */
@@ -272,16 +316,22 @@ class EGraph : protected EnvObj
   App2ENode d_app2ENode;
   /** Maps a declaration id to the enodes with that declaration. */
   std::vector<ENodeVector> d_decl2ENodes;
+  /** The dense ids of the declarations; see getDeclId. */
   std::unordered_map<TNode, uint32_t> d_declIds;
+  /** The empty vector, which enodesOf returns for an unknown decl. */
   ENodeVector d_emptyVector;
+  /** The congruence table. */
   CgTable d_cgTable;
   /**
    * A temporary cache of parent generations, held between
    * removeParentsFromCgTable and reinsertParentsIntoCgTable.
    */
   std::vector<std::pair<ENode*, uint32_t>> d_r1ParentGenerations;
+  /** The equalities queued by pushEq, merged by propagateEqs. */
   std::vector<NewEq> d_eqPropagationQueue;
+  /** The temporary enode with which getENodeEqTo looks up the table. */
   TmpENode d_tmpENode;
+  /** The trail object that each mkENode pushes to undo itself. */
   MkENodeTrail d_mkENodeTrail;
 
   /**
