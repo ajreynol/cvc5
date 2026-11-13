@@ -166,8 +166,9 @@ class TheoryEngine : protected EnvObj
   prop::PropEngine* getPropEngine() const { return d_propEngine; }
 
   /**
-   * Add a module, owned by the caller, during finishInit, e.g. by the
-   * quantifiers engine.
+   * Add a module during finishInit. The module is owned by the caller, e.g.
+   * this class or the quantifiers engine, and is notified of the events
+   * it asks for, see TheoryEngineModule.
    */
   void addModule(theory::TheoryEngineModule* tem);
 
