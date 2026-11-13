@@ -38,8 +38,10 @@
 namespace cvc5::internal {
 namespace theory::quantifiers::eager {
 
-class SmtContext;
+class EGraph;
 class PropCore;
+class TrailStack;
+struct Statistics;
 
 /**
  * The relevancy propagator.
@@ -58,8 +60,15 @@ class PropCore;
 class RelevancyPropagator
 {
  public:
-  /** Make the propagator of core, on the trail stack of theory. */
-  RelevancyPropagator(PropCore& core, SmtContext& theory);
+  /**
+   * Make the propagator of core, over the classes of egraph, backtracked
+   * through trail, recording into stats. It only stores egraph, which may
+   * still be under construction.
+   */
+  RelevancyPropagator(PropCore& core,
+                      EGraph& egraph,
+                      TrailStack& trail,
+                      Statistics& stats);
   ~RelevancyPropagator();
 
   /** Mark target relevant whenever src is marked relevant. */
@@ -172,8 +181,10 @@ class RelevancyPropagator
 
   /** The propositional side, which owns this object. */
   PropCore& d_core;
-  /** The theory side: equivalence classes, trail stack and statistics. */
-  SmtContext& d_theory;
+  /** The E-graph, whose classes relevancy is shared by. */
+  EGraph& d_egraph;
+  /** The statistics of the core. */
+  Statistics& d_stats;
   /**
    * The next expression of d_relevantExprs to propagate. It is not popped:
    * a pop leaves it past the end, and it is moved back to the end when an

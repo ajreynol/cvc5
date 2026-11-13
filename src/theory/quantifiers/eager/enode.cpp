@@ -20,7 +20,6 @@
 #include <new>
 
 #include "expr/node_manager.h"
-#include "theory/quantifiers/eager/smt_context.h"
 #include "theory/quantifiers/eager/trail.h"
 #include "theory/quantifiers/term_util.h"
 #include "util/hash.h"

@@ -302,12 +302,6 @@ class SmtContext final : protected EnvObj
 
   // ------------------------------------------------------------- engine
   /**
-   * True if n1 and n2 are known to be distinct: their roots are distinct
-   * constants, or their equality is relevant and false.
-   */
-  bool isDiseq(ENode* n1, ENode* n2) const;
-
-  /**
    * The classes of r1 and r2 are about to merge: relevancy spreads to the
    * class, and the quantifier manager is notified. Called by the E-graph.
    */

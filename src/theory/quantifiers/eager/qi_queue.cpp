@@ -31,7 +31,7 @@ namespace cvc5::internal {
 namespace theory::quantifiers::eager {
 
 QiQueue::QiQueue(Env& env, SmtContext& ctx)
-    : EnvObj(env), d_context(ctx), d_checker(ctx), d_eagerCostThreshold(0)
+    : EnvObj(env), d_context(ctx), d_checker(ctx.getEGraph(), ctx.getPropCore()), d_eagerCostThreshold(0)
 {
 }
 

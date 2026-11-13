@@ -35,7 +35,7 @@ namespace theory::quantifiers::eager {
 
 class EGraph;
 class ENode;
-class SmtContext;
+class PropCore;
 
 /**
  * Evaluates an instance body under bindings, against the assignment and the
@@ -44,8 +44,8 @@ class SmtContext;
 class Checker
 {
  public:
-  /** Make the checker of the core c. */
-  Checker(SmtContext& c);
+  /** Make the checker over the E-graph egraph and the Boolean side prop. */
+  Checker(EGraph& egraph, PropCore& prop);
 
   /** True if the body is already satisfied under the given bindings. */
   bool isSat(TNode n, size_t numBindings, ENode* const* bindings);
@@ -79,11 +79,16 @@ class Checker
    * a variable, the enode of n, or one found by getENodeEqToCore (cached).
    */
   ENode* getENodeEqTo(TNode n);
+  /**
+   * True if n1 and n2 are known to be distinct: their roots are distinct
+   * constants, or their equality is relevant and false.
+   */
+  bool isDiseq(ENode* n1, ENode* n2);
 
-  /** The core, whose assignment and relevancy are read. */
-  SmtContext& d_context;
   /** The E-graph of the core. */
   EGraph& d_egraph;
+  /** The Boolean side of the core, whose assignment and relevancy are read. */
+  PropCore& d_prop;
   /** The results of check for each value (index 1 for true), per run. */
   std::unordered_map<Node, bool> d_isTrueCache[2];
   /** The results of getENodeEqTo for applications, per run. */

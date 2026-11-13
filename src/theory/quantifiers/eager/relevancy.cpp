@@ -18,19 +18,25 @@
 
 #include "theory/quantifiers/eager/prop_core.h"
 #include "theory/quantifiers/eager/quantifier_normalizer.h"
-#include "theory/quantifiers/eager/smt_context.h"
+#include "theory/quantifiers/eager/egraph.h"
+#include "theory/quantifiers/eager/statistics.h"
+#include "theory/quantifiers/eager/trail.h"
 
 namespace cvc5::internal {
 namespace theory::quantifiers::eager {
 
-RelevancyPropagator::RelevancyPropagator(PropCore& core, SmtContext& theory)
+RelevancyPropagator::RelevancyPropagator(PropCore& core,
+                                         EGraph& egraph,
+                                         TrailStack& trail,
+                                         Statistics& stats)
     : d_core(core),
-      d_theory(theory),
+      d_egraph(egraph),
+      d_stats(stats),
       d_qhead(0),
       d_relevantExprs(
-          theory.getTrailStack().getContext(), true, UnmarkCleanup{this}),
+          trail.getContext(), true, UnmarkCleanup{this}),
       d_edges(
-          theory.getTrailStack().getContext(), true, RemoveEdgeCleanup{this}),
+          trail.getContext(), true, RemoveEdgeCleanup{this}),
       d_propagating(false)
 {
 }
@@ -110,7 +116,7 @@ void RelevancyPropagator::removeEdge(const Edge& e)
 
 void RelevancyPropagator::setRelevant(TNode n)
 {
-  d_theory.getStats().d_numSetRelevant++;
+  d_stats.d_numSetRelevant++;
   if (n.getId() >= d_isRelevant.size())
   {
     d_isRelevant.resize(n.getId() + 1, false);
@@ -129,7 +135,7 @@ void RelevancyPropagator::markAsRelevant(TNode n)
 {
   if (!isRelevant(n))
   {
-    TNode next = d_theory.getEGraph().getNextInEClass(n);
+    TNode next = d_egraph.getNextInEClass(n);
     if (!next.isNull())
     {
       // relevancy is shared by an entire equivalence class
@@ -140,7 +146,7 @@ void RelevancyPropagator::markAsRelevant(TNode n)
         {
           setRelevant(curr);
         }
-        curr = d_theory.getEGraph().getNextInEClass(curr);
+        curr = d_egraph.getNextInEClass(curr);
       } while (curr != n);
     }
     else

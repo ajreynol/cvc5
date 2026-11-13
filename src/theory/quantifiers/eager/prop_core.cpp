@@ -33,7 +33,8 @@ PropCore::PropCore(Env& env, SmtContext& ctx, Statistics& stats)
     : EnvObj(env),
       d_ctx(ctx),
       d_stats(stats),
-      d_relevancyPropagator(new RelevancyPropagator(*this, ctx)),
+      d_relevancyPropagator(new RelevancyPropagator(
+          *this, ctx.getEGraph(), ctx.getTrailStack(), stats)),
       d_auxClauses(ctx.getTrailStack().getContext(), true, RetireCleanup{this}),
       d_assignedLiterals(
           ctx.getTrailStack().getContext(), true, UnassignCleanup{this}),

@@ -19,8 +19,9 @@
 #include <vector>
 
 #include "theory/quantifiers/eager/enode.h"
+#include "theory/quantifiers/eager/egraph.h"
+#include "theory/quantifiers/eager/prop_core.h"
 #include "theory/quantifiers/eager/quantifier_normalizer.h"
-#include "theory/quantifiers/eager/smt_context.h"
 
 namespace cvc5::internal {
 namespace theory::quantifiers::eager {
@@ -31,9 +32,9 @@ namespace {
 constexpr size_t s_maxDepth = 600;
 }  // namespace
 
-Checker::Checker(SmtContext& c)
-    : d_context(c),
-      d_egraph(c.getEGraph()),
+Checker::Checker(EGraph& egraph, PropCore& prop)
+    : d_egraph(egraph),
+      d_prop(prop),
       d_numBindings(0),
       d_bindings(nullptr)
 {
@@ -70,10 +71,10 @@ bool Checker::checkCore(TNode n, size_t depth, bool isTrue)
     return false;
   }
   Assert(n.getType().isBoolean());
-  if (d_context.getPropCore().bInternalized(n)
-      && d_context.getPropCore().isRelevant(n))
+  if (d_prop.bInternalized(n)
+      && d_prop.isRelevant(n))
   {
-    SatValue val = d_context.getPropCore().getAssignment(n);
+    SatValue val = d_prop.getAssignment(n);
     return val != SAT_VALUE_UNKNOWN && isTrue == (val == SAT_VALUE_TRUE);
   }
   if (!isApp(n))
@@ -100,14 +101,14 @@ bool Checker::checkCore(TNode n, size_t depth, bool isTrue)
         ENode* lhs = getENodeEqTo(n[0]);
         ENode* rhs = getENodeEqTo(n[1]);
         if (lhs != nullptr && rhs != nullptr
-            && d_context.getPropCore().isRelevant(lhs->getExpr())
-            && d_context.getPropCore().isRelevant(rhs->getExpr()))
+            && d_prop.isRelevant(lhs->getExpr())
+            && d_prop.isRelevant(rhs->getExpr()))
         {
           if (isTrue && lhs->getRoot() == rhs->getRoot())
           {
             return true;
           }
-          if (!isTrue && d_context.isDiseq(lhs, rhs))
+          if (!isTrue && isDiseq(lhs, rhs))
           {
             return true;
           }
@@ -134,10 +135,10 @@ bool Checker::checkCore(TNode n, size_t depth, bool isTrue)
                  && check(n[1], depth + 1, false));
     case Kind::ITE:
     {
-      if (d_context.getPropCore().litInternalized(n[0])
-          && d_context.getPropCore().isRelevant(n[0]))
+      if (d_prop.litInternalized(n[0])
+          && d_prop.isRelevant(n[0]))
       {
-        switch (d_context.getPropCore().getAssignment(n[0]))
+        switch (d_prop.getAssignment(n[0]))
         {
           case SAT_VALUE_FALSE: return check(n[2], depth + 1, isTrue);
           case SAT_VALUE_UNKNOWN: return false;
@@ -150,9 +151,9 @@ bool Checker::checkCore(TNode n, size_t depth, bool isTrue)
   }
   ENode* e = getENodeEqTo(n);
   if (e != nullptr && e->isBool()
-      && d_context.getPropCore().isRelevant(e->getExpr()))
+      && d_prop.isRelevant(e->getExpr()))
   {
-    SatValue val = d_context.getPropCore().getAssignment(e->getExpr());
+    SatValue val = d_prop.getAssignment(e->getExpr());
     return val != SAT_VALUE_UNKNOWN && isTrue == (val == SAT_VALUE_TRUE);
   }
   return false;
@@ -190,7 +191,7 @@ ENode* Checker::getENodeEqToCore(TNode n)
   {
     return nullptr;
   }
-  return d_context.getPropCore().isRelevant(e->getExpr()) ? e : nullptr;
+  return d_prop.isRelevant(e->getExpr()) ? e : nullptr;
 }
 
 ENode* Checker::getENodeEqTo(TNode n)
@@ -204,7 +205,7 @@ ENode* Checker::getENodeEqTo(TNode n)
     }
     return d_bindings[idx];
   }
-  if (d_egraph.eInternalized(n) && d_context.getPropCore().isRelevant(n))
+  if (d_egraph.eInternalized(n) && d_prop.isRelevant(n))
   {
     return d_egraph.getENode(n);
   }
@@ -246,6 +247,41 @@ bool Checker::run(TNode n,
   d_numBindings = 0;
   d_bindings = nullptr;
   return r;
+}
+
+bool Checker::isDiseq(ENode* n1, ENode* n2)
+{
+#ifdef CVC5_ASSERTIONS
+  TypeNode sort1 = n1->getSort();
+  TypeNode sort2 = n2->getSort();
+  Assert(sort1 == sort2);
+#endif
+  TNode e1 = n1->getRoot()->getExpr();
+  TNode e2 = n2->getRoot()->getExpr();
+  if (e1.isConst() && e2.isConst() && e1 != e2)
+  {
+    return true;
+  }
+  // the equality of n1 and n2, if the E-graph has one
+  Assert(NodeManager::hasOperator(Kind::EQUAL));
+  ENode* args[2] = {n1, n2};
+  ENode* r = d_egraph.getENodeEqTo(
+      e1.getNodeManager()->operatorOf(Kind::EQUAL), true, 2, args);
+  if (r != nullptr)
+  {
+    Assert(r->isEq());
+    // the literal of the root of r, which is the false literal for false
+    TNode re = r->getRoot()->getExpr();
+    Assert(re.getType().isBoolean());
+    SatLiteral l = (re.isConst() && !re.getConst<bool>())
+                       ? s_falseLiteral
+                       : SatLiteral(d_prop.getBoolVarOfId(re.getId()));
+    return l != s_trueLiteral
+           && (l == s_falseLiteral
+               || (d_prop.isRelevant(l)
+                   && d_prop.getAssignment(l) == SAT_VALUE_FALSE));
+  }
+  return false;
 }
 
 }  // namespace theory::quantifiers::eager

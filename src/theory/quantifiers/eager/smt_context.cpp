@@ -155,36 +155,6 @@ void SmtContext::propagateBoolENodeAssignmentCore(ENode* source, ENode* target)
   } while (first != target);
 }
 
-bool SmtContext::isDiseq(ENode* n1, ENode* n2) const
-{
-#ifdef CVC5_ASSERTIONS
-  TypeNode sort1 = n1->getSort();
-  TypeNode sort2 = n2->getSort();
-  Assert(sort1 == sort2);
-#endif
-  TNode e1 = n1->getRoot()->getExpr();
-  TNode e2 = n2->getRoot()->getExpr();
-  if (e1.isConst() && e2.isConst() && e1 != e2)
-  {
-    return true;
-  }
-  // the equality of n1 and n2, if the E-graph has one
-  Assert(NodeManager::hasOperator(Kind::EQUAL));
-  ENode* args[2] = {n1, n2};
-  ENode* r = const_cast<EGraph&>(d_egraph).getENodeEqTo(
-      nodeManager()->operatorOf(Kind::EQUAL), true, 2, args);
-  if (r != nullptr)
-  {
-    Assert(r->isEq());
-    SatLiteral l = enode2Literal(r->getRoot());
-    return l != s_trueLiteral
-           && (l == s_falseLiteral
-               || (d_prop.isRelevant(l)
-                   && d_prop.getAssignment(l) == SAT_VALUE_FALSE));
-  }
-  return false;
-}
-
 bool SmtContext::propagateAtoms()
 {
   Assert(!d_prop.inconsistent());
