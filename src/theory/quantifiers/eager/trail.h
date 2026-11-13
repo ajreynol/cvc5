@@ -123,10 +123,10 @@ struct TrailCleanup
  * and the memory to release then.
  *
  * It is backed by a context of its own, which the core pushes and pops at its
- * own pace (see SmtContext::syncLevel), and not by the SAT context: the trail
- * objects are a context-dependent list, which undoes them when it shrinks, and
- * they and the objects of allocate() live in the context's memory manager, so
- * that pushing one costs a pointer bump.
+ * own pace (see EagerEMatching::syncLevel), and not by the SAT context: the
+ * trail objects are a context-dependent list, which undoes them when it
+ * shrinks, and they and the objects of allocate() live in the context's
+ * memory manager, so that pushing one costs a pointer bump.
  */
 class TrailStack
 {
