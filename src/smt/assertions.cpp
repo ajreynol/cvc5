@@ -132,7 +132,17 @@ void Assertions::addFormula(TNode n, bool isFunDef, bool maybeHasFv)
       // For efficiency, we only do this if it is a lambda.
       // Note this is important since some benchmarks treat define-fun as a
       // global let. We should not eagerly rewrite in these cases.
-      if (n[1].getKind() == Kind::LAMBDA)
+      // If we are producing proofs, we do not do this unless the body
+      // has an application of a function that was previously defined. This
+      // is since the proof of this rewrite requires an equality between
+      // lambdas. Instead, the substitution is applied to the beta-reduced
+      // applications of the function, see
+      // TrustSubstitutionMap::applyTrusted. We still rewrite bodies that
+      // have defined functions, since otherwise the proofs of beta-reducing
+      // their applications require substituting into the lambdas of these
+      // defined functions, which may lead to spurious variable capture.
+      if (n[1].getKind() == Kind::LAMBDA
+          && (!d_env.isProofProducing() || hasDefinedFunction(tsm, n[1][1])))
       {
         // Rewrite the body of the lambda.
         defRewBody = tsm.applyTrusted(n[1][1], d_env.getRewriter());
@@ -235,6 +245,23 @@ void Assertions::addDefineFunDefinition(Node n, bool global)
     bool maybeHasFv = language::isLangSygus(options().base.inputLanguage);
     addFormula(n, true, maybeHasFv);
   }
+}
+
+bool Assertions::hasDefinedFunction(theory::TrustSubstitutionMap& tsm,
+                                    const Node& n)
+{
+  std::unordered_set<Node> syms;
+  expr::getSymbols(n, syms);
+  theory::SubstitutionMap& sm = tsm.get();
+  for (const Node& s : syms)
+  {
+    if (sm.hasSubstitution(s)
+        && sm.getSubstitution(s).getKind() == Kind::LAMBDA)
+    {
+      return true;
+    }
+  }
+  return false;
 }
 
 void Assertions::ensureBoolean(const Node& n)

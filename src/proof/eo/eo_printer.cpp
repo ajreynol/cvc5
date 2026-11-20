@@ -646,6 +646,29 @@ bool EoPrinter::canEvaluateRegExp(Node r)
   return true;
 }
 
+bool EoPrinter::isDefinitionUnfold(const ProofNode* pn) const
+{
+  if (pn->getRule() != ProofRule::HO_CONG)
+  {
+    return false;
+  }
+  const std::vector<std::shared_ptr<ProofNode>>& cc = pn->getChildren();
+  if (cc.empty() || cc[0]->getRule() != ProofRule::ASSUME
+      || d_topDefs.find(cc[0]->getResult()) == d_topDefs.end())
+  {
+    return false;
+  }
+  for (size_t i = 1, nchild = cc.size(); i < nchild; i++)
+  {
+    Node eq = cc[i]->getResult();
+    if (eq[0] != eq[1])
+    {
+      return false;
+    }
+  }
+  return true;
+}
+
 std::string EoPrinter::getRuleName(const ProofNode* pfn) const
 {
   ProofRule r = pfn->getRule();
@@ -666,7 +689,7 @@ std::string EoPrinter::getRuleName(const ProofNode* pfn) const
     return ss.str();
   }
   else if (r == ProofRule::ENCODE_EQ_INTRO || r == ProofRule::HO_APP_ENCODE
-           || r == ProofRule::BV_EAGER_ATOM)
+           || r == ProofRule::BV_EAGER_ATOM || isDefinitionUnfold(pfn))
   {
     // ENCODE_EQ_INTRO proves (= t (convert t)) from argument t,
     // where (convert t) is indistinguishable from t according to the proof.
@@ -905,6 +928,54 @@ void EoPrinter::print(EoPrintChannelOut& aout,
   const std::vector<Node>& assertions =
       ascope != nullptr ? ascope->getArguments() : d_emptyVec;
 
+  // The definitions are printed as define commands. We compute the
+  // definitions that are used in the proof body other than in unfoldings
+  // (see isDefinitionUnfold), which are the only ones we print an
+  // (higher-order) step for below.
+  d_topDefs.clear();
+  for (const Node& n : definitions)
+  {
+    if (n.getKind() == Kind::EQUAL)
+    {
+      d_topDefs.insert(n);
+    }
+  }
+  std::unordered_set<Node> usedDefs;
+  if (!d_topDefs.empty())
+  {
+    std::unordered_set<const ProofNode*> visited;
+    std::vector<const ProofNode*> visit;
+    std::vector<std::shared_ptr<ProofNode>> children;
+    visit.push_back(pnBody);
+    do
+    {
+      const ProofNode* cur = visit.back();
+      visit.pop_back();
+      if (!visited.insert(cur).second)
+      {
+        continue;
+      }
+      children.clear();
+      getChildrenFromProofRule(cur, children);
+      for (const std::shared_ptr<ProofNode>& c : children)
+      {
+        if (c->getRule() == ProofRule::ASSUME)
+        {
+          if (d_topDefs.find(c->getResult()) != d_topDefs.end())
+          {
+            usedDefs.insert(c->getResult());
+          }
+          continue;
+        }
+        visit.push_back(c.get());
+      }
+    } while (!visit.empty());
+    // the body itself may be the assumption of a definition
+    if (pnBody->getRule() == ProofRule::ASSUME)
+    {
+      usedDefs.insert(pnBody->getResult());
+    }
+  }
   bool wasAlloc;
   for (size_t i = 0; i < 2; i++)
   {
@@ -958,6 +1029,11 @@ void EoPrinter::print(EoPrintChannelOut& aout,
         continue;
       }
       if (!d_topAssumps.insert(n).second)
+      {
+        continue;
+      }
+      // skip definitions that are only used in unfoldings
+      if (usedDefs.find(n) == usedDefs.end())
       {
         continue;
       }
@@ -1177,6 +1253,15 @@ void EoPrinter::getChildrenFromProofRule(
   const std::vector<std::shared_ptr<ProofNode>>& cc = pn->getChildren();
   switch (pn->getRule())
   {
+    case ProofRule::HO_CONG:
+    {
+      // definition unfoldings are printed as REFL, which has no premises
+      if (isDefinitionUnfold(pn))
+      {
+        return;
+      }
+    }
+    break;
     case ProofRule::CONG:
     {
       // Ignore prefix of premises that are just REFL. Moreover this is required
@@ -1222,7 +1307,13 @@ void EoPrinter::getArgsFromProofRule(const ProofNode* pn,
   {
     case ProofRule::HO_CONG:
     {
-      // argument is ignored
+      // If this is a definition unfolding, it is printed as REFL, whose
+      // argument is the left hand side of the conclusion.
+      if (isDefinitionUnfold(pn))
+      {
+        args.push_back(d_tproc.convert(res[0]));
+      }
+      // otherwise the argument is ignored
       return;
     }
     case ProofRule::INSTANTIATE:

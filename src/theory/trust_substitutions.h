@@ -17,6 +17,7 @@
 
 #include "context/cdhashmap.h"
 #include "context/cdlist.h"
+#include "context/cdo.h"
 #include "context/context.h"
 #include "proof/conv_proof_generator.h"
 #include "proof/eager_proof_generator.h"
@@ -98,6 +99,25 @@ class TrustSubstitutionMap : protected EnvObj, public ProofGenerator
   /** Are proofs enabled? */
   bool isProofEnabled() const;
   /**
+   * Apply the substitutions in this class to n, where applications of
+   * functions whose substitution is a lambda are beta-reduced in place. In
+   * other words, for f -> (lambda x. t), we rewrite (f s) to t{x -> s}, and
+   * continue by applying the substitution to the result. This ensures that we
+   * never substitute into the body of a lambda, so that the proof of the
+   * returned equality contains no equalities between functions besides the
+   * substitutions f -> (lambda x. t) themselves, which are only used as
+   * premises of HO_CONG steps of the form
+   *   (= (f s) ((lambda x. t) s)).
+   * This is required e.g. for proofs whose definitions are given as macros,
+   * where these steps are proven by reflexivity.
+   *
+   * Returns a trust node proving n = n', where n' is the result of applying
+   * the substitution to n and rewriting it if r is non-null. Returns the null
+   * trust node if we fail, e.g. if n has an occurrence of such a function
+   * that is not applied.
+   */
+  TrustNode applyTrustedBetaReduce(Node n, Rewriter* r);
+  /**
    * Get the substitution up to index
    */
   Node getSubstitution(size_t index);
@@ -107,6 +127,15 @@ class TrustSubstitutionMap : protected EnvObj, public ProofGenerator
   SubstitutionMap d_subs;
   /** A context-dependent list of trust nodes */
   context::CDList<TrustNode> d_tsubs;
+  /**
+   * Maps the variables x of the substitutions x -> t added to this class to
+   * t, where (= x t) is the formula proven by d_subsPg. This is used only if
+   * proofs are enabled. Note that this differs from the range of d_subs, which
+   * may be updated by compression.
+   */
+  context::CDHashMap<Node, Node> d_provenSubs;
+  /** Whether a substitution whose range is a lambda was added */
+  context::CDO<bool> d_hasLambdaSubs;
   /** Theory proof step buffer */
   std::unique_ptr<TheoryProofStepBuffer> d_tspb;
   /** A lazy proof for substitution steps */

@@ -12,6 +12,7 @@
 
 #include "theory/trust_substitutions.h"
 
+#include "proof/proof_checker.h"
 #include "smt/env.h"
 #include "theory/rewriter.h"
 
@@ -27,6 +28,8 @@ TrustSubstitutionMap::TrustSubstitutionMap(Env& env,
       d_ctx(c),
       d_subs(c),
       d_tsubs(c),
+      d_provenSubs(c),
+      d_hasLambdaSubs(c, false),
       d_tspb(nullptr),
       d_subsPg(nullptr),
       d_applyPg(nullptr),
@@ -57,6 +60,11 @@ void TrustSubstitutionMap::addSubstitution(TNode x, TNode t, ProofGenerator* pg)
   {
     TrustNode tnl = TrustNode::mkTrustRewrite(x, t, pg);
     d_tsubs.push_back(tnl);
+    d_provenSubs[x] = t;
+    if (t.getKind() == Kind::LAMBDA)
+    {
+      d_hasLambdaSubs = true;
+    }
     // add to lazy proof
     d_subsPg->addLazyStep(tnl.getProven(), pg, d_trustId);
   }
@@ -155,6 +163,26 @@ TrustNode TrustSubstitutionMap::applyTrusted(Node n, Rewriter* r)
   {
     // no proofs, use null generator
     return TrustNode::mkTrustRewrite(n, ns, nullptr);
+  }
+  if (d_hasLambdaSubs.get())
+  {
+    // If there are substitutions whose range is a lambda (e.g. from
+    // define-fun), we beta-reduce their applications in place, which ensures
+    // the proof does not have equalities between lambdas. If this fails, we
+    // use the default method below.
+    TrustNode tbr = applyTrustedBetaReduce(n, r);
+    if (!tbr.isNull())
+    {
+      // We only use the result if it agrees with the substitution. This may
+      // fail to hold if the underlying substitution map was modified directly,
+      // or if beta-reducing first leads to a different rewritten form.
+      if (tbr.getNode() == ns)
+      {
+        return tbr;
+      }
+      Trace("trust-subs") << "...beta-reduce result " << tbr.getNode()
+                          << " does not match" << std::endl;
+    }
   }
   Node eq = n.eqNode(ns);
   // If we haven't already stored an index, remember the index. Otherwise, a
@@ -255,6 +283,176 @@ std::shared_ptr<ProofNode> TrustSubstitutionMap::getProofFor(Node eq)
   std::shared_ptr<ProofNode> ret = d_applyPg->getProofFor(eq);
   d_proving.erase(eq);
   return ret;
+}
+
+TrustNode TrustSubstitutionMap::applyTrustedBetaReduce(Node n, Rewriter* r)
+{
+  Assert(isProofEnabled());
+  NodeManager* nm = nodeManager();
+  // The term conversion proof generator for the substitution, which is a
+  // fixed point. Variables are rewritten to their substitution, and
+  // applications of functions whose substitution is a lambda are rewritten
+  // to their beta-reduced form.
+  TConvProofGenerator tcg(d_env,
+                          nullptr,
+                          TConvPolicy::FIXPOINT,
+                          TConvCachePolicy::NEVER,
+                          "TrustSubstitutionMap::tcg",
+                          nullptr,
+                          true);
+  // proofs of the beta-reduction steps
+  LazyCDProof cdp(d_env, nullptr, nullptr, "TrustSubstitutionMap::betaPf");
+  Node kapp = ProofRuleChecker::mkKindNode(nm, Kind::APPLY_UF);
+  // Maps terms to the result of applying the substitution, where null
+  // indicates we have yet to process the children.
+  std::unordered_map<TNode, Node> visited;
+  // Maps terms to the term whose result is its result, for terms that are
+  // rewritten by a step of the term conversion.
+  std::unordered_map<TNode, Node> rewritesTo;
+  std::unordered_map<TNode, Node>::iterator it;
+  context::CDHashMap<Node, Node>::const_iterator its;
+  std::vector<TNode> visit;
+  TNode cur;
+  visit.push_back(n);
+  do
+  {
+    cur = visit.back();
+    it = visited.find(cur);
+    if (it == visited.end())
+    {
+      visited[cur] = Node::null();
+      its = d_provenSubs.find(cur);
+      if (its != d_provenSubs.end() && (*its).second != cur)
+      {
+        Node s = (*its).second;
+        if (s.getKind() == Kind::LAMBDA)
+        {
+          // an occurrence of a function that is not applied, fail
+          return TrustNode::null();
+        }
+        // substitutions are pre-rewrites, and post-rewrites since we are
+        // computing a fixed point
+        tcg.addRewriteStep(cur, s, d_subsPg.get(), true);
+        tcg.addRewriteStep(cur, s, d_subsPg.get(), false);
+        rewritesTo[cur] = s;
+        visit.push_back(s);
+        continue;
+      }
+      visit.insert(visit.end(), cur.begin(), cur.end());
+      continue;
+    }
+    if (!it->second.isNull())
+    {
+      visit.pop_back();
+      continue;
+    }
+    it = rewritesTo.find(cur);
+    if (it != rewritesTo.end())
+    {
+      Assert(visited.find(it->second) != visited.end());
+      Assert(!visited[it->second].isNull());
+      visited[cur] = visited[it->second];
+      visit.pop_back();
+      continue;
+    }
+    Node ret = cur;
+    bool childChanged = false;
+    std::vector<Node> children;
+    if (cur.getMetaKind() == kind::metakind::PARAMETERIZED)
+    {
+      children.push_back(cur.getOperator());
+    }
+    for (const Node& cn : cur)
+    {
+      it = visited.find(cn);
+      Assert(it != visited.end());
+      Assert(!it->second.isNull());
+      childChanged = childChanged || cn != it->second;
+      children.push_back(it->second);
+    }
+    if (childChanged)
+    {
+      ret = nm->mkNode(cur.getKind(), children);
+    }
+    if (ret.getKind() == Kind::APPLY_UF)
+    {
+      Node f = ret.getOperator();
+      its = d_provenSubs.find(f);
+      if (its != d_provenSubs.end() && (*its).second.getKind() == Kind::LAMBDA)
+      {
+        Node lam = (*its).second;
+        std::vector<Node> lchildren;
+        lchildren.push_back(lam);
+        lchildren.insert(lchildren.end(), ret.begin(), ret.end());
+        Node lapp = nm->mkNode(Kind::APPLY_UF, lchildren);
+        Node rr = d_env.getRewriter()->rewriteViaRule(
+            ProofRewriteRule::BETA_REDUCE, lapp);
+        if (rr.isNull())
+        {
+          return TrustNode::null();
+        }
+        // The proof of (= (f s) t{x -> s}) is:
+        //
+        // ------------- from d_subsPg  ----- REFL
+        // (= f lam)                    s = s
+        // ---------------------------------- HO_CONG  ------- BETA_REDUCE
+        // (= (f s) (lam s))                           (lam s) = t{x -> s}
+        // ------------------------------------------------------ TRANS
+        // (= (f s) t{x -> s})
+        std::vector<Node> hchildren;
+        Node feq = f.eqNode(lam);
+        cdp.addLazyStep(feq, d_subsPg.get());
+        hchildren.push_back(feq);
+        for (const Node& rc : ret)
+        {
+          Node rceq = rc.eqNode(rc);
+          cdp.addStep(rceq, ProofRule::REFL, {}, {rc});
+          hchildren.push_back(rceq);
+        }
+        Node eqh = ret.eqNode(lapp);
+        cdp.addStep(eqh, ProofRule::HO_CONG, hchildren, {kapp});
+        Node eqb = lapp.eqNode(rr);
+        cdp.addTheoryRewriteStep(eqb, ProofRewriteRule::BETA_REDUCE);
+        cdp.addStep(ret.eqNode(rr), ProofRule::TRANS, {eqh, eqb}, {});
+        tcg.addRewriteStep(ret, rr, &cdp, false);
+        rewritesTo[cur] = rr;
+        visit.push_back(rr);
+        continue;
+      }
+    }
+    visited[cur] = ret;
+    visit.pop_back();
+  } while (!visit.empty());
+  Assert(visited.find(n) != visited.end());
+  Node ns = visited[n];
+  Assert(!ns.isNull());
+  if (ns == n)
+  {
+    return TrustNode::null();
+  }
+  std::shared_ptr<ProofNode> pfn = tcg.getProofForRewriting(n);
+  if (pfn->getResult() != n.eqNode(ns))
+  {
+    Trace("trust-subs") << "...beta-reduce proof mismatch, got "
+                        << pfn->getResult() << ", expected " << ns
+                        << std::endl;
+    return TrustNode::null();
+  }
+  LazyCDProof* pf = d_helperPf->allocateProof(nullptr, d_ctx);
+  pf->addProof(pfn);
+  if (r != nullptr)
+  {
+    Node nsr = r->rewrite(ns);
+    if (nsr != ns)
+    {
+      Node eqs = n.eqNode(ns);
+      Node eqr = ns.eqNode(nsr);
+      pf->addStep(eqr, ProofRule::MACRO_REWRITE, {}, {ns});
+      pf->addStep(n.eqNode(nsr), ProofRule::TRANS, {eqs, eqr}, {});
+      ns = nsr;
+    }
+  }
+  return TrustNode::mkTrustRewrite(n, ns, pf);
 }
 
 std::string TrustSubstitutionMap::identify() const { return d_name; }

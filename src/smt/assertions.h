@@ -26,6 +26,10 @@ namespace cvc5::internal {
 
 class LazyCDProof;
 
+namespace theory {
+class TrustSubstitutionMap;
+}
+
 namespace smt {
 
 class AbstractValues;
@@ -108,6 +112,12 @@ class Assertions : protected EnvObj
    * throw@ TypeCheckingException
    */
   void ensureBoolean(const Node& n);
+  /**
+   * Does n have a symbol that has a substitution in tsm whose range is a
+   * lambda, i.e. a previously defined function?
+   */
+  static bool hasDefinedFunction(theory::TrustSubstitutionMap& tsm,
+                                 const Node& n);
   /**
    * Adds a formula to the current context.  Action here depends on
    * the SimplificationMode (in the current Options scope); the

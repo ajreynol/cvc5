@@ -117,6 +117,17 @@ class EoPrinter : protected EnvObj
   static bool canEvaluateRegExp(Node r);
   /* Returns the normalized name of the proof rule of pfn */
   std::string getRuleName(const ProofNode* pfn) const;
+  /**
+   * Is pn the unfolding of a definition? This is the case if pn is an
+   * application of HO_CONG whose first premise is the assumption of a
+   * definition (= f (lambda x. t)) from d_topDefs, and whose remaining
+   * premises are equalities of the form (= s s). Since definitions are printed
+   * as define commands, the conclusion of pn, (= (f s) ((lambda x. t) s)), is
+   * an equality between syntactically equal terms in Eunoia, hence we print it
+   * as a REFL step. This avoids printing the equality between f and the
+   * lambda, which is higher-order.
+   */
+  bool isDefinitionUnfold(const ProofNode* pn) const;
 
   //-------------
   /**
@@ -209,6 +220,8 @@ class EoPrinter : protected EnvObj
   context::CDHashSet<const ProofNode*> d_alreadyPrinted;
   /** The top-level assumptions of the proof we are printing */
   std::unordered_set<Node> d_topAssumps;
+  /** The definitions of the proof we are printing */
+  std::unordered_set<Node> d_topDefs;
   /**
    * Cache for expr::containsAssumption with respect to d_topAssumps, which we
    * use to check whether a proof is closed.
