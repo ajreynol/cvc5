@@ -15,11 +15,13 @@
 #include <sstream>
 
 #include "base/modal_exception.h"
+#include "expr/elim_shadow_converter.h"
 #include "expr/node_algorithm.h"
 #include "expr/subtype_elim_node_converter.h"
 #include "options/base_options.h"
 #include "options/expr_options.h"
 #include "options/language.h"
+#include "options/proof_options.h"
 #include "options/smt_options.h"
 #include "proof/lazy_proof.h"
 #include "proof/proof_node_algorithm.h"
@@ -98,8 +100,18 @@ std::unordered_set<Node> Assertions::getCurrentAssertionListDefitions() const
   return defSet;
 }
 
-void Assertions::addFormula(TNode n, bool isFunDef, bool maybeHasFv)
+void Assertions::addFormula(TNode nin, bool isFunDef, bool maybeHasFv)
 {
+  Node n = nin;
+  // If we are producing proofs, we rename the variables of definitions, see
+  // renameDefinition.
+  if ((!options().base.incrementalSolving || isFunDef)
+      && n.getKind() == Kind::EQUAL && n[0].isVar()
+      && n[1].getKind() == Kind::LAMBDA
+      && d_env.isProofProducing() && !options().proof.proofPrintReference)
+  {
+    n = renameDefinition(n);
+  }
   // add to assertion list
   d_assertionList.push_back(n);
   if (n.isConst() && n.getConst<bool>())
@@ -132,17 +144,11 @@ void Assertions::addFormula(TNode n, bool isFunDef, bool maybeHasFv)
       // For efficiency, we only do this if it is a lambda.
       // Note this is important since some benchmarks treat define-fun as a
       // global let. We should not eagerly rewrite in these cases.
-      // If we are producing proofs, we do not do this unless the body
-      // has an application of a function that was previously defined. This
-      // is since the proof of this rewrite requires an equality between
-      // lambdas. Instead, the substitution is applied to the beta-reduced
-      // applications of the function, see
-      // TrustSubstitutionMap::applyTrusted. We still rewrite bodies that
-      // have defined functions, since otherwise the proofs of beta-reducing
-      // their applications require substituting into the lambdas of these
-      // defined functions, which may lead to spurious variable capture.
-      if (n[1].getKind() == Kind::LAMBDA
-          && (!d_env.isProofProducing() || hasDefinedFunction(tsm, n[1][1])))
+      // If we are producing proofs, we do not do this, since the proof of
+      // this rewrite requires an equality between lambdas. Instead, the
+      // substitution is applied to the beta-reduced applications of the
+      // function, see TrustSubstitutionMap::applyTrusted.
+      if (n[1].getKind() == Kind::LAMBDA && !d_env.isProofProducing())
       {
         // Rewrite the body of the lambda.
         defRewBody = tsm.applyTrusted(n[1][1], d_env.getRewriter());
@@ -247,21 +253,41 @@ void Assertions::addDefineFunDefinition(Node n, bool global)
   }
 }
 
-bool Assertions::hasDefinedFunction(theory::TrustSubstitutionMap& tsm,
-                                    const Node& n)
+Node Assertions::renameDefinition(const Node& n)
 {
-  std::unordered_set<Node> syms;
-  expr::getSymbols(n, syms);
-  theory::SubstitutionMap& sm = tsm.get();
-  for (const Node& s : syms)
+  std::map<Node, Node>::iterator it = d_renamedDefs.find(n);
+  if (it != d_renamedDefs.end())
   {
-    if (sm.hasSubstitution(s)
-        && sm.getSubstitution(s).getKind() == Kind::LAMBDA)
-    {
-      return true;
-    }
+    return it->second;
   }
-  return false;
+  // Rename the variables of the lambda to fresh variables whose names are
+  // unique to this definition. Since definitions are printed as macros in
+  // proofs, the lambda of a defined function g appears in the body of a
+  // definition of f that applies g. Since bound variables in proofs are
+  // identified by their name, the variables of g could otherwise coincide with
+  // those that the variables of f are replaced by when beta-reducing an
+  // application of f, which would lead to (spurious) variable capture.
+  NodeManager* nm = nodeManager();
+  std::stringstream ssf;
+  ssf << "@" << n[0] << ".";
+  std::vector<Node> vars(n[1][0].begin(), n[1][0].end());
+  std::vector<Node> nvars;
+  for (const Node& v : vars)
+  {
+    std::stringstream ssv;
+    ssv << ssf.str() << v;
+    nvars.push_back(NodeManager::mkBoundVar(ssv.str(), v.getType()));
+  }
+  Node body = n[1][1].substitute(
+      vars.begin(), vars.end(), nvars.begin(), nvars.end());
+  Node lam =
+      nm->mkNode(Kind::LAMBDA, nm->mkNode(Kind::BOUND_VAR_LIST, nvars), body);
+  // also eliminate shadowing, e.g. of the variables of the lambda by
+  // quantifiers in its body
+  lam = ElimShadowNodeConverter::eliminateShadow(lam);
+  Node ret = n[0].eqNode(lam);
+  d_renamedDefs[n] = ret;
+  return ret;
 }
 
 void Assertions::ensureBoolean(const Node& n)

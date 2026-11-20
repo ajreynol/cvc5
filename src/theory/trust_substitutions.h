@@ -98,6 +98,8 @@ class TrustSubstitutionMap : protected EnvObj, public ProofGenerator
  private:
   /** Are proofs enabled? */
   bool isProofEnabled() const;
+  /** Does n have a symbol that has a substitution in this map? */
+  bool hasSubstitutedSymbol(const Node& n);
   /**
    * Apply the substitutions in this class to n, where applications of
    * functions whose substitution is a lambda are beta-reduced in place. In

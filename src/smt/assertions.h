@@ -15,6 +15,7 @@
 #ifndef CVC5__SMT__ASSERTIONS_H
 #define CVC5__SMT__ASSERTIONS_H
 
+#include <map>
 #include <vector>
 
 #include "context/cdlist.h"
@@ -25,10 +26,6 @@
 namespace cvc5::internal {
 
 class LazyCDProof;
-
-namespace theory {
-class TrustSubstitutionMap;
-}
 
 namespace smt {
 
@@ -113,11 +110,12 @@ class Assertions : protected EnvObj
    */
   void ensureBoolean(const Node& n);
   /**
-   * Does n have a symbol that has a substitution in tsm whose range is a
-   * lambda, i.e. a previously defined function?
+   * Returns the result of renaming the variables of the definition n, of the
+   * form (= f (lambda x t)), to fresh variables whose names are unique to the
+   * definition. This is used for ensuring that proofs do not have spurious
+   * variable capture.
    */
-  static bool hasDefinedFunction(theory::TrustSubstitutionMap& tsm,
-                                 const Node& n);
+  Node renameDefinition(const Node& n);
   /**
    * Adds a formula to the current context.  Action here depends on
    * the SimplificationMode (in the current Options scope); the
@@ -152,6 +150,8 @@ class Assertions : protected EnvObj
   std::vector<Node> d_assumptions;
   /** Proof generator storing proofs of rewriting for defined functions */
   std::shared_ptr<LazyCDProof> d_defFunRewPf;
+  /** Cache for renameDefinition */
+  std::map<Node, Node> d_renamedDefs;
 };
 
 }  // namespace smt

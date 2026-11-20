@@ -12,6 +12,7 @@
 
 #include "theory/trust_substitutions.h"
 
+#include "expr/node_algorithm.h"
 #include "proof/proof_checker.h"
 #include "smt/env.h"
 #include "theory/rewriter.h"
@@ -173,15 +174,16 @@ TrustNode TrustSubstitutionMap::applyTrusted(Node n, Rewriter* r)
     TrustNode tbr = applyTrustedBetaReduce(n, r);
     if (!tbr.isNull())
     {
-      // We only use the result if it agrees with the substitution. This may
-      // fail to hold if the underlying substitution map was modified directly,
-      // or if beta-reducing first leads to a different rewritten form.
-      if (tbr.getNode() == ns)
+      // We only use the result if it is fully substituted. This may fail to
+      // hold if the underlying substitution map was modified directly. Note
+      // that the result may differ from ns, since beta-reducing first may
+      // lead to a different (equivalent) rewritten form.
+      if (!hasSubstitutedSymbol(tbr.getNode()))
       {
         return tbr;
       }
       Trace("trust-subs") << "...beta-reduce result " << tbr.getNode()
-                          << " does not match" << std::endl;
+                          << " is not fully substituted" << std::endl;
     }
   }
   Node eq = n.eqNode(ns);
@@ -285,6 +287,20 @@ std::shared_ptr<ProofNode> TrustSubstitutionMap::getProofFor(Node eq)
   return ret;
 }
 
+bool TrustSubstitutionMap::hasSubstitutedSymbol(const Node& n)
+{
+  std::unordered_set<Node> syms;
+  expr::getSymbols(n, syms);
+  for (const Node& s : syms)
+  {
+    if (d_subs.hasSubstitution(s))
+    {
+      return true;
+    }
+  }
+  return false;
+}
+
 TrustNode TrustSubstitutionMap::applyTrustedBetaReduce(Node n, Rewriter* r)
 {
   Assert(isProofEnabled());
@@ -309,6 +325,8 @@ TrustNode TrustSubstitutionMap::applyTrustedBetaReduce(Node n, Rewriter* r)
   // Maps terms to the term whose result is its result, for terms that are
   // rewritten by a step of the term conversion.
   std::unordered_map<TNode, Node> rewritesTo;
+  // Caches whether lambdas are safe to beta-reduce
+  std::unordered_map<Node, bool> lamOk;
   std::unordered_map<TNode, Node>::iterator it;
   context::CDHashMap<Node, Node>::const_iterator its;
   std::vector<TNode> visit;
@@ -381,6 +399,18 @@ TrustNode TrustSubstitutionMap::applyTrustedBetaReduce(Node n, Rewriter* r)
       if (its != d_provenSubs.end() && (*its).second.getKind() == Kind::LAMBDA)
       {
         Node lam = (*its).second;
+        // beta reduction assumes that lam has no shadowed variables
+        std::unordered_map<Node, bool>::iterator itl = lamOk.find(lam);
+        if (itl == lamOk.end())
+        {
+          bool wasShadow = false;
+          bool ok = !expr::hasFreeOrShadowedVar(lam, wasShadow) && !wasShadow;
+          itl = lamOk.emplace(lam, ok).first;
+        }
+        if (!itl->second)
+        {
+          return TrustNode::null();
+        }
         std::vector<Node> lchildren;
         lchildren.push_back(lam);
         lchildren.insert(lchildren.end(), ret.begin(), ret.end());
