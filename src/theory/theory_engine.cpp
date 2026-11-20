@@ -2259,7 +2259,7 @@ TrustNode TheoryEngine::getExplanation(
     // explanation (for unit T-conflicts), it must be by symmetry. We must do
     // this manually since lcp does not have auto-symmetry enabled due to the
     // complication mentioned above.
-    if (!lcp->hasStep(conclusion) && exp.find(conclusion) == exp.end())
+    if (!lcp->hasStep(conclusion) && expSet.find(conclusion) == expSet.end())
     {
       Node sconc = CDProof::getSymmFact(conclusion);
       if (!sconc.isNull())
