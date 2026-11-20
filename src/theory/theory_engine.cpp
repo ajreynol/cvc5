@@ -19,6 +19,7 @@
 #include "expr/attribute.h"
 #include "expr/node_builder.h"
 #include "expr/node_visitor.h"
+#include "options/base_options.h"
 #include "options/parallel_options.h"
 #include "options/quantifiers_options.h"
 #include "options/smt_options.h"
@@ -276,8 +277,24 @@ TheoryEngine::TheoryEngine(Env& env)
     d_cp.reset(new ConflictProcessor(env, useExtRewriter));
   }
 
+  if (isOutputOn(OutputTag::THEORY_EVENTS))
+  {
+    d_eventsPopNotify.reset(new TheoryEventsPopNotify(env));
+  }
+
   d_true = nodeManager()->mkConst<bool>(true);
   d_false = nodeManager()->mkConst<bool>(false);
+}
+
+TheoryEngine::TheoryEventsPopNotify::TheoryEventsPopNotify(Env& env)
+    : context::ContextNotifyObj(env.getContext()), d_env(env)
+{
+}
+
+void TheoryEngine::TheoryEventsPopNotify::contextNotifyPop()
+{
+  d_env.output(OutputTag::THEORY_EVENTS)
+      << "(pop " << d_env.getContext()->getLevel() << ")" << std::endl;
 }
 
 TheoryEngine::~TheoryEngine()
@@ -299,6 +316,11 @@ void TheoryEngine::preRegister(TNode preprocessed)
 {
   Trace("theory") << "TheoryEngine::preRegister( " << preprocessed << ")"
                   << std::endl;
+  if (isOutputOn(OutputTag::THEORY_EVENTS))
+  {
+    output(OutputTag::THEORY_EVENTS) << "(prereg " << context()->getLevel()
+                                     << " " << preprocessed << ")" << std::endl;
+  }
   d_preregisterQueue.push(preprocessed);
 
   if (!d_inPreregister)
@@ -1344,6 +1366,12 @@ bool TheoryEngine::propagate(TNode literal, theory::TheoryId theory)
 {
   Trace("theory::propagate")
       << "TheoryEngine::propagate(" << literal << ", " << theory << ")" << endl;
+  if (isOutputOn(OutputTag::THEORY_EVENTS))
+  {
+    output(OutputTag::THEORY_EVENTS)
+        << "(propagate " << context()->getLevel() << " " << theory << " "
+        << literal << ")" << endl;
+  }
 
   Trace("dtview::prop") << std::string(context()->getLevel(), ' ')
                         << ":THEORY-PROP: " << literal << endl;
@@ -1494,6 +1522,12 @@ TrustNode TheoryEngine::getExplanation(TNode node)
                      LemmaProperty::NONE,
                      {},
                      {});
+  }
+  if (isOutputOn(OutputTag::THEORY_EVENTS))
+  {
+    output(OutputTag::THEORY_EVENTS)
+        << "(explain " << context()->getLevel() << " " << node << " "
+        << texplanation.getNode() << ")" << endl;
   }
   return texplanation;
 }
@@ -1649,6 +1683,14 @@ void TheoryEngine::lemma(TrustNode tlemma,
   // spendResource();
   Assert(tlemma.getKind() == TrustNodeKind::LEMMA
          || tlemma.getKind() == TrustNodeKind::CONFLICT);
+  // conflicts are printed by TheoryEngine::conflict
+  if (tlemma.getKind() == TrustNodeKind::LEMMA
+      && isOutputOn(OutputTag::THEORY_EVENTS))
+  {
+    output(OutputTag::THEORY_EVENTS)
+        << "(lemma " << context()->getLevel() << " " << from << " " << id << " "
+        << tlemma.getProven() << ")" << endl;
+  }
 
   // minimize or generalize conflict
   if (d_cp)
@@ -1736,6 +1778,12 @@ void TheoryEngine::conflict(TrustNode tconflict,
   TNode conflict = tconflict.getNode();
   Trace("theory::conflict") << "TheoryEngine::conflict(" << conflict << ", "
                             << id << ", " << theoryId << ")" << endl;
+  if (isOutputOn(OutputTag::THEORY_EVENTS))
+  {
+    output(OutputTag::THEORY_EVENTS)
+        << "(conflict " << context()->getLevel() << " " << theoryId << " " << id
+        << " " << conflict << ")" << endl;
+  }
   Trace("te-proof-debug") << "Check closed conflict" << std::endl;
   // doesn't require proof generator, yet, since THEORY_LEMMA is added below
   tconflict.debugCheckClosed(
@@ -1863,6 +1911,12 @@ void TheoryEngine::setRefutationUnsound(theory::IncompleteId id)
 void TheoryEngine::setModelUnsound(theory::TheoryId theory,
                                    theory::IncompleteId id)
 {
+  if (isOutputOn(OutputTag::THEORY_EVENTS))
+  {
+    output(OutputTag::THEORY_EVENTS)
+        << "(model-unsound " << context()->getLevel() << " " << theory << " "
+        << id << ")" << endl;
+  }
   d_modelUnsound = true;
   d_modelUnsoundTheory = theory;
   d_modelUnsoundId = id;
@@ -1871,6 +1925,12 @@ void TheoryEngine::setModelUnsound(theory::TheoryId theory,
 void TheoryEngine::setRefutationUnsound(theory::TheoryId theory,
                                         theory::IncompleteId id)
 {
+  if (isOutputOn(OutputTag::THEORY_EVENTS))
+  {
+    output(OutputTag::THEORY_EVENTS)
+        << "(refutation-unsound " << context()->getLevel() << " " << theory
+        << " " << id << ")" << endl;
+  }
   d_refutationUnsound = true;
   d_refutationUnsoundTheory = theory;
   d_refutationUnsoundId = id;

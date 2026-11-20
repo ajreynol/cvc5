@@ -13,6 +13,7 @@
 #include "theory/output_channel.h"
 
 #include "expr/skolem_manager.h"
+#include "options/base_options.h"
 #include "prop/prop_engine.h"
 #include "theory/theory_engine.h"
 
@@ -91,6 +92,12 @@ void OutputChannel::preferPhase(TNode n, bool phase)
   Trace("theory") << "OutputChannel::preferPhase(" << n << ", " << phase << ")"
                   << std::endl;
   ++d_statistics.preferPhase;
+  if (d_engine->isOutputOn(OutputTag::THEORY_EVENTS))
+  {
+    d_engine->output(OutputTag::THEORY_EVENTS)
+        << "(phase " << d_engine->context()->getLevel() << " " << n << " "
+        << (phase ? "true" : "false") << ")" << std::endl;
+  }
   d_engine->getPropEngine()->preferPhase(n, phase);
 }
 

@@ -12,6 +12,7 @@
 
 #include "theory/theory_inference_manager.h"
 
+#include "options/base_options.h"
 #include "options/proof_options.h"
 #include "proof/eager_proof_generator.h"
 #include "proof/trust_id.h"
@@ -396,6 +397,13 @@ bool TheoryInferenceManager::processInternalFact(TNode atom,
   Node expn = nodeManager()->mkAnd(exp);
   Trace("im") << "(fact " << iid << " " << (pol ? Node(atom) : atom.notNode())
               << " " << expn << ")" << std::endl;
+  if (isOutputOn(OutputTag::THEORY_EVENTS))
+  {
+    output(OutputTag::THEORY_EVENTS)
+        << "(fact " << context()->getLevel() << " " << d_theory.getId() << " "
+        << iid << " " << (pol ? Node(atom) : atom.notNode()) << " " << expn
+        << ")" << std::endl;
+  }
   // call the pre-notify fact method with preReg = false, isInternal = true
   if (d_theory.preNotifyFact(atom, pol, expn, false, true))
   {

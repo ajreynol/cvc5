@@ -21,6 +21,7 @@
 #include "expr/node_algorithm.h"
 #include "expr/skolem_manager.h"
 #include "options/arith_options.h"
+#include "options/base_options.h"
 #include "options/smt_options.h"
 #include "options/theory_options.h"
 #include "theory/ee_setup_info.h"
@@ -540,8 +541,28 @@ EqualityStatus Theory::getEqualityStatus(TNode a, TNode b)
   return EQUALITY_UNKNOWN;
 }
 
+void Theory::assertFact(TNode assertion, bool isPreregistered)
+{
+  Trace("theory") << "Theory<" << getId() << ">::assertFact["
+                  << context()->getLevel() << "](" << assertion << ", "
+                  << (isPreregistered ? "true" : "false") << ")" << std::endl;
+  if (isOutputOn(OutputTag::THEORY_EVENTS))
+  {
+    output(OutputTag::THEORY_EVENTS)
+        << "(assert " << context()->getLevel() << " " << d_id << " "
+        << assertion << ")" << std::endl;
+  }
+  d_facts.push_back(Assertion(assertion, isPreregistered));
+}
+
 void Theory::check(Effort level)
 {
+  if (isOutputOn(OutputTag::THEORY_EVENTS))
+  {
+    output(OutputTag::THEORY_EVENTS)
+        << "(check " << context()->getLevel() << " " << d_id << " " << level
+        << ")" << std::endl;
+  }
   // see if we are already done (as an optimization)
   if (d_checkEarlyExit && done() && level < EFFORT_FULL)
   {

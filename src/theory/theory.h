@@ -415,13 +415,7 @@ class Theory : protected EnvObj
   /**
    * Assert a fact in the current context.
    */
-  void assertFact(TNode assertion, bool isPreregistered)
-  {
-    Trace("theory") << "Theory<" << getId() << ">::assertFact["
-                    << context()->getLevel() << "](" << assertion << ", "
-                    << (isPreregistered ? "true" : "false") << ")" << std::endl;
-    d_facts.push_back(Assertion(assertion, isPreregistered));
-  }
+  void assertFact(TNode assertion, bool isPreregistered);
 
   /** Add shared term to the theory. */
   void addSharedTerm(TNode node);

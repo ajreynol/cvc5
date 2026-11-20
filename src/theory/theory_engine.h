@@ -702,6 +702,23 @@ class TheoryEngine : protected EnvObj
   std::vector<theory::TheoryEngineModule*> d_modules;
   /** Conflict processor */
   std::unique_ptr<theory::ConflictProcessor> d_cp;
+  /**
+   * Prints a pop event for -o theory-events whenever the SAT context is
+   * popped, with the level after the pop.
+   */
+  class TheoryEventsPopNotify : public context::ContextNotifyObj
+  {
+   public:
+    TheoryEventsPopNotify(Env& env);
+
+   protected:
+    void contextNotifyPop() override;
+
+   private:
+    Env& d_env;
+  };
+  /** The pop notification object, allocated if -o theory-events is on. */
+  std::unique_ptr<TheoryEventsPopNotify> d_eventsPopNotify;
   /** User plugin modules */
   std::vector<std::unique_ptr<theory::PluginModule>> d_userPlugins;
 

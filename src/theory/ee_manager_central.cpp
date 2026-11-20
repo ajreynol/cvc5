@@ -13,6 +13,7 @@
 #include "theory/ee_manager_central.h"
 
 #include "options/arith_options.h"
+#include "options/base_options.h"
 #include "options/theory_options.h"
 #include "smt/env.h"
 #include "theory/quantifiers_engine.h"
@@ -246,6 +247,12 @@ void EqEngineManagerCentral::CentralNotifyClass::eqNotifyConstantTermMerge(
 void EqEngineManagerCentral::CentralNotifyClass::eqNotifyNewClass(TNode t)
 {
   Trace("eem-central") << "...eqNotifyNewClass " << t << std::endl;
+  if (d_eemc.isOutputOn(OutputTag::THEORY_EVENTS_EE))
+  {
+    d_eemc.output(OutputTag::THEORY_EVENTS_EE)
+        << "(ee-new-class " << d_eemc.context()->getLevel() << " " << t << ")"
+        << std::endl;
+  }
   // notify all theories that have new equivalence class notifications
   for (eq::EqualityEngineNotify* notify : d_newClassNotify)
   {
@@ -257,6 +264,12 @@ void EqEngineManagerCentral::CentralNotifyClass::eqNotifyMerge(TNode t1,
                                                                TNode t2)
 {
   Trace("eem-central") << "...eqNotifyMerge " << t1 << ", " << t2 << std::endl;
+  if (d_eemc.isOutputOn(OutputTag::THEORY_EVENTS_EE))
+  {
+    d_eemc.output(OutputTag::THEORY_EVENTS_EE)
+        << "(ee-merge " << d_eemc.context()->getLevel() << " " << t1 << " "
+        << t2 << ")" << std::endl;
+  }
   // notify all theories that have merge notifications
   for (eq::EqualityEngineNotify* notify : d_mergeNotify)
   {
@@ -270,6 +283,12 @@ void EqEngineManagerCentral::CentralNotifyClass::eqNotifyDisequal(TNode t1,
 {
   Trace("eem-central") << "...eqNotifyDisequal " << t1 << ", " << t2
                        << std::endl;
+  if (d_eemc.isOutputOn(OutputTag::THEORY_EVENTS_EE))
+  {
+    d_eemc.output(OutputTag::THEORY_EVENTS_EE)
+        << "(ee-diseq " << d_eemc.context()->getLevel() << " " << t1 << " "
+        << t2 << " " << reason << ")" << std::endl;
+  }
   // notify all theories that have disequal notifications
   for (eq::EqualityEngineNotify* notify : d_disequalNotify)
   {

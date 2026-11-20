@@ -230,6 +230,15 @@ name   = "Base"
   help = "print lemmas as they are added to the SAT solver"
   description = "With ``-o lemmas``, cvc5 prints lemmas as they are added to the SAT solver."
   example-file = "regress0/printer/print_sat_lemmas.smt2"
+[[option.mode.THEORY_EVENTS]]
+  name = "theory-events"
+  help = "print the events at the interface of the theory solvers: the terms registered and the literals asserted to them, their check calls, backtracking, and the facts, lemmas, conflicts, propagations and explanations they produce"
+  description = "With ``-o theory-events``, cvc5 prints one line per event at the interface of the theory solvers, each with the current SAT context level: ``(prereg k t)``, ``(assert k T lit)``, ``(check k T effort)``, ``(pop k)`` (the level after a backtrack), ``(fact k T id lit exp)``, ``(lemma k T id lem)``, ``(conflict k T id conf)``, ``(propagate k T lit)``, ``(explain k lit exp)`` (the explanation of a propagated literal, when the SAT solver asks for it), ``(phase k lit pol)``, ``(model-unsound k T id)`` and ``(refutation-unsound k T id)``."
+  example-file = "regress0/printer/theory-events.smt2"
+[[option.mode.THEORY_EVENTS_EE]]
+  name = "theory-events-ee"
+  help = "print the notifications of the central equality engine to the theory solvers: new classes, merges and disequalities"
+  description = "With ``-o theory-events-ee``, cvc5 prints the notifications of the central equality engine (``--ee-mode=central``), each with the current SAT context level: ``(ee-new-class k t)``, ``(ee-merge k t1 t2)`` and ``(ee-diseq k t1 t2 reason)``."
 [[option.mode.TRUSTED_PROOF_STEPS]]
   name = "trusted-proof-steps"
   help = "print formulas corresponding to trusted proof steps in final proofs"
