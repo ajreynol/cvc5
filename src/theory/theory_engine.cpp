@@ -1975,7 +1975,10 @@ TrustNode TheoryEngine::getExplanation(
 
   std::unique_ptr<std::set<Node>> inputAssertions = nullptr;
   // the overall explanation
-  std::set<TNode> exp;
+  // the overall explanation, in the order the literals are found (the order of
+  // node ids would not be deterministic)
+  std::vector<TNode> exp;
+  std::unordered_set<TNode> expSet;
   // vector of trust nodes to explain at the end
   std::vector<std::pair<TheoryId, TrustNode>> texplains;
   // cache of nodes we have already explained by some theory
@@ -2027,7 +2030,11 @@ TrustNode TheoryEngine::getExplanation(
     {
       Trace("theory::explain")
           << "\tLiteral came from THEORY_SAT_SOLVER. Keeping it." << endl;
-      exp.insert(explanationVector[i++].d_node);
+      if (expSet.insert(explanationVector[i].d_node).second)
+      {
+        exp.push_back(explanationVector[i].d_node);
+      }
+      ++i;
       // it will be a free assumption in the proof
       Trace("te-proof-exp") << "- keep " << toExplain.d_node << std::endl;
       continue;
@@ -2147,8 +2154,8 @@ TrustNode TheoryEngine::getExplanation(
   else
   {
     NodeBuilder conjunction(nodeManager(), Kind::AND);
-    std::set<TNode>::const_iterator it = exp.begin();
-    std::set<TNode>::const_iterator it_end = exp.end();
+    std::vector<TNode>::const_iterator it = exp.begin();
+    std::vector<TNode>::const_iterator it_end = exp.end();
     while (it != it_end)
     {
       conjunction << *it;
@@ -2185,14 +2192,14 @@ TrustNode TheoryEngine::getExplanation(
       Assert(proven.getKind() == Kind::IMPLIES);
       Node tConc = proven[1];
       Trace("te-proof-exp") << "- Process " << trn << std::endl;
-      if (exp.find(tConc) != exp.end())
+      if (expSet.find(tConc) != expSet.end())
       {
         // already added to proof
         Trace("te-proof-exp") << "...already added" << std::endl;
         continue;
       }
       // remember that we've explained this formula, to avoid cycles in lcp
-      exp.insert(tConc);
+      expSet.insert(tConc);
       TheoryId ttid = it->first;
       Node tExp = proven[0];
       if (ttid == THEORY_LAST)

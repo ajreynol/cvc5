@@ -1823,8 +1823,9 @@ Node TheoryDatatypes::searchForCycle(TNode n,
 void TheoryDatatypes::checkSplit()
 {
   // get the relevant term set, currently all datatype equivalence classes
-  // in the equality engine
-  std::set<Node> termSetReps;
+  // in the equality engine, in the order of the equality engine (which is
+  // deterministic, unlike the order of node ids)
+  std::vector<Node> termSetReps;
   eq::EqClassesIterator eqcs_i = eq::EqClassesIterator(d_equalityEngine);
   while (!eqcs_i.isFinished())
   {
@@ -1832,7 +1833,7 @@ void TheoryDatatypes::checkSplit()
     ++eqcs_i;
     if (eqc.getType().isDatatype())
     {
-      termSetReps.insert(eqc);
+      termSetReps.push_back(eqc);
     }
   }
   std::map<TypeNode, Node> rec_singletons;
