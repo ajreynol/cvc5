@@ -311,7 +311,6 @@ bool EoPrinter::isHandledTheoryRewrite(const Options& opts,
     case ProofRewriteRule::DISTINCT_CARD_CONFLICT:
     case ProofRewriteRule::DISTINCT_TRUE:
     case ProofRewriteRule::DISTINCT_FALSE:
-    case ProofRewriteRule::BETA_REDUCE:
     case ProofRewriteRule::UBV_TO_INT_ELIM:
     case ProofRewriteRule::INT_TO_BV_ELIM:
     case ProofRewriteRule::ARITH_STRING_PRED_ENTAIL:
@@ -370,6 +369,7 @@ bool EoPrinter::isHandledTheoryRewrite(const Options& opts,
     }
     case ProofRewriteRule::ARITH_POW_ELIM:
     case ProofRewriteRule::ARRAYS_SELECT_CONST:
+    case ProofRewriteRule::BETA_REDUCE:
     case ProofRewriteRule::LAMBDA_ELIM:
       // only supported in unrestricted builds
       if (opts.base.safeMode == options::SafeMode::UNRESTRICTED)
