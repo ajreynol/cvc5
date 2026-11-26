@@ -305,15 +305,22 @@ TypeNode DatatypeUpdateTypeRule::computeType(
   if (check)
   {
     TypeNode t = updType[0];
+    bool isPar = t.isParametricDatatype();
+    // use a single matcher so that both arguments are matched under the same
+    // instantiation of the type parameters
+    TypeMatcher m;
+    if (isPar)
+    {
+      m.addTypesFromDatatype(t);
+    }
     for (size_t i = 0; i < 2; i++)
     {
       TypeNode childType = n[i].getTypeOrNull();
       TypeNode targ = updType[i];
       Trace("typecheck-idt") << "typecheck update: " << n << "[" << i
                              << "]: " << targ << " " << childType << std::endl;
-      if (t.isParametricDatatype())
+      if (isPar)
       {
-        TypeMatcher m(t);
         if (!m.doMatching(targ, childType))
         {
           if (errOut)
