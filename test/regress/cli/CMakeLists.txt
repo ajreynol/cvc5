@@ -865,6 +865,7 @@ set(regress_0_tests
   regress0/datatypes/tree-get-value.cvc.smt2
   regress0/datatypes/tuple-model.cvc.smt2
   regress0/datatypes/tuple-no-clash.cvc.smt2
+  regress0/datatypes/tuple-project-proof.smt2
   regress0/datatypes/tuple-record-bug.cvc.smt2
   regress0/datatypes/tuple-update-elim.smt2
   regress0/datatypes/tuple.cvc.smt2
@@ -2369,6 +2370,10 @@ set(regress_0_tests
   regress0/smtlib/set-info-status.smt2
   regress0/solver/issue8854-get-model-after-unknown.smt2
   regress0/strings/652-substr-len-norm.smt2
+  regress0/strings/alpha-card-256-unsat-set-option.smt2
+  regress0/strings/alpha-card-256-unsat.smt2
+  regress0/strings/alpha-card-large.smt2
+  regress0/strings/alpha-card-model.smt2
   regress0/strings/bug001.smt2
   regress0/strings/bug002.smt2
   regress0/strings/bug612.smt2
@@ -3080,6 +3085,7 @@ set(regress_1_tests
   regress1/bags/table_group2.smt2
   regress1/bags/table_group3.smt2
   regress1/bags/table_group5.smt2
+  regress1/bags/table_group6.smt2
   regress1/bags/table_group_empty.smt2
   regress1/bags/table_group_empty_solver.smt2
   regress1/bags/table_join1.smt2
@@ -3089,6 +3095,7 @@ set(regress_1_tests
   regress1/bags/table_join5.smt2
   regress1/bags/table_project1.smt2
   regress1/bags/table_project2.smt2
+  regress1/bags/table_project3.smt2
   regress1/bags/union_disjoint.smt2
   regress1/bags/union_max1.smt2
   regress1/bags/union_max2.smt2
@@ -3940,6 +3947,7 @@ set(regress_1_tests
   regress1/sets/relation_group_empty.smt2
   regress1/sets/relation_project1.smt2
   regress1/sets/relation_project2.smt2
+  regress1/sets/relation_project3.smt2
   regress1/sets/remove_check_free_31_6.smt2
   regress1/sets/sets-disequal.smt2
   regress1/sets/sets-tuple-poly.cvc.smt2
